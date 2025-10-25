@@ -58,6 +58,9 @@ import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
+# For base64 fingerprint decoding
+import base64
+import struct
 
 
 ###############################################################################
@@ -553,7 +556,23 @@ def parse_fpcalc_output(output: str) -> Tuple[Optional[List[int]], Optional[str]
             if isinstance(data["fingerprint"], list):
                 fingerprint = [int(v) for v in data["fingerprint"]]
             elif isinstance(data["fingerprint"], str):
-                fingerprint = [int(v) for v in data["fingerprint"].split(",") if v]
+                # Support for base64 fingerprints
+                fp_str = data["fingerprint"]
+                # If it contains non-digit characters, treat as base64
+                if any(not c.isdigit() and c not in {",", " ", "-"} for c in fp_str):
+                    try:
+                        # Remove any whitespace or linebreaks, decode base64
+                        fp_bytes = base64.b64decode(fp_str)
+                        # Unpack as sequence of 32-bit signed ints
+                        # Length must be divisible by 4
+                        count = len(fp_bytes) // 4
+                        fingerprint = list(struct.unpack("<%di" % count, fp_bytes))
+                        hash_hex = sha1_hex(",".join(str(v) for v in fingerprint).encode("utf-8"))
+                        return (fingerprint, hash_hex)
+                    except Exception:
+                        fingerprint = None
+                else:
+                    fingerprint = [int(v) for v in fp_str.split(",") if v]
     except json.JSONDecodeError:
         for line in output.splitlines():
             if line.startswith("FINGERPRINT="):
@@ -735,7 +754,7 @@ def load_file_from_db(conn: sqlite3.Connection, path: Path) -> Optional[FileInfo
 def upsert_file(conn: sqlite3.Connection, info: FileInfo) -> None:
     """Insert or update a :class:`FileInfo` in the database."""
 
-    now = _dt.datetime.utcnow().isoformat()
+    now = _dt.datetime.now(_dt.UTC).isoformat()
     fingerprint_json = json.dumps(info.fingerprint) if info.fingerprint else None
     payload = (
         info.path.as_posix(),
@@ -851,7 +870,7 @@ def store_file_signals(conn: sqlite3.Connection, info: FileInfo) -> None:
 
     conn.execute("DELETE FROM file_signals WHERE file_id=?", (info.id,))
     conn.execute("DELETE FROM fp_bands WHERE file_id=?", (info.id,))
-    now = _dt.datetime.utcnow().isoformat()
+    now = _dt.datetime.now(_dt.UTC).isoformat()
     entries: List[Tuple[int, str, Optional[str], Optional[str], str]] = []
     if info.stream_md5:
         entries.append((info.id, "stream_md5", info.stream_md5, None, now))
@@ -1182,6 +1201,7 @@ def scan_files(
     no_fp: bool,
     hash_mode: str,
     shutdown: GracefulShutdown,
+    verbose: bool = False,
 ) -> List[FileInfo]:
     """Walk the filesystem and return fresh :class:`FileInfo` instances."""
 
@@ -1199,6 +1219,8 @@ def scan_files(
             path = Path(dirpath) / filename
             if path.suffix.lower() != ".flac":
                 continue
+            if verbose:
+                log(f"Processing file: {path}")
             stat_info = path.stat()
             cached = load_file_from_db(conn, path)
             if (
@@ -1209,6 +1231,8 @@ def scan_files(
             ):
                 load_slide_hashes(conn, cached.id, cached.segments)
                 files.append(cached)
+                if verbose:
+                    log(f"  Cached → skipping recompute: size={cached.size_bytes}, mtime={cached.mtime}")
                 continue
 
             file_id = cached.id if cached else next_id
@@ -1226,6 +1250,8 @@ def scan_files(
             info.duration = metadata.get("duration") if metadata else None
             info.bitrate_kbps = metadata.get("bitrate_kbps") if metadata else None
 
+            if verbose:
+                log("  Computing metadata…")
             md5 = compute_metaflac_md5(path)
             if md5:
                 info.stream_md5 = md5
@@ -1234,11 +1260,15 @@ def scan_files(
                 info.pcm_sha1 = compute_pcm_sha1(path)
                 if info.pcm_sha1:
                     info.exact_key_type = "pcm_sha1"
+                if verbose:
+                    log("  Computed PCM SHA1")
 
             if not no_fp:
                 fp, fp_hash = compute_fingerprint(path)
                 info.fingerprint = fp
                 info.fingerprint_hash = fp_hash
+                if verbose:
+                    log("  Computed fingerprint")
 
             info.segments = compute_segment_hashes(
                 path,
@@ -1247,11 +1277,15 @@ def scan_files(
                 slide_step,
                 slide_count,
             )
+            if verbose:
+                log("  Computed segment hashes")
 
             info.fuzzy_key = build_fuzzy_key(path, aggressive_fuzzy)
             info.fuzzy_duration = info.duration
 
             info.healthy, info.health_note = check_health(path)
+            if verbose:
+                log(f"  Health check: {info.healthy}, note: {info.health_note}")
 
             upsert_file(conn, info)
             insert_segments(conn, info.id, info.segments)
@@ -1275,7 +1309,7 @@ def record_run(
 ) -> int:
     """Insert a run record and return its identifier."""
 
-    now = _dt.datetime.utcnow().isoformat()
+    now = _dt.datetime.now(_dt.UTC).isoformat()
     cursor = conn.execute(
         """
         INSERT INTO runs (started_at, root, options_json, dry_run)
@@ -1290,7 +1324,7 @@ def record_run(
 def finalize_run(conn: sqlite3.Connection, run_id: int) -> None:
     """Update the run record with the finishing timestamp."""
 
-    now = _dt.datetime.utcnow().isoformat()
+    now = _dt.datetime.now(_dt.UTC).isoformat()
     conn.execute("UPDATE runs SET finished_at=? WHERE id=?", (now, run_id))
     conn.commit()
 
@@ -1401,6 +1435,11 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         default=str(Path.home() / "Music" / "dedupe" / "dedupe.db"),
         help="SQLite database path",
     )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Print progress for each file and stage",
+    )
     return parser.parse_args(argv)
 
 
@@ -1408,6 +1447,9 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
     """Entry point used by :func:`main` and unit tests."""
 
     args = parse_args(argv)
+    if args.verbose:
+        for t in ["ffmpeg", "fpcalc", "flac", "metaflac", "ffprobe"]:
+            log(f"{t}: {'found' if is_tool_available(t) else 'missing'}")
     root = Path(args.root).expanduser().resolve()
     if not root.exists():
         raise SystemExit(f"Root directory {root} does not exist")
@@ -1448,7 +1490,11 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
         no_fp=args.no_fp,
         hash_mode=args.hash_mode,
         shutdown=shutdown,
+        verbose=args.verbose,
     )
+
+    if args.verbose:
+        log(f"Building groups for {len(files)} files…")
 
     groups = build_groups(
         files=files,
@@ -1458,6 +1504,9 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
         enable_slide=args.segwin_slide_count > 0,
         fuzzy_duration_tol=args.fuzzy_duration_tol,
     )
+
+    if args.verbose:
+        log(f"Formed {len(groups)} duplicate groups")
 
     persist_groups(conn, run_id, groups)
 

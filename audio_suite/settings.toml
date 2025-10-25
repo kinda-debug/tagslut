@@ -1,0 +1,25 @@
+[default]
+
+## Audio Suite default configuration
+
+# Comma‑separated list of paths to search for music files.  Set to an empty
+# string to force the first run wizard to prompt for a library location.
+library_roots = ""
+
+# Absolute path to the SQLite database used to store track metadata.  This can
+# be overridden by the `AUDIO_SUITE_DB_PATH` environment variable.
+db_path = "~/.local/share/audio_suite/library.db"
+
+# Output directory for exported playlists (M3U and JSON).  The `{playlist_name}`
+# placeholder is replaced by the base name of the input playlist file.
+match_output_path_m3u = "~/Music/playlists/{playlist_name}.m3u"
+match_output_path_json = "~/Music/playlists/{playlist_name}.json"
+
+# Automatic matching threshold (0‑100).  Matches with a score equal or
+# greater to this value are accepted without manual review.
+threshold_auto_match = 90
+
+# Review minimum threshold.  Matches below this value are considered
+# insufficient and are left unmatched.  Values between `threshold_auto_match`
+# and this threshold will trigger manual review.
+threshold_review_min = 75

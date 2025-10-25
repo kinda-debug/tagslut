@@ -1,0 +1,527 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+consolidate_audio_artifacts.py
+Use existing audit/dedupe artifacts to build a single, actionable report.
+
+What it ingests automatically (recursively from --artifacts-root, default: ~):
+  - audio_dedupe_*/index.tsv, report.csv, report.txt
+  - *dupes*_groups.tsv, *dupes*.json (best-effort), dupes*.txt
+  - flac_hashes.tsv, flaccindex_paths*.csv
+  - corrupt_*.csv, corrupt_*.txt, flac_native_failures*.txt, flac_permanent_failures*.txt
+  - quarantine_health_*.csv
+It tolerates varied headers: path/file/rel_path, size/bytes, content_hash/sha1/sha256, duration/duration_seconds/length, codec/codec_name, corrupt/bad, error/reason.
+
+Outputs (in ./artifact_consolidation_out_<timestamp>):
+  - consolidated.csv        : one row per known file (current exists?, current size)
+  - duplicates.csv          : exact dups by hash with keep/candidate flags
+  - similar_candidates.csv  : near-dupes (same ext + size + ~duration, different hash)
+  - corrupt.csv             : rows flagged corrupt with reason
+  - SUMMARY.txt             : totals and next steps
+  - dedupe_quarantine.sh    : reviewable mv plan for duplicate candidates (only if --write-plan)
+
+This script DOES NOT rescan media files. It only uses prior artifacts.
+"""
+
+import argparse, csv, json, os, re, sys, time
+from pathlib import Path
+from datetime import datetime
+from typing import Dict, List, Optional, Tuple
+
+# ---------- helpers
+
+def human_bytes(n: int) -> str:
+    if n is None:
+        return ""
+    units = ["B","KB","MB","GB","TB","PB"]
+    i = 0; x = float(n)
+    while i < len(units)-1 and x >= 1024:
+        x /= 1024.0; i += 1
+    return f"{x:.2f} {units[i]}"
+
+def shell_quote(path: str) -> str:
+    return "'" + path.replace("'", "'\"'\"'") + "'"
+
+AUDIO_EXTS = {".flac",".mp3",".m4a",".aac",".wav",".aiff",".aif",".ogg",".opus",".wma",".alac",".wv",".ape",".dsf",".dff",".mka"}
+
+# header synonyms → canonical
+SYN = {
+    "path": {"path","file","filepath","file_path","fullpath","full_path","abs_path"},
+    "rel_path": {"rel_path","relative_path"},
+    "size_bytes": {"size_bytes","bytes","size","filesize"},
+    "content_hash": {"content_hash","sha1","sha256","blake3","hash"},
+    "duration_seconds": {"duration_seconds","duration","length","secs","seconds"},
+    "codec_name": {"codec_name","codec","format"},
+    "corrupt": {"corrupt","bad","is_corrupt","broken"},
+    "corrupt_reason": {"corrupt_reason","error","reason","note","message"},
+}
+
+def canon_map(header: List[str]) -> Dict[str, Optional[str]]:
+    canon = {k: None for k in SYN}
+    lower = [h.strip().lower() for h in header]
+    for i,h in enumerate(lower):
+        for key, alts in SYN.items():
+            if h in alts and canon[key] is None:
+                canon[key] = header[i]  # preserve original case
+    return canon
+
+def sniff_delimiter(sample: str) -> str:
+    # Prefer TSV when tabs present; otherwise try comma/semicolon/pipe
+    if "\t" in sample:
+        return "\t"
+    for d in [",",";","|"]:
+        if d in sample:
+            return d
+    return ","  # default
+
+def load_table(path: Path) -> List[Dict[str,str]]:
+    text = path.read_text(errors="replace")
+    # handle JSON quickly
+    if path.suffix.lower() == ".json":
+        try:
+            data = json.loads(text)
+            rows = []
+            if isinstance(data, list):
+                for item in data:
+                    if isinstance(item, dict):
+                        rows.append({k:str(v) for k,v in item.items()})
+            elif isinstance(data, dict) and "rows" in data and isinstance(data["rows"], list):
+                for item in data["rows"]:
+                    if isinstance(item, dict):
+                        rows.append({k:str(v) for k,v in item.items()})
+            return rows
+        except Exception:
+            return []
+    # TXT lines that look like paths
+    if path.suffix.lower() == ".txt":
+        lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+        # If it starts like "path\t..." treat as tsv
+        if any("\t" in ln for ln in lines[:5]) or any("," in ln for ln in lines[:5]):
+            # fallthrough to CSV parse below
+            pass
+        else:
+            # treat as single column "path"
+            return [{"path": ln} for ln in lines]
+    # CSV/TSV
+    sample = "\n".join(text.splitlines()[:5])
+    delim = sniff_delimiter(sample)
+    try:
+        rd = csv.DictReader(text.splitlines(), delimiter=delim)
+        return [ {k.strip(): v for k,v in row.items()} for row in rd ]
+    except Exception:
+        return []
+
+def to_int(x) -> Optional[int]:
+    try:
+        if x in ("","N/A",None): return None
+        return int(float(str(x).strip()))
+    except Exception:
+        return None
+
+def to_float(x) -> Optional[float]:
+    try:
+        if x in ("","N/A",None): return None
+        return float(str(x).strip())
+    except Exception:
+        return None
+
+def pick(row: Dict[str,str], keymap: Dict[str,Optional[str]], key: str) -> Optional[str]:
+    col = keymap.get(key)
+    if not col: return None
+    return row.get(col)
+
+def find_artifact_files(root: Path) -> List[Path]:
+    # Focus on files you actually have in your listing; extend with common patterns
+    globs = [
+        "**/audio_dedupe_*/index.tsv",
+        "**/audio_dedupe_*/report.csv",
+        "**/audio_dedupe_*/report.txt",
+        "**/*dupes*_groups.tsv",
+        "**/music_dupes_groups.tsv",
+        "**/flac_hashes.tsv",
+        "**/flaccindex_paths*.csv",
+        "**/corrupt_*.csv",
+        "**/corrupt_*.txt",
+        "**/flac_native_failures*.txt",
+        "**/flac_permanent_failures*.txt",
+        "**/quarantine_health_*.csv",
+        "**/dupes_only.txt",
+        "**/dupes.json",
+        "**/music_dupes.json",
+    ]
+    found = []
+    for pattern in globs:
+        found.extend(root.glob(pattern))
+    # De-dup while preserving order
+    seen = set(); out = []
+    for p in found:
+        rp = p.resolve()
+        if rp not in seen and rp.is_file():
+            seen.add(rp); out.append(rp)
+    return out
+
+def ext_of(path: str) -> str:
+    return Path(path).suffix.lower()
+
+# ---------- core
+
+def main():
+    ap = argparse.ArgumentParser(description="Consolidate previous audio dedupe/corruption artifacts.")
+    ap.add_argument("--artifacts-root", default=str(Path.home()), help="Where to search for artifacts (default: ~).")
+    ap.add_argument("--focus-root", default="", help="Optional path filter (e.g., /Volumes/dotad/MUSIC). Only rows whose path starts with this will be considered.")
+    ap.add_argument("--similar-tolerance-sec", type=float, default=0.5, help="Duration bucket size for near-dupe grouping.")
+    ap.add_argument("--write-plan", action="store_true", help="Write a quarantine mv plan for duplicate candidates.")
+    ap.add_argument("--save-dir", default="", help="Output dir (default: ./artifact_consolidation_out_<timestamp>)")
+    args = ap.parse_args()
+
+    arte_root = Path(args.artifacts_root).expanduser()
+    focus_root = Path(args.focus_root).resolve() if args.focus_root else None
+
+    if not arte_root.exists():
+        print(f"ERROR: artifacts root not found: {arte_root}", file=sys.stderr); sys.exit(2)
+
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    outdir = Path(args.save_dir) if args.save_dir else Path(f"./artifact_consolidation_out_{ts}")
+    outdir.mkdir(parents=True, exist_ok=True)
+
+    files = find_artifact_files(arte_root)
+    if not files:
+        print("No artifact files found. Expand --artifacts-root or verify patterns.", file=sys.stderr)
+        sys.exit(3)
+
+    print(f"[i] Found {len(files)} artifact files to ingest.")
+for i, f in enumerate(files, 1): print(f"  - [{i}/{len(files)}] {f}", flush=True)
+
+    records: Dict[str, Dict[str, object]] = {}   # key: absolute path
+
+    def get_rec(path_str: str) -> Dict[str,object]:
+        if not path_str:
+            return None
+        # Normalize: expand ~, make absolute if possible
+        p = Path(path_str).expanduser()
+        if not p.is_absolute():
+            # if artifact contained relative, leave as-is but store canonical string
+            abs_s = str(p)
+        else:
+            abs_s = str(p)
+        rec = records.get(abs_s)
+        if not rec:
+            rec = {
+                "path": abs_s,
+                "ext": ext_of(abs_s),
+                "reported_size": None,
+                "reported_hash": None,
+                "reported_duration": None,
+                "reported_codec": None,
+                "corrupt": 0,
+                "corrupt_reason": "",
+                "sources": set(),
+            }
+            records[abs_s] = rec
+        return rec
+
+    # ingest
+    for idx, f in enumerate(files, 1):
+        print(f"[i] Ingesting {idx}/{len(files)}: {f}", flush=True)
+        try:
+            rows = load_table(f)
+            if not rows:
+                continue
+            header = list(rows[0].keys())
+            keymap = canon_map(header)
+            # crude classifier: if file name hints corruption
+            file_hint_corrupt = bool(re.search(r"(corrupt|failure|errors?)", f.name, re.I))
+            for row in rows:
+                # path
+                p = None
+                if keymap["path"]:
+                    p = row.get(keymap["path"])
+                elif "path" in row:
+                    p = row["path"]
+                elif "file" in row:
+                    p = row["file"]
+
+                if not p or str(p).strip() == "":
+                    # Some dupes lists are single-column text we already mapped as {"path": ...}
+                    continue
+
+                rec = get_rec(p)
+                if rec is None:
+                    continue
+
+                rec["sources"].add(str(f))
+
+                # size/hash/duration/codec
+                if keymap["size_bytes"]:
+                    sz = to_int(row.get(keymap["size_bytes"]))
+                    if sz and not rec["reported_size"]:
+                        rec["reported_size"] = sz
+                if keymap["content_hash"]:
+                    h = row.get(keymap["content_hash"])
+                    if h and not rec["reported_hash"]:
+                        rec["reported_hash"] = h.strip()
+                if keymap["duration_seconds"]:
+                    d = row.get(keymap["duration_seconds"])
+                    if d is not None and rec["reported_duration"] is None:
+                        try:
+                            rec["reported_duration"] = float(d)
+                        except Exception:
+                            pass
+                if keymap["codec_name"]:
+                    c = row.get(keymap["codec_name"])
+                    if c and not rec["reported_codec"]:
+                        rec["reported_codec"] = str(c)
+
+                # corrupt flags from row
+                flagged = False
+                if keymap["corrupt"]:
+                    v = row.get(keymap["corrupt"])
+                    if str(v).strip().lower() in {"1","true","yes","y"}:
+                        flagged = True
+                if file_hint_corrupt:
+                    # If this artifact is a corrupt/failure listing, mark it corrupt
+                    flagged = True
+                if flagged:
+                    rec["corrupt"] = 1
+                    # reason
+                    reason = ""
+                    if keymap["corrupt_reason"]:
+                        reason = str(row.get(keymap["corrupt_reason"]) or "").strip()
+                    if not reason:
+                        # try common fields
+                        for k in ["error","reason","message","note"]:
+                            if k in row and row[k]:
+                                reason = str(row[k])
+                                break
+                    if rec["corrupt_reason"]:
+                        # keep first but append new hint if different
+                        if reason and reason not in rec["corrupt_reason"]:
+                            rec["corrupt_reason"] += f" | {reason}"
+                    else:
+                        rec["corrupt_reason"] = reason
+        except Exception as e:
+            # Continue on ingestion errors; we want best-effort
+            print(f"[w] Failed to parse {f}: {e}", file=sys.stderr)
+
+    # collapse to list and optionally filter focus root
+    all_rows = list(records.values())
+    for r in all_rows:
+        # Check current file existence & size
+        p = Path(r["path"]).expanduser()
+        if p.exists():
+            r["exists_now"] = 1
+            try:
+                r["current_size"] = p.stat().st_size
+            except Exception:
+                r["current_size"] = None
+        else:
+            r["exists_now"] = 0
+            r["current_size"] = None
+
+    if focus_root:
+        prefix = str(focus_root)
+        all_rows = [r for r in all_rows if str(r["path"]).startswith(prefix)]
+
+    if not all_rows:
+        print("No rows after filtering. Check --focus-root or artifacts.", file=sys.stderr); sys.exit(4)
+
+    # write consolidated.csv
+    consolidated = sorted(all_rows, key=lambda r: (r["exists_now"]*-1, r["path"]))
+    outdir.mkdir(parents=True, exist_ok=True)
+    cons_csv = outdir / "consolidated.csv"
+    with cons_csv.open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=[
+            "path","ext","exists_now","current_size","reported_size","reported_hash",
+            "reported_duration","reported_codec","corrupt","corrupt_reason","sources"])
+        w.writeheader()
+        for r in consolidated:
+            w.writerow({
+                "path": r["path"],
+                "ext": r["ext"],
+                "exists_now": r["exists_now"],
+                "current_size": r["current_size"] or "",
+                "reported_size": r["reported_size"] or "",
+                "reported_hash": r["reported_hash"] or "",
+                "reported_duration": r["reported_duration"] if r["reported_duration"] is not None else "",
+                "reported_codec": r["reported_codec"] or "",
+                "corrupt": r["corrupt"],
+                "corrupt_reason": r["corrupt_reason"],
+                "sources": ";".join(sorted(r["sources"]))[:1000],
+            })
+    print(f"[+] Wrote {cons_csv}")
+
+    # Build duplicate groups by hash (only where we have a hash)
+    by_hash: Dict[str, List[Dict[str,object]]] = {}
+    for r in consolidated:
+        h = r.get("reported_hash")
+        if h:
+            by_hash.setdefault(h, []).append(r)
+
+    dup_groups = []
+    group_id = 0
+    reclaimable = 0
+    quarantine_moves: List[Tuple[str,str]] = []
+
+    def dur_val(r):
+        try:
+            return float(r.get("reported_duration") or 0.0)
+        except Exception:
+            return 0.0
+
+    for h, recs in by_hash.items():
+        if len(recs) < 2:
+            continue
+        group_id += 1
+        # prefer non-corrupt, then longer duration, then shorter path
+        recs_sorted = sorted(recs, key=lambda r: (r["corrupt"], -dur_val(r), len(r["path"])))
+        keep = recs_sorted[0]
+        size = (keep.get("current_size") or keep.get("reported_size") or 0)
+        # add rows
+        for i, rec in enumerate(recs_sorted):
+            dup_groups.append({
+                "group_id": group_id,
+                "content_hash": h,
+                "keep": 1 if i == 0 else 0,
+                "path": rec["path"],
+                "size_bytes": rec.get("current_size") or rec.get("reported_size") or "",
+                "duration_seconds": rec.get("reported_duration") or "",
+                "codec_name": rec.get("reported_codec") or "",
+                "corrupt": rec.get("corrupt") or 0,
+            })
+            if i != 0 and size:
+                reclaimable += int(size)
+                # plan quarantine path next to output dir, preserving rel path
+                rel = os.path.relpath(rec["path"], start=str(focus_root)) if focus_root else os.path.basename(rec["path"])
+                dest = outdir / "_quarantine" / rel
+                quarantine_moves.append((rec["path"], str(dest)))
+
+    dups_csv = outdir / "duplicates.csv"
+    if dup_groups:
+        with dups_csv.open("w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=["group_id","content_hash","keep","path","size_bytes","duration_seconds","codec_name","corrupt"])
+            w.writeheader()
+            for row in dup_groups:
+                w.writerow(row)
+        print(f"[+] Wrote {dups_csv}")
+    else:
+        print("[i] No exact duplicates by hash found in artifacts (or no hashes present).")
+
+    # Near-duplicates (same ext & size & duration bucket) where hash differs/missing
+    def bucket(d: Optional[float], tol: float) -> Optional[int]:
+        if d is None or d == "": return None
+        try:
+            return int(round(float(d)/tol))
+        except Exception:
+            return None
+
+    index_sim: Dict[Tuple[str,int,Optional[int]], List[Dict[str,object]]] = {}
+    for r in consolidated:
+        size = r.get("current_size") or r.get("reported_size")
+        if not size: continue
+        b = bucket(r.get("reported_duration"), args.similar_tolerance_sec)
+        key = (r["ext"], int(size), b)
+        index_sim.setdefault(key, []).append(r)
+
+    fuzzy_rows = []
+    for key,recs in index_sim.items():
+        if len(recs) < 2: continue
+        hashes = {r.get("reported_hash") for r in recs}
+        # Only list when hashes differ or are missing (i.e., potential transcoded duplicates)
+        if len(hashes) == 1 and None not in hashes and "" not in hashes:
+            continue
+        for r in sorted(recs, key=lambda x: x["path"]):
+            fuzzy_rows.append({
+                "ext": key[0],
+                "size_bytes": key[1],
+                "duration_bucket": key[2],
+                "duration_seconds": r.get("reported_duration") or "",
+                "path": r["path"],
+                "reported_hash": r.get("reported_hash") or "",
+            })
+
+    sim_csv = outdir / "similar_candidates.csv"
+    if fuzzy_rows:
+        with sim_csv.open("w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=["ext","size_bytes","duration_bucket","duration_seconds","path","reported_hash"])
+            w.writeheader()
+            for row in fuzzy_rows:
+                w.writerow(row)
+        print(f"[+] Wrote {sim_csv}")
+    else:
+        print("[i] No near-duplicate candidates by size+~duration found (in artifacts).")
+
+    # Corruption list
+    corrupt_rows = [r for r in consolidated if r.get("corrupt") == 1]
+    corrupt_csv = outdir / "corrupt.csv"
+    if corrupt_rows:
+        with corrupt_csv.open("w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=[
+                "path","exists_now","current_size","reported_size","reported_hash","reported_duration","reported_codec","corrupt_reason"])
+            w.writeheader()
+            for r in corrupt_rows:
+                w.writerow({
+                    "path": r["path"],
+                    "exists_now": r["exists_now"],
+                    "current_size": r["current_size"] or "",
+                    "reported_size": r["reported_size"] or "",
+                    "reported_hash": r["reported_hash"] or "",
+                    "reported_duration": r["reported_duration"] or "",
+                    "reported_codec": r["reported_codec"] or "",
+                    "corrupt_reason": r["corrupt_reason"],
+                })
+        print(f"[+] Wrote {corrupt_csv}")
+    else:
+        print("[i] No corrupt rows flagged in artifacts.")
+
+    # SUMMARY
+    total_rows = len(consolidated)
+    total_bytes = sum(int(r.get("current_size") or r.get("reported_size") or 0) for r in consolidated)
+    num_dupe_files = sum(1 for g in dup_groups if g["keep"] == 0)
+    summary = []
+    summary.append(f"Artifacts root: {arte_root}")
+    summary.append(f"Focus root    : {focus_root if focus_root else '(none)'}")
+    summary.append(f"Rows consolidated: {total_rows}")
+    summary.append(f"Total size (current/reported): {human_bytes(total_bytes)}")
+    summary.append(f"Exact duplicates by hash: {num_dupe_files} files across {len(set(g['group_id'] for g in dup_groups)) if dup_groups else 0} groups")
+    summary.append(f"Reclaimable if quarantining dup candidates: {human_bytes(reclaimable)}")
+    summary.append(f"Near-duplicate candidate rows: {len(fuzzy_rows)}")
+    summary.append(f"Corrupt flagged: {len(corrupt_rows)}")
+    summary.append("")
+    summary.append("Next steps:")
+    if dup_groups:
+        summary.append("  1) Review duplicates.csv; confirm the keep=1 choice per group.")
+        if args.write_plan:
+            summary.append("  2) Inspect dedupe_quarantine.sh; it only moves to _quarantine/ for review.")
+            summary.append("  3) After verification, delete quarantined files only when you’re satisfied.")
+        else:
+            summary.append("  2) Re-run with --write-plan to generate a reviewable quarantine script.")
+    else:
+        summary.append("  1) If no exact dupes, check similar_candidates.csv for size≈duration matches.")
+    if corrupt_rows:
+        summary.append("  4) Use corrupt.csv to schedule re-rip/recover; cross-check with your flac_fix pipelines.")
+    (outdir / "SUMMARY.txt").write_text("\n".join(summary) + "\n", encoding="utf-8")
+    print(f"[+] Wrote {outdir/'SUMMARY.txt'}")
+
+    # Quarantine plan
+    if args.write_plan and dup_groups:
+        sh = outdir / "dedupe_quarantine.sh"
+        lines = []
+        lines.append("#!/usr/bin/env bash")
+        lines.append("set -euo pipefail")
+        lines.append(f'QUAR={shell_quote(str(outdir / "_quarantine"))}')
+        lines.append('mkdir -p "$QUAR"')
+        lines.append("")
+        for src, dest in quarantine_moves:
+            dest_dir = os.path.dirname(dest)
+            lines.append(f"mkdir -p {shell_quote(dest_dir)}")
+            lines.append(f"if [ -e {shell_quote(dest)} ]; then")
+            lines.append(f"  echo 'SKIP (already exists): {shell_quote(dest)}'")
+            lines.append("else")
+            lines.append(f"  mv -v {shell_quote(src)} {shell_quote(dest)} || true")
+            lines.append("fi")
+        sh.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        os.chmod(sh, 0o755)
+        print(f"[+] Wrote {sh}")
+
+if __name__ == "__main__":
+    main()

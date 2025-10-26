@@ -34,6 +34,9 @@ scan_processed_count = 0
 scan_total_files = 0
 scan_skipped_count = 0
 
+# Protect updates to the global heartbeat state shared across worker threads
+progress_update_lock = threading.Lock()
+
 # Default timeouts (seconds); overridable via CLI
 CMD_TIMEOUT: int = 45         # fpcalc, flac -t, ffprobe, metaflac
 DECODE_TIMEOUT: int = 120     # ffmpeg streaming/decoding (PCM hash, segments)
@@ -44,8 +47,27 @@ DECODE_TIMEOUT: int = 120     # ffmpeg streaming/decoding (PCM hash, segments)
 ###############################################################################
 
 
+def heartbeat(path: Optional[Path] = None) -> None:
+    """Record forward progress for the watchdog and freeze detector.
+
+    Parameters
+    ----------
+    path:
+        Optional filesystem path currently being processed. When provided the
+        path is captured so the freeze detector can surface the last active
+        file if progress stalls.
+    """
+
+    global last_progress_timestamp, last_progress_file
+    with progress_update_lock:
+        last_progress_timestamp = time.time()
+        if path is not None:
+            last_progress_file = str(path)
+
+
 def log(message: str) -> None:
     """Print a human friendly timestamped log message."""
+
     timestamp = _dt.datetime.now().strftime("%H:%M:%S")
     print(f"[{timestamp}] {message}")
 
@@ -65,6 +87,7 @@ def log_progress(path: Path) -> None:
         print(f"[{timestamp}] Progress: {processed}/{total} ({percent:.1f}%) — {path.name} | Skipped: {skipped} files")
     else:
         print(f"[{timestamp}] Progress: {processed}/{total} ({percent:.1f}%) — {path.name}")
+    heartbeat(path)
 
 
 # Helper to log skipped files (broken or otherwise)
@@ -78,6 +101,7 @@ def log_skip(path: Path) -> None:
         total = scan_total_files
     timestamp = _dt.datetime.now().strftime("%H:%M:%S")
     print(f"[{timestamp}] Skipped: {skipped} files so far — {path.name} | Progress: {processed}/{total}")
+    heartbeat(path)
 
 
 def is_tool_available(tool: str) -> bool:
@@ -339,6 +363,7 @@ def probe_ffprobe(path: Path) -> Dict[str, Optional[float]]:
         str(path),
     ]
     try:
+        heartbeat(path)
         output = run_command(cmd, timeout=CMD_TIMEOUT)
     except CommandError:
         return {}
@@ -387,6 +412,7 @@ def compute_metaflac_md5(path: Path) -> Optional[str]:
     if not is_tool_available("metaflac"):
         return None
     try:
+        heartbeat(path)
         output = run_command(["metaflac", "--show-md5sum", str(path)], timeout=CMD_TIMEOUT)
     except CommandError:
         return None
@@ -417,6 +443,7 @@ def compute_pcm_sha1(path: Path) -> Optional[str]:
         "-",
     ]
     try:
+        heartbeat(path)
         process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
@@ -446,6 +473,7 @@ def compute_pcm_sha1(path: Path) -> Optional[str]:
         if not chunk:
             break
         digest.update(chunk)
+        heartbeat(path)
 
     process.stdout.close()
     process.wait()
@@ -493,6 +521,7 @@ def compute_segment_hash(
         "-",
     ]
     try:
+        heartbeat(path)
         process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
@@ -522,6 +551,7 @@ def compute_segment_hash(
         if not chunk:
             break
         digest.update(chunk)
+        heartbeat(path)
 
     process.stdout.close()
     process.wait()
@@ -550,14 +580,18 @@ def compute_segment_hashes(
     if seg_length <= 0:
         return hashes
 
+    heartbeat(path)
     hashes.head = compute_segment_hash(path, 0.0, seg_length)
     mid_start = max((duration - seg_length) / 2.0, 0.0)
+    heartbeat(path)
     hashes.middle = compute_segment_hash(path, mid_start, seg_length)
     tail_start = max(duration - seg_length, 0.0)
+    heartbeat(path)
     hashes.tail = compute_segment_hash(path, tail_start, seg_length)
 
     if include_trimmed:
         trim_start = min(1.0, max(duration - seg_length, 0.0))
+        heartbeat(path)
         hashes.trimmed_head = compute_segment_hash(path, trim_start, seg_length)
 
     if enable_sliding and max_slices > 0 and slide_step > 0:
@@ -565,6 +599,7 @@ def compute_segment_hashes(
             start = slide_step * index
             if start + seg_length > duration:
                 break
+            heartbeat(path)
             segment_hash = compute_segment_hash(path, start, seg_length)
             if segment_hash:
                 hashes.slide_hashes.append(segment_hash)
@@ -622,9 +657,11 @@ def compute_fingerprint(path: Path) -> Tuple[Optional[List[int]], Optional[str]]
     if not is_tool_available("fpcalc"):
         return (None, None)
     try:
+        heartbeat(path)
         output = run_command(["fpcalc", "-json", str(path)], timeout=CMD_TIMEOUT)
     except CommandError:
         try:
+            heartbeat(path)
             output = run_command(["fpcalc", str(path)], timeout=CMD_TIMEOUT)
         except CommandError:
             return (None, None)
@@ -637,6 +674,7 @@ def check_health(path: Path) -> Tuple[Optional[bool], Optional[str]]:
 
     if is_tool_available("flac"):
         try:
+            heartbeat(path)
             run_command(["flac", "-s", "-t", str(path)], timeout=CMD_TIMEOUT)
             return (True, "flac -t")
         except CommandError as exc:
@@ -645,6 +683,7 @@ def check_health(path: Path) -> Tuple[Optional[bool], Optional[str]]:
     if is_tool_available("ffmpeg"):
         cmd = ["ffmpeg", "-v", "error", "-i", str(path), "-f", "null", "-"]
         try:
+            heartbeat(path)
             run_command(cmd, timeout=CMD_TIMEOUT)
             return (True, "ffmpeg decode")
         except CommandError as exc:
@@ -1293,9 +1332,14 @@ def scan_files(
     root: Path,
     workers: int = 1,
     skip_broken: bool = False,
+    auto_quarantine: bool = False,
     **kwargs,
 ) -> List[FileInfo]:
     """Walk the filesystem and update cached :class:`FileInfo` entries."""
+
+    # Reset shared heartbeat/freeze state for this scan
+    freeze_detector_stop.clear()
+    heartbeat()
 
     # Helper to append to broken playlist, avoiding duplicates
     broken_playlist_set = set()
@@ -1322,12 +1366,10 @@ def scan_files(
     import time
     # Use provided watchdog timeout when available; fallback to a generous default
     WATCHDOG_TIMEOUT = int(kwargs.get("watchdog_timeout", 300) or 300)
-    last_progress = [time.time()]
-
     def watchdog():
-        while True:
+        while not freeze_detector_stop.is_set():
             time.sleep(5)
-            if time.time() - last_progress[0] > WATCHDOG_TIMEOUT:
+            if time.time() - last_progress_timestamp > WATCHDOG_TIMEOUT:
                 # Prefer logging and requesting a graceful stop over hard-killing the process.
                 print(f"[WATCHDOG] No progress for {WATCHDOG_TIMEOUT} seconds. Requesting shutdown.", flush=True)
                 # Signal the freeze detector and request shutdown if available
@@ -1343,6 +1385,7 @@ def scan_files(
                 except Exception:
                     pass
                 # After requesting shutdown, exit the watchdog thread
+                freeze_detector_stop.set()
                 return
 
     threading.Thread(target=watchdog, daemon=True).start()
@@ -1371,10 +1414,7 @@ def scan_files(
 
     # Start freeze detector watcher after docstring
     quarantine_dir = None
-    import inspect
-    frame = inspect.currentframe()
-    args = frame.f_back.f_locals.get('args', None)
-    if args and getattr(args, 'auto_quarantine', False):
+    if auto_quarantine:
         quarantine_dir = os.path.join(str(root), '_BROKEN')
     watcher = threading.Thread(target=freeze_detector_watcher, args=(quarantine_dir,), daemon=True)
     watcher.start()
@@ -1408,6 +1448,7 @@ def scan_files(
         except Exception:
             # Logging must not crash the dedupe run
             pass
+        heartbeat(path)
 
     # Precompute already cached files with valid size/mtime for resuming
     if shutdown.should_stop():
@@ -1427,6 +1468,7 @@ def scan_files(
             if not filename.lower().endswith('.flac'):
                 continue  # Ignore non-FLAC files entirely
             path = Path(dirpath) / filename
+            heartbeat(path)
             discovered += 1
             if discovered % ticker_interval == 0:
                 log(f"Progress: {discovered} files processed...")
@@ -1434,14 +1476,14 @@ def scan_files(
             if not os.path.exists(path_str) or not os.path.isfile(path_str):
                 log(f"SKIP (missing): {path}")
                 log_scan_entry(path, "SKIPPED")
-                last_progress_timestamp = time.time()
-                last_progress_file = str(path)
+                heartbeat(path)
                 continue
             try:
                 stat_info = os.stat(path_str)
             except FileNotFoundError:
                 log(f"SKIP (missing): {path}")
                 log_scan_entry(path, "SKIPPED")
+                heartbeat(path)
                 continue
 
             cached = load_file_from_db(conn, path)
@@ -1460,8 +1502,7 @@ def scan_files(
                 files.append(cached)
                 log_scan_entry(path, "CACHED")
                 already_cached += 1
-                last_progress_timestamp = time.time()
-                last_progress_file = str(path)
+                heartbeat(path)
                 continue
 
             file_id = cached.id if cached else next_id
@@ -1479,6 +1520,7 @@ def scan_files(
         if shutdown.should_stop():
             return cached
 
+        heartbeat(path)
         info = FileInfo(
             id=file_id,
             path=path,
@@ -1617,7 +1659,6 @@ def scan_files(
                 except Exception:
                     pass
                 completed += 1
-                last_progress[0] = time.time()
                 print(f"[DIAG] Completed {completed}/{total_files} ({path})", flush=True)
                 if completed % 100 == 0 or completed == total_files:
                     print(f"[{time.strftime('%H:%M:%S')}] Processed {completed}/{total_files} files")
@@ -1905,6 +1946,7 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
             root=root,
             workers=getattr(args, "workers", 1),
             skip_broken=getattr(args, "skip_broken", False),
+            auto_quarantine=getattr(args, "auto_quarantine", False),
             conn=conn,
             recompute=args.recompute,
             seg_length=args.segwin_seconds,

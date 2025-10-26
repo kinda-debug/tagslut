@@ -1509,16 +1509,22 @@ def scan_files(
             )
 
         # Enhanced skip logic for broken files
+        # We still want to cache metadata for "broken" files so subsequent runs
+        # count them as already analyzed (and don't keep re-testing forever).
         if skip_broken and info.healthy is False:
             broken_log = root / "_BROKEN_FILES.txt"
             try:
                 with open(broken_log, "a") as f:
                     ts = _dt.datetime.now().isoformat()
-                    f.write(f"{ts}\t{path}\n")
+                    hn = info.health_note or ""
+                    f.write(f"{ts}\t{path}\t{hn}\n")
             except Exception:
-                pass  # don't let logging errors interrupt dedupe run
-            log(f"Skipping broken file: {path}")
-            return None
+                # don't let logging errors interrupt the run
+                pass
+            log(f"Skipping broken file (cached metadata): {path}")
+            # Do not early-return None; return the populated info so the outer loop
+            # will upsert it into the DB and future runs will treat it as cached.
+            return info
 
         return info
 

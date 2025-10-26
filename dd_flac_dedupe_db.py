@@ -45,7 +45,7 @@ DIAGNOSTICS: Optional[DiagnosticsManager] = None
 
 # Default timeouts (seconds); overridable via CLI
 CMD_TIMEOUT: int = 45         # fpcalc, flac -t, ffprobe, metaflac
-DECODE_TIMEOUT: int = 120     # ffmpeg streaming/decoding (PCM hash, segments)
+DECODE_TIMEOUT: int = 30     # ffmpeg streaming/decoding (PCM hash, segments) - reduced default to avoid long stalls
 
 
 ###############################################################################
@@ -467,22 +467,53 @@ def run_command(command: Sequence[str], timeout: Optional[int] = None) -> str:
     """Execute *command* and return stdout; raises CommandError on failure/timeout."""
     effective_timeout = timeout if timeout is not None else CMD_TIMEOUT
     try:
-        completed = subprocess.run(
+        # Launch in process group for reliable killing
+        process = subprocess.Popen(
             list(command),
-            check=False,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            timeout=effective_timeout,
+            preexec_fn=os.setsid,
         )
     except FileNotFoundError as exc:
         raise CommandError(str(exc)) from exc
-    except subprocess.TimeoutExpired as exc:
-        raise CommandError(f"Timeout executing {' '.join(command)}") from exc
 
-    if completed.returncode != 0:
-        raise CommandError(f"Command {' '.join(command)} failed: {completed.stderr.strip()}")
-    return completed.stdout
+    try:
+        stdout, stderr = process.communicate(timeout=effective_timeout)
+    except subprocess.TimeoutExpired:
+        # Kill the process group
+        try:
+            pgid = os.getpgid(process.pid)
+            os.killpg(pgid, signal.SIGTERM)
+        except Exception:
+            try:
+                process.kill()
+            except Exception:
+                pass
+        # Wait a bit for graceful shutdown
+        import time
+        t0 = time.time()
+        while True:
+            if process.poll() is not None:
+                break
+            if time.time() - t0 > 2.0:
+                break
+            time.sleep(0.1)
+        if process.poll() is None:
+            try:
+                pgid = os.getpgid(process.pid)
+                os.killpg(pgid, signal.SIGKILL)
+            except Exception:
+                try:
+                    process.kill()
+                except Exception:
+                    pass
+        raise CommandError(f"Timeout executing {' '.join(command)}")
+
+    if process.returncode != 0:
+        cmd_str = ' '.join(command)
+        raise CommandError(f"Command {cmd_str} failed: {stderr.strip()}")
+    return stdout
 
 
 ###############################################################################
@@ -590,10 +621,13 @@ def compute_pcm_sha1(path: Path) -> Optional[str]:
     ]
     try:
         heartbeat(path)
+        # Launch ffmpeg in its own process group so we can reliably kill only
+        # the processes we spawned (avoid global pkill). POSIX only (macOS/Linux).
         process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            preexec_fn=os.setsid,
         )
     except FileNotFoundError:  # pragma: no cover - environment dependent
         return None
@@ -605,10 +639,15 @@ def compute_pcm_sha1(path: Path) -> Optional[str]:
     stderr_chunks: List[bytes] = []
     while True:
         if time.time() > deadline:
+            # Try to gracefully terminate the whole process group, then force-kill
             try:
-                process.kill()
+                pgid = os.getpgid(process.pid)
+                os.killpg(pgid, signal.SIGTERM)
             except Exception:
-                pass
+                try:
+                    process.kill()
+                except Exception:
+                    pass
             if process.stdout:
                 try:
                     process.stdout.close()
@@ -703,10 +742,12 @@ def compute_segment_hash(
     ]
     try:
         heartbeat(path)
+        # Launch ffmpeg in its own process group so we can kill children if stalled.
         process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            preexec_fn=os.setsid,
         )
     except FileNotFoundError:  # pragma: no cover - environment dependent
         return None
@@ -719,9 +760,13 @@ def compute_segment_hash(
     while True:
         if time.time() > deadline:
             try:
-                process.kill()
+                pgid = os.getpgid(process.pid)
+                os.killpg(pgid, signal.SIGTERM)
             except Exception:
-                pass
+                try:
+                    process.kill()
+                except Exception:
+                    pass
             if process.stdout:
                 try:
                     process.stdout.close()

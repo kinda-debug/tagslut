@@ -20,6 +20,9 @@ import hashlib
 import re
 import shutil
 import tempfile
+import os
+import signal
+import time
 
 
 def parse_args():
@@ -72,6 +75,12 @@ def parse_args():
         help="Seconds to trim from the tail during the final fallback step (default: 10)",
     )
     p.add_argument(
+        "--ffmpeg-timeout",
+        type=int,
+        default=30,
+        help="Seconds allowed for each ffmpeg step before forcibly killing it (default: 30)",
+    )
+    p.add_argument(
         "--temp-dir",
         dest="temp_dir",
         help="Optional directory for intermediate WAV files",
@@ -105,6 +114,7 @@ class PipelineOptions:
     ffmpeg_args: str
     overwrite: bool
     backup_dir: Optional[Path]
+    ffmpeg_timeout: int
     enable_transcode: bool
     enable_reencode: bool
     enable_trim: bool
@@ -136,20 +146,69 @@ def _stderr_log_path(logs_dir: Path, dst: Path, step: str) -> Path:
 
 def _run_ffmpeg_step(cmd: Iterable[str], step: str, log_path: Optional[Path]) -> Tuple[bool, str]:
     """Execute *cmd* via ``ffmpeg`` and optionally persist stderr."""
-
     command = list(cmd)
     try:
         printable = shlex.join(command)
     except Exception:
         printable = " ".join(str(part) for part in command)
     print(f"Running [{step}]: {printable}")
-    completed = subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-    stderr_text = completed.stderr.decode("utf-8", "replace") if completed.stderr else ""
+
+    # Launch ffmpeg in its own process group so we can kill only the
+    # processes we started if the step stalls. Use the supplied timeout
+    # from options when calling this helper.
+    timeout: int = getattr(_run_ffmpeg_step, "_default_timeout", 30)
+    try:
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            preexec_fn=os.setsid,
+        )
+    except FileNotFoundError:
+        return False, "ffmpeg not found"
+
+    try:
+        stderr_bytes, _ = process.communicate(timeout=timeout)
+        stderr_text = stderr_bytes.decode("utf-8", "replace") if stderr_bytes else ""
+    except subprocess.TimeoutExpired:
+        # First try graceful termination of the process group, then force kill
+        try:
+            pgid = os.getpgid(process.pid)
+            os.killpg(pgid, signal.SIGTERM)
+        except Exception:
+            try:
+                process.kill()
+            except Exception:
+                pass
+        # allow a short grace period
+        t0 = time.time()
+        while True:
+            if process.poll() is not None:
+                break
+            if time.time() - t0 > 2.0:
+                break
+            time.sleep(0.1)
+        if process.poll() is None:
+            try:
+                pgid = os.getpgid(process.pid)
+                os.killpg(pgid, signal.SIGKILL)
+            except Exception:
+                try:
+                    process.kill()
+                except Exception:
+                    pass
+        try:
+            stderr_bytes, _ = process.communicate(timeout=5)
+            stderr_text = stderr_bytes.decode("utf-8", "replace") if stderr_bytes else ""
+        except Exception:
+            stderr_text = ""
+
     if log_path:
         log_path.parent.mkdir(parents=True, exist_ok=True)
         with log_path.open("w", encoding="utf-8") as handle:
             handle.write(stderr_text)
-    return completed.returncode == 0, stderr_text
+
+    return process.returncode == 0, stderr_text
 
 
 def _cleanup_partial(path: Path) -> None:
@@ -210,6 +269,8 @@ def lenient_transcode(
         cmd.extend(shlex.split(options.ffmpeg_args))
     cmd.append(str(dst))
     log_path = _stderr_log_path(logs_dir, dst, "transcode") if capture_stderr else None
+    # configure helper default timeout for this invocation
+    setattr(_run_ffmpeg_step, "_default_timeout", options.ffmpeg_timeout)
     success, _ = _run_ffmpeg_step(cmd, "transcode", log_path)
     if success and dst.exists():
         return True
@@ -230,6 +291,7 @@ def decode_and_reencode(
         wav_path = temp_dir / f"{dst.stem}_repair.wav"
         decode_cmd = ["ffmpeg", "-v", "error", "-nostdin", "-y", "-i", str(src), str(wav_path)]
         decode_log = _stderr_log_path(logs_dir, dst, "decode") if capture_stderr else None
+        setattr(_run_ffmpeg_step, "_default_timeout", options.ffmpeg_timeout)
         success, _ = _run_ffmpeg_step(decode_cmd, "decode", decode_log)
         if not success or not wav_path.exists():
             _cleanup_partial(dst)
@@ -248,6 +310,7 @@ def decode_and_reencode(
             str(dst),
         ]
         encode_log = _stderr_log_path(logs_dir, dst, "reencode") if capture_stderr else None
+        setattr(_run_ffmpeg_step, "_default_timeout", options.ffmpeg_timeout)
         success, _ = _run_ffmpeg_step(encode_cmd, "reencode", encode_log)
         if not success or not dst.exists():
             _cleanup_partial(dst)
@@ -298,6 +361,7 @@ def trim_and_reencode(
         str(dst),
     ]
     log_path = _stderr_log_path(logs_dir, dst, "trim") if capture_stderr else None
+    setattr(_run_ffmpeg_step, "_default_timeout", options.ffmpeg_timeout)
     success, _ = _run_ffmpeg_step(cmd, "trim", log_path)
     if not success or not dst.exists():
         _cleanup_partial(dst)
@@ -370,6 +434,7 @@ def build_options(args: argparse.Namespace) -> PipelineOptions:
         ffmpeg_args=args.ffmpeg_args,
         overwrite=bool(args.overwrite),
         backup_dir=backup_dir,
+        ffmpeg_timeout=int(args.ffmpeg_timeout),
         enable_transcode=bool(args.enable_transcode),
         enable_reencode=bool(args.enable_reencode),
         enable_trim=bool(args.enable_trim),

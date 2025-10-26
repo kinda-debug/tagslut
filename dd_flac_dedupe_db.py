@@ -1344,9 +1344,7 @@ def scan_files(
     no_segwin: bool,
     hash_mode: str,
     shutdown: GracefulShutdown,
-    workers: int,
     verbose: bool = False,
-    skip_broken: bool = False
 ) -> List[FileInfo]:
     """Walk the filesystem and update cached :class:`FileInfo` entries."""
 

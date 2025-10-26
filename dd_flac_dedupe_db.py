@@ -1,45 +1,4 @@
 #!/usr/bin/env python3
-"""FLAC audio deduplicator with persistent signal cache.
-
-This module provides a macOS-friendly, dependency-free command line utility
-that scans a music library for FLAC duplicates.  The implementation closely
-follows the requirements from the prompt and persists all extracted audio
-signals in a SQLite database so that subsequent runs can reuse previously
-computed information.  The script prefers external multimedia binaries when
-available (``ffprobe``, ``ffmpeg``, ``flac``, ``metaflac`` and ``fpcalc``) but it
-operates gracefully when a tool is missing by skipping the associated
-deduplication stage.
-
-The deduplication pipeline evaluates several progressively fuzzy stages:
-
-``EXACT``
-    Uses FLAC stream MD5 or a PCM SHA1 hash.
-
-``FPRINT``
-    Groups by the chromaprint hash when fingerprints are available.
-
-``FPRINT_SIM``
-    Performs a tolerant comparison between fingerprints and groups files that
-    are sufficiently similar.
-
-``SEGWIN``
-    Hashes PCM excerpts from the head, middle and tail of the track.
-
-``SEGWIN_SLIDE``
-    Optional sliding-window segment hashing for additional confidence.
-
-``FUZZY``
-    Uses a filename-derived fuzzy key combined with duration tolerance.
-
-Every group elects a winner according to file health, losslessness, duration,
-bitrate and modification time.  Duplicates are moved to a timestamped trash
-directory when ``--commit`` is provided; otherwise a dry-run report is
-generated.
-
-The module avoids third-party Python packages, instead relying solely on the
-standard library.  All public functions include docstrings and type hints to
-aid future maintenance.
-"""
 
 from __future__ import annotations
 
@@ -1332,23 +1291,15 @@ class GracefulShutdown:
 
 def scan_files(
     root: Path,
-    conn: sqlite3.Connection,
-    recompute: bool,
-    seg_length: float,
-    segwin_sliding: bool,
-    slide_step: float,
-    slide_max_slices: int,
-    include_trim_head: bool,
-    aggressive_fuzzy: bool,
-    no_fp: bool,
-    no_segwin: bool,
-    hash_mode: str,
-    shutdown: GracefulShutdown,
-    verbose: bool = False,
+    workers: int = 1,
+    skip_broken: bool = False,
+    **kwargs,
 ) -> List[FileInfo]:
     """Walk the filesystem and update cached :class:`FileInfo` entries."""
 
     global last_progress_timestamp, last_progress_file
+
+    import time
 
     # Freeze detector watcher logic
     def freeze_detector_watcher(quarantine_dir=None):
@@ -1379,10 +1330,23 @@ def scan_files(
 
     files: List[FileInfo] = []
     pending: List[Tuple[Path, os.stat_result, Optional[FileInfo], int]] = []
+    conn = kwargs["conn"]
+    recompute = kwargs["recompute"]
+    seg_length = kwargs["seg_length"]
+    segwin_sliding = kwargs["segwin_sliding"]
+    slide_step = kwargs["slide_step"]
+    slide_max_slices = kwargs["slide_max_slices"]
+    include_trim_head = kwargs["include_trim_head"]
+    aggressive_fuzzy = kwargs["aggressive_fuzzy"]
+    no_fp = kwargs["no_fp"]
+    no_segwin = kwargs["no_segwin"]
+    hash_mode = kwargs["hash_mode"]
+    shutdown = kwargs["shutdown"]
+    verbose = kwargs.get("verbose", False)
+
     next_id = _next_file_id(conn)
     discovered = 0
     import traceback
-    import time
     log_path = root / "_DEDUP_SCAN_LOG.txt"
 
     def log_scan_entry(path: Path, status: str):
@@ -1559,7 +1523,10 @@ def scan_files(
         return info
 
     if pending:
+        import time
         max_workers = max(1, workers)
+        total_files = len(pending)
+        completed = 0
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_map = {
                 executor.submit(analyze, task): task[0] for task in pending
@@ -1591,6 +1558,9 @@ def scan_files(
                     log_scan_entry(path, "PROCESSED")
                 except Exception:
                     pass
+                completed += 1
+                if completed % 100 == 0 or completed == total_files:
+                    print(f"[{time.strftime('%H:%M:%S')}] Processed {completed}/{total_files} files")
 
     # Stop the freeze detector watcher
     freeze_detector_stop.set()
@@ -1861,6 +1831,8 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
     try:
         files = scan_files(
             root=root,
+            workers=getattr(args, "workers", 1),
+            skip_broken=getattr(args, "skip_broken", False),
             conn=conn,
             recompute=args.recompute,
             seg_length=args.segwin_seconds,
@@ -1873,9 +1845,7 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
             no_segwin=args.no_segwin,
             hash_mode=args.hash_mode,
             shutdown=shutdown,
-            workers=args.workers,
             verbose=args.verbose,
-            skip_broken=getattr(args, "skip_broken", False),
         )
 
         if args.verbose:

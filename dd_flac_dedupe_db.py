@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """FLAC audio deduplicator with persistent signal cache.
 
 This module provides a macOS-friendly, dependency-free command line utility
@@ -55,12 +56,28 @@ import subprocess
 import sys
 import textwrap
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Set, Tuple
 # For base64 fingerprint decoding
 import base64
 import struct
+
+# Freeze detector state
+import time
+last_progress_timestamp = time.time()
+last_progress_file = None
+freeze_detector_stop = threading.Event()
+# Global progress counter for file scanning
+scan_progress_lock = threading.Lock()
+scan_processed_count = 0
+scan_total_files = 0
+scan_skipped_count = 0
+
+# Default timeouts (seconds); overridable via CLI
+CMD_TIMEOUT: int = 45         # fpcalc, flac -t, ffprobe, metaflac
+DECODE_TIMEOUT: int = 120     # ffmpeg streaming/decoding (PCM hash, segments)
 
 
 ###############################################################################
@@ -70,9 +87,38 @@ import struct
 
 def log(message: str) -> None:
     """Print a human friendly timestamped log message."""
-
     timestamp = _dt.datetime.now().strftime("%H:%M:%S")
     print(f"[{timestamp}] {message}")
+
+def log_progress(path: Path) -> None:
+    """Print a progress log line for file scanning, including skipped and broken files."""
+    global scan_processed_count, scan_total_files, scan_skipped_count
+    with scan_progress_lock:
+        scan_processed_count += 1
+        processed = scan_processed_count
+        total = scan_total_files
+        skipped = scan_skipped_count
+    # Calculate percent with 1 decimal
+    percent = (processed / total * 100.0) if total else 0.0
+    timestamp = _dt.datetime.now().strftime("%H:%M:%S")
+    # Print progress and skipped/broken info
+    if skipped > 0:
+        print(f"[{timestamp}] Progress: {processed}/{total} ({percent:.1f}%) — {path.name} | Skipped: {skipped} files")
+    else:
+        print(f"[{timestamp}] Progress: {processed}/{total} ({percent:.1f}%) — {path.name}")
+
+
+# Helper to log skipped files (broken or otherwise)
+def log_skip(path: Path) -> None:
+    """Print a progress log line for a skipped file, incrementing skipped count and showing processed/total."""
+    global scan_skipped_count, scan_processed_count, scan_total_files
+    with scan_progress_lock:
+        scan_skipped_count += 1
+        skipped = scan_skipped_count
+        processed = scan_processed_count
+        total = scan_total_files
+    timestamp = _dt.datetime.now().strftime("%H:%M:%S")
+    print(f"[{timestamp}] Skipped: {skipped} files so far — {path.name} | Progress: {processed}/{total}")
 
 
 def is_tool_available(tool: str) -> bool:
@@ -289,12 +335,8 @@ class CommandError(RuntimeError):
 
 
 def run_command(command: Sequence[str], timeout: Optional[int] = None) -> str:
-    """Execute *command* and return ``stdout``.
-
-    The function raises :class:`CommandError` on non-zero return codes.  When a
-    timeout occurs the subprocess is killed and the same exception is raised.
-    """
-
+    """Execute *command* and return stdout; raises CommandError on failure/timeout."""
+    effective_timeout = timeout if timeout is not None else CMD_TIMEOUT
     try:
         completed = subprocess.run(
             list(command),
@@ -302,17 +344,15 @@ def run_command(command: Sequence[str], timeout: Optional[int] = None) -> str:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            timeout=timeout,
+            timeout=effective_timeout,
         )
-    except FileNotFoundError as exc:  # pragma: no cover - depends on system
+    except FileNotFoundError as exc:
         raise CommandError(str(exc)) from exc
-    except subprocess.TimeoutExpired as exc:  # pragma: no cover - rare
+    except subprocess.TimeoutExpired as exc:
         raise CommandError(f"Timeout executing {' '.join(command)}") from exc
 
     if completed.returncode != 0:
-        raise CommandError(
-            f"Command {' '.join(command)} failed: {completed.stderr.strip()}"
-        )
+        raise CommandError(f"Command {' '.join(command)} failed: {completed.stderr.strip()}")
     return completed.stdout
 
 
@@ -340,7 +380,7 @@ def probe_ffprobe(path: Path) -> Dict[str, Optional[float]]:
         str(path),
     ]
     try:
-        output = run_command(cmd)
+        output = run_command(cmd, timeout=CMD_TIMEOUT)
     except CommandError:
         return {}
 
@@ -388,7 +428,7 @@ def compute_metaflac_md5(path: Path) -> Optional[str]:
     if not is_tool_available("metaflac"):
         return None
     try:
-        output = run_command(["metaflac", "--show-md5sum", str(path)])
+        output = run_command(["metaflac", "--show-md5sum", str(path)], timeout=CMD_TIMEOUT)
     except CommandError:
         return None
     value = output.strip().lower()
@@ -426,9 +466,23 @@ def compute_pcm_sha1(path: Path) -> Optional[str]:
     except FileNotFoundError:  # pragma: no cover - environment dependent
         return None
 
+    import time
+    deadline = time.time() + DECODE_TIMEOUT
     digest = hashlib.sha1(usedforsecurity=False)
     assert process.stdout is not None
     while True:
+        if time.time() > deadline:
+            try:
+                process.kill()
+            except Exception:
+                pass
+            if process.stdout:
+                try:
+                    process.stdout.close()
+                except Exception:
+                    pass
+            process.wait()
+            return None
         chunk = process.stdout.read(65536)
         if not chunk:
             break
@@ -488,9 +542,23 @@ def compute_segment_hash(
     except FileNotFoundError:  # pragma: no cover - environment dependent
         return None
 
+    import time
+    deadline = time.time() + DECODE_TIMEOUT
     digest = hashlib.sha1(usedforsecurity=False)
     assert process.stdout is not None
     while True:
+        if time.time() > deadline:
+            try:
+                process.kill()
+            except Exception:
+                pass
+            if process.stdout:
+                try:
+                    process.stdout.close()
+                except Exception:
+                    pass
+            process.wait()
+            return None
         chunk = process.stdout.read(65536)
         if not chunk:
             break
@@ -507,10 +575,12 @@ def compute_segment_hashes(
     path: Path,
     duration: Optional[float],
     seg_length: float,
+    enable_sliding: bool,
     slide_step: float,
-    slide_count: int,
+    max_slices: int,
+    include_trimmed: bool,
 ) -> SegmentHashes:
-    """Compute hashes for head/middle/tail and sliding window excerpts."""
+    """Compute hashes for head/middle/tail and optional sliding excerpts."""
 
     hashes = SegmentHashes()
     if duration is None:
@@ -527,12 +597,12 @@ def compute_segment_hashes(
     tail_start = max(duration - seg_length, 0.0)
     hashes.tail = compute_segment_hash(path, tail_start, seg_length)
 
-    # Trimmed head removes the first second to skip common silences.
-    trim_start = min(1.0, max(duration - seg_length, 0.0))
-    hashes.trimmed_head = compute_segment_hash(path, trim_start, seg_length)
+    if include_trimmed:
+        trim_start = min(1.0, max(duration - seg_length, 0.0))
+        hashes.trimmed_head = compute_segment_hash(path, trim_start, seg_length)
 
-    if slide_count > 0 and slide_step > 0:
-        for index in range(slide_count):
+    if enable_sliding and max_slices > 0 and slide_step > 0:
+        for index in range(max_slices):
             start = slide_step * index
             if start + seg_length > duration:
                 break
@@ -593,10 +663,10 @@ def compute_fingerprint(path: Path) -> Tuple[Optional[List[int]], Optional[str]]
     if not is_tool_available("fpcalc"):
         return (None, None)
     try:
-        output = run_command(["fpcalc", "-json", str(path)])
+        output = run_command(["fpcalc", "-json", str(path)], timeout=CMD_TIMEOUT)
     except CommandError:
         try:
-            output = run_command(["fpcalc", str(path)])
+            output = run_command(["fpcalc", str(path)], timeout=CMD_TIMEOUT)
         except CommandError:
             return (None, None)
     return parse_fpcalc_output(output)
@@ -605,9 +675,10 @@ def compute_fingerprint(path: Path) -> Tuple[Optional[List[int]], Optional[str]]
 def check_health(path: Path) -> Tuple[Optional[bool], Optional[str]]:
     """Check file health via ``flac -t`` or ``ffmpeg`` decoding."""
 
+
     if is_tool_available("flac"):
         try:
-            run_command(["flac", "-s", "-t", str(path)])
+            run_command(["flac", "-s", "-t", str(path)], timeout=CMD_TIMEOUT)
             return (True, "flac -t")
         except CommandError as exc:
             return (False, f"flac -t failed: {exc}")
@@ -615,7 +686,7 @@ def check_health(path: Path) -> Tuple[Optional[bool], Optional[str]]:
     if is_tool_available("ffmpeg"):
         cmd = ["ffmpeg", "-v", "error", "-i", str(path), "-f", "null", "-"]
         try:
-            run_command(cmd)
+            run_command(cmd, timeout=CMD_TIMEOUT)
             return (True, "ffmpeg decode")
         except CommandError as exc:
             return (False, f"ffmpeg decode failed: {exc}")
@@ -699,11 +770,13 @@ def build_fuzzy_key(path: Path, aggressive: bool) -> str:
 
 
 ###############################################################################
+###############################################################################
 # File scanning and persistence
 ###############################################################################
 
 
 def load_file_from_db(conn: sqlite3.Connection, path: Path) -> Optional[FileInfo]:
+
     """Return a :class:`FileInfo` loaded from the database."""
 
     cursor = conn.execute("SELECT * FROM files WHERE path=?", (str(path),))
@@ -941,8 +1014,11 @@ def build_groups(
     files: Sequence[FileInfo],
     fp_sim_ratio: float,
     fp_sim_shift: int,
-    fp_sim_overlap: int,
-    enable_slide: bool,
+    fp_sim_min_overlap: int,
+    use_fingerprint: bool,
+    use_segwin: bool,
+    segwin_min_matches: int,
+    use_slide: bool,
     fuzzy_duration_tol: float,
 ) -> List[GroupResult]:
     """Group files using the staged deduplication pipeline."""
@@ -950,6 +1026,7 @@ def build_groups(
     by_id = {file.id: file for file in files}
     remaining = set(by_id.keys())
     groups: List[GroupResult] = []
+    segwin_min_matches = max(1, segwin_min_matches)
 
     def register_group(key: str, method: str, members: List[FileInfo]) -> None:
         keeper = choose_winner(members)
@@ -975,69 +1052,126 @@ def build_groups(
         if len(members) > 1:
             register_group(key, "EXACT", members)
 
-    # Stage B: FPRINT equality
-    key_to_members = {}
-    for file in files:
-        if file.id not in remaining:
-            continue
-        if file.fingerprint_hash:
-            key_to_members.setdefault(file.fingerprint_hash, []).append(file)
-    for key, members in key_to_members.items():
-        if len(members) > 1:
-            register_group(f"FP:{key}", "FPRINT", members)
-
-    # Stage C: FPRINT similarity
-    fp_candidates = [file for file in files if file.id in remaining and file.fingerprint]
-    used_pairs: set[Tuple[int, int]] = set()
-    for i, file_a in enumerate(fp_candidates):
-        for file_b in fp_candidates[i + 1 :]:
-            pair = tuple(sorted((file_a.id, file_b.id)))
-            if pair in used_pairs:
-                continue
-            ratio, shift, overlap = fingerprint_similarity(
-                file_a.fingerprint or [],
-                file_b.fingerprint or [],
-                fp_sim_shift,
-                fp_sim_overlap,
-            )
-            if ratio >= fp_sim_ratio:
-                register_group(
-                    key=f"FPS:{file_a.id}:{file_b.id}",
-                    method=f"FPRINT_SIM(r={ratio:.2f},s={shift})",
-                    members=[file_a, file_b],
-                )
-                used_pairs.add(pair)
-
-    # Stage D: segment windows head/mid/tail
-    key_to_members = {}
-    for file in files:
-        if file.id not in remaining:
-            continue
-        key = (file.segments.head, file.segments.middle, file.segments.tail)
-        if all(key):
-            key_to_members.setdefault(key, []).append(file)
-    for key, members in key_to_members.items():
-        if len(members) > 1:
-            register_group(
-                key=f"SEG:{key[0]}:{key[1]}:{key[2]}", method="SEGWIN", members=members
-            )
-
-    # Stage E: sliding windows (optional)
-    if enable_slide:
-        slide_map: Dict[str, List[FileInfo]] = {}
+    if use_fingerprint:
+        # Stage B: FPRINT equality
+        key_to_members = {}
         for file in files:
             if file.id not in remaining:
                 continue
-            for slide_hash in file.segments.slide_hashes:
-                slide_map.setdefault(slide_hash, []).append(file)
-        for key, members in slide_map.items():
-            unique_members = {member.id: member for member in members}.values()
-            if len(unique_members) > 1:
-                register_group(
-                    key=f"SLIDE:{key}",
-                    method="SEGWIN_SLIDE",
-                    members=list(unique_members),
+            if file.fingerprint_hash:
+                key_to_members.setdefault(file.fingerprint_hash, []).append(file)
+        for key, members in key_to_members.items():
+            if len(members) > 1:
+                register_group(f"FP:{key}", "FPRINT", members)
+
+        # Stage C: FPRINT similarity
+        fp_candidates = [file for file in files if file.id in remaining and file.fingerprint]
+        used_pairs: Set[Tuple[int, int]] = set()
+        for i, file_a in enumerate(fp_candidates):
+            for file_b in fp_candidates[i + 1 :]:
+                pair = tuple(sorted((file_a.id, file_b.id)))
+                if pair in used_pairs:
+                    continue
+                ratio, shift, overlap = fingerprint_similarity(
+                    file_a.fingerprint or [],
+                    file_b.fingerprint or [],
+                    fp_sim_shift,
+                    fp_sim_min_overlap,
                 )
+                if ratio >= fp_sim_ratio and overlap >= fp_sim_min_overlap:
+                    register_group(
+                        key=f"FPS:{file_a.id}:{file_b.id}",
+                        method=f"FPRINT_SIM(r={ratio:.2f},s={shift})",
+                        members=[file_a, file_b],
+                    )
+                    used_pairs.add(pair)
+
+    # Stage D: segment windows head/mid/tail
+    if use_segwin:
+        seg_candidates = [
+            file
+            for file in files
+            if file.id in remaining
+            and any([file.segments.head, file.segments.middle, file.segments.tail])
+        ]
+        parent: Dict[int, int] = {file.id: file.id for file in seg_candidates}
+
+        def find(node: int) -> int:
+            while parent[node] != node:
+                parent[node] = parent[parent[node]]
+                node = parent[node]
+            return node
+
+        def union(a: int, b: int) -> None:
+            root_a = find(a)
+            root_b = find(b)
+            if root_a != root_b:
+                parent[root_b] = root_a
+
+        for i, file_a in enumerate(seg_candidates):
+            for file_b in seg_candidates[i + 1 :]:
+                matches = 0
+                if file_a.segments.head and file_a.segments.head == file_b.segments.head:
+                    matches += 1
+                if file_a.segments.middle and file_a.segments.middle == file_b.segments.middle:
+                    matches += 1
+                if file_a.segments.tail and file_a.segments.tail == file_b.segments.tail:
+                    matches += 1
+                if (
+                    file_a.segments.trimmed_head
+                    and file_b.segments.trimmed_head
+                    and file_a.segments.trimmed_head == file_b.segments.trimmed_head
+                ):
+                    matches += 1
+                if matches >= segwin_min_matches:
+                    union(file_a.id, file_b.id)
+
+        groups_by_root: Dict[int, List[FileInfo]] = {}
+        for candidate in seg_candidates:
+            root = find(candidate.id)
+            groups_by_root.setdefault(root, []).append(candidate)
+        for members in groups_by_root.values():
+            if len(members) > 1 and all(member.id in remaining for member in members):
+                key = "SEGWIN:" + ",".join(str(member.id) for member in sorted(members, key=lambda f: f.id))
+                register_group(key, f"SEGWIN(m>={segwin_min_matches})", members)
+
+    # Stage E: sliding windows (optional)
+    if use_slide:
+        slide_candidates = [
+            file for file in files if file.id in remaining and file.segments.slide_hashes
+        ]
+        parent: Dict[int, int] = {file.id: file.id for file in slide_candidates}
+        seen: Dict[str, int] = {}
+
+        def find_slide(node: int) -> int:
+            while parent[node] != node:
+                parent[node] = parent[parent[node]]
+                node = parent[node]
+            return node
+
+        def union_slide(a: int, b: int) -> None:
+            root_a = find_slide(a)
+            root_b = find_slide(b)
+            if root_a != root_b:
+                parent[root_b] = root_a
+
+        for file in slide_candidates:
+            for slide_hash in file.segments.slide_hashes:
+                if slide_hash in seen:
+                    union_slide(file.id, seen[slide_hash])
+                else:
+                    seen[slide_hash] = file.id
+
+        slide_groups: Dict[int, List[FileInfo]] = {}
+        for file in slide_candidates:
+            root = find_slide(file.id)
+            slide_groups.setdefault(root, []).append(file)
+        for members in slide_groups.values():
+            if len(members) > 1 and all(member.id in remaining for member in members):
+                key = "SEGWIN_SLIDE:" + ",".join(
+                    str(member.id) for member in sorted(members, key=lambda f: f.id)
+                )
+                register_group(key, "SEGWIN_SLIDE", members)
 
     # Stage F: fuzzy key
     fuzzy_map: Dict[str, List[FileInfo]] = {}
@@ -1178,6 +1312,7 @@ class GracefulShutdown:
 
     def __init__(self) -> None:
         self._stop_event = threading.Event()
+        self._sigint_count = 0
 
     def install(self) -> None:
         signal.signal(signal.SIGINT, self._handler)
@@ -1185,9 +1320,14 @@ class GracefulShutdown:
     def should_stop(self) -> bool:
         return self._stop_event.is_set()
 
-    def _handler(self, signum, frame) -> None:  # type: ignore[override]
-        log("Received SIGINT; finishing current work...")
-        self._stop_event.set()
+    def _handler(self, signum, frame) -> None:  # pragma: no cover
+        self._sigint_count += 1
+        if self._sigint_count == 1:
+            log("Received Ctrl-C — finishing current tasks then stopping… (press Ctrl-C again to abort now)")
+            self._stop_event.set()
+        else:
+            log("Second Ctrl-C — aborting immediately.")
+            os._exit(130)
 
 
 def scan_files(
@@ -1195,104 +1335,267 @@ def scan_files(
     conn: sqlite3.Connection,
     recompute: bool,
     seg_length: float,
+    segwin_sliding: bool,
     slide_step: float,
-    slide_count: int,
+    slide_max_slices: int,
+    include_trim_head: bool,
     aggressive_fuzzy: bool,
     no_fp: bool,
+    no_segwin: bool,
     hash_mode: str,
     shutdown: GracefulShutdown,
+    workers: int,
     verbose: bool = False,
+    skip_broken: bool = False
 ) -> List[FileInfo]:
-    """Walk the filesystem and return fresh :class:`FileInfo` instances."""
+    """Walk the filesystem and update cached :class:`FileInfo` entries."""
+
+    global last_progress_timestamp, last_progress_file
+
+    # Freeze detector watcher logic
+    def freeze_detector_watcher(quarantine_dir=None):
+        while not freeze_detector_stop.is_set():
+            time.sleep(5)
+            now = time.time()
+            if now - last_progress_timestamp > 60 and last_progress_file:
+                log(f"WARNING: No progress for 60s. Last file: {last_progress_file}")
+                if quarantine_dir and os.path.exists(last_progress_file):
+                    try:
+                        os.makedirs(quarantine_dir, exist_ok=True)
+                        dest = os.path.join(quarantine_dir, os.path.basename(last_progress_file))
+                        shutil.move(last_progress_file, dest)
+                        log(f"Moved frozen file to quarantine: {dest}")
+                    except Exception as e:
+                        log(f"Failed to quarantine file: {e}")
+                freeze_detector_stop.set()
+
+    # Start freeze detector watcher after docstring
+    quarantine_dir = None
+    import inspect
+    frame = inspect.currentframe()
+    args = frame.f_back.f_locals.get('args', None)
+    if args and getattr(args, 'auto_quarantine', False):
+        quarantine_dir = os.path.join(str(root), '_BROKEN')
+    watcher = threading.Thread(target=freeze_detector_watcher, args=(quarantine_dir,), daemon=True)
+    watcher.start()
 
     files: List[FileInfo] = []
+    pending: List[Tuple[Path, os.stat_result, Optional[FileInfo], int]] = []
     next_id = _next_file_id(conn)
-    for dirpath, dirnames, filenames in os.walk(root):
+    discovered = 0
+    import traceback
+    import time
+    log_path = root / "_DEDUP_SCAN_LOG.txt"
+
+    def log_scan_entry(path: Path, status: str):
+        try:
+            ts = _dt.datetime.now().isoformat()
+            with open(log_path, "a") as f:
+                f.write(f"{ts}\t{path}\t{status}\n")
+        except Exception:
+            # Logging must not crash the dedupe run
+            pass
+
+    # Precompute already cached files with valid size/mtime for resuming
+    if shutdown.should_stop():
+        log("Stop requested — skipping new tasks submission.")
+        pending = []
+    already_cached = 0
+    ticker_interval = 100
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=True):
         if shutdown.should_stop():
             break
         dirnames[:] = [
             name for name in dirnames if not name.upper().startswith("_TRASH_DUPES")
         ]
-        for filename in filenames:
+        for filename in sorted(filenames):
             if shutdown.should_stop():
                 break
             path = Path(dirpath) / filename
             if path.suffix.lower() != ".flac":
+                # Log skipped non-flac files as SKIPPED
+                log_scan_entry(path, "SKIPPED")
+                global last_progress_timestamp, last_progress_file
+                last_progress_timestamp = time.time()
+                last_progress_file = str(path)
                 continue
-            if verbose:
-                log(f"Processing file: {path}")
-            stat_info = path.stat()
+            discovered += 1
+            if discovered % ticker_interval == 0:
+                log(f"Progress: {discovered} files processed...")
+            path_str = path.as_posix()
+            if not os.path.exists(path_str) or not os.path.isfile(path_str):
+                log(f"SKIP (missing): {path}")
+                log_scan_entry(path, "SKIPPED")
+                last_progress_timestamp = time.time()
+                last_progress_file = str(path)
+                continue
+            try:
+                stat_info = os.stat(path_str)
+            except FileNotFoundError:
+                log(f"SKIP (missing): {path}")
+                log_scan_entry(path, "SKIPPED")
+                continue
+
             cached = load_file_from_db(conn, path)
+            if cached:
+                load_slide_hashes(conn, cached.id, cached.segments)
+
+            # If cached, up-to-date, and not recomputing, skip and reuse
             if (
                 cached
                 and not recompute
                 and cached.size_bytes == stat_info.st_size
                 and abs(cached.mtime - stat_info.st_mtime) < 1
             ):
-                load_slide_hashes(conn, cached.id, cached.segments)
-                files.append(cached)
                 if verbose:
-                    log(f"  Cached → skipping recompute: size={cached.size_bytes}, mtime={cached.mtime}")
+                    log("  Using cached analysis")
+                files.append(cached)
+                log_scan_entry(path, "CACHED")
+                already_cached += 1
+                last_progress_timestamp = time.time()
+                last_progress_file = str(path)
                 continue
 
             file_id = cached.id if cached else next_id
-            next_id = max(next_id, file_id + 1)
-            info = FileInfo(
-                id=file_id,
-                path=path,
-                inode=stat_info.st_ino,
-                size_bytes=stat_info.st_size,
-                mtime=stat_info.st_mtime,
-            )
+            if not cached:
+                next_id += 1
 
-            metadata = probe_ffprobe(path)
-            info.codec = metadata.get("codec") if metadata else None
-            info.duration = metadata.get("duration") if metadata else None
-            info.bitrate_kbps = metadata.get("bitrate_kbps") if metadata else None
+            pending.append((path, stat_info, cached, file_id))
 
+    log(f"Resuming from previous scan: {already_cached} files already analyzed")
+    if verbose:
+        log(f"Discovered {discovered} .flac files under {root}")
+
+    def analyze(task: Tuple[Path, os.stat_result, Optional[FileInfo], int]) -> Optional[FileInfo]:
+        path, stat_info, cached, file_id = task
+        if shutdown.should_stop():
+            return cached
+
+        info = FileInfo(
+            id=file_id,
+            path=path,
+            inode=stat_info.st_ino,
+            size_bytes=stat_info.st_size,
+            mtime=stat_info.st_mtime,
+        )
+        info.lossless = True
+
+        metadata = probe_ffprobe(path)
+        if metadata:
+            info.codec = metadata.get("codec") or "flac"
+            info.duration = metadata.get("duration")
+            info.bitrate_kbps = metadata.get("bitrate_kbps")
+            stream_md5 = metadata.get("stream_md5")
+            if stream_md5:
+                info.stream_md5 = stream_md5
+
+        md5 = compute_metaflac_md5(path)
+        if md5:
+            info.stream_md5 = md5
+            info.exact_key_type = "stream_md5"
+
+        if hash_mode == "file" or not info.stream_md5:
+            pcm_sha1 = compute_pcm_sha1(path)
+            if pcm_sha1:
+                info.pcm_sha1 = pcm_sha1
+                info.exact_key_type = "pcm_sha1"
+
+        if not info.codec:
+            info.codec = "flac"
+
+        if not no_fp:
+            fp, fp_hash = compute_fingerprint(path)
+            info.fingerprint = fp
+            info.fingerprint_hash = fp_hash
             if verbose:
-                log("  Computing metadata…")
-            md5 = compute_metaflac_md5(path)
-            if md5:
-                info.stream_md5 = md5
-                info.exact_key_type = "stream_md5"
-            if not info.stream_md5 or hash_mode == "file":
-                info.pcm_sha1 = compute_pcm_sha1(path)
-                if info.pcm_sha1:
-                    info.exact_key_type = "pcm_sha1"
-                if verbose:
-                    log("  Computed PCM SHA1")
+                if fp:
+                    log(f"  Fingerprint computed for {path}")
+                else:
+                    log(f"  Fingerprint unavailable for {path}")
 
-            if not no_fp:
-                fp, fp_hash = compute_fingerprint(path)
-                info.fingerprint = fp
-                info.fingerprint_hash = fp_hash
-                if verbose:
-                    log("  Computed fingerprint")
-
+        if no_segwin:
+            info.segments = SegmentHashes()
+        else:
             info.segments = compute_segment_hashes(
                 path,
                 info.duration,
                 seg_length,
+                segwin_sliding,
                 slide_step,
-                slide_count,
+                slide_max_slices,
+                include_trim_head,
             )
             if verbose:
-                log("  Computed segment hashes")
+                if (
+                    info.segments.head
+                    or info.segments.middle
+                    or info.segments.tail
+                    or info.segments.slide_hashes
+                ):
+                    log(f"  Segment hashes computed for {path}")
+                else:
+                    log(f"  Segment hashes unavailable for {path}")
 
-            info.fuzzy_key = build_fuzzy_key(path, aggressive_fuzzy)
-            info.fuzzy_duration = info.duration
+        info.fuzzy_key = build_fuzzy_key(path, aggressive_fuzzy)
+        info.fuzzy_duration = info.duration
 
-            info.healthy, info.health_note = check_health(path)
-            if verbose:
-                log(f"  Health check: {info.healthy}, note: {info.health_note}")
+        info.healthy, info.health_note = check_health(path)
+        if verbose:
+            log(
+                f"  Health check {info.healthy if info.healthy is not None else 'unknown'}"
+                f" via {info.health_note or 'n/a'}"
+            )
 
-            upsert_file(conn, info)
-            insert_segments(conn, info.id, info.segments)
-            store_file_signals(conn, info)
+        # Enhanced skip logic for broken files
+        if skip_broken and info.healthy is False:
+            broken_log = root / "_BROKEN_FILES.txt"
+            try:
+                with open(broken_log, "a") as f:
+                    ts = _dt.datetime.now().isoformat()
+                    f.write(f"{ts}\t{path}\n")
+            except Exception:
+                pass  # don't let logging errors interrupt dedupe run
+            log(f"Skipping broken file: {path}")
+            return None
 
-            files.append(info)
+        return info
 
+    if pending:
+        max_workers = max(1, workers)
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_map = {
+                executor.submit(analyze, task): task[0] for task in pending
+            }
+            for future in as_completed(future_map):
+                path = future_map[future]
+                try:
+                    info = future.result()
+                except Exception as exc:  # pragma: no cover - defensive
+                    log(f"Error processing {path}: {exc}")
+                    # Log as SKIPPED if processing failed
+                    try:
+                        log_scan_entry(path, "SKIPPED")
+                    except Exception:
+                        pass
+                    continue
+                if info is None:
+                    # Log as SKIPPED if no info returned
+                    try:
+                        log_scan_entry(path, "SKIPPED")
+                    except Exception:
+                        pass
+                    continue
+                upsert_file(conn, info)
+                insert_segments(conn, info.id, info.segments)
+                store_file_signals(conn, info)
+                files.append(info)
+                try:
+                    log_scan_entry(path, "PROCESSED")
+                except Exception:
+                    pass
+
+    # Stop the freeze detector watcher
+    freeze_detector_stop.set()
     return files
 
 
@@ -1364,81 +1667,146 @@ def persist_groups(conn: sqlite3.Connection, run_id: int, groups: Sequence[Group
 
 
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
-    """Return parsed command line arguments."""
-
-    parser = argparse.ArgumentParser(description="Deduplicate FLAC files with DB cache")
-    parser.add_argument("--root", default="DD", help="Root directory to scan")
-    parser.add_argument("--commit", action="store_true", help="Apply changes")
-    parser.add_argument("--trash-dir", help="Override trash directory")
+    parser = argparse.ArgumentParser(
+        description="Deduplicate FLAC files and persist analysis in SQLite",
+    )
     parser.add_argument(
-        "--report-csv",
-        help="Override path for the CSV report",
+        "--auto-quarantine",
+        action="store_true",
+        help="Automatically move files that cause a freeze to a _BROKEN folder",
+    )
+    parser.add_argument(
+        "--cmd-timeout",
+        type=int,
+        default=45,
+        help="Seconds for short external commands (fpcalc, flac -t, ffprobe, metaflac)"
+    )
+    parser.add_argument(
+        "--decode-timeout",
+        type=int,
+        default=120,
+        help="Seconds allowed for decoding/streaming operations (ffmpeg hashing)"
+    )
+    """Return parsed command line arguments."""
+    parser.add_argument(
+        "--skip-broken",
+        action="store_true",
+        help="Skip files that fail health check (do not abort run)",
+    )
+    parser.add_argument(
+        "--root",
+        default="/Volumes/dotad/DD",
+        help="Root directory to scan (default: /Volumes/dotad/DD)",
+    )
+    parser.add_argument(
+        "--commit",
+        action="store_true",
+        help="Move duplicate losers into the trash directory",
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Log additional progress information",
+    )
+    parser.add_argument(
+        "--recompute",
+        action="store_true",
+        help="Force recomputation of fingerprints and segment hashes",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=8,
+        help="Number of worker threads for audio analysis",
     )
     parser.add_argument(
         "--hash-mode",
         choices=["auto", "file"],
         default="auto",
-        help="Hashing mode (auto uses FLAC MD5 when available)",
+        help="Hashing mode: auto prefers FLAC MD5, file always recomputes PCM hash",
     )
-    parser.add_argument("--no-fp", action="store_true", help="Disable fingerprinting")
     parser.add_argument(
         "--fp-sim-ratio",
         type=float,
         default=0.62,
-        help="Similarity ratio threshold for fingerprint comparisons",
+        help="Minimum similarity ratio for fingerprint grouping",
     )
     parser.add_argument(
         "--fp-sim-shift",
         type=int,
         default=25,
-        help="Maximum allowed fingerprint shift",
+        help="Maximum absolute fingerprint shift for similarity",
     )
     parser.add_argument(
-        "--fp-sim-overlap",
+        "--fp-sim-min-overlap",
         type=int,
         default=50,
-        help="Minimum overlap for fingerprint similarity",
+        help="Minimum overlapping frames for fingerprint similarity",
     )
     parser.add_argument(
-        "--segwin-duration",
+        "--segwin-seconds",
         type=float,
         default=15.0,
-        help="PCM excerpt length used for segment hashing",
+        help="Length of PCM excerpts used for segment hashing",
     )
     parser.add_argument(
-        "--segwin-slide-step",
-        type=float,
-        default=30.0,
-        help="Sliding window step size in seconds",
-    )
-    parser.add_argument(
-        "--segwin-slide-count",
+        "--segwin-min-matches",
         type=int,
-        default=5,
-        help="Number of sliding window excerpts to compute",
+        default=3,
+        help="Required number of matching segments for SEGWIN grouping",
     )
     parser.add_argument(
-        "--fuzzy-duration-tol",
+        "--segwin-sliding",
+        action="store_true",
+        help="Enable sliding window segment comparison",
+    )
+    parser.add_argument(
+        "--segwin-step",
+        type=float,
+        default=5.0,
+        help="Seconds between sliding segment hashes",
+    )
+    parser.add_argument(
+        "--segwin-max-slices",
+        type=int,
+        default=6,
+        help="Maximum number of sliding segment hashes to compute",
+    )
+    parser.add_argument(
+        "--segwin-trim-head",
+        action="store_true",
+        help="Compute an additional trimmed head segment hash",
+    )
+    parser.add_argument(
+        "--fuzzy-seconds",
         type=float,
         default=2.0,
-        help="Duration tolerance (seconds) for fuzzy matching",
+        help="Duration tolerance for fuzzy filename matching",
     )
     parser.add_argument(
-        "--fuzzy-aggressive",
+        "--aggressive",
         action="store_true",
-        help="Aggressively strip remix/edit tokens from fuzzy keys",
-    )
-    parser.add_argument("--workers", type=int, default=1, help="Reserved for future use")
-    parser.add_argument("--recompute", action="store_true", help="Recompute all signals")
-    parser.add_argument(
-        "--db",
-        default=str(Path.home() / "Music" / "dedupe" / "dedupe.db"),
-        help="SQLite database path",
+        help="Use aggressive normalization when building fuzzy keys",
     )
     parser.add_argument(
-        "--verbose",
+        "--no-fp",
         action="store_true",
-        help="Print progress for each file and stage",
+        help="Skip fingerprint computation",
+    )
+    parser.add_argument(
+        "--no-segwin",
+        action="store_true",
+        help="Skip segment window hashing",
+    )
+    parser.add_argument(
+        "--trash-dir",
+        type=str,
+        help="Optional custom directory for moving duplicate losers"
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Force dry-run mode even if --commit is provided"
     )
     return parser.parse_args(argv)
 
@@ -1447,16 +1815,24 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
     """Entry point used by :func:`main` and unit tests."""
 
     args = parse_args(argv)
-    if args.verbose:
-        for t in ["ffmpeg", "fpcalc", "flac", "metaflac", "ffprobe"]:
-            log(f"{t}: {'found' if is_tool_available(t) else 'missing'}")
-    root = Path(args.root).expanduser().resolve()
-    if not root.exists():
+    global CMD_TIMEOUT, DECODE_TIMEOUT
+    CMD_TIMEOUT = max(5, int(args.cmd_timeout))
+    DECODE_TIMEOUT = max(10, int(args.decode_timeout))
+    trash_dir = Path(args.trash_dir).expanduser() if getattr(args, "trash_dir", None) else None
+    if trash_dir:
+        ensure_directory(trash_dir)
+    for tool in ["ffmpeg", "fpcalc", "flac", "metaflac", "ffprobe"]:
+        status = "available" if is_tool_available(tool) else "missing"
+        log(f"Tool {tool}: {status}")
+
+    root = Path(args.root).expanduser()
+    root_path = root.as_posix()
+    if not os.path.exists(root_path) or not os.path.isdir(root_path):
         raise SystemExit(f"Root directory {root} does not exist")
 
-    db_path = Path(args.db).expanduser()
+    db_path = root / "_DEDUP_INDEX.db"
     ensure_directory(db_path.parent)
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path.as_posix(), timeout=30)
     ensure_schema(conn)
 
     shutdown = GracefulShutdown()
@@ -1465,70 +1841,83 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
     options = {
         "hash_mode": args.hash_mode,
         "no_fp": args.no_fp,
+        "no_segwin": args.no_segwin,
         "fp_sim_ratio": args.fp_sim_ratio,
         "fp_sim_shift": args.fp_sim_shift,
-        "fp_sim_overlap": args.fp_sim_overlap,
-        "segwin_duration": args.segwin_duration,
-        "segwin_slide_step": args.segwin_slide_step,
-        "segwin_slide_count": args.segwin_slide_count,
-        "fuzzy_duration_tol": args.fuzzy_duration_tol,
-        "fuzzy_aggressive": args.fuzzy_aggressive,
+        "fp_sim_min_overlap": args.fp_sim_min_overlap,
+        "segwin_seconds": args.segwin_seconds,
+        "segwin_min_matches": args.segwin_min_matches,
+        "segwin_sliding": args.segwin_sliding,
+        "segwin_step": args.segwin_step,
+        "segwin_max_slices": args.segwin_max_slices,
+        "segwin_trim_head": args.segwin_trim_head,
+        "fuzzy_seconds": args.fuzzy_seconds,
+        "aggressive": args.aggressive,
         "workers": args.workers,
         "recompute": args.recompute,
+        "cmd_timeout": CMD_TIMEOUT,
+        "decode_timeout": DECODE_TIMEOUT,
     }
 
     run_id = record_run(conn, root, not args.commit, options)
+    try:
+        files = scan_files(
+            root=root,
+            conn=conn,
+            recompute=args.recompute,
+            seg_length=args.segwin_seconds,
+            segwin_sliding=args.segwin_sliding,
+            slide_step=args.segwin_step,
+            slide_max_slices=args.segwin_max_slices,
+            include_trim_head=args.segwin_trim_head,
+            aggressive_fuzzy=args.aggressive,
+            no_fp=args.no_fp,
+            no_segwin=args.no_segwin,
+            hash_mode=args.hash_mode,
+            shutdown=shutdown,
+            workers=args.workers,
+            verbose=args.verbose,
+            skip_broken=getattr(args, "skip_broken", False),
+        )
 
-    files = scan_files(
-        root=root,
-        conn=conn,
-        recompute=args.recompute,
-        seg_length=args.segwin_duration,
-        slide_step=args.segwin_slide_step,
-        slide_count=args.segwin_slide_count,
-        aggressive_fuzzy=args.fuzzy_aggressive,
-        no_fp=args.no_fp,
-        hash_mode=args.hash_mode,
-        shutdown=shutdown,
-        verbose=args.verbose,
-    )
+        if args.verbose:
+            log(f"Building groups for {len(files)} files…")
 
-    if args.verbose:
-        log(f"Building groups for {len(files)} files…")
+        groups = build_groups(
+            files=files,
+            fp_sim_ratio=args.fp_sim_ratio,
+            fp_sim_shift=args.fp_sim_shift,
+            fp_sim_min_overlap=args.fp_sim_min_overlap,
+            use_fingerprint=not args.no_fp,
+            use_segwin=not args.no_segwin,
+            segwin_min_matches=args.segwin_min_matches,
+            use_slide=(args.segwin_sliding and not args.no_segwin),
+            fuzzy_duration_tol=args.fuzzy_seconds,
+        )
 
-    groups = build_groups(
-        files=files,
-        fp_sim_ratio=args.fp_sim_ratio,
-        fp_sim_shift=args.fp_sim_shift,
-        fp_sim_overlap=args.fp_sim_overlap,
-        enable_slide=args.segwin_slide_count > 0,
-        fuzzy_duration_tol=args.fuzzy_duration_tol,
-    )
+        if args.verbose:
+            log(f"Formed {len(groups)} duplicate groups")
 
-    if args.verbose:
-        log(f"Formed {len(groups)} duplicate groups")
+        persist_groups(conn, run_id, groups)
 
-    persist_groups(conn, run_id, groups)
+        timestamp = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+        trash_dir = trash_dir or (root / f"_TRASH_DUPES_{timestamp}")
+        report_path = root / f"_DEDUP_REPORT_{timestamp}.csv"
 
-    timestamp = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
-    trash_base = Path(args.trash_dir).expanduser() if args.trash_dir else root
-    trash_dir = trash_base / f"_TRASH_DUPES_{timestamp}"
-    report_path = (
-        Path(args.report_csv).expanduser()
-        if args.report_csv
-        else root / f"_DEDUP_REPORT_{timestamp}.csv"
-    )
+        write_csv(report_path, groups, trash_dir, args.commit)
 
-    write_csv(report_path, groups, trash_dir, args.commit)
+        if args.commit and not getattr(args, "dry_run", False):
+            move_duplicates(groups, trash_dir)
+        else:
+            log("Dry run mode: no files moved")
 
-    if args.commit:
-        move_duplicates(groups, trash_dir)
+        log(f"CSV report written to {report_path}")
+        log(f"Trash directory: {trash_dir}")
+    finally:
+        finalize_run(conn, run_id)
+        conn.close()
+        log(f"DB updated: {db_path}")
 
-    finalize_run(conn, run_id)
-    conn.close()
-
-    log(f"CSV report written to {report_path}")
-    log(f"Trash directory: {trash_dir}")
     return 0
 
 

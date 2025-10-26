@@ -1557,6 +1557,8 @@ def scan_files(
                         pass
                     continue
                 upsert_file(conn, info)
+                if skip_broken and info.healthy is False:
+                    log(f"[DIAG] Upserted broken file to DB: {path}")
                 insert_segments(conn, info.id, info.segments)
                 store_file_signals(conn, info)
                 files.append(info)

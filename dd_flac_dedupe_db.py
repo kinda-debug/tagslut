@@ -3,22 +3,25 @@
 from __future__ import annotations
 
 import argparse
+import binascii
 import csv
 import datetime as _dt
 import hashlib
 import json
 import os
+import re
 import shutil
 import signal
 import sqlite3
 import subprocess
 import sys
+import tempfile
 import textwrap
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Set, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 # For base64 fingerprint decoding
 import base64
 import struct
@@ -36,6 +39,9 @@ scan_skipped_count = 0
 
 # Protect updates to the global heartbeat state shared across worker threads
 progress_update_lock = threading.Lock()
+
+# Shared diagnostics manager configured at runtime
+DIAGNOSTICS: Optional[DiagnosticsManager] = None
 
 # Default timeouts (seconds); overridable via CLI
 CMD_TIMEOUT: int = 45         # fpcalc, flac -t, ffprobe, metaflac
@@ -308,6 +314,146 @@ class GroupResult:
     losers: List[FileInfo]
 
 
+@dataclass
+class DiagnosticsManager:
+    """Persist diagnostic dumps such as ``fpcalc`` stdout and watchdog notes."""
+
+    root: Path
+    dump_fpcalc: bool = True
+    dump_decode: bool = True
+    dump_watchdog: bool = True
+    max_dump_bytes: int = 100 * 1024 * 1024
+
+    def __post_init__(self) -> None:
+        self.root = self._prepare_root(self.root)
+
+    def _prepare_root(self, root: Path) -> Path:
+        """Ensure *root* is writable; fall back to a runtime directory when necessary."""
+
+        candidate = root.expanduser()
+        try:
+            ensure_directory(candidate)
+            probe = candidate / ".write_test"
+            probe.write_text("ok", encoding="utf-8")
+            probe.unlink()
+            return candidate
+        except OSError:
+            fallback_base = Path(os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir())
+            fallback = fallback_base / "dedupe_diagnostics"
+            ensure_directory(fallback)
+            log(
+                "Diagnostic root %s unavailable; using %s instead" % (candidate.as_posix(), fallback.as_posix())
+            )
+            return fallback
+
+    def _kind_dir(self, kind: str) -> Path:
+        path = self.root / kind
+        ensure_directory(path)
+        return path
+
+    def _safe_component(self, source: Path) -> str:
+        base = source.name or "root"
+        safe = re.sub(r"[^A-Za-z0-9._-]", "_", base)[:48] or "entry"
+        digest = hashlib.sha1(source.as_posix().encode("utf-8"), usedforsecurity=False).hexdigest()[:8]
+        return f"{safe}_{digest}"
+
+    def _write_json(
+        self,
+        kind: str,
+        source: Path,
+        payload_key: str,
+        payload_value: Optional[str],
+        **metadata: object,
+    ) -> Path:
+        timestamp = _dt.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        record = {
+            "timestamp": timestamp,
+            "source": source.as_posix(),
+            **metadata,
+        }
+        truncated = False
+        text_value = payload_value or ""
+        if text_value:
+            encoded = text_value.encode("utf-8", "replace")
+            if len(encoded) > self.max_dump_bytes:
+                encoded = encoded[: self.max_dump_bytes]
+                text_value = encoded.decode("utf-8", "ignore")
+                truncated = True
+        record[payload_key] = text_value
+        if truncated:
+            record[f"{payload_key}_truncated"] = True
+        directory = self._kind_dir(kind)
+        filename = f"{timestamp}_{self._safe_component(source)}.json"
+        dump_path = directory / filename
+        dump_path.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
+        return dump_path
+
+    def record_fpcalc(
+        self,
+        source: Path,
+        stdout: str,
+        command: Sequence[str],
+        success: bool,
+        error: Optional[str] = None,
+    ) -> Optional[Path]:
+        """Persist stdout/stderr from ``fpcalc`` for the given *source* path."""
+
+        if not self.dump_fpcalc:
+            return None
+        metadata = {
+            "command": list(command),
+            "success": success,
+        }
+        if error:
+            metadata["error"] = error
+        return self._write_json("fpcalc", source, "stdout", stdout, **metadata)
+
+    def record_decode(
+        self,
+        source: Path,
+        stderr: str,
+        command: Sequence[str],
+        stage: str,
+        success: bool,
+        note: Optional[str] = None,
+    ) -> Optional[Path]:
+        """Persist diagnostic information for decoding/ffmpeg operations."""
+
+        if not self.dump_decode:
+            return None
+        metadata = {
+            "command": list(command),
+            "stage": stage,
+            "success": success,
+        }
+        if note:
+            metadata["note"] = note
+        return self._write_json("decode", source, "stderr", stderr, **metadata)
+
+    def record_watchdog(self, message: str, context: Optional[str] = None) -> Optional[Path]:
+        """Persist watchdog/freeze diagnostic entries."""
+
+        if not self.dump_watchdog:
+            return None
+        metadata = {"context": context} if context else {}
+        return self._write_json("watchdog", Path("/watchdog"), "message", message, **metadata)
+
+    def latest(self, kind: str) -> Optional[Path]:
+        """Return the newest diagnostic dump path for *kind* if available."""
+
+        directory = self.root / kind
+        if not directory.exists():
+            return None
+        candidates = []
+        for candidate in directory.glob("*.json"):
+            try:
+                mtime = candidate.stat().st_mtime
+            except OSError:
+                continue
+            candidates.append((mtime, candidate))
+        candidates.sort(key=lambda item: item[0], reverse=True)
+        return candidates[0][1] if candidates else None
+
 ###############################################################################
 # External command helpers
 ###############################################################################
@@ -456,6 +602,7 @@ def compute_pcm_sha1(path: Path) -> Optional[str]:
     deadline = time.time() + DECODE_TIMEOUT
     digest = hashlib.sha1(usedforsecurity=False)
     assert process.stdout is not None
+    stderr_chunks: List[bytes] = []
     while True:
         if time.time() > deadline:
             try:
@@ -468,6 +615,21 @@ def compute_pcm_sha1(path: Path) -> Optional[str]:
                 except Exception:
                     pass
             process.wait()
+            if process.stderr is not None:
+                try:
+                    stderr_chunks.append(process.stderr.read() or b"")
+                    process.stderr.close()
+                except Exception:
+                    pass
+            if DIAGNOSTICS is not None:
+                DIAGNOSTICS.record_decode(
+                    path,
+                    b"".join(stderr_chunks).decode("utf-8", "replace"),
+                    cmd,
+                    stage="pcm_sha1",
+                    success=False,
+                    note="timeout",
+                )
             return None
         chunk = process.stdout.read(65536)
         if not chunk:
@@ -477,7 +639,26 @@ def compute_pcm_sha1(path: Path) -> Optional[str]:
 
     process.stdout.close()
     process.wait()
-    if process.returncode != 0:
+    stderr_text = ""
+    if process.stderr is not None:
+        try:
+            stderr_chunks.append(process.stderr.read() or b"")
+            process.stderr.close()
+        except Exception:
+            pass
+    if stderr_chunks:
+        stderr_text = b"".join(stderr_chunks).decode("utf-8", "replace")
+    success = process.returncode == 0
+    if DIAGNOSTICS is not None:
+        DIAGNOSTICS.record_decode(
+            path,
+            stderr_text,
+            cmd,
+            stage="pcm_sha1",
+            success=success,
+            note=None,
+        )
+    if not success:
         return None
     return digest.hexdigest()
 
@@ -534,6 +715,7 @@ def compute_segment_hash(
     deadline = time.time() + DECODE_TIMEOUT
     digest = hashlib.sha1(usedforsecurity=False)
     assert process.stdout is not None
+    stderr_chunks: List[bytes] = []
     while True:
         if time.time() > deadline:
             try:
@@ -546,6 +728,21 @@ def compute_segment_hash(
                 except Exception:
                     pass
             process.wait()
+            if process.stderr is not None:
+                try:
+                    stderr_chunks.append(process.stderr.read() or b"")
+                    process.stderr.close()
+                except Exception:
+                    pass
+            if DIAGNOSTICS is not None:
+                DIAGNOSTICS.record_decode(
+                    path,
+                    b"".join(stderr_chunks).decode("utf-8", "replace"),
+                    cmd,
+                    stage="segment_hash",
+                    success=False,
+                    note="timeout",
+                )
             return None
         chunk = process.stdout.read(65536)
         if not chunk:
@@ -555,7 +752,25 @@ def compute_segment_hash(
 
     process.stdout.close()
     process.wait()
-    if process.returncode != 0:
+    stderr_text = ""
+    if process.stderr is not None:
+        try:
+            stderr_chunks.append(process.stderr.read() or b"")
+            process.stderr.close()
+        except Exception:
+            pass
+    if stderr_chunks:
+        stderr_text = b"".join(stderr_chunks).decode("utf-8", "replace")
+    success = process.returncode == 0
+    if DIAGNOSTICS is not None:
+        DIAGNOSTICS.record_decode(
+            path,
+            stderr_text,
+            cmd,
+            stage="segment_hash",
+            success=success,
+        )
+    if not success:
         return None
     return digest.hexdigest()
 
@@ -607,6 +822,57 @@ def compute_segment_hashes(
     return hashes
 
 
+def _normalize_base64_payload(data: str) -> str:
+    """Return a normalized base64 payload using the standard alphabet.
+
+    The helper strips whitespace, converts URL-safe variants to the standard
+    alphabet, and appends padding when required. Values whose length modulo 4
+    equals 1 are impossible to decode and raise ``ValueError`` so callers can
+    treat them as malformed without raising cryptic ``binascii`` errors.
+    """
+
+    cleaned = "".join(data.split())
+    cleaned = cleaned.replace("-", "+").replace("_", "/")
+    remainder = len(cleaned) % 4
+    if remainder == 1:
+        raise ValueError("Invalid base64 length")
+    if remainder:
+        cleaned += "=" * (4 - remainder)
+    return cleaned
+
+
+def _decode_base64_fingerprint(encoded: str) -> Optional[List[int]]:
+    """Decode a base64-encoded Chromaprint fingerprint into integers."""
+
+    try:
+        normalized = _normalize_base64_payload(encoded)
+    except ValueError:
+        return None
+    try:
+        fingerprint_bytes = base64.b64decode(normalized, validate=True)
+    except (binascii.Error, ValueError):
+        return None
+    if len(fingerprint_bytes) % 4 != 0 or not fingerprint_bytes:
+        return None
+    count = len(fingerprint_bytes) // 4
+    try:
+        return list(struct.unpack(f"<{count}i", fingerprint_bytes))
+    except struct.error:
+        return None
+
+
+def _coerce_fingerprint_sequence(values: Iterable[object]) -> Optional[List[int]]:
+    """Convert *values* to a list of integers if possible."""
+
+    result: List[int] = []
+    for value in values:
+        try:
+            result.append(int(value))
+        except (TypeError, ValueError):
+            return None
+    return result or None
+
+
 def parse_fpcalc_output(output: str) -> Tuple[Optional[List[int]], Optional[str]]:
     """Parse ``fpcalc`` output and return the fingerprint and its hash."""
 
@@ -614,41 +880,48 @@ def parse_fpcalc_output(output: str) -> Tuple[Optional[List[int]], Optional[str]
     if not output.strip():
         return (None, None)
 
+    def _finalize(values: Optional[List[int]]) -> Tuple[Optional[List[int]], Optional[str]]:
+        if not values:
+            return (None, None)
+        hash_hex = sha1_hex(",".join(str(v) for v in values).encode("utf-8"))
+        return (values, hash_hex)
+
     try:
         data = json.loads(output)
-        if isinstance(data, dict) and "fingerprint" in data:
-            if isinstance(data["fingerprint"], list):
-                fingerprint = [int(v) for v in data["fingerprint"]]
-            elif isinstance(data["fingerprint"], str):
-                # Support for base64 fingerprints
-                fp_str = data["fingerprint"]
-                # If it contains non-digit characters, treat as base64
-                if any(not c.isdigit() and c not in {",", " ", "-"} for c in fp_str):
-                    try:
-                        # Remove any whitespace or linebreaks, decode base64
-                        fp_bytes = base64.b64decode(fp_str)
-                        # Unpack as sequence of 32-bit signed ints
-                        # Length must be divisible by 4
-                        count = len(fp_bytes) // 4
-                        fingerprint = list(struct.unpack("<%di" % count, fp_bytes))
-                        hash_hex = sha1_hex(",".join(str(v) for v in fingerprint).encode("utf-8"))
-                        return (fingerprint, hash_hex)
-                    except Exception:
-                        fingerprint = None
-                else:
-                    fingerprint = [int(v) for v in fp_str.split(",") if v]
     except json.JSONDecodeError:
-        for line in output.splitlines():
-            if line.startswith("FINGERPRINT="):
-                raw = line.split("=", 1)[1].strip()
-                fingerprint = [int(v) for v in raw.split(",") if v]
-                break
+        data = None
+    else:
+        if isinstance(data, dict):
+            fp_value = data.get("fingerprint") or data.get("chromaprint")
+            if isinstance(fp_value, list):
+                fingerprint = _coerce_fingerprint_sequence(fp_value)
+                if fingerprint:
+                    return _finalize(fingerprint)
+            elif isinstance(fp_value, str):
+                fingerprint = _decode_base64_fingerprint(fp_value)
+                if fingerprint:
+                    return _finalize(fingerprint)
+                fingerprint = _coerce_fingerprint_sequence(fp_value.split(","))
+                if fingerprint:
+                    return _finalize(fingerprint)
+        elif isinstance(data, list):
+            fingerprint = _coerce_fingerprint_sequence(data)
+            if fingerprint:
+                return _finalize(fingerprint)
 
-    if not fingerprint:
-        return (None, None)
+    for line in output.splitlines():
+        if not line.startswith("FINGERPRINT="):
+            continue
+        raw = line.split("=", 1)[1]
+        fingerprint = _decode_base64_fingerprint(raw)
+        if fingerprint:
+            return _finalize(fingerprint)
+        fingerprint = _coerce_fingerprint_sequence(part for part in raw.split(",") if part)
+        if fingerprint:
+            return _finalize(fingerprint)
+        break
 
-    hash_hex = sha1_hex(",".join(str(v) for v in fingerprint).encode("utf-8"))
-    return (fingerprint, hash_hex)
+    return (None, None)
 
 
 def compute_fingerprint(path: Path) -> Tuple[Optional[List[int]], Optional[str]]:
@@ -656,16 +929,21 @@ def compute_fingerprint(path: Path) -> Tuple[Optional[List[int]], Optional[str]]
 
     if not is_tool_available("fpcalc"):
         return (None, None)
-    try:
-        heartbeat(path)
-        output = run_command(["fpcalc", "-json", str(path)], timeout=CMD_TIMEOUT)
-    except CommandError:
+    commands = [["fpcalc", "-json", str(path)], ["fpcalc", str(path)]]
+    for command in commands:
         try:
             heartbeat(path)
-            output = run_command(["fpcalc", str(path)], timeout=CMD_TIMEOUT)
-        except CommandError:
-            return (None, None)
-    return parse_fpcalc_output(output)
+            output = run_command(command, timeout=CMD_TIMEOUT)
+        except CommandError as exc:
+            if DIAGNOSTICS is not None:
+                DIAGNOSTICS.record_fpcalc(path, "", command, success=False, error=str(exc))
+            continue
+        if DIAGNOSTICS is not None:
+            DIAGNOSTICS.record_fpcalc(path, output, command, success=True)
+        fingerprint, digest = parse_fpcalc_output(output)
+        if fingerprint is not None and digest is not None:
+            return (fingerprint, digest)
+    return (None, None)
 
 
 def check_health(path: Path) -> Tuple[Optional[bool], Optional[str]]:
@@ -1357,13 +1635,14 @@ def scan_files(
         abs_path = str(path.resolve())
         if abs_path in broken_playlist_set:
             return
+        try:
+            Path(broken_playlist_path).expanduser().parent.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
         with open(broken_playlist_path, "a") as f:
             f.write(abs_path + "\n")
         broken_playlist_set.add(abs_path)
 
-    import signal
-    import os
-    import time
     # Use provided watchdog timeout when available; fallback to a generous default
     WATCHDOG_TIMEOUT = int(kwargs.get("watchdog_timeout", 300) or 300)
     def watchdog():
@@ -1372,6 +1651,11 @@ def scan_files(
             if time.time() - last_progress_timestamp > WATCHDOG_TIMEOUT:
                 # Prefer logging and requesting a graceful stop over hard-killing the process.
                 print(f"[WATCHDOG] No progress for {WATCHDOG_TIMEOUT} seconds. Requesting shutdown.", flush=True)
+                if DIAGNOSTICS is not None:
+                    DIAGNOSTICS.record_watchdog(
+                        f"No progress for {WATCHDOG_TIMEOUT} seconds",
+                        context=last_progress_file,
+                    )
                 # Signal the freeze detector and request shutdown if available
                 try:
                     freeze_detector_stop.set()
@@ -1393,8 +1677,6 @@ def scan_files(
 
     global last_progress_timestamp, last_progress_file
 
-    import time
-
     # Freeze detector watcher logic
     def freeze_detector_watcher(quarantine_dir=None):
         while not freeze_detector_stop.is_set():
@@ -1402,6 +1684,11 @@ def scan_files(
             now = time.time()
             if now - last_progress_timestamp > 60 and last_progress_file:
                 log(f"WARNING: No progress for 60s. Last file: {last_progress_file}")
+                if DIAGNOSTICS is not None:
+                    DIAGNOSTICS.record_watchdog(
+                        "Freeze detector triggered",
+                        context=last_progress_file,
+                    )
                 if quarantine_dir and os.path.exists(last_progress_file):
                     try:
                         os.makedirs(quarantine_dir, exist_ok=True)
@@ -1437,7 +1724,6 @@ def scan_files(
 
     next_id = _next_file_id(conn)
     discovered = 0
-    import traceback
     log_path = root / "_DEDUP_SCAN_LOG.txt"
 
     def log_scan_entry(path: Path, status: str):
@@ -1662,7 +1948,7 @@ def scan_files(
                 print(f"[DIAG] Completed {completed}/{total_files} ({path})", flush=True)
                 if completed % 100 == 0 or completed == total_files:
                     print(f"[{time.strftime('%H:%M:%S')}] Processed {completed}/{total_files} files")
-            print(f"[DIAG] All tasks completed.", flush=True)
+            print("[DIAG] All tasks completed.", flush=True)
 
     # Stop the freeze detector watcher
     freeze_detector_stop.set()
@@ -1881,13 +2167,69 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument(
         "--broken-playlist",
         type=str,
-        help="Path to write playlist of broken files for repair (default: <root>/broken_files_unrepaired.m3u)",
+        default="/Volumes/dotad/MUSIC/broken_files_unrepaired.m3u",
+        help="Path to write playlist of broken files for repair (default: /Volumes/dotad/MUSIC/broken_files_unrepaired.m3u)",
     )
     parser.add_argument(
         "--watchdog-timeout",
         type=int,
         default=300,
         help="Seconds of inactivity before watchdog warns and requests shutdown (default: 300)",
+    )
+    parser.add_argument(
+        "--diagnostic-root",
+        type=str,
+        default="/Volumes/dotad/.dedupe_diagnostics",
+        help="Directory for diagnostic dumps (default: /Volumes/dotad/.dedupe_diagnostics)",
+    )
+    parser.add_argument(
+        "--dump-fpcalc",
+        dest="dump_fpcalc",
+        action="store_true",
+        default=True,
+        help="Enable fpcalc stdout dumps (default)",
+    )
+    parser.add_argument(
+        "--no-dump-fpcalc",
+        dest="dump_fpcalc",
+        action="store_false",
+        help="Disable fpcalc stdout dumps",
+    )
+    parser.add_argument(
+        "--dump-decode",
+        dest="dump_decode",
+        action="store_true",
+        default=True,
+        help="Enable decode diagnostics dumps (default)",
+    )
+    parser.add_argument(
+        "--no-dump-decode",
+        dest="dump_decode",
+        action="store_false",
+        help="Disable decode diagnostics dumps",
+    )
+    parser.add_argument(
+        "--dump-watchdog",
+        dest="dump_watchdog",
+        action="store_true",
+        default=True,
+        help="Enable watchdog diagnostic dumps (default)",
+    )
+    parser.add_argument(
+        "--no-dump-watchdog",
+        dest="dump_watchdog",
+        action="store_false",
+        help="Disable watchdog diagnostic dumps",
+    )
+    parser.add_argument(
+        "--fpcalc-dump-latest",
+        action="store_true",
+        help="Show the most recent fpcalc dump and exit",
+    )
+    parser.add_argument(
+        "--check-fpcalc",
+        action="store_true",
+        help="Print the contents of the most recent fpcalc dump and exit",
     )
     return parser.parse_args(argv)
 
@@ -1899,6 +2241,30 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
     global CMD_TIMEOUT, DECODE_TIMEOUT
     CMD_TIMEOUT = max(5, int(args.cmd_timeout))
     DECODE_TIMEOUT = max(10, int(args.decode_timeout))
+    global DIAGNOSTICS
+    diag_root = Path(getattr(args, "diagnostic_root", "/Volumes/dotad/.dedupe_diagnostics")).expanduser()
+    DIAGNOSTICS = DiagnosticsManager(
+        root=diag_root,
+        dump_fpcalc=getattr(args, "dump_fpcalc", True),
+        dump_decode=getattr(args, "dump_decode", True),
+        dump_watchdog=getattr(args, "dump_watchdog", True),
+    )
+    log(f"Diagnostics root: {DIAGNOSTICS.root}")
+    if getattr(args, "fpcalc_dump_latest", False) or getattr(args, "check_fpcalc", False):
+        latest = DIAGNOSTICS.latest("fpcalc")
+        if latest is None:
+            print(f"No fpcalc dumps found under {DIAGNOSTICS.root / 'fpcalc'}")
+            return 0
+        print(f"Latest fpcalc dump: {latest}")
+        if getattr(args, "check_fpcalc", False):
+            try:
+                print(latest.read_text(encoding="utf-8"))
+            except OSError as exc:
+                print(f"Failed to read {latest}: {exc}")
+        if getattr(args, "fpcalc_dump_latest", False) and not getattr(args, "check_fpcalc", False):
+            return 0
+        if getattr(args, "check_fpcalc", False):
+            return 0
     trash_dir = Path(args.trash_dir).expanduser() if getattr(args, "trash_dir", None) else None
     if trash_dir:
         ensure_directory(trash_dir)
@@ -1961,6 +2327,7 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
             shutdown=shutdown,
             verbose=args.verbose,
             watchdog_timeout=getattr(args, "watchdog_timeout", None),
+            broken_playlist_path=str(args.broken_playlist) if getattr(args, "broken_playlist", None) else None,
         )
 
         if args.verbose:

@@ -11,10 +11,15 @@ from __future__ import annotations
 import argparse
 import shlex
 import subprocess
+import datetime as _dt
+from dataclasses import dataclass
+import contextlib
 from pathlib import Path
-from typing import List, Optional
+from typing import Iterable, Optional, Tuple
 import hashlib
 import re
+import shutil
+import tempfile
 
 
 def parse_args():
@@ -50,121 +55,331 @@ def parse_args():
             "(default: /Volumes/dotad/MUSIC/broken_files_unrepaired.m3u)"
         ),
     )
+    p.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Allow overwriting destination files (creates a backup first)",
+    )
+    p.add_argument(
+        "--backup-dir",
+        dest="backup_dir",
+        help="Directory for storing backups when --overwrite is used",
+    )
+    p.add_argument(
+        "--trim-seconds",
+        type=float,
+        default=10.0,
+        help="Seconds to trim from the tail during the final fallback step (default: 10)",
+    )
+    p.add_argument(
+        "--temp-dir",
+        dest="temp_dir",
+        help="Optional directory for intermediate WAV files",
+    )
+    p.set_defaults(enable_transcode=True, enable_reencode=True, enable_trim=True)
+    p.add_argument(
+        "--disable-transcode",
+        dest="enable_transcode",
+        action="store_false",
+        help="Skip the initial lenient transcode step",
+    )
+    p.add_argument(
+        "--disable-reencode",
+        dest="enable_reencode",
+        action="store_false",
+        help="Skip the WAV re-encode fallback step",
+    )
+    p.add_argument(
+        "--disable-trim",
+        dest="enable_trim",
+        action="store_false",
+        help="Skip the tail-trimming fallback step",
+    )
     return p.parse_args()
 
 
-def ensure_parent(path: Path):
+@dataclass
+class PipelineOptions:
+    """Configuration for the automated FLAC repair pipeline."""
+
+    ffmpeg_args: str
+    overwrite: bool
+    backup_dir: Optional[Path]
+    enable_transcode: bool
+    enable_reencode: bool
+    enable_trim: bool
+    trim_seconds: float
+    temp_dir: Optional[Path]
+
+def ensure_parent(path: Path) -> None:
+    """Ensure the destination directory exists."""
+
     path.parent.mkdir(parents=True, exist_ok=True)
 
 
-def run_repair(src: Path, dst: Path, ffmpeg_args: str, capture_stderr: bool, logs_dir: Path) -> bool:
-    ensure_parent(dst)
-    cmd: List[str] = ["ffmpeg", "-v", "error", "-nostdin", "-y", "-i", str(src)]
-    if ffmpeg_args:
-        cmd.extend(shlex.split(ffmpeg_args))
-    cmd.append(str(dst))
+def _sanitize_component(name: str) -> str:
+    """Return a filesystem-safe string derived from *name*."""
 
-    stderr_fp = subprocess.DEVNULL
+    safe = re.sub(r"[^A-Za-z0-9._-]", "_", name)
+    return safe[:80] or "file"
+
+
+def _stderr_log_path(logs_dir: Path, dst: Path, step: str) -> Path:
+    """Compute a unique stderr log path for *dst* and *step*."""
+
+    safe_step = _sanitize_component(step)[:16]
+    safe_base = _sanitize_component(dst.stem or dst.name)
+    digest_input = f"{dst.as_posix()}::{step}".encode("utf-8")
+    digest = hashlib.sha1(digest_input, usedforsecurity=False).hexdigest()[:8]
+    return logs_dir / f"{safe_base}_{safe_step}_{digest}.stderr.log"
+
+
+def _run_ffmpeg_step(cmd: Iterable[str], step: str, log_path: Optional[Path]) -> Tuple[bool, str]:
+    """Execute *cmd* via ``ffmpeg`` and optionally persist stderr."""
+
+    command = list(cmd)
+    try:
+        printable = shlex.join(command)
+    except Exception:
+        printable = " ".join(str(part) for part in command)
+    print(f"Running [{step}]: {printable}")
+    completed = subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    stderr_text = completed.stderr.decode("utf-8", "replace") if completed.stderr else ""
+    if log_path:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("w", encoding="utf-8") as handle:
+            handle.write(stderr_text)
+    return completed.returncode == 0, stderr_text
+
+
+def _cleanup_partial(path: Path) -> None:
+    """Remove partially written files without raising."""
+
+    try:
+        if path.exists():
+            path.unlink()
+    except OSError:
+        pass
+
+
+def create_backup(source: Path, backup_dir: Optional[Path]) -> Optional[Path]:
+    """Create a timestamped backup of *source* in *backup_dir*."""
+
+    target_dir = Path(backup_dir).expanduser() if backup_dir else source.parent
+    target_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+    suffix = source.suffix or ".flac"
+    backup = target_dir / f"{source.stem}_{timestamp}{suffix}.bak"
+    counter = 1
+    while backup.exists():
+        backup = target_dir / f"{source.stem}_{timestamp}_{counter}{suffix}.bak"
+        counter += 1
+    shutil.copy2(source, backup)
+    print(f"Created backup: {backup}")
+    return backup
+
+
+@contextlib.contextmanager
+def temporary_directory(base: Optional[Path]) -> Iterable[Path]:
+    """Yield a temporary directory, honouring an optional *base* path."""
+
+    if base:
+        base_path = Path(base).expanduser()
+        base_path.mkdir(parents=True, exist_ok=True)
+        temp_path = Path(tempfile.mkdtemp(prefix="repair_", dir=str(base_path)))
+        try:
+            yield temp_path
+        finally:
+            shutil.rmtree(temp_path, ignore_errors=True)
+    else:
+        with tempfile.TemporaryDirectory(prefix="repair_") as temp:
+            yield Path(temp)
+
+
+def lenient_transcode(
+    src: Path,
+    dst: Path,
+    options: PipelineOptions,
+    capture_stderr: bool,
+    logs_dir: Path,
+) -> bool:
+    """Attempt a direct lenient transcode to FLAC."""
+
+    cmd = ["ffmpeg", "-v", "error", "-nostdin", "-y", "-i", str(src)]
+    if options.ffmpeg_args:
+        cmd.extend(shlex.split(options.ffmpeg_args))
+    cmd.append(str(dst))
+    log_path = _stderr_log_path(logs_dir, dst, "transcode") if capture_stderr else None
+    success, _ = _run_ffmpeg_step(cmd, "transcode", log_path)
+    if success and dst.exists():
+        return True
+    _cleanup_partial(dst)
+    return False
+
+
+def decode_and_reencode(
+    src: Path,
+    dst: Path,
+    options: PipelineOptions,
+    capture_stderr: bool,
+    logs_dir: Path,
+) -> bool:
+    """Decode to WAV then re-encode to FLAC, enforcing size sanity checks."""
+
+    with temporary_directory(options.temp_dir) as temp_dir:
+        wav_path = temp_dir / f"{dst.stem}_repair.wav"
+        decode_cmd = ["ffmpeg", "-v", "error", "-nostdin", "-y", "-i", str(src), str(wav_path)]
+        decode_log = _stderr_log_path(logs_dir, dst, "decode") if capture_stderr else None
+        success, _ = _run_ffmpeg_step(decode_cmd, "decode", decode_log)
+        if not success or not wav_path.exists():
+            _cleanup_partial(dst)
+            return False
+
+        encode_cmd = [
+            "ffmpeg",
+            "-v",
+            "error",
+            "-nostdin",
+            "-y",
+            "-i",
+            str(wav_path),
+            "-c:a",
+            "flac",
+            str(dst),
+        ]
+        encode_log = _stderr_log_path(logs_dir, dst, "reencode") if capture_stderr else None
+        success, _ = _run_ffmpeg_step(encode_cmd, "reencode", encode_log)
+        if not success or not dst.exists():
+            _cleanup_partial(dst)
+            return False
+
+    try:
+        src_size = src.stat().st_size
+        dst_size = dst.stat().st_size
+    except OSError:
+        _cleanup_partial(dst)
+        return False
+
+    max_allowed = max(src_size * 2, src_size + 1_048_576)
+    if dst_size <= 0 or dst_size > max_allowed:
+        print(
+            f"Size check failed: output {dst_size} bytes vs source {src_size} bytes"
+        )
+        _cleanup_partial(dst)
+        return False
+    return True
+
+
+def trim_and_reencode(
+    src: Path,
+    dst: Path,
+    options: PipelineOptions,
+    capture_stderr: bool,
+    logs_dir: Path,
+) -> bool:
+    """Trim the tail of the file and attempt a re-encode."""
+
+    if options.trim_seconds <= 0:
+        print("Trim seconds <= 0; skipping trim fallback.")
+        return False
+    filter_arg = f"atrim=end=-{options.trim_seconds:.3f}"
+    cmd = [
+        "ffmpeg",
+        "-v",
+        "error",
+        "-nostdin",
+        "-y",
+        "-i",
+        str(src),
+        "-af",
+        filter_arg,
+        "-c:a",
+        "flac",
+        str(dst),
+    ]
+    log_path = _stderr_log_path(logs_dir, dst, "trim") if capture_stderr else None
+    success, _ = _run_ffmpeg_step(cmd, "trim", log_path)
+    if not success or not dst.exists():
+        _cleanup_partial(dst)
+        return False
+    try:
+        dst_size = dst.stat().st_size
+        src_size = src.stat().st_size
+    except OSError:
+        _cleanup_partial(dst)
+        return False
+    if dst_size <= 0 or dst_size > src_size:
+        print("Trimmed output failed sanity checks; discarding result.")
+        _cleanup_partial(dst)
+        return False
+    return True
+
+
+def execute_pipeline(
+    src: Path,
+    dst: Path,
+    options: PipelineOptions,
+    capture_stderr: bool,
+    logs_dir: Path,
+) -> bool:
+    """Run the configured repair pipeline for a single file."""
+
+    ensure_parent(dst)
     if capture_stderr:
         logs_dir.mkdir(parents=True, exist_ok=True)
-        # Create a filesystem-safe, reasonably short log filename. Some
-        # file paths (especially long artist/album/title combos) can exceed
-        # the OS per-component filename limit and cause OSError (Errno 63).
-        # To avoid that we sanitize the dst.name and append a short hash.
-        base = dst.name
-        # Replace problematic chars with underscore
-        safe_base = re.sub(r"[^A-Za-z0-9._-]", "_", base)
-        # Trim to a safe length and append a short hex of the full path
-        short = safe_base[:80]
-        h = hashlib.sha1(dst.as_posix().encode("utf-8")).hexdigest()[:8]
-        log_name = f"{short}_{h}.stderr.log"
-        log_path = logs_dir / log_name
-        stderr_fp = open(log_path, "wb")
 
-    # Print the actual ffmpeg command we will run (with full paths) so the
-    # exact invocation is visible in logs and reproductions.
+    backup_path: Optional[Path] = None
+    if dst.exists():
+        if not options.overwrite:
+            print(f"Destination exists; use --overwrite to replace {dst}")
+            return False
+        backup_path = create_backup(dst, options.backup_dir)
+    elif options.overwrite and src.resolve() == dst.resolve():
+        backup_path = create_backup(src, options.backup_dir)
+
+    success = False
     try:
-        try:
-            printable = shlex.join(cmd)
-        except Exception:
-            printable = " ".join(cmd)
-        print(f"Running: {printable}")
-        result = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=stderr_fp)
-        ok = (result.returncode == 0 and dst.is_file())
+        if options.enable_transcode:
+            success = lenient_transcode(src, dst, options, capture_stderr, logs_dir)
+            if success:
+                return True
+        if options.enable_reencode:
+            success = decode_and_reencode(src, dst, options, capture_stderr, logs_dir)
+            if success:
+                return True
+        if options.enable_trim:
+            success = trim_and_reencode(src, dst, options, capture_stderr, logs_dir)
+            if success:
+                return True
+        return False
     finally:
-        # close file handle if we opened one
-        if capture_stderr and hasattr(stderr_fp, "close") and stderr_fp is not subprocess.DEVNULL:
-            stderr_fp.close()
-
-    return ok
-
-
-def repair_playlist(playlist: Path, output_dir: Path, ffmpeg_args: str, capture_stderr: bool, overwrite: bool,
-                   broken_playlist: Optional[Path] = None) -> int:
-    if not playlist.is_file():
-        print(f"Playlist not found: {playlist}")
-        return 2
-
-    logs_dir = output_dir / "logs"
-    with playlist.open("r") as f:
-        files = [line.strip() for line in f if line.strip() and Path(line.strip()).is_file()]
-
-    total = len(files)
-    unrepaired: List[str] = []
-
-    for idx, src in enumerate(files, 1):
-        src_path = Path(src)
-        if src_path.is_absolute():
+        if not success and backup_path is not None and backup_path.exists():
             try:
-                rel_path = src_path.relative_to("/Volumes/dotad/MUSIC")
-            except Exception:
-                rel_path = Path(src_path.name)
-        else:
-            rel_path = Path(src_path.name)
-        dst = output_dir.joinpath(rel_path)
-        if dst.is_file():
-            print(f"[{idx}/{total}] Already repaired: {dst}")
-            continue
-        print(f"[{idx}/{total}] Repairing: {src} -> {dst}")
-        ok = run_repair(src_path, dst, ffmpeg_args, capture_stderr, logs_dir)
-        if not ok:
-            print(f"  Failed: {src}")
-            unrepaired.append(src)
-
-    # If a broken_playlist is provided, append unrepaired paths there.
-    if broken_playlist:
-        broken_playlist = Path(broken_playlist)
-        broken_playlist.parent.mkdir(parents=True, exist_ok=True)
-        with broken_playlist.open("a") as bp:
-            for p in unrepaired:
-                bp.write(p + "\n")
-        print(f"Repair complete. {total - len(unrepaired)} files repaired; {len(unrepaired)} appended to {broken_playlist}.")
-    else:
-        if overwrite:
-            with playlist.open("w") as fout:
-                for path in unrepaired:
-                    fout.write(path + "\n")
-            print(
-                f"Repair complete. {total - len(unrepaired)} files repaired, "
-                f"{len(unrepaired)} remain in {playlist}."
-            )
-        else:
-            if unrepaired:
-                print("Unrepaired files:")
-                for p in unrepaired:
-                    print(p)
-            else:
-                print("All files repaired.")
-
-    return 0
+                shutil.copy2(backup_path, dst)
+                print(f"Restored original from backup {backup_path}")
+            except Exception as exc:
+                print(f"Failed to restore backup {backup_path}: {exc}")
 
 
-def repair_single(path: Path, output_dir: Path, ffmpeg_args: str, capture_stderr: bool,
-                  broken_playlist: Optional[Path] = None) -> int:
-    src = Path(path)
-    if not src.is_file():
-        print(f"File not found: {src}")
-        return 2
+def build_options(args: argparse.Namespace) -> PipelineOptions:
+    """Construct :class:`PipelineOptions` from parsed arguments."""
+
+    backup_dir = Path(args.backup_dir).expanduser() if args.backup_dir else None
+    temp_dir = Path(args.temp_dir).expanduser() if args.temp_dir else None
+    return PipelineOptions(
+        ffmpeg_args=args.ffmpeg_args,
+        overwrite=bool(args.overwrite),
+        backup_dir=backup_dir,
+        enable_transcode=bool(args.enable_transcode),
+        enable_reencode=bool(args.enable_reencode),
+        enable_trim=bool(args.enable_trim),
+        trim_seconds=max(0.0, float(args.trim_seconds)),
+        temp_dir=temp_dir,
+    )
+
+
+def resolve_relative_output(src: Path, output_dir: Path) -> Path:
+    """Map *src* into *output_dir*, preserving structure when possible."""
 
     if src.is_absolute():
         try:
@@ -173,18 +388,100 @@ def repair_single(path: Path, output_dir: Path, ffmpeg_args: str, capture_stderr
             rel_path = Path(src.name)
     else:
         rel_path = Path(src.name)
-    dst = Path(output_dir).joinpath(rel_path)
-    logs_dir = Path(output_dir) / "logs"
+    return output_dir.joinpath(rel_path)
+
+
+def repair_playlist(
+    playlist: Path,
+    output_dir: Path,
+    options: PipelineOptions,
+    capture_stderr: bool,
+    overwrite_playlist: bool,
+    broken_playlist: Optional[Path] = None,
+) -> int:
+    """Repair all files listed in *playlist* using the configured pipeline."""
+
+    if not playlist.is_file():
+        print(f"Playlist not found: {playlist}")
+        return 2
+
+    logs_dir = output_dir / "logs"
+    with playlist.open("r", encoding="utf-8") as handle:
+        files = [line.strip() for line in handle if line.strip() and Path(line.strip()).is_file()]
+
+    total = len(files)
+    unrepaired: list[str] = []
+
+    for idx, src in enumerate(files, 1):
+        src_path = Path(src)
+        dst = resolve_relative_output(src_path, output_dir)
+        if dst.is_file() and not options.overwrite:
+            print(f"[{idx}/{total}] Already repaired: {dst}")
+            continue
+        print(f"[{idx}/{total}] Repairing: {src_path} -> {dst}")
+        ok = execute_pipeline(src_path, dst, options, capture_stderr, logs_dir)
+        if not ok:
+            print(f"  Failed: {src_path}")
+            unrepaired.append(src)
+        else:
+            print(f"  Success: {dst}")
+
+    if broken_playlist:
+        broken_playlist.parent.mkdir(parents=True, exist_ok=True)
+        with broken_playlist.open("a", encoding="utf-8") as bp:
+            for entry in unrepaired:
+                bp.write(entry + "\n")
+        print(
+            f"Repair complete. {total - len(unrepaired)} files repaired; "
+            f"{len(unrepaired)} appended to {broken_playlist}."
+        )
+    else:
+        if overwrite_playlist:
+            with playlist.open("w", encoding="utf-8") as fout:
+                for entry in unrepaired:
+                    fout.write(entry + "\n")
+            print(
+                f"Repair complete. {total - len(unrepaired)} files repaired, "
+                f"{len(unrepaired)} remain in {playlist}."
+            )
+        elif unrepaired:
+            print("Unrepaired files:")
+            for entry in unrepaired:
+                print(entry)
+        else:
+            print("All files repaired.")
+
+    return 0
+
+
+def repair_single(
+    path: Path,
+    output_dir: Path,
+    options: PipelineOptions,
+    capture_stderr: bool,
+    broken_playlist: Optional[Path] = None,
+) -> int:
+    """Repair a single file at *path* and write the result under *output_dir*."""
+
+    src = Path(path)
+    if not src.is_file():
+        print(f"File not found: {src}")
+        return 2
+
+    dst = resolve_relative_output(src, output_dir)
+    if dst.is_file() and not options.overwrite:
+        print(f"Already repaired: {dst}")
+        return 0
+    logs_dir = output_dir / "logs"
     print(f"Repairing single file: {src} -> {dst}")
-    ok = run_repair(src, dst, ffmpeg_args, capture_stderr, logs_dir)
+    ok = execute_pipeline(src, dst, options, capture_stderr, logs_dir)
     if not ok:
         print(f"Repair failed: {src}")
         if broken_playlist:
-            bp = Path(broken_playlist)
-            bp.parent.mkdir(parents=True, exist_ok=True)
-            with bp.open("a") as f:
-                f.write(str(src) + "\n")
-            print(f"Appended failed file to {bp}")
+            broken_playlist.parent.mkdir(parents=True, exist_ok=True)
+            with broken_playlist.open("a", encoding="utf-8") as handle:
+                handle.write(str(src) + "\n")
+            print(f"Appended failed file to {broken_playlist}")
         return 1
     print(f"Repaired: {dst}")
     return 0
@@ -193,23 +490,28 @@ def repair_single(path: Path, output_dir: Path, ffmpeg_args: str, capture_stderr
 def main() -> int:
     args = parse_args()
     output_dir = Path(args.output_dir)
+    options = build_options(args)
+    broken_playlist = Path(args.broken_playlist) if args.broken_playlist else None
 
     if getattr(args, "single_file", None):
         return repair_single(
-            args.single_file,
+            Path(args.single_file),
             output_dir,
-            args.ffmpeg_args,
+            options,
             args.capture_stderr,
-            Path(args.broken_playlist) if args.broken_playlist else None,
+            broken_playlist,
         )
 
+    playlist_path = Path(args.playlist) if args.playlist else Path(
+        "/Volumes/dotad/MUSIC/broken_files_unrepaired.m3u"
+    )
     return repair_playlist(
-        Path(args.playlist),
+        playlist_path,
         output_dir,
-        args.ffmpeg_args,
+        options,
         args.capture_stderr,
         args.overwrite_playlist,
-        Path(args.broken_playlist) if args.broken_playlist else None,
+        broken_playlist,
     )
 
 

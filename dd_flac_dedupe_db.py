@@ -22,9 +22,9 @@ from typing import Dict, List, Optional, Sequence, Set, Tuple
 # For base64 fingerprint decoding
 import base64
 import struct
+import time
 
 # Freeze detector state
-import time
 last_progress_timestamp = time.time()
 last_progress_file = None
 freeze_detector_stop = threading.Event()
@@ -1297,6 +1297,57 @@ def scan_files(
 ) -> List[FileInfo]:
     """Walk the filesystem and update cached :class:`FileInfo` entries."""
 
+    # Helper to append to broken playlist, avoiding duplicates
+    broken_playlist_set = set()
+    broken_playlist_path = kwargs.get("broken_playlist_path")
+    if broken_playlist_path and os.path.exists(broken_playlist_path):
+        with open(broken_playlist_path, "r") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    broken_playlist_set.add(line)
+
+    def append_broken_playlist(path: Path):
+        if not broken_playlist_path:
+            return
+        abs_path = str(path.resolve())
+        if abs_path in broken_playlist_set:
+            return
+        with open(broken_playlist_path, "a") as f:
+            f.write(abs_path + "\n")
+        broken_playlist_set.add(abs_path)
+
+    import signal
+    import os
+    import time
+    # Use provided watchdog timeout when available; fallback to a generous default
+    WATCHDOG_TIMEOUT = int(kwargs.get("watchdog_timeout", 300) or 300)
+    last_progress = [time.time()]
+
+    def watchdog():
+        while True:
+            time.sleep(5)
+            if time.time() - last_progress[0] > WATCHDOG_TIMEOUT:
+                # Prefer logging and requesting a graceful stop over hard-killing the process.
+                print(f"[WATCHDOG] No progress for {WATCHDOG_TIMEOUT} seconds. Requesting shutdown.", flush=True)
+                # Signal the freeze detector and request shutdown if available
+                try:
+                    freeze_detector_stop.set()
+                except Exception:
+                    pass
+                # If a shutdown object was passed in kwargs, try to set its stop event
+                try:
+                    sd = kwargs.get("shutdown")
+                    if sd and hasattr(sd, "_stop_event"):
+                        sd._stop_event.set()
+                except Exception:
+                    pass
+                # After requesting shutdown, exit the watchdog thread
+                return
+
+    threading.Thread(target=watchdog, daemon=True).start()
+    """Walk the filesystem and update cached :class:`FileInfo` entries."""
+
     global last_progress_timestamp, last_progress_file
 
     import time
@@ -1342,7 +1393,7 @@ def scan_files(
     no_segwin = kwargs["no_segwin"]
     hash_mode = kwargs["hash_mode"]
     shutdown = kwargs["shutdown"]
-    verbose = kwargs.get("verbose", False)
+    verbose = kwargs.get("verbose", True)
 
     next_id = _next_file_id(conn)
     discovered = 0
@@ -1373,14 +1424,9 @@ def scan_files(
         for filename in sorted(filenames):
             if shutdown.should_stop():
                 break
+            if not filename.lower().endswith('.flac'):
+                continue  # Ignore non-FLAC files entirely
             path = Path(dirpath) / filename
-            if path.suffix.lower() != ".flac":
-                # Log skipped non-flac files as SKIPPED
-                log_scan_entry(path, "SKIPPED")
-                global last_progress_timestamp, last_progress_file
-                last_progress_timestamp = time.time()
-                last_progress_file = str(path)
-                continue
             discovered += 1
             if discovered % ticker_interval == 0:
                 log(f"Progress: {discovered} files processed...")
@@ -1521,6 +1567,7 @@ def scan_files(
             except Exception:
                 # don't let logging errors interrupt the run
                 pass
+            append_broken_playlist(path)
             log(f"Skipping broken file (cached metadata): {path}")
             # Do not early-return None; return the populated info so the outer loop
             # will upsert it into the DB and future runs will treat it as cached.
@@ -1537,9 +1584,12 @@ def scan_files(
             future_map = {
                 executor.submit(analyze, task): task[0] for task in pending
             }
+            print(f"[DIAG] Submitted {len(future_map)} tasks to ThreadPoolExecutor", flush=True)
             for future in as_completed(future_map):
                 path = future_map[future]
+                print(f"[DIAG] Waiting for result: {path}", flush=True)
                 try:
+                    # as_completed yields futures that are done; no per-future timeout needed
                     info = future.result()
                 except Exception as exc:  # pragma: no cover - defensive
                     log(f"Error processing {path}: {exc}")
@@ -1567,8 +1617,11 @@ def scan_files(
                 except Exception:
                     pass
                 completed += 1
+                last_progress[0] = time.time()
+                print(f"[DIAG] Completed {completed}/{total_files} ({path})", flush=True)
                 if completed % 100 == 0 or completed == total_files:
                     print(f"[{time.strftime('%H:%M:%S')}] Processed {completed}/{total_files} files")
+            print(f"[DIAG] All tasks completed.", flush=True)
 
     # Stop the freeze detector watcher
     freeze_detector_stop.set()
@@ -1654,13 +1707,13 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument(
         "--cmd-timeout",
         type=int,
-        default=45,
+        default=10,
         help="Seconds for short external commands (fpcalc, flac -t, ffprobe, metaflac)"
     )
     parser.add_argument(
         "--decode-timeout",
         type=int,
-        default=120,
+        default=30,
         help="Seconds allowed for decoding/streaming operations (ffmpeg hashing)"
     )
     """Return parsed command line arguments."""
@@ -1671,8 +1724,8 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--root",
-        default="/Volumes/dotad/DD",
-        help="Root directory to scan (default: /Volumes/dotad/DD)",
+        default="/Volumes/dotad/MUSIC",
+        help="Root directory to scan (default: /Volumes/dotad/MUSIC)",
     )
     parser.add_argument(
         "--commit",
@@ -1722,7 +1775,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument(
         "--segwin-seconds",
         type=float,
-        default=15.0,
+        default=30.0,
         help="Length of PCM excerpts used for segment hashing",
     )
     parser.add_argument(
@@ -1783,6 +1836,17 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         "--dry-run",
         action="store_true",
         help="Force dry-run mode even if --commit is provided"
+    )
+    parser.add_argument(
+        "--broken-playlist",
+        type=str,
+        help="Path to write playlist of broken files for repair (default: <root>/broken_files_unrepaired.m3u)",
+    )
+    parser.add_argument(
+        "--watchdog-timeout",
+        type=int,
+        default=300,
+        help="Seconds of inactivity before watchdog warns and requests shutdown (default: 300)",
     )
     return parser.parse_args(argv)
 
@@ -1854,6 +1918,7 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
             hash_mode=args.hash_mode,
             shutdown=shutdown,
             verbose=args.verbose,
+            watchdog_timeout=getattr(args, "watchdog_timeout", None),
         )
 
         if args.verbose:

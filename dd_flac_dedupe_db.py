@@ -1734,6 +1734,13 @@ def scan_files(
                         "Freeze detector triggered",
                         context=last_progress_file,
                     )
+                # Kill any stalled ffmpeg processes
+                try:
+                    subprocess.run(["pkill", "-9", "ffmpeg"],
+                                   check=False, timeout=5)
+                    log("Killed stalled ffmpeg processes")
+                except Exception as e:
+                    log(f"Failed to kill ffmpeg: {e}")
                 if quarantine_dir and os.path.exists(last_progress_file):
                     try:
                         os.makedirs(quarantine_dir, exist_ok=True)

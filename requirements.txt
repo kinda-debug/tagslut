@@ -1,0 +1,12 @@
+# FLAC Deduplication Requirements
+#
+# This project uses only Python standard library modules.
+# All dependencies are system-level tools that must be installed separately:
+#
+# macOS (with Homebrew):
+#   brew install ffmpeg chromaprint flac sqlite3
+#
+# Ubuntu/Debian:
+#   sudo apt-get install ffmpeg libchromaprint-tools flac sqlite3
+#
+# No Python packages required - all imports are from the standard library.

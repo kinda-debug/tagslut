@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 
 from __future__ import annotations
 
@@ -811,7 +812,7 @@ def compute_segment_hash(
     ]
     try:
         heartbeat(path)
-        # Launch ffmpeg in its own process group so we can kill children if stalled.
+        # Launch ffmpeg in its own process group
         process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
@@ -1212,6 +1213,56 @@ def load_file_from_db(conn: sqlite3.Connection, path: Path) -> Optional[FileInfo
         exact_key_type=data.get("exact_key_type"),
         segments=segments,
     )
+
+
+def load_all_files_from_db(conn: sqlite3.Connection) -> List[FileInfo]:
+    """Return all :class:`FileInfo` entries from the database."""
+
+    files = []
+    cursor = conn.execute("SELECT * FROM files")
+    columns = [desc[0] for desc in cursor.description]
+    for row in cursor.fetchall():
+        data = dict(zip(columns, row))
+
+        segments = SegmentHashes(
+            head=data.get("seg_h1"),
+            middle=data.get("seg_h2"),
+            tail=data.get("seg_h3"),
+        )
+
+        fingerprint_values: Optional[List[int]] = None
+        if data.get("fingerprint"):
+            try:
+                fingerprint_values = json.loads(data["fingerprint"])
+                if not isinstance(fingerprint_values, list):
+                    fingerprint_values = None
+            except json.JSONDecodeError:
+                fingerprint_values = None
+
+        file_info = FileInfo(
+            id=data["id"],
+            path=Path(data["path"]),
+            inode=data.get("inode") or 0,
+            size_bytes=data.get("size_bytes") or 0,
+            mtime=data.get("mtime") or 0.0,
+            codec=data.get("codec"),
+            lossless=bool(data.get("lossless") or False),
+            duration=data.get("duration"),
+            bitrate_kbps=data.get("bitrate_kbps"),
+            stream_md5=data.get("stream_md5"),
+            pcm_sha1=data.get("pcm_sha1"),
+            fingerprint=fingerprint_values,
+            fingerprint_hash=data.get("fingerprint_hash"),
+            fuzzy_key=data.get("fuzzy_key"),
+            fuzzy_duration=data.get("fuzzy_duration"),
+            healthy=None if data.get("healthy") is None else bool(data.get("healthy")),
+            health_note=data.get("health_note"),
+            exact_key_type=data.get("exact_key_type"),
+            segments=segments,
+        )
+        files.append(file_info)
+
+    return files
 
 
 def upsert_file(conn: sqlite3.Connection, info: FileInfo) -> None:
@@ -2144,51 +2195,11 @@ def persist_groups(conn: sqlite3.Connection, run_id: int, groups: Sequence[Group
         )
         group_id = cursor.lastrowid
         entries = []
-        for member in [group.keeper] + group.losers:
-            role = "keeper" if member == group.keeper else "loser"
-            entries.append((group_id, member.id, role, None, None))
-        conn.executemany(
-            """
-            INSERT INTO group_members (group_id, file_id, role, action, dest_path)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            entries,
-        )
-    conn.commit()
-
-
-###############################################################################
-# CLI parsing and main entry point
-###############################################################################
 
 
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Scan FLAC files and build database index",
-    )
-    parser.add_argument(
-        "--auto-quarantine",
-        action="store_true",
-        help="Automatically move files that cause a freeze to a _BROKEN folder",
-    )
-    parser.add_argument(
-        "--cmd-timeout",
-        type=int,
-        default=10,
-        help="Seconds for short external commands (fpcalc, flac -t, ffprobe, metaflac)"
-    )
-    parser.add_argument(
-        "--decode-timeout",
-        type=int,
-        default=30,
-        help="Seconds allowed for decoding/streaming operations (ffmpeg hashing)"
-    )
-    parser.add_argument(
-        "--skip-broken",
-        action="store_false",
-        default=True,
-        dest="skip_broken",
-        help="Skip files that fail health check (do not abort run)",
+        description="Dedupe FLAC files using database index",
     )
     parser.add_argument(
         "--root",
@@ -2196,77 +2207,15 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         help="Root directory to scan (default: /Volumes/dotad/MUSIC)",
     )
     parser.add_argument(
+        "--commit",
+        action="store_true",
+        help="Actually move duplicate files to trash directory",
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         default=True,
         help="Log additional progress information",
-    )
-    parser.add_argument(
-        "--recompute",
-        action="store_true",
-        help="Force recomputation of fingerprints and segment hashes",
-    )
-    parser.add_argument(
-        "--workers",
-        type=int,
-        default=8,
-        help="Number of worker threads for audio analysis",
-    )
-    parser.add_argument(
-        "--hash-mode",
-        choices=["auto", "file"],
-        default="auto",
-        help="Hashing mode: auto prefers FLAC MD5, file always recomputes PCM hash",
-    )
-    parser.add_argument(
-        "--segwin-seconds",
-        type=float,
-        default=30.0,
-        help="Length of PCM excerpts used for segment hashing",
-    )
-    parser.add_argument(
-        "--segwin-sliding",
-        action="store_true",
-        help="Enable sliding window segment comparison",
-    )
-    parser.add_argument(
-        "--segwin-step",
-        type=float,
-        default=5.0,
-        help="Seconds between sliding segment hashes",
-    )
-    parser.add_argument(
-        "--segwin-max-slices",
-        type=int,
-        default=6,
-        help="Maximum number of sliding segment hashes to compute",
-    )
-    parser.add_argument(
-        "--segwin-min-matches",
-        type=int,
-        default=3,
-        help="Required number of matching segments for SEGWIN grouping",
-    )
-    parser.add_argument(
-        "--segwin-trim-head",
-        action="store_true",
-        help="Compute an additional trimmed head segment hash",
-    )
-    parser.add_argument(
-        "--aggressive",
-        action="store_true",
-        help="Use aggressive normalization when building fuzzy keys",
-    )
-    parser.add_argument(
-        "--fuzzy-seconds",
-        type=float,
-        default=2.0,
-        help="Duration tolerance for fuzzy filename matching",
-    )
-    parser.add_argument(
-        "--no-fp",
-        action="store_true",
-        help="Skip fingerprint computation",
     )
     parser.add_argument(
         "--fp-sim-ratio",
@@ -2287,66 +2236,26 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         help="Minimum overlapping frames for fingerprint similarity",
     )
     parser.add_argument(
-        "--no-segwin",
-        action="store_true",
-        help="Skip segment window hashing",
-    )
-    parser.add_argument(
-        "--broken-playlist",
-        type=str,
-        default="/Volumes/dotad/MUSIC/broken_files_unrepaired.m3u",
-        help="Path to write playlist of broken files for repair (default: /Volumes/dotad/MUSIC/broken_files_unrepaired.m3u)",
-    )
-    parser.add_argument(
-        "--watchdog-timeout",
+        "--segwin-min-matches",
         type=int,
-        default=300,
-        help="Seconds of inactivity before watchdog warns and requests shutdown (default: 300)",
+        default=3,
+        help="Required number of matching segments for SEGWIN grouping",
     )
     parser.add_argument(
-        "--diagnostic-root",
+        "--fuzzy-seconds",
+        type=float,
+        default=2.0,
+        help="Duration tolerance for fuzzy filename matching",
+    )
+    parser.add_argument(
+        "--trash-dir",
         type=str,
-        default="/Volumes/dotad/.dedupe_diagnostics",
-        help="Directory for diagnostic dumps (default: /Volumes/dotad/.dedupe_diagnostics)",
+        help="Optional custom directory for moving duplicate losers"
     )
     parser.add_argument(
-        "--dump-fpcalc",
-        dest="dump_fpcalc",
+        "--dry-run",
         action="store_true",
-        default=True,
-        help="Enable fpcalc stdout dumps (default)",
-    )
-    parser.add_argument(
-        "--no-dump-fpcalc",
-        dest="dump_fpcalc",
-        action="store_false",
-        help="Disable fpcalc stdout dumps",
-    )
-    parser.add_argument(
-        "--dump-decode",
-        dest="dump_decode",
-        action="store_true",
-        default=True,
-        help="Enable decode diagnostics dumps (default)",
-    )
-    parser.add_argument(
-        "--no-dump-decode",
-        dest="dump_decode",
-        action="store_false",
-        help="Disable decode diagnostics dumps",
-    )
-    parser.add_argument(
-        "--dump-watchdog",
-        dest="dump_watchdog",
-        action="store_true",
-        default=True,
-        help="Enable watchdog diagnostic dumps (default)",
-    )
-    parser.add_argument(
-        "--no-dump-watchdog",
-        dest="dump_watchdog",
-        action="store_false",
-        help="Disable watchdog diagnostic dumps",
+        help="Force dry-run mode even if --commit is provided"
     )
     return parser.parse_args(argv)
 
@@ -2355,39 +2264,6 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
     """Entry point used by :func:`main` and unit tests."""
 
     args = parse_args(argv)
-    global CMD_TIMEOUT, DECODE_TIMEOUT
-    CMD_TIMEOUT = max(5, int(args.cmd_timeout))
-    DECODE_TIMEOUT = max(10, int(args.decode_timeout))
-    global DIAGNOSTICS
-    diag_root = Path(getattr(args, "diagnostic_root", "/Volumes/dotad/.dedupe_diagnostics")).expanduser()
-    DIAGNOSTICS = DiagnosticsManager(
-        root=diag_root,
-        dump_fpcalc=getattr(args, "dump_fpcalc", True),
-        dump_decode=getattr(args, "dump_decode", True),
-        dump_watchdog=getattr(args, "dump_watchdog", True),
-    )
-    log(f"Diagnostics root: {DIAGNOSTICS.root}")
-    if getattr(args, "fpcalc_dump_latest", False) or getattr(args, "check_fpcalc", False):
-        latest = DIAGNOSTICS.latest("fpcalc")
-        if latest is None:
-            print(f"No fpcalc dumps found under {DIAGNOSTICS.root / 'fpcalc'}")
-            return 0
-        print(f"Latest fpcalc dump: {latest}")
-        if getattr(args, "check_fpcalc", False):
-            try:
-                print(latest.read_text(encoding="utf-8"))
-            except OSError as exc:
-                print(f"Failed to read {latest}: {exc}")
-        if getattr(args, "fpcalc_dump_latest", False) and not getattr(args, "check_fpcalc", False):
-            return 0
-        if getattr(args, "check_fpcalc", False):
-            return 0
-    trash_dir = Path(args.trash_dir).expanduser() if getattr(args, "trash_dir", None) else None
-    if trash_dir:
-        ensure_directory(trash_dir)
-    for tool in ["ffmpeg", "fpcalc", "flac", "metaflac", "ffprobe"]:
-        status = "available" if is_tool_available(tool) else "missing"
-        log(f"Tool {tool}: {status}")
 
     root = Path(args.root).expanduser()
     root_path = root.as_posix()
@@ -2395,61 +2271,54 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
         raise SystemExit(f"Root directory {root} does not exist")
 
     db_path = root / "_DEDUP_INDEX.db"
-    ensure_directory(db_path.parent)
+    if not db_path.exists():
+        raise SystemExit(f"Database {db_path} does not exist. Run scan first.")
+
     conn = sqlite3.connect(db_path.as_posix(), timeout=30)
     ensure_schema(conn)
 
-    shutdown = GracefulShutdown()
-    shutdown.install()
+    run_id = record_run(conn, root, not args.commit, {})
 
-    options = {
-        "hash_mode": args.hash_mode,
-        "no_fp": args.no_fp,
-        "no_segwin": args.no_segwin,
-        "fp_sim_ratio": args.fp_sim_ratio,
-        "fp_sim_shift": args.fp_sim_shift,
-        "fp_sim_min_overlap": args.fp_sim_min_overlap,
-        "segwin_seconds": args.segwin_seconds,
-        "segwin_min_matches": args.segwin_min_matches,
-        "segwin_sliding": args.segwin_sliding,
-        "segwin_step": args.segwin_step,
-        "segwin_max_slices": args.segwin_max_slices,
-        "segwin_trim_head": args.segwin_trim_head,
-        "fuzzy_seconds": args.fuzzy_seconds,
-        "aggressive": args.aggressive,
-        "workers": args.workers,
-        "recompute": args.recompute,
-        "cmd_timeout": CMD_TIMEOUT,
-        "decode_timeout": DECODE_TIMEOUT,
-    }
+    try:
+        files = load_all_files_from_db(conn)
 
-    run_id = record_run(conn, root, True, options)
-    files = scan_files(
-        root=root,
-        workers=getattr(args, "workers", 1),
-        skip_broken=getattr(args, "skip_broken", False),
-        auto_quarantine=getattr(args, "auto_quarantine", False),
-        conn=conn,
-        recompute=args.recompute,
-        seg_length=args.segwin_seconds,
-        segwin_sliding=args.segwin_sliding,
-        slide_step=args.segwin_step,
-        slide_max_slices=args.segwin_max_slices,
-        include_trim_head=args.segwin_trim_head,
-        aggressive_fuzzy=args.aggressive,
-        no_fp=args.no_fp,
-        no_segwin=args.no_segwin,
-        hash_mode=args.hash_mode,
-        shutdown=shutdown,
-        verbose=args.verbose,
-        watchdog_timeout=getattr(args, "watchdog_timeout", None),
-        broken_playlist_path=str(args.broken_playlist) if getattr(args, "broken_playlist", None) else None,
-    )
+        if args.verbose:
+            log(f"Loaded {len(files)} files from database for deduplication…")
 
-    # Scan completed
-    finalize_run(conn, run_id)
-    conn.close()
-    log(f"Scan completed. {len(files)} files processed. DB updated: {db_path}")
+        groups = build_groups(
+            files=files,
+            fp_sim_ratio=args.fp_sim_ratio,
+            fp_sim_shift=args.fp_sim_shift,
+            fp_sim_min_overlap=args.fp_sim_min_overlap,
+            use_fingerprint=True,  # Assume fingerprints are computed
+            use_segwin=True,
+            segwin_min_matches=args.segwin_min_matches,
+            use_slide=True,
+            fuzzy_duration_tol=args.fuzzy_seconds,
+        )
+
+        if args.verbose:
+            log(f"Formed {len(groups)} duplicate groups")
+
+        persist_groups(conn, run_id, groups)
+
+        timestamp = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+        trash_dir = Path(args.trash_dir).expanduser() if args.trash_dir else (root / f"_TRASH_DUPES_{timestamp}")
+        report_path = root / f"_DEDUP_REPORT_{timestamp}.csv"
+
+        write_csv(report_path, groups, trash_dir, args.commit)
+
+        if args.commit and not args.dry_run:
+            move_duplicates(groups, trash_dir)
+        else:
+            log("Dry run mode: no files moved")
+
+        log(f"CSV report written to {report_path}")
+        log(f"Trash directory: {trash_dir}")
+    finally:
+        finalize_run(conn, run_id)
+        conn.close()
+
     return 0
 
 

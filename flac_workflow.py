@@ -11,7 +11,7 @@ def main():
 
     # Step 1: Scan
     print("Step 1: Scanning files...")
-    cmd = [sys.executable, "scan_flac_db.py"]
+    cmd = [sys.executable, "flac_scan.py"]
     result = subprocess.run(cmd, check=True)
     if result.returncode != 0:
         print("Scan failed")
@@ -21,7 +21,7 @@ def main():
     broken_playlist = Path(root) / "broken_files_unrepaired.m3u"
     if broken_playlist.exists() and broken_playlist.read_text().strip():
         print("Step 2: Repairing broken files...")
-        cmd = [sys.executable, "repair_flacs.py"]
+        cmd = [sys.executable, "flac_repair.py"]
         result = subprocess.run(cmd, check=True)
         if result.returncode != 0:
             print("Repair failed")
@@ -31,8 +31,7 @@ def main():
 
     # Step 3: Dedupe
     print("Step 3: Deduplicating...")
-    cmd = [sys.executable, "dd_flac_dedupe_db.py", "--root", root,
-           "--commit", "--verbose"]
+    cmd = [sys.executable, "flac_dedupe.py", "--commit", "--verbose"]
     result = subprocess.run(cmd, check=True)
     if result.returncode != 0:
         print("Deduplication failed")

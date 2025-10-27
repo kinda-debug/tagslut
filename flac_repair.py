@@ -24,6 +24,61 @@ import os
 import signal
 import time
 
+# Import formatting settings from flac_scan
+from flac_scan import gay_flag_colors, timestamp_color_index, colorize_path, last_timestamp_color, progress_word_offset
+
+
+def log(message: str) -> None:
+    """Print a human friendly timestamped log message."""
+
+    timestamp = _dt.datetime.now().strftime("%H:%M:%S")
+    
+    # Colorize paths in the message
+    if ": " in message:
+        prefix, rest = message.split(": ", 1)
+        if "/" in rest or "\\" in rest:  # detect path
+            rest = colorize_path(rest.strip())
+            message = f"{prefix}: {rest}"
+    
+    global timestamp_color_index
+    timestamp_color = gay_flag_colors[timestamp_color_index % 6]
+    timestamp_color_index += 1
+    global last_timestamp_color
+    last_timestamp_color = timestamp_color
+    
+    message_color = ""
+    if "Progress" in message:
+        # Color only the number in rainbow
+        global progress_word_offset
+        parts = message.split()
+        if len(parts) >= 2:
+            number = parts[1]
+            color = gay_flag_colors[progress_word_offset % 6]
+            progress_word_offset += 1
+            parts[1] = f"{color}{number}\033[0m"
+            message = " ".join(parts)
+        # Make percentage bold
+        import re
+        message = re.sub(r'\(([^)]*)\)', r'(\033[1m\1\033[0m)', message)
+    elif "cached metadata" in message:
+        message_color = "\033[35m"  # magenta for cached skips
+    elif "Added broken file to playlist" in message:
+        message_color = "\033[35m"  # magenta for added to playlist
+    elif "WARNING" in message or "Error" in message or "freeze" in message.lower():
+        message_color = "\033[33m"  # yellow for warnings/errors
+    elif "Skipping" in message or "broken" in message or "quarantine" in message.lower():
+        message_color = "\033[31m"  # red for skips/broken
+    elif "Processed" in message or "completed" in message or "Killed" in message:
+        if ": " in message:
+            prefix, rest = message.split(": ", 1)
+            # Color prefix green, rest lighter grey (white)
+            print(f"{timestamp_color}[{timestamp}]\033[0m \033[32m{prefix}:\033[0m \033[37m{rest}\033[0m")
+            return
+        else:
+            message_color = "\033[32m"  # green for success
+    
+    print(f"{timestamp_color}[{timestamp}]\033[0m {message_color}{message}\033[0m")
+
 
 def parse_args():
     p = argparse.ArgumentParser(description="Repair FLAC files or a single FLAC file")
@@ -481,15 +536,15 @@ def repair_playlist(
         src_path = Path(src)
         dst = resolve_relative_output(src_path, output_dir)
         if dst.is_file() and not options.overwrite:
-            print(f"[{idx}/{total}] Already repaired: {dst}")
             continue
-        print(f"[{idx}/{total}] Repairing: {src_path} -> {dst}")
+        percent = (idx / total * 100.0) if total else 0.0
+        log(f"Progress: {idx}/{total} ({percent:.1f}%) — {src.name}")
         ok = execute_pipeline(src_path, dst, options, capture_stderr, logs_dir)
         if not ok:
-            print(f"  Failed: {src_path}")
+            log(f"Failed: {src_path.name}")
             unrepaired.append(src)
         else:
-            print(f"  Success: {dst}")
+            log(f"Repaired: {dst.name}")
 
     if broken_playlist:
         broken_playlist.parent.mkdir(parents=True, exist_ok=True)
@@ -570,6 +625,8 @@ def main() -> int:
     playlist_path = Path(args.playlist) if args.playlist else Path(
         "/Volumes/dotad/MUSIC/broken_files_unrepaired.m3u"
     )
+    if broken_playlist is None:
+        broken_playlist = playlist_path
     return repair_playlist(
         playlist_path,
         output_dir,

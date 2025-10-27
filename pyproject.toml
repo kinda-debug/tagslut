@@ -7,7 +7,7 @@ readme = "README.md"
 packages = [{include = "*.py"}]
 
 [tool.poetry.dependencies]
-python = "^3.8"
+python = "^3.8.1"
 # tomllib is in Python 3.11+ standard library, handled gracefully in code
 # All other dependencies are standard library, but we document system requirements
 

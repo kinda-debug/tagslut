@@ -1461,6 +1461,9 @@ def build_groups(
     segwin_min_matches: int,
     use_slide: bool,
     fuzzy_duration_tol: float,
+    verbose: bool = False,
+    fp_duration_window: float = 2.0,
+    fp_size_percent: float = 1.0,
 ) -> List[GroupResult]:
     """Group files using the staged deduplication pipeline."""
 
@@ -1505,14 +1508,41 @@ def build_groups(
             if len(members) > 1:
                 register_group(f"FP:{key}", "FPRINT", members)
 
-        # Stage C: FPRINT similarity
+        # Stage C: FPRINT similarity (pairwise compare — potentially expensive)
         fp_candidates = [file for file in files if file.id in remaining and file.fingerprint]
         used_pairs: Set[Tuple[int, int]] = set()
+        n_fp = len(fp_candidates)
+        if verbose:
+            log(f"FPRINT_SIM: comparing {n_fp} candidates (applying duration window {fp_duration_window}s and size percent {fp_size_percent}%)")
+        pair_count = 0
+        log_interval = max(1, n_fp // 10)
+        # Only actually compare fingerprints when files pass the pre-filter
         for i, file_a in enumerate(fp_candidates):
             for file_b in fp_candidates[i + 1 :]:
+                # Pre-filter by duration when both durations are known
+                allowed = False
+                if file_a.duration is not None and file_b.duration is not None:
+                    if abs((file_a.duration or 0.0) - (file_b.duration or 0.0)) <= fp_duration_window:
+                        allowed = True
+                else:
+                    # Fallback to size-based relative difference
+                    try:
+                        sa = file_a.size_bytes or 0
+                        sb = file_b.size_bytes or 0
+                        if sa > 0 and sb > 0:
+                            rel = abs(sa - sb) / max(sa, sb) * 100.0
+                            if rel <= fp_size_percent:
+                                allowed = True
+                    except Exception:
+                        allowed = False
+                if not allowed:
+                    continue
                 pair = tuple(sorted((file_a.id, file_b.id)))
                 if pair in used_pairs:
                     continue
+                pair_count += 1
+                if verbose and pair_count % (log_interval * 100) == 0:
+                    log(f"  FPRINT_SIM progress: compared {pair_count} pairs")
                 ratio, shift, overlap = fingerprint_similarity(
                     file_a.fingerprint or [],
                     file_b.fingerprint or [],
@@ -1549,6 +1579,8 @@ def build_groups(
             if root_a != root_b:
                 parent[root_b] = root_a
 
+        if verbose:
+            log(f"SEGWIN: comparing {len(seg_candidates)} candidates")
         for i, file_a in enumerate(seg_candidates):
             for file_b in seg_candidates[i + 1 :]:
                 matches = 0
@@ -1581,6 +1613,8 @@ def build_groups(
         slide_candidates = [
             file for file in files if file.id in remaining and file.segments.slide_hashes
         ]
+        if verbose:
+            log(f"SEGWIN_SLIDE: processing {len(slide_candidates)} candidates")
         parent: Dict[int, int] = {file.id: file.id for file in slide_candidates}
         seen: Dict[str, int] = {}
 
@@ -1639,6 +1673,40 @@ def build_groups(
                 bucket.append(file)
 
     return groups
+
+
+def estimate_fp_pairs(
+    files: Sequence[FileInfo],
+    fp_duration_window: float,
+    fp_size_percent: float,
+) -> Tuple[int, int]:
+    """Estimate the number of fingerprint candidates and allowed pairs after pre-filter.
+
+    Returns (n_candidates, allowed_pairs)
+    """
+    fp_candidates = [file for file in files if file.fingerprint]
+    n_fp = len(fp_candidates)
+    allowed = 0
+    # Count pairs that would pass the duration/size pre-filter
+    for i, a in enumerate(fp_candidates):
+        for b in fp_candidates[i + 1 :]:
+            allowed_flag = False
+            if a.duration is not None and b.duration is not None:
+                if abs((a.duration or 0.0) - (b.duration or 0.0)) <= fp_duration_window:
+                    allowed_flag = True
+            else:
+                try:
+                    sa = a.size_bytes or 0
+                    sb = b.size_bytes or 0
+                    if sa > 0 and sb > 0:
+                        rel = abs(sa - sb) / max(sa, sb) * 100.0
+                        if rel <= fp_size_percent:
+                            allowed_flag = True
+                except Exception:
+                    allowed_flag = False
+            if allowed_flag:
+                allowed += 1
+    return n_fp, allowed
 
 
 ###############################################################################
@@ -1739,8 +1807,27 @@ def move_duplicates(groups: Sequence[GroupResult], trash_dir: Path) -> None:
         for file in group.losers:
             dest = plan_trash_destination(trash_dir, file.path)
             ensure_directory(dest.parent)
-            log(f"Moving {file.path} -> {dest}")
-            shutil.move(file.path.as_posix(), dest.as_posix())
+            # If the source file no longer exists (moved/deleted externally),
+            # don't abort the whole run — log and continue.
+            try:
+                if not file.path.exists():
+                    log(f"Missing (skipping): {file.path}")
+                    continue
+                log(f"Moving {file.path} -> {dest}")
+                shutil.move(file.path.as_posix(), dest.as_posix())
+            except FileNotFoundError:
+                # Source vanished between the exists() check and the move call.
+                log(f"Missing during move (skipping): {file.path}")
+                continue
+            except Exception as exc:
+                # Log the failure and continue with other files; do not abort the run.
+                log(f"Failed to move {file.path} -> {dest}: {exc}")
+                try:
+                    errlog = trash_dir.parent / "_DEDUP_MOVE_ERRORS.txt"
+                    with errlog.open("a", encoding="utf-8") as fh:
+                        fh.write(f"{_dt.datetime.now().isoformat()}\t{file.path}\t{dest}\t{exc}\n")
+                except Exception:
+                    pass
 
 
 ###############################################################################
@@ -2193,8 +2280,7 @@ def persist_groups(conn: sqlite3.Connection, run_id: int, groups: Sequence[Group
             """,
             (run_id, group.key, group.method, group.keeper.id),
         )
-        group_id = cursor.lastrowid
-        entries = []
+        cursor.lastrowid
 
 
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
@@ -2222,6 +2308,36 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         type=float,
         default=0.62,
         help="Minimum similarity ratio for fingerprint grouping",
+    )
+    parser.add_argument(
+        "--no-fp",
+        "--skip-fingerprint",
+        dest="use_fingerprint",
+        action="store_false",
+        help="Skip the expensive fingerprint similarity stage (speeds up dedupe)",
+    )
+    parser.add_argument(
+        "--fp-duration-window",
+        type=float,
+        default=2.0,
+        help="Maximum duration difference in seconds to allow fingerprint comparison (default: 2.0)",
+    )
+    parser.add_argument(
+        "--fp-size-percent",
+        type=float,
+        default=1.0,
+        help="Maximum relative size difference (percent) to allow fingerprint comparison when duration is unknown (default: 1.0)",
+    )
+    parser.add_argument(
+        "--fp-estimate",
+        action="store_true",
+        help="Estimate how many fingerprint pair comparisons would run with current filters and exit",
+    )
+    parser.add_argument(
+        "--fp-rate",
+        type=float,
+        default=300.0,
+        help="Pairs-per-second estimate used to compute ETA when --fp-estimate is used (default: 300)",
     )
     parser.add_argument(
         "--fp-sim-shift",
@@ -2282,6 +2398,25 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
     try:
         files = load_all_files_from_db(conn)
 
+        if args.fp_estimate:
+            n_fp, allowed = estimate_fp_pairs(
+                files, args.fp_duration_window, args.fp_size_percent
+            )
+            total_pairs = n_fp * (n_fp - 1) // 2
+            print(f"Estimated fingerprint candidates: {n_fp}")
+            print(f"Total possible pairs (without pre-filter): {total_pairs}")
+            print(f"Pairs passing pre-filter: {allowed}")
+            rate = float(args.fp_rate or 300.0)
+            if allowed > 0:
+                secs = allowed / rate
+                hrs = int(secs // 3600)
+                mins = int((secs % 3600) // 60)
+                secs_r = int(secs % 60)
+                print(f"Estimated time at {rate:.0f} pairs/s: {hrs}h {mins}m {secs_r}s")
+            else:
+                print("No pairs would be compared with the current pre-filter settings.")
+            return 0
+
         if args.verbose:
             log(f"Loaded {len(files)} files from database for deduplication…")
 
@@ -2290,11 +2425,14 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
             fp_sim_ratio=args.fp_sim_ratio,
             fp_sim_shift=args.fp_sim_shift,
             fp_sim_min_overlap=args.fp_sim_min_overlap,
-            use_fingerprint=True,  # Assume fingerprints are computed
+                use_fingerprint=args.use_fingerprint,  # Respect --no-fp / --skip-fingerprint
             use_segwin=True,
             segwin_min_matches=args.segwin_min_matches,
             use_slide=True,
             fuzzy_duration_tol=args.fuzzy_seconds,
+            verbose=args.verbose,
+            fp_duration_window=args.fp_duration_window,
+            fp_size_percent=args.fp_size_percent,
         )
 
         if args.verbose:

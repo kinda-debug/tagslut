@@ -25,7 +25,8 @@ import signal
 import time
 
 # Import formatting settings from flac_scan
-from flac_scan import gay_flag_colors, timestamp_color_index, colorize_path, last_timestamp_color, progress_word_offset
+from flac_scan import gay_flag_colors, timestamp_color_index, colorize_path, last_timestamp_color
+import flac_scan
 
 
 def log(message: str) -> None:
@@ -40,26 +41,26 @@ def log(message: str) -> None:
             rest = colorize_path(rest.strip())
             message = f"{prefix}: {rest}"
     
-    global timestamp_color_index
-    timestamp_color = gay_flag_colors[timestamp_color_index % 6]
-    timestamp_color_index += 1
-    global last_timestamp_color
-    last_timestamp_color = timestamp_color
+    # Rotate the timestamp color using the shared index in flac_scan
+    timestamp_color = gay_flag_colors[flac_scan.timestamp_color_index % 6]
+    flac_scan.timestamp_color_index += 1
+    flac_scan.last_timestamp_color = timestamp_color
     
     message_color = ""
     if "Progress" in message:
         # Color only the number in rainbow
-        global progress_word_offset
         parts = message.split()
         if len(parts) >= 2:
             number = parts[1]
-            color = gay_flag_colors[progress_word_offset % 6]
-            progress_word_offset += 1
+            color = gay_flag_colors[flac_scan.progress_word_offset % 6]
+            flac_scan.progress_word_offset += 1
             parts[1] = f"{color}{number}\033[0m"
             message = " ".join(parts)
-        # Make percentage bold
-        import re
-        message = re.sub(r'\(([^)]*)\)', r'(\033[1m\1\033[0m)', message)
+            # Make percentage bold (white bold)
+            try:
+                message = re.sub(r'\(([^)]*%)\)', r'(\033[1;37m\1\033[0m)', message)
+            except Exception:
+                pass
     elif "cached metadata" in message:
         message_color = "\033[35m"  # magenta for cached skips
     elif "Added broken file to playlist" in message:
@@ -68,6 +69,12 @@ def log(message: str) -> None:
         message_color = "\033[33m"  # yellow for warnings/errors
     elif "Skipping" in message or "broken" in message or "quarantine" in message.lower():
         message_color = "\033[31m"  # red for skips/broken
+    elif "Repaired" in message:
+        # Successful repair -> green
+        message_color = "\033[32m"
+    elif "Failed" in message or "Failure" in message or message.strip().startswith("Failed:"):
+        # Failed repair -> red
+        message_color = "\033[31m"
     elif "Processed" in message or "completed" in message or "Killed" in message:
         if ": " in message:
             prefix, rest = message.split(": ", 1)
@@ -202,11 +209,6 @@ def _stderr_log_path(logs_dir: Path, dst: Path, step: str) -> Path:
 def _run_ffmpeg_step(cmd: Iterable[str], step: str, log_path: Optional[Path]) -> Tuple[bool, str]:
     """Execute *cmd* via ``ffmpeg`` and optionally persist stderr."""
     command = list(cmd)
-    try:
-        printable = shlex.join(command)
-    except Exception:
-        printable = " ".join(str(part) for part in command)
-    print(f"Running [{step}]: {printable}")
 
     # Launch ffmpeg in its own process group so we can kill only the
     # processes we started if the step stalls. Use the supplied timeout
@@ -538,13 +540,13 @@ def repair_playlist(
         if dst.is_file() and not options.overwrite:
             continue
         percent = (idx / total * 100.0) if total else 0.0
-        log(f"Progress: {idx}/{total} ({percent:.1f}%) — {src.name}")
+        log(f"Progress: {idx}/{total} ({percent:.1f}%)")
         ok = execute_pipeline(src_path, dst, options, capture_stderr, logs_dir)
         if not ok:
-            log(f"Failed: {src_path.name}")
+            log(f"  Failed: {src_path.name}")
             unrepaired.append(src)
         else:
-            log(f"Repaired: {dst.name}")
+            log(f"  Repaired: {dst.name}")
 
     if broken_playlist:
         broken_playlist.parent.mkdir(parents=True, exist_ok=True)

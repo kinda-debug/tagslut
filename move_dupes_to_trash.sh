@@ -72,3 +72,66 @@ fi
 
 echo
 echo "✅ Done. Log saved at: $LOG_PATH"
+
+# --- Post-move verification (TODO #6) ---
+echo
+echo "🔍 Starting post-move verification..."
+echo "🔍 Starting post-move verification..." >> "$LOG_PATH"
+
+if $DRY_RUN; then
+    echo "⚠️ DRY RUN mode: skipping post-move verification checks." | tee -a "$LOG_PATH"
+else
+    # Count files remaining in MUSIC (excluding trash)
+    music_count=$(find "/Volumes/dotad/MUSIC" -type f ! -path "$TRASH_ROOT/*" 2>/dev/null | wc -l)
+    echo "📂 Files remaining in MUSIC (excluding trash): $music_count" | tee -a "$LOG_PATH"
+
+    # Count files in trash directory
+    trash_count=$(find "$TRASH_ROOT" -type f 2>/dev/null | wc -l)
+    echo "🗑️ Files currently in trash directory: $trash_count" | tee -a "$LOG_PATH"
+
+    # Verify all "keep" files still exist
+    missing_keep=0
+    echo "🔎 Verifying 'keep' files existence..." | tee -a "$LOG_PATH"
+    tail -n +2 "$REPORT_PATH" | \
+    awk -F',' 'BEGIN {OFS=","} {if ($16=="keep") print $4}' | \
+    while IFS= read -r keep_file; do
+        keep_file="${keep_file%\"}"; keep_file="${keep_file#\"}"
+        if [[ ! -f "$keep_file" ]]; then
+            echo "❌ Missing 'keep' file: $keep_file" | tee -a "$LOG_PATH"
+            missing_keep=$((missing_keep+1))
+        fi
+    done
+    echo "✅ 'Keep' files missing count: $missing_keep" | tee -a "$LOG_PATH"
+
+    # Count how many planned files actually landed in trash
+    planned_total=0
+    planned_found=0
+    missing_moves=()
+    tail -n +2 "$REPORT_PATH" | \
+    awk -F',' 'BEGIN {OFS=","} {if ($16=="plan") print $4,$17}' | \
+    while IFS=, read -r src dest; do
+        src="${src%\"}"; src="${src#\"}"
+        dest="${dest%\"}"; dest="${dest#\"}"
+        planned_total=$((planned_total+1))
+        if [[ -f "$dest" ]]; then
+            planned_found=$((planned_found+1))
+        else
+            missing_moves+=("$src")
+        fi
+    done
+
+    echo "📊 Planned files total: $planned_total" | tee -a "$LOG_PATH"
+    echo "📊 Planned files found in trash: $planned_found" | tee -a "$LOG_PATH"
+
+    if (( planned_found < planned_total )); then
+        echo "⚠️ Missing or failed moves:" | tee -a "$LOG_PATH"
+        for f in "${missing_moves[@]}"; do
+            echo " - $f" | tee -a "$LOG_PATH"
+        done
+    else
+        echo "✅ All planned files found in trash." | tee -a "$LOG_PATH"
+    fi
+fi
+
+echo
+echo "🔍 Post-move verification complete." | tee -a "$LOG_PATH"

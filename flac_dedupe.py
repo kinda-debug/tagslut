@@ -2373,6 +2373,11 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         action="store_true",
         help="Force dry-run mode even if --commit is provided"
     )
+    parser.add_argument(
+        "--audit-report",
+        type=Path,
+        help="Audit an existing dedupe CSV report and exit"
+    )
     return parser.parse_args(argv)
 
 
@@ -2464,10 +2469,50 @@ def main() -> None:
     """Console script entry point."""
 
     try:
+        args = parse_args()
+        if args.audit_report:
+            dedupe_report_audit(args.audit_report)
+            sys.exit(0)
         sys.exit(run())
     except KeyboardInterrupt:
         log("Interrupted")
         sys.exit(1)
+
+
+def dedupe_report_audit(csv_path: Path):
+    """Audit a dedupe CSV report for planned moves and unhealthy keepers."""
+    import csv
+    import datetime as dt
+
+    timestamp = dt.datetime.now().strftime("%H:%M:%S")
+    print(f"[{timestamp}] Auditing dedupe report: {csv_path}")
+
+    planned = 0
+    unhealthy = []
+    planned_moves = []
+
+    with open(csv_path, newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            if row.get("action") == "plan":
+                planned += 1
+                if len(planned_moves) < 20:
+                    src = row.get("path", "")
+                    dst = row.get("dest", "")
+                    planned_moves.append((src, dst))
+            if row.get("keep") == "yes" and row.get("healthy") == "no":
+                unhealthy.append(row.get("path", ""))
+
+    timestamp = dt.datetime.now().strftime("%H:%M:%S")
+    print(f"[{timestamp}] {planned} planned moves found.")
+    if planned_moves:
+        print(f"[{timestamp}] Preview first 20 planned moves:")
+        for src, dst in planned_moves:
+            print(f"  {src} -> {dst}")
+    if unhealthy:
+        print(f"[{timestamp}] {len(unhealthy)} unhealthy keepers detected:")
+        for path in unhealthy:
+            print(f"  UNHEALTHY KEEPER: {path}")
 
 
 if __name__ == "__main__":

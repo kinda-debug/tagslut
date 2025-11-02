@@ -81,6 +81,14 @@ class SyncOutcome:
     message: str
 
 
+@dataclass
+class LibraryHealthResult:
+    """Playback verification outcome for a single library track."""
+
+    relative_path: Path
+    exists: bool
+    healthy: Optional[bool]
+    note: Optional[str]
 class NullHealthChecker:
     """Health checker that always reports unknown health.
 
@@ -354,6 +362,22 @@ def synchronise_directory(
     return outcomes
 
 
+def audit_library_playback(library_root: Path, checker: HealthChecker) -> List[LibraryHealthResult]:
+    """Decode every audio track in *library_root* to verify uninterrupted playback."""
+
+    results: List[LibraryHealthResult] = []
+    for relative_path in iter_audio_files(library_root):
+        absolute_path = library_root / relative_path
+        info = gather_track_info(absolute_path, checker)
+        results.append(
+            LibraryHealthResult(
+                relative_path=relative_path,
+                exists=info.exists,
+                healthy=info.healthy,
+                note=info.health_note,
+            )
+        )
+    return results
 def build_argument_parser() -> argparse.ArgumentParser:
     """Return an ``ArgumentParser`` for the CLI entry point."""
 
@@ -395,6 +419,11 @@ def build_argument_parser() -> argparse.ArgumentParser:
         default=45,
         help="Health check timeout in seconds for external commands",
     )
+    parser.add_argument(
+        "--verify-library",
+        action="store_true",
+        help="Decode every track in the library after sync to confirm full playback",
+    )
     return parser
 
 
@@ -404,6 +433,8 @@ def run_cli(args: Sequence[str] | None = None) -> int:
     parser = build_argument_parser()
     ns = parser.parse_args(args=args)
 
+    if ns.verify_library and ns.health_check == "none":
+        parser.error("--verify-library requires active health checks; remove --health-check none")
     dedupe_root = ns.dedupe_root or discover_dedupe_root(ns.dedupe_listing)
     if not dedupe_root.exists():
         parser.error(f"Dedupe directory {dedupe_root} does not exist")
@@ -423,6 +454,24 @@ def run_cli(args: Sequence[str] | None = None) -> int:
 
     summary = ", ".join(f"{action}: {count}" for action, count in sorted(counts.items()))
     print(f"Processed {len(outcomes)} files — {summary if summary else 'no actions performed'}")
+
+    if ns.verify_library:
+        print(f"Verifying playback health across {ns.library_root} …")
+        audit_results = audit_library_playback(ns.library_root, checker)
+        unhealthy = [result for result in audit_results if not result.exists or result.healthy is False]
+        unknown = [result for result in audit_results if result.exists and result.healthy is None]
+        for result in unhealthy:
+            note = result.note or "playback verification failed"
+            print(f"   UNHEALTHY  {result.relative_path}  {note}")
+        for result in unknown:
+            note = result.note or "health unknown"
+            print(f"   UNKNOWN    {result.relative_path}  {note}")
+        print(
+            "Library audit: "
+            f"{len(audit_results)} files checked, "
+            f"{len(unhealthy)} unhealthy, "
+            f"{len(unknown)} unknown health"
+        )
     return 0
 
 

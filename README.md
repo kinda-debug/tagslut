@@ -208,7 +208,13 @@ replaced, or moved into place. Remove `--dry-run` to perform the swaps and
 duplicate deletions. The tool also prunes any empty folders that remain in the
 DEDUPE staging tree after files are promoted, keeping the staging area tidy.
 Use `--health-check none` if you prefer to skip `flac` or `ffmpeg` health
+<<<<<<< ours
 validation.
+=======
+validation. Add `--verify-library` to decode every library track after
+syncing so truncated or abruptly ending files discovered during recovery are
+surfaced for follow-up repair.
+>>>>>>> theirs
 
 #### Dedupe Only
 ```bash

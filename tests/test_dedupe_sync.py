@@ -6,10 +6,16 @@ import sys
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
+<<<<<<< ours
+=======
+import pytest
+
+>>>>>>> theirs
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from dedupe_sync import (
     NullHealthChecker,
+<<<<<<< ours
     """Unit tests for :mod:`dedupe_sync`."""
 
     from __future__ import annotations
@@ -22,12 +28,12 @@ from dedupe_sync import (
 
     from dedupe_sync import (
         NullHealthChecker,
-        discover_dedupe_root,
         """Unit tests for :mod:`dedupe_sync`."""
 
         from __future__ import annotations
 
         import sys
+        import pytest
         from pathlib import Path
         from typing import Dict, Optional, Tuple
 
@@ -35,9 +41,11 @@ from dedupe_sync import (
 
         from dedupe_sync import (
             NullHealthChecker,
+            audit_library_playback,
             discover_dedupe_root,
             gather_track_info,
             pick_preferred_track,
+            run_cli,
             synchronize_track,
         )
 
@@ -117,6 +125,31 @@ from dedupe_sync import (
             assert not dedupe_file.exists()
 
 
+        def test_synchronize_swaps_when_dedupe_healthier(tmp_path: Path) -> None:
+            library_root = tmp_path / "library"
+            dedupe_root = tmp_path / "dedupe"
+            library_file = library_root / "Artist" / "Album" / "song.flac"
+            dedupe_file = dedupe_root / "Artist" / "Album" / "song.flac"
+
+            library_file.parent.mkdir(parents=True)
+            dedupe_file.parent.mkdir(parents=True)
+            library_file.write_text("library", encoding="utf-8")
+            dedupe_file.write_text("dedupe", encoding="utf-8")
+
+            checker = StubHealthChecker({library_file: (False, "lib"), dedupe_file: (True, "dup")})
+
+            outcome = synchronize_track(
+                Path("Artist/Album/song.flac"),
+                library_root,
+                dedupe_root,
+                checker,
+            )
+
+            assert outcome.action == "swapped"
+            assert library_file.read_text(encoding="utf-8") == "dedupe"
+            assert not dedupe_file.exists()
+
+
         def test_synchronize_prunes_empty_directories(tmp_path: Path) -> None:
             library_root = tmp_path / "library"
             dedupe_root = tmp_path / "dedupe"
@@ -164,3 +197,81 @@ from dedupe_sync import (
             assert outcome.action == "would-swap"
             assert library_file.read_text(encoding="utf-8") == "library"
             assert dedupe_file.read_text(encoding="utf-8") == "dedupe"
+
+
+        def test_audit_library_playback_reports_status(tmp_path: Path) -> None:
+            library_root = tmp_path / "library"
+            healthy_file = library_root / "Artist" / "Album" / "healthy.flac"
+            bad_file = library_root / "Artist" / "Album" / "broken.flac"
+
+            healthy_file.parent.mkdir(parents=True)
+            healthy_file.write_text("ok", encoding="utf-8")
+            bad_file.write_text("bad", encoding="utf-8")
+
+            checker = StubHealthChecker({
+                healthy_file: (True, "decoded"),
+                bad_file: (False, "decode failed"),
+            })
+
+            results = audit_library_playback(library_root, checker)
+            outcome_map = {result.relative_path.name: result for result in results}
+
+            assert len(results) == 2
+            assert outcome_map["healthy.flac"].healthy is True
+            assert outcome_map["broken.flac"].healthy is False
+            assert outcome_map["broken.flac"].note == "decode failed"
+
+
+        def test_run_cli_requires_health_checks_for_library_verify(tmp_path: Path) -> None:
+            library_root = tmp_path / "library"
+            dedupe_root = tmp_path / "dedupe"
+            library_root.mkdir()
+            dedupe_root.mkdir()
+
+            with pytest.raises(SystemExit):
+                run_cli(
+                    [
+                        "--library-root",
+                        str(library_root),
+                        "--dedupe-root",
+                        str(dedupe_root),
+                        "--health-check",
+                        "none",
+                        "--verify-library",
+                    ]
+                )
+
+
+        def test_run_cli_reports_library_audit_summary(tmp_path: Path, monkeypatch, capsys) -> None:
+            library_root = tmp_path / "library"
+            dedupe_root = tmp_path / "dedupe"
+            library_file = library_root / "Artist" / "Album" / "song.flac"
+            dedupe_file = dedupe_root / "Artist" / "Album" / "song.flac"
+
+            library_file.parent.mkdir(parents=True)
+            dedupe_file.parent.mkdir(parents=True)
+            library_file.write_text("library", encoding="utf-8")
+            dedupe_file.write_text("dedupe", encoding="utf-8")
+
+            class StubCommandChecker:
+                def __init__(self, timeout: int = 45) -> None:
+                    self.timeout = timeout
+
+                def check(self, path: Path) -> Tuple[Optional[bool], Optional[str]]:
+                    return True, "ok"
+
+            monkeypatch.setattr("dedupe_sync.CommandHealthChecker", StubCommandChecker)
+
+            exit_code = run_cli(
+                [
+                    "--library-root",
+                    str(library_root),
+                    "--dedupe-root",
+                    str(dedupe_root),
+                    "--verify-library",
+                ]
+            )
+
+            assert exit_code == 0
+            captured = capsys.readouterr()
+            assert "Library audit:" in captured.out

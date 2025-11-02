@@ -1,0 +1,1068 @@
+Last login: Sun Nov  2 07:26:19 on ttys016
+/Volumes/dotad/MUSIC/DEDUPE > tree -L 10                                                                    07:26:24 AM
+.
+├── _BROKEN_FILES.txt
+├── _DEDUP_INDEX.db
+├── _DEDUP_INDEX.db.bak
+├── _DEDUP_REPORT_20251025_212040.csv
+├── _DEDUP_REPORT_20251027_211459.csv
+├── _DEDUP_REPORT_20251027_211604.csv
+├── _DEDUP_REPORT_20251027_211810.csv
+├── _DEDUP_REPORT_20251027_214053.csv
+├── _DEDUP_REPORT_20251028_004111.csv
+├── _DEDUP_REPORT_20251028_004616.csv
+├── _DEDUP_REPORT_20251028_011417.csv
+├── _DEDUP_REPORT_20251028_014226.csv
+├── _DEDUP_REPORT_20251029_160537.csv
+├── _DEDUP_REPORT_20251101_121237.csv
+├── _DEDUP_REPORT_20251101_135654.csv
+├── _DEDUP_REPORT_20251101_143727.csv
+├── _DEDUP_REPORT_20251101_175031.csv
+├── _DEDUP_REPORT_20251101_212332.csv
+├── _DEDUP_REPORT_20251101_213408.csv
+├── _DEDUP_REPORT_20251101_221356.csv
+├── _DEDUP_REPORT_20251101_221906.csv
+├── _DEDUP_REPORT_20251101_222551.csv
+├── _DEDUP_REPORT_20251101_223656.csv
+├── _DEDUP_SCAN_LOG.txt
+├── _quarantine_from_gemini
+│   ├── عمرو دياب
+│   │   └── (2004) ليلي نهاري
+│   │       └── عمرو دياب - (2004) ليلي نهاري - 07. خلينا نشوفك (1).flac
+│   ├── Aly-Us
+│   │   └── (1992) Follow Me (single)
+│   │       └── Aly-Us - (1992) Follow Me (single) - 01. Follow Me (club mix) (1).flac
+│   ├── Barcoder
+│   │   └── (2023) Quarantine EP
+│   │       └── Barcoder - (2023) Quarantine EP - 02. Cold Carves My Flesh (1).flac
+│   ├── BC Camplight
+│   │   └── (2025) A Sober Conversation
+│   │       └── BC Camplight - (2025) A Sober Conversation - 05. Where You Taking My Baby? (1).flac
+│   ├── ·Corvex·
+│   │   └── (2025) Mood Grooves Vol. 5
+│   │       └── ·Corvex· - (2025) Mood Grooves Vol. 5 - 13. Ether.flac
+│   ├── Crazy P
+│   │   └── (2012) Live in London 2012
+│   │       ├── Crazy P - (2012) Live in London 2012 - 01. Open for Service - Live.flac
+│   │       └── Crazy P - (2012) Live in London 2012 - 09. Future Beat - Live.flac
+│   ├── Cut Copy
+│   │   └── (2020) Freeze, Melt
+│   │       ├── Cut Copy - (2020) Freeze, Melt - 03. Love Is All We Share.flac
+│   │       └── Cut Copy - (2020) Freeze, Melt - 08. In Transit.flac
+│   ├── Damian Lazarus
+│   │   └── (2025) Magickal
+│   │       └── Damian Lazarus - (2025) Magickal - 04. Falling Down (1).flac
+│   ├── Dan Brown read by Paul Michael
+│   │   └── (2009) The Lost Symbol
+│   │       └── Dan Brown read by Paul Michael - (2009) The Lost Symbol - 11-01. Part 209.flac
+│   ├── David August
+│   │   └── (2019) Elysian Fields EP
+│   │       └── David August - (2019) Elysian Fields EP - 01. Florence (Rafael Anton Irisarri Deconstruction) (1).flac
+│   ├── G.O.D. Pt. III & Twiz the Beat Pro
+│   │   └── (2019) Quarantine
+│   │       └── G.O.D. Pt. III & Twiz the Beat Pro - (2019) Quarantine - 14. M.O.B.B 4 Life (1).flac
+│   ├── Gorillaz
+│   │   └── (2011) The Singles Collection 2001-2011
+│   │       └── Gorillaz - (2011) The Singles Collection 2001-2011 - 01-15. 19-2000 (Soulchild Remix).flac
+│   ├── Jacques Loussier
+│   │   └── (2002) Play Bach
+│   │       ├── Jacques Loussier - (2002) Play Bach - 02. Invention No. 8 in F Major (1).flac
+│   │       ├── Jacques Loussier - (2002) Play Bach - 02. Invention No. 8 in F Major (2).flac
+│   │       ├── Jacques Loussier - (2002) Play Bach - 02. Invention No. 8 in F Major (3).flac
+│   │       ├── Jacques Loussier - (2002) Play Bach - 02. Invention No. 8 in F Major (4).flac
+│   │       ├── Jacques Loussier - (2002) Play Bach - 03. Chromatic Fantasia in D Minor (1).flac
+│   │       └── Jacques Loussier - (2002) Play Bach - 10. Prelude and Fugue No.1 in C major (1).flac
+│   ├── Johann Sebastian Bach; Tatiana Nikolayeva
+│   │   └── (1992) Die Kunst der Fuge (The Art of Fugue)
+│   │       ├── Johann Sebastian Bach; Tatiana Nikolayeva - (1992) Die Kunst der Fuge (The Art of Fugue) - 01-03. Duet no. 1 in E minor, BWV 802.flac
+│   │       └── Johann Sebastian Bach; Tatiana Nikolayeva - (1992) Die Kunst der Fuge (The Art of Fugue) - 01-07. The Art of Fugue, BWV 1080: Contrapunctus 1.flac
+│   ├── KAYTRANADA
+│   │   └── (2025) AIN'T NO DAMN WAY!
+│   │       └── KAYTRANADA - (2025) AIN'T NO DAMN WAY! - 01. SPACE INVADER (1).flac
+│   ├── Pan Amsterdam
+│   │   └── (2019) Elevator Music, Vol. 1
+│   │       ├── Pan Amsterdam - (2019) Elevator Music, Vol. 1 - 01. No Snare.flac
+│   │       └── Pan Amsterdam - (2019) Elevator Music, Vol. 1 - 04. All Kindsa Don't.flac
+│   ├── Scoobert Doobert
+│   │   ├── (2020) Masks and Monsters
+│   │   │   ├── Scoobert Doobert - (2020) Masks and Monsters - 09. Quarantine and Chill (1).flac
+│   │   │   └── Scoobert Doobert - (2020) Masks and Monsters - 11. Shaggy's Anthem (1).flac
+│   │   └── (2021) Big Hug
+│   │       └── Scoobert Doobert - (2021) Big Hug - 10. Scared to Reunite (1).flac
+│   ├── Soundtrack
+│   │   └── (1994) Quarantine
+│   │       ├── Soundtrack - (1994) Quarantine - 10. Whirlwind (1).flac
+│   │       └── Soundtrack - (1994) Quarantine - 12. Now You Know (3).flac
+│   ├── Taha Fahssi
+│   │   └── (2023) 27
+│   │       └── Taha Fahssi - (2023) 27 - 19. BLUE LOVE.flac
+│   ├── The xx
+│   │   └── (2012) Coexist
+│   │       └── The xx - (2012) Coexist - 06. Sunset (1).flac
+│   ├── Tiny Grimes
+│   │   └── (2004) Blues & Rhythm Series: The Chronological Tiny Grimes 1949-1951
+│   │       ├── Tiny Grimes - (2004) Blues & Rhythm Series: The Chronological Tiny Grimes 1949-1951 - 03. I'm in Love with You Baby.flac
+│   │       └── Tiny Grimes - (2004) Blues & Rhythm Series: The Chronological Tiny Grimes 1949-1951 - 04. Frankie and Johnny Boogie.flac
+│   ├── Various Artists
+│   │   ├── (2005) Every Day a Story 2
+│   │   │   └── Various Artists - (2005) Every Day a Story 2 - 02. Yellow Sunset.flac
+│   │   ├── (2011) Komen Eten 2
+│   │   │   └── Various Artists - (2011) Komen Eten 2 - 02-09. La Javanaise.flac
+│   │   ├── (2014) Majestic Casual - Chapter 2
+│   │   │   └── Various Artists - (2014) Majestic Casual - Chapter 2 - 02-03. Chained (Liar remix).flac
+│   │   ├── (2014) Nova Danse 1930 | 2020
+│   │   │   └── Various Artists - (2014) Nova Danse 1930 | 2020 - 01-01. Harlem Shout.flac
+│   │   ├── (2015) Serious Beats 80
+│   │   │   └── Various Artists - (2015) Serious Beats 80 - 03-01. Voohoo.flac
+│   │   ├── (2017) DJ-Kicks: The Exclusives Vol. 3
+│   │   │   └── Various Artists - (2017) DJ-Kicks: The Exclusives Vol. 3 - 03. Wrong With Us.flac
+│   │   └── (2021) The Annual 2022
+│   │       └── Various Artists - (2021) The Annual 2022 - 01-16. Feels.flac
+│   ├── Volatile
+│   │   └── (1996) Quarantine EP
+│   │       ├── Volatile - (1996) Quarantine EP - 06. Dust (1).flac
+│   │       └── Volatile - (1996) Quarantine EP - 07. Scarred (1).flac
+│   └── WhoMadeWho
+│       └── (2019) Watergate 26
+│           └── WhoMadeWho - (2019) Watergate 26 - 19. Smile.flac
+├── _Recovered_from_DUPES_CHECK
+│   ├── Addison Rae
+│   │   └── (2024) AR
+│   │       └── Addison Rae - (2024) AR - 03. Nothing on (but the Radio).flac
+│   ├── Alanis Morissette
+│   │   └── (2020) Jagged Little Pill
+│   │       ├── Alanis Morissette - (2020) Jagged Little Pill - 02. You Oughta Know.flac
+│   │       ├── Alanis Morissette - (2020) Jagged Little Pill - 05. Right Through You.flac
+│   │       └── Alanis Morissette - (2020) Jagged Little Pill - 07. You Learn.flac
+│   ├── BC Camplight
+│   │   └── (2025) A Sober Conversation
+│   │       └── BC Camplight - (2025) A Sober Conversation - 01. The Tent.flac
+│   ├── Belle MT
+│   │   └── (2020) Hollow (single)
+│   │       └── Belle MT - (2020) Hollow (single) - 01. Hollow.flac
+│   ├── Cat Power
+│   │   └── (1996) What Would the Community Think
+│   │       └── Cat Power - (1996) What Would the Community Think - 02. Good Clean Fun.fixed.flac
+│   ├── Clio & Kay
+│   │   └── (2022) Singles Collection
+│   │       └── Clio & Kay - (2022) Singles Collection - 07. To The Hustle (Prod. by Roberto Ferrante - 2022 Remaster).flac
+│   ├── Confidence Man
+│   │   └── (2018) Confident Music for Confident People
+│   │       └── Confidence Man - (2018) Confident Music for Confident People - 03. Boyfriend.flac
+│   ├── Dada
+│   │   └── (2024) M.I.M
+│   │       ├── Dada - (2024) M.I.M - 01. WAHED.fixed.flac
+│   │       └── Dada - (2024) M.I.M - 04. SWEETCHY.fixed.flac
+│   ├── Dr. Octagon
+│   │   └── (1997) Dr. Octagonecologyst
+│   │       └── Dr. Octagon - (1997) Dr. Octagonecologyst - 11. Bear Witness.flac
+│   ├── FLO & KAYTRANADA
+│   │   └── (2025) The Mood (single)
+│   │       └── FLO & KAYTRANADA - (2025) The Mood (single) - 02. The Mood (instrumental).flac
+│   ├── Glenn Gould
+│   │   └── (2015) Remastered: The Complete Columbia Album Collection
+│   │       └── Glenn Gould - (2015) Remastered: The Complete Columbia Album Collection - 09-12. Partita no. 2 in C minor, BWV 826: III. Courante.flac
+│   ├── Glitterbox Radio
+│   │   └── (2017) Glitterbox Mixtape 001 (hosted by Melvo Baptiste)
+│   │       └── Glitterbox Radio - (2017) Glitterbox Mixtape 001 (hosted by Melvo Baptiste) - 01. Mixtape 001 Intro.flac
+│   ├── Greentea Peng
+│   │   └── (2025) TELL DEM IT'S SUNNY
+│   │       └── Greentea Peng - (2025) TELL DEM IT'S SUNNY - 13. I AM (Reborn).fixed.flac
+│   ├── Jack Johnson
+│   │   ├── (2002) Brushfire Fairytales
+│   │   │   └── Jack Johnson - (2002) Brushfire Fairytales - 06. Bubble Toes.fixed.flac
+│   │   └── (2006) Sing-A-Longs and Lullabies for the Film Curious George
+│   │       └── Jack Johnson - (2006) Sing-A-Longs and Lullabies for the Film Curious George - 02. Broken.fixed.flac
+│   ├── Jain & Solomun
+│   │   └── (2025) Tout Le Monde Est Fou (single)
+│   ├── James Blake
+│   │   └── (2011) James Blake
+│   │       ├── James Blake - (2011) James Blake - 09. Why Don't You Call Me.flac
+│   │       └── James Blake - (2011) James Blake - 10. I Mind.flac
+│   ├── James Hype
+│   │   └── (2024) Vibrate  On The Ground
+│   │       └── James Hype - (2024) Vibrate  On The Ground  - 02. On The Ground.flac
+│   ├── Jane Birkin
+│   │   └── (1973) Mon amour baiser  Di doo dah (single)
+│   │       └── Jane Birkin - (1973) Mon amour baiser  Di doo dah (single) - 02. Di doo dah.fixed.flac
+│   ├── Johann Sebastian Bach; Fazıl Say
+│   │   └── (2022) Goldberg Variations, BWV 988
+│   │       └── Johann Sebastian Bach; Fazıl Say - (2022) Goldberg Variations, BWV 988 - 21. Goldberg Variations, BWV 988: Variation XX.flac
+│   ├── Johann Sebastian Bach; Glenn Gould
+│   │   └── (1956) The Goldberg Variations, BWV 988 (1955 Gould Remaster)
+│   │       └── Johann Sebastian Bach; Glenn Gould - (1956) The Goldberg Variations, BWV 988 (1955 Gould Remaster) - 27. Goldberg Variations, BWV 988: Variation 26 a 2 Clav..flac
+│   ├── Johnny Cash
+│   │   ├── (2008) At Folsom Prison
+│   │   │   └── Johnny Cash - (2008) At Folsom Prison - 02-09. Folsom Prison Blues.flac
+│   │   └── (2024) Songwriter
+│   │       ├── Johnny Cash - (2024) Songwriter - 01. Hello Out There.fixed.flac
+│   │       └── Johnny Cash - (2024) Songwriter - 02. Spotlight.fixed.flac
+│   ├── KAYTRANADA
+│   │   └── (2023) LoverFriend
+│   │       ├── KAYTRANADA - (2023) LoverFriend - 01-02. LoverFriend (instrumental).flac
+│   │       └── KAYTRANADA - (2023) LoverFriend - 02-02. Stuntin (instrumental).flac
+│   ├── LL Cool J
+│   │   └── (1990) Mama Said Knock You Out
+│   │       └── LL Cool J - (1990) Mama Said Knock You Out - 01-08. Mama Said Knock You Out.flac
+│   ├── Paul Kalkbrenner
+│   │   └── (2015) 7
+│   │       └── Paul Kalkbrenner - (2015) 7 - 01. Battery Park.fixed.flac
+│   ├── Polo & Pan
+│   │   └── (2015) Plage isolée EP
+│   │       └── Polo & Pan - (2015) Plage isolée EP - 02. Plage isolée (Soleil couchant).flac
+│   ├── Ramones
+│   │   └── (2016) Ramones
+│   │       ├── Ramones - (2016) Ramones - 03-25. Havana Affair.flac
+│   │       └── Ramones - (2016) Ramones - 03-26. Listen to My Heart.flac
+│   ├── Rosalyn Tureck
+│   │   └── (2022) Bach - Goldberg Variations & Well Tempered Clavier
+│   │       └── Rosalyn Tureck - (2022) Bach - Goldberg Variations & Well Tempered Clavier - 98. Das Wohltemperierte Klavier: Book 2, BWV 870-893: Prelude in E Minor BWV 879.flac
+│   ├── Rufus Wainwright
+│   │   └── (2007) Release the Stars
+│   │       └── Rufus Wainwright - (2007) Release the Stars - 13. Do I Disappoint You (instrumental).flac
+│   ├── Scoobert Doobert
+│   │   ├── (2021) Big Hug
+│   │   │   ├── Scoobert Doobert - (2021) Big Hug - 06. I'm an Idiot.flac
+│   │   │   └── Scoobert Doobert - (2021) Big Hug - 12. Debby - Extended.fixed.flac
+│   │   ├── (2023) Moonlight Beach
+│   │   │   └── Scoobert Doobert - (2023) Moonlight Beach - 02. Feels So Good (1).fixed.flac
+│   │   ├── (2024) Daydreaming
+│   │   │   └── Scoobert Doobert - (2024) Daydreaming - 01. Daydreaming.fixed.flac
+│   │   ├── (2024) see you again?
+│   │   │   └── Scoobert Doobert - (2024) see you again? - 01. see you again?.fixed.flac
+│   │   ├── (2025) AFTER-PARTY - EP
+│   │   │   ├── Scoobert Doobert - (2025) AFTER-PARTY - EP - 03. AFTER-PARTY (Instrumental).flac
+│   │   │   └── Scoobert Doobert - (2025) AFTER-PARTY - EP - 04. AFTER-AFTER-PARTY (Instrumental).flac
+│   │   ├── (2025) LOL
+│   │   │   └── Scoobert Doobert - (2025) LOL - 04. THIS IS FINE (Instrumental).flac
+│   │   ├── (2025) MAIN CHARACTER ENERGY
+│   │   │   └── Scoobert Doobert - (2025) MAIN CHARACTER ENERGY - 02. MAIN CHARACTER ENERGY (Instrumental).flac
+│   │   └── (2025) QUIET YOUR MIND!!!
+│   │       └── Scoobert Doobert - (2025) QUIET YOUR MIND!!! - 01. QUIET YOUR MIND!!!.flac
+│   ├── Soul Asylum
+│   │   └── (1992) Grave Dancers Union
+│   │       └── Soul Asylum - (1992) Grave Dancers Union - 03. Runaway Train.fixed.flac
+│   ├── The Cranberries
+│   │   └── (2025) No Need to Argue
+│   │       └── The Cranberries - (2025) No Need to Argue - 24. Zombie (Camel's Hump mix).fixed.flac
+│   ├── The Sisters of Mercy
+│   │   └── (2016) Vision Thing
+│   │       └── The Sisters of Mercy - (2016) Vision Thing - 01. Vision Thing.fixed.flac
+│   ├── The xx
+│   │   ├── (2013) Innervisions Remixes EP
+│   │   │   └── The xx - (2013) Innervisions Remixes EP - 02. Tides (Dixon remix).flac
+│   │   └── (2017) I See You
+│   │       └── The xx - (2017) I See You - 09. I Dare You.fixed.flac
+│   ├── Venetian Snares
+│   │   └── (2025) Drums
+│   │       └── Venetian Snares - (2025) Drums - 01. Drums.flac
+│   ├── Vive la Fête
+│   │   └── (2022) Je Ne Veux Pas (single)
+│   │       └── Vive la Fête - (2022) Je Ne Veux Pas (single) - 02. Je Ne Veux Pas (original version).flac
+│   ├── Wayward
+│   │   └── (2014) Ugestu
+│   │       └── Wayward - (2014) Ugestu - 06. Belize.flac
+│   ├── Wilco
+│   │   └── (2024) Hot Sun Cool Shroud EP
+│   │       └── Wilco - (2024) Hot Sun Cool Shroud EP - 01. Hot Sun.fixed.flac
+│   └── Wodda
+│       └── (2022) HARD10 EP
+│           └── Wodda - (2022) HARD10 EP - 02. Extortionate.flac
+├── _TRASH_DUPES_20251101_135654
+│   └── Volumes
+│       └── dotad
+│           └── MUSIC
+│               ├── فيروز
+│               │   └── (2010) Safarbarlek - Bint El Harass
+│               ├── تامر النفار & איתמר ציגלר
+│               │   └── (2017) Junction 48 (Original Motion Picture Soundtrack)
+│               ├── _BROKEN
+│               ├── _quarantine_from_gemini
+│               │   ├── DJ Spen & Thommy Davis
+│               │   │   └── (2016) The Spen & Thommy Disco Dub Anthems, Vol. 1
+│               │   └── Volatile
+│               │       └── (1996) Quarantine EP
+│               ├── _Recovered_from_DUPES_CHECK
+│               │   ├── Anaïs
+│               │   │   └── (2009) The Love Album
+│               │   ├── Azla
+│               │   │   └── (2021) Nebula
+│               │   ├── Ben Böhmer & Spencer Brown
+│               │   │   └── (2020) Phases
+│               │   ├── Clio & Kay; Clio & Kay, Clio & Roberto Ferrante
+│               │   │   └── (2022) Singles Collection (2022 Remaster)
+│               │   ├── Jain & Solomun
+│               │   │   └── (2025) Tout Le Monde Est Fou (single)
+│               │   │       └── Jain & Solomun - (2025) Tout Le Monde Est Fou (single) - 02. Tout Le Monde Est Fou (club version).flac
+│               │   └── LL Cool J
+│               │       └── (1990) Mama Said Knock You Out
+│               ├── _TRASH_HASH_DUPES_20251029_155726
+│               │   ├── Four Tet
+│               │   │   └── (2001) Pause
+│               │   │       ├── Four Tet - (2001) Pause - 08. No More Mosquitoes.flac
+│               │   │       └── Four Tet - (2001) Pause - 11. Hilarious Movie of the 90's.flac
+│               │   ├── Sex Pistols
+│               │   │   └── (1992) Kiss This
+│               │   │       └── Sex Pistols - (1992) Kiss This - 19. My Way.flac
+│               │   ├── Soulwax
+│               │   │   └── (2018) ESSENTIAL
+│               │   │       ├── Soulwax - (2018) ESSENTIAL - 10. Essential Ten.flac
+│               │   │       └── Soulwax - (2018) ESSENTIAL - 12. Essential Twelve.flac
+│               │   ├── The Blessed Madonna
+│               │   │   └── (2024) Godspeed
+│               │   │       └── The Blessed Madonna - (2024) Godspeed - 05. Jinterlude.flac
+│               │   ├── The Cure
+│               │   │   ├── (2017) Acoustic Hits
+│               │   │   │   ├── The Cure - (2017) Acoustic Hits - 01-02. A Forest.flac
+│               │   │   │   ├── The Cure - (2017) Acoustic Hits - 01-04. The Walk.flac
+│               │   │   │   └── The Cure - (2017) Acoustic Hits - 02-02. Never Enough.flac
+│               │   │   └── (2025) Mixes of a Lost World
+│               │   │       └── The Cure - (2025) Mixes of a Lost World - 01. I Can Never Say Goodbye (Paul Oakenfold "Cinematic" remix).flac
+│               │   ├── The Lemonheads
+│               │   │   └── (2022) It's a Shame About Ray
+│               │   │       └── The Lemonheads - (2022) It's a Shame About Ray - 13. Mrs Robinson.flac
+│               │   ├── The National feat. Bon Iver
+│               │   │   └── (2022) Weird Goodbyes
+│               │   │       └── The National feat. Bon Iver - (2022) Weird Goodbyes - 01. Weird Goodbyes.flac
+│               │   ├── Vintage & Morelli
+│               │   │   └── (2016) Daydream
+│               │   │       └── Vintage & Morelli - (2016) Daydream - 02. Daydream (Shingo Nakamura Remix).flac
+│               │   └── Zedbazi
+│               │       └── (2019) Zedbazi
+│               │           ├── Zedbazi - (2019) Zedbazi - 19. Tabestoon Kootahe.flac
+│               │           └── Zedbazi - (2019) Zedbazi - 21. Taze Shuru-E Zendegimoone.flac
+│               ├── [Unknown Artist]
+│               │   └── (XXXX) [Unknown Album]
+│               ├── Aalson
+│               │   └── (2022) Oddes (single)
+│               ├── Addison Rae
+│               │   └── (2024) AR EP
+│               ├── Air
+│               │   └── (2000) The Virgin Suicides
+│               ├── Alan Braxe & Fred Falke
+│               │   └── (2000) Running EP
+│               ├── Alan Menken, [theatre] & [Disney]
+│               │   └── (1997) Hercules (Original Motion Picture Soundtrack)
+│               ├── Alanis Morissette
+│               │   ├── (2003) Feast on Scraps
+│               │   │   └── Alanis Morissette - (2003) Feast on Scraps - 09. Hands Clean - Acoustic.flac
+│               │   └── (2015) Jagged Little Pill (collector's edition)
+│               ├── Alanis Morissette & Carly Simon
+│               │   └── (2025) Coming Around Again
+│               ├── Alex Beaupain
+│               │   └── (2007) Les Chansons d'amour
+│               ├── Alex G
+│               │   ├── (2015) Beach Music
+│               │   └── (2017) Sportstar (Porches Remix) (single)
+│               ├── Ammar 808
+│               │   └── (2018) Maghreb United
+│               ├── Amtrac & Samuel T. Herring
+│               │   └── (2022) Domino (single)
+│               ├── Andrew Bird
+│               │   └── (2014) Shine
+│               ├── Annural Khalid & Toshi
+│               │   └── (2023) Love Again (single)
+│               ├── Another Mind
+│               │   └── (2020) Miracles
+│               ├── Another Mind, Nihil Young & John Rayet
+│               │   └── (2023) Miracles
+│               ├── Arcade Fire & Owen Pallett
+│               │   └── (2021) Her (Original Score)
+│               ├── Avicii
+│               │   └── (2025) Let's Ride Away (Joel Corry remix) (single)
+│               ├── Bachar Mar-Khalifé
+│               │   └── (2013) Who's Gonna Get the Ball from Behind...
+│               │       └── Bachar Mar-Khalifé - (2013) Who's Gonna Get the Ball from Behind... - 10. Distance (solo version).flac
+│               ├── BC Camplight
+│               │   ├── (2025) A Sober Conversation
+│               │   └── (2025) Where You Taking My Baby? (single)
+│               ├── Bicep
+│               │   └── (2025) TAKKUUK (Original Soundtrack)
+│               ├── Bill Callahan & Bonnie "Prince" Billy  Johnnie Frierson
+│               │   └── (2021) Miracles (single)
+│               ├── Björk
+│               │   └── (2021) Selma Songs
+│               ├── Blood Orange
+│               │   └── (2025) Essex Honey
+│               │       └── Blood Orange - (2025) Essex Honey - 04. The Field.flac
+│               ├── Blood Orange feat. A$AP Rocky & Project Pat
+│               │   └── (2018) Chewing Gum (single)
+│               │       └── Blood Orange feat. A$AP Rocky & Project Pat - (2018) Chewing Gum (single) - 01. Chewing Gum (edit).flac
+│               ├── Bob van AsperenMelante Amsterdam
+│               │   └── (1993) Bach: Harpsichord Concertos, BWV 1052-1059
+│               ├── Bon Iver
+│               │   ├── (2019) i,i
+│               │   └── (2025) SABLE, fABLE
+│               ├── Bonobo feat. Jacob Lusk
+│               │   └── (2025) Dark Will Fall (from "LAZARUS" Soundtrack)
+│               ├── Brian Tyler & Breton Vivian
+│               │   └── (2019) Five Feet Apart: Original Motion Picture Soundtrack
+│               ├── Buddy
+│               │   └── (2020) Sister Winter - Single
+│               ├── Carpenter Brut feat. Kristoffer Rygg
+│               │   └── (2024) Eyes Without a Face (From the "American Psycho" Comic Series Soundtrack)
+│               ├── Chet Faker
+│               │   └── (2012) Thinking in Textures EP
+│               ├── CJ Bolland
+│               │   └── (2012) Chicago EP
+│               ├── Clio & Kay
+│               │   └── (2022) Singles Collection
+│               ├── Clio & Kay; Clio & Kay, Clio & Roberto Ferrante
+│               │   └── (2022) Singles Collection (2022 Remaster)
+│               ├── Coez
+│               │   ├── (2012) Ali sporche
+│               │   └── (2012) Ali sporche (single)
+│               ├── Confidence Man
+│               │   └── (2018) Confident Music for Confident People
+│               │       └── Confidence Man - (2018) Confident Music for Confident People - 03. Boyfriend (Repeat).flac
+│               ├── Cook & Stans
+│               │   ├── (2020) We're Back Chilling
+│               │   └── (2022) Lost in Berlin
+│               ├── Crazy P
+│               │   ├── (2015) Walk Dance Talk Sing Remixes, Part 1 EP
+│               │   └── (2015) Walk Dance Talk Sing Remixes, Part 2 EP
+│               ├── Dada
+│               │   └── (2024) M.I.M
+│               ├── DAM
+│               │   ├── (2012) Dabke on the Moon
+│               │   │   ├── DAM - (2012) Dabke on the Moon - 01. Street Poetry.flac
+│               │   │   ├── DAM - (2012) Dabke on the Moon - 02. I'm Not a Traitor.flac
+│               │   │   └── DAM - (2012) Dabke on the Moon - 10. Mama I Fell in Love With a Jew.flac
+│               │   └── (2019) Ben haana wa maana
+│               │       ├── DAM - (2019) Ben haana wa maana - 02. Milliardat.flac
+│               │       ├── DAM - (2019) Ben haana wa maana - 04. Prozac.flac
+│               │       └── DAM - (2019) Ben haana wa maana - 09. Emta njawzak yamma.flac
+│               ├── DAM & Brother Ali
+│               │   └── (2022) Overdose (from the Netflix series "Mo")
+│               ├── Dan Romer, Jason Hill & David Wingo
+│               │   └── (2023) Extrapolations: Music From The Original Series
+│               ├── Dan the Automator
+│               │   └── (2019) Booksmart (Original Motion Picture Score)
+│               ├── Danile Tshazibane
+│               │   └── (2019) Underdog
+│               ├── Dario Marianelli
+│               │   └── (2016) Kubo and the Two Strings
+│               ├── David August
+│               │   ├── (2014) Diynamic Revisited EP
+│               │   └── (2016) J.B.Y.  Ouvert (single)
+│               ├── Disclosure
+│               │   └── (2015) Caracal
+│               ├── DJ Koze
+│               │   └── (2025) Music Can Hear Us
+│               ├── DJ Spen & Thommy Davis
+│               │   └── (2016) The Spen & Thommy Disco Dub Anthems, Vol. 1
+│               ├── DJ T.
+│               │   └── (2023) That Beat
+│               │       └── DJ T. - (2023) That Beat - 01. That Beat.flac.repairing.flac
+│               ├── DJ Tennis, Eliza Rose
+│               │   └── (2025) Playa Paradiso
+│               │       └── DJ Tennis, Eliza Rose - (2025) Playa Paradiso - 01. Playa Paradiso.flac.repairing.flac
+│               ├── Dominique Fils-Aimé
+│               │   └── (2018) Nameless
+│               ├── Domino
+│               │   └── (2008) Super Eurobeat Presents Domino Special Collection Vol. 1
+│               ├── Dove, Bicep, Benjamin Damage & BDB
+│               │   └── (2024) CHROMA 003 EP
+│               ├── Eggs
+│               │   └── (1994) Exploder
+│               ├── Elvis Presley
+│               │   └── (1961) Blue Hawaii
+│               ├── eRRdeKa
+│               │   └── (2018) Liebe
+│               ├── Étienne de Crécy
+│               │   ├── (2015) Super Discount 3
+│               │   └── (2015) Super Discount 3 - Deluxe
+│               ├── Fatboy Slim
+│               │   ├── (2008) You've Come A Long Way Baby (CD 2)
+│               │   └── (2008) You've Come a Long Way, Baby
+│               │       └── Fatboy Slim - (2008) You've Come a Long Way, Baby - 01-04. Gangster Tripping.flac
+│               ├── Fiona Apple
+│               │   ├── (2025) Heart of Gold (single)
+│               │   └── (2025) Pretrial (Let Her Go Home)
+│               ├── Flavien Berger
+│               │   └── (2022) Tout le monde aime Jeanne (Bande originale du film)
+│               ├── Florence + the Machine
+│               │   ├── (2016) Songs From Final Fantasy XV
+│               │   └── (2023) Just a Girl
+│               ├── Foals
+│               │   ├── (2019) In Degrees (Purple Disco Machine Remix) (single)
+│               │   └── (2022) Wake Me Up (Flight Facilities remix) (single)
+│               ├── Four Tet
+│               │   ├── (2001) Pause
+│               │   │   ├── Four Tet - (2001) Pause - 01. Glue of the World.flac
+│               │   │   ├── Four Tet - (2001) Pause - 02. Twenty Three.flac
+│               │   │   ├── Four Tet - (2001) Pause - 03. Harmony One.flac
+│               │   │   ├── Four Tet - (2001) Pause - 04. Parks.flac
+│               │   │   ├── Four Tet - (2001) Pause - 05. Leila Came Round and We Watched a Video.flac
+│               │   │   ├── Four Tet - (2001) Pause - 06. Untangle.flac
+│               │   │   ├── Four Tet - (2001) Pause - 07. Everything Is Alright.flac
+│               │   │   ├── Four Tet - (2001) Pause - 09. Tangle.flac
+│               │   │   └── Four Tet - (2001) Pause - 10. You Could Ruin My Day.flac
+│               │   └── (2017) New Energy
+│               │       ├── Four Tet - (2017) New Energy - 02. Two Thousand and Seventeen.flac
+│               │       ├── Four Tet - (2017) New Energy - 03. LA Trance.flac
+│               │       └── Four Tet - (2017) New Energy - 05. Lush.flac
+│               ├── Franc Moody
+│               │   ├── (2025) Sharks In The Water - EP
+│               │   └── (2025) Waiting For The Punchline (Swallertrip)
+│               ├── France Gall
+│               │   ├── (1984) Débranche !
+│               │   └── (2024) Plus haut
+│               ├── François Couperin; Alfred Deller, Philip Todd, Raphaël Perulli, Michel Chapuis
+│               │   └── (2001) Leçons de ténèbres
+│               ├── Frank Zappa
+│               │   └── (2012) Sheik Yerbouti
+│               ├── Galactic Cowboys
+│               │   └── (1993) Space in Your Face
+│               ├── George Harrison
+│               │   └── (1970) All Things Must Pass (50th anniversary)
+│               ├── George Kusunoki Miller
+│               ├── Ghost
+│               │   └── (2024) Rite Here Rite Now: Original Motion Picture Soundtrack
+│               ├── Giorgio Moroder
+│               │   └── (2004) Midnight Express
+│               ├── Glenn Gould
+│               │   └── (2015) Remastered: The Complete Columbia Album Collection
+│               ├── graves
+│               │   └── (2017) Hilo EP
+│               ├── Greentea Peng
+│               │   └── (2025) TELL DEM IT'S SUNNY
+│               ├── Haddadi Von Engst
+│               │   └── (2021) Run - Single
+│               ├── Hannah Peel
+│               │   └── (2022) Rogue Agent: Original Motion Picture Soundtrack
+│               ├── Hans Zimmer
+│               │   └── (2024) Dune: Part Two: Original Motion Picture Soundtrack
+│               ├── Hans Zimmer & Benjamin Wallfisch
+│               │   └── (2017) Blade Runner 2049: Original Motion Picture Soundtrack
+│               ├── Hans Zimmer & Heitor Pereira
+│               │   └── (2009) It's Complicated
+│               ├── Harlem Zip Code  Crazy P
+│               │   └── (2003) Penultimate (single)
+│               ├── Hawksley Workman
+│               │   └── (2013) Songs From the God That Comes
+│               ├── Helicon
+│               │   └── (1994) Mysterious Skipjack
+│               ├── HNNY
+│               │   └── (2014) YUM001 EP
+│               ├── i-fls
+│               │   └── (2022) stay there (single)
+│               ├── Intelligency
+│               │   └── (2020) August (single)
+│               ├── Isaac Hayes
+│               │   ├── (1971) Shaft
+│               │   ├── (2002) Truck Turner
+│               │   └── (2016) Tough Guys
+│               ├── Jacques Loussier
+│               │   └── (2021) Complete Play Bach
+│               ├── Jacques Loussier Trio
+│               │   └── (2014) My Personal Favourites: The Jacques Loussier Trio Plays Bach
+│               ├── James Curd
+│               │   └── (2009) It's Complicated EP
+│               ├── Jane Birkin
+│               │   └── (1973) Mon amour baiser  Di doo dah (single)
+│               ├── JB Dunckel
+│               │   └── (2024) Möbius Morphosis
+│               ├── Johann Sebastian Bach; Bob van Asperen
+│               │   └── (1999) Harpsichord Concertos
+│               ├── Johann Sebastian Bach; Isabelle Faust, Academy for Ancient Music Berlin, Bernhard Forck, Xenia Löffler
+│               │   └── (2019) Violin Concertos  Sinfonias  Overture  Sonatas
+│               ├── Johann Sebastian Bach; Nevermind
+│               │   └── (2025) Goldberg Variations
+│               │       └── Johann Sebastian Bach; Nevermind - (2025) Goldberg Variations - 02-12. Goldberg Variations, BWV 988 (Arr. for Ensemble by Robin Pharo and Jean Rondeau): Var. XXVII. Canone alla Nona. a 2 Clav..flac
+│               ├── John Coltrane
+│               │   ├── (1960) Giant Steps
+│               │   └── (1964) Live at Birdland
+│               ├── John Williams; London Symphony Orchestra
+│               │   └── (2018) Star Wars: The Empire Strikes Back
+│               ├── Katerine
+│               │   ├── (2001) Nom de code : Sacha
+│               │   └── (2003) Un homme un vrai
+│               ├── KAYTRANADA
+│               │   └── (2025) AIN'T NO DAMN WAY!
+│               ├── Klor
+│               │   └── (2020) Son Jeton
+│               │       └── Klor - (2020) Son Jeton - 01. Güneş Batıyor.flac
+│               ├── Kyle Dixon & Michael Stein
+│               │   └── (2016) Stranger Things, Volume One: A Netflix Original Series Soundtrack
+│               ├── LEISURE
+│               │   └── (2025) Welcome to the Mood
+│               ├── Les Ombres
+│               │   └── (2018) François Couperin : Leçons de ténèbres & motets
+│               ├── Lindstrom
+│               │   └── (2025) We Wear Boots - Single
+│               ├── lost.mindd & Josh Tarzi
+│               │   └── (2020) Lakeside (single)
+│               ├── Maceo Parker
+│               │   └── (1994) Maceo: Soundtrack
+│               ├── merci, mercy
+│               │   └── (2022) is it me, or is it you? EP
+│               ├── Miles Davis
+│               │   └── (1958) Ascenseur pour l'échafaud
+│               ├── Moods, HIGH HØØPS
+│               │   └── (2019) Comfortable
+│               ├── MOTHXR
+│               │   └── (2016) Centerfold
+│               ├── múm
+│               │   └── (1999) Yesterday Was Dramatic - Today Is OK
+│               ├── Mustafa Al-Abdullah, Dafy
+│               │   └── (2021) Hatha Alhub
+│               ├── Mychael Danna & Harry Gregson-Williams
+│               │   └── (2022) Return To Space: Soundtrack From The Netflix Film
+│               ├── Naima Bock
+│               │   └── (2023) So Long, Marianne (single)
+│               ├── NewDad
+│               │   └── (2024) Just Like Heaven (Live at BBC Maida Vale)
+│               ├── Obskuros
+│               │   └── (2025) Drive (single)
+│               ├── Paul Kalkbrenner
+│               │   └── (2015) 7
+│               ├── Paul Oakenfold
+│               │   └── (2018) Mount Everest: The Base Camp Mix
+│               ├── Pépite
+│               │   ├── (2019) Virages
+│               │   ├── (2020) Désert
+│               │   ├── (2021) Rêve Réalité
+│               │   └── (2024) Les Années Lumière
+│               ├── Phantom Sage
+│               │   └── (2022) Shaded
+│               ├── Phantoms
+│               │   └── (2020) Moonlight
+│               ├── Polo & Pan
+│               │   ├── (2015) Plage isolée
+│               │   └── (2018) Caravelle
+│               ├── Portishead
+│               │   └── (1994) Dummy
+│               ├── Prefuse 73
+│               │   ├── (2001) Vocal Studies + Uprock Narratives
+│               │   └── (2024) New Strategies for Modern Crime Vol.2
+│               ├── Primal Scream
+│               │   ├── (2019) Maximum Rock 'n' Roll: The Singles
+│               │   └── (2021) The Screamadelica 12" Singles
+│               ├── Ravin
+│               │   └── (2015) Buddha-Bar XVII
+│               ├── REPAIRED
+│               │   ├── DJ Tennis, Eliza Rose
+│               │   │   └── (2025) Playa Paradiso
+│               │   ├── The Jacksons
+│               │   │   └── (2010) Dancing Machine
+│               │   └── Wodda
+│               │       └── (2022) HARD10
+│               ├── RiveR
+│               │   └── (2018) Solo
+│               ├── Robag Wruhme
+│               │   └── (2019) Venq Tolep
+│               ├── Robert Plant
+│               │   └── (2014) Lullaby and... The Ceaseless Roar
+│               ├── Rockwell
+│               │   └── (1984) Somebody's Watching Me
+│               ├── Rosalyn Tureck
+│               │   └── (1999) Great Pianists of the 20th Century, Volume 94: Rosalyn Tureck II
+│               ├── Sam Cooke
+│               │   ├── (1963) Mr. Soul
+│               │   └── (2003) Portrait of a Legend 1951-1964
+│               ├── Sam Gellaitry
+│               │   └── (2023) Assumptions (Kaytranada remix)
+│               ├── Sarah Vaughan
+│               │   └── (1958) Vaughan and Violins
+│               ├── Savage Garden
+│               │   ├── (1997) To the Moon and Back
+│               │   ├── (1999) Affirmation
+│               │   └── (2015) The Singles
+│               ├── Scoobert Doobert
+│               │   └── (2021) Big Hug
+│               ├── Scott Hoying
+│               │   └── (2023) Parallel
+│               ├── Self Esteem
+│               │   ├── (2019) Compliments Please
+│               │   └── (2021) Prioritise Pleasure
+│               ├── Session Victim
+│               │   └── (2017) Listen to Your Heart
+│               ├── Seth Troxler & Audion
+│               │   └── (XXXX) Turbo 25
+│               ├── Sex Pistols
+│               │   └── (1992) Kiss This
+│               ├── Shakedown
+│               │   └── (2002) At Night
+│               ├── Shalamar
+│               │   └── (1999) A Night to Remember
+│               ├── Shawn Rudiman
+│               │   └── (2020) Conduit
+│               ├── Simian Mobile Disco
+│               │   ├── (2008) FabricLive 41: Simian Mobile Disco
+│               │   ├── (2009) Temporary Pleasure
+│               │   └── (2017) Anthology: 10 Years Of SMD
+│               ├── Simon Dunmore
+│               │   └── (2016) Glitterbox for Your Disco Pleasure
+│               ├── Simon Franglen
+│               │   └── (2022) Avatar: The Way of Water: Original Motion Picture Soundtrack
+│               ├── Soul Asylum
+│               │   └── (1992) Grave Dancers Union
+│               ├── Soulwax
+│               │   ├── (2004) Any Minute Now
+│               │   ├── (2005) Nite Versions
+│               │   ├── (2017) From Deewee
+│               │   ├── (2017) Is It Always Binary (Edit) - Single
+│               │   ├── (2017) Missing Wires
+│               │   ├── (2018) ESSENTIAL
+│               │   └── (2025) All Systems Are Lying
+│               ├── Soulwax feat. Tracy Bonham
+│               │   └── (1998) My Cruel Joke...
+│               ├── Soundtrack
+│               │   ├── (1958) Ascenseur pour l'échafaud
+│               │   ├── (1971) Shaft
+│               │   ├── (1980) Star Wars: The Empire Strikes Back
+│               │   ├── (1987) The Mikado (The English National Opera)
+│               │   ├── (1991) Safarbarlek - Bint El Harass
+│               │   ├── (1994) Maceo: Soundtrack
+│               │   ├── (2000) Selma Songs
+│               │   ├── (2000) The Virgin Suicides
+│               │   ├── (2013) Her (Original Score)
+│               │   ├── (2013) Songs From the God That Comes
+│               │   ├── (2016) Stranger Things, Volume One: A Netflix Original Series Soundtrack
+│               │   ├── (2017) Blade Runner 2049: Original Motion Picture Soundtrack
+│               │   ├── (2017) Junction 48 (Original Motion Picture Soundtrack) EP
+│               │   ├── (2019) Five Feet Apart: Original Motion Picture Soundtrack
+│               │   ├── (2022) Avatar: The Way of Water: Original Motion Picture Soundtrack
+│               │   ├── (2022) Overdose (from the Netflix series "Mo") (single)
+│               │   ├── (2022) Return To Space: Soundtrack From The Netflix Film
+│               │   ├── (2022) Tout le monde aime Jeanne (Bande originale du film)
+│               │   ├── (2022) Wednesday (Original Soundtrack From the Netflix Series)
+│               │   ├── (2023) Extrapolations: Music From The Original Series
+│               │   ├── (2023) Just a Girl (single)
+│               │   ├── (2023) Queen Charlotte: A Bridgerton Story (Covers from the Netflix Series)
+│               │   ├── (2024) Bob Marley: One Love (Music Inspired by the Film)
+│               │   ├── (2024) Eyes Without a Face (From the "American Psycho" Comic Series Soundtrack) (single)
+│               │   ├── (2024) Illinoise: A New Musical (Original Cast Recording)
+│               │   ├── (2024) Möbius Morphosis
+│               │   ├── (2024) Rite Here Rite Now: Original Motion Picture Soundtrack
+│               │   ├── (2025) Dark Will Fall (from "LAZARUS" Soundtrack) (single)
+│               │   └── (2025) TAKKUUK (Original Soundtrack)
+│               ├── Stephan Bodzin
+│               │   └── (2015) Sungam (Remixes) (single)
+│               ├── Sufjan Stevens
+│               │   ├── (2012) Silver & Gold
+│               │   │   └── Sufjan Stevens - (2012) Silver & Gold - 04-02. Santa Claus Is Coming to Town.flac
+│               │   ├── (2016) Chicago
+│               │   ├── (2017) Carrie & Lowell Live
+│               │   ├── (2023) Javelin
+│               │   │   ├── Sufjan Stevens - (2023) Javelin - 01. Goodbye Evergreen.flac
+│               │   │   └── Sufjan Stevens - (2023) Javelin - 02. A Running Start.flac
+│               │   └── (2024) Illinoise: A New Musical (Original Cast Recording)
+│               │       ├── Sufjan Stevens - (2024) Illinoise: A New Musical (Original Cast Recording) - 03. Come On! Feel the Illinoise!.flac
+│               │       ├── Sufjan Stevens - (2024) Illinoise: A New Musical (Original Cast Recording) - 05. Zombies.flac
+│               │       └── Sufjan Stevens - (2024) Illinoise: A New Musical (Original Cast Recording) - 11. Casimir Pulaski Day.flac
+│               ├── Super8 & Tab
+│               │   └── (2014) Unified (Extended Mixes)
+│               ├── Superchunk
+│               │   └── (1990) Superchunk
+│               │       └── Superchunk - (1990) Superchunk - 06. Slack Motherfucker.flac
+│               ├── Talking Flowers
+│               │   ├── (2023) Storytelling
+│               │   └── (2023) Storytelling (single)
+│               ├── Tape B
+│               │   └── (2023) Over Saturated
+│               ├── Teho
+│               │   ├── (2022) Infinity (Deluxe Edition)
+│               │   └── (2024) Shifting
+│               ├── Téléphone
+│               │   └── (1984) Un autre monde
+│               ├── Teruyuki Nobuchika
+│               │   └── (2011) Sonorité
+│               ├── Tete Montoliu
+│               │   └── (1983) Body & Soul
+│               ├── The Avalanches
+│               │   ├── (2009) Since I Left You
+│               │   ├── (2016) Wildflower
+│               │   └── (2020) We Will Always Love You
+│               ├── The Beatles
+│               │   ├── (1964) A Hard Day's Night
+│               │   └── (1995) A Hard Day's Night
+│               ├── The Blessed Madonna
+│               │   ├── (2014) Stay  Venus Requiem
+│               │   └── (2024) Godspeed
+│               ├── The Byrds
+│               │   ├── (1965) Mr. Tambourine Man
+│               │   ├── (1965) Turn! Turn! Turn!
+│               │   └── (2019) Eight Miles High (live)
+│               ├── The Chemical Brothers
+│               │   └── (2010) Further
+│               ├── The Cranberries
+│               │   └── (2025) No Need to Argue
+│               ├── The Cure
+│               │   ├── (1987) Kiss Me Kiss Me Kiss Me
+│               │   ├── (1992) Wish
+│               │   ├── (2001) Acoustic Hits
+│               │   ├── (2024) Songs of a Lost World
+│               │   └── (2025) Mixes of a Lost World
+│               ├── The Decemberists
+│               │   └── (2006) The Crane Wife
+│               ├── The Detroit Spinners
+│               │   └── (1973) Spinners
+│               ├── The Jacksons
+│               │   ├── (1970) ABC
+│               │   └── (2010) Dancing Machine
+│               │       └── The Jacksons - (2010) Dancing Machine - 04. Dancing Machine.flac
+│               ├── The KDMS
+│               │   └── (2010) High Wire
+│               │       └── The KDMS - (2010) High Wire - 06. High Wire (D-Pulse dub).flac
+│               ├── The Kills
+│               │   ├── (2008) Midnight Boom
+│               │   ├── (2016) Ash & Ice
+│               │   └── (2021) Cosmic Dancer
+│               ├── The La's
+│               │   └── (1990) The La's
+│               ├── The Lemonheads
+│               │   ├── (1989) Lick
+│               │   └── (1992) It's a Shame About Ray
+│               ├── The Lightning Seeds
+│               │   └── (1994) Jollification
+│               ├── The National feat. Bon Iver
+│               │   └── (2022) Weird Goodbyes
+│               ├── The Octopus Project
+│               │   └── (2010) Hexadecagon
+│               ├── The Record Company
+│               │   └── (2021) Side Project
+│               ├── The Red Clay Strays
+│               │   └── (2024) Made By These Moments
+│               ├── The Revenge
+│               │   └── (2025) Los Angeles Times
+│               ├── The Sei
+│               │   └── (2020) Lumen
+│               ├── The Shapeshifters feat. Liisi Lafontaine
+│               │   └── (2024) Beautiful Day
+│               ├── The Sisters of Mercy
+│               │   └── (1990) Vision Thing
+│               ├── The Temper Trap
+│               │   └── (XXXX) Giving Up Air
+│               ├── The Temptations
+│               │   ├── (2006) Reflections
+│               │   │   └── The Temptations - (2006) Reflections - 09. Ain't No Mountain High Enough.flac
+│               │   └── (2022) Gettin' Ready
+│               ├── The Trammps
+│               │   └── (1975) The Legendary ZING Album
+│               ├── The Waterboys
+│               │   └── (2025) The Waterboys Present: Rips From The Cutting Room Floor
+│               ├── The xx
+│               │   ├── (2017) A Violent Noise (Four Tet remix)
+│               │   ├── (2017) I See You
+│               │   └── (2017) Lips (Edu Imbernon remix) (single)
+│               ├── Thomas Newman
+│               │   ├── (2000) American Beauty: Original Motion Picture Score
+│               │   └── (2019) American Beauty: Original Motion Picture Score
+│               ├── Tiana Major9
+│               │   └── (2022) Fool Me Once
+│               ├── Tigerskin
+│               │   └── (2014) HigH
+│               ├── Tommy Sparks
+│               │   └── (2006) Tommy Sparks
+│               ├── Tommy Vicari Jnr
+│               │   └── (2016) Pascià
+│               ├── Various Artists
+│               │   ├── (2008) Have You Heard? Discover Fresh Sounds Handpicked by Starbucks: Fall '08
+│               │   ├── (2010) Les Inrockuptibles : 2000-2010 : Les 100 titres incontournables
+│               │   ├── (2014) House of Lies [Soundtrack]
+│               │   ├── (2014) Nova Danse 1930 | 2020
+│               │   │   └── Various Artists - (2014) Nova Danse 1930 | 2020 - 01-02. You Rascal, You.flac
+│               │   ├── (2016)  Future Disco, Vol. 9 - A Disco Love Affair
+│               │   │   └── Various Artists - (2016)  Future Disco, Vol. 9 - A Disco Love Affair - 10. Apolune.flac
+│               │   ├── (2017) Brawl in Cell Block 99
+│               │   ├── (2017) DJ-Kicks: The Exclusives Vol. 3
+│               │   │   └── Various Artists - (2017) DJ-Kicks: The Exclusives Vol. 3 - 02. Without You.flac
+│               │   ├── (2020) 2020 GRAMMY® Nominees
+│               │   ├── (2023) Queen Charlotte: A Bridgerton Story (Covers from the Netflix Series)
+│               │   ├── (2024) Bob Marley: One Love (Music Inspired by the Film)
+│               │   └── (2025) Opus Label Three
+│               │       └── Various Artists - (2025) Opus Label Three - 08. Amsterdam.flac
+│               ├── Various Interprets
+│               │   └── (2025) dolly 15YRS
+│               ├── Vera Kaa
+│               │   └── (1991) Rien ne va plus
+│               ├── Vibrasphere
+│               │   └── (2006) Archipelago
+│               ├── Vintage & Morelli
+│               │   ├── (2016) Daydream (single)
+│               │   └── (2016) My Rose Enchanted Destiny (Album)
+│               ├── Voilaaa
+│               │   └── (2015) On te l'avait dit
+│               ├── W.S. Gilbert & Arthur Sullivan
+│               │   └── (1987) The Mikado (The English National Opera)
+│               ├── Warda, Fairuz
+│               │   └── (2000) East Queens
+│               ├── warner case
+│               │   ├── (2019) dance music for dancing, vol. 1
+│               │   ├── (2020) dance music for dancing, vol. 2
+│               │   ├── (2022) bee's knees
+│               │   ├── (2022) dance music for dancing, vol. 3
+│               │   ├── (2022) stargazing (like i always do)
+│               │   ├── (2024) here and now
+│               │   └── (XXXX) let's get down - Single
+│               ├── Wayne Snow
+│               │   └── (2017) Freedom TV
+│               ├── Weather Report
+│               │   └── (1977) Heavy Weather
+│               ├── Wednesday Addams, Nevermore Academy Orchestra & Danny Elfman
+│               │   └── (2023) Wednesday (Original Soundtrack From the Netflix Series)
+│               ├── What Makes a Man
+│               │   └── (1960) Les Années Barclay
+│               ├── Whitney Houston
+│               │   └── (2022) I Will Always Love You: The Best of Whitney Houston
+│               ├── Wild Nothing
+│               │   └── (2010) Golden Haze
+│               ├── Wild Rivers
+│               │   └── (2024) Never Better
+│               ├── Wiz Khalifa feat. Charlie Puth
+│               │   └── (2015) See You Again
+│               ├── Wodda
+│               │   └── (2022) HARD10
+│               │       └── Wodda - (2022) HARD10 - 02. Extortionate.flac
+│               ├── Working Men's Club
+│               │   ├── (2020) Working Men's Club
+│               │   └── (2022) Fear Fear
+│               ├── Young Wonder
+│               │   └── (2015) Birth
+│               ├── Yuksek & Bertrand Burgalat
+│               │   └── (2018) Icare (single)
+│               ├── Zedbazi
+│               │   ├── (2019) Zedbazi
+│               │   └── (2022) Tehran Mibinamet
+│               ├── Zenobia زنّوبيا
+│               │   ├── (2020) Halak Halak
+│               │   └── (2023) Warriors Never Die
+│               └── Zombie Nation
+│                   └── (2009) Zombielicious
+├── _TRASH_HASH_DUPES_20251029_155726
+│   ├── Four Tet
+│   │   └── (2001) Pause
+│   ├── Sex Pistols
+│   │   └── (1992) Kiss This
+│   ├── Soulwax
+│   │   └── (2018) ESSENTIAL
+│   ├── The Blessed Madonna
+│   │   └── (2024) Godspeed
+│   ├── The Cure
+│   │   ├── (2017) Acoustic Hits
+│   │   └── (2025) Mixes of a Lost World
+│   ├── The Lemonheads
+│   │   └── (2022) It's a Shame About Ray
+│   ├── The National feat. Bon Iver
+│   │   └── (2022) Weird Goodbyes
+│   ├── Vintage & Morelli
+│   │   └── (2016) Daydream
+│   └── Zedbazi
+│       └── (2019) Zedbazi
+├── broken_files_unrepaired.m3u
+└── REPAIRED
+    ├── _TRASH_HASH_DUPES_20251029_155726
+    │   ├── Sex Pistols
+    │   │   └── (1992) Kiss This
+    │   │       └── Sex Pistols - (1992) Kiss This - 19. My Way.flac
+    │   ├── Soulwax
+    │   │   └── (2018) ESSENTIAL
+    │   │       ├── Soulwax - (2018) ESSENTIAL - 10. Essential Ten.flac
+    │   │       └── Soulwax - (2018) ESSENTIAL - 12. Essential Twelve.flac
+    │   ├── The Blessed Madonna
+    │   │   └── (2024) Godspeed
+    │   │       └── The Blessed Madonna - (2024) Godspeed - 05. Jinterlude.flac
+    │   ├── The Cure
+    │   │   ├── (2017) Acoustic Hits
+    │   │   │   ├── The Cure - (2017) Acoustic Hits - 01-02. A Forest.flac
+    │   │   │   ├── The Cure - (2017) Acoustic Hits - 01-04. The Walk.flac
+    │   │   │   └── The Cure - (2017) Acoustic Hits - 02-02. Never Enough.flac
+    │   │   └── (2025) Mixes of a Lost World
+    │   │       └── The Cure - (2025) Mixes of a Lost World - 01. I Can Never Say Goodbye (Paul Oakenfold "Cinematic" remix).flac
+    │   ├── The Lemonheads
+    │   │   └── (2022) It's a Shame About Ray
+    │   │       └── The Lemonheads - (2022) It's a Shame About Ray - 13. Mrs Robinson.flac
+    │   ├── The National feat. Bon Iver
+    │   │   └── (2022) Weird Goodbyes
+    │   │       └── The National feat. Bon Iver - (2022) Weird Goodbyes - 01. Weird Goodbyes.flac
+    │   ├── Vintage & Morelli
+    │   │   └── (2016) Daydream
+    │   │       └── Vintage & Morelli - (2016) Daydream - 02. Daydream (Shingo Nakamura Remix).flac
+    │   └── Zedbazi
+    │       └── (2019) Zedbazi
+    │           ├── Zedbazi - (2019) Zedbazi - 19. Tabestoon Kootahe.flac
+    │           └── Zedbazi - (2019) Zedbazi - 21. Taze Shuru-E Zendegimoone.flac
+    └── final_selection
+        ├── _TRASH_HASH_DUPES_20251029_155726
+        │   └── Zedbazi
+        │       └── (2019) Zedbazi
+        │           └── Zedbazi - (2019) Zedbazi - 19. Tabestoon Kootahe.flac
+        └── REPAIRED
+            ├── repairs_20251101_171254
+            │   ├── _TRASH_DUPES_20251101_135654
+            │   │   └── Volumes
+            │   │       └── dotad
+            │   │           └── MUSIC
+            │   │               └── _TRASH_HASH_DUPES_20251029_155726
+            │   │                   └── Zedbazi
+            │   ├── logs
+            │   │   ├── Zedbazi_-__2019__Zedbazi_-_19._Tabestoon_Kootahe_transcode_552fb07f.stderr.log
+            │   │   └── Zedbazi_-__2019__Zedbazi_-_19._Tabestoon_Kootahe_transcode_c7e7b419.stderr.log
+            │   └── REPAIRED
+            │       └── _TRASH_HASH_DUPES_20251029_155726
+            │           └── Zedbazi
+            │               └── (2019) Zedbazi
+            │                   └── Zedbazi - (2019) Zedbazi - 19. Tabestoon Kootahe.flac
+            ├── repairs_batch
+            │   ├── _TRASH_DUPES_20251101_135654
+            │   │   └── Volumes
+            │   │       └── dotad
+            │   │           └── MUSIC
+            │   │               └── _TRASH_HASH_DUPES_20251029_155726
+            │   │                   └── The Cure
+            │   ├── Kevin O'Donnell's Quality Six
+            │   │   └── (2000) Control Freak
+            │   ├── logs
+            │   │   ├── Kevin_O_Donnell_s_Quality_Six_-__2000__Control_Freak_-_09._Tell_Everyone_I_Said__transcode_e9402e89.stderr.log
+            │   │   ├── Sex_Pistols_-__1992__Kiss_This_-_19._My_Way_transcode_6beeed93.stderr.log
+            │   │   ├── Soulwax_-__2018__ESSENTIAL_-_10._Essential_Ten_transcode_e230086b.stderr.log
+            │   │   ├── Soulwax_-__2018__ESSENTIAL_-_12._Essential_Twelve_transcode_26bbc775.stderr.log
+            │   │   ├── The_Blessed_Madonna_-__2024__Godspeed_-_05._Jinterlude_transcode_5d2f7a4c.stderr.log
+            │   │   ├── The_Cure_-__2017__Acoustic_Hits_-_01-02._A_Forest_transcode_808fb0f7.stderr.log
+            │   │   ├── The_Cure_-__2017__Acoustic_Hits_-_01-04._The_Walk_transcode_16494335.stderr.log
+            │   │   ├── The_Cure_-__2017__Acoustic_Hits_-_02-02._Never_Enough_transcode_83c1edce.stderr.log
+            │   │   ├── The_Cure_-__2025__Mixes_of_a_Lost_World_-_01._I_Can_Never_Say_Goodbye__Paul_Oake_transcode_b7fde99a.stderr.log
+            │   │   ├── The_Lemonheads_-__2022__It_s_a_Shame_About_Ray_-_13._Mrs_Robinson_transcode_7fc797b5.stderr.log
+            │   │   ├── The_National_feat._Bon_Iver_-__2022__Weird_Goodbyes_-_01._Weird_Goodbyes_transcode_eac49ea0.stderr.log
+            │   │   ├── Vintage___Morelli_-__2016__Daydream_-_02._Daydream__Shingo_Nakamura_Remix__transcode_641b24b7.stderr.log
+            │   │   ├── Zedbazi_-__2019__Zedbazi_-_19._Tabestoon_Kootahe_transcode_9ac7f891.stderr.log
+            │   │   └── Zedbazi_-__2019__Zedbazi_-_21._Taze_Shuru-E_Zendegimoone_transcode_4b039828.stderr.log
+            │   └── REPAIRED
+            │       └── _TRASH_HASH_DUPES_20251029_155726
+            │           ├── Sex Pistols
+            │           │   └── (1992) Kiss This
+            │           │       └── Sex Pistols - (1992) Kiss This - 19. My Way.flac
+            │           ├── Soulwax
+            │           │   └── (2018) ESSENTIAL
+            │           │       ├── Soulwax - (2018) ESSENTIAL - 10. Essential Ten.flac
+            │           │       └── Soulwax - (2018) ESSENTIAL - 12. Essential Twelve.flac
+            │           ├── The Blessed Madonna
+            │           │   └── (2024) Godspeed
+            │           │       └── The Blessed Madonna - (2024) Godspeed - 05. Jinterlude.flac
+            │           ├── The Cure
+            │           │   └── (2017) Acoustic Hits
+            │           │       ├── The Cure - (2017) Acoustic Hits - 01-02. A Forest.flac
+            │           │       ├── The Cure - (2017) Acoustic Hits - 01-04. The Walk.flac
+            │           │       └── The Cure - (2017) Acoustic Hits - 02-02. Never Enough.flac
+            │           ├── The Lemonheads
+            │           │   └── (2022) It's a Shame About Ray
+            │           │       └── The Lemonheads - (2022) It's a Shame About Ray - 13. Mrs Robinson.flac
+            │           ├── The National feat. Bon Iver
+            │           │   └── (2022) Weird Goodbyes
+            │           │       └── The National feat. Bon Iver - (2022) Weird Goodbyes - 01. Weird Goodbyes.flac
+            │           ├── Vintage & Morelli
+            │           │   └── (2016) Daydream
+            │           │       └── Vintage & Morelli - (2016) Daydream - 02. Daydream (Shingo Nakamura Remix).flac
+            │           └── Zedbazi
+            │               └── (2019) Zedbazi
+            │                   ├── Zedbazi - (2019) Zedbazi - 19. Tabestoon Kootahe.flac
+            │                   └── Zedbazi - (2019) Zedbazi - 21. Taze Shuru-E Zendegimoone.flac
+            └── repairs_batch.bak
+                └── Kevin O'Donnell's Quality Six
+                    └── (2000) Control Freak
+                        └── Kevin O'Donnell's Quality Six - (2000) Control Freak - 09. Tell Everyone I Said Goodbye.flac
+
+835 directories, 228 files
+/Volumes/dotad/MUSIC/DEDUPE >                                                                               07:26:28 AM

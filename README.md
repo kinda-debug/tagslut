@@ -4,12 +4,13 @@ This project provides a modular workflow for scanning, repairing, and deduplicat
 
 ## Scripts Overview
 
-The workflow consists of four main scripts that work together in sequence:
+The workflow consists of core scripts that work together in sequence:
 
 1. **`flac_workflow.py`** - Main orchestrator that runs the complete workflow
 2. **`flac_scan.py`** - Scans the music library and builds a database index
 3. **`flac_repair.py`** - Repairs corrupted FLAC files (run conditionally)
 4. **`flac_dedupe.py`** - Performs deduplication based on the scanned database
+5. **`dedupe_sync.py`** - Promotes the healthiest copy from the DEDUPE staging directory back into the main library
 
 ## Prerequisites
 
@@ -196,6 +197,16 @@ Scans the default music directory and updates the database. Use `--root /path/to
 python3 flac_repair.py
 ```
 Repairs corrupted FLAC files listed in the broken files playlist.
+
+#### Promote staged duplicates back to the library
+```bash
+python3 dedupe_sync.py --dry-run
+```
+Scans `/Volumes/dotad/MUSIC/DEDUPE`, compares each staged track with the
+matching library path, and reports whether the library copy should be kept,
+replaced, or moved into place. Remove `--dry-run` to perform the swaps and
+duplicate deletions. Use `--health-check none` if you prefer to skip `flac`
+or `ffmpeg` health validation.
 
 #### Dedupe Only
 ```bash

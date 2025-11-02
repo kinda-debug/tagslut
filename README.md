@@ -205,8 +205,10 @@ python3 dedupe_sync.py --dry-run
 Scans `/Volumes/dotad/MUSIC/DEDUPE`, compares each staged track with the
 matching library path, and reports whether the library copy should be kept,
 replaced, or moved into place. Remove `--dry-run` to perform the swaps and
-duplicate deletions. Use `--health-check none` if you prefer to skip `flac`
-or `ffmpeg` health validation.
+duplicate deletions. The tool also prunes any empty folders that remain in the
+DEDUPE staging tree after files are promoted, keeping the staging area tidy.
+Use `--health-check none` if you prefer to skip `flac` or `ffmpeg` health
+validation.
 
 #### Dedupe Only
 ```bash

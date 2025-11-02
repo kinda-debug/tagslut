@@ -20,6 +20,7 @@ import argparse
 import re
 import shutil
 import subprocess
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Protocol, Sequence, Tuple
@@ -217,24 +218,17 @@ def iter_audio_files(root: Path) -> Iterable[Path]:
 
 def gather_track_info(path: Path, checker: HealthChecker) -> TrackInfo:
     """Collect metadata and health information for *path*."""
-
     try:
-        st = path.stat()
-        exists = True
+        st: os.stat_result = path.stat()
     except FileNotFoundError:
-        exists = False
-        st = None
+        return TrackInfo(path=path, exists=False, healthy=None, health_note="file missing", size=0, mtime_ns=0)
 
-    if exists:
-        healthy, note = checker.check(path)
-        size = int(st.st_size)
-        mtime_ns = int(st.st_mtime_ns)
-    else:
-        healthy, note = (None, "file missing")
-        size = 0
-        mtime_ns = 0
-
-    return TrackInfo(path=path, exists=exists, healthy=healthy, health_note=note, size=size, mtime_ns=mtime_ns)
+    healthy: Optional[bool]
+    note: Optional[str]
+    healthy, note = checker.check(path)
+    size = int(st.st_size)
+    mtime_ns = int(st.st_mtime_ns)
+    return TrackInfo(path=path, exists=True, healthy=healthy, health_note=note, size=size, mtime_ns=mtime_ns)
 
 
 def _health_score(info: TrackInfo) -> int:
@@ -271,6 +265,19 @@ def ensure_parent_directory(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
 
+def prune_empty_parents(relative_path: Path, dedupe_root: Path) -> None:
+    """Remove empty parent directories under ``dedupe_root`` for *relative_path*."""
+
+    staged_path = dedupe_root / relative_path
+    for parent in staged_path.parents:
+        if parent == dedupe_root:
+            break
+        try:
+            parent.rmdir()
+        except OSError:
+            break
+
+
 def synchronize_track(
     relative_path: Path,
     library_root: Path,
@@ -296,6 +303,7 @@ def synchronize_track(
 
         ensure_parent_directory(library_path)
         dedupe_path.rename(library_path)
+        prune_empty_parents(relative_path, dedupe_root)
         return SyncOutcome(relative_path, "moved", "dedupe copy installed into library")
 
     preferred = pick_preferred_track(library_info, dedupe_info)
@@ -304,6 +312,7 @@ def synchronize_track(
             return SyncOutcome(relative_path, "would-delete", "library already healthiest; delete staged duplicate")
 
         dedupe_path.unlink()
+        prune_empty_parents(relative_path, dedupe_root)
         return SyncOutcome(relative_path, "deleted", "removed duplicate from staging")
 
     if dry_run:
@@ -318,6 +327,7 @@ def synchronize_track(
         raise
 
     temp_path.unlink()
+    prune_empty_parents(relative_path, dedupe_root)
     return SyncOutcome(relative_path, "swapped", "staged copy replaced library version")
 
 

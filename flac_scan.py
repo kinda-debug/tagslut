@@ -2024,7 +2024,7 @@ def scan_files(
                 pass
             append_broken_playlist(path)
             log("Added broken file to playlist")
-            log("Skipping broken file (cached metadata)")
+            log(f"Skipping broken file (cached metadata): {path}")
             # Do not early-return None; return the populated info so the outer loop
             # will upsert it into the DB and future runs will treat it as cached.
             return info
@@ -2074,7 +2074,7 @@ def scan_files(
                     continue
                 upsert_file(conn, info)
                 if skip_broken and info.healthy is False:
-                    log("[DIAG] Upserted broken file to DB")
+                    log(f"[DIAG] Upserted broken file to DB: {path}")
                 insert_segments(conn, info.id, info.segments)
                 store_file_signals(conn, info)
                 files.append(info)
@@ -2185,9 +2185,8 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--skip-broken",
-        action="store_false",
-        default=True,
-        dest="skip_broken",
+        action="store_true",
+        default=False,
         help="Skip files that fail health check (do not abort run)",
     )
     parser.add_argument(

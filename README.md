@@ -12,6 +12,45 @@ The workflow consists of core scripts that work together in sequence:
 4. **`flac_dedupe.py`** - Performs deduplication based on the scanned database
 5. **`dedupe_sync.py`** - Promotes the healthiest copy from the DEDUPE staging directory back into the main library
 
+## Quick reference — which script should I run?
+
+If this project has a lot of scripts, here's a short decision guide that maps common tasks to the single script you probably want to run.
+
+- Inspect the library and build/update the index: `flac_scan.py` (or `scrd sc`).
+- Repair corrupted/flaky files found during scanning: `flac_repair.py` (or `scrd r`).
+- Find duplicate groups and plan removals/moves: `flac_dedupe.py` (or `scrd d`).
+- Promote the healthiest staged files back into your library: `dedupe_sync.py` (or `scrd` with the `sync`/`wf` flow).
+- Run the full workflow end-to-end (scan → repair → dedupe → sync): `flac_workflow.py` or `./scrd --commit`.
+
+Common quick commands (from the project root):
+
+```bash
+# scan the library and produce/update the index
+python3 flac_scan.py --root /path/to/music
+
+# repair broken files (dry-run by default in some configurations)
+python3 flac_repair.py --file path/to/file.flac
+
+# find duplicates and prepare a plan (use --commit to apply changes)
+python3 flac_dedupe.py --root /path/to/music --dry-run
+
+# preview promote/swap/delete operations from the DEDUPE staging area
+python3 dedupe_sync.py --dry-run
+
+# actually perform the promote/swap/delete operations (be careful!)
+python3 dedupe_sync.py
+```
+
+Short explanation of `dedupe_sync.py` options you will commonly use:
+
+- `--dry-run` — show planned actions without changing files (always use this first).
+- `--health-check` — `auto` (default) runs `flac`/`ffmpeg` checks when available; `none` disables checks for faster runs.
+- `--verify-library` — after sync completes, decode every library file to verify playback; requires `--health-check auto`.
+- `--dedupe-root` — point to a staging area explicitly (otherwise the tool discovers it from `DEDUPE_DIR.txt`).
+- `--dedupe-listing` — path to the `DEDUPE_DIR.txt` listing used to discover the staging root.
+
+If you're not sure which to run, start with `python3 flac_scan.py` then `python3 flac_dedupe.py --dry-run` and finally `python3 dedupe_sync.py --dry-run` to preview actions.
+
 ## Prerequisites
 
 ### System Dependencies

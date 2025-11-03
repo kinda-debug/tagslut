@@ -207,85 +207,136 @@ def _stderr_log_path(logs_dir: Path, dst: Path, step: str) -> Path:
 
 
 def _run_ffmpeg_step(cmd: Iterable[str], step: str, log_path: Optional[Path]) -> Tuple[bool, str]:
-    """Execute *cmd* via ``ffmpeg`` and optionally persist stderr."""
-    command = list(cmd)
+    """Execute *cmd* via ``ffmpeg`` and optionally persist stderr.
 
-    # Launch ffmpeg in its own process group so we can kill only the
-    # processes we started if the step stalls. Use the supplied timeout
-    # from options when calling this helper.
+    This helper will attempt a conservative retry on failure (insert
+    ``-threads 1`` and strip ``-err_detect``) to work around decoder
+    crashes in libavcodec for problematic files.
+    """
+    base_command = list(cmd)
     timeout: int = getattr(_run_ffmpeg_step, "_default_timeout", 30)
-    try:
-        process = subprocess.Popen(
-            command,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            preexec_fn=os.setsid,
-        )
-    except FileNotFoundError:
-        return False, "ffmpeg not found"
-    pgid = None
-    try:
-        try:
-            pgid = os.getpgid(process.pid)
-            # Register this pgid with the scanner's tracker so any global
-            # freeze detector can target only groups we spawned.
-            try:
-                flac_scan.register_active_pgid(pgid)
-            except Exception:
-                pass
-        except Exception:
-            pgid = None
 
+    def _invoke(command: list[str]) -> Tuple[subprocess.Popen | None, Optional[int], str]:
+        """Start the command, wait with timeout handling, and return (process, returncode, stderr_text).
+
+        If ffmpeg is not found returns (None, None, "ffmpeg not found")."""
         try:
-            stderr_bytes, _ = process.communicate(timeout=timeout)
-            stderr_text = stderr_bytes.decode("utf-8", "replace") if stderr_bytes else ""
-        except subprocess.TimeoutExpired:
-            # First try graceful termination of the process group, then force kill
+            process = subprocess.Popen(
+                command,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                preexec_fn=os.setsid,
+            )
+        except FileNotFoundError:
+            return None, None, "ffmpeg not found"
+
+        pgid = None
+        stderr_text = ""
+        try:
             try:
                 pgid = os.getpgid(process.pid)
-                os.killpg(pgid, signal.SIGTERM)
-            except Exception:
                 try:
-                    process.kill()
+                    flac_scan.register_active_pgid(pgid)
                 except Exception:
                     pass
-            # allow a short grace period
-            t0 = time.time()
-            while True:
-                if process.poll() is not None:
-                    break
-                if time.time() - t0 > 2.0:
-                    break
-                time.sleep(0.1)
-            if process.poll() is None:
+            except Exception:
+                pgid = None
+
+            try:
+                stderr_bytes, _ = process.communicate(timeout=timeout)
+                stderr_text = stderr_bytes.decode("utf-8", "replace") if stderr_bytes else ""
+            except subprocess.TimeoutExpired:
+                # Graceful then forceful termination of the process group
                 try:
                     pgid = os.getpgid(process.pid)
-                    os.killpg(pgid, signal.SIGKILL)
+                    os.killpg(pgid, signal.SIGTERM)
                 except Exception:
                     try:
                         process.kill()
                     except Exception:
                         pass
-            try:
-                stderr_bytes, _ = process.communicate(timeout=5)
-                stderr_text = stderr_bytes.decode("utf-8", "replace") if stderr_bytes else ""
-            except Exception:
-                stderr_text = ""
-    finally:
-        try:
-            if pgid is not None:
+                t0 = time.time()
+                while True:
+                    if process.poll() is not None:
+                        break
+                    if time.time() - t0 > 2.0:
+                        break
+                    time.sleep(0.1)
+                if process.poll() is None:
+                    try:
+                        pgid = os.getpgid(process.pid)
+                        os.killpg(pgid, signal.SIGKILL)
+                    except Exception:
+                        try:
+                            process.kill()
+                        except Exception:
+                            pass
                 try:
-                    flac_scan.unregister_active_pgid(pgid)
+                    stderr_bytes, _ = process.communicate(timeout=5)
+                    stderr_text = stderr_bytes.decode("utf-8", "replace") if stderr_bytes else ""
                 except Exception:
-                    pass
-        except Exception:
-            pass
-    if log_path:
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        with log_path.open("w", encoding="utf-8") as handle:
-            handle.write(stderr_text)
+                    stderr_text = ""
 
-    return process.returncode == 0, stderr_text
+            return process, process.returncode, stderr_text
+        finally:
+            try:
+                if pgid is not None:
+                    try:
+                        flac_scan.unregister_active_pgid(pgid)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+    # Try up to two attempts: initial, then a conservative retry.
+    attempts = 2
+    last_stderr = ""
+    for attempt in range(1, attempts + 1):
+        command = base_command.copy()
+        if attempt == 2:
+            # Build a conservative fallback command: remove -err_detect and add -threads 1
+            cons: list[str] = []
+            skip_next = False
+            for i, token in enumerate(command):
+                if skip_next:
+                    skip_next = False
+                    continue
+                if token == "-err_detect":
+                    # skip this token and its following value if present
+                    skip_next = True
+                    continue
+                cons.append(token)
+            command = cons
+            if "-threads" not in command:
+                # insert after the 'ffmpeg' literal (index 0)
+                if len(command) >= 1 and command[0].endswith("ffmpeg"):
+                    command.insert(1, "-threads")
+                    command.insert(2, "1")
+                else:
+                    # safe fallback: prepend threads
+                    command = ["ffmpeg", "-threads", "1"] + command[1:]
+
+        proc, returncode, stderr_text = _invoke(command)
+        if proc is None:
+            return False, stderr_text
+
+        last_stderr = stderr_text or last_stderr
+        # Persist per-attempt logs if requested (suffix attempt number)
+        if log_path:
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            attempt_log = (
+                log_path.with_name(log_path.stem + f"_attempt{attempt}" + log_path.suffix)
+                if log_path.suffix
+                else log_path.with_name(log_path.name + f"_attempt{attempt}")
+            )
+            with attempt_log.open("w", encoding="utf-8") as handle:
+                handle.write(stderr_text)
+
+        success = (returncode == 0)
+        if success:
+            return True, stderr_text
+        # if failed and this was the first attempt, continue to retry
+    return False, last_stderr
 
 
 def _cleanup_partial(path: Path) -> None:

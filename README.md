@@ -321,6 +321,35 @@ Default settings are optimized for most use cases, but can be customized:
 - Use `--verbose` for detailed logging
 - Run individual scripts to isolate issues
 
+## Archiving miscellaneous root files
+
+This repository collects a number of ad-hoc reports, helper scripts and
+one-off outputs in the project root during normal usage. To keep the
+top-level tidy there's a small archiving helper that will move common
+artefacts (CSV, TXT, shell helpers, old reports, and other outputs) into
+an `archive/` subdirectory and leave a manifest so the operation is
+reversible.
+
+DO NOT run this automatically unless you have a clean git working tree or
+have a verified backup. Review the script before running if you have
+custom files you wish to keep in the repository root.
+
+The archiver script is located at `scripts/archive_root.sh`. It will
+create `archive/root_archive_<TIMESTAMP>/`, move matched files/directories
+there, and write a `manifest.txt` listing everything that was moved.
+
+To run the archiver (from repo root):
+
+```bash
+# review the script first, then run
+bash scripts/archive_root.sh
+```
+
+To restore files from a created archive directory, inspect
+`archive/root_archive_<TIMESTAMP>/manifest.txt` and move files back as
+needed (or use `git checkout -- <path>` if you want to restore from
+version control).
+
 ## License
 
 This project is provided as-is for personal use.

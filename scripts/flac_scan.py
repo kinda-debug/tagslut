@@ -30,6 +30,27 @@ import time
 last_progress_timestamp = time.time()
 last_progress_file = None
 freeze_detector_stop = threading.Event()
+# Track ffmpeg process groups spawned by this process so the freeze detector
+# can target only those groups instead of issuing a global pkill. Use a lock
+# to synchronize access from worker threads and the watcher thread.
+active_ffmpeg_pgids: Set[int] = set()
+active_pgid_lock = threading.Lock()
+
+
+def register_active_pgid(pgid: int) -> None:
+    try:
+        with active_pgid_lock:
+            active_ffmpeg_pgids.add(int(pgid))
+    except Exception:
+        pass
+
+
+def unregister_active_pgid(pgid: int) -> None:
+    try:
+        with active_pgid_lock:
+            active_ffmpeg_pgids.discard(int(pgid))
+    except Exception:
+        pass
 # Global progress counter for file scanning
 scan_progress_lock = threading.Lock()
 scan_processed_count = 0
@@ -544,9 +565,14 @@ def run_command(command: Sequence[str], timeout: Optional[int] = None) -> str:
             text=True,
             preexec_fn=os.setsid,
         )
+        pgid = None
+        try:
+            pgid = os.getpgid(process.pid)
+            register_active_pgid(pgid)
+        except Exception:
+            pgid = None
     except FileNotFoundError as exc:
         raise CommandError(str(exc)) from exc
-
     try:
         stdout, stderr = process.communicate(timeout=effective_timeout)
     except subprocess.TimeoutExpired:
@@ -578,6 +604,12 @@ def run_command(command: Sequence[str], timeout: Optional[int] = None) -> str:
                 except Exception:
                     pass
         raise CommandError(f"Timeout executing {' '.join(command)}")
+    finally:
+        try:
+            if pgid is not None:
+                unregister_active_pgid(pgid)
+        except Exception:
+            pass
 
     if process.returncode != 0:
         cmd_str = ' '.join(command)
@@ -701,74 +733,96 @@ def compute_pcm_sha1(path: Path) -> Optional[str]:
     except FileNotFoundError:  # pragma: no cover - environment dependent
         return None
 
-    import time
-    deadline = time.time() + DECODE_TIMEOUT
-    digest = hashlib.sha1(usedforsecurity=False)
-    assert process.stdout is not None
-    stderr_chunks: List[bytes] = []
-    while True:
-        if time.time() > deadline:
-            # Try to gracefully terminate the whole process group, then force-kill
-            try:
-                pgid = os.getpgid(process.pid)
-                os.killpg(pgid, signal.SIGTERM)
-            except Exception:
-                try:
-                    process.kill()
-                except Exception:
-                    pass
-            if process.stdout:
-                try:
-                    process.stdout.close()
-                except Exception:
-                    pass
-            process.wait()
-            if process.stderr is not None:
-                try:
-                    stderr_chunks.append(process.stderr.read() or b"")
-                    process.stderr.close()
-                except Exception:
-                    pass
-            if DIAGNOSTICS is not None:
-                DIAGNOSTICS.record_decode(
-                    path,
-                    b"".join(stderr_chunks).decode("utf-8", "replace"),
-                    cmd,
-                    stage="pcm_sha1",
-                    success=False,
-                    note="timeout",
-                )
-            return None
-        chunk = process.stdout.read(65536)
-        if not chunk:
-            break
-        digest.update(chunk)
-        heartbeat(path)
-
-    process.stdout.close()
-    process.wait()
-    stderr_text = ""
-    if process.stderr is not None:
+    pgid = None
+    try:
         try:
-            stderr_chunks.append(process.stderr.read() or b"")
-            process.stderr.close()
+            pgid = os.getpgid(process.pid)
+            register_active_pgid(pgid)
+        except Exception:
+            pgid = None
+
+        import time
+        deadline = time.time() + DECODE_TIMEOUT
+        digest = hashlib.sha1(usedforsecurity=False)
+        assert process.stdout is not None
+        stderr_chunks: List[bytes] = []
+        while True:
+            if time.time() > deadline:
+                # Try to gracefully terminate the whole process group, then force-kill
+                try:
+                    pgid = os.getpgid(process.pid)
+                    os.killpg(pgid, signal.SIGTERM)
+                except Exception:
+                    try:
+                        process.kill()
+                    except Exception:
+                        pass
+                if process.stdout:
+                    try:
+                        process.stdout.close()
+                    except Exception:
+                        pass
+                process.wait()
+                if process.stderr is not None:
+                    try:
+                        stderr_chunks.append(process.stderr.read() or b"")
+                        process.stderr.close()
+                    except Exception:
+                        pass
+                if DIAGNOSTICS is not None:
+                    DIAGNOSTICS.record_decode(
+                        path,
+                        b"".join(stderr_chunks).decode("utf-8", "replace"),
+                        cmd,
+                        stage="pcm_sha1",
+                        success=False,
+                        note="timeout",
+                    )
+                return None
+            chunk = process.stdout.read(65536)
+            if not chunk:
+                break
+            digest.update(chunk)
+            heartbeat(path)
+
+        # close stdout and wait for process; stderr collect done after
+        try:
+            if process.stdout:
+                process.stdout.close()
         except Exception:
             pass
-    if stderr_chunks:
-        stderr_text = b"".join(stderr_chunks).decode("utf-8", "replace")
-    success = process.returncode == 0
-    if DIAGNOSTICS is not None:
-        DIAGNOSTICS.record_decode(
-            path,
-            stderr_text,
-            cmd,
-            stage="pcm_sha1",
-            success=success,
-            note=None,
-        )
-    if not success:
-        return None
-    return digest.hexdigest()
+        try:
+            process.wait()
+        except Exception:
+            pass
+        stderr_text = ""
+        if process.stderr is not None:
+            try:
+                stderr_chunks.append(process.stderr.read() or b"")
+                process.stderr.close()
+            except Exception:
+                pass
+        if stderr_chunks:
+            stderr_text = b"".join(stderr_chunks).decode("utf-8", "replace")
+        success = process.returncode == 0
+        if DIAGNOSTICS is not None:
+            DIAGNOSTICS.record_decode(
+                path,
+                stderr_text,
+                cmd,
+                stage="pcm_sha1",
+                success=success,
+                note=None,
+            )
+        if not success:
+            return None
+        return digest.hexdigest()
+    finally:
+        try:
+            if pgid is not None:
+                unregister_active_pgid(pgid)
+        except Exception:
+            pass
 
 
 def compute_segment_hash(
@@ -821,72 +875,93 @@ def compute_segment_hash(
     except FileNotFoundError:  # pragma: no cover - environment dependent
         return None
 
-    import time
-    deadline = time.time() + DECODE_TIMEOUT
-    digest = hashlib.sha1(usedforsecurity=False)
-    assert process.stdout is not None
-    stderr_chunks: List[bytes] = []
-    while True:
-        if time.time() > deadline:
-            try:
-                pgid = os.getpgid(process.pid)
-                os.killpg(pgid, signal.SIGTERM)
-            except Exception:
-                try:
-                    process.kill()
-                except Exception:
-                    pass
-            if process.stdout:
-                try:
-                    process.stdout.close()
-                except Exception:
-                    pass
-            process.wait()
-            if process.stderr is not None:
-                try:
-                    stderr_chunks.append(process.stderr.read() or b"")
-                    process.stderr.close()
-                except Exception:
-                    pass
-            if DIAGNOSTICS is not None:
-                DIAGNOSTICS.record_decode(
-                    path,
-                    b"".join(stderr_chunks).decode("utf-8", "replace"),
-                    cmd,
-                    stage="segment_hash",
-                    success=False,
-                    note="timeout",
-                )
-            return None
-        chunk = process.stdout.read(65536)
-        if not chunk:
-            break
-        digest.update(chunk)
-        heartbeat(path)
-
-    process.stdout.close()
-    process.wait()
-    stderr_text = ""
-    if process.stderr is not None:
+    pgid = None
+    try:
         try:
-            stderr_chunks.append(process.stderr.read() or b"")
-            process.stderr.close()
+            pgid = os.getpgid(process.pid)
+            register_active_pgid(pgid)
+        except Exception:
+            pgid = None
+
+        import time
+        deadline = time.time() + DECODE_TIMEOUT
+        digest = hashlib.sha1(usedforsecurity=False)
+        assert process.stdout is not None
+        stderr_chunks: List[bytes] = []
+        while True:
+            if time.time() > deadline:
+                try:
+                    pgid = os.getpgid(process.pid)
+                    os.killpg(pgid, signal.SIGTERM)
+                except Exception:
+                    try:
+                        process.kill()
+                    except Exception:
+                        pass
+                if process.stdout:
+                    try:
+                        process.stdout.close()
+                    except Exception:
+                        pass
+                process.wait()
+                if process.stderr is not None:
+                    try:
+                        stderr_chunks.append(process.stderr.read() or b"")
+                        process.stderr.close()
+                    except Exception:
+                        pass
+                if DIAGNOSTICS is not None:
+                    DIAGNOSTICS.record_decode(
+                        path,
+                        b"".join(stderr_chunks).decode("utf-8", "replace"),
+                        cmd,
+                        stage="segment_hash",
+                        success=False,
+                        note="timeout",
+                    )
+                return None
+            chunk = process.stdout.read(65536)
+            if not chunk:
+                break
+            digest.update(chunk)
+            heartbeat(path)
+
+        try:
+            if process.stdout:
+                process.stdout.close()
         except Exception:
             pass
-    if stderr_chunks:
-        stderr_text = b"".join(stderr_chunks).decode("utf-8", "replace")
-    success = process.returncode == 0
-    if DIAGNOSTICS is not None:
-        DIAGNOSTICS.record_decode(
-            path,
-            stderr_text,
-            cmd,
-            stage="segment_hash",
-            success=success,
-        )
-    if not success:
-        return None
-    return digest.hexdigest()
+        try:
+            process.wait()
+        except Exception:
+            pass
+        stderr_text = ""
+        if process.stderr is not None:
+            try:
+                stderr_chunks.append(process.stderr.read() or b"")
+                process.stderr.close()
+            except Exception:
+                pass
+        if stderr_chunks:
+            stderr_text = b"".join(stderr_chunks).decode("utf-8", "replace")
+        success = process.returncode == 0
+        if DIAGNOSTICS is not None:
+            DIAGNOSTICS.record_decode(
+                path,
+                stderr_text,
+                cmd,
+                stage="segment_hash",
+                success=success,
+            )
+        if not success:
+            return None
+        return digest.hexdigest()
+    finally:
+        try:
+            if pgid is not None:
+                unregister_active_pgid(pgid)
+        except Exception:
+            pass
 
 
 def compute_segment_hashes(
@@ -1795,6 +1870,7 @@ def scan_files(
     # Freeze detector watcher logic
     def freeze_detector_watcher(quarantine_dir=None):
         import time
+        kill_in_terminal = bool(kwargs.get("kill_in_terminal", True))
         while not freeze_detector_stop.is_set():
             time.sleep(5)
             now = time.time()
@@ -1809,11 +1885,63 @@ def scan_files(
                         "Freeze detector triggered",
                         context=last_progress_file,
                     )
-                # Kill any stalled ffmpeg processes
+                # Kill any stalled ffmpeg processes. Optionally run the pkill
+                # command in a separate Terminal window on macOS so the action
+                # is visible to the user. When not requested or unavailable we
+                # fall back to running pkill in this process (non-fatal).
                 try:
-                    subprocess.run(["pkill", "-9", "ffmpeg"],
-                                   check=False, timeout=5)
-                    log("Killed stalled ffmpeg processes")
+                    # First prefer targeted kills for pgids we know we spawned.
+                    with active_pgid_lock:
+                        pgids = list(active_ffmpeg_pgids)
+
+                    if pgids:
+                        log(f"Freeze detector: attempting targeted kill of {len(pgids)} ffmpeg pgid(s)")
+                        # Send TERM first
+                        for pgid in pgids:
+                            try:
+                                os.killpg(pgid, signal.SIGTERM)
+                            except Exception:
+                                pass
+                        # Give processes a short grace period
+                        time.sleep(0.5)
+                        # Send KILL for any remaining
+                        for pgid in pgids:
+                            try:
+                                # Check if any pid in the group still exists by attempting to send 0
+                                os.killpg(pgid, 0)
+                            except Exception:
+                                # group gone
+                                continue
+                            try:
+                                os.killpg(pgid, signal.SIGKILL)
+                            except Exception:
+                                pass
+                        log("Freeze detector: targeted kill completed")
+                    else:
+                        # No tracked pgids — fall back to previous behavior which uses pkill.
+                        # Prefer an absolute pkill path when available, otherwise try killall.
+                        pkill_path = shutil.which("pkill")
+                        killall_path = shutil.which("killall")
+                        if kill_in_terminal and sys.platform == "darwin" and pkill_path:
+                            # Use the absolute pkill path in the Terminal script for visibility
+                            script = f"{pkill_path} ffmpeg; echo 'pkill (TERM) sent'; exit"
+                            osa_cmd = [
+                                "osascript",
+                                "-e",
+                                f'tell application "Terminal" to do script "{script}"',
+                            ]
+                            subprocess.run(osa_cmd, check=False, timeout=5)
+                            log("Issued pkill (TERM) ffmpeg in a new Terminal window")
+                        else:
+                            if pkill_path:
+                                subprocess.run([pkill_path, "ffmpeg"], check=False, timeout=5)
+                                log("Sent TERM to stalled ffmpeg processes (pkill)")
+                            elif killall_path:
+                                # macOS killall accepts process names; use it as a fallback.
+                                subprocess.run([killall_path, "ffmpeg"], check=False, timeout=5)
+                                log("Sent TERM to stalled ffmpeg processes (killall)")
+                            else:
+                                log("No pkill/killall found in PATH; cannot run global pkill fallback")
                 except Exception as e:
                     log(f"Failed to kill ffmpeg: {e}")
                 if quarantine_dir and os.path.exists(last_progress_file):
@@ -2303,6 +2431,12 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         help="Seconds of inactivity before watchdog warns and requests shutdown (default: 300)",
     )
     parser.add_argument(
+        "--kill-in-terminal",
+        action="store_true",
+        default=True,
+        help="When the freeze detector kills stalled ffmpeg, run the pkill in a new Terminal window (macOS only)",
+    )
+    parser.add_argument(
         "--diagnostic-root",
         type=str,
         default="/Volumes/dotad/.dedupe_diagnostics",
@@ -2442,6 +2576,7 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
         shutdown=shutdown,
         verbose=args.verbose,
         watchdog_timeout=getattr(args, "watchdog_timeout", None),
+        kill_in_terminal=getattr(args, "kill_in_terminal", False),
         broken_playlist_path=str(args.broken_playlist) if getattr(args, "broken_playlist", None) else None,
     )
 

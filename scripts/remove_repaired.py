@@ -1,9 +1,3 @@
-#!/usr/bin/env bash
-# Root shim: forward to canonical script in scripts/
-exec python3 "$(dirname "$0")/scripts/remove_repaired.py" "$@"
-#!/usr/bin/env bash
-# Shim: forward to scripts/remove_repaired.py
-exec python3 "$(dirname "$0")/scripts/remove_repaired.py" "$@"
 #!/usr/bin/env python3
 from pathlib import Path
 

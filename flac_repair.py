@@ -25,8 +25,8 @@ import signal
 import time
 
 # Import formatting settings from flac_scan
-from flac_scan import gay_flag_colors, timestamp_color_index, colorize_path, last_timestamp_color
-import flac_scan
+from scripts.flac_scan import gay_flag_colors, colorize_path
+import scripts.flac_scan as flac_scan
 
 
 def log(message: str) -> None:
@@ -223,43 +223,63 @@ def _run_ffmpeg_step(cmd: Iterable[str], step: str, log_path: Optional[Path]) ->
         )
     except FileNotFoundError:
         return False, "ffmpeg not found"
-
+    pgid = None
     try:
-        stderr_bytes, _ = process.communicate(timeout=timeout)
-        stderr_text = stderr_bytes.decode("utf-8", "replace") if stderr_bytes else ""
-    except subprocess.TimeoutExpired:
-        # First try graceful termination of the process group, then force kill
         try:
             pgid = os.getpgid(process.pid)
-            os.killpg(pgid, signal.SIGTERM)
-        except Exception:
+            # Register this pgid with the scanner's tracker so any global
+            # freeze detector can target only groups we spawned.
             try:
-                process.kill()
+                flac_scan.register_active_pgid(pgid)
             except Exception:
                 pass
-        # allow a short grace period
-        t0 = time.time()
-        while True:
-            if process.poll() is not None:
-                break
-            if time.time() - t0 > 2.0:
-                break
-            time.sleep(0.1)
-        if process.poll() is None:
+        except Exception:
+            pgid = None
+
+        try:
+            stderr_bytes, _ = process.communicate(timeout=timeout)
+            stderr_text = stderr_bytes.decode("utf-8", "replace") if stderr_bytes else ""
+        except subprocess.TimeoutExpired:
+            # First try graceful termination of the process group, then force kill
             try:
                 pgid = os.getpgid(process.pid)
-                os.killpg(pgid, signal.SIGKILL)
+                os.killpg(pgid, signal.SIGTERM)
             except Exception:
                 try:
                     process.kill()
                 except Exception:
                     pass
+            # allow a short grace period
+            t0 = time.time()
+            while True:
+                if process.poll() is not None:
+                    break
+                if time.time() - t0 > 2.0:
+                    break
+                time.sleep(0.1)
+            if process.poll() is None:
+                try:
+                    pgid = os.getpgid(process.pid)
+                    os.killpg(pgid, signal.SIGKILL)
+                except Exception:
+                    try:
+                        process.kill()
+                    except Exception:
+                        pass
+            try:
+                stderr_bytes, _ = process.communicate(timeout=5)
+                stderr_text = stderr_bytes.decode("utf-8", "replace") if stderr_bytes else ""
+            except Exception:
+                stderr_text = ""
+    finally:
         try:
-            stderr_bytes, _ = process.communicate(timeout=5)
-            stderr_text = stderr_bytes.decode("utf-8", "replace") if stderr_bytes else ""
+            if pgid is not None:
+                try:
+                    flac_scan.unregister_active_pgid(pgid)
+                except Exception:
+                    pass
         except Exception:
-            stderr_text = ""
-
+            pass
     if log_path:
         log_path.parent.mkdir(parents=True, exist_ok=True)
         with log_path.open("w", encoding="utf-8") as handle:

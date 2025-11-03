@@ -1,6 +1,81 @@
-#!/usr/bin/env bash
-# Root shim: forward to canonical script in scripts/
-exec python3 "$(dirname "$0")/scripts/repair_unhealthy.py" "$@"
+#!/usr/bin/env python3
+"""
+Helper to locate and optionally repair 'unhealthy keeper' files.
+
+Workflow:
+- Read a newline-separated list of absolute paths (default: unhealthy_keepers.txt).
+- For each path: check if it exists. If missing, search configured trash dirs for basename matches.
+- Produce a JSON report with candidates and statuses (dry-run by default).
+- Optionally call the existing `flac_repair.py` on found candidates with `--apply`.
+
+This tool is safe by default (dry-run). Use `--apply` to run repairs and `--repairs-out` to
+set the repair output directory. The script will not overwrite files unless `--overwrite` is
+passed to the underlying repair command.
+"""
+
+from __future__ import annotations
+
+import argparse
+import glob
+import json
+import subprocess
+from pathlib import Path
+from typing import Dict, List
+import sys
+
+
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        description="Find and optionally repair unhealthy keeper files"
+    )
+    p.add_argument(
+        "--list",
+        "-l",
+        dest="list_file",
+        default="unhealthy_keepers.txt",
+        help=(
+            "Path to file containing unhealthy keeper paths (one per line)"
+        ),
+    )
+    p.add_argument(
+        "--trash-dirs",
+        dest="trash_dirs",
+        nargs="*",
+        default=[
+            "/Volumes/dotad/MUSIC/_TRASH_DUPES_*",
+            "/Volumes/dotad/MUSIC/REPAIRED/_TRASH_HASH_DUPES_*",
+        ],
+        help=(
+            "Glob patterns for trash directories to search for candidates"
+        ),
+    )
+    p.add_argument(
+        "--dry-run",
+        dest="dry_run",
+        action="store_true",
+        default=True,
+        help=(
+            "Print report and do not run repairs (default)"
+        ),
+    )
+    p.add_argument(
+        "--apply",
+        dest="apply",
+        action="store_true",
+        help=(
+            "Run repair on selected candidate files (calls flac_repair.py)"
+        ),
+    )
+    p.add_argument(
+        "--repairs-out",
+        dest="repairs_out",
+        default="/Volumes/dotad/MUSIC/REPAIRED/repairs_batch",
+        help=(
+            "Output directory for repaired files"
+        ),
+    )
+    p.add_argument(
+        "--report",
         dest="report",
         default="repair_unhealthy_report.json",
         help=(

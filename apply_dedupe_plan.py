@@ -1,3 +1,9 @@
-#!/usr/bin/env bash
-# Root shim: forward to canonical script in scripts/
-exec python3 "$(dirname "$0")/scripts/apply_dedupe_plan.py" "$@"
+#!/usr/bin/env python3
+"""Root wrapper: forward to canonical script in scripts/apply_dedupe_plan.py"""
+import os
+import sys
+
+_ROOT = os.path.dirname(__file__)
+SCRIPT = os.path.join(_ROOT, 'scripts', 'apply_dedupe_plan.py')
+
+os.execv(sys.executable, [sys.executable, SCRIPT] + sys.argv[1:])

@@ -1,43 +1,9 @@
-#!/usr/bin/env bash
-# Root shim: forward to canonical script in scripts/
-exec python3 "$(dirname "$0")/scripts/remove_repaired.py" "$@"
-#!/usr/bin/env bash
-# Shim: forward to scripts/remove_repaired.py
-exec python3 "$(dirname "$0")/scripts/remove_repaired.py" "$@"
 #!/usr/bin/env python3
-from pathlib import Path
+"""Root wrapper: forward to canonical script in scripts/remove_repaired.py"""
+import os
+import sys
 
-def resolve_relative_output(src: Path, output_dir: Path) -> Path:
-    if src.is_absolute():
-        try:
-            rel_path = src.relative_to('/Volumes/dotad/MUSIC')
-        except Exception:
-            rel_path = Path(src.name)
-    else:
-        rel_path = Path(src.name)
-    return output_dir.joinpath(rel_path)
+_ROOT = os.path.dirname(__file__)
+SCRIPT = os.path.join(_ROOT, 'scripts', 'remove_repaired.py')
 
-output_dir = Path('/Volumes/dotad/MUSIC/REPAIRED')
-m3u_path = Path('/Volumes/dotad/MUSIC/broken_files_unrepaired.m3u')
-
-with m3u_path.open('r', encoding='utf-8') as f:
-    lines = f.readlines()
-
-kept = []
-removed = 0
-for line in lines:
-    line = line.strip()
-    if not line:
-        continue
-    src = Path(line)
-    dst = resolve_relative_output(src, output_dir)
-    if dst.exists():
-        print(f'Removed: {line}')
-        removed += 1
-    else:
-        kept.append(line + '\n')
-
-with m3u_path.open('w', encoding='utf-8') as f:
-    f.writelines(kept)
-
-print(f'Removed {removed} lines, kept {len(kept)} lines')
+os.execv(sys.executable, [sys.executable, SCRIPT] + sys.argv[1:])

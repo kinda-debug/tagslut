@@ -35,9 +35,10 @@ these into proper CLI entrypoints), tell me and I can implement that.
 Root shims
 ---------
 
-Small root-level shim wrappers were created so the old top-level command names
-continue working (they forward to `scripts/<name>`). The shims are lightweight
-bash wrappers that exec the real script and pass through all arguments.
+Small root-level wrapper shims were created so the old top-level command names
+continue working (they forward to `scripts/<name>`). The wrappers are
+lightweight Python wrapper scripts that exec the canonical script under
+`scripts/` using the same Python interpreter and pass through all arguments.
 
 Shims added:
 - `apply_dedupe_plan.py`
@@ -47,5 +48,6 @@ Shims added:
 - `verify_post_move.py`
 - `stage_hash_dupes.sh`
 
-If you prefer symlinks instead of shims, I can switch them; shims are
-portable across platforms and ensure `python3` is used for the Python tools.
+If you prefer symlinks instead of wrappers, I can switch them; wrappers are
+friendly to linters and ensure the intended Python interpreter is used for
+Python-based tools.

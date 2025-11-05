@@ -3,101 +3,57 @@
 from __future__ import annotations
 
 import argparse
-import binascii
 import csv
 import datetime as _dt
-import hashlib
 import json
 import os
-import re
-import shutil
 import signal
 import sqlite3
-import subprocess
 import sys
-import tempfile
-import textwrap
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field
+from types import FrameType
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
-import base64
-import struct
-import time
+from typing import Dict, List, Optional, Sequence, Set, Tuple
 
-from lib import common
-from lib.common import (
-    CommandError,
-    DiagnosticsManager,
+from scripts.lib import common
+from scripts.lib.common import (
     FileInfo,
     GroupResult,
     SegmentHashes,
-    active_ffmpeg_pgids,
-    active_pgid_lock,
     build_fuzzy_key,
     check_health,
-    colorize_path,
     compute_fingerprint,
     compute_metaflac_md5,
     compute_pcm_sha1,
-    compute_segment_hash,
     compute_segment_hashes,
-    ensure_directory,
     ensure_schema,
     fingerprint_similarity,
     freeze_detector_stop,
-    gay_flag_colors,
     heartbeat,
-    human_size,
-    insert_fp_bands,
     insert_segments,
-    is_tool_available,
-    last_progress_file,
-    last_progress_timestamp,
     last_timestamp_color,
     load_all_files_from_db,
     load_file_from_db,
     load_slide_hashes,
     log,
-    log_progress,
-    log_skip,
-    normalize_filename,
-    parse_fpcalc_output,
-    progress_color_index,
-    progress_update_lock,
-    progress_word_offset,
     probe_ffprobe,
-    register_active_pgid,
-    run_command,
-    scan_processed_count,
-    scan_progress_lock,
-    scan_skipped_count,
-    scan_total_files,
-    sha1_hex,
     store_file_signals,
-    timestamp_color_index,
-    unregister_active_pgid,
     upsert_file,
 )
-from lib.common import (
+from scripts.lib.common import (
     append_broken_playlist_entry,
     load_broken_playlist_set,
     start_watchdog_thread,
     start_freeze_detector_watcher,
-)
-from lib.common import (
     choose_winner,
-    group_to_rows,
     write_csv,
-    plan_trash_destination,
     move_duplicates,
 )
 
 ###############################################################################
 # Grouping and scoring
 ###############################################################################
-
 
 
 def build_groups(
@@ -158,11 +114,15 @@ def build_groups(
                 register_group(f"FP:{key}", "FPRINT", members)
 
         # Stage C: FPRINT similarity (pairwise compare — potentially expensive)
-        fp_candidates = [file for file in files if file.id in remaining and file.fingerprint]
+        fp_candidates = [
+            file for file in files if file.id in remaining and file.fingerprint
+        ]
         used_pairs: Set[Tuple[int, int]] = set()
         n_fp = len(fp_candidates)
         if verbose:
-            log(f"FPRINT_SIM: comparing {n_fp} candidates (applying duration window {fp_duration_window}s and size percent {fp_size_percent}%)")
+            log(
+                f"FPRINT_SIM: comparing {n_fp} candidates (applying duration window {fp_duration_window}s and size percent {fp_size_percent}%)"
+            )
         pair_count = 0
         log_interval = max(1, n_fp // 10)
         # Only actually compare fingerprints when files pass the pre-filter
@@ -171,7 +131,10 @@ def build_groups(
                 # Pre-filter by duration when both durations are known
                 allowed = False
                 if file_a.duration is not None and file_b.duration is not None:
-                    if abs((file_a.duration or 0.0) - (file_b.duration or 0.0)) <= fp_duration_window:
+                    if (
+                        abs((file_a.duration or 0.0) - (file_b.duration or 0.0))
+                        <= fp_duration_window
+                    ):
                         allowed = True
                 else:
                     # Fallback to size-based relative difference
@@ -182,11 +145,11 @@ def build_groups(
                             rel = abs(sa - sb) / max(sa, sb) * 100.0
                             if rel <= fp_size_percent:
                                 allowed = True
-                    except Exception:
+                    except (TypeError, ValueError):
                         allowed = False
                 if not allowed:
                     continue
-                pair = tuple(sorted((file_a.id, file_b.id)))
+                pair = (min(file_a.id, file_b.id), max(file_a.id, file_b.id))
                 if pair in used_pairs:
                     continue
                 pair_count += 1
@@ -233,11 +196,20 @@ def build_groups(
         for i, file_a in enumerate(seg_candidates):
             for file_b in seg_candidates[i + 1 :]:
                 matches = 0
-                if file_a.segments.head and file_a.segments.head == file_b.segments.head:
+                if (
+                    file_a.segments.head
+                    and file_a.segments.head == file_b.segments.head
+                ):
                     matches += 1
-                if file_a.segments.middle and file_a.segments.middle == file_b.segments.middle:
+                if (
+                    file_a.segments.middle
+                    and file_a.segments.middle == file_b.segments.middle
+                ):
                     matches += 1
-                if file_a.segments.tail and file_a.segments.tail == file_b.segments.tail:
+                if (
+                    file_a.segments.tail
+                    and file_a.segments.tail == file_b.segments.tail
+                ):
                     matches += 1
                 if (
                     file_a.segments.trimmed_head
@@ -254,30 +226,34 @@ def build_groups(
             groups_by_root.setdefault(root, []).append(candidate)
         for members in groups_by_root.values():
             if len(members) > 1 and all(member.id in remaining for member in members):
-                key = "SEGWIN:" + ",".join(str(member.id) for member in sorted(members, key=lambda f: f.id))
+                key = "SEGWIN:" + ",".join(
+                    str(member.id) for member in sorted(members, key=lambda f: f.id)
+                )
                 register_group(key, f"SEGWIN(m>={segwin_min_matches})", members)
 
     # Stage E: sliding windows (optional)
     if use_slide:
         slide_candidates = [
-            file for file in files if file.id in remaining and file.segments.slide_hashes
+            file
+            for file in files
+            if file.id in remaining and file.segments.slide_hashes
         ]
         if verbose:
             log(f"SEGWIN_SLIDE: processing {len(slide_candidates)} candidates")
-        parent: Dict[int, int] = {file.id: file.id for file in slide_candidates}
+        slide_parent: Dict[int, int] = {file.id: file.id for file in slide_candidates}
         seen: Dict[str, int] = {}
 
         def find_slide(node: int) -> int:
-            while parent[node] != node:
-                parent[node] = parent[parent[node]]
-                node = parent[node]
+            while slide_parent[node] != node:
+                slide_parent[node] = slide_parent[slide_parent[node]]
+                node = slide_parent[node]
             return node
 
         def union_slide(a: int, b: int) -> None:
             root_a = find_slide(a)
             root_b = find_slide(b)
             if root_a != root_b:
-                parent[root_b] = root_a
+                slide_parent[root_b] = root_a
 
         for file in slide_candidates:
             for slide_hash in file.segments.slide_hashes:
@@ -351,7 +327,7 @@ def estimate_fp_pairs(
                         rel = abs(sa - sb) / max(sa, sb) * 100.0
                         if rel <= fp_size_percent:
                             allowed_flag = True
-                except Exception:
+                except (TypeError, ValueError):
                     allowed_flag = False
             if allowed_flag:
                 allowed += 1
@@ -363,12 +339,10 @@ def estimate_fp_pairs(
 ###############################################################################
 
 
-
 def group_to_rows(group: GroupResult, trash_dir: Path, commit: bool) -> List[List[str]]:
     """Thin adapter that delegates to the canonical implementation in lib.common."""
 
     return common.group_to_rows(group, trash_dir, commit)
-
 
 
 ###############################################################################
@@ -389,10 +363,12 @@ class GracefulShutdown:
     def should_stop(self) -> bool:
         return self._stop_event.is_set()
 
-    def _handler(self, signum, frame) -> None:  # pragma: no cover
+    def _handler(self, signum: int, frame: FrameType | None) -> None:  # pragma: no cover
         self._sigint_count += 1
         if self._sigint_count == 1:
-            log("Received Ctrl-C — finishing current tasks then stopping… (press Ctrl-C again to abort now)")
+            log(
+                "Received Ctrl-C — finishing current tasks then stopping… (press Ctrl-C again to abort now)"
+            )
             self._stop_event.set()
         else:
             log("Second Ctrl-C — aborting immediately.")
@@ -422,7 +398,11 @@ def scan_files(
     start_watchdog_thread(WATCHDOG_TIMEOUT, shutdown=kwargs.get("shutdown"))
 
     # Start freeze detector watcher
-    start_freeze_detector_watcher(root if auto_quarantine else None, auto_quarantine, kill_in_terminal=bool(kwargs.get("kill_in_terminal", True)))
+    start_freeze_detector_watcher(
+        root if auto_quarantine else None,
+        auto_quarantine,
+        kill_in_terminal=bool(kwargs.get("kill_in_terminal", True)),
+    )
 
     files: List[FileInfo] = []
     pending: List[Tuple[Path, os.stat_result, Optional[FileInfo], int]] = []
@@ -444,12 +424,12 @@ def scan_files(
     discovered = 0
     log_path = root / "_DEDUP_SCAN_LOG.txt"
 
-    def log_scan_entry(path: Path, status: str):
+    def log_scan_entry(path: Path, status: str) -> None:
         try:
             ts = _dt.datetime.now().isoformat()
             with open(log_path, "a") as f:
                 f.write(f"{ts}\t{path}\t{status}\n")
-        except Exception:
+        except OSError:
             # Logging must not crash the dedupe run
             pass
         heartbeat(path)
@@ -469,7 +449,7 @@ def scan_files(
         for filename in sorted(filenames):
             if shutdown.should_stop():
                 break
-            if not filename.lower().endswith('.flac'):
+            if not filename.lower().endswith(".flac"):
                 continue  # Ignore non-FLAC files entirely
             path = Path(dirpath) / filename
             heartbeat(path)
@@ -519,7 +499,9 @@ def scan_files(
     if verbose:
         log(f"Discovered {discovered} .flac files under {root}")
 
-    def analyze(task: Tuple[Path, os.stat_result, Optional[FileInfo], int]) -> Optional[FileInfo]:
+    def analyze(
+        task: Tuple[Path, os.stat_result, Optional[FileInfo], int],
+    ) -> Optional[FileInfo]:
         path, stat_info, cached, file_id = task
         if shutdown.should_stop():
             return cached
@@ -536,12 +518,13 @@ def scan_files(
 
         metadata = probe_ffprobe(path)
         if metadata:
-            info.codec = metadata.get("codec") or "flac"
+            codec_val = metadata.get("codec")
+            info.codec = str(codec_val) if codec_val is not None else "flac"
             info.duration = metadata.get("duration")
             info.bitrate_kbps = metadata.get("bitrate_kbps")
             stream_md5 = metadata.get("stream_md5")
-            if stream_md5:
-                info.stream_md5 = stream_md5
+            if stream_md5 is not None:
+                info.stream_md5 = str(stream_md5)
 
         md5 = compute_metaflac_md5(path)
         if md5:
@@ -610,7 +593,7 @@ def scan_files(
                     ts = _dt.datetime.now().isoformat()
                     hn = info.health_note or ""
                     f.write(f"{ts}\t{path}\t{hn}\n")
-            except Exception:
+            except OSError:
                 # don't let logging errors interrupt the run
                 pass
             append_broken_playlist_entry(
@@ -626,22 +609,28 @@ def scan_files(
 
         return info
 
-    def print_progress(completed, total, width=50):
+    def print_progress(completed: int, total: int, width: int = 50) -> None:
         global last_timestamp_color
         percent = completed / total if total > 0 else 0
         color = last_timestamp_color
-        print(f"\r{color}{completed}/{total}\033[0m \033[1;37m({percent:.1%})\033[0m", end='', flush=True)
+        print(
+            f"\r{color}{completed}/{total}\033[0m \033[1;37m({percent:.1%})\033[0m",
+            end="",
+            flush=True,
+        )
 
     if pending:
         import time
+
         max_workers = max(1, workers)
         total_files = len(pending)
         completed = 0
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_map = {
-                executor.submit(analyze, task): task[0] for task in pending
-            }
-            print(f"\033[36m[DIAG] Submitted {len(future_map)} tasks to ThreadPoolExecutor\033[0m", flush=True)
+            future_map = {executor.submit(analyze, task): task[0] for task in pending}
+            print(
+                f"\033[36m[DIAG] Submitted {len(future_map)} tasks to ThreadPoolExecutor\033[0m",
+                flush=True,
+            )
             for future in as_completed(future_map):
                 if shutdown.should_stop():
                     log("Shutdown requested — cancelling remaining tasks.")
@@ -681,7 +670,9 @@ def scan_files(
                 completed += 1
                 print_progress(completed, total_files)
                 if completed % 100 == 0 or completed == total_files:
-                    print(f"[{time.strftime('%H:%M:%S')}] Processed {completed}/{total_files} files")
+                    print(
+                        f"[{time.strftime('%H:%M:%S')}] Processed {completed}/{total_files} files"
+                    )
             print()  # End the progress bar line
             print("\033[32m[DIAG] All tasks completed.\033[0m", flush=True)
 
@@ -724,7 +715,9 @@ def finalize_run(conn: sqlite3.Connection, run_id: int) -> None:
     conn.commit()
 
 
-def persist_groups(conn: sqlite3.Connection, run_id: int, groups: Sequence[GroupResult]) -> None:
+def persist_groups(
+    conn: sqlite3.Connection, run_id: int, groups: Sequence[GroupResult]
+) -> None:
     """Persist deduplication groups in the database."""
 
     conn.execute("DELETE FROM groups WHERE run_id=?", (run_id,))
@@ -750,6 +743,8 @@ def persist_groups(conn: sqlite3.Connection, run_id: int, groups: Sequence[Group
             entries,
         )
     conn.commit()
+
+
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Dedupe FLAC files using database index",
@@ -833,17 +828,15 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument(
         "--trash-dir",
         type=str,
-        help="Optional custom directory for moving duplicate losers"
+        help="Optional custom directory for moving duplicate losers",
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Force dry-run mode even if --commit is provided"
+        help="Force dry-run mode even if --commit is provided",
     )
     parser.add_argument(
-        "--audit-report",
-        type=Path,
-        help="Audit an existing dedupe CSV report and exit"
+        "--audit-report", type=Path, help="Audit an existing dedupe CSV report and exit"
     )
     return parser.parse_args(argv)
 
@@ -886,7 +879,9 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
                 secs_r = int(secs % 60)
                 print(f"Estimated time at {rate:.0f} pairs/s: {hrs}h {mins}m {secs_r}s")
             else:
-                print("No pairs would be compared with the current pre-filter settings.")
+                print(
+                    "No pairs would be compared with the current pre-filter settings."
+                )
             return 0
 
         if args.verbose:
@@ -897,7 +892,7 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
             fp_sim_ratio=args.fp_sim_ratio,
             fp_sim_shift=args.fp_sim_shift,
             fp_sim_min_overlap=args.fp_sim_min_overlap,
-                use_fingerprint=args.use_fingerprint,  # Respect --no-fp / --skip-fingerprint
+            use_fingerprint=args.use_fingerprint,  # Respect --no-fp / --skip-fingerprint
             use_segwin=True,
             segwin_min_matches=args.segwin_min_matches,
             use_slide=True,
@@ -913,7 +908,11 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
         persist_groups(conn, run_id, groups)
 
         timestamp = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
-        trash_dir = Path(args.trash_dir).expanduser() if args.trash_dir else (root / f"_TRASH_DUPES_{timestamp}")
+        trash_dir = (
+            Path(args.trash_dir).expanduser()
+            if args.trash_dir
+            else (root / f"_TRASH_DUPES_{timestamp}")
+        )
         report_path = root / f"_DEDUP_REPORT_{timestamp}.csv"
 
         write_csv(report_path, groups, trash_dir, args.commit)
@@ -948,7 +947,6 @@ def main() -> None:
 
 def dedupe_report_audit(csv_path: Path):
     """Audit a dedupe CSV report for planned moves and unhealthy keepers."""
-    import csv
     import datetime as dt
 
     timestamp = dt.datetime.now().strftime("%H:%M:%S")
@@ -956,7 +954,7 @@ def dedupe_report_audit(csv_path: Path):
 
     planned = 0
     unhealthy = []
-    planned_moves = []
+    planned_moves: List[Tuple[str, str]] = []
 
     with open(csv_path, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)

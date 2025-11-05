@@ -15,7 +15,7 @@ import datetime as _dt
 from dataclasses import dataclass
 import contextlib
 from pathlib import Path
-from typing import Iterable, Optional, Tuple
+from typing import Iterable, Optional, Tuple, Iterator
 import hashlib
 import re
 import shutil
@@ -24,42 +24,41 @@ import os
 import signal
 import time
 
-# Import formatting settings from flac_scan
-from scripts.flac_scan import gay_flag_colors, colorize_path
-import scripts.flac_scan as flac_scan
+# Import formatting settings from the canonical common module
+from scripts.lib import common as flac_scan
 
 
 def log(message: str) -> None:
     """Print a human friendly timestamped log message."""
 
     timestamp = _dt.datetime.now().strftime("%H:%M:%S")
-    
+
     # Colorize paths in the message
     if ": " in message:
         prefix, rest = message.split(": ", 1)
         if "/" in rest or "\\" in rest:  # detect path
-            rest = colorize_path(rest.strip())
+            rest = flac_scan.colorize_path(rest.strip())
             message = f"{prefix}: {rest}"
-    
+
     # Rotate the timestamp color using the shared index in flac_scan
-    timestamp_color = gay_flag_colors[flac_scan.timestamp_color_index % 6]
+    timestamp_color = flac_scan.gay_flag_colors[flac_scan.timestamp_color_index % 6]
     flac_scan.timestamp_color_index += 1
     flac_scan.last_timestamp_color = timestamp_color
-    
+
     message_color = ""
     if "Progress" in message:
         # Color only the number in rainbow
         parts = message.split()
         if len(parts) >= 2:
             number = parts[1]
-            color = gay_flag_colors[flac_scan.progress_word_offset % 6]
+            color = flac_scan.gay_flag_colors[flac_scan.progress_word_offset % 6]
             flac_scan.progress_word_offset += 1
             parts[1] = f"{color}{number}\033[0m"
             message = " ".join(parts)
             # Make percentage bold (white bold)
             try:
-                message = re.sub(r'\(([^)]*%)\)', r'(\033[1;37m\1\033[0m)', message)
-            except Exception:
+                message = re.sub(r"\(([^)]*%)\)", r"(\033[1;37m\1\033[0m)", message)
+            except re.error:
                 pass
     elif "cached metadata" in message:
         message_color = "\033[35m"  # magenta for cached skips
@@ -67,23 +66,31 @@ def log(message: str) -> None:
         message_color = "\033[35m"  # magenta for added to playlist
     elif "WARNING" in message or "Error" in message or "freeze" in message.lower():
         message_color = "\033[33m"  # yellow for warnings/errors
-    elif "Skipping" in message or "broken" in message or "quarantine" in message.lower():
+    elif (
+        "Skipping" in message or "broken" in message or "quarantine" in message.lower()
+    ):
         message_color = "\033[31m"  # red for skips/broken
     elif "Repaired" in message:
         # Successful repair -> green
         message_color = "\033[32m"
-    elif "Failed" in message or "Failure" in message or message.strip().startswith("Failed:"):
+    elif (
+        "Failed" in message
+        or "Failure" in message
+        or message.strip().startswith("Failed:")
+    ):
         # Failed repair -> red
         message_color = "\033[31m"
     elif "Processed" in message or "completed" in message or "Killed" in message:
         if ": " in message:
             prefix, rest = message.split(": ", 1)
             # Color prefix green, rest lighter grey (white)
-            print(f"{timestamp_color}[{timestamp}]\033[0m \033[32m{prefix}:\033[0m \033[37m{rest}\033[0m")
+            print(
+                f"{timestamp_color}[{timestamp}]\033[0m \033[32m{prefix}:\033[0m \033[37m{rest}\033[0m"
+            )
             return
         else:
             message_color = "\033[32m"  # green for success
-    
+
     print(f"{timestamp_color}[{timestamp}]\033[0m {message_color}{message}\033[0m")
 
 
@@ -99,18 +106,36 @@ def parse_args():
             "(default: /Volumes/dotad/MUSIC/broken_files_unrepaired.m3u)"
         ),
     )
-    g.add_argument("--file", dest="single_file", help="Repair a single FLAC file (path)")
-    p.add_argument("--output", "-o", dest="output_dir",
-                   default="/Volumes/dotad/MUSIC/REPAIRED",
-                   help="Directory where repaired files are written (preserves relative paths)")
-    p.add_argument("--no-overwrite-playlist", dest="overwrite_playlist", action="store_false",
-                   help="Do not overwrite the input playlist; instead print unrepaired files to stdout")
-    p.add_argument("--capture-stderr", dest="capture_stderr", action="store_true",
-                   help="Capture ffmpeg stderr to per-file logs under the output/logs directory")
+    g.add_argument(
+        "--file", dest="single_file", help="Repair a single FLAC file (path)"
+    )
+    p.add_argument(
+        "--output",
+        "-o",
+        dest="output_dir",
+        default="/Volumes/dotad/MUSIC/REPAIRED",
+        help="Directory where repaired files are written (preserves relative paths)",
+    )
+    p.add_argument(
+        "--no-overwrite-playlist",
+        dest="overwrite_playlist",
+        action="store_false",
+        help="Do not overwrite the input playlist; instead print unrepaired files to stdout",
+    )
+    p.add_argument(
+        "--capture-stderr",
+        dest="capture_stderr",
+        action="store_true",
+        help="Capture ffmpeg stderr to per-file logs under the output/logs directory",
+    )
     # Use a lenient decode mode by default to increase chances of salvaging
     # damaged frames. Users can override with --ffmpeg-args.
-    p.add_argument("--ffmpeg-args", dest="ffmpeg_args", default="-err_detect ignore_err -c:a flac",
-                   help="Extra ffmpeg audio options (default: '-err_detect ignore_err -c:a flac')")
+    p.add_argument(
+        "--ffmpeg-args",
+        dest="ffmpeg_args",
+        default="-err_detect ignore_err -c:a flac",
+        help="Extra ffmpeg audio options (default: '-err_detect ignore_err -c:a flac')",
+    )
     p.add_argument(
         "--broken-playlist",
         dest="broken_playlist",
@@ -183,6 +208,7 @@ class PipelineOptions:
     trim_seconds: float
     temp_dir: Optional[Path]
 
+
 def ensure_parent(path: Path) -> None:
     """Ensure the destination directory exists."""
 
@@ -202,11 +228,13 @@ def _stderr_log_path(logs_dir: Path, dst: Path, step: str) -> Path:
     safe_step = _sanitize_component(step)[:16]
     safe_base = _sanitize_component(dst.stem or dst.name)
     digest_input = f"{dst.as_posix()}::{step}".encode("utf-8")
-    digest = hashlib.sha1(digest_input, usedforsecurity=False).hexdigest()[:8]
+    digest = hashlib.sha1(digest_input).hexdigest()[:8]
     return logs_dir / f"{safe_base}_{safe_step}_{digest}.stderr.log"
 
 
-def _run_ffmpeg_step(cmd: Iterable[str], step: str, log_path: Optional[Path]) -> Tuple[bool, str]:
+def _run_ffmpeg_step(
+    cmd: Iterable[str], step: str, log_path: Optional[Path]
+) -> Tuple[bool, str]:
     """Execute *cmd* via ``ffmpeg`` and optionally persist stderr.
 
     This helper will attempt a conservative retry on failure (insert
@@ -216,7 +244,9 @@ def _run_ffmpeg_step(cmd: Iterable[str], step: str, log_path: Optional[Path]) ->
     base_command = list(cmd)
     timeout: int = getattr(_run_ffmpeg_step, "_default_timeout", 30)
 
-    def _invoke(command: list[str]) -> Tuple[subprocess.Popen | None, Optional[int], str]:
+    def _invoke(
+        command: list[str],
+    ) -> Tuple[subprocess.Popen | None, Optional[int], str]:
         """Start the command, wait with timeout handling, and return (process, returncode, stderr_text).
 
         If ffmpeg is not found returns (None, None, "ffmpeg not found")."""
@@ -237,23 +267,25 @@ def _run_ffmpeg_step(cmd: Iterable[str], step: str, log_path: Optional[Path]) ->
                 pgid = os.getpgid(process.pid)
                 try:
                     flac_scan.register_active_pgid(pgid)
-                except Exception:
+                except OSError:
                     pass
-            except Exception:
+            except OSError:
                 pgid = None
 
             try:
                 stderr_bytes, _ = process.communicate(timeout=timeout)
-                stderr_text = stderr_bytes.decode("utf-8", "replace") if stderr_bytes else ""
+                stderr_text = (
+                    stderr_bytes.decode("utf-8", "replace") if stderr_bytes else ""
+                )
             except subprocess.TimeoutExpired:
                 # Graceful then forceful termination of the process group
                 try:
                     pgid = os.getpgid(process.pid)
                     os.killpg(pgid, signal.SIGTERM)
-                except Exception:
+                except OSError:
                     try:
                         process.kill()
-                    except Exception:
+                    except OSError:
                         pass
                 t0 = time.time()
                 while True:
@@ -266,15 +298,17 @@ def _run_ffmpeg_step(cmd: Iterable[str], step: str, log_path: Optional[Path]) ->
                     try:
                         pgid = os.getpgid(process.pid)
                         os.killpg(pgid, signal.SIGKILL)
-                    except Exception:
+                    except OSError:
                         try:
                             process.kill()
-                        except Exception:
+                        except OSError:
                             pass
                 try:
                     stderr_bytes, _ = process.communicate(timeout=5)
-                    stderr_text = stderr_bytes.decode("utf-8", "replace") if stderr_bytes else ""
-                except Exception:
+                    stderr_text = (
+                        stderr_bytes.decode("utf-8", "replace") if stderr_bytes else ""
+                    )
+                except (subprocess.SubprocessError, OSError, UnicodeDecodeError):
                     stderr_text = ""
 
             return process, process.returncode, stderr_text
@@ -283,9 +317,9 @@ def _run_ffmpeg_step(cmd: Iterable[str], step: str, log_path: Optional[Path]) ->
                 if pgid is not None:
                     try:
                         flac_scan.unregister_active_pgid(pgid)
-                    except Exception:
+                    except OSError:
                         pass
-            except Exception:
+            except OSError:
                 pass
 
     # Try up to two attempts: initial, then a conservative retry.
@@ -325,14 +359,16 @@ def _run_ffmpeg_step(cmd: Iterable[str], step: str, log_path: Optional[Path]) ->
         if log_path:
             log_path.parent.mkdir(parents=True, exist_ok=True)
             attempt_log = (
-                log_path.with_name(log_path.stem + f"_attempt{attempt}" + log_path.suffix)
+                log_path.with_name(
+                    log_path.stem + f"_attempt{attempt}" + log_path.suffix
+                )
                 if log_path.suffix
                 else log_path.with_name(log_path.name + f"_attempt{attempt}")
             )
             with attempt_log.open("w", encoding="utf-8") as handle:
                 handle.write(stderr_text)
 
-        success = (returncode == 0)
+        success = returncode == 0
         if success:
             return True, stderr_text
         # if failed and this was the first attempt, continue to retry
@@ -367,7 +403,7 @@ def create_backup(source: Path, backup_dir: Optional[Path]) -> Optional[Path]:
 
 
 @contextlib.contextmanager
-def temporary_directory(base: Optional[Path]) -> Iterable[Path]:
+def temporary_directory(base: Optional[Path]) -> Iterator[Path]:
     """Yield a temporary directory, honouring an optional *base* path."""
 
     if base:
@@ -417,8 +453,19 @@ def decode_and_reencode(
 
     with temporary_directory(options.temp_dir) as temp_dir:
         wav_path = temp_dir / f"{dst.stem}_repair.wav"
-        decode_cmd = ["ffmpeg", "-v", "error", "-nostdin", "-y", "-i", str(src), str(wav_path)]
-        decode_log = _stderr_log_path(logs_dir, dst, "decode") if capture_stderr else None
+        decode_cmd = [
+            "ffmpeg",
+            "-v",
+            "error",
+            "-nostdin",
+            "-y",
+            "-i",
+            str(src),
+            str(wav_path),
+        ]
+        decode_log = (
+            _stderr_log_path(logs_dir, dst, "decode") if capture_stderr else None
+        )
         setattr(_run_ffmpeg_step, "_default_timeout", options.ffmpeg_timeout)
         success, _ = _run_ffmpeg_step(decode_cmd, "decode", decode_log)
         if not success or not wav_path.exists():
@@ -437,7 +484,9 @@ def decode_and_reencode(
             "flac",
             str(dst),
         ]
-        encode_log = _stderr_log_path(logs_dir, dst, "reencode") if capture_stderr else None
+        encode_log = (
+            _stderr_log_path(logs_dir, dst, "reencode") if capture_stderr else None
+        )
         setattr(_run_ffmpeg_step, "_default_timeout", options.ffmpeg_timeout)
         success, _ = _run_ffmpeg_step(encode_cmd, "reencode", encode_log)
         if not success or not dst.exists():
@@ -453,9 +502,7 @@ def decode_and_reencode(
 
     max_allowed = max(src_size * 2, src_size + 1_048_576)
     if dst_size <= 0 or dst_size > max_allowed:
-        print(
-            f"Size check failed: output {dst_size} bytes vs source {src_size} bytes"
-        )
+        print(f"Size check failed: output {dst_size} bytes vs source {src_size} bytes")
         _cleanup_partial(dst)
         return False
     return True
@@ -549,7 +596,7 @@ def execute_pipeline(
             try:
                 shutil.copy2(backup_path, dst)
                 print(f"Restored original from backup {backup_path}")
-            except Exception as exc:
+            except OSError as exc:
                 print(f"Failed to restore backup {backup_path}: {exc}")
 
 
@@ -577,7 +624,7 @@ def resolve_relative_output(src: Path, output_dir: Path) -> Path:
     if src.is_absolute():
         try:
             rel_path = src.relative_to("/Volumes/dotad/MUSIC")
-        except Exception:
+        except ValueError:
             rel_path = Path(src.name)
     else:
         rel_path = Path(src.name)
@@ -600,7 +647,11 @@ def repair_playlist(
 
     logs_dir = output_dir / "logs"
     with playlist.open("r", encoding="utf-8") as handle:
-        files = [line.strip() for line in handle if line.strip() and Path(line.strip()).is_file()]
+        files = [
+            line.strip()
+            for line in handle
+            if line.strip() and Path(line.strip()).is_file()
+        ]
 
     total = len(files)
     unrepaired: list[str] = []
@@ -695,8 +746,10 @@ def main() -> int:
             broken_playlist,
         )
 
-    playlist_path = Path(args.playlist) if args.playlist else Path(
-        "/Volumes/dotad/MUSIC/broken_files_unrepaired.m3u"
+    playlist_path = (
+        Path(args.playlist)
+        if args.playlist
+        else Path("/Volumes/dotad/MUSIC/broken_files_unrepaired.m3u")
     )
     if broken_playlist is None:
         broken_playlist = playlist_path
@@ -712,4 +765,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-    

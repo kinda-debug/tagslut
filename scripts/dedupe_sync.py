@@ -89,6 +89,8 @@ class LibraryHealthResult:
     exists: bool
     healthy: Optional[bool]
     note: Optional[str]
+
+
 class NullHealthChecker:
     """Health checker that always reports unknown health.
 
@@ -229,14 +231,28 @@ def gather_track_info(path: Path, checker: HealthChecker) -> TrackInfo:
     try:
         st: os.stat_result = path.stat()
     except FileNotFoundError:
-        return TrackInfo(path=path, exists=False, healthy=None, health_note="file missing", size=0, mtime_ns=0)
+        return TrackInfo(
+            path=path,
+            exists=False,
+            healthy=None,
+            health_note="file missing",
+            size=0,
+            mtime_ns=0,
+        )
 
     healthy: Optional[bool]
     note: Optional[str]
     healthy, note = checker.check(path)
     size = int(st.st_size)
     mtime_ns = int(st.st_mtime_ns)
-    return TrackInfo(path=path, exists=True, healthy=healthy, health_note=note, size=size, mtime_ns=mtime_ns)
+    return TrackInfo(
+        path=path,
+        exists=True,
+        healthy=healthy,
+        health_note=note,
+        size=size,
+        mtime_ns=mtime_ns,
+    )
 
 
 def _health_score(info: TrackInfo) -> int:
@@ -307,7 +323,9 @@ def synchronize_track(
 
     if not library_info.exists:
         if dry_run:
-            return SyncOutcome(relative_path, "would-move", "library missing; move staged copy")
+            return SyncOutcome(
+                relative_path, "would-move", "library missing; move staged copy"
+            )
 
         ensure_parent_directory(library_path)
         dedupe_path.rename(library_path)
@@ -317,21 +335,32 @@ def synchronize_track(
     preferred = pick_preferred_track(library_info, dedupe_info)
     if preferred == "library":
         if dry_run:
-            return SyncOutcome(relative_path, "would-delete", "library already healthiest; delete staged duplicate")
+            return SyncOutcome(
+                relative_path,
+                "would-delete",
+                "library already healthiest; delete staged duplicate",
+            )
 
         dedupe_path.unlink()
         prune_empty_parents(relative_path, dedupe_root)
         return SyncOutcome(relative_path, "deleted", "removed duplicate from staging")
 
     if dry_run:
-        return SyncOutcome(relative_path, "would-swap", "staged copy healthier; swap into library")
+        return SyncOutcome(
+            relative_path, "would-swap", "staged copy healthier; swap into library"
+        )
 
     temp_path = library_path.with_suffix(library_path.suffix + ".swap")
     library_path.rename(temp_path)
     try:
         dedupe_path.rename(library_path)
-    except Exception:
-        temp_path.rename(library_path)
+    except OSError:
+        # If moving fails, attempt to restore original and re-raise
+        try:
+            temp_path.rename(library_path)
+        except OSError:
+            # best-effort restore failed; continue to re-raise original
+            pass
         raise
 
     temp_path.unlink()
@@ -362,7 +391,9 @@ def synchronise_directory(
     return outcomes
 
 
-def audit_library_playback(library_root: Path, checker: HealthChecker) -> List[LibraryHealthResult]:
+def audit_library_playback(
+    library_root: Path, checker: HealthChecker
+) -> List[LibraryHealthResult]:
     """Decode every audio track in *library_root* to verify uninterrupted playback."""
 
     results: List[LibraryHealthResult] = []
@@ -378,6 +409,8 @@ def audit_library_playback(library_root: Path, checker: HealthChecker) -> List[L
             )
         )
     return results
+
+
 def build_argument_parser() -> argparse.ArgumentParser:
     """Return an ``ArgumentParser`` for the CLI entry point."""
 
@@ -434,7 +467,9 @@ def run_cli(args: Sequence[str] | None = None) -> int:
     ns = parser.parse_args(args=args)
 
     if ns.verify_library and ns.health_check == "none":
-        parser.error("--verify-library requires active health checks; remove --health-check none")
+        parser.error(
+            "--verify-library requires active health checks; remove --health-check none"
+        )
     dedupe_root = ns.dedupe_root or discover_dedupe_root(ns.dedupe_listing)
     if not dedupe_root.exists():
         parser.error(f"Dedupe directory {dedupe_root} does not exist")
@@ -445,21 +480,35 @@ def run_cli(args: Sequence[str] | None = None) -> int:
     else:
         checker = NullHealthChecker()
 
-    outcomes = synchronise_directory(ns.library_root, dedupe_root, checker, dry_run=ns.dry_run)
+    outcomes = synchronise_directory(
+        ns.library_root, dedupe_root, checker, dry_run=ns.dry_run
+    )
 
     counts: Dict[str, int] = {}
     for outcome in outcomes:
         counts[outcome.action] = counts.get(outcome.action, 0) + 1
         print(f"{outcome.action:>12}  {outcome.relative_path}  {outcome.message}")
 
-    summary = ", ".join(f"{action}: {count}" for action, count in sorted(counts.items()))
-    print(f"Processed {len(outcomes)} files — {summary if summary else 'no actions performed'}")
+    summary = ", ".join(
+        f"{action}: {count}" for action, count in sorted(counts.items())
+    )
+    print(
+        f"Processed {len(outcomes)} files — {summary if summary else 'no actions performed'}"
+    )
 
     if ns.verify_library:
         print(f"Verifying playback health across {ns.library_root} …")
         audit_results = audit_library_playback(ns.library_root, checker)
-        unhealthy = [result for result in audit_results if not result.exists or result.healthy is False]
-        unknown = [result for result in audit_results if result.exists and result.healthy is None]
+        unhealthy = [
+            result
+            for result in audit_results
+            if not result.exists or result.healthy is False
+        ]
+        unknown = [
+            result
+            for result in audit_results
+            if result.exists and result.healthy is None
+        ]
         for result in unhealthy:
             note = result.note or "playback verification failed"
             print(f"   UNHEALTHY  {result.relative_path}  {note}")

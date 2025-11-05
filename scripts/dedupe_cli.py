@@ -24,14 +24,14 @@ import argparse
 import subprocess
 import sys
 from pathlib import Path
+from typing import Optional, Sequence
 
 
-def run_command(cmd, description):
+def run_command(cmd: Sequence[str], description: str) -> Optional[subprocess.CompletedProcess]:
     """Run a command and return the result."""
     print(f"🔄 {description}...")
     try:
-        result = subprocess.run(cmd, check=True,
-                               capture_output=True, text=True)
+        result = subprocess.run(cmd, check=True, capture_output=True, text=True)
         print(f"✅ {description} completed successfully")
         return result
     except subprocess.CalledProcessError as e:
@@ -40,7 +40,7 @@ def run_command(cmd, description):
         return None
 
 
-def cmd_scan(args):
+def cmd_scan(args: argparse.Namespace) -> Optional[subprocess.CompletedProcess]:
     """Run the scan command."""
     cmd = [sys.executable, "flac_scan.py"]
 
@@ -56,7 +56,7 @@ def cmd_scan(args):
     return run_command(cmd, "Scanning FLAC library")
 
 
-def cmd_repair(args):
+def cmd_repair(args: argparse.Namespace) -> Optional[subprocess.CompletedProcess]:
     """Run the repair command."""
     cmd = [sys.executable, "flac_repair.py"]
 
@@ -70,14 +70,16 @@ def cmd_repair(args):
     return run_command(cmd, "Repairing broken files")
 
 
-def cmd_dedupe(args):
+def cmd_dedupe(args: argparse.Namespace) -> Optional[subprocess.CompletedProcess]:
     """Run the deduplication command."""
     cmd = [sys.executable, "flac_dedupe.py"]
 
     if args.commit:
         cmd.append("--commit")
     if not args.verbose:
-        cmd.append("--verbose")  # dedupe defaults to verbose=True, so we need to explicitly disable
+        cmd.append(
+            "--verbose"
+        )  # dedupe defaults to verbose=True, so we need to explicitly disable
     if args.dry_run:
         cmd.append("--dry-run")
     if args.trash_dir:
@@ -85,11 +87,15 @@ def cmd_dedupe(args):
     if args.root:
         cmd.extend(["--root", args.root])
 
-    action = "Moving duplicates to trash" if args.commit else "Analyzing duplicates (dry run)"
+    action = (
+        "Moving duplicates to trash"
+        if args.commit
+        else "Analyzing duplicates (dry run)"
+    )
     return run_command(cmd, action)
 
 
-def cmd_workflow(args):
+def cmd_workflow(args: argparse.Namespace) -> bool:
     """Run the complete workflow."""
     print("🚀 Starting complete FLAC deduplication workflow...")
 
@@ -115,7 +121,7 @@ def cmd_workflow(args):
     return True
 
 
-def cmd_status(args):
+def cmd_status(args: argparse.Namespace) -> None:
     """Show current status."""
     root = Path(args.root or "/Volumes/dotad/MUSIC")
     db_path = root / "_DEDUP_INDEX.db"
@@ -129,6 +135,7 @@ def cmd_status(args):
         # Get some basic stats from the database
         try:
             import sqlite3
+
             conn = sqlite3.connect(str(db_path))
             cursor = conn.cursor()
 
@@ -138,12 +145,14 @@ def cmd_status(args):
             print(f"📁 Total files indexed: {total_files:,}")
 
             # Count duplicates found
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT COUNT(*) FROM (
                     SELECT file_path FROM duplicates
                     GROUP BY group_id HAVING COUNT(*) > 1
                 )
-            """)
+            """
+            )
             duplicate_groups = cursor.fetchone()[0]
             print(f"🔍 Duplicate groups found: {duplicate_groups:,}")
 
@@ -159,7 +168,7 @@ def cmd_status(args):
     if broken_playlist.exists():
         content = broken_playlist.read_text()
         if content.strip():
-            broken_count = len([line for line in content.split('\n') if line.strip()])
+            broken_count = len([line for line in content.split("\n") if line.strip()])
             print(f"🔧 Broken files to repair: {broken_count}")
         else:
             print("✅ No broken files detected")
@@ -169,7 +178,7 @@ def cmd_status(args):
     print("=" * 50)
 
 
-def cmd_clean(args):
+def cmd_clean(args: argparse.Namespace) -> None:
     """Clean up temporary files and cache."""
     root = Path(args.root or "/Volumes/dotad/MUSIC")
 
@@ -187,62 +196,99 @@ def cmd_clean(args):
     pycache_dirs = list(root.rglob("__pycache__"))
     for pycache_dir in pycache_dirs:
         import shutil
+
         shutil.rmtree(pycache_dir)
         print(f"✅ Removed cache: {pycache_dir}")
 
     print("🧹 Cleanup completed!")
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(
         description="FLAC Deduplication CLI - Unified interface for FLAC deduplication tools",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__
+        epilog=__doc__,
     )
 
     parser.add_argument(
         "--root",
         default="/Volumes/dotad/MUSIC",
-        help="Root directory for FLAC library (default: /Volumes/dotad/MUSIC)"
+        help="Root directory for FLAC library (default: /Volumes/dotad/MUSIC)",
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # Scan command
-    scan_parser = subparsers.add_parser("scan", help="Scan FLAC library and build database")
-    scan_parser.add_argument("--verbose", action="store_true", help="Show detailed progress")
-    scan_parser.add_argument("--recompute", action="store_true", help="Force recomputation of fingerprints")
-    scan_parser.add_argument("--workers", type=int, default=8, help="Number of worker threads")
+    scan_parser = subparsers.add_parser(
+        "scan", help="Scan FLAC library and build database"
+    )
+    scan_parser.add_argument(
+        "--verbose", action="store_true", help="Show detailed progress"
+    )
+    scan_parser.add_argument(
+        "--recompute", action="store_true", help="Force recomputation of fingerprints"
+    )
+    scan_parser.add_argument(
+        "--workers", type=int, default=8, help="Number of worker threads"
+    )
 
     # Repair command
-    repair_parser = subparsers.add_parser("repair", help="Repair broken/corrupt FLAC files")
-    repair_parser.add_argument("--file", help="Repair a single file instead of playlist")
-    repair_parser.add_argument("--output-dir", "-o", help="Output directory for repaired files")
-    repair_parser.add_argument("--verbose", action="store_true", help="Show detailed progress")
+    repair_parser = subparsers.add_parser(
+        "repair", help="Repair broken/corrupt FLAC files"
+    )
+    repair_parser.add_argument(
+        "--file", help="Repair a single file instead of playlist"
+    )
+    repair_parser.add_argument(
+        "--output-dir", "-o", help="Output directory for repaired files"
+    )
+    repair_parser.add_argument(
+        "--verbose", action="store_true", help="Show detailed progress"
+    )
 
     # Dedupe command
-    dedupe_parser = subparsers.add_parser("dedupe", help="Find and remove duplicate files")
-    dedupe_parser.add_argument("--commit", action="store_true", help="Actually move duplicates to trash")
-    dedupe_parser.add_argument("--verbose", action="store_true", help="Show detailed progress")
-    dedupe_parser.add_argument("--dry-run", action="store_true", help="Force dry-run mode")
-    dedupe_parser.add_argument("--trash-dir", help="Custom directory for duplicate files")
+    dedupe_parser = subparsers.add_parser(
+        "dedupe", help="Find and remove duplicate files"
+    )
+    dedupe_parser.add_argument(
+        "--commit", action="store_true", help="Actually move duplicates to trash"
+    )
+    dedupe_parser.add_argument(
+        "--verbose", action="store_true", help="Show detailed progress"
+    )
+    dedupe_parser.add_argument(
+        "--dry-run", action="store_true", help="Force dry-run mode"
+    )
+    dedupe_parser.add_argument(
+        "--trash-dir", help="Custom directory for duplicate files"
+    )
 
     # Workflow command
-    workflow_parser = subparsers.add_parser("workflow", help="Run complete scan->repair->dedupe workflow")
-    workflow_parser.add_argument("--commit", action="store_true", help="Actually move duplicates in final step")
-    workflow_parser.add_argument("--verbose", action="store_true", help="Show detailed progress")
+    workflow_parser = subparsers.add_parser(
+        "workflow", help="Run complete scan->repair->dedupe workflow"
+    )
+    workflow_parser.add_argument(
+        "--commit", action="store_true", help="Actually move duplicates in final step"
+    )
+    workflow_parser.add_argument(
+        "--verbose", action="store_true", help="Show detailed progress"
+    )
 
     # Status command
-    status_parser = subparsers.add_parser("status", help="Show current deduplication status")
+    status_parser = subparsers.add_parser(
+        "status", help="Show current deduplication status"
+    )
 
     # Clean command
-    clean_parser = subparsers.add_parser("clean", help="Clean up temporary files and cache")
+    clean_parser = subparsers.add_parser(
+        "clean", help="Clean up temporary files and cache"
+    )
 
     args = parser.parse_args()
 
     if not args.command:
         parser.print_help()
-        return
+        return 0
 
     # Execute the appropriate command
     commands = {
@@ -256,12 +302,15 @@ def main():
 
     if args.command in commands:
         success = commands[args.command](args)
-        sys.exit(0 if success else 1)
+        # Some commands return subprocess results (or None), others return bool
+        if isinstance(success, bool):
+            return 0 if success else 1
+        return 0 if success is not None else 1
     else:
         print(f"Unknown command: {args.command}")
         parser.print_help()
-        sys.exit(1)
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

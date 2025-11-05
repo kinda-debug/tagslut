@@ -1,97 +1,55 @@
 from __future__ import annotations
 
 import argparse
-import binascii
 import datetime as _dt
-import hashlib
 import json
 import os
-import re
-import shutil
 import signal
 import sqlite3
-import subprocess
 import sys
-import tempfile
-import textwrap
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field
+from types import FrameType
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
-import base64
-import struct
-import time
+from typing import Dict, List, Optional, Sequence, Set, Tuple
 
-from lib import common
-from lib.common import (
-    CommandError,
+from scripts.lib import common
+from scripts.lib.common import (
     DiagnosticsManager,
     FileInfo,
     GroupResult,
     SegmentHashes,
-    active_ffmpeg_pgids,
-    active_pgid_lock,
     build_fuzzy_key,
     check_health,
-    colorize_path,
     compute_fingerprint,
     compute_metaflac_md5,
     compute_pcm_sha1,
-    compute_segment_hash,
     compute_segment_hashes,
     ensure_directory,
     ensure_schema,
     fingerprint_similarity,
     freeze_detector_stop,
-    gay_flag_colors,
     heartbeat,
-    human_size,
-    insert_fp_bands,
     insert_segments,
     is_tool_available,
-    last_progress_file,
-    last_progress_timestamp,
-    last_timestamp_color,
     load_file_from_db,
     load_slide_hashes,
     log,
-    log_progress,
-    log_skip,
-    normalize_filename,
-    parse_fpcalc_output,
-    progress_color_index,
-    progress_update_lock,
-    progress_word_offset,
     probe_ffprobe,
-    register_active_pgid,
-    run_command,
-    scan_processed_count,
-    scan_progress_lock,
-    scan_skipped_count,
-    scan_total_files,
-    sha1_hex,
     store_file_signals,
-    timestamp_color_index,
-    unregister_active_pgid,
     upsert_file,
     append_broken_playlist_entry,
     load_broken_playlist_set,
     start_watchdog_thread,
     start_freeze_detector_watcher,
 )
-from lib.common import (
+from scripts.lib.common import (
     choose_winner,
-    group_to_rows,
-    write_csv,
-    plan_trash_destination,
-    move_duplicates,
 )
 
 ###############################################################################
 # Grouping and scoring
 ###############################################################################
-
 
 
 def build_groups(
@@ -149,11 +107,13 @@ def build_groups(
                 register_group(f"FP:{key}", "FPRINT", members)
 
         # Stage C: FPRINT similarity
-        fp_candidates = [file for file in files if file.id in remaining and file.fingerprint]
+        fp_candidates = [
+            file for file in files if file.id in remaining and file.fingerprint
+        ]
         used_pairs: Set[Tuple[int, int]] = set()
         for i, file_a in enumerate(fp_candidates):
             for file_b in fp_candidates[i + 1 :]:
-                pair = tuple(sorted((file_a.id, file_b.id)))
+                pair = (min(file_a.id, file_b.id), max(file_a.id, file_b.id))
                 if pair in used_pairs:
                     continue
                 ratio, shift, overlap = fingerprint_similarity(
@@ -195,11 +155,20 @@ def build_groups(
         for i, file_a in enumerate(seg_candidates):
             for file_b in seg_candidates[i + 1 :]:
                 matches = 0
-                if file_a.segments.head and file_a.segments.head == file_b.segments.head:
+                if (
+                    file_a.segments.head
+                    and file_a.segments.head == file_b.segments.head
+                ):
                     matches += 1
-                if file_a.segments.middle and file_a.segments.middle == file_b.segments.middle:
+                if (
+                    file_a.segments.middle
+                    and file_a.segments.middle == file_b.segments.middle
+                ):
                     matches += 1
-                if file_a.segments.tail and file_a.segments.tail == file_b.segments.tail:
+                if (
+                    file_a.segments.tail
+                    and file_a.segments.tail == file_b.segments.tail
+                ):
                     matches += 1
                 if (
                     file_a.segments.trimmed_head
@@ -216,28 +185,32 @@ def build_groups(
             groups_by_root.setdefault(root, []).append(candidate)
         for members in groups_by_root.values():
             if len(members) > 1 and all(member.id in remaining for member in members):
-                key = "SEGWIN:" + ",".join(str(member.id) for member in sorted(members, key=lambda f: f.id))
+                key = "SEGWIN:" + ",".join(
+                    str(member.id) for member in sorted(members, key=lambda f: f.id)
+                )
                 register_group(key, f"SEGWIN(m>={segwin_min_matches})", members)
 
     # Stage E: sliding windows (optional)
     if use_slide:
         slide_candidates = [
-            file for file in files if file.id in remaining and file.segments.slide_hashes
+            file
+            for file in files
+            if file.id in remaining and file.segments.slide_hashes
         ]
-        parent: Dict[int, int] = {file.id: file.id for file in slide_candidates}
+        slide_parent: Dict[int, int] = {file.id: file.id for file in slide_candidates}
         seen: Dict[str, int] = {}
 
         def find_slide(node: int) -> int:
-            while parent[node] != node:
-                parent[node] = parent[parent[node]]
-                node = parent[node]
+            while slide_parent[node] != node:
+                slide_parent[node] = slide_parent[slide_parent[node]]
+                node = slide_parent[node]
             return node
 
         def union_slide(a: int, b: int) -> None:
             root_a = find_slide(a)
             root_b = find_slide(b)
             if root_a != root_b:
-                parent[root_b] = root_a
+                slide_parent[root_b] = root_a
 
         for file in slide_candidates:
             for slide_hash in file.segments.slide_hashes:
@@ -289,16 +262,9 @@ def build_groups(
 ###############################################################################
 
 
-
-
-
-
 ###############################################################################
 # File operations
 ###############################################################################
-
-
-
 
 
 ###############################################################################
@@ -319,10 +285,12 @@ class GracefulShutdown:
     def should_stop(self) -> bool:
         return self._stop_event.is_set()
 
-    def _handler(self, signum, frame) -> None:  # pragma: no cover
+    def _handler(self, signum: int, frame: FrameType | None) -> None:  # pragma: no cover
         self._sigint_count += 1
         if self._sigint_count == 1:
-            log("Received Ctrl-C — finishing current tasks then stopping… (press Ctrl-C again to abort now)")
+            log(
+                "Received Ctrl-C — finishing current tasks then stopping… (press Ctrl-C again to abort now)"
+            )
             self._stop_event.set()
         else:
             log("Second Ctrl-C — aborting immediately.")
@@ -351,7 +319,11 @@ def scan_files(
     start_watchdog_thread(WATCHDOG_TIMEOUT, shutdown=kwargs.get("shutdown"))
 
     # Start freeze detector watcher
-    start_freeze_detector_watcher(root if auto_quarantine else None, auto_quarantine, kill_in_terminal=bool(kwargs.get("kill_in_terminal", True)))
+    start_freeze_detector_watcher(
+        root if auto_quarantine else None,
+        auto_quarantine,
+        kill_in_terminal=bool(kwargs.get("kill_in_terminal", True)),
+    )
 
     files: List[FileInfo] = []
     pending: List[Tuple[Path, os.stat_result, Optional[FileInfo], int]] = []
@@ -373,12 +345,12 @@ def scan_files(
     discovered = 0
     log_path = root / "_DEDUP_SCAN_LOG.txt"
 
-    def log_scan_entry(path: Path, status: str):
+    def log_scan_entry(path: Path, status: str) -> None:
         try:
             ts = _dt.datetime.now().isoformat()
             with open(log_path, "a") as f:
                 f.write(f"{ts}\t{path}\t{status}\n")
-        except Exception:
+        except OSError:
             # Logging must not crash the dedupe run
             pass
         heartbeat(path)
@@ -398,7 +370,7 @@ def scan_files(
         for filename in sorted(filenames):
             if shutdown.should_stop():
                 break
-            if not filename.lower().endswith('.flac'):
+            if not filename.lower().endswith(".flac"):
                 continue  # Ignore non-FLAC files entirely
             path = Path(dirpath) / filename
             heartbeat(path)
@@ -448,7 +420,9 @@ def scan_files(
     if verbose:
         log(f"Discovered {discovered} .flac files under {root}")
 
-    def analyze(task: Tuple[Path, os.stat_result, Optional[FileInfo], int]) -> Optional[FileInfo]:
+    def analyze(
+        task: Tuple[Path, os.stat_result, Optional[FileInfo], int],
+    ) -> Optional[FileInfo]:
         path, stat_info, cached, file_id = task
         if shutdown.should_stop():
             return cached
@@ -465,12 +439,13 @@ def scan_files(
 
         metadata = probe_ffprobe(path)
         if metadata:
-            info.codec = metadata.get("codec") or "flac"
+            codec_val = metadata.get("codec")
+            info.codec = str(codec_val) if codec_val is not None else "flac"
             info.duration = metadata.get("duration")
             info.bitrate_kbps = metadata.get("bitrate_kbps")
             stream_md5 = metadata.get("stream_md5")
-            if stream_md5:
-                info.stream_md5 = stream_md5
+            if stream_md5 is not None:
+                info.stream_md5 = str(stream_md5)
 
         md5 = compute_metaflac_md5(path)
         if md5:
@@ -539,7 +514,7 @@ def scan_files(
                     ts = _dt.datetime.now().isoformat()
                     hn = info.health_note or ""
                     f.write(f"{ts}\t{path}\t{hn}\n")
-            except Exception:
+            except OSError:
                 # don't let logging errors interrupt the run
                 pass
             append_broken_playlist_entry(
@@ -555,22 +530,27 @@ def scan_files(
 
         return info
 
-    def print_progress(completed, total, width=50):
-        global last_timestamp_color
+    def print_progress(completed: int, total: int, width: int = 50) -> None:
         percent = completed / total if total > 0 else 0
-        color = last_timestamp_color
-        print(f"\r{color}{completed}/{total}\033[0m \033[1;37m({percent:.1%})\033[0m", end='', flush=True)
+        color = common.last_timestamp_color
+        print(
+            f"\r{color}{completed}/{total}\033[0m \033[1;37m({percent:.1%})\033[0m",
+            end="",
+            flush=True,
+        )
 
     if pending:
         import time
+
         max_workers = max(1, workers)
         total_files = len(pending)
         completed = 0
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_map = {
-                executor.submit(analyze, task): task[0] for task in pending
-            }
-            print(f"\033[36m[DIAG] Submitted {len(future_map)} tasks to ThreadPoolExecutor\033[0m", flush=True)
+            future_map = {executor.submit(analyze, task): task[0] for task in pending}
+            print(
+                f"\033[36m[DIAG] Submitted {len(future_map)} tasks to ThreadPoolExecutor\033[0m",
+                flush=True,
+            )
             for future in as_completed(future_map):
                 if shutdown.should_stop():
                     log("Shutdown requested — cancelling remaining tasks.")
@@ -582,18 +562,19 @@ def scan_files(
                     # as_completed yields futures that are done; no per-future timeout needed
                     info = future.result()
                 except Exception as exc:  # pragma: no cover - defensive
+                    # worker raised; log and continue (keep defensive behaviour)
                     log(f"Error processing {path}: {exc}")
                     # Log as SKIPPED if processing failed
                     try:
                         log_scan_entry(path, "SKIPPED")
-                    except Exception:
+                    except OSError:
                         pass
                     continue
                 if info is None:
                     # Log as SKIPPED if no info returned
                     try:
                         log_scan_entry(path, "SKIPPED")
-                    except Exception:
+                    except OSError:
                         pass
                     continue
                 upsert_file(conn, info)
@@ -605,12 +586,14 @@ def scan_files(
                 log(f"Processed: {path.name}")
                 try:
                     log_scan_entry(path, "PROCESSED")
-                except Exception:
+                except OSError:
                     pass
                 completed += 1
                 print_progress(completed, total_files)
                 if completed % 100 == 0 or completed == total_files:
-                    print(f"[{time.strftime('%H:%M:%S')}] Processed {completed}/{total_files} files")
+                    print(
+                        f"[{time.strftime('%H:%M:%S')}] Processed {completed}/{total_files} files"
+                    )
             print()  # End the progress bar line
             print("\033[32m[DIAG] All tasks completed.\033[0m", flush=True)
 
@@ -653,7 +636,9 @@ def finalize_run(conn: sqlite3.Connection, run_id: int) -> None:
     conn.commit()
 
 
-def persist_groups(conn: sqlite3.Connection, run_id: int, groups: Sequence[GroupResult]) -> None:
+def persist_groups(
+    conn: sqlite3.Connection, run_id: int, groups: Sequence[GroupResult]
+) -> None:
     """Persist deduplication groups in the database."""
 
     conn.execute("DELETE FROM groups WHERE run_id=?", (run_id,))
@@ -700,13 +685,13 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         "--cmd-timeout",
         type=int,
         default=10,
-        help="Seconds for short external commands (fpcalc, flac -t, ffprobe, metaflac)"
+        help="Seconds for short external commands (fpcalc, flac -t, ffprobe, metaflac)",
     )
     parser.add_argument(
         "--decode-timeout",
         type=int,
         default=30,
-        help="Seconds allowed for decoding/streaming operations (ffmpeg hashing)"
+        help="Seconds allowed for decoding/streaming operations (ffmpeg hashing)",
     )
     parser.add_argument(
         "--skip-broken",
@@ -887,7 +872,9 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
     args = parse_args(argv)
     common.CMD_TIMEOUT = max(5, int(args.cmd_timeout))
     common.DECODE_TIMEOUT = max(10, int(args.decode_timeout))
-    diag_root = Path(getattr(args, "diagnostic_root", "/Volumes/dotad/.dedupe_diagnostics")).expanduser()
+    diag_root = Path(
+        getattr(args, "diagnostic_root", "/Volumes/dotad/.dedupe_diagnostics")
+    ).expanduser()
     common.DIAGNOSTICS = DiagnosticsManager(
         root=diag_root,
         dump_fpcalc=getattr(args, "dump_fpcalc", True),
@@ -895,7 +882,9 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
         dump_watchdog=getattr(args, "dump_watchdog", True),
     )
     log(f"Diagnostics root: {common.DIAGNOSTICS.root}")
-    if getattr(args, "fpcalc_dump_latest", False) or getattr(args, "check_fpcalc", False):
+    if getattr(args, "fpcalc_dump_latest", False) or getattr(
+        args, "check_fpcalc", False
+    ):
         latest = common.DIAGNOSTICS.latest("fpcalc")
         if latest is None:
             print(f"No fpcalc dumps found under {common.DIAGNOSTICS.root / 'fpcalc'}")
@@ -906,11 +895,15 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
                 print(latest.read_text(encoding="utf-8"))
             except OSError as exc:
                 print(f"Failed to read {latest}: {exc}")
-        if getattr(args, "fpcalc_dump_latest", False) and not getattr(args, "check_fpcalc", False):
+        if getattr(args, "fpcalc_dump_latest", False) and not getattr(
+            args, "check_fpcalc", False
+        ):
             return 0
         if getattr(args, "check_fpcalc", False):
             return 0
-    trash_dir = Path(args.trash_dir).expanduser() if getattr(args, "trash_dir", None) else None
+    trash_dir = (
+        Path(args.trash_dir).expanduser() if getattr(args, "trash_dir", None) else None
+    )
     if trash_dir:
         ensure_directory(trash_dir)
     for tool in ["ffmpeg", "fpcalc", "flac", "metaflac", "ffprobe"]:
@@ -972,7 +965,11 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
         verbose=args.verbose,
         watchdog_timeout=getattr(args, "watchdog_timeout", None),
         kill_in_terminal=getattr(args, "kill_in_terminal", False),
-        broken_playlist_path=str(args.broken_playlist) if getattr(args, "broken_playlist", None) else None,
+        broken_playlist_path=(
+            str(args.broken_playlist)
+            if getattr(args, "broken_playlist", None)
+            else None
+        ),
     )
 
     # Scan completed

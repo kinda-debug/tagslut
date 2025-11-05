@@ -1,71 +1,69 @@
 """Common utilities shared by flac_scan and flac_dedupe."""
 
-
 from __future__ import annotations
 
 __all__ = [
-    'CMD_TIMEOUT',
-    'DECODE_TIMEOUT',
-    'DIAGNOSTICS',
-    'DB_SCHEMA_VERSION',
-    'CommandError',
-    'DiagnosticsManager',
-    'FileInfo',
-    'GroupResult',
-    'SegmentHashes',
-    'active_ffmpeg_pgids',
-    'active_pgid_lock',
-    'build_fuzzy_key',
-    'check_health',
-    'colorize_path',
-    'compute_fingerprint',
-    'compute_metaflac_md5',
-    'compute_pcm_sha1',
-    'compute_segment_hash',
-    'compute_segment_hashes',
-    'ensure_directory',
-    'ensure_schema',
-    'fingerprint_similarity',
-    'freeze_detector_stop',
-    'gay_flag_colors',
-    'heartbeat',
-    'human_size',
-    'insert_fp_bands',
-    'insert_segments',
-    'is_tool_available',
-    'last_progress_file',
-    'last_progress_timestamp',
-    'load_all_files_from_db',
-    'load_file_from_db',
-    'load_slide_hashes',
-    'log',
-    'log_progress',
-    'log_skip',
-    'normalize_filename',
-    'parse_fpcalc_output',
-    'progress_color_index',
-    'progress_update_lock',
-    'progress_word_offset',
-    'probe_ffprobe',
-    'register_active_pgid',
-    'run_command',
-    'scan_processed_count',
-    'scan_progress_lock',
-    'scan_skipped_count',
-    'scan_total_files',
-    'sha1_hex',
-    'store_file_signals',
-    'timestamp_color_index',
-    'unregister_active_pgid',
-    'upsert_file',
-    'append_broken_playlist_entry',
-    'load_broken_playlist_set',
-    'start_watchdog_thread',
-    'start_freeze_detector_watcher',
+    "CMD_TIMEOUT",
+    "DECODE_TIMEOUT",
+    "DIAGNOSTICS",
+    "DB_SCHEMA_VERSION",
+    "CommandError",
+    "DiagnosticsManager",
+    "FileInfo",
+    "GroupResult",
+    "SegmentHashes",
+    "active_ffmpeg_pgids",
+    "active_pgid_lock",
+    "build_fuzzy_key",
+    "check_health",
+    "colorize_path",
+    "compute_fingerprint",
+    "compute_metaflac_md5",
+    "compute_pcm_sha1",
+    "compute_segment_hash",
+    "compute_segment_hashes",
+    "ensure_directory",
+    "ensure_schema",
+    "fingerprint_similarity",
+    "freeze_detector_stop",
+    "gay_flag_colors",
+    "heartbeat",
+    "human_size",
+    "insert_fp_bands",
+    "insert_segments",
+    "is_tool_available",
+    "last_progress_file",
+    "last_progress_timestamp",
+    "load_all_files_from_db",
+    "load_file_from_db",
+    "load_slide_hashes",
+    "log",
+    "log_progress",
+    "log_skip",
+    "normalize_filename",
+    "parse_fpcalc_output",
+    "progress_color_index",
+    "progress_update_lock",
+    "progress_word_offset",
+    "probe_ffprobe",
+    "register_active_pgid",
+    "run_command",
+    "scan_processed_count",
+    "scan_progress_lock",
+    "scan_skipped_count",
+    "scan_total_files",
+    "sha1_hex",
+    "store_file_signals",
+    "timestamp_color_index",
+    "unregister_active_pgid",
+    "upsert_file",
+    "append_broken_playlist_entry",
+    "load_broken_playlist_set",
+    "start_watchdog_thread",
+    "start_freeze_detector_watcher",
 ]
 
 
-import argparse
 import binascii
 import csv
 import datetime as _dt
@@ -81,10 +79,10 @@ import sys
 import tempfile
 import textwrap
 import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
+
 # For base64 fingerprint decoding
 import base64
 import struct
@@ -117,6 +115,8 @@ def unregister_active_pgid(pgid: int) -> None:
     except (ValueError, TypeError):
         # ignore invalid inputs
         pass
+
+
 # Global progress counter for file scanning
 scan_progress_lock = threading.Lock()
 scan_processed_count = 0
@@ -137,15 +137,17 @@ gay_flag_colors = [
     "\033[33m",  # Yellow
     "\033[32m",  # Green
     "\033[34m",  # Blue
-    "\033[35m"   # Purple
+    "\033[35m",  # Purple
 ]
 
 # Shared diagnostics manager configured at runtime
 DIAGNOSTICS: Optional[DiagnosticsManager] = None
 
 # Default timeouts (seconds); overridable via CLI
-CMD_TIMEOUT: int = 45         # fpcalc, flac -t, ffprobe, metaflac
-DECODE_TIMEOUT: int = 30     # ffmpeg streaming/decoding (PCM hash, segments) - reduced default to avoid long stalls
+CMD_TIMEOUT: int = 45  # fpcalc, flac -t, ffprobe, metaflac
+DECODE_TIMEOUT: int = (
+    30  # ffmpeg streaming/decoding (PCM hash, segments) - reduced default to avoid long stalls
+)
 
 
 ###############################################################################
@@ -160,10 +162,10 @@ def colorize_path(path_str: str) -> str:
         parts = p.parts
         if len(parts) <= 1:
             return f"\033[37m{path_str}\033[0m"  # white for file only
-        dir_part = '/'.join(parts[:-1]) + '/'
+        dir_part = "/".join(parts[:-1]) + "/"
         file_part = parts[-1]
         return f"\033[36m{dir_part}\033[0m\033[37m{file_part}\033[0m"  # cyan for dir, white for file
-    except Exception:
+    except (TypeError, OSError, ValueError):
         # Be defensive but avoid swallowing BaseException
         return path_str
 
@@ -190,20 +192,20 @@ def log(message: str) -> None:
     """Print a human friendly timestamped log message."""
 
     timestamp = _dt.datetime.now().strftime("%H:%M:%S")
-    
+
     # Colorize paths in the message
     if ": " in message:
         prefix, rest = message.split(": ", 1)
         if "/" in rest or "\\" in rest:  # detect path
             rest = colorize_path(rest.strip())
             message = f"{prefix}: {rest}"
-    
+
     global timestamp_color_index
     timestamp_color = gay_flag_colors[timestamp_color_index % 6]
     timestamp_color_index += 1
     global last_timestamp_color
     last_timestamp_color = timestamp_color
-    
+
     message_color = ""
     if "Progress" in message:
         # Color only the number in rainbow
@@ -221,18 +223,23 @@ def log(message: str) -> None:
         message_color = "\033[35m"  # magenta for added to playlist
     elif "WARNING" in message or "Error" in message or "freeze" in message.lower():
         message_color = "\033[33m"  # yellow for warnings/errors
-    elif "Skipping" in message or "broken" in message or "quarantine" in message.lower():
+    elif (
+        "Skipping" in message or "broken" in message or "quarantine" in message.lower()
+    ):
         message_color = "\033[31m"  # red for skips/broken
     elif "Processed" in message or "completed" in message or "Killed" in message:
         if ": " in message:
             prefix, rest = message.split(": ", 1)
             # Color prefix green, rest lighter grey (white)
-            print(f"{timestamp_color}[{timestamp}]\033[0m \033[32m{prefix}:\033[0m \033[37m{rest}\033[0m")
+            print(
+                f"{timestamp_color}[{timestamp}]\033[0m \033[32m{prefix}:\033[0m \033[37m{rest}\033[0m"
+            )
             return
         else:
             message_color = "\033[32m"  # green for success
-    
+
     print(f"{timestamp_color}[{timestamp}]\033[0m {message_color}{message}\033[0m")
+
 
 def log_progress(path: Path) -> None:
     """Print a progress log line for file scanning, including skipped and broken files."""
@@ -247,9 +254,13 @@ def log_progress(path: Path) -> None:
     timestamp = _dt.datetime.now().strftime("%H:%M:%S")
     # Print progress and skipped/broken info
     if skipped > 0:
-        print(f"[{timestamp}] Progress: {processed}/{total} ({percent:.1f}%) — {path.name} | Skipped: {skipped} files")
+        print(
+            f"[{timestamp}] Progress: {processed}/{total} ({percent:.1f}%) — {path.name} | Skipped: {skipped} files"
+        )
     else:
-        print(f"[{timestamp}] Progress: {processed}/{total} ({percent:.1f}%) — {path.name}")
+        print(
+            f"[{timestamp}] Progress: {processed}/{total} ({percent:.1f}%) — {path.name}"
+        )
     heartbeat(path)
 
 
@@ -263,7 +274,9 @@ def log_skip(path: Path) -> None:
         processed = scan_processed_count
         total = scan_total_files
     timestamp = _dt.datetime.now().strftime("%H:%M:%S")
-    print(f"[{timestamp}] Skipped: {skipped} files so far — {path.name} | Progress: {processed}/{total}")
+    print(
+        f"[{timestamp}] Skipped: {skipped} files so far — {path.name} | Progress: {processed}/{total}"
+    )
     heartbeat(path)
 
 
@@ -275,8 +288,7 @@ def is_tool_available(tool: str) -> bool:
 
 def sha1_hex(data: bytes) -> str:
     """Return the hexadecimal SHA1 digest of *data*."""
-
-    return hashlib.sha1(data, usedforsecurity=False).hexdigest()
+    return hashlib.sha1(data).hexdigest()
 
 
 def human_size(num_bytes: int) -> str:
@@ -495,11 +507,14 @@ class DiagnosticsManager:
             probe.unlink()
             return candidate
         except OSError:
-            fallback_base = Path(os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir())
+            fallback_base = Path(
+                os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()
+            )
             fallback = fallback_base / "dedupe_diagnostics"
             ensure_directory(fallback)
             log(
-                "Diagnostic root %s unavailable; using %s instead" % (candidate.as_posix(), fallback.as_posix())
+                "Diagnostic root %s unavailable; using %s instead"
+                % (candidate.as_posix(), fallback.as_posix())
             )
             return fallback
 
@@ -511,7 +526,7 @@ class DiagnosticsManager:
     def _safe_component(self, source: Path) -> str:
         base = source.name or "root"
         safe = re.sub(r"[^A-Za-z0-9._-]", "_", base)[:48] or "entry"
-        digest = hashlib.sha1(source.as_posix().encode("utf-8"), usedforsecurity=False).hexdigest()[:8]
+        digest = hashlib.sha1(source.as_posix().encode("utf-8")).hexdigest()[:8]
         return f"{safe}_{digest}"
 
     def _write_json(
@@ -542,7 +557,9 @@ class DiagnosticsManager:
         directory = self._kind_dir(kind)
         filename = f"{timestamp}_{self._safe_component(source)}.json"
         dump_path = directory / filename
-        dump_path.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
+        dump_path.write_text(
+            json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
         return dump_path
 
     def record_fpcalc(
@@ -587,13 +604,17 @@ class DiagnosticsManager:
             metadata["note"] = note
         return self._write_json("decode", source, "stderr", stderr, **metadata)
 
-    def record_watchdog(self, message: str, context: Optional[str] = None) -> Optional[Path]:
+    def record_watchdog(
+        self, message: str, context: Optional[str] = None
+    ) -> Optional[Path]:
         """Persist watchdog/freeze diagnostic entries."""
 
         if not self.dump_watchdog:
             return None
         metadata = {"context": context} if context else {}
-        return self._write_json("watchdog", Path("/watchdog"), "message", message, **metadata)
+        return self._write_json(
+            "watchdog", Path("/watchdog"), "message", message, **metadata
+        )
 
     def latest(self, kind: str) -> Optional[Path]:
         """Return the newest diagnostic dump path for *kind* if available."""
@@ -610,6 +631,7 @@ class DiagnosticsManager:
             candidates.append((mtime, candidate))
         candidates.sort(key=lambda item: item[0], reverse=True)
         return candidates[0][1] if candidates else None
+
 
 ###############################################################################
 # External command helpers
@@ -683,7 +705,7 @@ def run_command(command: Sequence[str], timeout: Optional[int] = None) -> str:
             pass
 
     if process.returncode != 0:
-        cmd_str = ' '.join(command)
+        cmd_str = " ".join(command)
         raise CommandError(f"Command {cmd_str} failed: {stderr.strip()}")
     return stdout
 
@@ -762,7 +784,9 @@ def compute_metaflac_md5(path: Path) -> Optional[str]:
         return None
     try:
         heartbeat(path)
-        output = run_command(["metaflac", "--show-md5sum", str(path)], timeout=CMD_TIMEOUT)
+        output = run_command(
+            ["metaflac", "--show-md5sum", str(path)], timeout=CMD_TIMEOUT
+        )
     except CommandError:
         return None
     value = output.strip().lower()
@@ -813,8 +837,9 @@ def compute_pcm_sha1(path: Path) -> Optional[str]:
             pgid = None
 
         import time
+
         deadline = time.time() + DECODE_TIMEOUT
-        digest = hashlib.sha1(usedforsecurity=False)
+        digest = hashlib.sha1()
         assert process.stdout is not None
         stderr_chunks: List[bytes] = []
         while True:
@@ -962,8 +987,9 @@ def compute_segment_hash(
             pgid = None
 
         import time
+
         deadline = time.time() + DECODE_TIMEOUT
-        digest = hashlib.sha1(usedforsecurity=False)
+        digest = hashlib.sha1()
         assert process.stdout is not None
         stderr_chunks: List[bytes] = []
         while True:
@@ -1128,7 +1154,7 @@ def _decode_base64_fingerprint(encoded: str) -> Optional[List[int]]:
         return None
 
 
-def _coerce_fingerprint_sequence(values: Iterable[object]) -> Optional[List[int]]:
+def _coerce_fingerprint_sequence(values: Iterable[Any]) -> Optional[List[int]]:
     """Convert *values* to a list of integers if possible."""
 
     result: List[int] = []
@@ -1147,7 +1173,9 @@ def parse_fpcalc_output(output: str) -> Tuple[Optional[List[int]], Optional[str]
     if not output.strip():
         return (None, None)
 
-    def _finalize(values: Optional[List[int]]) -> Tuple[Optional[List[int]], Optional[str]]:
+    def _finalize(
+        values: Optional[List[int]],
+    ) -> Tuple[Optional[List[int]], Optional[str]]:
         if not values:
             return (None, None)
         hash_hex = sha1_hex(",".join(str(v) for v in values).encode("utf-8"))
@@ -1183,7 +1211,9 @@ def parse_fpcalc_output(output: str) -> Tuple[Optional[List[int]], Optional[str]
         fingerprint = _decode_base64_fingerprint(raw)
         if fingerprint:
             return _finalize(fingerprint)
-        fingerprint = _coerce_fingerprint_sequence(part for part in raw.split(",") if part)
+        fingerprint = _coerce_fingerprint_sequence(
+            part for part in raw.split(",") if part
+        )
         if fingerprint:
             return _finalize(fingerprint)
         break
@@ -1203,7 +1233,9 @@ def compute_fingerprint(path: Path) -> Tuple[Optional[List[int]], Optional[str]]
             output = run_command(command, timeout=CMD_TIMEOUT)
         except CommandError as exc:
             if DIAGNOSTICS is not None:
-                DIAGNOSTICS.record_fpcalc(path, "", command, success=False, error=str(exc))
+                DIAGNOSTICS.record_fpcalc(
+                    path, "", command, success=False, error=str(exc)
+                )
             continue
         if DIAGNOSTICS is not None:
             DIAGNOSTICS.record_fpcalc(path, output, command, success=True)
@@ -1215,7 +1247,6 @@ def compute_fingerprint(path: Path) -> Tuple[Optional[List[int]], Optional[str]]
 
 def check_health(path: Path) -> Tuple[Optional[bool], Optional[str]]:
     """Check file health via ``flac -t`` or ``ffmpeg`` decoding."""
-
 
     if is_tool_available("flac"):
         try:
@@ -1319,7 +1350,6 @@ def build_fuzzy_key(path: Path, aggressive: bool) -> str:
 
 
 def load_file_from_db(conn: sqlite3.Connection, path: Path) -> Optional[FileInfo]:
-
     """Return a :class:`FileInfo` loaded from the database."""
 
     cursor = conn.execute("SELECT * FROM files WHERE path=?", (str(path),))
@@ -1438,7 +1468,9 @@ def upsert_file(conn: sqlite3.Connection, info: FileInfo) -> None:
     conn.commit()
 
 
-def insert_segments(conn: sqlite3.Connection, file_id: int, segments: SegmentHashes) -> None:
+def insert_segments(
+    conn: sqlite3.Connection, file_id: int, segments: SegmentHashes
+) -> None:
     """Persist segment hashes into ``seg_slices``."""
 
     conn.execute("DELETE FROM seg_slices WHERE file_id=?", (file_id,))
@@ -1463,7 +1495,9 @@ def insert_segments(conn: sqlite3.Connection, file_id: int, segments: SegmentHas
     conn.commit()
 
 
-def load_slide_hashes(conn: sqlite3.Connection, file_id: int, segments: SegmentHashes) -> None:
+def load_slide_hashes(
+    conn: sqlite3.Connection, file_id: int, segments: SegmentHashes
+) -> None:
     """Populate ``slide_hashes`` and ``trimmed_head`` from the database."""
 
     cursor = conn.execute(
@@ -1486,7 +1520,7 @@ def store_file_signals(conn: sqlite3.Connection, info: FileInfo) -> None:
 
     conn.execute("DELETE FROM file_signals WHERE file_id=?", (info.id,))
     conn.execute("DELETE FROM fp_bands WHERE file_id=?", (info.id,))
-    now = _dt.datetime.now(_dt.UTC).isoformat()
+    now = _dt.datetime.now(_dt.timezone.utc).isoformat()
     entries: List[Tuple[int, str, Optional[str], Optional[str], str]] = []
     if info.stream_md5:
         entries.append((info.id, "stream_md5", info.stream_md5, None, now))
@@ -1513,7 +1547,9 @@ def store_file_signals(conn: sqlite3.Connection, info: FileInfo) -> None:
     conn.commit()
 
 
-def insert_fp_bands(conn: sqlite3.Connection, file_id: int, fingerprint: Sequence[int]) -> None:
+def insert_fp_bands(
+    conn: sqlite3.Connection, file_id: int, fingerprint: Sequence[int]
+) -> None:
     """Store coarse hashes of fingerprint bands for quick lookups."""
 
     window = 32
@@ -1532,7 +1568,6 @@ def insert_fp_bands(conn: sqlite3.Connection, file_id: int, fingerprint: Sequenc
         band_entries,
     )
     conn.commit()
-
 
 
 def load_all_files_from_db(conn: sqlite3.Connection) -> List[FileInfo]:
@@ -1607,7 +1642,9 @@ def load_broken_playlist_set(broken_playlist_path: Optional[str]) -> Set[str]:
     return seen
 
 
-def append_broken_playlist_entry(broken_playlist_path: Optional[str], seen_set: Set[str], path: Path) -> None:
+def append_broken_playlist_entry(
+    broken_playlist_path: Optional[str], seen_set: Set[str], path: Path
+) -> None:
     """Append *path* to *broken_playlist_path* if not already recorded.
 
     Updates *seen_set* in-place.
@@ -1624,7 +1661,9 @@ def append_broken_playlist_entry(broken_playlist_path: Optional[str], seen_set: 
     if abs_path in seen_set:
         return
     try:
-        Path(broken_playlist_path).expanduser().parent.mkdir(parents=True, exist_ok=True)
+        Path(broken_playlist_path).expanduser().parent.mkdir(
+            parents=True, exist_ok=True
+        )
     except OSError:
         pass
     try:
@@ -1636,7 +1675,11 @@ def append_broken_playlist_entry(broken_playlist_path: Optional[str], seen_set: 
         pass
 
 
-def start_watchdog_thread(timeout: int = 300, shutdown: Optional[object] = None, stop_event: Optional[threading.Event] = None) -> threading.Thread:
+def start_watchdog_thread(
+    timeout: int = 300,
+    shutdown: Optional[Any] = None,
+    stop_event: Optional[threading.Event] = None,
+) -> threading.Thread:
     """Start a background watchdog thread that requests shutdown on stall.
 
     The watchdog checks the shared ``last_progress_timestamp`` and will set
@@ -1646,24 +1689,32 @@ def start_watchdog_thread(timeout: int = 300, shutdown: Optional[object] = None,
 
     t_stop = stop_event or freeze_detector_stop
 
-    def _watch():
+    def _watch() -> None:
         import time
 
         while not t_stop.is_set():
             time.sleep(5)
             if time.time() - last_progress_timestamp > timeout:
-                print(f"[WATCHDOG] No progress for {timeout} seconds. Requesting shutdown.", flush=True)
+                print(
+                    f"[WATCHDOG] No progress for {timeout} seconds. Requesting shutdown.",
+                    flush=True,
+                )
                 if DIAGNOSTICS is not None:
-                    DIAGNOSTICS.record_watchdog(f"No progress for {timeout} seconds", context=last_progress_file)
+                    DIAGNOSTICS.record_watchdog(
+                        f"No progress for {timeout} seconds", context=last_progress_file
+                    )
                 try:
                     t_stop.set()
                 except AttributeError:
                     # Defensive: stop_event may not expose set()
                     pass
                 try:
-                    if shutdown and hasattr(shutdown, "_stop_event"):
-                        shutdown._stop_event.set()
-                except AttributeError:
+                    stop = getattr(shutdown, "_stop_event", None)
+                    if stop is not None:
+                        stop.set()
+                except Exception:
+                    # Defensive: ignore any errors when attempting to set
+                    # the shutdown object's internal stop event.
                     pass
                 t_stop.set()
                 return
@@ -1673,7 +1724,11 @@ def start_watchdog_thread(timeout: int = 300, shutdown: Optional[object] = None,
     return thr
 
 
-def start_freeze_detector_watcher(root: Optional[Path] = None, auto_quarantine: bool = False, kill_in_terminal: bool = True) -> threading.Thread:
+def start_freeze_detector_watcher(
+    root: Optional[Path] = None,
+    auto_quarantine: bool = False,
+    kill_in_terminal: bool = True,
+) -> threading.Thread:
     """Start a freeze detector watcher thread.
 
     The watcher attempts targeted kills of tracked ffmpeg process groups and
@@ -1682,24 +1737,31 @@ def start_freeze_detector_watcher(root: Optional[Path] = None, auto_quarantine: 
     ``{root}/_BROKEN``.
     """
 
-    def _watch(quarantine_dir: Optional[str]):
+    def _watch(quarantine_dir: Optional[str]) -> None:
         import time
 
         while not freeze_detector_stop.is_set():
             time.sleep(5)
             now = time.time()
             if now - last_progress_timestamp > 30 and last_progress_file:
-                print(f"[FREEZE DETECTOR] Triggered: no progress for 30s on {last_progress_file}", flush=True)
+                print(
+                    f"[FREEZE DETECTOR] Triggered: no progress for 30s on {last_progress_file}",
+                    flush=True,
+                )
                 log(f"WARNING: No progress for 30s. Last file: {last_progress_file}")
                 if DIAGNOSTICS is not None:
-                    DIAGNOSTICS.record_watchdog("Freeze detector triggered", context=last_progress_file)
+                    DIAGNOSTICS.record_watchdog(
+                        "Freeze detector triggered", context=last_progress_file
+                    )
                 try:
                     # First prefer targeted kills for pgids we know we spawned.
                     with active_pgid_lock:
                         pgids = list(active_ffmpeg_pgids)
 
                     if pgids:
-                        log(f"Freeze detector: attempting targeted kill of {len(pgids)} ffmpeg pgid(s)")
+                        log(
+                            f"Freeze detector: attempting targeted kill of {len(pgids)} ffmpeg pgid(s)"
+                        )
                         for pgid in pgids:
                             try:
                                 os.killpg(pgid, signal.SIGTERM)
@@ -1720,25 +1782,39 @@ def start_freeze_detector_watcher(root: Optional[Path] = None, auto_quarantine: 
                         pkill_path = shutil.which("pkill")
                         killall_path = shutil.which("killall")
                         if kill_in_terminal and sys.platform == "darwin" and pkill_path:
-                            script = f"{pkill_path} ffmpeg; echo 'pkill (TERM) sent'; exit"
-                            osa_cmd = ["osascript", "-e", f'tell application "Terminal" to do script "{script}"']
+                            script = (
+                                f"{pkill_path} ffmpeg; echo 'pkill (TERM) sent'; exit"
+                            )
+                            osa_cmd = [
+                                "osascript",
+                                "-e",
+                                f'tell application "Terminal" to do script "{script}"',
+                            ]
                             subprocess.run(osa_cmd, check=False, timeout=5)
                             log("Issued pkill (TERM) ffmpeg in a new Terminal window")
                         else:
                             if pkill_path:
-                                subprocess.run([pkill_path, "ffmpeg"], check=False, timeout=5)
+                                subprocess.run(
+                                    [pkill_path, "ffmpeg"], check=False, timeout=5
+                                )
                                 log("Sent TERM to stalled ffmpeg processes (pkill)")
                             elif killall_path:
-                                subprocess.run([killall_path, "ffmpeg"], check=False, timeout=5)
+                                subprocess.run(
+                                    [killall_path, "ffmpeg"], check=False, timeout=5
+                                )
                                 log("Sent TERM to stalled ffmpeg processes (killall)")
                             else:
-                                log("No pkill/killall found in PATH; cannot run global pkill fallback")
+                                log(
+                                    "No pkill/killall found in PATH; cannot run global pkill fallback"
+                                )
                 except (OSError, subprocess.SubprocessError) as e:
                     log(f"Failed to kill ffmpeg: {e}")
                 if quarantine_dir and os.path.exists(last_progress_file):
                     try:
                         os.makedirs(quarantine_dir, exist_ok=True)
-                        dest = os.path.join(quarantine_dir, os.path.basename(last_progress_file))
+                        dest = os.path.join(
+                            quarantine_dir, os.path.basename(last_progress_file)
+                        )
                         shutil.move(last_progress_file, dest)
                         log(f"Moved frozen file to quarantine: {dest}")
                     except OSError as e:
@@ -1871,8 +1947,8 @@ def move_duplicates(groups: Sequence[GroupResult], trash_dir: Path) -> None:
                 try:
                     errlog = trash_dir.parent / "_DEDUP_MOVE_ERRORS.txt"
                     with errlog.open("a", encoding="utf-8") as fh:
-                        fh.write(f"{_dt.datetime.now().isoformat()}\t{file.path}\t{dest}\t{exc}\n")
+                        fh.write(
+                            f"{_dt.datetime.now().isoformat()}\t{file.path}\t{dest}\t{exc}\n"
+                        )
                 except OSError:
                     pass
-
-

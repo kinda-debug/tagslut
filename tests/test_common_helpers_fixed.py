@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import tempfile
+from typing import Optional
 
 from scripts.lib.common import (
     FileInfo,
@@ -11,7 +12,15 @@ from scripts.lib.common import (
 )
 
 
-def make_info(fid: int, name: str, healthy=None, lossless=True, duration=None, bitrate=None, mtime=0.0) -> FileInfo:
+def make_info(
+    fid: int,
+    name: str,
+    healthy: Optional[bool] = None,
+    lossless: bool = True,
+    duration: Optional[float] = None,
+    bitrate: Optional[float] = None,
+    mtime: float = 0.0,
+) -> FileInfo:
     return FileInfo(
         id=fid,
         path=Path(name),
@@ -27,9 +36,33 @@ def make_info(fid: int, name: str, healthy=None, lossless=True, duration=None, b
 
 
 def test_choose_winner_prefers_healthy_and_lossless() -> None:
-    a = make_info(1, "a.flac", healthy=False, lossless=False, duration=180.0, bitrate=128.0, mtime=1.0)
-    b = make_info(2, "b.flac", healthy=True, lossless=False, duration=179.0, bitrate=128.0, mtime=2.0)
-    c = make_info(3, "c.flac", healthy=True, lossless=True, duration=180.0, bitrate=320.0, mtime=3.0)
+    a = make_info(
+        1,
+        "a.flac",
+        healthy=False,
+        lossless=False,
+        duration=180.0,
+        bitrate=128.0,
+        mtime=1.0,
+    )
+    b = make_info(
+        2,
+        "b.flac",
+        healthy=True,
+        lossless=False,
+        duration=179.0,
+        bitrate=128.0,
+        mtime=2.0,
+    )
+    c = make_info(
+        3,
+        "c.flac",
+        healthy=True,
+        lossless=True,
+        duration=180.0,
+        bitrate=320.0,
+        mtime=3.0,
+    )
 
     winner = choose_winner([a, b, c])
     assert winner == c

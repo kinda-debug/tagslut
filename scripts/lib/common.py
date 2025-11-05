@@ -58,6 +58,10 @@ __all__ = [
     'timestamp_color_index',
     'unregister_active_pgid',
     'upsert_file',
+    'append_broken_playlist_entry',
+    'load_broken_playlist_set',
+    'start_watchdog_thread',
+    'start_freeze_detector_watcher',
 ]
 
 
@@ -101,7 +105,8 @@ def register_active_pgid(pgid: int) -> None:
     try:
         with active_pgid_lock:
             active_ffmpeg_pgids.add(int(pgid))
-    except Exception:
+    except (ValueError, TypeError):
+        # invalid pgid provided or not coercible to int
         pass
 
 
@@ -109,7 +114,8 @@ def unregister_active_pgid(pgid: int) -> None:
     try:
         with active_pgid_lock:
             active_ffmpeg_pgids.discard(int(pgid))
-    except Exception:
+    except (ValueError, TypeError):
+        # ignore invalid inputs
         pass
 # Global progress counter for file scanning
 scan_progress_lock = threading.Lock()
@@ -157,7 +163,8 @@ def colorize_path(path_str: str) -> str:
         dir_part = '/'.join(parts[:-1]) + '/'
         file_part = parts[-1]
         return f"\033[36m{dir_part}\033[0m\033[37m{file_part}\033[0m"  # cyan for dir, white for file
-    except:
+    except Exception:
+        # Be defensive but avoid swallowing BaseException
         return path_str
 
 
@@ -629,24 +636,26 @@ def run_command(command: Sequence[str], timeout: Optional[int] = None) -> str:
         try:
             pgid = os.getpgid(process.pid)
             register_active_pgid(pgid)
-        except Exception:
+        except OSError:
             pgid = None
     except FileNotFoundError as exc:
         raise CommandError(str(exc)) from exc
     try:
         stdout, stderr = process.communicate(timeout=effective_timeout)
     except subprocess.TimeoutExpired:
-        # Kill the process group
+        # Kill the process group if possible; otherwise try killing the process
         try:
             pgid = os.getpgid(process.pid)
             os.killpg(pgid, signal.SIGTERM)
-        except Exception:
+        except OSError:
             try:
                 process.kill()
-            except Exception:
+            except OSError:
                 pass
+
         # Wait a bit for graceful shutdown
         import time
+
         t0 = time.time()
         while True:
             if process.poll() is not None:
@@ -654,21 +663,23 @@ def run_command(command: Sequence[str], timeout: Optional[int] = None) -> str:
             if time.time() - t0 > 2.0:
                 break
             time.sleep(0.1)
+
         if process.poll() is None:
             try:
                 pgid = os.getpgid(process.pid)
                 os.killpg(pgid, signal.SIGKILL)
-            except Exception:
+            except OSError:
                 try:
                     process.kill()
-                except Exception:
+                except OSError:
                     pass
+
         raise CommandError(f"Timeout executing {' '.join(command)}")
     finally:
         try:
             if pgid is not None:
                 unregister_active_pgid(pgid)
-        except Exception:
+        except OSError:
             pass
 
     if process.returncode != 0:
@@ -798,7 +809,7 @@ def compute_pcm_sha1(path: Path) -> Optional[str]:
         try:
             pgid = os.getpgid(process.pid)
             register_active_pgid(pgid)
-        except Exception:
+        except OSError:
             pgid = None
 
         import time
@@ -812,23 +823,30 @@ def compute_pcm_sha1(path: Path) -> Optional[str]:
                 try:
                     pgid = os.getpgid(process.pid)
                     os.killpg(pgid, signal.SIGTERM)
-                except Exception:
+                except OSError:
                     try:
                         process.kill()
-                    except Exception:
+                    except OSError:
                         pass
+
                 if process.stdout:
                     try:
                         process.stdout.close()
-                    except Exception:
+                    except OSError:
                         pass
-                process.wait()
+
+                try:
+                    process.wait()
+                except OSError:
+                    pass
+
                 if process.stderr is not None:
                     try:
                         stderr_chunks.append(process.stderr.read() or b"")
                         process.stderr.close()
-                    except Exception:
+                    except OSError:
                         pass
+
                 if DIAGNOSTICS is not None:
                     DIAGNOSTICS.record_decode(
                         path,
@@ -849,18 +867,18 @@ def compute_pcm_sha1(path: Path) -> Optional[str]:
         try:
             if process.stdout:
                 process.stdout.close()
-        except Exception:
+        except OSError:
             pass
         try:
             process.wait()
-        except Exception:
+        except OSError:
             pass
         stderr_text = ""
         if process.stderr is not None:
             try:
                 stderr_chunks.append(process.stderr.read() or b"")
                 process.stderr.close()
-            except Exception:
+            except OSError:
                 pass
         if stderr_chunks:
             stderr_text = b"".join(stderr_chunks).decode("utf-8", "replace")
@@ -881,7 +899,7 @@ def compute_pcm_sha1(path: Path) -> Optional[str]:
         try:
             if pgid is not None:
                 unregister_active_pgid(pgid)
-        except Exception:
+        except OSError:
             pass
 
 
@@ -940,7 +958,7 @@ def compute_segment_hash(
         try:
             pgid = os.getpgid(process.pid)
             register_active_pgid(pgid)
-        except Exception:
+        except OSError:
             pgid = None
 
         import time
@@ -953,22 +971,22 @@ def compute_segment_hash(
                 try:
                     pgid = os.getpgid(process.pid)
                     os.killpg(pgid, signal.SIGTERM)
-                except Exception:
+                except OSError:
                     try:
                         process.kill()
-                    except Exception:
+                    except OSError:
                         pass
                 if process.stdout:
                     try:
                         process.stdout.close()
-                    except Exception:
+                    except OSError:
                         pass
                 process.wait()
                 if process.stderr is not None:
                     try:
                         stderr_chunks.append(process.stderr.read() or b"")
                         process.stderr.close()
-                    except Exception:
+                    except OSError:
                         pass
                 if DIAGNOSTICS is not None:
                     DIAGNOSTICS.record_decode(
@@ -989,18 +1007,18 @@ def compute_segment_hash(
         try:
             if process.stdout:
                 process.stdout.close()
-        except Exception:
+        except OSError:
             pass
         try:
             process.wait()
-        except Exception:
+        except OSError:
             pass
         stderr_text = ""
         if process.stderr is not None:
             try:
                 stderr_chunks.append(process.stderr.read() or b"")
                 process.stderr.close()
-            except Exception:
+            except OSError:
                 pass
         if stderr_chunks:
             stderr_text = b"".join(stderr_chunks).decode("utf-8", "replace")
@@ -1020,7 +1038,7 @@ def compute_segment_hash(
         try:
             if pgid is not None:
                 unregister_active_pgid(pgid)
-        except Exception:
+        except OSError:
             pass
 
 
@@ -1352,7 +1370,7 @@ def load_file_from_db(conn: sqlite3.Connection, path: Path) -> Optional[FileInfo
 def upsert_file(conn: sqlite3.Connection, info: FileInfo) -> None:
     """Insert or update a :class:`FileInfo` in the database."""
 
-    now = _dt.datetime.now(_dt.UTC).isoformat()
+    now = _dt.datetime.now(_dt.timezone.utc).isoformat()
     fingerprint_json = json.dumps(info.fingerprint) if info.fingerprint else None
     payload = (
         info.path.as_posix(),
@@ -1565,4 +1583,296 @@ def load_all_files_from_db(conn: sqlite3.Connection) -> List[FileInfo]:
         files.append(file_info)
 
     return files
+
+
+def load_broken_playlist_set(broken_playlist_path: Optional[str]) -> Set[str]:
+    """Return the set of entries already present in *broken_playlist_path*.
+
+    The function tolerates missing files and returns an empty set when no
+    playlist is configured.
+    """
+    seen: Set[str] = set()
+    if not broken_playlist_path:
+        return seen
+    try:
+        if os.path.exists(broken_playlist_path):
+            with open(broken_playlist_path, "r", encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if line and not line.startswith("#"):
+                        seen.add(line)
+    except (OSError, UnicodeDecodeError):
+        # Best-effort: do not fail scans due to playlist IO errors.
+        pass
+    return seen
+
+
+def append_broken_playlist_entry(broken_playlist_path: Optional[str], seen_set: Set[str], path: Path) -> None:
+    """Append *path* to *broken_playlist_path* if not already recorded.
+
+    Updates *seen_set* in-place.
+    """
+    if not broken_playlist_path:
+        return
+    try:
+        abs_path = str(path.resolve())
+    except (OSError, RuntimeError):
+        try:
+            abs_path = str(path)
+        except (OSError, RuntimeError):
+            return
+    if abs_path in seen_set:
+        return
+    try:
+        Path(broken_playlist_path).expanduser().parent.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
+    try:
+        with open(broken_playlist_path, "a", encoding="utf-8") as fh:
+            fh.write(abs_path + "\n")
+        seen_set.add(abs_path)
+    except OSError:
+        # Never raise from playlist writes
+        pass
+
+
+def start_watchdog_thread(timeout: int = 300, shutdown: Optional[object] = None, stop_event: Optional[threading.Event] = None) -> threading.Thread:
+    """Start a background watchdog thread that requests shutdown on stall.
+
+    The watchdog checks the shared ``last_progress_timestamp`` and will set
+    ``freeze_detector_stop`` and the optional ``shutdown`` object's
+    ``_stop_event`` when a stall is detected.
+    """
+
+    t_stop = stop_event or freeze_detector_stop
+
+    def _watch():
+        import time
+
+        while not t_stop.is_set():
+            time.sleep(5)
+            if time.time() - last_progress_timestamp > timeout:
+                print(f"[WATCHDOG] No progress for {timeout} seconds. Requesting shutdown.", flush=True)
+                if DIAGNOSTICS is not None:
+                    DIAGNOSTICS.record_watchdog(f"No progress for {timeout} seconds", context=last_progress_file)
+                try:
+                    t_stop.set()
+                except AttributeError:
+                    # Defensive: stop_event may not expose set()
+                    pass
+                try:
+                    if shutdown and hasattr(shutdown, "_stop_event"):
+                        shutdown._stop_event.set()
+                except AttributeError:
+                    pass
+                t_stop.set()
+                return
+
+    thr = threading.Thread(target=_watch, daemon=True)
+    thr.start()
+    return thr
+
+
+def start_freeze_detector_watcher(root: Optional[Path] = None, auto_quarantine: bool = False, kill_in_terminal: bool = True) -> threading.Thread:
+    """Start a freeze detector watcher thread.
+
+    The watcher attempts targeted kills of tracked ffmpeg process groups and
+    falls back to global pkill/killall when needed. If *auto_quarantine* is
+    True and *root* is provided, frozen files will be moved under
+    ``{root}/_BROKEN``.
+    """
+
+    def _watch(quarantine_dir: Optional[str]):
+        import time
+
+        while not freeze_detector_stop.is_set():
+            time.sleep(5)
+            now = time.time()
+            if now - last_progress_timestamp > 30 and last_progress_file:
+                print(f"[FREEZE DETECTOR] Triggered: no progress for 30s on {last_progress_file}", flush=True)
+                log(f"WARNING: No progress for 30s. Last file: {last_progress_file}")
+                if DIAGNOSTICS is not None:
+                    DIAGNOSTICS.record_watchdog("Freeze detector triggered", context=last_progress_file)
+                try:
+                    # First prefer targeted kills for pgids we know we spawned.
+                    with active_pgid_lock:
+                        pgids = list(active_ffmpeg_pgids)
+
+                    if pgids:
+                        log(f"Freeze detector: attempting targeted kill of {len(pgids)} ffmpeg pgid(s)")
+                        for pgid in pgids:
+                            try:
+                                os.killpg(pgid, signal.SIGTERM)
+                            except OSError:
+                                pass
+                        time.sleep(0.5)
+                        for pgid in pgids:
+                            try:
+                                os.killpg(pgid, 0)
+                            except OSError:
+                                continue
+                            try:
+                                os.killpg(pgid, signal.SIGKILL)
+                            except OSError:
+                                pass
+                        log("Freeze detector: targeted kill completed")
+                    else:
+                        pkill_path = shutil.which("pkill")
+                        killall_path = shutil.which("killall")
+                        if kill_in_terminal and sys.platform == "darwin" and pkill_path:
+                            script = f"{pkill_path} ffmpeg; echo 'pkill (TERM) sent'; exit"
+                            osa_cmd = ["osascript", "-e", f'tell application "Terminal" to do script "{script}"']
+                            subprocess.run(osa_cmd, check=False, timeout=5)
+                            log("Issued pkill (TERM) ffmpeg in a new Terminal window")
+                        else:
+                            if pkill_path:
+                                subprocess.run([pkill_path, "ffmpeg"], check=False, timeout=5)
+                                log("Sent TERM to stalled ffmpeg processes (pkill)")
+                            elif killall_path:
+                                subprocess.run([killall_path, "ffmpeg"], check=False, timeout=5)
+                                log("Sent TERM to stalled ffmpeg processes (killall)")
+                            else:
+                                log("No pkill/killall found in PATH; cannot run global pkill fallback")
+                except (OSError, subprocess.SubprocessError) as e:
+                    log(f"Failed to kill ffmpeg: {e}")
+                if quarantine_dir and os.path.exists(last_progress_file):
+                    try:
+                        os.makedirs(quarantine_dir, exist_ok=True)
+                        dest = os.path.join(quarantine_dir, os.path.basename(last_progress_file))
+                        shutil.move(last_progress_file, dest)
+                        log(f"Moved frozen file to quarantine: {dest}")
+                    except OSError as e:
+                        log(f"Failed to quarantine file: {e}")
+                freeze_detector_stop.set()
+
+    quarantine = None
+    if auto_quarantine and root is not None:
+        quarantine = os.path.join(str(root), "_BROKEN")
+
+    t = threading.Thread(target=_watch, args=(quarantine,), daemon=True)
+    t.start()
+    return t
+
+
+# CSV output headers used by both scan and dedupe
+CSV_HEADERS = [
+    "group_key",
+    "method",
+    "keep",
+    "path",
+    "name",
+    "ext",
+    "codec",
+    "lossless",
+    "size_bytes",
+    "size_human",
+    "duration_sec",
+    "bitrate_kbps",
+    "healthy",
+    "health_note",
+    "exact_key_type",
+    "action",
+    "dest",
+]
+
+
+def choose_winner(files: Sequence[FileInfo]) -> FileInfo:
+    """Select the best candidate according to scoring rules."""
+
+    def score(file: FileInfo) -> Tuple[int, int, float, float, float]:
+        healthy = 1 if file.healthy else 0
+        lossless = 1 if file.lossless else 0
+        duration = file.duration or 0.0
+        bitrate = file.bitrate_kbps or 0.0
+        mtime = file.mtime
+        return (healthy, lossless, duration, bitrate, mtime)
+
+    return sorted(files, key=score, reverse=True)[0]
+
+
+def group_to_rows(group: GroupResult, trash_dir: Path, commit: bool) -> List[List[str]]:
+    """Convert a group into CSV rows."""
+
+    rows: List[List[str]] = []
+    for file in [group.keeper] + group.losers:
+        name = file.path.name
+        ext = file.path.suffix.lower().lstrip(".")
+        action = "keep" if file == group.keeper else ("move" if commit else "plan")
+        dest = ""
+        if file != group.keeper:
+            dest_path = plan_trash_destination(trash_dir, file.path)
+            dest = dest_path.as_posix()
+        row = [
+            group.key,
+            group.method,
+            "yes" if file == group.keeper else "no",
+            file.path.as_posix(),
+            name,
+            ext,
+            file.codec or "",
+            "yes" if file.lossless else "no",
+            str(file.size_bytes),
+            human_size(file.size_bytes),
+            f"{file.duration:.3f}" if file.duration is not None else "",
+            f"{file.bitrate_kbps:.1f}" if file.bitrate_kbps is not None else "",
+            "yes" if file.healthy else ("no" if file.healthy is False else ""),
+            file.health_note or "",
+            file.exact_key_type or "",
+            action,
+            dest,
+        ]
+        rows.append(row)
+    return rows
+
+
+def write_csv(
+    report_path: Path, groups: Sequence[GroupResult], trash_dir: Path, commit: bool
+) -> None:
+    """Write the deduplication plan to *report_path*."""
+
+    ensure_directory(report_path.parent)
+    with report_path.open("w", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(CSV_HEADERS)
+        for group in groups:
+            for row in group_to_rows(group, trash_dir, commit):
+                writer.writerow(row)
+
+
+def plan_trash_destination(trash_dir: Path, file_path: Path) -> Path:
+    """Return the destination inside the trash directory preserving structure."""
+
+    try:
+        rel = file_path.relative_to(file_path.anchor)
+    except ValueError:
+        rel = Path(file_path.name)
+    return trash_dir.joinpath(rel)
+
+
+def move_duplicates(groups: Sequence[GroupResult], trash_dir: Path) -> None:
+    """Move loser files to the trash directory (robust: logs and continues on errors)."""
+
+    ensure_directory(trash_dir)
+    for group in groups:
+        for file in group.losers:
+            dest = plan_trash_destination(trash_dir, file.path)
+            ensure_directory(dest.parent)
+            try:
+                if not file.path.exists():
+                    log(f"Missing (skipping): {file.path}")
+                    continue
+                log(f"Moving {file.path} -> {dest}")
+                shutil.move(file.path.as_posix(), dest.as_posix())
+            except FileNotFoundError:
+                log(f"Missing during move (skipping): {file.path}")
+                continue
+            except OSError as exc:
+                log(f"Failed to move {file.path} -> {dest}: {exc}")
+                try:
+                    errlog = trash_dir.parent / "_DEDUP_MOVE_ERRORS.txt"
+                    with errlog.open("a", encoding="utf-8") as fh:
+                        fh.write(f"{_dt.datetime.now().isoformat()}\t{file.path}\t{dest}\t{exc}\n")
+                except OSError:
+                    pass
+
 

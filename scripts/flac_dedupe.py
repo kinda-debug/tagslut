@@ -80,24 +80,24 @@ from lib.common import (
     unregister_active_pgid,
     upsert_file,
 )
+from lib.common import (
+    append_broken_playlist_entry,
+    load_broken_playlist_set,
+    start_watchdog_thread,
+    start_freeze_detector_watcher,
+)
+from lib.common import (
+    choose_winner,
+    group_to_rows,
+    write_csv,
+    plan_trash_destination,
+    move_duplicates,
+)
 
 ###############################################################################
 # Grouping and scoring
 ###############################################################################
 
-
-def choose_winner(files: Sequence[FileInfo]) -> FileInfo:
-    """Select the best candidate according to scoring rules."""
-
-    def score(file: FileInfo) -> Tuple[int, int, float, float, float]:
-        healthy = 1 if file.healthy else 0
-        lossless = 1 if file.lossless else 0
-        duration = file.duration or 0.0
-        bitrate = file.bitrate_kbps or 0.0
-        mtime = file.mtime
-        return (healthy, lossless, duration, bitrate, mtime)
-
-    return sorted(files, key=score, reverse=True)[0]
 
 
 def build_groups(
@@ -363,120 +363,12 @@ def estimate_fp_pairs(
 ###############################################################################
 
 
-CSV_HEADERS = [
-    "group_key",
-    "method",
-    "keep",
-    "path",
-    "name",
-    "ext",
-    "codec",
-    "lossless",
-    "size_bytes",
-    "size_human",
-    "duration_sec",
-    "bitrate_kbps",
-    "healthy",
-    "health_note",
-    "exact_key_type",
-    "action",
-    "dest",
-]
-
 
 def group_to_rows(group: GroupResult, trash_dir: Path, commit: bool) -> List[List[str]]:
-    """Convert a group into CSV rows."""
+    """Thin adapter that delegates to the canonical implementation in lib.common."""
 
-    rows: List[List[str]] = []
-    for file in [group.keeper] + group.losers:
-        name = file.path.name
-        ext = file.path.suffix.lower().lstrip(".")
-        action = "keep" if file == group.keeper else ("move" if commit else "plan")
-        dest = ""
-        if file != group.keeper:
-            dest_path = plan_trash_destination(trash_dir, file.path)
-            dest = dest_path.as_posix()
-        row = [
-            group.key,
-            group.method,
-            "yes" if file == group.keeper else "no",
-            file.path.as_posix(),
-            name,
-            ext,
-            file.codec or "",
-            "yes" if file.lossless else "no",
-            str(file.size_bytes),
-            human_size(file.size_bytes),
-            f"{file.duration:.3f}" if file.duration is not None else "",
-            f"{file.bitrate_kbps:.1f}" if file.bitrate_kbps is not None else "",
-            "yes" if file.healthy else ("no" if file.healthy is False else ""),
-            file.health_note or "",
-            file.exact_key_type or "",
-            action,
-            dest,
-        ]
-        rows.append(row)
-    return rows
+    return common.group_to_rows(group, trash_dir, commit)
 
-
-def write_csv(
-    report_path: Path, groups: Sequence[GroupResult], trash_dir: Path, commit: bool
-) -> None:
-    """Write the deduplication plan to *report_path*."""
-
-    ensure_directory(report_path.parent)
-    with report_path.open("w", newline="") as handle:
-        writer = csv.writer(handle)
-        writer.writerow(CSV_HEADERS)
-        for group in groups:
-            for row in group_to_rows(group, trash_dir, commit):
-                writer.writerow(row)
-
-
-###############################################################################
-# File operations
-###############################################################################
-
-
-def plan_trash_destination(trash_dir: Path, file_path: Path) -> Path:
-    """Return the destination inside the trash directory preserving structure."""
-
-    try:
-        rel = file_path.relative_to(file_path.anchor)
-    except ValueError:
-        rel = Path(file_path.name)
-    return trash_dir.joinpath(rel)
-
-
-def move_duplicates(groups: Sequence[GroupResult], trash_dir: Path) -> None:
-    """Move loser files to the trash directory."""
-
-    ensure_directory(trash_dir)
-    for group in groups:
-        for file in group.losers:
-            dest = plan_trash_destination(trash_dir, file.path)
-            ensure_directory(dest.parent)
-            # If the source file no longer exists (moved/deleted externally),
-            # don't abort the whole run — log and continue.
-            try:
-                if not file.path.exists():
-                    log(f"Missing (skipping): {file.path}")
-                    continue
-                log(f"Moving {file.path} -> {dest}")
-                shutil.move(file.path.as_posix(), dest.as_posix())
-            except FileNotFoundError:
-                # Source vanished between the exists() check and the move call.
-                log(f"Missing during move (skipping): {file.path}")
-                continue
-            except Exception as exc:
-                # Log the failure and continue with other files; do not abort the run.
-                log(f"Failed to move {file.path} -> {dest}: {exc}")
-                try:
-                    errlog = trash_dir.parent / "_DEDUP_MOVE_ERRORS.txt"
-                    with errlog.open("a", encoding="utf-8") as fh:
-                        fh.write(f"{_dt.datetime.now().isoformat()}\t{file.path}\t{dest}\t{exc}\n")
-                except Exception:
-                    pass
 
 
 ###############################################################################
@@ -521,102 +413,16 @@ def scan_files(
     heartbeat()
 
     # Helper to append to broken playlist, avoiding duplicates
-    broken_playlist_set = set()
     broken_playlist_path = kwargs.get("broken_playlist_path")
-    if broken_playlist_path and os.path.exists(broken_playlist_path):
-        with open(broken_playlist_path, "r") as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#"):
-                    broken_playlist_set.add(line)
-
-    def append_broken_playlist(path: Path):
-        if not broken_playlist_path:
-            return
-        abs_path = str(path.resolve())
-        if abs_path in broken_playlist_set:
-            return
-        try:
-            Path(broken_playlist_path).expanduser().parent.mkdir(parents=True, exist_ok=True)
-        except Exception:
-            pass
-        with open(broken_playlist_path, "a") as f:
-            f.write(abs_path + "\n")
-        broken_playlist_set.add(abs_path)
+    broken_playlist_set = load_broken_playlist_set(broken_playlist_path)
 
     # Use provided watchdog timeout when available; fallback to a generous default
     WATCHDOG_TIMEOUT = int(kwargs.get("watchdog_timeout", 300) or 300)
-    def watchdog():
-        import time
-        while not freeze_detector_stop.is_set():
-            time.sleep(5)
-            if time.time() - last_progress_timestamp > WATCHDOG_TIMEOUT:
-                # Prefer logging and requesting a graceful stop over hard-killing the process.
-                print(f"[WATCHDOG] No progress for {WATCHDOG_TIMEOUT} seconds. Requesting shutdown.", flush=True)
-                if common.DIAGNOSTICS is not None:
-                    common.DIAGNOSTICS.record_watchdog(
-                        f"No progress for {WATCHDOG_TIMEOUT} seconds",
-                        context=last_progress_file,
-                    )
-                # Signal the freeze detector and request shutdown if available
-                try:
-                    freeze_detector_stop.set()
-                except Exception:
-                    pass
-                # If a shutdown object was passed in kwargs, try to set its stop event
-                try:
-                    sd = kwargs.get("shutdown")
-                    if sd and hasattr(sd, "_stop_event"):
-                        sd._stop_event.set()
-                except Exception:
-                    pass
-                # After requesting shutdown, exit the watchdog thread
-                freeze_detector_stop.set()
-                return
+    # Start watchdog thread
+    start_watchdog_thread(WATCHDOG_TIMEOUT, shutdown=kwargs.get("shutdown"))
 
-    threading.Thread(target=watchdog, daemon=True).start()
-    """Walk the filesystem and update cached :class:`FileInfo` entries."""
-
-    # Freeze detector watcher logic
-    def freeze_detector_watcher(quarantine_dir=None):
-        import time
-        while not freeze_detector_stop.is_set():
-            time.sleep(5)
-            now = time.time()
-            # print(f"\033[33m[FREEZE WATCH]\033[0m now={now:.1f}, last={last_progress_timestamp:.1f}, "
-            #       f"diff={now - last_progress_timestamp:.1f}, file={last_progress_file}", flush=True)
-            if now - last_progress_timestamp > 30 and last_progress_file:
-                print(f"[FREEZE DETECTOR] Triggered: no progress for 30s on "
-                      f"{last_progress_file}", flush=True)
-                log(f"WARNING: No progress for 30s. Last file: {last_progress_file}")
-                if common.DIAGNOSTICS is not None:
-                    common.DIAGNOSTICS.record_watchdog(
-                        "Freeze detector triggered",
-                        context=last_progress_file,
-                    )
-                # Kill any stalled ffmpeg processes
-                try:
-                    subprocess.run(["pkill", "-9", "ffmpeg"],
-                                   check=False, timeout=5)
-                    log("Killed stalled ffmpeg processes")
-                except Exception as e:
-                    log(f"Failed to kill ffmpeg: {e}")
-                if quarantine_dir and os.path.exists(last_progress_file):
-                    try:
-                        os.makedirs(quarantine_dir, exist_ok=True)
-                        dest = os.path.join(quarantine_dir, os.path.basename(last_progress_file))
-                        shutil.move(last_progress_file, dest)
-                        log(f"Moved frozen file to quarantine: {dest}")
-                    except Exception as e:
-                        log(f"Failed to quarantine file: {e}")
-                freeze_detector_stop.set()
-
-    # Start freeze detector watcher after docstring
-    quarantine_dir = None
-    if auto_quarantine:
-        quarantine_dir = os.path.join(str(root), '_BROKEN')
-    watcher = threading.Thread(target=freeze_detector_watcher, args=(quarantine_dir,), daemon=True)
-    watcher.start()
+    # Start freeze detector watcher
+    start_freeze_detector_watcher(root if auto_quarantine else None, auto_quarantine, kill_in_terminal=bool(kwargs.get("kill_in_terminal", True)))
 
     files: List[FileInfo] = []
     pending: List[Tuple[Path, os.stat_result, Optional[FileInfo], int]] = []
@@ -807,7 +613,11 @@ def scan_files(
             except Exception:
                 # don't let logging errors interrupt the run
                 pass
-            append_broken_playlist(path)
+            append_broken_playlist_entry(
+                broken_playlist_path,
+                broken_playlist_set,
+                path,
+            )
             log("Added broken file to playlist")
             log("Skipping broken file (cached metadata)")
             # Do not early-return None; return the populated info so the outer loop
@@ -847,14 +657,14 @@ def scan_files(
                     # Log as SKIPPED if processing failed
                     try:
                         log_scan_entry(path, "SKIPPED")
-                    except Exception:
+                    except OSError:
                         pass
                     continue
                 if info is None:
                     # Log as SKIPPED if no info returned
                     try:
                         log_scan_entry(path, "SKIPPED")
-                    except Exception:
+                    except OSError:
                         pass
                     continue
                 upsert_file(conn, info)
@@ -866,7 +676,7 @@ def scan_files(
                 log(f"Processed: {path.name}")
                 try:
                     log_scan_entry(path, "PROCESSED")
-                except Exception:
+                except OSError:
                     pass
                 completed += 1
                 print_progress(completed, total_files)
@@ -893,7 +703,7 @@ def record_run(
 ) -> int:
     """Insert a run record and return its identifier."""
 
-    now = _dt.datetime.now(_dt.UTC).isoformat()
+    now = _dt.datetime.now(_dt.timezone.utc).isoformat()
     cursor = conn.execute(
         """
         INSERT INTO runs (started_at, root, options_json, dry_run)
@@ -902,13 +712,14 @@ def record_run(
         (now, root.as_posix(), json.dumps(options), int(dry_run)),
     )
     conn.commit()
-    return cursor.lastrowid
+    rid = cursor.lastrowid
+    return int(rid) if rid is not None else -1
 
 
 def finalize_run(conn: sqlite3.Connection, run_id: int) -> None:
     """Update the run record with the finishing timestamp."""
 
-    now = _dt.datetime.now(_dt.UTC).isoformat()
+    now = _dt.datetime.now(_dt.timezone.utc).isoformat()
     conn.execute("UPDATE runs SET finished_at=? WHERE id=?", (now, run_id))
     conn.commit()
 
@@ -918,7 +729,6 @@ def persist_groups(conn: sqlite3.Connection, run_id: int, groups: Sequence[Group
 
     conn.execute("DELETE FROM groups WHERE run_id=?", (run_id,))
     conn.commit()
-
     for group in groups:
         cursor = conn.execute(
             """
@@ -927,9 +737,19 @@ def persist_groups(conn: sqlite3.Connection, run_id: int, groups: Sequence[Group
             """,
             (run_id, group.key, group.method, group.keeper.id),
         )
-        cursor.lastrowid
-
-
+        group_id = cursor.lastrowid
+        entries = []
+        for member in [group.keeper] + group.losers:
+            role = "keeper" if member == group.keeper else "loser"
+            entries.append((group_id, member.id, role, None, None))
+        conn.executemany(
+            """
+            INSERT INTO group_members (group_id, file_id, role, action, dest_path)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            entries,
+        )
+    conn.commit()
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Dedupe FLAC files using database index",

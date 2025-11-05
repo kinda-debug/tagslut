@@ -11,10 +11,12 @@ __all__ = [
     "DiagnosticsManager",
     "FileInfo",
     "GroupResult",
+    "GroupingOptions",
     "SegmentHashes",
     "active_ffmpeg_pgids",
     "active_pgid_lock",
     "build_fuzzy_key",
+    "build_groups",
     "check_health",
     "colorize_path",
     "compute_fingerprint",
@@ -483,6 +485,23 @@ class GroupResult:
     losers: List[FileInfo]
 
 
+@dataclass(frozen=True)
+class GroupingOptions:
+    """Configuration for building duplicate groups from a set of files."""
+
+    fp_sim_ratio: float
+    fp_sim_shift: int
+    fp_sim_min_overlap: int
+    use_fingerprint: bool = True
+    use_segwin: bool = True
+    segwin_min_matches: int = 1
+    use_slide: bool = True
+    fuzzy_duration_tol: float = 0.0
+    verbose: bool = False
+    fp_duration_window: float = 2.0
+    fp_size_percent: float = 1.0
+
+
 @dataclass
 class DiagnosticsManager:
     """Persist diagnostic dumps such as ``fpcalc`` stdout and watchdog notes."""
@@ -517,6 +536,243 @@ class DiagnosticsManager:
                 % (candidate.as_posix(), fallback.as_posix())
             )
             return fallback
+
+
+###############################################################################
+# Grouping helpers
+###############################################################################
+
+
+def build_groups(files: Sequence[FileInfo], options: GroupingOptions) -> List[GroupResult]:
+    """Group related files according to the staged deduplication pipeline."""
+
+    by_id = {file.id: file for file in files}
+    remaining: Set[int] = set(by_id.keys())
+    groups: List[GroupResult] = []
+    segwin_min_matches = max(1, options.segwin_min_matches)
+
+    def register_group(key: str, method: str, members: List[FileInfo]) -> None:
+        keeper = choose_winner(members)
+        losers = [file for file in members if file != keeper]
+        if not losers:
+            return
+        for member in members:
+            remaining.discard(member.id)
+        groups.append(GroupResult(key=key, method=method, keeper=keeper, losers=losers))
+
+    # Stage A: exact stream or PCM matches
+    key_to_members: Dict[str, List[FileInfo]] = {}
+    for file in files:
+        if file.id not in remaining:
+            continue
+        if file.stream_md5:
+            key_to_members.setdefault(f"MD5:{file.stream_md5}", []).append(file)
+            file.exact_key_type = "stream_md5"
+        elif file.pcm_sha1:
+            key_to_members.setdefault(f"PCM:{file.pcm_sha1}", []).append(file)
+            file.exact_key_type = "pcm_sha1"
+    for key, members in key_to_members.items():
+        if len(members) > 1:
+            register_group(key, "EXACT", members)
+
+    if options.use_fingerprint:
+        # Stage B: fingerprint equality
+        key_to_members = {}
+        for file in files:
+            if file.id not in remaining:
+                continue
+            if file.fingerprint_hash:
+                key_to_members.setdefault(file.fingerprint_hash, []).append(file)
+        for key, members in key_to_members.items():
+            if len(members) > 1:
+                register_group(f"FP:{key}", "FPRINT", members)
+
+        # Stage C: fingerprint similarity (pairwise compare)
+        fp_candidates = [
+            file for file in files if file.id in remaining and file.fingerprint
+        ]
+        used_pairs: Set[Tuple[int, int]] = set()
+        n_fp = len(fp_candidates)
+        if options.verbose:
+            log(
+                "FPRINT_SIM: comparing %d candidates (duration window %.1fs, size window %.1f%%)"
+                % (n_fp, options.fp_duration_window, options.fp_size_percent)
+            )
+        pair_count = 0
+        log_interval = max(1, n_fp // 10)
+        for i, file_a in enumerate(fp_candidates):
+            for file_b in fp_candidates[i + 1 :]:
+                allowed = False
+                if file_a.duration is not None and file_b.duration is not None:
+                    if (
+                        abs((file_a.duration or 0.0) - (file_b.duration or 0.0))
+                        <= options.fp_duration_window
+                    ):
+                        allowed = True
+                else:
+                    try:
+                        size_a = file_a.size_bytes or 0
+                        size_b = file_b.size_bytes or 0
+                        if size_a > 0 and size_b > 0:
+                            rel = abs(size_a - size_b) / max(size_a, size_b) * 100.0
+                            if rel <= options.fp_size_percent:
+                                allowed = True
+                    except (TypeError, ValueError):
+                        allowed = False
+                if not allowed:
+                    continue
+                pair = (min(file_a.id, file_b.id), max(file_a.id, file_b.id))
+                if pair in used_pairs:
+                    continue
+                pair_count += 1
+                if options.verbose and pair_count % (log_interval * 100) == 0:
+                    log(f"  FPRINT_SIM progress: compared {pair_count} pairs")
+                ratio, shift, overlap = fingerprint_similarity(
+                    file_a.fingerprint or [],
+                    file_b.fingerprint or [],
+                    options.fp_sim_shift,
+                    options.fp_sim_min_overlap,
+                )
+                if (
+                    ratio >= options.fp_sim_ratio
+                    and overlap >= options.fp_sim_min_overlap
+                ):
+                    register_group(
+                        key=f"FPS:{file_a.id}:{file_b.id}",
+                        method=f"FPRINT_SIM(r={ratio:.2f},s={shift})",
+                        members=[file_a, file_b],
+                    )
+                    used_pairs.add(pair)
+
+    # Stage D: segment windows head/mid/tail
+    if options.use_segwin:
+        seg_candidates = [
+            file
+            for file in files
+            if file.id in remaining
+            and any([file.segments.head, file.segments.middle, file.segments.tail])
+        ]
+        if options.verbose:
+            log(f"SEGWIN: comparing {len(seg_candidates)} candidates")
+        parent: Dict[int, int] = {file.id: file.id for file in seg_candidates}
+
+        def find(node: int) -> int:
+            while parent[node] != node:
+                parent[node] = parent[parent[node]]
+                node = parent[node]
+            return node
+
+        def union(a: int, b: int) -> None:
+            root_a = find(a)
+            root_b = find(b)
+            if root_a != root_b:
+                parent[root_b] = root_a
+
+        for i, file_a in enumerate(seg_candidates):
+            for file_b in seg_candidates[i + 1 :]:
+                matches = 0
+                if (
+                    file_a.segments.head
+                    and file_a.segments.head == file_b.segments.head
+                ):
+                    matches += 1
+                if (
+                    file_a.segments.middle
+                    and file_a.segments.middle == file_b.segments.middle
+                ):
+                    matches += 1
+                if (
+                    file_a.segments.tail
+                    and file_a.segments.tail == file_b.segments.tail
+                ):
+                    matches += 1
+                if (
+                    file_a.segments.trimmed_head
+                    and file_b.segments.trimmed_head
+                    and file_a.segments.trimmed_head == file_b.segments.trimmed_head
+                ):
+                    matches += 1
+                if matches >= segwin_min_matches:
+                    union(file_a.id, file_b.id)
+
+        groups_by_root: Dict[int, List[FileInfo]] = {}
+        for candidate in seg_candidates:
+            root = find(candidate.id)
+            groups_by_root.setdefault(root, []).append(candidate)
+        for members in groups_by_root.values():
+            if len(members) > 1 and all(member.id in remaining for member in members):
+                key = "SEGWIN:" + ",".join(
+                    str(member.id) for member in sorted(members, key=lambda f: f.id)
+                )
+                register_group(key, f"SEGWIN(m>={segwin_min_matches})", members)
+
+    # Stage E: sliding windows (optional)
+    if options.use_slide:
+        slide_candidates = [
+            file
+            for file in files
+            if file.id in remaining and file.segments.slide_hashes
+        ]
+        if options.verbose:
+            log(f"SEGWIN_SLIDE: processing {len(slide_candidates)} candidates")
+        slide_parent: Dict[int, int] = {file.id: file.id for file in slide_candidates}
+        seen: Dict[str, int] = {}
+
+        def find_slide(node: int) -> int:
+            while slide_parent[node] != node:
+                slide_parent[node] = slide_parent[slide_parent[node]]
+                node = slide_parent[node]
+            return node
+
+        def union_slide(a: int, b: int) -> None:
+            root_a = find_slide(a)
+            root_b = find_slide(b)
+            if root_a != root_b:
+                slide_parent[root_b] = root_a
+
+        for file in slide_candidates:
+            for slide_hash in file.segments.slide_hashes:
+                if slide_hash in seen:
+                    union_slide(file.id, seen[slide_hash])
+                else:
+                    seen[slide_hash] = file.id
+
+        slide_groups: Dict[int, List[FileInfo]] = {}
+        for file in slide_candidates:
+            root = find_slide(file.id)
+            slide_groups.setdefault(root, []).append(file)
+        for members in slide_groups.values():
+            if len(members) > 1 and all(member.id in remaining for member in members):
+                key = "SEGWIN_SLIDE:" + ",".join(
+                    str(member.id) for member in sorted(members, key=lambda f: f.id)
+                )
+                register_group(key, "SEGWIN_SLIDE", members)
+
+    # Stage F: fuzzy key
+    fuzzy_map: Dict[str, List[FileInfo]] = {}
+    for file in files:
+        if file.id not in remaining:
+            continue
+        if not file.fuzzy_key or file.duration is None:
+            continue
+        fuzzy_map.setdefault(file.fuzzy_key, []).append(file)
+    for key, members in fuzzy_map.items():
+        bucket: List[FileInfo] = []
+        for file in members:
+            added = False
+            for candidate in bucket:
+                dur_a = file.duration or 0.0
+                dur_b = candidate.duration or 0.0
+                if abs(dur_a - dur_b) <= options.fuzzy_duration_tol:
+                    register_group(
+                        key=f"FUZZY:{key}", method="FUZZY", members=[file, candidate]
+                    )
+                    added = True
+                    break
+            if not added:
+                bucket.append(file)
+
+    return groups
 
     def _kind_dir(self, kind: str) -> Path:
         path = self.root / kind

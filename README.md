@@ -2,17 +2,69 @@
 
 This project provides a modular workflow for scanning, repairing, and deduplicating FLAC audio files in a music library. It uses fingerprinting, segment hashing, and fuzzy matching to identify duplicates, with options for safe repair of corrupted files before deduplication.
 
-## Scripts Overview
+## Quick Start
 
-The workflow consists of core scripts that work together in sequence:
+### Using the unified CLI (recommended)
 
-1. **`flac_workflow.py`** - Main orchestrator that runs the complete workflow
-2. **`flac_scan.py`** - Scans the music library and builds a database index
-3. **`flac_repair.py`** - Repairs corrupted FLAC files (run conditionally)
-4. **`flac_dedupe.py`** - Performs deduplication based on the scanned database
-5. **`dedupe_sync.py`** - Promotes the healthiest copy from the DEDUPE staging directory back into the main library
+All scripts are consolidated in the `scripts/` directory. Access them through the unified `dedupe` command:
 
-## Quick reference — which script should I run?
+```bash
+# Scan your library
+./dedupe scan --root /Volumes/dotad/MUSIC
+
+# Repair broken files
+./dedupe repair --file path/to/broken.flac
+
+# Find and manage duplicates
+./dedupe dedupe --root /Volumes/dotad/MUSIC --dry-run
+./dedupe dedupe --commit
+
+# Promote healthy copies
+./dedupe sync --dry-run
+
+# Run complete workflow
+./dedupe workflow --commit
+
+# Manage dedupe plans
+./dedupe plan check --csv report.csv
+./dedupe plan apply --commit
+
+# Advanced repair workflows
+./dedupe repair-workflow search --basenames missing.txt
+./dedupe repair-workflow combine --indir /tmp
+
+# Post-repair utilities
+./dedupe post-repair clean-playlist
+./dedupe post-repair promote --src file.flac
+```
+
+For help on any command:
+```bash
+./dedupe <command> --help
+```
+
+## Core Workflow Scripts
+
+All scripts are located in `scripts/` directory:
+
+1. **`flac_scan.py`** - Scans the music library and builds a database index
+2. **`flac_repair.py`** - Repairs corrupted FLAC files
+3. **`flac_dedupe.py`** - Identifies and removes duplicate files
+4. **`dedupe_sync.py`** - Promotes the healthiest copy from staging to library
+5. **`flac_workflow.py`** - Orchestrates the complete scan→repair→dedupe workflow
+
+## Consolidated Utility Managers
+
+High-level utilities are consolidated into unified managers:
+
+- **`dedupe_plan_manager.py`** - Manages dedupe CSV plans with subcommands: `check`, `apply`, `verify`
+- **`repair_workflow.py`** - Unified repair workflow with subcommands: `search`, `combine`, `mark-irretrievable`, `run`
+- **`post_repair.py`** - Post-repair utilities with subcommands: `clean-playlist`, `promote`
+
+See `scripts/README.md` for detailed information on all available scripts.
+
+## Quick reference — which CLI command should I run?
+````
 
 If this project has a lot of scripts, here's a short decision guide that maps common tasks to the single script you probably want to run.
 

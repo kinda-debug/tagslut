@@ -12,7 +12,9 @@ fi
 
 export PYTHONPATH="$(pwd)"
 
-REPAIRED="/tmp/REPAIRED_$(date +%s)"
+# Default staging: sibling dir to the music root (keeps staging OUTSIDE the music tree
+# so `flac_scan.py` won't re-process repaired outputs while scanning the library).
+REPAIRED="$(dirname "$ROOT")/REPAIRED_STAGING_$(date +%s)"
 
 echo "Repository root: $(pwd)"
 echo "Library root: $ROOT"

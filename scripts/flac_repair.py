@@ -123,7 +123,7 @@ def parse_args():
         "--output",
         "-o",
         dest="output_dir",
-        default="/Volumes/dotad/MUSIC/REPAIRED",
+        default="/Volumes/dotad/REPAIRED_STAGING",
         help="Directory where repaired files are written (preserves relative paths)",
     )
     p.add_argument(
@@ -186,6 +186,17 @@ def parse_args():
         help="Seconds allowed for each ffmpeg step before forcibly killing it (default: 30)",
     )
     p.add_argument(
+        "--min-duration",
+        type=float,
+        default=10.0,
+        help="Minimum allowed duration (seconds) for repaired files; files shorter will be treated as failed (default: 10.0)",
+    )
+    p.add_argument(
+        "--quarantine-dir",
+        dest="quarantine_dir",
+        help="Optional directory where too-short repaired outputs will be moved for inspection",
+    )
+    p.add_argument(
         "--disable-watchdog",
         action="store_true",
         help="Disable the watchdog/freeze detector threads (not recommended)",
@@ -230,6 +241,8 @@ class PipelineOptions:
     enable_trim: bool
     trim_seconds: float
     temp_dir: Optional[Path]
+    min_duration: float
+    quarantine_dir: Optional[Path]
 
 
 def ensure_parent(path: Path) -> None:
@@ -638,7 +651,30 @@ def build_options(args: argparse.Namespace) -> PipelineOptions:
         enable_trim=bool(args.enable_trim),
         trim_seconds=max(0.0, float(args.trim_seconds)),
         temp_dir=temp_dir,
+        min_duration=max(0.0, float(getattr(args, "min_duration", 0.0))),
+        quarantine_dir=Path(args.quarantine_dir).expanduser() if getattr(args, "quarantine_dir", None) else None,
     )
+
+
+def _get_duration(path: Path) -> Optional[float]:
+    """Return the duration in seconds for *path* using ffprobe, or None on error."""
+    try:
+        out = subprocess.check_output(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(path),
+            ],
+            stderr=subprocess.DEVNULL,
+        )
+        return float(out.decode().strip())
+    except Exception:
+        return None
 
 
 def resolve_relative_output(src: Path, output_dir: Path) -> Path:
@@ -693,12 +729,42 @@ def repair_playlist(
             log(f"  Failed: {src_path.name}")
             unrepaired.append(src)
         else:
-            log(f"  Repaired: {dst.name}")
-            # record absolute path of the repaired file for optional playlist
-            try:
-                repaired.append(str(dst.resolve()))
-            except Exception:
-                repaired.append(str(dst))
+            # Post-repair: sanity-check duration and optionally quarantine short outputs
+            dur = None
+            if options.min_duration and options.min_duration > 0:
+                dur = _get_duration(dst)
+            if options.min_duration and options.min_duration > 0 and (
+                dur is None or dur < options.min_duration
+            ):
+                log(f"  Failed: {dst.name} (duration check: {dur})")
+                # record as unrepaired so it gets appended to the broken playlist
+                unrepaired.append(src)
+                # persist a short-duration note in logs
+                try:
+                    logs_dir.mkdir(parents=True, exist_ok=True)
+                    with (logs_dir / "short_duration.log").open("a", encoding="utf-8") as fh:
+                        fh.write(f"{dst} duration={dur}\n")
+                except Exception:
+                    pass
+                # move to quarantine if requested, otherwise remove partial
+                try:
+                    if options.quarantine_dir:
+                        qdir = Path(options.quarantine_dir)
+                        qdst = qdir.joinpath(dst.relative_to(dst.anchor))
+                        qdst.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.move(str(dst), str(qdst))
+                        log(f"  Moved short output to quarantine: {qdst}")
+                    else:
+                        _cleanup_partial(dst)
+                except Exception:
+                    _cleanup_partial(dst)
+            else:
+                log(f"  Repaired: {dst.name}")
+                # record absolute path of the repaired file for optional playlist
+                try:
+                    repaired.append(str(dst.resolve()))
+                except Exception:
+                    repaired.append(str(dst))
 
     if broken_playlist:
         broken_playlist.parent.mkdir(parents=True, exist_ok=True)
@@ -765,6 +831,35 @@ def repair_single(
                 handle.write(str(src) + "\n")
             print(f"Appended failed file to {broken_playlist}")
         return 1
+    # Post-repair duration sanity check
+    dur = None
+    if options.min_duration and options.min_duration > 0:
+        dur = _get_duration(dst)
+    if options.min_duration and options.min_duration > 0 and (dur is None or dur < options.min_duration):
+        print(f"Repair resulted in short file (duration={dur}): {dst}")
+        if broken_playlist:
+            broken_playlist.parent.mkdir(parents=True, exist_ok=True)
+            with broken_playlist.open("a", encoding="utf-8") as handle:
+                handle.write(str(src) + "\n")
+            print(f"Appended failed file to {broken_playlist}")
+        try:
+            logs_dir.mkdir(parents=True, exist_ok=True)
+            with (logs_dir / "short_duration.log").open("a", encoding="utf-8") as fh:
+                fh.write(f"{dst} duration={dur}\n")
+        except Exception:
+            pass
+        try:
+            if options.quarantine_dir:
+                qdir = Path(options.quarantine_dir)
+                qdst = qdir.joinpath(dst.relative_to(dst.anchor))
+                qdst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(dst), str(qdst))
+                print(f"Moved short output to quarantine: {qdst}")
+            else:
+                _cleanup_partial(dst)
+        except Exception:
+            _cleanup_partial(dst)
+        return 1
     print(f"Repaired: {dst}")
     return 0
 
@@ -798,7 +893,6 @@ def main() -> int:
             options,
             args.capture_stderr,
             broken_playlist,
-            write_playlist,
         )
 
     playlist_path = (

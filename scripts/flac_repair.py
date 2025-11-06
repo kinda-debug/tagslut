@@ -23,8 +23,18 @@ import tempfile
 import os
 import signal
 import time
+import sys
 
 # Import formatting settings from the canonical common module
+import pathlib
+
+# Ensure repo root is on sys.path when running this file directly so package
+# imports like `from scripts.lib import common` succeed.
+if __package__ is None:  # pragma: no cover - only for direct script runs
+    repo_root = pathlib.Path(__file__).resolve().parents[1]
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+
 from scripts.lib import common as flac_scan
 
 

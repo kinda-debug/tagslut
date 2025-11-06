@@ -12,6 +12,16 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from types import FrameType
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Set, Tuple
+import pathlib
+
+# When this script is executed directly (python scripts/flac_scan.py) the
+# package root (workspace root) isn't on sys.path which makes imports like
+# `from scripts.lib import common` fail with ModuleNotFoundError. Ensure the
+# repository root is on sys.path so package imports work when run as a script.
+if __package__ is None:  # pragma: no cover - only for direct script runs
+    repo_root = pathlib.Path(__file__).resolve().parents[1]
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
 
 from scripts.lib import common
 from scripts.lib.common import (

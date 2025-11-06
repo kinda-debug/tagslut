@@ -15,6 +15,15 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from types import FrameType
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Set, Tuple
+import pathlib
+
+# When run directly the scripts/ directory is on sys.path, not the repo root.
+# Ensure the repository root is on sys.path so package imports like
+# `from scripts.lib import common` resolve when executing the script file.
+if __package__ is None:  # pragma: no cover - only for direct script runs
+    repo_root = pathlib.Path(__file__).resolve().parents[1]
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
 
 from scripts.lib import common
 from scripts.lib.common import (

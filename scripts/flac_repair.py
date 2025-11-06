@@ -156,6 +156,14 @@ def parse_args():
         ),
     )
     p.add_argument(
+        "--write-playlist",
+        dest="write_playlist",
+        help=(
+            "Optional path to write a playlist of successfully repaired files. "
+            "If provided, a plain M3U with absolute paths will be written."
+        ),
+    )
+    p.add_argument(
         "--overwrite",
         action="store_true",
         help="Allow overwriting destination files (creates a backup first)",
@@ -176,6 +184,11 @@ def parse_args():
         type=int,
         default=30,
         help="Seconds allowed for each ffmpeg step before forcibly killing it (default: 30)",
+    )
+    p.add_argument(
+        "--disable-watchdog",
+        action="store_true",
+        help="Disable the watchdog/freeze detector threads (not recommended)",
     )
     p.add_argument(
         "--temp-dir",
@@ -648,6 +661,7 @@ def repair_playlist(
     capture_stderr: bool,
     overwrite_playlist: bool,
     broken_playlist: Optional[Path] = None,
+    write_playlist: Optional[Path] = None,
 ) -> int:
     """Repair all files listed in *playlist* using the configured pipeline."""
 
@@ -665,6 +679,7 @@ def repair_playlist(
 
     total = len(files)
     unrepaired: list[str] = []
+    repaired: list[str] = []
 
     for idx, src in enumerate(files, 1):
         src_path = Path(src)
@@ -679,6 +694,11 @@ def repair_playlist(
             unrepaired.append(src)
         else:
             log(f"  Repaired: {dst.name}")
+            # record absolute path of the repaired file for optional playlist
+            try:
+                repaired.append(str(dst.resolve()))
+            except Exception:
+                repaired.append(str(dst))
 
     if broken_playlist:
         broken_playlist.parent.mkdir(parents=True, exist_ok=True)
@@ -704,6 +724,14 @@ def repair_playlist(
                 print(entry)
         else:
             print("All files repaired.")
+
+    # Optionally write a playlist of repaired files
+    if write_playlist and repaired:
+        write_playlist.parent.mkdir(parents=True, exist_ok=True)
+        with write_playlist.open("w", encoding="utf-8") as wp:
+            for entry in repaired:
+                wp.write(entry + "\n")
+        print(f"Wrote repaired playlist: {write_playlist} ({len(repaired)} entries)")
 
     return 0
 
@@ -746,6 +774,22 @@ def main() -> int:
     output_dir = Path(args.output_dir)
     options = build_options(args)
     broken_playlist = Path(args.broken_playlist) if args.broken_playlist else None
+    write_playlist = Path(args.write_playlist) if getattr(args, "write_playlist", None) else None
+
+    # Start watchdog and freeze detector so ffmpeg subprocesses spawned by
+    # this script are tracked and can be targeted if they hang. Allow disabling
+    # via --disable-watchdog for interactive debugging.
+    if not getattr(args, "disable_watchdog", False):
+        try:
+            flac_scan.freeze_detector_stop.clear()
+            # Use the per-step ffmpeg timeout as the watchdog timeout so stalls
+            # longer than an individual ffmpeg step get noticed.
+            flac_scan.start_watchdog_thread(options.ffmpeg_timeout, shutdown=None)
+            flac_scan.start_freeze_detector_watcher(None, False, kill_in_terminal=False)
+            flac_scan.log("Watchdog and freeze detector started")
+        except Exception:
+            # Be defensive: failures to start the watcher should not abort repair.
+            flac_scan.log("WARNING: Failed to start watchdog/freeze detector")
 
     if getattr(args, "single_file", None):
         return repair_single(
@@ -754,6 +798,7 @@ def main() -> int:
             options,
             args.capture_stderr,
             broken_playlist,
+            write_playlist,
         )
 
     playlist_path = (
@@ -770,6 +815,7 @@ def main() -> int:
         args.capture_stderr,
         args.overwrite_playlist,
         broken_playlist,
+        write_playlist,
     )
 
 

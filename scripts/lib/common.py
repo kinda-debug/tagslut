@@ -2068,34 +2068,82 @@ def start_freeze_detector_watcher(
                                 pass
                         log("Freeze detector: targeted kill completed")
                     else:
+                        # Prefer direct pkill (TERM) followed by pkill (KILL) if needed.
                         pkill_path = shutil.which("pkill")
                         killall_path = shutil.which("killall")
-                        if kill_in_terminal and sys.platform == "darwin" and pkill_path:
-                            script = (
-                                f"{pkill_path} ffmpeg; echo 'pkill (TERM) sent'; exit"
-                            )
-                            osa_cmd = [
-                                "osascript",
-                                "-e",
-                                f'tell application "Terminal" to do script "{script}"',
-                            ]
-                            subprocess.run(osa_cmd, check=False, timeout=5)
-                            log("Issued pkill (TERM) ffmpeg in a new Terminal window")
-                        else:
-                            if pkill_path:
-                                subprocess.run(
-                                    [pkill_path, "ffmpeg"], check=False, timeout=5
-                                )
-                                log("Sent TERM to stalled ffmpeg processes (pkill)")
-                            elif killall_path:
-                                subprocess.run(
-                                    [killall_path, "ffmpeg"], check=False, timeout=5
-                                )
-                                log("Sent TERM to stalled ffmpeg processes (killall)")
-                            else:
+                        pgrep_path = shutil.which("pgrep")
+
+                        def _sent_term_and_maybe_kill():
+                            try:
+                                if pkill_path:
+                                    # Send TERM first
+                                    subprocess.run(
+                                        [pkill_path, "-TERM", "ffmpeg"],
+                                        check=False,
+                                        timeout=5,
+                                    )
+                                    log("Sent TERM to stalled ffmpeg processes (pkill)")
+                                    time.sleep(0.5)
+                                    # If any ffmpeg processes still exist, escalate to KILL
+                                    still = False
+                                    if pgrep_path:
+                                        try:
+                                            res = subprocess.run(
+                                                [pgrep_path, "ffmpeg"],
+                                                stdout=subprocess.PIPE,
+                                                stderr=subprocess.DEVNULL,
+                                                timeout=2,
+                                            )
+                                            if res.returncode == 0 and res.stdout:
+                                                still = True
+                                        except subprocess.SubprocessError:
+                                            still = True
+                                    else:
+                                        # No pgrep; be conservative and attempt KILL via pkill
+                                        still = True
+
+                                    if still:
+                                        try:
+                                            subprocess.run(
+                                                [pkill_path, "-KILL", "ffmpeg"],
+                                                check=False,
+                                                timeout=5,
+                                            )
+                                            log("Sent KILL to stalled ffmpeg processes (pkill -KILL)")
+                                        except subprocess.SubprocessError:
+                                            pass
+                                    return
+
+                                # No pkill, try killall as a fallback
+                                if killall_path:
+                                    subprocess.run(
+                                        [killall_path, "-TERM", "ffmpeg"],
+                                        check=False,
+                                        timeout=5,
+                                    )
+                                    log("Sent TERM to stalled ffmpeg processes (killall)")
+                                    time.sleep(0.5)
+                                    try:
+                                        subprocess.run(
+                                            [killall_path, "-KILL", "ffmpeg"],
+                                            check=False,
+                                            timeout=5,
+                                        )
+                                        log("Sent KILL to stalled ffmpeg processes (killall -KILL)")
+                                    except subprocess.SubprocessError:
+                                        pass
+                                    return
+
                                 log(
                                     "No pkill/killall found in PATH; cannot run global pkill fallback"
                                 )
+                            except (OSError, subprocess.SubprocessError) as e:
+                                log(f"Failed to run pkill/killall: {e}")
+
+                        # Import time locally (watcher runs in its own thread)
+                        import time
+
+                        _sent_term_and_maybe_kill()
                 except (OSError, subprocess.SubprocessError) as e:
                     log(f"Failed to kill ffmpeg: {e}")
                 if quarantine_dir and os.path.exists(last_progress_file):

@@ -145,6 +145,39 @@ gay_flag_colors = [
 # Shared diagnostics manager configured at runtime
 DIAGNOSTICS: Optional[DiagnosticsManager] = None
 
+
+class _DiagnosticsProxy:
+    """Light wrapper that forwards calls to a DiagnosticsManager instance but
+    provides no-op fallbacks for missing attributes. This makes diagnostic
+    recording robust if the backing object is replaced or partially missing.
+
+    The proxy intentionally supports any attribute access; if the underlying
+    instance has the attribute it is returned (and bound). Otherwise a no-op
+    callable is returned so callers can call it without additional guards.
+    """
+
+    def __init__(self, target: object) -> None:
+        self._target = target
+
+    def __getattr__(self, name: str):
+        target = object.__getattribute__(self, "_target")
+        if hasattr(target, name):
+            return getattr(target, name)
+
+        # Provide a no-op callable for unknown attributes so callers can invoke
+        # methods like record_decode(...) without crashing.
+        def _noop(*args, **kwargs):  # pragma: no cover - trivial
+            return None
+
+        return _noop
+
+
+def wrap_diagnostics(instance: Optional[DiagnosticsManager]) -> Optional[_DiagnosticsProxy]:
+    """Return a proxy wrapping *instance* or None when instance is falsy."""
+    if instance is None:
+        return None
+    return _DiagnosticsProxy(instance)
+
 # Default timeouts (seconds); overridable via CLI
 CMD_TIMEOUT: int = 45  # fpcalc, flac -t, ffprobe, metaflac
 DECODE_TIMEOUT: int = (

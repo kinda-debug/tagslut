@@ -671,11 +671,13 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
     diag_root = Path(
         getattr(args, "diagnostic_root", "/Volumes/dotad/.dedupe_diagnostics")
     ).expanduser()
-    common.DIAGNOSTICS = DiagnosticsManager(
-        root=diag_root,
-        dump_fpcalc=getattr(args, "dump_fpcalc", True),
-        dump_decode=getattr(args, "dump_decode", True),
-        dump_watchdog=getattr(args, "dump_watchdog", True),
+    common.DIAGNOSTICS = common.wrap_diagnostics(
+        DiagnosticsManager(
+            root=diag_root,
+            dump_fpcalc=getattr(args, "dump_fpcalc", True),
+            dump_decode=getattr(args, "dump_decode", True),
+            dump_watchdog=getattr(args, "dump_watchdog", True),
+        )
     )
     log(f"Diagnostics root: {common.DIAGNOSTICS.root}")
     if getattr(args, "fpcalc_dump_latest", False) or getattr(

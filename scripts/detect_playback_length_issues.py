@@ -36,15 +36,18 @@ def ffprobe_duration(path: str):
         return None
 
 
-def decoded_duration_via_frames(path: str):
+def decoded_duration_via_frames(path: str, timeout: int = 10):
     # try to get nb_read_frames and sample_rate from ffprobe
     cmd = [which("ffprobe"), "-v", "error",
            "-select_streams", "a:0",
            "-show_entries", "stream=nb_read_frames,sample_rate",
            "-of", "default=noprint_wrappers=1:nokey=1",
            path]
-    p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                       text=True)
+    try:
+        p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                           text=True, timeout=timeout, check=False)
+    except subprocess.TimeoutExpired:
+        return None
     lines = [l.strip() for l in p.stdout.splitlines() if l.strip()]
     if len(lines) >= 2:
         try:
@@ -64,7 +67,7 @@ def decoded_duration_via_frames(path: str):
             subprocess.run([
                 which("ffmpeg"), "-nostdin", "-hide_banner", "-v", "error",
                 "-i", path, "-f", "wav", tmpfn
-            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
+            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=timeout, check=False)
         except subprocess.TimeoutExpired:
             return None
         # read wave header via wave module

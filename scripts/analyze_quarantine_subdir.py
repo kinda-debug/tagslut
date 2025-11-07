@@ -29,11 +29,12 @@ def which(cmd: str) -> Optional[str]:
     return _which(cmd)
 
 
-def ffprobe_info(path: str) -> dict:
+def ffprobe_info(path: str, timeout: int = 3) -> dict:
     if which("ffprobe") is None:
         raise FileNotFoundError("ffprobe not found in PATH")
     cmd = [
         "ffprobe",
+        "-nostdin",
         "-v",
         "error",
         "-select_streams",
@@ -46,7 +47,10 @@ def ffprobe_info(path: str) -> dict:
         "default=noprint_wrappers=1:nokey=1",
         path,
     ]
-    p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+    try:
+        p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return {"duration": None, "sample_rate": None, "channels": None, "nb_read_frames": None}
     out = p.stdout.strip().splitlines()
     info = {"duration": None, "sample_rate": None, "channels": None, "nb_read_frames": None}
     if out:
@@ -74,72 +78,80 @@ def ffprobe_info(path: str) -> dict:
     return info
 
 
-def compute_pcm_sha1(path: str) -> Optional[str]:
+def compute_pcm_sha1(path: str, timeout: int = 10) -> Optional[str]:
     """Compute PCM SHA1 by decoding to WAV on stdout and hashing the raw bytes.
-    Returns hex digest or None on error.
+    Returns hex digest or None on error. Timeout after 10 seconds per file.
     """
     ffmpeg = which("ffmpeg")
     if not ffmpeg:
         return None
-    cmd = [ffmpeg, "-v", "error", "-i", path, "-f", "wav", "-"]
+    cmd = [ffmpeg, "-nostdin", "-v", "error", "-i", path, "-f", "wav", "-"]
     try:
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         h = hashlib.sha1()
+        assert p.stdout is not None
+        try:
+            p.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            p.kill()
+            return None
+        if p.returncode != 0:
+            return None
+        # Read output if process completed successfully
         assert p.stdout is not None
         while True:
             chunk = p.stdout.read(65536)
             if not chunk:
                 break
             h.update(chunk)
-        p.wait()
-        if p.returncode != 0:
-            return None
         return h.hexdigest()
     except Exception:
         return None
 
 
-def windowed_fpcalc_count(path: str, window: int = 30, step: Optional[int] = None) -> int:
-    """Compute fpcalc fingerprints across sliding windows and return number of distinct fingerprints.
-    If fpcalc not available, return 0.
+def windowed_fpcalc_count(path: str, window: int = 30, step: Optional[int] = None, timeout_per_window: int = 5) -> int:
+    """Compute fpcalc fingerprints across sliding windows and return count of distinct.
+    If fpcalc not available or file is problematic, return 0. Timeout after 5s per window.
     """
     if which("fpcalc") is None or which("ffmpeg") is None:
         return 0
     step = step or (window - 10 if window > 10 else window)
-    # compute file duration first
-    info = ffprobe_info(path)
+    try:
+        info = ffprobe_info(path)
+    except Exception:
+        return 0
     dur = info.get("duration") or 0
     if dur <= 0:
         return 0
+    if dur > 600:
+        return 0
     fingerprints = set()
     off = 0.0
-    while off < dur:
-        # extract window to a temp wav and fingerprint
+    max_windows = 3
+    win_count = 0
+    while off < dur and win_count < max_windows:
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmpf:
             tmpfn = tmpf.name
         try:
-            cmd = [
-                which("ffmpeg"),
-                "-v",
-                "error",
-                "-ss",
-                str(off),
-                "-t",
-                str(window),
-                "-i",
-                path,
-                "-f",
-                "wav",
-                tmpfn,
-            ]
-            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            # run fpcalc on tmpfn
-            p = subprocess.run([which("fpcalc"), tmpfn], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
-            out = p.stdout
-            for line in out.splitlines():
-                if line.startswith("FINGERPRINT="):
-                    fingerprints.add(line.split("=", 1)[1].strip())
+            cmd = [which("ffmpeg"), "-nostdin", "-v", "error", "-ss",
+                   str(off), "-t", str(window), "-i", path, "-f", "wav", tmpfn]
+            try:
+                subprocess.run(cmd, stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL, timeout=timeout_per_window, check=False)
+            except subprocess.TimeoutExpired:
+                break
+            if os.path.exists(tmpfn) and os.path.getsize(tmpfn) > 0:
+                try:
+                    p = subprocess.run([which("fpcalc"), tmpfn],
+                                       stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                       text=True, timeout=3, check=False)
+                    for line in p.stdout.splitlines():
+                        if line.startswith("FINGERPRINT="):
+                            fingerprints.add(line.split("=", 1)[1].strip())
+                            break
+                except subprocess.TimeoutExpired:
                     break
+            win_count += 1
         finally:
             try:
                 os.remove(tmpfn)
@@ -164,6 +176,8 @@ def detect_length_mismatch(path: str) -> tuple[Optional[float], Optional[float]]
 
 
 def analyze_one(path: str) -> dict:
+    if getattr(args, "verbose", False):
+        print(f"[INFO] Analyzing: {path}")
     st = os.stat(path)
     size = st.st_size
     info = ffprobe_info(path)
@@ -178,9 +192,11 @@ def analyze_one(path: str) -> dict:
     fpcount = windowed_fpcalc_count(path)
     stitched = fpcount > 1
     truncated = False
-    # if decoded exists and reported exists and decoded > reported * 1.01
+    # if decoded exists and reported exists and decoded > reported * 1.02
     if decoded and reported and decoded > reported * 1.02:
         truncated = True
+    if getattr(args, "verbose", False):
+        print(f"[DONE] {path} | Size: {size} bytes | Duration: {reported:.2f}s")
     return {
         "path": path,
         "size": size,
@@ -196,11 +212,13 @@ def analyze_one(path: str) -> dict:
 
 
 def main():
+    global args
     ap = argparse.ArgumentParser(description="Analyze a Quarantine subdir for audio issues and fingerprints")
     ap.add_argument("--dir", required=True, help="Quarantine subdir to analyze")
     ap.add_argument("--out", default="out/quarantine_analysis.csv", help="CSV output path")
     ap.add_argument("--workers", type=int, default=2, help="Parallel workers")
     ap.add_argument("--limit", type=int, default=0, help="Limit number of files (0 = all)")
+    ap.add_argument("--verbose", action="store_true", help="Print progress and detailed file analysis info")
     args = ap.parse_args()
 
     d = Path(args.dir)
@@ -213,7 +231,12 @@ def main():
     if args.limit and args.limit > 0:
         files = files[: args.limit]
 
-    os.makedirs(os.path.dirname(args.out), exist_ok=True)
+    # Determine the output directory. If args.out doesn't include a directory
+    # component (e.g., 'results.csv'), os.path.dirname returns an empty string.
+    # In that case, default to the current directory ('.').
+    out_dir = os.path.dirname(args.out) or "."
+    os.makedirs(out_dir, exist_ok=True)
+
     with open(args.out, "w", newline="", encoding="utf-8") as csvf:
         writer = csv.DictWriter(csvf, fieldnames=[
             "path",
@@ -235,7 +258,9 @@ def main():
                 try:
                     row = fut.result()
                 except Exception as e:
-                    row = {"path": futures[fut], "error": str(e)}
+                    row = {"path": futures[fut], "size": 0, "reported_duration": None, "decoded_duration": None, "sample_rate": None, "channels": None, "pcm_sha1": None, "window_fp_count": 0, "stitched": False, "truncated": False}
+                if args.verbose:
+                    print(f"[WRITE] {row['path']} -> CSV")
                 writer.writerow(row)
                 csvf.flush()
 

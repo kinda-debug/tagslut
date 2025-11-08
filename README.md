@@ -82,6 +82,22 @@ names that replace the sprawling legacy scripts:
 Each command accepts `--limit` to cap processed files and `--output` to write a
 CSV report.
 
+Optional progress bars
+----------------------
+
+For very large scans you can enable a progress bar by installing the optional
+`tqdm` package. The CLI will use `tqdm` when it is present; to enable the
+progress bar install it in your virtual environment and invoke commands with
+`--verbose`:
+
+```bash
+python3 -m pip install tqdm
+python3 -m dedupe.cli quarantine inventory /path/to/quarantine --output /tmp/out.csv --limit 1000 --verbose
+```
+
+If `tqdm` is not installed the CLI still supports `--verbose` and will print
+coarse progress updates instead of a progress bar.
+
 ## Workflow playbook
 
 ### Overview

@@ -10,3 +10,7 @@
 #   sudo apt-get install ffmpeg libchromaprint-tools flac sqlite3
 #
 # No Python packages required - all imports are from the standard library.
+#
+# Optional Python packages (install if you want progress bars):
+#   pip install tqdm
+tqdm

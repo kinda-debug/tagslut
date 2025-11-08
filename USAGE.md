@@ -28,6 +28,19 @@ Diagnostics and troubleshooting
 - Diagnostic dumps are written to the diagnostic root configured via
   `--diagnostic-root` (default: `~/.dedupe_diagnostics` or the CLI-provided path).
 
+Optional progress bars
+----------------------
+
+If you want a progress bar during long scans, install `tqdm` into your
+environment and run the command with `--verbose`. Without `tqdm` the CLI will
+still honour `--verbose` but print coarse progress messages instead of a
+progress bar:
+
+```bash
+python3 -m pip install tqdm
+python3 scripts/flac_scan.py --root /path/to/music --workers 8 --verbose
+```
+
 Testing
 - Tests assume you run them from the repository root with the project on
   `PYTHONPATH`:

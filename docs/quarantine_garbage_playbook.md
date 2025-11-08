@@ -64,3 +64,31 @@ replace the sprawling legacy scripts. Historical aliases (`analyse`, `scan`,
 Following this procedure ensures both auxiliary directories contribute their
 healthiest tracks back into `/Volumes/dotad/MUSIC` while preserving a repeatable
 review process.
+
+## Optional: progress bars with tqdm
+
+For very large quarantines you can enable a progress bar to make long scans
+easier to monitor. The project will use `tqdm` if it is available in your
+environment; it's intentionally optional so the tool works without it.
+
+To install `tqdm` in your active virtual environment:
+
+```bash
+python3 -m pip install tqdm
+# or, if you prefer to install all project requirements:
+python3 -m pip install -r requirements.txt
+```
+
+Once installed, run any quarantine command with `--verbose` to get a progress
+bar during lengthy operations. Example:
+
+```bash
+python3 -m dedupe.cli quarantine inventory /Volumes/dotad/Quarantine \
+  --output quarantine_scan.csv --limit 1000 --verbose
+```
+
+Notes:
+- The progress bar appears only when `tqdm` is installed and `--verbose` is
+  passed. Without `tqdm` the CLI will still print coarse progress updates.
+- Prefer absolute paths for `--output` to avoid ambiguity about where the
+  file will be written.

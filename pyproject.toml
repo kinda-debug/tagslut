@@ -19,10 +19,9 @@ flake8 = "^6.0.0"
 
 [tool.poetry.scripts]
 dedupe = "dedupe.cli:main"
-flac-scan = "flac_scan:main"
-flac-repair = "flac_repair:main"
-flac-dedupe = "flac_dedupe:main"
-flac-workflow = "flac_workflow:main"
+analyze-quarantine-subdir = "dedupe.legacy_cli:analyse_quarantine_subdir_main"
+simple-quarantine-scan = "dedupe.legacy_cli:simple_quarantine_scan_main"
+detect-playback-length-issues = "dedupe.legacy_cli:detect_playback_length_issues_main"
 
 [build-system]
 requires = ["poetry-core"]

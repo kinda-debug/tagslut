@@ -1,41 +1,14 @@
-"""Legacy entry point delegating to :mod:`dedupe.quarantine.detect_playback_issues`."""
+"""Legacy entry point delegating to :mod:`dedupe.legacy_cli`."""
 
 from __future__ import annotations
 
-import argparse
-from pathlib import Path
-
-from dedupe.quarantine import detect_playback_issues, write_rows_csv
-
-
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Detect playback duration mismatches")
-    parser.add_argument("--dir", required=True, type=Path, help="Directory to scan")
-    parser.add_argument("--out", type=Path, default=None, help="CSV output path")
-    parser.add_argument(
-        "--limit",
-        type=int,
-        default=None,
-        help="Limit number of files processed",
-    )
-    return parser
+from dedupe.legacy_cli import detect_playback_length_issues_main
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = build_parser()
-    args = parser.parse_args(argv)
+    """Invoke :func:`dedupe.legacy_cli.detect_playback_length_issues_main`."""
 
-    if not args.dir.is_dir():
-        parser.error("Not a directory")
-
-    rows = detect_playback_issues(args.dir, limit=args.limit)
-    if args.out:
-        write_rows_csv(["path", "reported", "decoded", "ratio"], rows, args.out)
-        print(f"Wrote {args.out}")
-    else:
-        for row in rows:
-            print(row)
-    return 0
+    return detect_playback_length_issues_main(argv)
 
 
 if __name__ == "__main__":

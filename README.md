@@ -187,6 +187,8 @@ integrity and removing duplicates.
 3. Use quarantine analytics to focus on duration mismatches and subtle quality
    differences. CSV outputs make it easy to filter by anomalies such as extra
    duration or unexpected bit-depth changes.
+   For a step-by-step checklist tailored to `/Volumes/dotad/Quarantine` and
+   `/Volumes/dotad/Garbage`, review `docs/quarantine_garbage_playbook.md`.
 4. Synchronise and dedupe using staged directories, dry-run reports, and loser
    playlists so you can resolve naming inconsistencies and choose the
    best-quality copies before committing changes.

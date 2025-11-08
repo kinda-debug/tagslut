@@ -11,6 +11,12 @@ diagnostic_root = "/Volumes/dotad/.dedupe_diagnostics"
 # Playlist file for broken files
 broken_playlist = "/Volumes/dotad/MUSIC/broken_files_unrepaired.m3u"
 
+# Directory of quarantined files awaiting review
+quarantine = "/Volumes/dotad/Quarantine"
+
+# Directory of confirmed duplicates kept for healthier copies
+garbage = "/Volumes/dotad/Garbage"
+
 [scan]
 # Number of worker threads for scanning (more = faster, but uses more CPU)
 workers = 8

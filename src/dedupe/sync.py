@@ -10,6 +10,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Dict, Iterable, Iterator, List, Optional, Sequence
 
+from .config import DEFAULT_LIBRARY_ROOT, load_path_config
 from .health import CommandHealthChecker, HealthChecker, NullHealthChecker
 
 AUDIO_EXTS = {
@@ -29,7 +30,6 @@ AUDIO_EXTS = {
     ".alac",
 }
 
-DEFAULT_LIBRARY_ROOT = Path("/Volumes/dotad/MUSIC")
 DEFAULT_DEDUPE_LISTING = Path("DEDUPE_DIR.txt")
 
 
@@ -95,17 +95,7 @@ def discover_dedupe_root(listing_path: Path) -> Path:
 def parse_library_root(config_path: Path) -> Path:
     """Extract the library root from ``config.toml`` when available."""
 
-    if not config_path.exists():
-        return DEFAULT_LIBRARY_ROOT
-    try:
-        text = config_path.read_text(encoding="utf-8")
-    except OSError:
-        return DEFAULT_LIBRARY_ROOT
-
-    match = re.search(r"^root\s*=\s*\"([^\"]+)\"", text, re.MULTILINE)
-    if match:
-        return Path(match.group(1))
-    return DEFAULT_LIBRARY_ROOT
+    return load_path_config(config_path).library_root
 
 
 def iter_audio_files(root: Path) -> Iterator[Path]:

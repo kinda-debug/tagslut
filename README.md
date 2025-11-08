@@ -82,6 +82,19 @@ scripts/
 
 Additional documentation lives under `docs/`.
 
+## Data artifacts
+
+Historical quarantine reports, reconciliation CSVs, and helper playlists are
+now collected under `artifacts/` to keep the project root focused on source
+code.  The directory is subdivided into:
+
+- `artifacts/reports/` – CSV and text exports produced by repair and
+  reconciliation workflows.
+- `artifacts/playlists/` – Playlist snapshots that document past dedupe runs.
+
+The move is organisational only; scripts that need to consume the files can
+reference the new paths without any further changes.
+
 ## Testing
 
 All unit tests reside under `tests/` and focus on pure Python helpers.  Run the

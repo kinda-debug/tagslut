@@ -2,15 +2,12 @@ from __future__ import annotations
 
 """Unit tests for :mod:`dedupe_sync`."""
 
-import sys
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from scripts.dedupe_sync import (
+from dedupe.sync import (
     NullHealthChecker,
     audit_library_playback,
     discover_dedupe_root,

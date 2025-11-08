@@ -1,82 +1,53 @@
 # FLAC Deduplication Project Makefile
 # Uses Poetry for dependency management
 
-.PHONY: help install update lock test lint format clean run scan repair dedupe workflow status
+.PHONY: help install update lock test lint format clean run sync quarantine-analyse quarantine-scan quarantine-length type-check check
 
 help: ## Show this help message
-	@echo "FLAC Deduplication Project"
-	@echo "Available commands:"
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-15s %s\n", $$1, $$2}'
+@echo "FLAC Deduplication Project"
+@echo "Available commands:"
+@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-20s %s\n", $$1, $$2}'
 
 install: ## Install project dependencies with Poetry
-	poetry install
+poetry install
 
 update: ## Update dependencies
-	poetry update
+poetry update
 
 lock: ## Update poetry.lock file
-	poetry lock
+poetry lock
 
 test: ## Run tests
-	poetry run pytest
+poetry run pytest
 
 lint: ## Run linting (flake8)
-	poetry run flake8 *.py
+poetry run flake8 src scripts tests
 
 format: ## Format code with Black
-	poetry run black *.py
+poetry run black src scripts tests
 
 type-check: ## Run mypy type checking
-	poetry run mypy *.py
+poetry run mypy src
 
 clean: ## Clean Python cache files
-	find . -type d -name __pycache__ -exec rm -rf {} +
-	find . -type f -name "*.pyc" -delete
-	find . -type f -name "*.pyo" -delete
+find . -type d -name __pycache__ -exec rm -rf {} +
+find . -type f -name "*.pyc" -delete
+find . -type f -name "*.pyo" -delete
 
 # CLI Commands
-run: ## Run the main CLI
-	poetry run dedupe --help
+run: ## Show top-level CLI help
+poetry run dedupe --help
 
-scan: ## Run scan command
-	poetry run dedupe scan --verbose
+sync: ## Run the sync workflow (dry run)
+poetry run dedupe sync --dry-run
 
-repair: ## Run repair command
-	poetry run dedupe repair
+quarantine-analyse: ## Run detailed quarantine analysis
+poetry run dedupe quarantine analyse --help
 
-dedupe: ## Run deduplication (dry run)
-	poetry run dedupe dedupe
+quarantine-scan: ## Run lightweight quarantine scan
+poetry run dedupe quarantine scan --help
 
-dedupe-commit: ## Run deduplication (actually move files)
-	poetry run dedupe dedupe --commit
-
-workflow: ## Run complete workflow
-	poetry run dedupe workflow
-
-status: ## Show current status
-	poetry run dedupe status
-
-# Development
-shell: ## Start Poetry shell
-	poetry shell
+quarantine-length: ## Detect quarantine playback length issues
+poetry run dedupe quarantine length --help
 
 check: lint type-check test ## Run all checks (lint, type-check, test)
-
-# ScaReD Commands (short aliases)
-sc: ## Scan with ScaReD
-	./scrd sc --verbose
-
-r: ## Repair with ScaReD
-	./scrd r
-
-dd: ## Dedupe with ScaReD
-	./scrd d
-
-wf: ## Workflow with ScaReD
-	./scrd wf
-
-st: ## Status with ScaReD
-	./scrd st
-
-cl: ## Clean with ScaReD
-	./scrd cl

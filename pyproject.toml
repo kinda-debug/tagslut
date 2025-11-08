@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "FLAC audio file deduplication tools with ScaReD CLI"
 authors = ["Georges Khawam <tagslut>"]
 readme = "README.md"
-packages = [{include = "*.py"}]
+packages = [{include = "dedupe", from = "src"}]
 
 [tool.poetry.dependencies]
 python = "^3.8.1"
@@ -18,7 +18,7 @@ mypy = "^1.0.0"
 flake8 = "^6.0.0"
 
 [tool.poetry.scripts]
-dedupe = "dedupe_cli:main"
+dedupe = "dedupe.cli:main"
 flac-scan = "flac_scan:main"
 flac-repair = "flac_repair:main"
 flac-dedupe = "flac_dedupe:main"

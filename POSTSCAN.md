@@ -38,7 +38,7 @@ cp "$ROOT/_DEDUP_INDEX.db" "$ROOT/_DEDUP_INDEX.db.bak.$(date +%s)"
 1) Run or re-run the scan (if needed)
 
 ```bash
-python scripts/flac_scan.py --root "$ROOT" --workers 4 --verbose \
+python3 scripts/flac_scan.py --root "$ROOT" --workers 4 --verbose \
   --broken-playlist "$ROOT/broken_files_unrepaired.m3u"
 ```
 
@@ -67,7 +67,7 @@ Always repair into a separate folder for manual review before reintegration.
 
 ```bash
 REPAIRED="/tmp/REPAIRED_$(date +%s)"
-python scripts/flac_repair.py \
+python3 scripts/flac_repair.py \
   --playlist broken_files_unrepaired.m3u \
   --output "$REPAIRED" \
   --capture-stderr \
@@ -90,7 +90,7 @@ If a repair failed, logs will indicate the failing ffmpeg command and stderr.
 5) Re-scan repaired outputs to validate success
 
 ```bash
-python scripts/flac_scan.py --root "$REPAIRED" --workers 4 --verbose \
+python3 scripts/flac_scan.py --root "$REPAIRED" --workers 4 --verbose \
   --broken-playlist "$REPAIRED/broken_after_repair.m3u"
 
 sqlite3 -batch "$REPAIRED/_DEDUP_INDEX.db" "SELECT path, healthy, health_note FROM files ORDER BY path LIMIT 50;"
@@ -110,20 +110,20 @@ rsync -avh --progress "$REPAIRED"/ "$ROOT"/
   if you have a robust backup plan):
 
 ```bash
-python scripts/flac_repair.py --playlist broken_files_unrepaired.m3u \
+python3 scripts/flac_repair.py --playlist broken_files_unrepaired.m3u \
   --output "$ROOT" --capture-stderr --overwrite --backup-dir "/path/to/repair-backups"
 ```
 
 7) Re-scan the main library to refresh DB
 
 ```bash
-python scripts/flac_scan.py --root "$ROOT" --workers 4 --recompute --verbose
+python3 scripts/flac_scan.py --root "$ROOT" --workers 4 --recompute --verbose
 ```
 
 8) Produce a dedupe report (dry-run) and inspect
 
 ```bash
-python scripts/flac_dedupe.py --root "$ROOT" --dry-run --verbose --trash-dir "$ROOT/_TRASH_DUPES_preview"
+python3 scripts/flac_dedupe.py --root "$ROOT" --dry-run --verbose --trash-dir "$ROOT/_TRASH_DUPES_preview"
 REPORT=$(ls -1 "$ROOT"/_DEDUP_REPORT_*.csv | tail -n1)
 echo "Report: $REPORT"
 head -n 20 "$REPORT"
@@ -132,7 +132,7 @@ head -n 20 "$REPORT"
 9) Create an M3U of duplicate losers for inspection or pre-repair
 
 ```bash
-python - <<'PY'
+python3 - <<'PY'
 import csv,sys
 report=sys.argv[1]; out=sys.argv[2]
 with open(report,newline='',encoding='utf-8') as fh:
@@ -151,7 +151,7 @@ Repair losers first (optional), then rerun dedupe if some losers are corrupt.
 10) Commit dedupe (move losers to trash) — only after careful review
 
 ```bash
-python scripts/flac_dedupe.py --root "$ROOT" --commit --trash-dir "$ROOT/_TRASH_DUPES" --verbose
+python3 scripts/flac_dedupe.py --root "$ROOT" --commit --trash-dir "$ROOT/_TRASH_DUPES" --verbose
 ```
 
 This moves files into `$ROOT/_TRASH_DUPES/` and writes a CSV report. Check
@@ -160,8 +160,8 @@ This moves files into `$ROOT/_TRASH_DUPES/` and writes a CSV report. Check
 11) Verify after commit
 
 ```bash
-python scripts/flac_scan.py --root "$ROOT" --workers 4 --recompute --verbose
-python scripts/flac_dedupe.py --root "$ROOT" --dry-run --verbose
+python3 scripts/flac_scan.py --root "$ROOT" --workers 4 --recompute --verbose
+python3 scripts/flac_dedupe.py --root "$ROOT" --dry-run --verbose
 ls -R "$ROOT/_TRASH_DUPES" | head
 ```
 

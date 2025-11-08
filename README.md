@@ -8,7 +8,7 @@ quarantine analysis.
 
 ## Highlights
 
-- **Single entry point** – `python -m dedupe.cli …` or `poetry run dedupe …`
+- **Single entry point** – `python3 -m dedupe.cli …` or `poetry run dedupe …`
   provides sub-commands for sync and quarantine workflows.
 - **Reusable modules** – `dedupe.sync`, `dedupe.health`, and
   `dedupe.quarantine` expose typed helper functions that replace ad-hoc scripts.
@@ -36,7 +36,7 @@ quarantine analysis.
 3. Inspect the available sub-commands:
 
    ```bash
-   python -m dedupe.cli --help
+   python3 -m dedupe.cli --help
    ```
 
 ## Command line interface
@@ -87,8 +87,8 @@ CSV report.
 ### Overview
 The toolkit wraps scanning, repair, quarantine analysis, and deduplication into
 reusable commands so you can tame very large music libraries from a single entry
-point (`python -m dedupe.cli`). The CLI exposes health, sync, and quarantine
-workflows, each targeting a specific stage in restoring your library’s
+point (`python3 -m dedupe.cli`). The CLI exposes health, sync, and quarantine
+workflows, each targeting a specific stage in restoring your library's
 integrity and removing duplicates.
 
 ### Process-by-process breakdown
@@ -106,7 +106,7 @@ integrity and removing duplicates.
      playback tests:
 
      ```bash
-     python scripts/flac_scan.py --root "$ROOT" --workers 4 --verbose --broken-playlist "$ROOT/broken_files_unrepaired.m3u"
+     python3 scripts/flac_scan.py --root "$ROOT" --workers 4 --verbose --broken-playlist "$ROOT/broken_files_unrepaired.m3u"
      ```
 
    - Pull specific problem cases (e.g., truncated tails) from the SQLite
@@ -127,7 +127,7 @@ integrity and removing duplicates.
      staging folder:
 
      ```bash
-     python scripts/flac_repair.py --playlist broken_files_unrepaired.m3u --output "$REPAIRED" --capture-stderr
+     python3 scripts/flac_repair.py --playlist broken_files_unrepaired.m3u --output "$REPAIRED" --capture-stderr
      ```
 
    - If you discover a file actually contains two stitched tracks, split it
@@ -170,7 +170,7 @@ integrity and removing duplicates.
    - After scanning and repairing, run:
 
      ```bash
-     python scripts/flac_dedupe.py --root "$ROOT" --dry-run --verbose --trash-dir "$ROOT/_TRASH_DUPES_preview"
+     python3 scripts/flac_dedupe.py --root "$ROOT" --dry-run --verbose --trash-dir "$ROOT/_TRASH_DUPES_preview"
      ```
 
      to produce a CSV that ranks duplicates by health, size, and modification

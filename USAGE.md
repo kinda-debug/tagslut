@@ -9,7 +9,7 @@ From the repository root:
 
 ```bash
 export PYTHONPATH="$(pwd)"
-python scripts/flac_scan.py --root /path/to/music --workers 8 --verbose
+python3 scripts/flac_scan.py --root /path/to/music --workers 8 --verbose
 ```
 
 Important options (common):
@@ -41,7 +41,7 @@ Example: running a quick, limited scan (dry run flow)
 
 ```bash
 # Create a small directory with a few FLACs and run the scanner with 2 workers
-python scripts/flac_scan.py --root /tmp/mytestmusic --workers 2 --verbose
+python3 scripts/flac_scan.py --root /tmp/mytestmusic --workers 2 --verbose
 ```
 
 If you need help with a specific failure, include the diagnostic outputs from

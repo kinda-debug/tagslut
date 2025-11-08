@@ -27,6 +27,12 @@ def _add_common_directory_argument(parser: argparse.ArgumentParser) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="dedupe", description="Unified FLAC dedupe toolkit")
+    # Global debug flag to assist with diagnosing invocation/runtime issues
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable debug output to assist troubleshooting",
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
     health.build_health_parser(subparsers)
 
@@ -121,7 +127,21 @@ def _write_rows(rows: Iterable[dict], output: Optional[Path], fieldnames: Iterab
 
 def run_cli(argv: Optional[list[str]] = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(argv)
+
+    # Allow `--debug` to appear anywhere (before or after the sub-command).
+    # argparse normally treats options after a subparser as belonging to the
+    # subparser so a user placing --debug at the end would cause an
+    # "unrecognized arguments" error. Detect and strip it here so it's
+    # recognised regardless of position.
+    raw_argv = list(argv) if argv is not None else None
+    search_space = raw_argv if raw_argv is not None else __import__("sys").argv[1:]
+    debug = "--debug" in search_space
+    if raw_argv is not None and "--debug" in raw_argv:
+        # remove all occurrences so argparse won't complain
+        raw_argv = [a for a in raw_argv if a != "--debug"]
+        args = parser.parse_args(raw_argv)
+    else:
+        args = parser.parse_args(raw_argv)
 
     if args.command == "health":
         if args.health_command == "scan":
@@ -184,6 +204,18 @@ def run_cli(argv: Optional[list[str]] = None) -> int:
         directory: Path = args.directory
         if not directory.is_dir():
             parser.error(f"{directory} is not a directory")
+        if debug:
+            try:
+                file_count = sum(1 for _ in directory.rglob("*.flac"))
+            except Exception:
+                file_count = 0
+            print(f"DEBUG: cwd={Path.cwd()}")
+            print(f"DEBUG: found {file_count} .flac files in {directory}")
+            if args.output:
+                try:
+                    print(f"DEBUG: output path resolved to {args.output.resolve()}")
+                except Exception:
+                    print(f"DEBUG: output path (raw) = {args.output}")
         limit = args.limit
 
         if args.quarantine_command == "inspect":

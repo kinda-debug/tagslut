@@ -17,23 +17,23 @@ replace the sprawling legacy scripts. Historical aliases (`analyse`, `scan`,
 2. **Audit quarantine inventory**
    - Capture a lightweight summary of the quarantine tree:
      ```bash
-     python -m dedupe.cli quarantine inventory /Volumes/dotad/Quarantine --output quarantine_scan.csv
+     python3 -m dedupe.cli quarantine inventory /Volumes/dotad/Quarantine --output quarantine_scan.csv
      ```
    - Deep-inspect suspicious files when needed:
      ```bash
-     python -m dedupe.cli quarantine inspect /Volumes/dotad/Quarantine --limit 200 --output quarantine_analysis.csv
+     python3 -m dedupe.cli quarantine inspect /Volumes/dotad/Quarantine --limit 200 --output quarantine_analysis.csv
      ```
    - Spot truncated or overlong audio by comparing container vs. decoded
      durations:
      ```bash
-     python -m dedupe.cli quarantine duration /Volumes/dotad/Quarantine --output quarantine_length.csv
+     python3 -m dedupe.cli quarantine duration /Volumes/dotad/Quarantine --output quarantine_length.csv
      ```
 
 3. **Check playback health before reintegration**
    - Run an integrity sweep over each source to flag corrupted copies:
      ```bash
-     python -m dedupe.cli health scan /Volumes/dotad/Quarantine --log quarantine_health.log
-     python -m dedupe.cli health scan /Volumes/dotad/Garbage --log garbage_health.log
+     python3 -m dedupe.cli health scan /Volumes/dotad/Quarantine --log quarantine_health.log
+     python3 -m dedupe.cli health scan /Volumes/dotad/Garbage --log garbage_health.log
      ```
    - Review the logs for failures and repair or discard broken files before
      synchronising anything into the main library.
@@ -41,11 +41,11 @@ replace the sprawling legacy scripts. Historical aliases (`analyse`, `scan`,
 4. **Dry-run synchronisation against each source**
    - Preview how replacements from the quarantine tree would affect the library:
      ```bash
-     python -m dedupe.cli sync --dedupe-root /Volumes/dotad/Quarantine --dry-run
+     python3 -m dedupe.cli sync --dedupe-root /Volumes/dotad/Quarantine --dry-run
      ```
    - Repeat for the archive of confirmed duplicates:
      ```bash
-     python -m dedupe.cli sync --dedupe-root /Volumes/dotad/Garbage --dry-run
+     python3 -m dedupe.cli sync --dedupe-root /Volumes/dotad/Garbage --dry-run
      ```
    - Investigate any proposed swaps where the quarantine or garbage copies win;
      confirm the healthier file really should replace the library version.
@@ -54,8 +54,8 @@ replace the sprawling legacy scripts. Historical aliases (`analyse`, `scan`,
    - After auditing the dry-run output, rerun synchronisation without
      `--dry-run` for the directories you trust:
      ```bash
-     python -m dedupe.cli sync --dedupe-root /Volumes/dotad/Quarantine
-     python -m dedupe.cli sync --dedupe-root /Volumes/dotad/Garbage
+     python3 -m dedupe.cli sync --dedupe-root /Volumes/dotad/Quarantine
+     python3 -m dedupe.cli sync --dedupe-root /Volumes/dotad/Garbage
      ```
    - Keep the generated console logs as an audit trail and rerun the health
      sweep on `/Volumes/dotad/MUSIC` if you want to verify playback across the

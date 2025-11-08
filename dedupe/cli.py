@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 from typing import Iterable, Optional
 
@@ -22,6 +23,11 @@ def _add_common_directory_argument(parser: argparse.ArgumentParser) -> None:
         type=Path,
         default=None,
         help="Optional CSV output path",
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Verbose progress output for long-running commands",
     )
 
 
@@ -121,8 +127,9 @@ def _write_rows(rows: Iterable[dict], output: Optional[Path], fieldnames: Iterab
         for row in rows:
             print(row)
         return
-    quarantine.write_rows_csv(list(fieldnames), rows, output)
-    print(f"Wrote {output}")
+    rows_list = list(rows)
+    quarantine.write_rows_csv(list(fieldnames), rows_list, output)
+    print(f"Wrote {output} ({len(rows_list)} rows)")
 
 
 def run_cli(argv: Optional[list[str]] = None) -> int:
@@ -134,14 +141,19 @@ def run_cli(argv: Optional[list[str]] = None) -> int:
     # "unrecognized arguments" error. Detect and strip it here so it's
     # recognised regardless of position.
     raw_argv = list(argv) if argv is not None else None
-    search_space = raw_argv if raw_argv is not None else __import__("sys").argv[1:]
+    sys_argv = __import__("sys").argv[1:]
+    search_space = raw_argv if raw_argv is not None else sys_argv
     debug = "--debug" in search_space
-    if raw_argv is not None and "--debug" in raw_argv:
-        # remove all occurrences so argparse won't complain
-        raw_argv = [a for a in raw_argv if a != "--debug"]
+    if raw_argv is not None:
+        # remove any --debug occurrences from the explicit argv list
+        if "--debug" in raw_argv:
+            raw_argv = [a for a in raw_argv if a != "--debug"]
         args = parser.parse_args(raw_argv)
     else:
-        args = parser.parse_args(raw_argv)
+        # running from sys.argv; strip --debug so argparse doesn't treat it as
+        # a subparser-specific argument when it's placed after the subcommand
+        argv2 = [a for a in sys_argv if a != "--debug"]
+        args = parser.parse_args(argv2)
 
     if args.command == "health":
         if args.health_command == "scan":
@@ -248,3 +260,7 @@ def main() -> int:
 
 
 __all__ = ["build_parser", "main", "run_cli"]
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

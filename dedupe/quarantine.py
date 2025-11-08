@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import csv
+try:
+    from tqdm import tqdm  # type: ignore
+except ImportError:  # pragma: no cover - optional dependency
+    tqdm = None
 import hashlib
-import os
 import subprocess
 import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -102,7 +105,17 @@ def compute_pcm_sha1(path: Path, timeout: int = 10) -> Optional[str]:
     if ffmpeg is None:
         return None
 
-    cmd = [ffmpeg, "-nostdin", "-v", "error", "-i", str(path), "-f", "wav", "-"]
+    cmd = [
+        ffmpeg,
+        "-nostdin",
+        "-v",
+        "error",
+        "-i",
+        str(path),
+        "-f",
+        "wav",
+        "-",
+    ]
     try:
         proc = subprocess.Popen(
             cmd,
@@ -138,7 +151,10 @@ def windowed_fpcalc_count(
     step: Optional[int] = None,
     timeout_per_window: int = 5,
 ) -> int:
-    """Return the number of distinct Chromaprint fingerprints for sliding windows."""
+    """Return the number of distinct Chromaprint fingerprints.
+
+    Uses sliding windows to produce multiple fingerprints for a file.
+    """
 
     ffmpeg = _which("ffmpeg")
     fpcalc = _which("fpcalc")
@@ -147,7 +163,7 @@ def windowed_fpcalc_count(
 
     try:
         info = ffprobe_info(path)
-    except Exception:
+    except (FileNotFoundError, OSError, ValueError):
         return 0
     duration = info.get("duration") or 0
     if duration <= 0 or duration > 600:
@@ -216,7 +232,9 @@ def windowed_fpcalc_count(
     return len(fingerprints)
 
 
-def detect_length_mismatch(path: Path) -> Tuple[Optional[float], Optional[float]]:
+def detect_length_mismatch(
+    path: Path,
+) -> Tuple[Optional[float], Optional[float]]:
     """Return ``(reported, decoded)`` durations for *path*."""
 
     info = ffprobe_info(path)
@@ -227,7 +245,7 @@ def detect_length_mismatch(path: Path) -> Tuple[Optional[float], Optional[float]
     if frames and sr:
         try:
             decoded = frames / float(sr)
-        except Exception:
+        except (ZeroDivisionError, TypeError, ValueError):
             decoded = None
     return reported, decoded
 
@@ -266,6 +284,7 @@ def analyse_quarantine(
     *,
     limit: Optional[int] = None,
     workers: int = 4,
+    verbose: bool = False,
 ) -> List[dict]:
     """Return rich metadata for FLAC files inside *directory*."""
 
@@ -274,10 +293,21 @@ def analyse_quarantine(
         files = files[:limit]
 
     results: List[dict] = []
+    total = len(files)
+    if verbose:
+        print(f"Analysing {total} files with {workers} workers")
     with ThreadPoolExecutor(max_workers=workers) as executor:
-        future_map = {executor.submit(analyse_track, path): path for path in files}
+        future_map = {
+            executor.submit(analyse_track, path): path
+            for path in files
+        }
+        completed = 0
+        step = max(1, total // 10) if total else 1
         for future in as_completed(future_map):
             results.append(future.result())
+            completed += 1
+            if verbose and (completed % step == 0 or completed == total):
+                print(f"  Completed {completed}/{total}")
     return results
 
 
@@ -304,7 +334,9 @@ def write_analysis_csv(rows: Sequence[dict], output: Path) -> None:
             writer.writerow(row)
 
 
-def simple_scan(directory: Path, *, limit: Optional[int] = None) -> List[dict]:
+def simple_scan(
+    directory: Path, *, limit: Optional[int] = None, verbose: bool = False
+) -> List[dict]:
     """Return ``[{"path", "size", "duration"}, …]`` for quarantine files."""
 
     ffprobe = _which("ffprobe")
@@ -316,7 +348,16 @@ def simple_scan(directory: Path, *, limit: Optional[int] = None) -> List[dict]:
         files = files[:limit]
 
     rows: List[dict] = []
-    for path in files:
+    total = len(files)
+    step = max(1, total // 10) if total else 1
+    if tqdm and verbose:
+        iterator = enumerate(tqdm(files, desc="scanning", unit="files"))
+    else:
+        iterator = enumerate(files)
+    for i, path in iterator:
+        if not (tqdm and verbose):
+            if verbose and (i % step == 0 or i == total - 1):
+                print(f"Scanning {i+1}/{total}: {path}")
         size = path.stat().st_size
         cmd = [
             ffprobe,
@@ -338,7 +379,8 @@ def simple_scan(directory: Path, *, limit: Optional[int] = None) -> List[dict]:
                 timeout=2,
                 check=False,
             )
-            duration = float(proc.stdout.strip()) if proc.stdout.strip() else None
+            out = proc.stdout.strip()
+            duration = float(out) if out else None
         except (ValueError, subprocess.TimeoutExpired):
             duration = None
         rows.append({"path": str(path), "size": size, "duration": duration})
@@ -349,6 +391,7 @@ def detect_playback_issues(
     directory: Path,
     *,
     limit: Optional[int] = None,
+    verbose: bool = False,
 ) -> List[dict]:
     """Return rows describing playback duration mismatches."""
 
@@ -357,7 +400,11 @@ def detect_playback_issues(
         files = files[:limit]
 
     rows: List[dict] = []
-    for path in files:
+    total = len(files)
+    step = max(1, total // 10) if total else 1
+    for i, path in enumerate(files):
+        if verbose and (i % step == 0 or i == total - 1):
+            print(f"Checking {i+1}/{total}: {path}")
         reported, decoded = detect_length_mismatch(path)
         ratio: Optional[float]
         try:
@@ -365,21 +412,21 @@ def detect_playback_issues(
                 ratio = decoded / reported
             else:
                 ratio = None
-        except Exception:
+        except (ZeroDivisionError, TypeError):
             ratio = None
-        rows.append(
-            {
-                "path": str(path),
-                "reported": reported,
-                "decoded": decoded,
-                "ratio": ratio,
-            }
-        )
+        rows.append({
+            "path": str(path),
+            "reported": reported,
+            "decoded": decoded,
+            "ratio": ratio,
+        })
     return rows
 
 
-def write_rows_csv(fieldnames: Sequence[str], rows: Iterable[dict], output: Path) -> None:
-    """Write arbitrary ``rows`` with the supplied ``fieldnames`` to *output*."""
+def write_rows_csv(
+    fieldnames: Sequence[str], rows: Iterable[dict], output: Path
+) -> None:
+    """Write rows with the supplied fieldnames to *output*."""
 
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("w", newline="", encoding="utf-8") as handle:

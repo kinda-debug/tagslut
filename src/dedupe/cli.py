@@ -6,7 +6,7 @@ import argparse
 from pathlib import Path
 from typing import Iterable, Optional
 
-from . import quarantine, sync
+from . import health_cli, quarantine, sync
 
 
 def _add_common_directory_argument(parser: argparse.ArgumentParser) -> None:
@@ -28,6 +28,7 @@ def _add_common_directory_argument(parser: argparse.ArgumentParser) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="dedupe", description="Unified FLAC dedupe toolkit")
     subparsers = parser.add_subparsers(dest="command", required=True)
+    health_cli.build_health_parser(subparsers)
 
     sync_parser = subparsers.add_parser(
         "sync", help="Synchronise staged duplicates back into the library"
@@ -115,6 +116,23 @@ def _write_rows(rows: Iterable[dict], output: Optional[Path], fieldnames: Iterab
 def run_cli(argv: Optional[list[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    if args.command == "health":
+        if args.health_command == "scan":
+            summary = health_cli.scan_directory(
+                args.root,
+                log_path=args.log,
+                workers=args.workers,
+            )
+        else:
+            summary = health_cli.check_spreadsheet(
+                args.spreadsheet,
+                log_path=args.log,
+                workers=args.workers,
+            )
+        print(summary.formatted_counts())
+        print(f"Log written to {summary.log_path}")
+        return 0
 
     if args.command == "sync":
         mode = sync.HealthMode(args.health_check)

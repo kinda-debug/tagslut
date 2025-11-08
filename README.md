@@ -42,8 +42,22 @@ quarantine analysis.
 ## Command line interface
 
 ```
-usage: dedupe [-h] {sync,quarantine} ...
+usage: dedupe [-h] {health,sync,quarantine} ...
 ```
+
+### `health`
+Run integrity probes against files either discovered recursively under a root
+directory or listed explicitly in a spreadsheet.  The command replaces the
+historical `audio_health_check*.py` scripts and keeps the behaviour available in
+two sub-modes:
+
+- `health scan ROOT` – walk `ROOT` recursively, checking supported extensions
+  with `flac -t` or an `ffmpeg` decode fallback.
+- `health from-spreadsheet SHEET` – load file paths from the first column of an
+  `.xlsx` or `.csv` file and run the same health probes.
+
+Both sub-commands accept `--log` to redirect log output and `--workers` to tune
+the thread pool size.
 
 ### `sync`
 Synchronise the staged dedupe directory with the primary library, moving the
@@ -69,8 +83,9 @@ CSV report.
 
 ```
 src/dedupe/
-    cli.py          # argparse based CLI with sync/quarantine sub-commands
+    cli.py          # argparse based CLI with health/sync/quarantine sub-commands
     health.py       # shared health check primitives
+    health_cli.py   # helpers shared by the health CLI entry points
     quarantine.py   # quarantine analysis utilities
     sync.py         # core dedupe synchronisation logic
 scripts/

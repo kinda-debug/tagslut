@@ -1,7 +1,7 @@
 # FLAC Deduplication Project Makefile
 # Uses Poetry for dependency management
 
-.PHONY: help install update lock test lint format clean run sync quarantine-analyse quarantine-scan quarantine-length type-check check
+.PHONY: help install update lock test lint format clean run sync quarantine-inspect quarantine-inventory quarantine-duration type-check check
 
 help: ## Show this help message
 @echo "FLAC Deduplication Project"
@@ -41,13 +41,13 @@ poetry run dedupe --help
 sync: ## Run the sync workflow (dry run)
 poetry run dedupe sync --dry-run
 
-quarantine-analyse: ## Run detailed quarantine analysis
-poetry run dedupe quarantine analyse --help
+quarantine-inspect: ## Run detailed quarantine analysis
+poetry run dedupe quarantine inspect --help
 
-quarantine-scan: ## Run lightweight quarantine scan
-poetry run dedupe quarantine scan --help
+quarantine-inventory: ## Run lightweight quarantine scan
+poetry run dedupe quarantine inventory --help
 
-quarantine-length: ## Detect quarantine playback length issues
-poetry run dedupe quarantine length --help
+quarantine-duration: ## Detect quarantine playback length issues
+poetry run dedupe quarantine duration --help
 
 check: lint type-check test ## Run all checks (lint, type-check, test)

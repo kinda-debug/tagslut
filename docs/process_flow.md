@@ -25,9 +25,9 @@
 ## Quarantine analysis
 
 ```
-quarantine analyse  -> detailed ffprobe + PCM hash + Chromaprint
-quarantine scan     -> lightweight duration + size inventory
-quarantine length   -> reported vs decoded duration diff
+quarantine inspect    -> detailed ffprobe + PCM hash + Chromaprint
+quarantine inventory  -> lightweight duration + size inventory
+quarantine duration   -> reported vs decoded duration diff
 ```
 
 All commands share CSV writers so downstream tools can consume consistent

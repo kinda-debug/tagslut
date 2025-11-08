@@ -3,6 +3,10 @@
 Use this checklist to merge healthier copies from `/Volumes/dotad/Quarantine`
 and `/Volumes/dotad/Garbage` back into the main library.
 
+The commands below use the streamlined quarantine sub-commands introduced to
+replace the sprawling legacy scripts. Historical aliases (`analyse`, `scan`,
+`length`) continue to work if you have existing automation.
+
 1. **Confirm configuration**
    - Ensure `config.toml` lists the three directories under `[paths]`:
      `/Volumes/dotad/MUSIC`, `/Volumes/dotad/Quarantine`, and
@@ -13,16 +17,16 @@ and `/Volumes/dotad/Garbage` back into the main library.
 2. **Audit quarantine inventory**
    - Capture a lightweight summary of the quarantine tree:
      ```bash
-     python -m dedupe.cli quarantine scan /Volumes/dotad/Quarantine --output quarantine_scan.csv
+     python -m dedupe.cli quarantine inventory /Volumes/dotad/Quarantine --output quarantine_scan.csv
      ```
    - Deep-inspect suspicious files when needed:
      ```bash
-     python -m dedupe.cli quarantine analyse /Volumes/dotad/Quarantine --limit 200 --output quarantine_analysis.csv
+     python -m dedupe.cli quarantine inspect /Volumes/dotad/Quarantine --limit 200 --output quarantine_analysis.csv
      ```
    - Spot truncated or overlong audio by comparing container vs. decoded
      durations:
      ```bash
-     python -m dedupe.cli quarantine length /Volumes/dotad/Quarantine --output quarantine_length.csv
+     python -m dedupe.cli quarantine duration /Volumes/dotad/Quarantine --output quarantine_length.csv
      ```
 
 3. **Check playback health before reintegration**

@@ -81,7 +81,9 @@ def build_parser() -> argparse.ArgumentParser:
     quarantine_sub = quarantine_parser.add_subparsers(dest="quarantine_command", required=True)
 
     analyse_parser = quarantine_sub.add_parser(
-        "analyse", help="Capture detailed ffprobe/fingerprint metadata"
+        "inspect",
+        help="Capture detailed ffprobe/fingerprint metadata",
+        aliases=["analyse"],
     )
     _add_common_directory_argument(analyse_parser)
     analyse_parser.add_argument(
@@ -92,12 +94,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     scan_parser = quarantine_sub.add_parser(
-        "scan", help="Record basic size/duration metadata"
+        "inventory",
+        help="Record basic size/duration metadata",
+        aliases=["scan"],
     )
     _add_common_directory_argument(scan_parser)
 
     length_parser = quarantine_sub.add_parser(
-        "length", help="Detect playback duration mismatches"
+        "duration",
+        help="Detect playback duration mismatches",
+        aliases=["length"],
     )
     _add_common_directory_argument(length_parser)
 
@@ -180,7 +186,7 @@ def run_cli(argv: Optional[list[str]] = None) -> int:
             parser.error(f"{directory} is not a directory")
         limit = args.limit
 
-        if args.quarantine_command == "analyse":
+        if args.quarantine_command == "inspect":
             rows = quarantine.analyse_quarantine(directory, limit=limit, workers=args.workers)
             if args.output:
                 quarantine.write_analysis_csv(rows, args.output)
@@ -190,13 +196,13 @@ def run_cli(argv: Optional[list[str]] = None) -> int:
                     print(row)
             return 0
 
-        if args.quarantine_command == "scan":
+        if args.quarantine_command == "inventory":
             rows = quarantine.simple_scan(directory, limit=limit)
             fieldnames = ["path", "size", "duration"]
             _write_rows(rows, args.output, fieldnames)
             return 0
 
-        if args.quarantine_command == "length":
+        if args.quarantine_command == "duration":
             rows = quarantine.detect_playback_issues(directory, limit=limit)
             fieldnames = ["path", "reported", "decoded", "ratio"]
             _write_rows(rows, args.output, fieldnames)

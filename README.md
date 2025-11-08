@@ -71,10 +71,13 @@ Key options:
 - `--verify-library` – perform a full playback audit after synchronisation.
 
 ### `quarantine`
-Analyse quarantine directories using three dedicated sub-commands:
-- `quarantine analyse` – full ffprobe/fingerprint/PCM hash capture.
-- `quarantine scan` – lightweight duration/size inventory.
-- `quarantine length` – detect reported/decoded duration mismatches.
+Analyse quarantine directories using three dedicated sub-commands with concise
+names that replace the sprawling legacy scripts:
+- `quarantine inspect` – full ffprobe/fingerprint/PCM hash capture (`analyse`
+  remains available as an alias).
+- `quarantine inventory` – lightweight duration/size inventory (`scan` alias).
+- `quarantine duration` – detect reported/decoded duration mismatches (`length`
+  alias).
 
 Each command accepts `--limit` to cap processed files and `--output` to write a
 CSV report.
@@ -133,20 +136,20 @@ integrity and removing duplicates.
 
 3. **Quarantine deep dives**  
    The quarantine sub-commands focus on metadata vs. reality mismatches.
-   `quarantine analyse` captures `ffprobe` details, PCM hashes, and Chromaprint
+   `quarantine inspect` captures `ffprobe` details, PCM hashes, and Chromaprint
    fingerprints—perfect for spotting two files that look similar but differ in
    bit-depth or length.  
-   `quarantine length` specifically compares container-reported durations with
+   `quarantine duration` specifically compares container-reported durations with
    decoded audio lengths so you can isolate overlong or underlong files—the
    exact symptom you described for stitched recordings.
 
    *Example for “longer than displayed length”*
 
-   - Point `quarantine length` at the suspect directory to emit a CSV of every
+   - Point `quarantine duration` at the suspect directory to emit a CSV of every
      mismatch between tag-based and decoded durations.
    - Sort the CSV by absolute duration delta; the worst offenders typically
      signal either hidden appended content or truncated metadata. Follow up with
-     `quarantine analyse` on those files to cross-check PCM hashes and
+     `quarantine inspect` on those files to cross-check PCM hashes and
      fingerprints before deciding whether to keep, split, or discard them.
 
 4. **Deduplication and synchronisation**  

@@ -1,15 +1,29 @@
+[project]
+name = "flac-dedupe"
+version = "0.1.0"
+description = "FLAC audio file deduplication tools with ScaReD CLI"
+authors = [{ name = "Georges Khawam", email = "tagslut@example.com" }]
+readme = "README.md"
+requires-python = ">=3.8"
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["dedupe"]
+exclude = ["tests", "archive", "artifacts", "out", "runs"]
+
 [tool.poetry]
 name = "flac-dedupe"
 version = "0.1.0"
 description = "FLAC audio file deduplication tools with ScaReD CLI"
-authors = ["Georges Khawam <tagslut>"]
+authors = ["Georges Khawam <tagslut@example.com>"]
 readme = "README.md"
-packages = [{include = "dedupe", from = "src"}]
+packages = [{ include = "dedupe" }]
 
 [tool.poetry.dependencies]
 python = "^3.8.1"
-# tomllib is in Python 3.11+ standard library, handled gracefully in code
-# All other dependencies are standard library, but we document system requirements
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.0.0"
@@ -23,17 +37,12 @@ analyze-quarantine-subdir = "dedupe.legacy_cli:analyse_quarantine_subdir_main"
 simple-quarantine-scan = "dedupe.legacy_cli:simple_quarantine_scan_main"
 detect-playback-length-issues = "dedupe.legacy_cli:detect_playback_length_issues_main"
 
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry-core"
-
 [tool.black]
 line-length = 88
 target-version = ['py38']
 
 [tool.mypy]
 python_version = "3.11"
-# Core checks — keep a few useful warnings but relax untyped-def strictness
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true

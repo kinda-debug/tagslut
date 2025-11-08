@@ -18,7 +18,7 @@ import shlex
 import subprocess
 import sys
 import tempfile
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, wait, FIRST_EXCEPTION
 from pathlib import Path
 from typing import Optional
 
@@ -254,15 +254,26 @@ def main():
 
         with ThreadPoolExecutor(max_workers=args.workers) as ex:
             futures = {ex.submit(analyze_one, p): p for p in files}
-            for fut in as_completed(futures):
+            done = set()
+            timeout_per_batch = 60
+            while len(done) < len(futures):
+                remaining = set(futures.keys()) - done
+                if not remaining:
+                    break
                 try:
-                    row = fut.result()
-                except Exception as e:
-                    row = {"path": futures[fut], "size": 0, "reported_duration": None, "decoded_duration": None, "sample_rate": None, "channels": None, "pcm_sha1": None, "window_fp_count": 0, "stitched": False, "truncated": False}
-                if args.verbose:
-                    print(f"[WRITE] {row['path']} -> CSV")
-                writer.writerow(row)
-                csvf.flush()
+                    batch_done, _ = wait(remaining, timeout=timeout_per_batch, return_when='FIRST_COMPLETED')
+                    done.update(batch_done)
+                    for fut in batch_done:
+                        try:
+                            row = fut.result()
+                        except Exception:
+                            row = {"path": futures[fut], "size": 0, "reported_duration": None, "decoded_duration": None, "sample_rate": None, "channels": None, "pcm_sha1": None, "window_fp_count": 0, "stitched": False, "truncated": False}
+                        if args.verbose:
+                            print(f"[WRITE] {row['path']} -> CSV")
+                        writer.writerow(row)
+                        csvf.flush()
+                except Exception:
+                    break
 
 
 if __name__ == "__main__":

@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 
 def _which(cmd: str) -> Optional[str]:
@@ -18,7 +18,10 @@ def _which(cmd: str) -> Optional[str]:
     return which(cmd)
 
 
-def ffprobe_info(path: Path, timeout: int = 3) -> dict:
+FFProbeInfo = Dict[str, Optional[float]]
+
+
+def ffprobe_info(path: Path, timeout: int = 3) -> FFProbeInfo:
     """Return duration/sample-rate metadata for *path* using ``ffprobe``."""
 
     ffprobe = _which("ffprobe")
@@ -50,10 +53,20 @@ def ffprobe_info(path: Path, timeout: int = 3) -> dict:
             check=False,
         )
     except subprocess.TimeoutExpired:
-        return {"duration": None, "sample_rate": None, "channels": None, "nb_read_frames": None}
+        return {
+            "duration": None,
+            "sample_rate": None,
+            "channels": None,
+            "nb_read_frames": None,
+        }
 
     tokens = proc.stdout.strip().splitlines()
-    info = {"duration": None, "sample_rate": None, "channels": None, "nb_read_frames": None}
+    info: FFProbeInfo = {
+        "duration": None,
+        "sample_rate": None,
+        "channels": None,
+        "nb_read_frames": None,
+    }
     if not tokens:
         return info
 
@@ -68,16 +81,16 @@ def ffprobe_info(path: Path, timeout: int = 3) -> dict:
         if value is None:
             continue
         if info["duration"] is None:
-            info["duration"] = value
+            info["duration"] = float(value)
             continue
         if value > 10_000 and info["sample_rate"] is None:
-            info["sample_rate"] = int(value)
+            info["sample_rate"] = float(value)
             continue
         if value in {1.0, 2.0, 4.0, 6.0, 8.0} and info["channels"] is None:
-            info["channels"] = int(value)
+            info["channels"] = float(value)
             continue
         if value >= 1 and info["nb_read_frames"] is None:
-            info["nb_read_frames"] = int(value)
+            info["nb_read_frames"] = float(value)
 
     return info
 

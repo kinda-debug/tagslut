@@ -6,7 +6,7 @@ import argparse
 from pathlib import Path
 from typing import Iterable, Optional
 
-from . import health_cli, quarantine, sync
+from . import health, quarantine, sync
 
 
 def _add_common_directory_argument(parser: argparse.ArgumentParser) -> None:
@@ -28,7 +28,7 @@ def _add_common_directory_argument(parser: argparse.ArgumentParser) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="dedupe", description="Unified FLAC dedupe toolkit")
     subparsers = parser.add_subparsers(dest="command", required=True)
-    health_cli.build_health_parser(subparsers)
+    health.build_health_parser(subparsers)
 
     sync_parser = subparsers.add_parser(
         "sync", help="Synchronise staged duplicates back into the library"
@@ -119,24 +119,24 @@ def run_cli(argv: Optional[list[str]] = None) -> int:
 
     if args.command == "health":
         if args.health_command == "scan":
-            summary = health_cli.scan_directory(
+            health_summary = health.scan_directory(
                 args.root,
                 log_path=args.log,
                 workers=args.workers,
             )
         else:
-            summary = health_cli.check_spreadsheet(
+            health_summary = health.check_spreadsheet(
                 args.spreadsheet,
                 log_path=args.log,
                 workers=args.workers,
             )
-        print(summary.formatted_counts())
-        print(f"Log written to {summary.log_path}")
+        print(health_summary.formatted_counts())
+        print(f"Log written to {health_summary.log_path}")
         return 0
 
     if args.command == "sync":
         mode = sync.HealthMode(args.health_check)
-        summary = sync.run_sync(
+        sync_summary = sync.run_sync(
             library_root=args.library_root,
             dedupe_root=args.dedupe_root,
             dedupe_listing=args.dedupe_listing,
@@ -145,15 +145,21 @@ def run_cli(argv: Optional[list[str]] = None) -> int:
             dry_run=args.dry_run,
             verify_library=args.verify_library,
         )
-        for outcome in summary.outcomes:
+        for outcome in sync_summary.outcomes:
             print(f"{outcome.action:>12}  {outcome.relative_path}  {outcome.message}")
-        summary_line = ", ".join(f"{action}: {count}" for action, count in sorted(summary.counts.items()))
+        summary_line = ", ".join(
+            f"{action}: {count}" for action, count in sorted(sync_summary.counts.items())
+        )
         if not summary_line:
             summary_line = "no actions performed"
-        print(f"Processed {len(summary.outcomes)} files — {summary_line}")
-        if summary.audit_results is not None:
-            unhealthy = [r for r in summary.audit_results if not r.exists or r.healthy is False]
-            unknown = [r for r in summary.audit_results if r.exists and r.healthy is None]
+        print(f"Processed {len(sync_summary.outcomes)} files — {summary_line}")
+        if sync_summary.audit_results is not None:
+            unhealthy = [
+                r for r in sync_summary.audit_results if not r.exists or r.healthy is False
+            ]
+            unknown = [
+                r for r in sync_summary.audit_results if r.exists and r.healthy is None
+            ]
             for result in unhealthy:
                 note = result.note or "playback verification failed"
                 print(f"   UNHEALTHY  {result.relative_path}  {note}")
@@ -162,7 +168,7 @@ def run_cli(argv: Optional[list[str]] = None) -> int:
                 print(f"   UNKNOWN    {result.relative_path}  {note}")
             print(
                 "Library audit: "
-                f"{len(summary.audit_results)} files checked, "
+                f"{len(sync_summary.audit_results)} files checked, "
                 f"{len(unhealthy)} unhealthy, "
                 f"{len(unknown)} unknown health"
             )

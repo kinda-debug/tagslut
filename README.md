@@ -79,13 +79,128 @@ Analyse quarantine directories using three dedicated sub-commands:
 Each command accepts `--limit` to cap processed files and `--output` to write a
 CSV report.
 
+## Workflow playbook
+
+### Overview
+The toolkit wraps scanning, repair, quarantine analysis, and deduplication into
+reusable commands so you can tame very large music libraries from a single entry
+point (`python -m dedupe.cli`). The CLI exposes health, sync, and quarantine
+workflows, each targeting a specific stage in restoring your library’s
+integrity and removing duplicates.
+
+### Process-by-process breakdown
+1. **Comprehensive health scanning**  
+   `dedupe health scan ROOT` walks a directory tree, validating every supported
+   file with `flac -t` and falling back to an `ffmpeg` decode when necessary,
+   flagging truncated or otherwise unreadable audio in the process.  
+   Run the legacy `flac_scan.py` script when you want the historical SQLite
+   database (`_DEDUP_INDEX.db`) and M3U playlists of broken files; the POST-SCAN
+   workflow shows exactly how to invoke it and store all failures for triage.
+
+   *Example for truncated or stitched-together recoveries*
+
+   - Scan the entire library and capture a playlist of every file that fails
+     playback tests:
+
+     ```bash
+     python scripts/flac_scan.py --root "$ROOT" --workers 4 --verbose --broken-playlist "$ROOT/broken_files_unrepaired.m3u"
+     ```
+
+   - Pull specific problem cases (e.g., truncated tails) from the SQLite
+     database by querying the `health_note` column so you can target them in
+     batches.
+
+2. **Repair in a staging area**  
+   Always copy suspect files into an isolated `REPAIRED` directory before
+   touching the originals; the repair helper re-encodes problematic tracks with
+   `ffmpeg`, keeps per-file logs, and avoids surprises in the main library.  
+   Re-run the scan against the staging directory to confirm the repairs actually
+   fixed the truncation or accidental concatenation issues before syncing
+   anything back.
+
+   *Example workflow for truncated plus misnamed files*
+
+   - Feed the broken playlist into `flac_repair.py`, outputting to a timestamped
+     staging folder:
+
+     ```bash
+     python scripts/flac_repair.py --playlist broken_files_unrepaired.m3u --output "$REPAIRED" --capture-stderr
+     ```
+
+   - If you discover a file actually contains two stitched tracks, split it
+     manually (or re-rip), then re-run the health scan on the repaired versions
+     to make sure durations now match expectations.
+
+3. **Quarantine deep dives**  
+   The quarantine sub-commands focus on metadata vs. reality mismatches.
+   `quarantine analyse` captures `ffprobe` details, PCM hashes, and Chromaprint
+   fingerprints—perfect for spotting two files that look similar but differ in
+   bit-depth or length.  
+   `quarantine length` specifically compares container-reported durations with
+   decoded audio lengths so you can isolate overlong or underlong files—the
+   exact symptom you described for stitched recordings.
+
+   *Example for “longer than displayed length”*
+
+   - Point `quarantine length` at the suspect directory to emit a CSV of every
+     mismatch between tag-based and decoded durations.
+   - Sort the CSV by absolute duration delta; the worst offenders typically
+     signal either hidden appended content or truncated metadata. Follow up with
+     `quarantine analyse` on those files to cross-check PCM hashes and
+     fingerprints before deciding whether to keep, split, or discard them.
+
+4. **Deduplication and synchronisation**  
+   Once repairs succeed, `dedupe sync` compares each staged copy against the
+   primary library, choosing the healthiest version using size, mtime, and
+   health scores, then moving, deleting, or swapping files as needed while
+   pruning empty directories.  
+   The POST-SCAN guide shows how to dry-run dedupe operations, inspect CSV
+   reports of winners vs. losers, and only commit deletions after you’ve verified
+   that the “losers” are corrupt, low-bitrate, or unwanted duplicates.
+
+   - Creating M3U playlists of loser files lets you audition them manually before
+     committing deletions, which is helpful when filenames differ slightly but
+     you want to keep the highest-quality encode.
+
+   *Example for slightly different names, sizes, and bitrates*
+
+   - After scanning and repairing, run:
+
+     ```bash
+     python scripts/flac_dedupe.py --root "$ROOT" --dry-run --verbose --trash-dir "$ROOT/_TRASH_DUPES_preview"
+     ```
+
+     to produce a CSV that ranks duplicates by health, size, and modification
+     time.
+   - Export the “losers” playlist and audition any pairs where the names or
+     metadata diverge; fix tags or rename in the staging area as needed.
+   - When satisfied, re-run `flac_dedupe.py` with `--commit` to move confirmed
+     duplicates into `_TRASH_DUPES`, keeping a reversible audit trail.
+
+### Putting it together for your library
+1. Scan and classify every file, generating both the SQLite index and playlists
+   of broken or suspicious tracks. This surfaces truncated recoveries, hidden
+   concatenations, and files whose metadata contradicts their contents.
+2. Repair or re-rip in isolation, validate the fixes, and only then reintegrate
+   the clean versions. Keep backups of the originals until you’re confident the
+   repairs are correct.
+3. Use quarantine analytics to focus on duration mismatches and subtle quality
+   differences. CSV outputs make it easy to filter by anomalies such as extra
+   duration or unexpected bit-depth changes.
+4. Synchronise and dedupe using staged directories, dry-run reports, and loser
+   playlists so you can resolve naming inconsistencies and choose the
+   best-quality copies before committing changes.
+
+Following this loop—scan ➜ repair ➜ analyse ➜ dedupe—gives you a repeatable path
+to untangle a huge, messy collection while preserving backups and audit trails
+at every step.
+
 ## Project layout
 
 ```
 src/dedupe/
     cli.py          # argparse based CLI with health/sync/quarantine sub-commands
-    health.py       # shared health check primitives
-    health_cli.py   # helpers shared by the health CLI entry points
+    health.py       # shared health check primitives and CLI helpers
     quarantine.py   # quarantine analysis utilities
     sync.py         # core dedupe synchronisation logic
 scripts/

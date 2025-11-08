@@ -3,7 +3,7 @@ from __future__ import annotations
 import zipfile
 from pathlib import Path
 
-from dedupe import health_cli
+from dedupe import health
 from dedupe.health import HealthChecker, HealthStatus
 
 
@@ -28,7 +28,7 @@ def test_scan_directory_counts(tmp_path: Path) -> None:
     checker = StubChecker({good: (True, "ok"), bad: (False, "decode error")})
     log_path = tmp_path / "scan.log"
 
-    summary = health_cli.scan_directory(
+    summary = health.scan_directory(
         root,
         log_path=log_path,
         workers=1,
@@ -64,7 +64,7 @@ def test_check_spreadsheet_handles_missing_and_unknown(tmp_path: Path) -> None:
     )
     log_path = tmp_path / "sheet.log"
 
-    summary = health_cli.check_spreadsheet(
+    summary = health.check_spreadsheet(
         spreadsheet,
         log_path=log_path,
         workers=1,

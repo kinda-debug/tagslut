@@ -198,6 +198,11 @@ def build_health_parser(
         default=os.cpu_count() or 4,
         help="Number of worker threads to use",
     )
+    scan_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Verbose progress output for health scanning",
+    )
 
     sheet_parser = health_sub.add_parser(
         "from-spreadsheet",

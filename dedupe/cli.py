@@ -85,6 +85,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Verify playback health across the entire library after sync",
     )
+    # Allow a verbose flag for sync diagnostic/logging
+    sync_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Verbose progress output for sync/dry-run operations",
+    )
 
     quarantine_parser = subparsers.add_parser(
         "quarantine",
@@ -157,6 +163,14 @@ def run_cli(argv: Optional[list[str]] = None) -> int:
 
     if args.command == "health":
         if args.health_command == "scan":
+            if debug or getattr(args, "verbose", False):
+                # Provide a quick preview of the target and discovered files
+                try:
+                    file_count = sum(1 for _ in args.root.rglob("*") if _.is_file())
+                except Exception:
+                    file_count = 0
+                print(f"DEBUG: cwd={Path.cwd()}")
+                print(f"DEBUG: scanning root={args.root} ({file_count} files found)")
             health_summary = health.scan_directory(
                 args.root,
                 log_path=args.log,
@@ -174,6 +188,19 @@ def run_cli(argv: Optional[list[str]] = None) -> int:
 
     if args.command == "sync":
         mode = sync.HealthMode(args.health_check)
+        if debug or getattr(args, "verbose", False):
+            # Print diagnostic info about resolved dedupe/library roots
+            try:
+                resolved = args.dedupe_root or sync.discover_dedupe_root(args.dedupe_listing)
+            except Exception:
+                resolved = args.dedupe_root or args.dedupe_listing
+            try:
+                file_count = sum(1 for _ in Path(resolved).rglob("*") if _.is_file())
+            except Exception:
+                file_count = 0
+            print(f"DEBUG: cwd={Path.cwd()}")
+            print(f"DEBUG: library_root={args.library_root}")
+            print(f"DEBUG: dedupe_root={resolved} ({file_count} files found)")
         sync_summary = sync.run_sync(
             library_root=args.library_root,
             dedupe_root=args.dedupe_root,

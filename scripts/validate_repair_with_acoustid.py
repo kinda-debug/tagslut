@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#nt to!/usr/bin/env python3
 """
 AcoustID-based repair validation: Verify repaired files have correct duration
 and no spliced/concatenated audio residue from other tracks.

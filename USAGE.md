@@ -3,7 +3,7 @@
 This document contains common usage examples for the scanner and tips for
 troubleshooting.
 
-Running the scanner
+Running the scanners
 
 From the repository root:
 
@@ -12,7 +12,33 @@ export PYTHONPATH="$(pwd)"
 python3 scripts/flac_scan.py --root /path/to/music --workers 8 --verbose
 ```
 
-Important options (common):
+Fast duplicate scanner (byte-identical)
+
+```bash
+python3 scripts/find_dupes_fast.py /Volumes/dotad/MUSIC \
+  --output /tmp/file_dupes_music.csv \
+  --heartbeat /tmp/find_dupes_fast.music.hb \
+  --watchdog --watchdog-timeout 180
+```
+
+Key behaviours:
+- Verbose by default (use `--quiet` to suppress per-file lines).
+- Resumable via SQLite DB at `~/.cache/file_dupes.db`.
+- CSV snapshot updated every ~200 files.
+- Heartbeat written every ~30s with progress counters; watchdog auto-relaunches on stale/missing heartbeat.
+
+Plan or execute duplicate moves (dry-run by default):
+
+```bash
+python3 scripts/dedupe_move_duplicates.py --db ~/.cache/file_dupes.db \
+  --report artifacts/reports/planned_moves.csv
+
+# After review
+python3 scripts/dedupe_move_duplicates.py --db ~/.cache/file_dupes.db \
+  --commit --report artifacts/reports/executed_moves.csv
+```
+
+Legacy deep health scanner
 - `--root` — root directory to scan (default in script is a sample path).
 - `--workers` — number of worker threads for audio analysis (increase for CPU-heavy machines).
 - `--recompute` — force recomputation of fingerprints and segment hashes.

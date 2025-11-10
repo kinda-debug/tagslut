@@ -10,6 +10,10 @@ quarantine analysis.
 
 - **Single entry point** – `python3 -m dedupe.cli …` or `poetry run dedupe …`
   provides sub-commands for sync and quarantine workflows.
+- **Fast, resumable duplicate scanning** – `scripts/find_dupes_fast.py` builds a
+  persistent SQLite hash DB (`~/.cache/file_dupes.db`), writes CSV snapshots
+  every N files, updates a heartbeat file, and supports an optional watchdog
+  auto-relaunch loop.
 - **Reusable modules** – `dedupe.sync`, `dedupe.health`, and
   `dedupe.quarantine` expose typed helper functions that replace ad-hoc scripts.
 - **Compatibility wrappers** – legacy scripts remain as thin adapters around the
@@ -81,6 +85,36 @@ names that replace the sprawling legacy scripts:
 
 Each command accepts `--limit` to cap processed files and `--output` to write a
 CSV report.
+
+### Fast duplicate scanner and mover
+
+While the unified CLI focuses on health/sync/quarantine, the fast duplicate
+workflow ships as two minimal scripts for clarity and safety:
+
+- `scripts/find_dupes_fast.py` — fast byte-identical scanner (MD5),
+  resumable via SQLite, writes a heartbeat every ~30s, optional `--watchdog`
+  to auto-relaunch if interrupted.
+- `scripts/dedupe_move_duplicates.py` — generates a move plan from the DB and
+  optionally executes moves to the configured Garbage directory (dry-run by
+  default). Deterministic keeper selection keeps operations stable.
+
+Examples:
+
+```bash
+# Scan the main library with watchdog
+python3 scripts/find_dupes_fast.py /Volumes/dotad/MUSIC \
+  --output /tmp/file_dupes_music.csv \
+  --heartbeat /tmp/find_dupes_fast.music.hb \
+  --watchdog --watchdog-timeout 180
+
+# Plan duplicate moves (dry-run)
+python3 scripts/dedupe_move_duplicates.py --db ~/.cache/file_dupes.db \
+  --report artifacts/reports/planned_moves.csv
+
+# Execute moves (commit)
+python3 scripts/dedupe_move_duplicates.py --db ~/.cache/file_dupes.db \
+  --commit --report artifacts/reports/executed_moves.csv
+```
 
 Optional progress bars
 ----------------------
@@ -183,7 +217,7 @@ integrity and removing duplicates.
 
    *Example for slightly different names, sizes, and bitrates*
 
-   - After scanning and repairing, run:
+  - After scanning and repairing, run:
 
      ```bash
      python3 scripts/flac_dedupe.py --root "$ROOT" --dry-run --verbose --trash-dir "$ROOT/_TRASH_DUPES_preview"
@@ -193,8 +227,12 @@ integrity and removing duplicates.
      time.
    - Export the “losers” playlist and audition any pairs where the names or
      metadata diverge; fix tags or rename in the staging area as needed.
-   - When satisfied, re-run `flac_dedupe.py` with `--commit` to move confirmed
-     duplicates into `_TRASH_DUPES`, keeping a reversible audit trail.
+   - When satisfied, prefer the new flow:
+
+     1) Run the fast scanner to update MD5 groups.
+     2) Generate a move plan with `scripts/dedupe_move_duplicates.py`.
+     3) Review the CSV; then re-run with `--commit` to move losers into the
+        configured Garbage directory while preserving a reversible audit trail.
 
 ### Putting it together for your library
 1. Scan and classify every file, generating both the SQLite index and playlists
@@ -258,4 +296,5 @@ suite with `pytest`.  CI or local development should also exercise
 - [Process flow diagrams](docs/process_flow.md)
 - [Configuration reference](docs/configuration.md)
 - [Usage examples](USAGE.md)
+- [Agent operations guide](AGENT.md)
 - [Change history](CHANGELOG.md)

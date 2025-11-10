@@ -21,6 +21,25 @@ The agent must preserve data integrity, minimise downtime, and avoid rework.
 If you run into unexpected early exits during long scans, prefer launching via `./setup.sh scan-music` and monitor the heartbeat freshness.
 
 ---
+## Operating without direct access to external volumes
+
+Some agents (e.g., hosted ChatGPT/Codex) cannot directly access your macOS filesystem or mounted external volumes under `/Volumes`. In those cases:
+
+- Preflight is human-operated: you must mount the volumes and run the long scans locally via the provided helpers. The agent can still orchestrate and report using DB-only commands.
+- DB-only fallback: when volumes are unavailable, the agent should avoid scanning and instead:
+  1) Run `--report` mode to summarize the existing SQLite DB.
+  2) Generate or refresh a plan from current DB contents only.
+  3) Mark status as `BLOCKED: volumes not mounted` and request a manual mount before proceeding to new scans or commits.
+
+Human steps to grant local access (macOS):
+1. Mount the drives (Finder or `diskutil mount <identifier>`). Verify they appear in `/Volumes` (e.g. `/Volumes/dotad/MUSIC`).
+2. System Settings → Privacy & Security → Full Disk Access: add Terminal (or iTerm) and Visual Studio Code. Relaunch apps after changing.
+3. System Settings → Privacy & Security → Files and Folders: enable Removable Volumes for your terminal/editor if listed.
+4. In VS Code, trust the workspace when prompted and use the integrated terminal to run `./setup.sh` helpers.
+
+If the environment truly cannot access `/Volumes`, run the scans on a host that does (SSH to a Mac with the volumes mounted) and commit artifacts (DB/CSV) back to the repo.
+
+---
 ## 1. Core Responsibilities
 
 1. Continuous duplicate discovery (fast byte-identical + optional content-level).

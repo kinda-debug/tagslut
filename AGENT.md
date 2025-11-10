@@ -10,6 +10,17 @@ maintaining the `dedupe` repository and large audio libraries spanning:
 The agent must preserve data integrity, minimise downtime, and avoid rework.
 
 ---
+## What changed recently (Nov 2025)
+
+- Fast scanner hardened: verbose-by-default output, resumable via SQLite, WAL + busy timeout, periodic commits, CSV snapshots, and a heartbeat status file.
+- Watchdog auto-relaunch: `--watchdog` will relaunch the scanner if the heartbeat stalls or is missing.
+- New safe mover: `scripts/dedupe_move_duplicates.py` plans and (optionally) executes moves of byte-identical duplicates into Garbage with collision-safe destinations.
+- New bootstrap helper: `./setup.sh` to create a venv, verify external tools, and run common tasks (`scan-music`, `scan-quar`, `plan-moves`, `commit-moves`).
+- Docs refreshed: README / USAGE updated; this guide augmented with daily loop and safeguards.
+
+If you run into unexpected early exits during long scans, prefer launching via `./setup.sh scan-music` and monitor the heartbeat freshness.
+
+---
 ## 1. Core Responsibilities
 
 1. Continuous duplicate discovery (fast byte-identical + optional content-level).
@@ -27,6 +38,7 @@ The agent must preserve data integrity, minimise downtime, and avoid rework.
 |------|------------------|-------|
 | Fast duplicate scan | `scripts/find_dupes_fast.py` | MD5 file bytes, resume, heartbeat, watchdog, CSV snapshots |
 | Duplicate move planning | `scripts/dedupe_move_duplicates.py` | Dry-run by default, keeper heuristic, writes CSV report |
+| Bootstrap helper | `./setup.sh` | Creates venv, verifies tools, and exposes quick-run tasks |
 | Health scan (legacy deep) | `scripts/flac_scan.py` | Generates playlists & SQLite index; heavier than fast scan |
 | Unified CLI | `python3 -m dedupe.cli` | Sub-commands: `health`, `sync`, `quarantine` |
 | Quarantine deep inspect | `dedupe.cli quarantine inspect` | ffprobe + fingerprints + PCM hash |
@@ -61,6 +73,21 @@ nohup python3 scripts/find_dupes_fast.py /Volumes/dotad/MUSIC \
 ```
 
 If a relaunch occurs, the scanner resumes thanks to cached rows in `~/.cache/file_dupes.db`.
+
+---
+## 3.1 Using setup.sh helpers (recommended)
+
+Prefer the helpers for consistent launches and environment activation:
+
+```bash
+./setup.sh env            # one-time venv + deps + tool checks
+./setup.sh scan-music     # fast scan on MUSIC with watchdog + heartbeat
+./setup.sh scan-quar      # fast scan on Quarantine with watchdog + heartbeat
+./setup.sh plan-moves     # generate artifacts/reports/planned_moves.csv
+./setup.sh commit-moves   # execute moves (writes executed_moves.csv)
+```
+
+Heartbeat files default to `/tmp/find_dupes_fast.<target>.hb` and logs to `/tmp/scan_<TARGET>.log`.
 
 ---
 ## 4. Keeper Selection Logic
@@ -230,6 +257,11 @@ python3 -m dedupe.cli quarantine duration /Volumes/dotad/Quarantine --output art
 # Library sync dry-run
 python3 -m dedupe.cli sync --library-root /Volumes/dotad/MUSIC --dry-run --verify-library
 ```
+
+---
+## 18. Codex/ChatGPT operator prompt
+
+For running this repo via ChatGPT/Codex, use the prompt in `CODEX_PROMPT.md`. It encodes goals, guardrails, and the exact helper commands to use.
 
 ---
 ## 17. Final Notes

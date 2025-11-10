@@ -52,6 +52,9 @@ def init_db(db_path: Path = DB_PATH) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path, timeout=30.0)  # 30 second timeout
     # Enable WAL mode for better concurrency
     conn.execute("PRAGMA journal_mode=WAL")
+    # Be extra explicit about busy timeout and sync mode
+    conn.execute("PRAGMA busy_timeout=30000")
+    conn.execute("PRAGMA synchronous=NORMAL")
     cursor = conn.cursor()
 
     cursor.execute("""
@@ -92,12 +95,22 @@ def file_md5(path: Path) -> str | None:
 def scan_directory(
     root: Path,
     conn: sqlite3.Connection,
-    verbose: bool = False
+    verbose: bool = False,
+    output_csv: Path | None = None,
+    checkpoint: int = 200,
 ) -> Dict[str, List[Path]]:
     """Scan directory and hash files."""
     global interrupted
 
     cursor = conn.cursor()
+    # Preload existing hashes to avoid re-hashing when resuming
+    existing: Dict[str, str] = {}
+    try:
+        cursor.execute("SELECT file_path, file_md5 FROM file_hashes")
+        for fp, md5 in cursor.fetchall():
+            existing[fp] = md5
+    except sqlite3.OperationalError:
+        existing = {}
     hash_map: Dict[str, List[Path]] = defaultdict(list)
     audio_files: list[Path] = []
 
@@ -121,7 +134,11 @@ def scan_directory(
         else:
             print(f"[{i}/{len(audio_files)}]", end="\r", file=sys.stderr)
 
-        file_hash = file_md5(file_path)
+        # Use existing DB value if present (resume without rehashing)
+        if file_str in existing:
+            file_hash = existing[file_str]
+        else:
+            file_hash = file_md5(file_path)
         if file_hash:
             hash_map[file_hash].append(file_path)
             try:
@@ -151,9 +168,40 @@ def scan_directory(
         if i % 100 == 0:
             conn.commit()
 
+        # Write incremental CSV snapshot every checkpoint files
+        if output_csv and checkpoint > 0 and i % checkpoint == 0:
+            try:
+                _write_csv_snapshot(hash_map, output_csv)
+                print(
+                    f" [CSV updated at {i}/{len(audio_files)}]",
+                    file=sys.stderr,
+                )
+            except OSError:
+                pass
+
     conn.commit()
     print("", file=sys.stderr)
     return hash_map
+
+
+def _write_csv_snapshot(
+    hash_map: Dict[str, List[Path]],
+    output_csv: Path,
+) -> None:
+    """Write current duplicate groups to CSV (overwrites)."""
+    duplicates = {h: p for h, p in hash_map.items() if len(p) > 1}
+    with open(output_csv, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            "md5_hash", "count", "keeper_path", "duplicate_paths"
+        ])
+        for md5_hex, paths in sorted(
+            duplicates.items(), key=lambda x: len(x[1]), reverse=True
+        ):
+            keeper = paths[0]
+            dupes = paths[1:]
+            dup_paths = " | ".join(str(p) for p in dupes)
+            writer.writerow([md5_hex, len(paths), keeper, dup_paths])
 
 
 def report_cross_dupes(
@@ -172,13 +220,13 @@ def report_cross_dupes(
     """)
 
     duplicates = {}
-    for file_md5, _ in cursor.fetchall():
+    for md5_hex, _ in cursor.fetchall():
         cursor.execute(
             "SELECT file_path FROM file_hashes WHERE file_md5 = ?",
-            (file_md5,)
+            (md5_hex,)
         )
         paths = [Path(row[0]) for row in cursor.fetchall()]
-        duplicates[file_md5] = paths
+        duplicates[md5_hex] = paths
 
     # Write report
     with open(output_path, "w", newline="", encoding="utf-8") as f:
@@ -187,11 +235,11 @@ def report_cross_dupes(
             ["md5_hash", "count", "keeper_path", "duplicate_paths"]
         )
 
-        for file_md5, paths in sorted(duplicates.items()):
+        for md5_hex, paths in sorted(duplicates.items()):
             keeper = paths[0]
             dupes = paths[1:]
             dup_paths = " | ".join(str(p) for p in dupes)
-            writer.writerow([file_md5, len(paths), keeper, dup_paths])
+            writer.writerow([md5_hex, len(paths), keeper, dup_paths])
 
     print(f"[INFO] Report written to {output_path}", file=sys.stderr)
 
@@ -257,7 +305,13 @@ def main() -> int:
           file=sys.stderr)
     print(f"[INFO] Scanning {args.directory}...", file=sys.stderr)
 
-    hash_map = scan_directory(args.directory, conn, args.verbose)
+    hash_map = scan_directory(
+        args.directory,
+        conn,
+        args.verbose,
+        output_csv=args.output,
+        checkpoint=200,
+    )
 
     duplicates = {h: p for h, p in hash_map.items() if len(p) > 1}
 
@@ -270,7 +324,7 @@ def main() -> int:
             ["md5_hash", "count", "keeper_path", "duplicate_paths"]
         )
 
-        for file_md5, paths in sorted(
+        for md5_hex, paths in sorted(
             duplicates.items(),
             key=lambda x: len(x[1]),
             reverse=True,
@@ -278,7 +332,7 @@ def main() -> int:
             keeper = paths[0]
             dupes = paths[1:]
             dup_paths = " | ".join(str(p) for p in dupes)
-            writer.writerow([file_md5, len(paths), keeper, dup_paths])
+            writer.writerow([md5_hex, len(paths), keeper, dup_paths])
 
     print(f"[INFO] Report written to {args.output}", file=sys.stderr)
 

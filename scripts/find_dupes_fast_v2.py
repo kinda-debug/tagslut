@@ -86,9 +86,10 @@ def file_md5(path: Path) -> str | None:
 
 def scan_directory(
     root: Path,
-    verbose: bool = False
+    verbose: bool = False,
+    output_csv: Path | None = None
 ) -> Dict[str, List[Path]]:
-    """Scan directory and hash files."""
+    """Scan directory and hash files, incrementally updating CSV."""
     global interrupted
 
     hash_map: Dict[str, List[Path]] = defaultdict(list)
@@ -109,6 +110,7 @@ def scan_directory(
         if interrupted:
             print("[INFO] Scan interrupted", file=sys.stderr)
             save_cache(cache)
+            _write_csv(hash_map, output_csv)
             break
 
         file_str = str(file_path)
@@ -130,16 +132,47 @@ def scan_directory(
         if file_hash:
             hash_map[file_hash].append(file_path)
 
-        # Save cache every 100 files
-        if i % 100 == 0:
+        # Save cache and write CSV every 200 files
+        if i % 200 == 0:
             cache["hashes"] = cached_hashes
             save_cache(cache)
+            if output_csv:
+                _write_csv(hash_map, output_csv)
+            print(f" [CSV updated at {i}/{len(audio_files)}]", file=sys.stderr)
 
     # Final save
     cache["hashes"] = cached_hashes
     save_cache(cache)
+    if output_csv:
+        _write_csv(hash_map, output_csv)
     print("", file=sys.stderr)
     return hash_map
+
+
+def _write_csv(hash_map: Dict[str, List[Path]], 
+               output_csv: Path | None) -> None:
+    """Write duplicates to CSV."""
+    if not output_csv:
+        return
+    duplicates = {h: p for h, p in hash_map.items() if len(p) > 1}
+    
+    with open(output_csv, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(
+            ["md5_hash", "count", "keeper_path", "duplicate_paths"]
+        )
+
+        for file_md5_hash, paths in sorted(
+            duplicates.items(),
+            key=lambda x: len(x[1]),
+            reverse=True,
+        ):
+            keeper = paths[0]
+            dupes = paths[1:]
+            dup_paths = " | ".join(str(p) for p in dupes)
+            writer.writerow(
+                [file_md5_hash, len(paths), keeper, dup_paths]
+            )
 
 
 def main() -> int:
@@ -180,34 +213,15 @@ def main() -> int:
           file=sys.stderr)
     print(f"[INFO] Scanning {args.directory}...", file=sys.stderr)
 
-    hash_map = scan_directory(args.directory, args.verbose)
+    hash_map = scan_directory(args.directory, args.verbose, args.output)
 
     duplicates = {h: p for h, p in hash_map.items() if len(p) > 1}
 
     print(f"[INFO] Found {len(duplicates)} duplicate groups",
           file=sys.stderr)
 
-    with open(args.output, "w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(
-            ["md5_hash", "count", "keeper_path", "duplicate_paths"]
-        )
-
-        for file_md5_hash, paths in sorted(
-            duplicates.items(),
-            key=lambda x: len(x[1]),
-            reverse=True,
-        ):
-            keeper = paths[0]
-            dupes = paths[1:]
-            dup_paths = " | ".join(str(p) for p in dupes)
-            writer.writerow(
-                [file_md5_hash, len(paths), keeper, dup_paths]
-            )
-
-    print(f"[INFO] Report written to {args.output}", file=sys.stderr)
-
     total_dupes = sum(len(p) - 1 for p in duplicates.values())
+
     print("\n=== SCAN SUMMARY ===", file=sys.stderr)
     print(f"Total files scanned: {len(hash_map)}", file=sys.stderr)
     print(f"Duplicate groups: {len(duplicates)}", file=sys.stderr)

@@ -80,6 +80,8 @@ Commands:
   plan-moves     Generate dedupe move plan CSV from ~/.cache/file_dupes.db
   commit-moves   Execute planned moves (writes executed_moves.csv)
   prune-garbage  Delete duplicate losers inside Garbage (dry-run unless --commit)
+  prune-cross    Delete all non-keeper duplicates across MUSIC+Quarantine+Garbage
+  db-prune       Remove stale DB rows for missing files (default: under Garbage)
   help           Show this help
 
 Environment:
@@ -170,6 +172,25 @@ main() {
       shift || true
       prune_garbage "$@"
       ;;
+    prune-cross)
+      activate_venv || true
+      shift || true
+      # Decide report name based on presence of --commit
+      if printf '%s\n' "$@" | grep -q -- "^--commit$"; then
+        report="${ROOT_DIR}/artifacts/reports/cross_root_prune_executed.csv"
+      else
+        report="${ROOT_DIR}/artifacts/reports/cross_root_prune_plan.csv"
+      fi
+      "${PY}" "${ROOT_DIR}/scripts/prune_cross_root_duplicates.py" \
+        --db "${HOME}/.cache/file_dupes.db" \
+        --report "${report}" \
+        "$@"
+      ;;
+      db-prune)
+        activate_venv || true
+        shift || true
+        "${PY}" "${ROOT_DIR}/scripts/db_prune_missing_files.py" "$@"
+        ;;
     help|--help|-h)
       print_help
       ;;

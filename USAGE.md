@@ -21,6 +21,22 @@ python3 scripts/find_dupes_fast.py /Volumes/dotad/MUSIC \
   --watchdog --watchdog-timeout 180
 ```
 
+### Scan all three roots
+
+To scan MUSIC, Quarantine, and Garbage sequentially into the same DB and write
+one combined report:
+
+```bash
+python3 scripts/scan_all_roots.py \
+  --db ~/.cache/file_dupes.db \
+  --snapshot-dir /tmp \
+  --output artifacts/reports/dupes_all.csv \
+  --skip-missing-roots
+```
+
+The mover prefers keepers under the MUSIC root when duplicates span multiple
+roots; otherwise, it falls back to shortest path and lexicographic order.
+
 Key behaviours:
 - Verbose by default (use `--quiet` to suppress per-file lines).
 - Resumable via SQLite DB at `~/.cache/file_dupes.db`.

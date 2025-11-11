@@ -112,9 +112,10 @@ Heartbeat files default to `/tmp/find_dupes_fast.<target>.hb` and logs to `/tmp/
 ## 4. Keeper Selection Logic
 
 For duplicate groups (same MD5):
-1. Shortest path (fewest components) preferred.
-2. Lexicographically earliest path as tie-breaker.
-3. Future extension: incorporate bitrate, size, health metadata (if available from health DB).
+1. Prefer any path inside the library root (MUSIC) if present.
+2. Among remaining candidates (or if no MUSIC path), shortest path (fewest components).
+3. Lexicographically earliest path as tie-breaker.
+4. Future extension: incorporate bitrate, size, health metadata.
 
 Agent MUST avoid deleting files directly; instead move losers to Garbage (or stage a CSV for review).
 

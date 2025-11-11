@@ -116,6 +116,24 @@ python3 scripts/dedupe_move_duplicates.py --db ~/.cache/file_dupes.db \
   --commit --report artifacts/reports/executed_moves.csv
 ```
 
+#### Multi-root scanning (MUSIC + Quarantine + Garbage)
+
+Scan all three configured roots into the same DB, then emit a combined report:
+
+```bash
+python3 scripts/scan_all_roots.py \
+  --db ~/.cache/file_dupes.db \
+  --snapshot-dir /tmp \
+  --output artifacts/reports/dupes_all.csv \
+  --skip-missing-roots
+```
+
+Per-root snapshots are written as `/tmp/file_dupes_<tag>.csv` and heartbeats as
+`/tmp/find_dupes_fast.<tag>.hb`.
+
+Keeper priority: when duplicates span multiple roots, any path under MUSIC is
+preferred; otherwise, the shortest path wins with lexicographic tie-break.
+
 Optional progress bars
 ----------------------
 

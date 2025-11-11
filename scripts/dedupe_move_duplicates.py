@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import os
 import shutil
 import sqlite3
 from dataclasses import dataclass
@@ -59,14 +58,31 @@ def _list_duplicate_groups(conn: sqlite3.Connection) -> List[str]:
 def _paths_for_md5(conn: sqlite3.Connection, md5: str) -> List[Path]:
     cur = conn.cursor()
     cur.execute(
-        "SELECT file_path FROM file_hashes WHERE file_md5 = ? ORDER BY file_path",
+        (
+            "SELECT file_path FROM file_hashes "
+            "WHERE file_md5 = ? ORDER BY file_path"
+        ),
         (md5,),
     )
     return [Path(row[0]) for row in cur.fetchall()]
 
 
-def _choose_keeper(paths: Sequence[Path]) -> Path:
-    # Shortest path (fewest components) wins; then lexicographically first
+def _choose_keeper(paths: Sequence[Path], library_root: Path) -> Path:
+    """Return keeper for a duplicate group.
+
+    Preference order:
+    1. Any path under the configured library_root (Music). If multiple, choose
+       shortest (fewest components) then lexicographically.
+    2. Otherwise, global shortest + lexicographic.
+    """
+
+    library_candidates = [
+        p for p in paths if (library_root in p.parents or p == library_root)
+    ]
+    if library_candidates:
+        return sorted(
+            library_candidates, key=lambda p: (len(p.parts), str(p))
+        )[0]
     return sorted(paths, key=lambda p: (len(p.parts), str(p)))[0]
 
 
@@ -87,6 +103,7 @@ def _unique_destination(base: Path) -> Path:
 def plan_moves(
     conn: sqlite3.Connection,
     library_root: Path,
+    quarantine_root: Path,
     garbage_root: Path,
     limit_groups: int | None = None,
 ) -> List[MovePlan]:
@@ -99,23 +116,37 @@ def plan_moves(
         paths = _paths_for_md5(conn, md5)
         if not paths:
             continue
-        keeper = _choose_keeper(paths)
+        keeper = _choose_keeper(paths, library_root)
         for src in paths:
             if src == keeper:
                 continue
+            # Skip moving files that already reside under Garbage; we don't
+            # shuffle Garbage-to-Garbage in this phase.
+            if garbage_root in src.parents or src == garbage_root:
+                continue
             try:
-                rel = src.relative_to(library_root)
+                # Prefer preserving relative structure from the source root
+                if library_root in src.parents or src == library_root:
+                    rel = src.relative_to(library_root)
+                elif quarantine_root in src.parents or src == quarantine_root:
+                    rel = Path("quarantine") / src.relative_to(quarantine_root)
+                else:
+                    rel = Path("_external") / src.name
             except ValueError:
-                # If not inside library root, place under Garbage/md5 bucket
                 rel = Path("_external") / src.name
+
             dest = garbage_root / rel
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest = _unique_destination(dest)
-            plans.append(MovePlan(md5=md5, keeper=keeper, source=src, destination=dest))
+            plans.append(
+                MovePlan(md5=md5, keeper=keeper, source=src, destination=dest)
+            )
     return plans
 
 
-def execute_moves(plans: Iterable[MovePlan], commit: bool = False) -> Tuple[int, int]:
+def execute_moves(
+    plans: Iterable[MovePlan], commit: bool = False
+) -> Tuple[int, int]:
     moved = 0
     skipped = 0
     for plan in plans:
@@ -141,14 +172,19 @@ def write_report(plans: Sequence[MovePlan], output: Path) -> None:
         writer = csv.writer(handle)
         writer.writerow(["md5", "keeper", "source", "destination"])
         for p in plans:
-            writer.writerow([p.md5, str(p.keeper), str(p.source), str(p.destination)])
+            writer.writerow([
+                p.md5,
+                str(p.keeper),
+                str(p.source),
+                str(p.destination),
+            ])
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Move duplicate files (byte-identical) discovered by find_dupes_fast.py "
-            "into the configured Garbage directory."
+            "Move duplicate files (byte-identical) discovered by "
+            "find_dupes_fast.py into the configured Garbage directory."
         )
     )
     parser.add_argument(
@@ -185,6 +221,7 @@ def main() -> int:
 
     paths = load_path_config(Path("config.toml"))
     library_root = paths.library_root
+    quarantine_root = paths.quarantine_root
     garbage_root = paths.garbage_root
 
     if not ns.db.exists():
@@ -195,6 +232,7 @@ def main() -> int:
         plans = plan_moves(
             conn,
             library_root=library_root,
+            quarantine_root=quarantine_root,
             garbage_root=garbage_root,
             limit_groups=ns.limit_groups,
         )

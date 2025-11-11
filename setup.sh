@@ -79,6 +79,7 @@ Commands:
   scan-quar      Run fast MD5 scan on /Volumes/dotad/Quarantine with watchdog
   plan-moves     Generate dedupe move plan CSV from ~/.cache/file_dupes.db
   commit-moves   Execute planned moves (writes executed_moves.csv)
+  prune-garbage  Delete duplicate losers inside Garbage (dry-run unless --commit)
   help           Show this help
 
 Environment:
@@ -111,6 +112,22 @@ commit_moves() {
     --db "${HOME}/.cache/file_dupes.db" \
     --commit \
     --report "${ROOT_DIR}/artifacts/reports/executed_moves.csv"
+}
+
+prune_garbage() {
+  # Pass-through for extra args (e.g., --limit 100)
+  # Decide report path based on presence of --commit in args
+  local report
+  local args=("$@")
+  if printf '%s\n' "${args[@]}" | grep -q -- "^--commit$"; then
+    report="${ROOT_DIR}/artifacts/reports/garbage_prune_executed.csv"
+  else
+    report="${ROOT_DIR}/artifacts/reports/garbage_prune_plan.csv"
+  fi
+  "${PY}" "${ROOT_DIR}/scripts/prune_garbage_duplicates.py" \
+    --db "${HOME}/.cache/file_dupes.db" \
+    --report "${report}" \
+    "${args[@]}"
 }
 
 main() {
@@ -146,6 +163,12 @@ main() {
     commit-moves)
       activate_venv || true
       commit_moves
+      ;;
+    prune-garbage)
+      activate_venv || true
+      # Forward all args after the command, e.g., --commit --limit 100
+      shift || true
+      prune_garbage "$@"
       ;;
     help|--help|-h)
       print_help

@@ -9,8 +9,8 @@ Rules (safety-first):
 2) If a group exists only inside Garbage, keep one copy in Garbage (shortest
    path then lexicographic) and delete the rest.
 
-Dry-run by default: writes a CSV plan listing files to delete and total bytes
-reclaimable. Use --commit to actually remove files and generate an executed CSV.
+Dry-run by default: writes a CSV plan listing files to delete and bytes. Use
+--commit to remove files and generate an executed CSV with per-item statuses.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ import argparse
 import csv
 import os
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Iterable, List, Sequence, Tuple
 
@@ -30,12 +30,15 @@ DB_PATH = Path.home() / ".cache" / "file_dupes.db"
 REPORT_DIR = Path("artifacts/reports")
 
 
-@dataclass(frozen=True)
+@dataclass
 class PrunePlan:
     md5: str
     path: Path
     size: int
     reason: str  # "garbage_with_keeper_elsewhere" | "garbage_internal_extra"
+    # Filled in only during --commit execution
+    status: str | None = field(default=None)  # "deleted" | "missing" | "error"
+    error: str | None = field(default=None)
 
 
 def _list_groups(conn: sqlite3.Connection) -> List[str]:
@@ -82,7 +85,11 @@ def build_prune_plan(
         paths = [p for p, _ in items]
         sizes: Dict[Path, int] = {p: s for p, s in items}
 
-        garbage_paths = [p for p in paths if (garbage_root in p.parents or p == garbage_root)]
+        garbage_paths = [
+            p
+            for p in paths
+            if (garbage_root in p.parents or p == garbage_root)
+        ]
         non_garbage_paths = [p for p in paths if p not in garbage_paths]
 
         if not garbage_paths:
@@ -118,31 +125,59 @@ def build_prune_plan(
     return plans
 
 
-def write_plan(plans: Sequence[PrunePlan], path: Path) -> None:
+def write_plan(
+    plans: Sequence[PrunePlan], path: Path, include_status: bool = False
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow(["md5", "path", "size_bytes", "reason"])
-        for p in plans:
-            w.writerow([p.md5, str(p.path), p.size, p.reason])
+        if include_status:
+            w.writerow([
+                "md5",
+                "path",
+                "size_bytes",
+                "reason",
+                "status",
+                "error",
+            ])
+            for p in plans:
+                w.writerow([
+                    p.md5,
+                    str(p.path),
+                    p.size,
+                    p.reason,
+                    p.status or "",
+                    p.error or "",
+                ])
+        else:
+            w.writerow(["md5", "path", "size_bytes", "reason"])
+            for p in plans:
+                w.writerow([p.md5, str(p.path), p.size, p.reason])
 
 
-def execute_prune(plans: Iterable[PrunePlan]) -> Tuple[int, int]:
+def execute_prune(
+    plans: Iterable[PrunePlan],
+) -> Tuple[int, int, List[PrunePlan]]:
     deleted = 0
     freed = 0
-    for p in plans:
+    executed: List[PrunePlan] = []
+    for plan in plans:
+        p = plan  # local alias (mutable dataclass)
         try:
             # Use os.remove to avoid shutil behavior with directories
             os.remove(p.path)
+            p.status = "deleted"
             deleted += 1
             freed += int(p.size or 0)
         except FileNotFoundError:
             # Already gone
-            continue
-        except OSError:
+            p.status = "missing"
+        except OSError as e:
             # Skip on error; do not stop the batch
-            continue
-    return deleted, freed
+            p.status = "error"
+            p.error = str(e)
+        executed.append(p)
+    return deleted, freed, executed
 
 
 def summarize_bytes(n: int) -> str:
@@ -185,6 +220,15 @@ def main() -> int:
         action="store_true",
         help="Actually delete files from Garbage (irreversible)",
     )
+    ap.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help=(
+            "Maximum number of deletions to perform this run "
+            "(commit mode only)"
+        ),
+    )
 
     ns = ap.parse_args()
 
@@ -203,17 +247,30 @@ def main() -> int:
     total = len(plans)
     total_bytes = sum(p.size for p in plans)
     if ns.commit:
-        deleted, freed = execute_prune(plans)
-        # Overwrite report with executed state
-        write_plan(plans, ns.report)
+        exec_plans = plans
+        if ns.limit is not None and ns.limit >= 0:
+            exec_plans = plans[: ns.limit]
+        deleted, freed, executed = execute_prune(exec_plans)
+        # Overwrite report with executed state + per-item statuses
+        write_plan(executed, ns.report, include_status=True)
         print(
-            f"Deleted {deleted} files; freed {summarize_bytes(freed)}"
+            (
+                "Deleted {} files (limit {}). Freed {}. Remaining not "
+                "executed: {}. Executed CSV: {}"
+            ).format(
+                deleted,
+                ns.limit if ns.limit is not None else "none",
+                summarize_bytes(freed),
+                max(0, total - deleted) if ns.limit else 0,
+                ns.report,
+            )
         )
     else:
         write_plan(plans, ns.report)
         print(
-            f"Dry-run: would delete {total} files; free {summarize_bytes(total_bytes)}.\n"
-            f"Plan: {ns.report}"
+            "Dry-run: would delete {} files; free {}.\nPlan: {}".format(
+                total, summarize_bytes(total_bytes), ns.report
+            )
         )
 
     return 0

@@ -5,16 +5,15 @@ Removes (or plans removal of) all non-keeper files for each MD5 duplicate
 group found in the SQLite DB produced by ``find_dupes_fast.py`` scans.
 
 Keeper selection (deterministic & conservative):
-  1. Prefer any path under the configured MUSIC (library) root.
-     If multiple candidates, choose the one with the fewest path parts
-     (shortest) then lexicographically.
-  2. If no MUSIC candidate exists, choose the globally shortest path,
-     then lexicographically.
+  Pure shortest-path policy with NO root preference.
+  1. Choose path with fewest path components (shortest)
+  2. Lexicographic tie-breaker if multiple paths have same depth
 
 Policy: All other paths in the group are deletion candidates regardless of
-which root they reside in (Quarantine, Garbage, or external). This enables a
-"100% absolute duplicate purge" with a single pass. Use the dedicated
-``prune_garbage_duplicates.py`` script when you only want to clean Garbage.
+which root they reside in (Quarantine, Garbage, MUSIC, or external). This
+enables a "100% absolute duplicate purge" with a single pass. Use the
+dedicated ``prune_garbage_duplicates.py`` script when you only want to clean
+Garbage.
 
 Safety: Dry-run by default. Use ``--commit`` to actually delete files.
 Outputs a CSV plan (or executed CSV) with per-item status.
@@ -49,7 +48,7 @@ import os
 import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, List, Sequence, Tuple
+from typing import Iterable, List, Optional, Sequence, Tuple
 
 from dedupe.config import load_path_config
 
@@ -95,15 +94,18 @@ def _paths_for_md5_with_sizes(
     return [(Path(row[0]), int(row[1] or 0)) for row in cur.fetchall()]
 
 
-def choose_keeper(paths: Sequence[Path], library_root: Path) -> Path:
-    """Return deterministic keeper path for a duplicate group."""
-    library_candidates = [
-        p for p in paths if (library_root in p.parents or p == library_root)
-    ]
-    if library_candidates:
-        return sorted(
-            library_candidates, key=lambda p: (len(p.parts), str(p))
-        )[0]
+def choose_keeper(
+    paths: Sequence[Path], library_root: Optional[Path] = None
+) -> Path:
+    """Return deterministic keeper path for a duplicate group.
+    
+    Policy: Pure shortest-path selection with NO root preference.
+    Selects path with fewest components, lexicographic tie-breaker.
+    
+    Args:
+        paths: Candidate paths for keeper selection
+        library_root: Ignored (kept for backward compatibility)
+    """
     return sorted(paths, key=lambda p: (len(p.parts), str(p)))[0]
 
 

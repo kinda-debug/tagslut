@@ -71,12 +71,13 @@ prepare_artifacts() {
 
 print_help() {
   cat <<EOF
-Usage: ./setup.sh [command]
+TRO
 
 Commands:
   env            Create venv, install dependencies, verify tools (default)
   scan-music     Run fast MD5 scan on /Volumes/dotad/MUSIC with watchdog
   scan-quar      Run fast MD5 scan on /Volumes/dotad/Quarantine with watchdog
+  scan-garbage   Run fast MD5 scan on /Volumes/dotad/Garbage with watchdog
   plan-moves     Generate dedupe move plan CSV from ~/.cache/file_dupes.db
   commit-moves   Execute planned moves (writes executed_moves.csv)
   prune-garbage  Delete duplicate losers inside Garbage (dry-run unless --commit)
@@ -157,6 +158,13 @@ main() {
         "/Volumes/dotad/Quarantine" \
         "/tmp/file_dupes_quarantine.csv" \
         "/tmp/find_dupes_fast.quarantine.hb"
+      ;;
+    scan-garbage)
+      activate_venv || true
+      run_scan \
+        "/Volumes/dotad/Garbage" \
+        "/tmp/file_dupes_garbage.csv" \
+        "/tmp/find_dupes_fast.garbage.hb"
       ;;
     plan-moves)
       activate_venv || true

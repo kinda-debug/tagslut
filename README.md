@@ -86,17 +86,49 @@ names that replace the sprawling legacy scripts:
 Each command accepts `--limit` to cap processed files and `--output` to write a
 CSV report.
 
-### Fast duplicate scanner and mover
+## Script Organization
 
-While the unified CLI focuses on health/sync/quarantine, the fast duplicate
-workflow ships as two minimal scripts for clarity and safety:
+The toolkit provides production-ready scripts organized by purpose:
 
-- `scripts/find_dupes_fast.py` — fast byte-identical scanner (MD5),
-  resumable via SQLite, writes a heartbeat every ~30s, optional `--watchdog`
-  to auto-relaunch if interrupted.
-- `scripts/dedupe_move_duplicates.py` — generates a move plan from the DB and
-  optionally executes moves to the configured Garbage directory (dry-run by
-  default). Deterministic keeper selection keeps operations stable.
+### Duplicate Detection
+- `find_dupes_fast.py` — Fast MD5 file scanner (primary tool)
+- `scan_all_roots.py` — Multi-root orchestrator
+- `find_filename_dupes.py` — Filename-based duplicate detection
+- `scan_metadata.py` — Comprehensive metadata extraction
+
+### Duplicate Removal
+- `dedupe_move_duplicates.py` — Move duplicates to Garbage
+- `prune_cross_root_duplicates.py` — Cross-root deduplication (NO root preference)
+- `prune_garbage_duplicates.py` — Safe Garbage cleanup
+- `db_prune_missing_files.py` — Database reconciliation
+
+### Health & Repair
+- `flac_scan.py` — Deep health scanner with fingerprinting
+- `flac_repair.py` — FLAC repair wrapper
+
+### Specialized Tools
+- `dedupe_repaired.py` — Content duplicates in repaired staging
+- `reconcile_repaired.py` — Repaired vs MUSIC comparison
+- `analyze_filename_dupes_metadata.py` — Metadata quality comparison
+
+**Complete reference**: See [`docs/scripts_reference.md`](docs/scripts_reference.md) for detailed usage and workflows.
+
+**Archived scripts**: Diagnostic, experimental, and superseded scripts moved to `archive/scripts_diagnostic_2025/`.
+
+## Fast duplicate scanner and mover
+
+## Fast duplicate scanner
+
+`scripts/find_dupes_fast.py` — Production-ready byte-identical duplicate scanner.
+
+**Features:**
+- Fast MD5 hashing (1-2 sec/file)
+- Persistent SQLite DB (`~/.cache/file_dupes.db`)
+- CSV snapshots every N files
+- Heartbeat file for monitoring
+- Optional watchdog auto-relaunch
+
+**Usage:**
 
 Examples:
 

@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """Prune duplicate losers across MUSIC, Quarantine, and Garbage.
 
-Removes (or plans removal of) all non-keeper files for each MD5 duplicate
-group found in the SQLite DB produced by ``find_dupes_fast.py`` scans.
+Removes (or plans removal of) all non-keeper files for duplicate groups found
+in the SQLite DB produced by ``find_dupes_fast.py`` scans.
+
+Modes:
+  --by-md5 (default): Byte-identical duplicates (same MD5)
+  --by-filename: Filename duplicates (same name, different content)
 
 Keeper selection (deterministic & conservative):
   Pure shortest-path policy with NO root preference.
@@ -78,6 +82,24 @@ def _list_duplicate_md5s(conn: sqlite3.Connection) -> List[str]:
         """
     )
     return [row[0] for row in cur.fetchall()]
+
+
+def _list_duplicate_filenames(
+    conn: sqlite3.Connection,
+) -> dict[str, list[Path]]:
+    """Find files with same basename (filename duplicates)."""
+    from collections import defaultdict
+    
+    cur = conn.cursor()
+    cur.execute("SELECT file_path FROM file_hashes")
+    
+    by_name: dict[str, list[Path]] = defaultdict(list)
+    for (path_str,) in cur.fetchall():
+        p = Path(path_str)
+        by_name[p.name].append(p)
+    
+    # Return only groups with 2+ files
+    return {name: paths for name, paths in by_name.items() if len(paths) > 1}
 
 
 def _paths_for_md5_with_sizes(
@@ -161,6 +183,41 @@ def build_cross_root_prune_plan(
     return plan
 
 
+def build_filename_prune_plan(
+    conn: sqlite3.Connection,
+    library_root: Path,
+    quarantine_root: Path,
+    garbage_root: Path,
+) -> List[CrossPruneItem]:
+    """Build deletion plan for filename duplicates (same name, different content)."""
+    filename_groups = _list_duplicate_filenames(conn)
+    plan: List[CrossPruneItem] = []
+    
+    # Get file sizes
+    cur = conn.cursor()
+    cur.execute("SELECT file_path, COALESCE(file_size, 0) FROM file_hashes")
+    sizes = {Path(row[0]): int(row[1] or 0) for row in cur.fetchall()}
+    
+    for filename, paths in filename_groups.items():
+        keeper = choose_keeper(paths, library_root)
+        for p in paths:
+            if p == keeper:
+                continue
+            reason = classify_reason(
+                p, library_root, quarantine_root, garbage_root, keeper
+            )
+            plan.append(
+                CrossPruneItem(
+                    md5=f"filename:{filename}",  # Use filename as identifier
+                    path=p,
+                    size=sizes.get(p, 0),
+                    keeper=keeper,
+                    reason=reason,
+                )
+            )
+    return plan
+
+
 def execute_plan(
     items: Iterable[CrossPruneItem],
 ) -> Tuple[int, int, List[CrossPruneItem]]:
@@ -235,8 +292,8 @@ def write_csv(
 def main() -> int:
     ap = argparse.ArgumentParser(
         description=(
-            "Plan (or execute) deletion of all duplicate losers across MUSIC, "
-            "Quarantine, and Garbage using the MD5 duplicate DB."
+            "Plan (or execute) deletion of duplicate losers across MUSIC, "
+            "Quarantine, and Garbage using the duplicate DB."
         )
     )
     ap.add_argument("--db", type=Path, default=DB_PATH, help="SQLite DB path")
@@ -261,6 +318,20 @@ def main() -> int:
         default=None,
         help="Max number of deletions to perform (commit mode only)",
     )
+    
+    # Mode selection
+    mode_group = ap.add_mutually_exclusive_group()
+    mode_group.add_argument(
+        "--by-md5",
+        action="store_true",
+        default=True,
+        help="Delete MD5 duplicates (byte-identical) [default]",
+    )
+    mode_group.add_argument(
+        "--by-filename",
+        action="store_true",
+        help="Delete filename duplicates (same name, different content)",
+    )
 
     ns = ap.parse_args()
 
@@ -270,12 +341,20 @@ def main() -> int:
     paths = load_path_config(ns.config)
     conn = sqlite3.connect(ns.db)
     try:
-        plan = build_cross_root_prune_plan(
-            conn,
-            library_root=paths.library_root,
-            quarantine_root=paths.quarantine_root,
-            garbage_root=paths.garbage_root,
-        )
+        if ns.by_filename:
+            plan = build_filename_prune_plan(
+                conn,
+                library_root=paths.library_root,
+                quarantine_root=paths.quarantine_root,
+                garbage_root=paths.garbage_root,
+            )
+        else:
+            plan = build_cross_root_prune_plan(
+                conn,
+                library_root=paths.library_root,
+                quarantine_root=paths.quarantine_root,
+                garbage_root=paths.garbage_root,
+            )
     finally:
         conn.close()
 

@@ -4,7 +4,7 @@
 
 [paths]
 # Root directory for FLAC library
-root = "/Volumes/dotad/MUSIC"
+root = "/Volumes/dotad/NEW_LIBRARY"
 
 # Directory for diagnostic dumps
 diagnostic_root = "/Volumes/dotad/.dedupe_diagnostics"

@@ -57,6 +57,19 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Capture Chromaprint fingerprints during scanning",
     )
+    scan_parser.add_argument(
+        "--resume",
+        action="store_true",
+        help=(
+            "Resume a previous scan by skipping unchanged files"
+            " present in the database"
+        ),
+    )
+    scan_parser.add_argument(
+        "--progress",
+        action="store_true",
+        help="Show a progress bar during scanning",
+    )
 
     parse_parser = subparsers.add_parser(
         "parse-rstudio",
@@ -156,7 +169,44 @@ COMMAND_HANDLERS = {
 
 def main(argv: Optional[Iterable[str]] = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(list(argv) if argv is not None else None)
+
+    # Allow callers to place global options (like --verbose) either before
+    # or after the subcommand. argparse supports `parse_intermixed_args`
+    # (Python 3.8+) which accepts intermixed options; fall back to the
+    # regular `parse_args` when it's not available.
+    import sys
+
+    arglist = list(argv) if argv is not None else list(sys.argv[1:])
+
+    # Normalize placement of a small set of known global options so users can
+    # place them after the subcommand. This is a pragmatic, minimal shim that
+    # moves `--verbose` before the subparser if necessary.
+    if arglist:
+        # index of first positional (likely the subcommand)
+        first_pos = None
+        for i, a in enumerate(arglist):
+            if not a.startswith("-"):
+                first_pos = i
+                break
+        if first_pos is not None:
+            globals_to_move = ["--verbose"]
+            for opt in globals_to_move:
+                # if the option appears after the subcommand, move it to front
+                if opt in arglist[first_pos + 1:]:
+                    while opt in arglist:
+                        arglist.remove(opt)
+                    arglist.insert(0, opt)
+    if hasattr(parser, "parse_intermixed_args"):
+        try:
+            args = parser.parse_intermixed_args(arglist)
+        except (TypeError, ValueError):
+            # Some argparse versions or complex subparser setups can raise
+            # TypeError/ValueError when attempting intermixed parsing. Fall
+            # back to the traditional parse_args behaviour.
+            args = parser.parse_args(arglist)
+    else:
+        args = parser.parse_args(arglist)
+
     _configure_logging(args.verbose)
     handler = COMMAND_HANDLERS[args.command]
     return handler(args)

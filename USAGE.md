@@ -1,104 +1,78 @@
-# Usage and examples
+# Usage
 
-This document contains common usage examples for the scanner and tips for
-troubleshooting.
+This document captures end-to-end workflows for the unified `dedupe` CLI.  Each
+stage builds on SQLite databases and CSV reports so work can resume even when
+external volumes are unavailable.
 
-Running the scanners
-
-From the repository root:
+## 1. Scan the reference library
 
 ```bash
-export PYTHONPATH="$(pwd)"
-python3 scripts/flac_scan.py --root /path/to/music --workers 8 --verbose
+python3 -m dedupe.cli scan-library --root /Volumes/dotad/MUSIC --out artifacts/db/library.db --verbose
 ```
 
-Fast duplicate scanner (byte-identical)
+Key options:
+
+- `--fingerprints` – include Chromaprint fingerprints for downstream matching.
+- `--root` – directory tree to scan (multiple invocations can populate the same
+  database).
+- `--out` – SQLite database storing the `library_files` table.
+
+## 2. Parse R-Studio exports
 
 ```bash
-python3 scripts/find_dupes_fast.py /Volumes/dotad/MUSIC \
-  --output /tmp/file_dupes_music.csv \
-  --heartbeat /tmp/find_dupes_fast.music.hb \
-  --watchdog --watchdog-timeout 180
+python3 -m dedupe.cli parse-rstudio --input Recognized.txt --out artifacts/db/recovered.db --verbose
 ```
 
-### Scan all three roots
+The parser normalises absolute paths, captures the suggested filenames provided
+by R-Studio, and persists everything under the `recovered_files` table.  The
+command is idempotent, so it can be re-run as more exports arrive.
 
-To scan MUSIC, Quarantine, and Garbage sequentially into the same DB and write
-one combined report:
+## 3. Match recovered candidates
 
 ```bash
-python3 scripts/scan_all_roots.py \
-  --db ~/.cache/file_dupes.db \
-  --snapshot-dir /tmp \
-  --output artifacts/reports/dupes_all.csv \
-  --skip-missing-roots
+python3 -m dedupe.cli match \
+  --library artifacts/db/library.db \
+  --recovered artifacts/db/recovered.db \
+  --out artifacts/reports/matches.csv \
+  --verbose
 ```
 
-The mover prefers keepers under the MUSIC root when duplicates span multiple
-roots; otherwise, it falls back to shortest path and lexicographic order.
+The matcher compares filename similarity and file sizes to classify each
+recovery candidate.  The resulting CSV includes:
 
-Key behaviours:
-- Verbose by default (use `--quiet` to suppress per-file lines).
-- Resumable via SQLite DB at `~/.cache/file_dupes.db`.
-- CSV snapshot updated every ~200 files.
-- Heartbeat written every ~30s with progress counters; watchdog auto-relaunches on stale/missing heartbeat.
+- `classification` – `exact`, `truncated`, `potential_upgrade`, `missing`, or
+  `orphan`.
+- `score` – overall confidence (0–1).
+- `filename_similarity` – raw ratio from the matcher.
+- `size_difference` – signed byte delta (`recovered - library`).
 
-Plan or execute duplicate moves (dry-run by default):
+## 4. Generate a recovery manifest
 
 ```bash
-python3 scripts/dedupe_move_duplicates.py --db ~/.cache/file_dupes.db \
-  --report artifacts/reports/planned_moves.csv
-
-# After review
-python3 scripts/dedupe_move_duplicates.py --db ~/.cache/file_dupes.db \
-  --commit --report artifacts/reports/executed_moves.csv
+python3 -m dedupe.cli generate-manifest \
+  --matches artifacts/reports/matches.csv \
+  --out artifacts/reports/recovery_manifest.csv \
+  --verbose
 ```
 
-Legacy deep health scanner
-- `--root` — root directory to scan (default in script is a sample path).
-- `--workers` — number of worker threads for audio analysis (increase for CPU-heavy machines).
-- `--recompute` — force recomputation of fingerprints and segment hashes.
-- `--skip-broken` — skip files that fail health checks (useful for large libraries with some corrupted files).
-- `--auto-quarantine` — attempt to move frozen files into a `_BROKEN` directory when a freeze is detected.
-- `--segwin-seconds` / `--segwin-step` / `--segwin-max-slices` — configure segment hashing parameters.
+The manifest attaches priorities and operator notes to every match, highlighting
+files that need manual review or immediate attention.  Rows marked `critical`
+should be prioritised for restoration.
 
-Diagnostics and troubleshooting
-- Ensure external tools are installed: `ffmpeg`, `fpcalc` (Chromaprint), `flac`, and `metaflac`.
-- If the scanner appears to hang, the watchdog and freeze detector attempt to
-  recover by killing stalled ffmpeg instances. On macOS the process escalation
-  uses `pkill` (TERM then KILL) or falls back to `killall`.
-- Diagnostic dumps are written to the diagnostic root configured via
-  `--diagnostic-root` (default: `~/.dedupe_diagnostics` or the CLI-provided path).
+## Operational tips
 
-Optional progress bars
-----------------------
+- All commands respect `--verbose` for detailed logging.
+- SQLite outputs are safe to version-control; they enable offline analysis when
+  the original volumes are not mounted.
+- External tools (`ffprobe`, `fpcalc`) are optional.  When unavailable, the
+  pipeline still records basic filesystem metadata, allowing matching to proceed
+  with reduced fidelity.
 
-If you want a progress bar during long scans, install `tqdm` into your
-environment and run the command with `--verbose`. Without `tqdm` the CLI will
-still honour `--verbose` but print coarse progress messages instead of a
-progress bar:
+## Testing and linting
 
 ```bash
-python3 -m pip install tqdm
-python3 scripts/flac_scan.py --root /path/to/music --workers 8 --verbose
-```
-
-Testing
-- Tests assume you run them from the repository root with the project on
-  `PYTHONPATH`:
-
-```bash
-export PYTHONPATH="$(pwd)"
 pytest -q
+flake8 dedupe
 ```
 
-Example: running a quick, limited scan (dry run flow)
-
-```bash
-# Create a small directory with a few FLACs and run the scanner with 2 workers
-python3 scripts/flac_scan.py --root /tmp/mytestmusic --workers 2 --verbose
-```
-
-If you need help with a specific failure, include the diagnostic outputs from
-the diagnostics root and the log file `_DEDUP_SCAN_LOG.txt` written into the
-scanned root directory.
+Run both commands before committing changes or opening a pull request.

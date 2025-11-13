@@ -4,6 +4,9 @@ Fast file-MD5 deduplication scanner (file structure).
 
 Much faster than audio-MD5 (1–2 sec/file vs 5–10 sec/file). Finds
 byte-identical files, not audio-equivalent content.
+
+With --audio-fingerprint flag, also computes audio fingerprints using
+Chromaprint/fpcalc for audio-identical detection.
 """
 
 import argparse
@@ -15,7 +18,21 @@ import sys
 import time
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+
+# Import audio fingerprinting from lib
+try:
+    from scripts.lib.common import compute_fingerprint
+except ImportError:
+    try:
+        from lib.common import compute_fingerprint
+    except ImportError:
+
+        def compute_fingerprint(
+            path: Path,
+        ) -> Tuple[Optional[List[int]], Optional[str]]:
+            """Fallback if lib not found."""
+            return (None, None)
 
 
 AUDIO_EXTS = {
@@ -61,7 +78,9 @@ def init_db(db_path: Path = DB_PATH) -> sqlite3.Connection:
             file_path TEXT PRIMARY KEY,
             file_md5 TEXT NOT NULL,
             file_size INTEGER,
-            scan_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            scan_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            audio_fingerprint TEXT,
+            audio_fingerprint_hash TEXT
         )
         """
     )
@@ -69,6 +88,12 @@ def init_db(db_path: Path = DB_PATH) -> sqlite3.Connection:
         """
         CREATE INDEX IF NOT EXISTS idx_file_md5
         ON file_hashes(file_md5)
+        """
+    )
+    cur.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_audio_fingerprint_hash
+        ON file_hashes(audio_fingerprint_hash)
         """
     )
     conn.commit()
@@ -95,22 +120,35 @@ def scan_directory(
     output_csv: Optional[Path] = None,
     checkpoint: int = 200,
     heartbeat_path: Optional[Path] = None,
+    audio_fingerprint: bool = False,
 ) -> Dict[str, List[Path]]:
     """Scan directory and hash files.
 
     Verbose by default. Writes a heartbeat file every ~30s with counters so
     external monitors can detect stalls.
+
+    If audio_fingerprint=True, also computes audio fingerprints using
+    Chromaprint. This is much slower (~5-10 sec/file vs 1-2 sec/file).
     """
 
     cur = conn.cursor()
     # Preload existing hashes (resume without rehashing)
     existing: Dict[str, str] = {}
+    existing_audio: Dict[str, str] = {}
     try:
         cur.execute("SELECT file_path, file_md5 FROM file_hashes")
         for fp, md5 in cur.fetchall():
             existing[fp] = md5
+        if audio_fingerprint:
+            cur.execute(
+                "SELECT file_path, audio_fingerprint_hash FROM file_hashes "
+                "WHERE audio_fingerprint_hash IS NOT NULL"
+            )
+            for fp, afp_hash in cur.fetchall():
+                existing_audio[fp] = afp_hash
     except sqlite3.OperationalError:
         existing = {}
+        existing_audio = {}
 
     hash_map: Dict[str, List[Path]] = defaultdict(list)
     audio_files: List[Path] = []
@@ -140,6 +178,30 @@ def scan_directory(
         else:
             file_hash = file_md5(file_path)
 
+        # Compute audio fingerprint if requested
+        audio_fp_hash: Optional[str] = None
+        if audio_fingerprint:
+            if file_str in existing_audio:
+                audio_fp_hash = existing_audio[file_str]
+                if verbose:
+                    print(
+                        "  [Using cached audio fingerprint]",
+                        file=sys.stderr,
+                    )
+            else:
+                if verbose:
+                    print(
+                        "  [Computing audio fingerprint...]",
+                        file=sys.stderr,
+                    )
+                _, audio_fp_hash = compute_fingerprint(file_path)
+                if audio_fp_hash and verbose:
+                    fp_short = audio_fp_hash[:16]
+                    print(
+                        f"  [Audio fingerprint: {fp_short}...]",
+                        file=sys.stderr,
+                    )
+
         if file_hash:
             hash_map[file_hash].append(file_path)
             try:
@@ -147,14 +209,30 @@ def scan_directory(
                 retries = 3
                 while retries > 0:
                     try:
-                        cur.execute(
-                            """
-                            INSERT OR REPLACE INTO file_hashes
-                            (file_path, file_md5, file_size)
-                            VALUES (?, ?, ?)
-                            """,
-                            (file_str, file_hash, file_size),
-                        )
+                        if audio_fingerprint and audio_fp_hash:
+                            cur.execute(
+                                """
+                                INSERT OR REPLACE INTO file_hashes
+                                (file_path, file_md5, file_size,
+                                 audio_fingerprint_hash)
+                                VALUES (?, ?, ?, ?)
+                                """,
+                                (
+                                    file_str,
+                                    file_hash,
+                                    file_size,
+                                    audio_fp_hash,
+                                ),
+                            )
+                        else:
+                            cur.execute(
+                                """
+                                INSERT OR REPLACE INTO file_hashes
+                                (file_path, file_md5, file_size)
+                                VALUES (?, ?, ?)
+                                """,
+                                (file_str, file_hash, file_size),
+                            )
                         break
                     except sqlite3.OperationalError as e:
                         if "database is locked" in str(e) and retries > 1:
@@ -297,6 +375,11 @@ def main() -> int:
         default=120,
         help="Seconds of no heartbeat before relaunch",
     )
+    parser.add_argument(
+        "--audio-fingerprint",
+        action="store_true",
+        help="Compute audio fingerprints (slower, ~5-10 sec/file)",
+    )
 
     args = parser.parse_args()
 
@@ -324,7 +407,16 @@ def main() -> int:
     signal.signal(signal.SIGINT, signal_handler)
 
     def _run_once() -> int:
-        print("[INFO] Fast scan (file MD5, not audio decode)", file=sys.stderr)
+        if args.audio_fingerprint:
+            print(
+                "[INFO] Scan with audio fingerprinting (SLOW)",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                "[INFO] Fast scan (file MD5, not audio decode)",
+                file=sys.stderr,
+            )
         print(f"[INFO] Scanning {args.directory}...", file=sys.stderr)
         hash_map = scan_directory(
             args.directory,
@@ -333,6 +425,7 @@ def main() -> int:
             output_csv=args.output,
             checkpoint=200,
             heartbeat_path=args.heartbeat,
+            audio_fingerprint=args.audio_fingerprint,
         )
         duplicates = {h: p for h, p in hash_map.items() if len(p) > 1}
         print(

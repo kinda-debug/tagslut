@@ -7,6 +7,7 @@ in the SQLite DB produced by ``find_dupes_fast.py`` scans.
 Modes:
   --by-md5 (default): Byte-identical duplicates (same MD5)
   --by-filename: Filename duplicates (same name, different content)
+  --by-audio: Audio-identical duplicates (same audio fingerprint)
 
 Keeper selection (deterministic & conservative):
   Pure shortest-path policy with NO root preference.
@@ -102,6 +103,34 @@ def _list_duplicate_filenames(
     return {name: paths for name, paths in by_name.items() if len(paths) > 1}
 
 
+def _list_duplicate_audio_fingerprints(
+    conn: sqlite3.Connection,
+) -> dict[str, list[Path]]:
+    """Find files with same audio fingerprint (audio-identical duplicates)."""
+    from collections import defaultdict
+    
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT file_path, audio_fingerprint_hash
+        FROM file_hashes
+        WHERE audio_fingerprint_hash IS NOT NULL
+        """
+    )
+    
+    by_fp: dict[str, list[Path]] = defaultdict(list)
+    for path_str, fp_hash in cur.fetchall():
+        p = Path(path_str)
+        by_fp[fp_hash].append(p)
+    
+    # Return only groups with 2+ files
+    return {
+        fp_hash: paths
+        for fp_hash, paths in by_fp.items()
+        if len(paths) > 1
+    }
+
+
 def _paths_for_md5_with_sizes(
     conn: sqlite3.Connection, md5: str
 ) -> List[Tuple[Path, int]]:
@@ -189,7 +218,9 @@ def build_filename_prune_plan(
     quarantine_root: Path,
     garbage_root: Path,
 ) -> List[CrossPruneItem]:
-    """Build deletion plan for filename duplicates (same name, different content)."""
+    """Build deletion plan for filename duplicates (same name, different
+    content).
+    """
     filename_groups = _list_duplicate_filenames(conn)
     plan: List[CrossPruneItem] = []
     
@@ -209,6 +240,43 @@ def build_filename_prune_plan(
             plan.append(
                 CrossPruneItem(
                     md5=f"filename:{filename}",  # Use filename as identifier
+                    path=p,
+                    size=sizes.get(p, 0),
+                    keeper=keeper,
+                    reason=reason,
+                )
+            )
+    return plan
+
+
+def build_audio_prune_plan(
+    conn: sqlite3.Connection,
+    library_root: Path,
+    quarantine_root: Path,
+    garbage_root: Path,
+) -> List[CrossPruneItem]:
+    """Build deletion plan for audio fingerprint duplicates (audio-identical
+    files).
+    """
+    audio_groups = _list_duplicate_audio_fingerprints(conn)
+    plan: List[CrossPruneItem] = []
+    
+    # Get file sizes
+    cur = conn.cursor()
+    cur.execute("SELECT file_path, COALESCE(file_size, 0) FROM file_hashes")
+    sizes = {Path(row[0]): int(row[1] or 0) for row in cur.fetchall()}
+    
+    for fp_hash, paths in audio_groups.items():
+        keeper = choose_keeper(paths, library_root)
+        for p in paths:
+            if p == keeper:
+                continue
+            reason = classify_reason(
+                p, library_root, quarantine_root, garbage_root, keeper
+            )
+            plan.append(
+                CrossPruneItem(
+                    md5=f"audio:{fp_hash[:16]}",  # Use audio FP as ID
                     path=p,
                     size=sizes.get(p, 0),
                     keeper=keeper,
@@ -332,6 +400,11 @@ def main() -> int:
         action="store_true",
         help="Delete filename duplicates (same name, different content)",
     )
+    mode_group.add_argument(
+        "--by-audio",
+        action="store_true",
+        help="Delete audio fingerprint duplicates (audio-identical)",
+    )
 
     ns = ap.parse_args()
 
@@ -341,7 +414,14 @@ def main() -> int:
     paths = load_path_config(ns.config)
     conn = sqlite3.connect(ns.db)
     try:
-        if ns.by_filename:
+        if ns.by_audio:
+            plan = build_audio_prune_plan(
+                conn,
+                library_root=paths.library_root,
+                quarantine_root=paths.quarantine_root,
+                garbage_root=paths.garbage_root,
+            )
+        elif ns.by_filename:
             plan = build_filename_prune_plan(
                 conn,
                 library_root=paths.library_root,

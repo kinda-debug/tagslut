@@ -1,10 +1,23 @@
-"""Top-level package for the unified dedupe toolkit."""
+"""Unified toolkit for scanning, matching, and recovering audio libraries."""
 
-from . import config, health, quarantine, sync
+from . import (
+    cli,
+    fingerprints,
+    manifest,
+    matcher,
+    metadata,
+    rstudio_parser,
+    scanner,
+    utils,
+)
 
 __all__ = [
-    "config",
-    "health",
-    "quarantine",
-    "sync",
+    "cli",
+    "fingerprints",
+    "manifest",
+    "matcher",
+    "metadata",
+    "rstudio_parser",
+    "scanner",
+    "utils",
 ]

@@ -2,8 +2,6 @@
 
 ## Unreleased
 
-- Archived historical scripts and prototypes under `dedupe/ARCHIVE/` while
-  promoting the modern `dedupe` package as the sole supported codebase.
 - Rebuilt the `dedupe` package around reusable modules for scanning,
   metadata extraction, fingerprinting, matching, and manifest generation.
 - Added a new CLI (`dedupe scan-library`, `parse-rstudio`, `match`,

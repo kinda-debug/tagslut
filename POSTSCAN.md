@@ -1,9 +1,16 @@
-# POST-SCAN: full step-by-step workflow
+# POST-SCAN: full step-by-step workflow (archived)
+
+> **Status:** Archived. This document captures the legacy end-to-end process that
+> followed the historical `flac_scan.py` workflow. The modern toolkit now relies
+> on the unified `dedupe` CLI (`scan-library`, `parse-rstudio`, `match`,
+> `generate-manifest`) which supersedes the instructions below. Retain this guide
+> for reference when replaying historical investigations or interpreting old
+> incident reports.
 
 This document collects a comprehensive, prescriptive workflow for what to do
 after running the initial `flac_scan.py` scan. It covers creating playlists
-(M3U) for broken and candidate files, repairing files safely, verifying
-repaired results, reintegrating repaired files into your library, performing
+(M3U) for broken and candidate files, repairing files safely, verifying repaired
+results, reintegrating repaired files into your library, performing
 deduplication (dry-run and commit), quarantine handling, backups & rollback,
 automation examples, and troubleshooting.
 
@@ -119,112 +126,3 @@ python3 scripts/flac_repair.py --playlist broken_files_unrepaired.m3u \
 ```bash
 python3 scripts/flac_scan.py --root "$ROOT" --workers 4 --recompute --verbose
 ```
-
-8) Produce a dedupe report (dry-run) and inspect
-
-```bash
-python3 scripts/flac_dedupe.py --root "$ROOT" --dry-run --verbose --trash-dir "$ROOT/_TRASH_DUPES_preview"
-REPORT=$(ls -1 "$ROOT"/_DEDUP_REPORT_*.csv | tail -n1)
-echo "Report: $REPORT"
-head -n 20 "$REPORT"
-```
-
-9) Create an M3U of duplicate losers for inspection or pre-repair
-
-```bash
-python3 - <<'PY'
-import csv,sys
-report=sys.argv[1]; out=sys.argv[2]
-with open(report,newline='',encoding='utf-8') as fh:
-    r=csv.DictReader(fh)
-    with open(out,'w',encoding='utf-8') as o:
-        for row in r:
-            if row.get('keep')=='no':
-                o.write(row.get('path','') + '\n')
-print('WROTE', out)
-PY "$REPORT" duplicates_losers.m3u
-wc -l duplicates_losers.m3u
-```
-
-Repair losers first (optional), then rerun dedupe if some losers are corrupt.
-
-10) Commit dedupe (move losers to trash) — only after careful review
-
-```bash
-python3 scripts/flac_dedupe.py --root "$ROOT" --commit --trash-dir "$ROOT/_TRASH_DUPES" --verbose
-```
-
-This moves files into `$ROOT/_TRASH_DUPES/` and writes a CSV report. Check
-`_DEDUP_MOVE_ERRORS.txt` if any moves failed.
-
-11) Verify after commit
-
-```bash
-python3 scripts/flac_scan.py --root "$ROOT" --workers 4 --recompute --verbose
-python3 scripts/flac_dedupe.py --root "$ROOT" --dry-run --verbose
-ls -R "$ROOT/_TRASH_DUPES" | head
-```
-
-12) Quarantine (frozen) files
-
-- Files automatically quarantined during freeze detection are moved to
-  `$ROOT/_BROKEN` when `--auto-quarantine` is enabled on scan.
-- Inspect and repair these files using the same `flac_repair.py` flow.
-
-13) Backups & rollback
-
-- Backups taken by repair (when using `--overwrite --backup-dir`) live in
-  your specified backup directory — restore by copying backups back in place.
-- Restore moved dupes from `_TRASH_DUPES` by moving them back to their
-  original location.
-- Restore DB if necessary:
-
-```bash
-cp "$ROOT/_DEDUP_INDEX.db.bak.TIMESTAMP" "$ROOT/_DEDUP_INDEX.db"
-```
-
-14) Useful sqlite queries
-
-- List unhealthy files:
-
-```bash
-sqlite3 -batch "$ROOT/_DEDUP_INDEX.db" "SELECT path, health_note FROM files WHERE healthy=0 ORDER BY path LIMIT 200;"
-```
-
-- Count fingerprinted files:
-
-```bash
-sqlite3 -batch "$ROOT/_DEDUP_INDEX.db" "SELECT count(*) from files WHERE fingerprint_hash IS NOT NULL;"
-```
-
-15) Automation example
-
-See `scripts/automate_postscan.sh` (included in this repo) for a safe,
-interactive wrapper that runs the conservative pipeline and prompts before
-making destructive changes.
-
-16) Freeze detector & pkill behavior
-
-- The watcher prefers targeted kills for tracked ffmpeg process groups and
-  falls back to `pkill -TERM` then `pkill -KILL` (or `killall`) when needed.
-- `flac_scan.py`, `flac_dedupe.py`, and `flac_repair.py` start the
-  watchdog/freeze detector so ffmpeg processes spawned by these scripts are
-  targeted for termination when frozen.
-
-17) Troubleshooting
-
-- If a scan hangs, inspect `$ROOT/_DEDUP_SCAN_LOG.txt` and diagnostics under
-  the diagnostic root (see `--diagnostic-root`).
-- For repair failures, inspect `$REPAIRED/logs/*_attempt*.stderr.log`.
-- For unexpected moves, check `_DEDUP_MOVE_ERRORS.txt` and the dedupe CSV
-  reports for context.
-
-Final safety checklist
-- DB backup created
-- dedupe dry-run completed and reviewed
-- rsync dry-run reviewed before writing
-- backups configured if using `--overwrite`
-
-If you want this to be committed as `POSTSCAN.md` in the repo, it is now
-present (committed). Use it as the canonical post-scan workflow. If you want
-changes, tell me what to add or emphasize and I’ll update the file.

@@ -49,3 +49,11 @@ artifacts/reports/db_prune_missing.csv
 docs/cross_root_prune_incident_20251112.md
 artifacts/reports/db_prune_missing.csv
 artifacts/reports/dupes_all.csv
+artifacts/reports/garbage_backup_crosscheck.jsonl
+artifacts/reports/garbage_backup_missing_analysis.jsonl
+artifacts/reports/garbage_backup_missing.tsv
+artifacts/reports/garbage_backup_restore_plan.tsv
+.gitignore
+artifacts/reports/new_library_verification.jsonl
+.gitignore
+artifacts/reports/new_library_missing.txt

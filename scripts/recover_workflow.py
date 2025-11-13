@@ -103,7 +103,23 @@ def normalise_name(name: str) -> str:
     return s
 
 
-def score_match(lib: Dict, cand: Candidate) -> Tuple[float, List[str]]:
+def score_match(
+    lib: Dict,
+    cand: Candidate,
+    min_name_similarity: float,
+    size_tolerance: float,
+    duration_tolerance: float,
+    w_name: float,
+    w_size: float,
+    w_duration: float,
+) -> Tuple[float, List[str]]:
+    """Score a candidate against a library row and apply validation checks.
+
+    The function returns (score, notes). If a validation fails (filename
+    similarity below `min_name_similarity`, or size/duration checks fail when
+    the corresponding metrics are available), the function returns (0.0, notes)
+    and the caller should treat the candidate as skipped.
+    """
     notes: List[str] = []
     lib_fname = Path(lib["path"]).name
     nlib = normalise_name(lib_fname)
@@ -119,47 +135,68 @@ def score_match(lib: Dict, cand: Candidate) -> Tuple[float, List[str]]:
     else:
         fname_score = SequenceMatcher(None, nlib, ncand).ratio()
 
-    # size comparison (if candidate size known)
+    # enforce minimum name similarity
+    if fname_score < float(min_name_similarity):
+        notes.append("name_below_min")
+        return 0.0, notes
+
+    # size comparison (if both sizes are available)
     size_score = 0.0
-    if cand.size and lib.get("size_bytes"):
-        l = lib["size_bytes"]
+    lib_size = lib.get("size_bytes")
+    if cand.size is not None and lib_size:
         c = cand.size
-        if c > l:
-            notes.append("candidate_larger")
-            size_score = min(1.0, (c - l) / max(1, l))
-        else:
-            # similar sizes
-            rel = abs(c - l) / max(1, l)
-            if rel < 0.01:
-                notes.append("size_similar")
-                size_score = 0.5
+        l = lib_size
+        diff = abs(c - l)
+        if diff > size_tolerance * l:
+            notes.append("size_out_of_tolerance")
+            return 0.0, notes
+        # produce a normalized relative size score (smaller diff -> higher)
+        rel = 1.0 - (diff / max(1, l))
+        size_score = max(0.0, min(1.0, rel))
 
-    # duration comparison
+    # duration comparison (if both durations are available)
     dur_score = 0.0
-    if cand.duration and lib.get("duration"):
-        ld = lib.get("duration")
+    lib_dur = lib.get("duration")
+    if cand.duration is not None and lib_dur:
         cd = cand.duration
-        if cd and ld and cd > ld + 1.0:
-            notes.append("candidate_longer")
-            dur_score = min(1.0, (cd - ld) / max(1.0, ld))
+        ld = lib_dur
+        diff = abs(cd - ld)
+        if diff > duration_tolerance:
+            notes.append("duration_out_of_tolerance")
+            return 0.0, notes
+        # normalized duration score: closer durations -> higher score
+        dur_score = max(0.0, min(1.0, 1.0 - (diff / max(1.0, ld))))
 
-    # quality signal
-    q_score = 0.0
-    if lib.get("bit_rate") and lib.get("bit_rate") and cand.ext == Path(lib["path"]).suffix.lower():
-        lb = lib.get("bit_rate") or 0
-        # no candidate bitrate; skip
+    # normalize weights so they sum to 1.0 (avoids needing caller to normalize)
+    total_w = float(w_name + w_size + w_duration) or 1.0
+    nw = float(w_name) / total_w
+    sw = float(w_size) / total_w
+    dw = float(w_duration) / total_w
 
-    # final weighted score
-    score = 0.6 * fname_score + 0.25 * size_score + 0.15 * dur_score
+    score = nw * fname_score + sw * size_score + dw * dur_score
     return score, notes
 
 
-def match_candidates(library_db: Path, candidates_db: Path, out_csv: Path, threshold: float = 0.6) -> None:
+def match_candidates(
+    library_db: Path,
+    candidates_db: Path,
+    out_csv: Path,
+    *,
+    min_name_similarity: float = 0.65,
+    size_tolerance: float = 0.02,
+    duration_tolerance: float = 1.0,
+    weight_name: float = 0.6,
+    weight_size: float = 0.25,
+    weight_duration: float = 0.15,
+    threshold: float = 0.55,
+) -> None:
     libs = read_library_db(library_db)
     conn = sqlite3.connect(candidates_db)
     conn.row_factory = sqlite3.Row
     with conn:
-        rows = conn.execute("SELECT id, source_path, filename, ext, size, duration FROM candidates").fetchall()
+        rows = conn.execute(
+            "SELECT id, source_path, filename, ext, size, duration FROM candidates"
+        ).fetchall()
 
     out_csv.parent.mkdir(parents=True, exist_ok=True)
     with out_csv.open("w", newline="", encoding="utf8") as fh:
@@ -175,19 +212,34 @@ def match_candidates(library_db: Path, candidates_db: Path, out_csv: Path, thres
         ])
 
         for r in rows:
-            cand = Candidate(source_path=r["source_path"], filename=r["filename"], ext=r["ext"], size=r["size"], duration=r["duration"])
+            cand = Candidate(
+                source_path=r["source_path"],
+                filename=r["filename"],
+                ext=r["ext"],
+                size=r["size"],
+                duration=r["duration"],
+            )
             # naive linear scan over libs
             best_score = 0.0
             best_lib = None
             best_notes: List[str] = []
             for lib in libs:
-                score, notes = score_match(lib, cand)
+                score, notes = score_match(
+                    lib,
+                    cand,
+                    min_name_similarity=min_name_similarity,
+                    size_tolerance=size_tolerance,
+                    duration_tolerance=duration_tolerance,
+                    w_name=weight_name,
+                    w_size=weight_size,
+                    w_duration=weight_duration,
+                )
                 if score > best_score:
                     best_score = score
                     best_lib = lib
                     best_notes = notes
 
-            if best_score >= threshold:
+            if best_score >= float(threshold) and best_lib is not None:
                 reason = ";".join(best_notes) or "name_similarity"
                 writer.writerow([
                     cand.source_path,
@@ -212,7 +264,17 @@ def main() -> int:
     p_match.add_argument("--library", default="artifacts/db/library.db")
     p_match.add_argument("--candidates", default="artifacts/db/recovered_candidates.db")
     p_match.add_argument("--out", default="artifacts/reports/recovery_list.csv")
-    p_match.add_argument("--threshold", type=float, default=0.6)
+    p_match.add_argument("--min-name-similarity", type=float, default=0.65,
+                         help="Minimum filename similarity to consider a candidate")
+    p_match.add_argument("--size-tolerance", type=float, default=0.02,
+                         help="Allowed relative size difference (fraction of library file size)")
+    p_match.add_argument("--duration-tolerance", type=float, default=1.0,
+                         help="Allowed absolute duration difference in seconds")
+    p_match.add_argument("--weight-name", type=float, default=0.6, help="Weight for name similarity")
+    p_match.add_argument("--weight-size", type=float, default=0.25, help="Weight for size similarity")
+    p_match.add_argument("--weight-duration", type=float, default=0.15, help="Weight for duration similarity")
+    p_match.add_argument("--threshold", type=float, default=0.55,
+                         help="Minimum final score to write candidate to CSV")
 
     p_scan = sub.add_parser("scan")
     p_scan.add_argument("--root", default="/Volumes/dotad/NEW_LIBRARY")
@@ -241,7 +303,18 @@ def main() -> int:
         if not cdb.exists():
             print(f"Candidates DB not found: {cdb}")
             return 3
-        match_candidates(lib, cdb, out, threshold=args.threshold)
+        match_candidates(
+            lib,
+            cdb,
+            out,
+            min_name_similarity=args.min_name_similarity,
+            size_tolerance=args.size_tolerance,
+            duration_tolerance=args.duration_tolerance,
+            weight_name=args.weight_name,
+            weight_size=args.weight_size,
+            weight_duration=args.weight_duration,
+            threshold=args.threshold,
+        )
         print(f"Wrote recovery CSV to {out}")
         return 0
 

@@ -1,0 +1,9 @@
+[flake8]
+exclude =
+    dedupe/ARCHIVE,
+    .venv,
+    .git,
+    __pycache__,
+    build,
+    dist
+max-line-length = 79

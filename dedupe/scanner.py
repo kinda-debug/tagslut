@@ -203,7 +203,7 @@ def scan_library(config: ScanConfig) -> int:
 
         iterator = utils.iter_audio_files(config.root)
         # helper to yield batches while skipping unchanged files when resuming
-        
+
         def batches() -> Iterator[list[Path]]:
             batch: list[Path] = []
             for path in iterator:

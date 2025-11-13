@@ -321,15 +321,19 @@ def main() -> int:
     if args.cmd == "scan":
         root = Path(args.root)
         db_path = Path(args.database)
-        cfg = dedupe_scanner.ScanConfig(
-            root=root,
-            database=db_path,
-            include_fingerprints=bool(args.include_fp),
-            batch_size=int(args.batch_size),
-            resume=bool(args.resume),
-            show_progress=bool(args.progress),
-        )
-        print(f"Starting scan of {cfg.root} -> {cfg.database} (resume={cfg.resume})")
+        # Construct ScanConfig positionally and set attributes to be robust
+        # against possible signature differences in installed modules.
+        cfg = dedupe_scanner.ScanConfig(root, db_path)
+        if hasattr(cfg, "include_fingerprints"):
+            cfg.include_fingerprints = bool(args.include_fp)
+        if hasattr(cfg, "batch_size"):
+            cfg.batch_size = int(args.batch_size)
+        if hasattr(cfg, "resume"):
+            cfg.resume = bool(args.resume)
+        if hasattr(cfg, "show_progress"):
+            cfg.show_progress = bool(args.progress)
+        resume_flag = getattr(cfg, "resume", False)
+        print(f"Starting scan of {cfg.root} -> {cfg.database} (resume={resume_flag})")
         total = dedupe_scanner.scan_library(cfg)
         print(f"Completed scan: {total} files processed")
         return 0

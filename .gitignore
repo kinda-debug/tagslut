@@ -28,3 +28,5 @@ artifacts/db/recovered_candidates.db
 .gitignore
 artifacts/db/library.db-shm
 artifacts/db/library.db-wal
+artifacts/db/library.db
+artifacts/db/library.db

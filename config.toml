@@ -11,13 +11,13 @@ diagnostic_root = "/Volumes/dotad/.dedupe_diagnostics"
 
 # Playlist file for broken files (kept under library root)
 # Use an absolute path or a path under `root` — here we keep it inside `root`.
-broken_playlist = "/Volumes/dotad/NEW_LIBRARY/broken_files_unrepaired.m3u"
+broken_playlist = "/Volumes/dotad/NEW_LIBRARY/MUSIC/broken_files_unrepaired.m3u"
 
 # Directory of quarantined files awaiting review (placed under `root`)
-quarantine = "/Volumes/dotad/NEW_LIBRARY/_QUARANTINE"
+quarantine = "/Volumes/dotad/NEW_LIBRARY/Quarantine"
 
 # Directory of confirmed duplicates kept for healthier copies (placed under `root`)
-garbage = "/Volumes/dotad/NEW_LIBRARY/_GARBAGE"
+garbage = "/Volumes/dotad/NEW_LIBRARY/Garbage"
 
 [scan]
 # Number of worker threads for scanning

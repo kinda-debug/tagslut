@@ -1,0 +1,30 @@
+# Patch file: docs-updates
+# This file contains the proposed documentation updates collected from the user.
+# It is not applied to the repository; it's a patch bundle you can inspect or apply manually.
+
+=== FILE: README.md ===
+# (Replace README.md with the provided updated sections. See user-provided content.)
+
+=== FILE: docs/architecture.md ===
+# (Replace docs/architecture.md with provided content.)
+
+=== FILE: docs/configuration.md ===
+# (Replace docs/configuration.md with provided content.)
+
+=== FILE: docs/process_flow.md ===
+# (Replace docs/process_flow.md with provided content.)
+
+=== FILE: docs/quarantine_garbage_playbook.md ===
+# (Replace docs/quarantine_garbage_playbook.md with provided content.)
+
+=== FILE: docs/scripts_reference.md ===
+# (Replace docs/scripts_reference.md with provided content.)
+
+=== FILE: requirements.txt ===
+# (Replace requirements.txt with provided content.)
+
+# NOTES:
+# - CHANGELOG.md and POSTSCAN.md were already applied or present in the repo.
+# - This bundle stores the intended replacements for the listed files. To apply,
+#   you can manually copy from this bundle or ask me to apply the patches in
+#   small batches. I will not print the full file contents here.

@@ -1,16 +1,19 @@
-# FLAC Deduplication Requirements
+# Runtime dependencies
+# ---------------------
+# The toolkit relies primarily on the Python standard library. Optional extras
+# unlock richer metadata capture:
 #
-# This project uses only Python standard library modules.
-# All dependencies are system-level tools that must be installed separately:
+#   mutagen>=1.47.0    # tag extraction fallback when available
 #
-# macOS (with Homebrew):
-#   brew install ffmpeg chromaprint flac sqlite3
+# External binaries required for full functionality:
+#   ffprobe / ffmpeg   # stream metadata
+#   fpcalc             # Chromaprint fingerprints
+#   sqlite3            # command-line inspection of generated databases
 #
-# Ubuntu/Debian:
-#   sudo apt-get install ffmpeg libchromaprint-tools flac sqlite3
+# Developer tooling
+# -----------------
+# Install the following packages when running linting or contributing changes:
 #
-# No Python packages required - all imports are from the standard library.
-#
-# Optional Python packages (install if you want progress bars):
-#   pip install tqdm
-tqdm
+#   flake8==7.3.0
+#   pytest>=8.0
+#   tqdm>=4.0          # optional progress bars for archived scripts

@@ -6,6 +6,7 @@ All runtime entry points flow through the unified CLI which orchestrates the
 underlying helpers.
 
 ```
+```
 +---------------------------+
 |        dedupe.cli         |
 |  argparse entry point     |
@@ -59,16 +60,25 @@ underlying helpers.
    +----------------+
 ```
 
-## Key principles
-
-- **Single source of truth** – core logic lives inside `src/dedupe/` and is
-  shared across CLI entry points and unit tests.
-- **Composition** – the sync workflow delegates health checks to
-  `dedupe.health`, while quarantine commands share ffprobe/fingerprint helpers.
-- **Compatibility** – legacy scripts under `scripts/` import and expose the new
-  modules so existing automation does not break.
-
 ## Module summary
+
+- `dedupe.cli` – command routing, argument parsing, and logging.
+- `dedupe.utils` – filesystem helpers, hashing, SQLite utilities, and shared
+  helpers.
+- `dedupe.metadata` – ffprobe/mutagen adapters that expose consistent metadata
+  structures even when external binaries are unavailable.
+- `dedupe.fingerprints` – Chromaprint integration with graceful fallbacks and
+  similarity helpers.
+- `dedupe.scanner` – library crawler that records metadata, tags, and optional
+  fingerprints inside SQLite databases.
+- `dedupe.rstudio_parser` – loader for R-Studio "Recognized Files" exports with
+  automatic normalisation.
+- `dedupe.matcher` – multi-signal comparison engine that correlates the library
+  database with recovered candidates.
+- `dedupe.manifest` – report generator that produces prioritised recovery
+  manifests for downstream review.
+
+## Legacy modules
 
 - `dedupe.cli` – command routing, argument parsing, and logging.
 - `dedupe.utils` – filesystem helpers, hashing, SQLite utilities, and shared

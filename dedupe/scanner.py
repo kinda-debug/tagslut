@@ -279,3 +279,29 @@ def scan_library(config: ScanConfig) -> int:
 
     LOGGER.info("Completed scan of %s (%s files)", config.root, total)
     return total
+
+
+def scan(
+    root: Path,
+    database: Path,
+    include_fingerprints: bool = False,
+    batch_size: int = 100,
+    resume: bool = False,
+    show_progress: bool = False,
+) -> int:
+    """Compatibility wrapper: simple API for scanning a library.
+
+    Older or alternative callers (eg. codex refactor) may prefer a flat
+    function signature instead of constructing a :class:`ScanConfig`. This
+    convenience function builds a :class:`ScanConfig` and delegates to
+    :func:`scan_library` so both APIs are supported.
+    """
+    config = ScanConfig(
+        root=root,
+        database=database,
+        include_fingerprints=include_fingerprints,
+        batch_size=batch_size,
+        resume=resume,
+        show_progress=show_progress,
+    )
+    return scan_library(config)

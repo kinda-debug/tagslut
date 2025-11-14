@@ -151,5 +151,11 @@ Additional workflow documentation lives in:
 - [`USAGE.md`](USAGE.md) – step-by-step operational notes.
 - [`docs/`](docs/) – architecture diagrams and historical context.
 
+Legacy tooling, experimental scripts, and prior prototypes have been archived
+under [`dedupe/ARCHIVE/`](dedupe/ARCHIVE/) for historical reference. The new
+package structure under `dedupe/` is the authoritative codebase; archived files
+should not be modified except when adding context about their superseded
+behaviour.
+
 Contributions should update these documents whenever CLI behaviour or schemas
 change.

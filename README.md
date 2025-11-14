@@ -51,6 +51,54 @@ Available sub-commands:
 
 Every command accepts `--verbose` to enable detailed logging output.
 
+## Global multi-volume recovery workflow
+
+The new `scripts/global_recovery.py` entry point aggregates every available
+volume, R-Studio export, and recovered fragment into a unified SQLite database.
+The schema is purpose-built for cross-volume reconciliation:
+
+- `global_files` – every scanned audio file with path, technical metadata, and
+  optional Chromaprint fingerprint.
+- `global_fragments` – R-Studio "Recognized Files" exports, stored once and
+  re-parsed on re-runs without duplication.
+- `global_resolved_tracks` – the resolver's latest decision for each normalised
+  track group, including score, reason, and confidence value.
+
+Typical workflow:
+
+```bash
+# 1. Scan every library root into a single database
+python3 scripts/global_recovery.py scan \
+    --root /Volumes/dotad/NEW_LIBRARY \
+    --root /Volumes/Vault \
+    --db artifacts/db/global_library.db \
+    --resume --show-progress
+
+# 2. Load any R-Studio Recognized*.txt exports
+python3 scripts/global_recovery.py parse-recognized \
+    "Recognized5_5 SanDisk Extreme 55AE 3008.txt" \
+    --db artifacts/db/global_library.db
+
+# 3. Resolve the best candidate per track and emit CSV reports
+python3 scripts/global_recovery.py resolve \
+    --db artifacts/db/global_library.db \
+    --out-prefix artifacts/reports/global_recovery \
+    --min-name-similarity 0.65 \
+    --duration-tolerance 1.0 \
+    --size-tolerance 0.02 \
+    --threshold 0.55
+```
+
+The resolver writes four reports sharing the requested prefix:
+
+- `*_keepers.csv` – canonical files to keep or restore.
+- `*_improvements.csv` – higher-quality replacements identified across roots.
+- `*_manual_repair.csv` – groups needing manual intervention or only fragments.
+- `*_archive_candidates.csv` – obvious losers for quarantine or deletion.
+
+Re-running any stage is safe: scans and fragment imports update rows in place,
+and the resolver overwrites existing decisions with the most recent scores.
+
 ## Developer workflow
 
 1. Run the unit tests to confirm the environment:
@@ -79,6 +127,7 @@ Every command accepts `--verbose` to enable detailed logging output.
 | `dedupe.metadata` | ffprobe and tag extraction helpers with safe fallbacks. |
 | `dedupe.fingerprints` | Chromaprint integration and similarity helpers. |
 | `dedupe.scanner` | Library scanning pipeline producing SQLite records. |
+| `dedupe.global_recovery` | Shared logic for the global multi-volume recovery workflow. |
 | `dedupe.rstudio_parser` | Parser and loader for R-Studio exports. |
 | `dedupe.matcher` | Matching heuristics combining filename, size, and quality signals. |
 | `dedupe.manifest` | Manifest construction utilities for downstream recovery tools. |

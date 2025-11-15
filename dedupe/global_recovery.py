@@ -103,7 +103,7 @@ def _iter_scan_records(
 
     for path in paths:
         try:
-            yield scanner._prepare_record(  # type: ignore[attr-defined]
+            yield scanner.prepare_record(
                 path,
                 include_fingerprints,
             )
@@ -146,6 +146,7 @@ def scan_roots(
     utils.ensure_parent_directory(database)
     total = 0
     db = utils.DatabaseContext(database)
+    fingerprints_enabled = scanner.resolve_fingerprint_usage(include_fingerprints)
     with db.connect() as connection:
         ensure_schema(connection)
 
@@ -197,7 +198,7 @@ def scan_roots(
                     progress = None
 
             for batch in batches():
-                records = list(_iter_scan_records(batch, include_fingerprints))
+                records = list(_iter_scan_records(batch, fingerprints_enabled))
                 if not records:
                     if progress:
                         progress.update(len(batch))

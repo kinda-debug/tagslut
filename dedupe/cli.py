@@ -55,14 +55,17 @@ def build_parser() -> argparse.ArgumentParser:
     scan_parser.add_argument(
         "--fingerprints",
         action="store_true",
-        help="Capture Chromaprint fingerprints during scanning",
+        help=(
+            "Capture optional Chromaprint fingerprints (requires fpcalc; "
+            "skipped automatically when unavailable)"
+        ),
     )
     scan_parser.add_argument(
         "--resume",
         action="store_true",
         help=(
-            "Resume a previous scan by skipping unchanged files"
-            " present in the database"
+            "Resume a previous scan by skipping unchanged files present in "
+            "the database (size + mtime check)"
         ),
     )
     scan_parser.add_argument(

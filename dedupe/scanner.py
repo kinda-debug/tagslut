@@ -42,7 +42,7 @@ class ScanConfig:
     Attributes:
         root: root path to scan
         database: sqlite database path
-        include_fingerprints: whether to capture Chromaprint fingerprints
+        include_fingerprints: whether to request Chromaprint fingerprints
         batch_size: number of files per DB upsert
         resume: skip files already indexed and unchanged
         show_progress: display a progress bar during scanning
@@ -79,7 +79,29 @@ def initialise_database(connection: sqlite3.Connection) -> None:
     )
 
 
-def _prepare_record(path: Path, include_fingerprints: bool) -> ScanRecord:
+def resolve_fingerprint_usage(include_requested: bool) -> bool:
+    """Return ``True`` when Chromaprint fingerprints should be generated.
+
+    Fingerprints are only generated when the caller explicitly requests them
+    *and* ``fpcalc`` is available on the execution ``PATH``.  The helper keeps
+    the gating logic in a single place so callers do not need to repeat the
+    availability checks.
+    """
+
+    if not include_requested:
+        return False
+    if not fingerprints.is_fpcalc_available():
+        LOGGER.info(
+            "Chromaprint fingerprints requested but fpcalc not available; "
+            "continuing without fingerprints",
+        )
+        return False
+    LOGGER.info("Chromaprint fingerprints enabled for this scan")
+    return True
+
+
+def prepare_record(path: Path, include_fingerprints: bool) -> ScanRecord:
+    """Collect metadata and optional fingerprint information for *path*."""
     meta = metadata.probe_audio(path)
     checksum = utils.compute_md5(path)
     fingerprint_result = (
@@ -113,7 +135,7 @@ def _iter_records(
 ) -> Iterator[ScanRecord]:
     for path in paths:
         try:
-            yield _prepare_record(path, include_fingerprints)
+            yield prepare_record(path, include_fingerprints)
         except Exception as exc:  # pragma: no cover - defensive logging
             LOGGER.exception("Failed to scan %s: %s", path, exc)
 
@@ -174,6 +196,7 @@ def scan_library(config: ScanConfig) -> int:
     db = utils.DatabaseContext(config.database)
     start = time.time()
     total = 0
+    include_fingerprints = resolve_fingerprint_usage(config.include_fingerprints)
 
     # Build an index of already-scanned files when resuming. We index by the
     # normalised path and record the size and mtime to allow a cheap
@@ -203,7 +226,7 @@ def scan_library(config: ScanConfig) -> int:
 
         iterator = utils.iter_audio_files(config.root)
         # helper to yield batches while skipping unchanged files when resuming
-        
+
         def batches() -> Iterator[list[Path]]:
             batch: list[Path] = []
             for path in iterator:
@@ -258,7 +281,7 @@ def scan_library(config: ScanConfig) -> int:
             pbar = None
 
         for batch in batches():
-            records = list(_iter_records(batch, config.include_fingerprints))
+            records = list(_iter_records(batch, include_fingerprints))
             if not records:
                 if pbar:
                     pbar.update(len(batch))

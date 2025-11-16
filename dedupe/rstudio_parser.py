@@ -5,7 +5,7 @@ from __future__ import annotations
 import csv
 import logging
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Iterable, Iterator, Optional
 
@@ -119,7 +119,7 @@ def load_into_database(
                 size_bytes=excluded.size_bytes,
                 extension=excluded.extension
             """,
-            [record.__dict__ for record in records],
+            [asdict(record) for record in records],
         )
         count = connection.execute(
             f"SELECT COUNT(*) FROM {RECOVERED_TABLE}"

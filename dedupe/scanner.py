@@ -9,6 +9,7 @@ import time
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Iterable, Iterator, Optional
+import os
 
 from . import fingerprints, metadata, utils
 
@@ -224,7 +225,12 @@ def scan_library(config: ScanConfig) -> int:
     with db.connect() as connection:
         initialise_database(connection)
 
-        iterator = utils.iter_audio_files(config.root)
+        iterator = (
+            Path(dirpath) / filename
+            for dirpath, _, filenames in os.walk(config.root)
+            for filename in filenames
+            if utils.is_audio_file(filename)
+        )
         # helper to yield batches while skipping unchanged files when resuming
 
         def batches() -> Iterator[list[Path]]:

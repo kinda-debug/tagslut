@@ -61,6 +61,20 @@ def iter_audio_files(root: Path) -> Iterator[Path]:
             yield entry
 
 
+def is_audio_file(pathish: str | Path) -> bool:
+    """Return True if *pathish* refers to a file with a recognised audio extension.
+
+    This is a small compatibility shim used by older callers that expect
+    `utils.is_audio_file`. It accepts either a `Path` or a string filename.
+    """
+
+    try:
+        suffix = Path(pathish).suffix.lower()
+    except Exception:
+        return False
+    return suffix in AUDIO_EXTENSIONS
+
+
 def compute_md5(path: Path, chunk_size: int = 1 << 16) -> str:
     """Return the hexadecimal MD5 checksum for *path*."""
 

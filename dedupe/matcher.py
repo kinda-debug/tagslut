@@ -1,257 +1,328 @@
-"""Matching logic between scanned libraries and recovery candidates."""
+"""Matching logic between scanned library and recovered files."""
 
 from __future__ import annotations
 
 import csv
 import logging
+import os
+import re
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Iterable, List, Tuple
 
-from difflib import SequenceMatcher
+from rapidfuzz import fuzz
 
-from . import rstudio_parser, scanner, utils
+from . import utils
 
 LOGGER = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Data models
+# ---------------------------------------------------------------------------
+
+
 @dataclass(slots=True)
-class LibraryEntry:
-    """Row captured by :mod:`dedupe.scanner`."""
+class LibEntry:
+    """Single library row from library.db."""
 
     path: str
     name: str
     size_bytes: int
-    duration: Optional[float]
-    sample_rate: Optional[int]
-    bit_rate: Optional[int]
-    fingerprint: Optional[str]
 
 
 @dataclass(slots=True)
-class RecoveryEntry:
-    """Row parsed from R-Studio exports."""
+class RecEntry:
+    """Single recovered row from recovered.db."""
 
     source_path: str
-    suggested_name: str
-    size_bytes: Optional[int]
-    extension: Optional[str]
-
-    @property
-    def name(self) -> str:
-        return self.suggested_name or Path(self.source_path).name
+    name: str
+    size_bytes: int
+    extension: str
 
 
-@dataclass(slots=True)
-class MatchCandidate:
-    """Outcome of matching a library entry to a recovery candidate."""
-
-    library_path: str
-    recovery_path: Optional[str]
-    recovery_name: Optional[str]
-    score: float
-    classification: str
-    filename_similarity: float
-    size_difference: Optional[int]
-    fingerprint_similarity: Optional[float]
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 
-def _row_to_library_entry(row: sqlite3.Row) -> LibraryEntry:
-    return LibraryEntry(
-        path=row["path"],
-        name=Path(row["path"]).name,
-        size_bytes=row["size_bytes"],
-        duration=row["duration"],
-        sample_rate=row["sample_rate"],
-        bit_rate=row["bit_rate"],
-        fingerprint=row["fingerprint"],
-    )
+_TOKEN_SPLIT_RE = re.compile(r"[^0-9a-zA-Z]+", re.UNICODE)
 
 
-def _row_to_recovery_entry(row: sqlite3.Row) -> RecoveryEntry:
-    return RecoveryEntry(
-        source_path=row["source_path"],
-        suggested_name=row["suggested_name"],
-        size_bytes=row["size_bytes"],
-        extension=row["extension"],
-    )
+def _tokenise_name(name: str) -> List[str]:
+    """
+    Tokenise a filename into normalised tokens.
 
-
-def load_library_entries(database: Path) -> list[LibraryEntry]:
-    db = utils.DatabaseContext(database)
-    with db.connect() as connection:
-        cursor = connection.execute(
-            f"SELECT * FROM {scanner.LIBRARY_TABLE}"
-        )
-        rows = [_row_to_library_entry(row) for row in cursor.fetchall()]
-    LOGGER.info("Loaded %s library entries", len(rows))
-    return rows
-
-
-def load_recovery_entries(database: Path) -> list[RecoveryEntry]:
-    db = utils.DatabaseContext(database)
-    with db.connect() as connection:
-        cursor = connection.execute(
-            f"SELECT * FROM {rstudio_parser.RECOVERED_TABLE}"
-        )
-        rows = [_row_to_recovery_entry(row) for row in cursor.fetchall()]
-    LOGGER.info("Loaded %s recovery entries", len(rows))
-    return rows
+    We:
+    - lowercase
+    - strip extension
+    - split on non-alphanumeric characters
+    - drop tokens of length < 2
+    """
+    base = os.path.basename(name)
+    stem, _ext = os.path.splitext(base)
+    stem = stem.lower()
+    tokens = [t for t in _TOKEN_SPLIT_RE.split(stem) if len(t) >= 2]
+    return tokens
 
 
 def _filename_similarity(a: str, b: str) -> float:
-    return SequenceMatcher(None, a.lower(), b.lower()).ratio()
+    """
+    Compute similarity between two filenames.
+
+    Uses RapidFuzz's ratio (0–100) and normalises to 0–1.
+    """
+    if not a or not b:
+        return 0.0
+    return fuzz.ratio(a.lower(), b.lower()) / 100.0
 
 
-def _size_difference(lib: LibraryEntry, rec: RecoveryEntry) -> Optional[int]:
-    if rec.size_bytes is None:
-        return None
-    return rec.size_bytes - lib.size_bytes
+def _load_library_entries(db_path: Path) -> List[LibEntry]:
+    """Load all library entries from library.db."""
+    db = utils.DatabaseContext(db_path)
+    entries: List[LibEntry] = []
+
+    with db.connect() as conn:
+        conn.row_factory = sqlite3.Row
+        cursor = conn.execute(
+            "SELECT path, size_bytes FROM library_files ORDER BY path"
+        )
+        for row in cursor:
+            path = row["path"]
+            entries.append(
+                LibEntry(
+                    path=path,
+                    name=os.path.basename(path),
+                    size_bytes=row["size_bytes"],
+                )
+            )
+
+    LOGGER.info("Loaded %d library entries", len(entries))
+    return entries
 
 
-def _quality_classification(
-    lib: LibraryEntry,
-    rec: Optional[RecoveryEntry],
-    score: float,
-    size_delta: Optional[int],
-) -> str:
-    if rec is None:
-        return "missing"
-    if score >= 0.9:
-        return "exact"
-    if size_delta is not None:
-        if size_delta < 0:
-            return "truncated"
-        if size_delta > 0:
-            return "potential_upgrade"
-    return "ambiguous"
+def _load_recovered_entries(db_path: Path) -> List[RecEntry]:
+    """Load all recovered entries from recovered.db."""
+    db = utils.DatabaseContext(db_path)
+    entries: List[RecEntry] = []
+
+    with db.connect() as conn:
+        conn.row_factory = sqlite3.Row
+        cursor = conn.execute(
+            "SELECT source_path, suggested_name, size_bytes, extension "
+            "FROM recovered_files "
+            "ORDER BY source_path"
+        )
+        for row in cursor:
+            source_path = row["source_path"]
+            suggested_name = row["suggested_name"]
+            extension = row["extension"] or ""
+            name = suggested_name or os.path.basename(source_path)
+
+            entries.append(
+                RecEntry(
+                    source_path=source_path,
+                    name=name,
+                    size_bytes=row["size_bytes"] or 0,
+                    extension=extension.lower(),
+                )
+            )
+
+    LOGGER.info("Loaded %d recovery entries", len(entries))
+    return entries
 
 
-def _compute_score(
-    lib: LibraryEntry,
-    rec: RecoveryEntry,
-) -> tuple[float, float, Optional[int]]:
-    name_score = _filename_similarity(lib.name, rec.name)
-    size_delta = _size_difference(lib, rec)
-    if size_delta is None:
-        size_score = 0.5
-    else:
-        ratio = 1 - min(abs(size_delta) / max(lib.size_bytes, 1), 1)
-        size_score = max(ratio, 0.0)
-    score = (name_score * 0.6) + (size_score * 0.4)
-    return score, name_score, size_delta
+def _build_token_index(recovered: Iterable[RecEntry]) -> Dict[str, List[RecEntry]]:
+    """
+    Build an inverted index from token -> list[RecEntry].
+
+    This lets us avoid comparing every library entry to every recovered entry.
+    """
+    index: Dict[str, List[RecEntry]] = {}
+    for r in recovered:
+        tokens = _tokenise_name(r.name)
+        if not tokens:
+            # Fallback: use bare stem
+            stem, _ext = os.path.splitext(os.path.basename(r.name))
+            if stem:
+                tokens = [stem.lower()]
+
+        for tok in tokens:
+            index.setdefault(tok, []).append(r)
+
+    LOGGER.info("Built token index for %d distinct tokens", len(index))
+    return index
+
+
+def _filter_candidates(
+    lib: LibEntry,
+    token_index: Dict[str, List[RecEntry]],
+    recovered_all: List[RecEntry],
+    max_candidates: int = 500,
+) -> List[RecEntry]:
+    """
+    Select a manageable candidate set for a library entry.
+
+    Strategy:
+    - Tokenise the library filename.
+    - Union all recovered entries that share at least one token.
+    - Deduplicate by `source_path`.
+    - If nothing is found, fall back to all recovered entries
+      (capped at `max_candidates`).
+    """
+    tokens = _tokenise_name(lib.name)
+    candidates: List[RecEntry] = []
+    seen: set[str] = set()
+
+    # Use token hits first
+    for tok in tokens:
+        for r in token_index.get(tok, []):
+            if r.source_path in seen:
+                continue
+            seen.add(r.source_path)
+            candidates.append(r)
+            if len(candidates) >= max_candidates:
+                return candidates
+
+    # Fallback: if no tokens hit, use the first N recovered entries
+    if not candidates:
+        if recovered_all:
+            limit = min(max_candidates, len(recovered_all))
+            candidates = recovered_all[:limit]
+
+    return candidates
+
+
+def _score_match(lib: LibEntry, rec: RecEntry) -> Tuple[float, str]:
+    """
+    Compute a similarity score and 'reason' label for a candidate pair.
+
+    - base: RapidFuzz filename similarity
+    - +0.02 if extensions match
+    - +0.03 if sizes are within ~1% or ≤ 8 KiB difference
+    """
+    sim = _filename_similarity(lib.name, rec.name)
+    reason = "base"
+
+    # Extension bonus
+    lib_ext = os.path.splitext(lib.name)[1].lower()
+    rec_ext = rec.extension.lower()
+    if lib_ext and rec_ext and lib_ext == rec_ext:
+        sim += 0.02
+        reason = "ext_match"
+
+    # Size bonus
+    if lib.size_bytes and rec.size_bytes:
+        delta = abs(lib.size_bytes - rec.size_bytes)
+        if delta <= 8192 or delta / max(lib.size_bytes, 1) <= 0.01:
+            sim += 0.03
+            if reason == "base":
+                reason = "size_match"
+            else:
+                reason = reason + "+size"
+
+    # Clamp to [0, 1]
+    if sim < 0.0:
+        sim = 0.0
+    if sim > 1.0:
+        sim = 1.0
+
+    return sim, reason
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
 
 
 def match_databases(
     library_db: Path,
     recovered_db: Path,
-    output_csv: Path,
-) -> list[MatchCandidate]:
-    """Match scanned library entries with recovered candidates."""
+    out_csv: Path,
+    min_similarity: float = 0.80,
+    max_candidates: int = 500,
+) -> None:
+    """
+    Match entries from `library_db` to `recovered_db` and write CSV.
 
-    library_entries = load_library_entries(library_db)
-    recovery_entries = load_recovery_entries(recovered_db)
-    used_recoveries: set[str] = set()
-    matches: list[MatchCandidate] = []
+    Output CSV schema (compatible with existing tooling):
 
-    for lib in library_entries:
-        best_candidate: Optional[MatchCandidate] = None
-        for rec in recovery_entries:
-            score, name_score, size_delta = _compute_score(lib, rec)
-            if score < 0.35:
-                continue
-            classification = _quality_classification(
-                lib,
-                rec,
-                score,
-                size_delta,
-            )
-            candidate = MatchCandidate(
-                library_path=lib.path,
-                recovery_path=rec.source_path,
-                recovery_name=rec.name,
-                score=score,
-                classification=classification,
-                filename_similarity=name_score,
-                size_difference=size_delta,
-                fingerprint_similarity=None,
-            )
-            if (
-                best_candidate is None
-                or candidate.score > best_candidate.score
-            ):
-                best_candidate = candidate
-        if best_candidate is not None:
-            matches.append(best_candidate)
-            if best_candidate.recovery_path:
-                used_recoveries.add(best_candidate.recovery_path)
-        else:
-            matches.append(
-                MatchCandidate(
-                    library_path=lib.path,
-                    recovery_path=None,
-                    recovery_name=None,
-                    score=0.0,
-                    classification="missing",
-                    filename_similarity=0.0,
-                    size_difference=None,
-                    fingerprint_similarity=None,
+        library_path,recovered_path,similarity,reason
+    """
+    LOGGER.info("Loading library DB: %s", library_db)
+    library_entries = _load_library_entries(library_db)
+
+    LOGGER.info("Loading recovered DB: %s", recovered_db)
+    recovered_entries = _load_recovered_entries(recovered_db)
+
+    if not recovered_entries:
+        LOGGER.warning("No recovered entries found; nothing to match.")
+        # Still write an empty CSV with header for downstream tools
+        utils.ensure_parent_directory(out_csv)
+        with out_csv.open("w", newline="", encoding="utf8") as f:
+            writer = csv.writer(f)
+            writer.writerow(["library_path", "recovered_path", "similarity", "reason"])
+        return
+
+    token_index = _build_token_index(recovered_entries)
+
+    utils.ensure_parent_directory(out_csv)
+    total_matches = 0
+    processed = 0
+
+    with out_csv.open("w", newline="", encoding="utf8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["library_path", "recovered_path", "similarity", "reason"])
+
+        for lib in library_entries:
+            processed += 1
+            if processed % 500 == 0:
+                LOGGER.info(
+                    "Matching progress: %d/%d (matches so far=%d)",
+                    processed,
+                    len(library_entries),
+                    total_matches,
                 )
-            )
 
-    for rec in recovery_entries:
-        if rec.source_path in used_recoveries:
-            continue
-        matches.append(
-            MatchCandidate(
-                library_path="",
-                recovery_path=rec.source_path,
-                recovery_name=rec.name,
-                score=0.0,
-                classification="orphan",
-                filename_similarity=0.0,
-                size_difference=None,
-                fingerprint_similarity=None,
+            candidates = _filter_candidates(
+                lib, token_index, recovered_entries, max_candidates=max_candidates
             )
-        )
+            if not candidates:
+                continue
 
-    utils.ensure_parent_directory(output_csv)
-    with output_csv.open("w", encoding="utf8", newline="") as handle:
-        writer = csv.DictWriter(
-            handle,
-            fieldnames=[
-                "library_path",
-                "recovery_path",
-                "recovery_name",
-                "score",
-                "classification",
-                "filename_similarity",
-                "size_difference",
-                "fingerprint_similarity",
-            ],
-        )
-        writer.writeheader()
-        for match in matches:
+            best_rec: RecEntry | None = None
+            best_sim = 0.0
+            best_reason = "none"
+
+            for rec in candidates:
+                sim, reason = _score_match(lib, rec)
+                if sim > best_sim:
+                    best_sim = sim
+                    best_reason = reason
+                    best_rec = rec
+
+            if best_rec is None:
+                continue
+
+            if best_sim < min_similarity:
+                continue
+
             writer.writerow(
-                {
-                    "library_path": match.library_path,
-                    "recovery_path": match.recovery_path or "",
-                    "recovery_name": match.recovery_name or "",
-                    "score": f"{match.score:.3f}",
-                    "classification": match.classification,
-                    "filename_similarity": f"{match.filename_similarity:.3f}",
-                    "size_difference": (
-                        match.size_difference
-                        if match.size_difference is not None
-                        else ""
-                    ),
-                    "fingerprint_similarity": (
-                        ""
-                        if match.fingerprint_similarity is None
-                        else f"{match.fingerprint_similarity:.3f}"
-                    ),
-                }
+                [
+                    lib.path,
+                    best_rec.source_path,
+                    f"{best_sim:.3f}",
+                    "top1" if best_reason == "base" else best_reason,
+                ]
             )
-    LOGGER.info("Wrote %s matches to %s", len(matches), output_csv)
-    return matches
+            total_matches += 1
+
+    LOGGER.info(
+        "Matching complete: processed=%d library entries; "
+        "total_matches=%d; avg_candidates_per_entry=%.2f",
+        len(library_entries),
+        total_matches,
+        max_candidates if library_entries else 0.0,
+    )
+    LOGGER.info("Wrote %d matches to %s", total_matches, out_csv)

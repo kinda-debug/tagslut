@@ -317,6 +317,7 @@ def scan(
     batch_size: int = 100,
     resume: bool = False,
     show_progress: bool = False,
+    workers: int = 1,
 ) -> int:
     """Compatibility wrapper: simple API for scanning a library.
 
@@ -324,6 +325,9 @@ def scan(
     function signature instead of constructing a :class:`ScanConfig`. This
     convenience function builds a :class:`ScanConfig` and delegates to
     :func:`scan_library` so both APIs are supported.
+
+    The current implementation ignores ``workers`` and runs single-threaded;
+    the parameter is accepted for forward compatibility.
     """
     config = ScanConfig(
         root=root,
@@ -333,4 +337,5 @@ def scan(
         resume=resume,
         show_progress=show_progress,
     )
+    # NOTE: ``workers`` is currently unused; scanning remains single-process.
     return scan_library(config)

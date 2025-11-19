@@ -30,3 +30,4 @@ artifacts/db/library.db-shm
 artifacts/db/library.db-wal
 artifacts/db/library.db
 artifacts/db/library.db
+artifacts/reports/quality_global.csv

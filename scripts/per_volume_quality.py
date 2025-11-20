@@ -101,8 +101,12 @@ def main() -> None:
     conn.close()
 
     with open(out_csv, "w", newline="", encoding="utf-8") as f:
-        w = csv.writer(f)
-        w.writerow([
+        writer = csv.writer(
+            f,
+            quoting=csv.QUOTE_ALL,
+            escapechar='\\'
+        )
+        writer.writerow([
             "path","action","reason","track_key","score",
             "codec","bit_rate","sample_rate","bit_depth","duration"
         ])
@@ -113,7 +117,7 @@ def main() -> None:
         for key, rows in groups.items():
             if len(rows) == 1:
                 r = rows[0]
-                w.writerow([
+                writer.writerow([
                     r["path"], "KEEP", "only_entry_for_track_key",
                     key, str(score(r)), get_codec(r["path"]),
                     r["bit_rate"] or "", r["sample_rate"] or "",
@@ -135,7 +139,7 @@ def main() -> None:
                     reason = "worse_than_best_in_group"
                     move += 1
 
-                w.writerow([
+                writer.writerow([
                     r["path"], action, reason, key,
                     str(score(r)), get_codec(r["path"]),
                     r["bit_rate"] or "", r["sample_rate"] or "",

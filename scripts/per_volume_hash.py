@@ -102,8 +102,12 @@ def main() -> None:
     conn.close()
 
     with open(out_csv, "w", newline="", encoding="utf-8") as f:
-        w = csv.writer(f)
-        w.writerow([
+        writer = csv.writer(
+            f,
+            quoting=csv.QUOTE_ALL,
+            escapechar='\\'
+        )
+        writer.writerow([
             "path","action","reason","checksum","group_size",
             "codec","bit_rate","sample_rate","bit_depth","duration"
         ])
@@ -116,7 +120,7 @@ def main() -> None:
 
             if group_size == 1:
                 r = rows[0]
-                w.writerow([
+                writer.writerow([
                     r["path"], "KEEP", "only_entry_for_checksum", checksum,
                     group_size, get_codec(r["path"]),
                     r["bit_rate"] or "", r["sample_rate"] or "",
@@ -137,7 +141,7 @@ def main() -> None:
                 else:
                     move_count += 1
 
-                w.writerow([
+                writer.writerow([
                     r["path"], act, reason, checksum, group_size,
                     get_codec(r["path"]),
                     r["bit_rate"] or "", r["sample_rate"] or "",

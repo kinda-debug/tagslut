@@ -6,7 +6,7 @@ import sqlite3
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
 
-DB_PATH = "artifacts/db/library.db"
+DB_PATH = "artifacts/db/library_final.db"
 GEMINI_LIST = "/Volumes/dotad/duplicates selected by gemini.txt"
 OUT_CSV = "artifacts/reports/gemini_dupe_analysis.csv"
 

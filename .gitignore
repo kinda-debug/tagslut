@@ -31,3 +31,4 @@ artifacts/db/library.db-wal
 artifacts/db/library.db
 artifacts/db/library.db
 artifacts/reports/quality_global.csv
+artifacts/db/library.db.bak.20251120T165851Z

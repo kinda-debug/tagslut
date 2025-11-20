@@ -3,71 +3,160 @@ import argparse
 import csv
 import os
 import sqlite3
+from collections import defaultdict
 
-def load_music_checksums(db_path, music_root, verbose=False):
+"""
+FULL RECONCILIATION SCRIPT
+--------------------------
+This script performs a complete checksum-based reconciliation between:
+  • DB (library_final.db)
+  • Gemini-selected duplicate paths
+  • The canonical MUSIC root
+
+It answers:
+  • Is this Gemini file in the DB?
+  • What is its checksum?
+  • What other files share that checksum?
+  • Are those copies inside MUSIC?
+  • What is the safest action?
+
+Outputs a CSV with:
+  gemini_path, checksum, status, recommendation, num_total_copies,
+  num_music_copies, num_outside_copies, music_paths, other_paths
+"""
+
+
+def load_db(db_path, verbose=False):
     if verbose:
-        print(f"[INFO] Loading MUSIC rows from DB: {db_path}")
-        print(f"[INFO] MUSIC root = {music_root}")
+        print(f"[INFO] Loading DB: {db_path}")
+
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
-    # DEBUG: show first 5 DB paths
-    dbg = cur.execute("SELECT path FROM library_files LIMIT 5;").fetchall()
-    print("[DEBUG] First DB paths:", [d[0] for d in dbg])
-
-    q = """
-        SELECT path, checksum
-        FROM library_files
-        WHERE path LIKE ?;
-    """
-
-    rows = cur.execute(q, (music_root.rstrip("/") + "/%",)).fetchall()
+    rows = cur.execute("SELECT path, checksum FROM library_files;").fetchall()
     conn.close()
 
+    path_to_checksum = {}
+    checksum_to_paths = defaultdict(list)
+
+    for p, ch in rows:
+        path_to_checksum[p] = ch
+        checksum_to_paths[ch].append(p)
+
     if verbose:
-        print(f"[INFO] Loaded {len(rows)} rows for MUSIC root")
+        print(f"[INFO] Loaded {len(rows)} DB rows")
+        print(f"[INFO] Unique checksums: {len(checksum_to_paths)}")
 
-    return rows
+    return path_to_checksum, checksum_to_paths
 
 
-def load_gemini_list(gemini_path, verbose=False):
+def load_gemini_list(path, verbose=False):
     if verbose:
-        print(f"[INFO] Reading Gemini list: {gemini_path}")
-    paths = []
-    with open(gemini_path, "r") as f:
+        print(f"[INFO] Reading Gemini file: {path}")
+
+    out = []
+    with open(path, "r") as f:
         for line in f:
             line = line.strip()
             if line:
-                paths.append(line)
-    if verbose:
-        print(f"[INFO] Loaded {len(paths)} Gemini paths")
-    return paths
-
-
-def analyze(db_path, gemini_list, music_root, out_csv, verbose=False):
+                out.append(line)
 
     if verbose:
-        print("=== ANALYZING GEMINI DUPLICATE LIST ===")
+        print(f"[INFO] Gemini paths loaded: {len(out)}")
+    return out
 
-    # load DB rows
-    music_rows = load_music_checksums(db_path, music_root, verbose=verbose)
-    if not music_rows:
-        print("[ERROR] No rows for MUSIC found in the DB. Aborting.")
-        return
 
-    # checksum index
-    checksum_map = {}
-    for p, ch in music_rows:
-        checksum_map.setdefault(ch, []).append(p)
+def classify(gpath, music_root, checksum, all_paths):
+    """
+    Classify a Gemini entry and produce an action recommendation.
 
+    all_paths = all DB paths sharing this checksum.
+    """
+    music_root = music_root.rstrip("/") + "/"
+    in_music = [p for p in all_paths if p.startswith(music_root)]
+    outside = [p for p in all_paths if not p.startswith(music_root)]
+
+    g_in_music = gpath.startswith(music_root)
+
+    num_total = len(all_paths)
+    num_music = len(in_music)
+    num_outside = len(outside)
+
+    # SAFE DECISION LOGIC
+    if checksum == "":
+        return (
+            "NOT_IN_DB",
+            "keep",
+            num_total,
+            num_music,
+            num_outside,
+            ";".join(in_music),
+            ";".join([p for p in all_paths if p != gpath]),
+        )
+
+    if num_total == 1:
+        if g_in_music:
+            return (
+                "UNIQUE_IN_MUSIC",
+                "keep",
+                num_total,
+                num_music,
+                num_outside,
+                ";".join(in_music),
+                "",
+            )
+        else:
+            return (
+                "UNIQUE_OUTSIDE_MUSIC",
+                "move_to_music",
+                num_total,
+                num_music,
+                num_outside,
+                ";".join(in_music),
+                "",
+            )
+
+    # Multiple copies
+    if g_in_music:
+        return (
+            "DUPLICATE_IN_MUSIC",
+            "remove_other_copies_only",
+            num_total,
+            num_music,
+            num_outside,
+            ";".join(in_music),
+            ";".join([p for p in all_paths if p != gpath]),
+        )
+    else:
+        # Gemini path is outside MUSIC
+        if num_music >= 1:
+            return (
+                "DUPLICATE_OUTSIDE_MUSIC",
+                "safe_to_delete",
+                num_total,
+                num_music,
+                num_outside,
+                ";".join(in_music),
+                ";".join([p for p in all_paths if p != gpath]),
+            )
+        else:
+            # duplicate outside music but no canonical copy exists
+            return (
+                "NO_MUSIC_COPY_EXISTS",
+                "review",
+                num_total,
+                num_music,
+                num_outside,
+                "",
+                ";".join([p for p in all_paths if p != gpath]),
+            )
+
+
+def analyze(db_path, gemini_path, music_root, out_csv, verbose=False):
     if verbose:
-        print(f"[INFO] Unique checksums in MUSIC: {len(checksum_map)}")
+        print("=== FULL RECONCILIATION START ===")
 
-    # load Gemini paths
-    gemini_paths = load_gemini_list(gemini_list, verbose=verbose)
-
-    # open DB again to fetch checksums for GEMINI paths
-    conn = sqlite3.connect(db_path)
-    cur = conn.cursor()
+    path_to_checksum, checksum_to_paths = load_db(db_path, verbose=verbose)
+    gemini_paths = load_gemini_list(gemini_path, verbose=verbose)
 
     results = []
 
@@ -75,49 +164,59 @@ def analyze(db_path, gemini_list, music_root, out_csv, verbose=False):
         if verbose:
             print(f"[CHECK] {gpath}")
 
-        q = """
-            SELECT checksum
-            FROM library_files
-            WHERE path = ?;
-        """
-        row = cur.execute(q, (gpath,)).fetchone()
+        checksum = path_to_checksum.get(gpath, "")
 
-        if row is None:
-            results.append([gpath, "", "NOT_IN_DB", ""])
-            continue
-
-        checksum = row[0]
-        matches = checksum_map.get(checksum, [])
-
-        if len(matches) == 0:
-            results.append([gpath, checksum, "UNIQUE", ""])
-        elif len(matches) == 1:
-            results.append([gpath, checksum, "SINGLE_MATCH", matches[0]])
+        if checksum == "":
+            # not in DB
+            status, rec, nt, nm, no, mus, oth = classify(
+                gpath, music_root, "", []
+            )
         else:
-            # multiple matches → duplicates
-            targets = ";".join(matches)
-            results.append([gpath, checksum, "MULTI_MATCH", targets])
+            all_paths = checksum_to_paths[checksum]
+            status, rec, nt, nm, no, mus, oth = classify(
+                gpath, music_root, checksum, all_paths
+            )
 
-    conn.close()
+        results.append([
+            gpath,
+            checksum,
+            status,
+            rec,
+            nt,
+            nm,
+            no,
+            mus,
+            oth
+        ])
 
-    # write CSV
     os.makedirs(os.path.dirname(out_csv), exist_ok=True)
     with open(out_csv, "w", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["gemini_path", "checksum", "status", "matches"])
+        w.writerow([
+            "gemini_path",
+            "checksum",
+            "status",
+            "recommendation",
+            "num_total_copies",
+            "num_music_copies",
+            "num_outside_copies",
+            "music_paths",
+            "other_paths"
+        ])
         w.writerows(results)
 
-    print(f"[DONE] Wrote report to: {out_csv}")
+    print(f"[DONE] Reconciliation CSV written to: {out_csv}")
+    print("=== FULL RECONCILIATION COMPLETE ===")
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--db", required=True)
-    parser.add_argument("--gemini-list", required=True)
-    parser.add_argument("--music-root", required=True)
-    parser.add_argument("--out", required=True)
-    parser.add_argument("--verbose", action="store_true")
-    args = parser.parse_args()
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--db", required=True)
+    ap.add_argument("--gemini-list", required=True)
+    ap.add_argument("--music-root", required=True)
+    ap.add_argument("--out", required=True)
+    ap.add_argument("--verbose", action="store_true")
+    args = ap.parse_args()
 
     analyze(
         args.db,

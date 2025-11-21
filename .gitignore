@@ -22,7 +22,7 @@ env/
 # OS
 .DS_Store
 Thumbs.db
-
+artifacts
 artifacts/reports/recovery_list.csv
 artifacts/db/recovered_candidates.db
 .gitignore

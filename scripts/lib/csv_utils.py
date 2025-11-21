@@ -4,7 +4,7 @@ from __future__ import annotations
 import csv
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator, Sequence
+from typing import Any, Iterator, Sequence
 
 CSV_ENCODING = "utf-8"
 CSV_QUOTING = csv.QUOTE_ALL
@@ -25,7 +25,7 @@ def dict_writer(
     fieldnames: Sequence[str],
     *,
     write_header: bool = True,
-    **kwargs,
+    **kwargs: Any,
 ) -> Iterator[csv.DictWriter]:
     """Context manager that yields a DictWriter configured with safe quoting."""
     with open(path, "w", newline="", encoding=CSV_ENCODING) as fh:

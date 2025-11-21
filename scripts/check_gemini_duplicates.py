@@ -1,13 +1,28 @@
 #!/usr/bin/env python3
 import argparse
-import csv
 import os
-import sqlite3
 import hashlib
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
 
+from scripts.lib import db as libdb
+from scripts.lib.csv_utils import dict_reader, dict_writer
+
 DB_DEFAULT = "artifacts/db/library_final.db"
+
+OUTPUT_FIELDNAMES = [
+    "gemini_path",
+    "exists_on_disk",
+    "in_db",
+    "checksum",
+    "n_db_copies",
+    "n_other_copies",
+    "n_music_copies",
+    "best_music_path",
+    "decision",
+    "reason",
+    "delete_path",
+]
 
 
 @dataclass
@@ -30,19 +45,7 @@ def compute_checksum(path: str, blocksize: int = 65536) -> str:
 
 
 def load_library_rows(db_path: str) -> Tuple[Dict[str, FileRow], Dict[str, List[FileRow]]]:
-    """Load all rows from library_files into:
-      - path_index: path -> FileRow
-      - checksum_index: checksum -> [FileRow,...]
-    """
-    conn = sqlite3.connect(db_path)
-    cur = conn.cursor()
-
-    cur.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='library_files';"
-    )
-    if cur.fetchone() is None:
-        raise SystemExit("ERROR: table 'library_files' not found in DB.")
-
+    """Load all rows from library_files into indexes for quick lookup."""
     query = """
         SELECT path, checksum,
                COALESCE(duration, 0.0)
@@ -50,8 +53,13 @@ def load_library_rows(db_path: str) -> Tuple[Dict[str, FileRow], Dict[str, List[
         WHERE checksum IS NOT NULL
     """
 
-    rows = cur.execute(query).fetchall()
-    conn.close()
+    with libdb.connect_context(db_path) as conn:
+        table_check = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='library_files';"
+        )
+        if table_check.fetchone() is None:
+            raise SystemExit("ERROR: table 'library_files' not found in DB.")
+        rows = conn.execute(query).fetchall()
 
     path_index: Dict[str, FileRow] = {}
     checksum_index: Dict[str, List[FileRow]] = {}

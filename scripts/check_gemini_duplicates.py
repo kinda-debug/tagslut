@@ -84,7 +84,6 @@ def classify_entry(
     analysis_row: Dict[str, str],
     path_index: Dict[str, FileRow],
     checksum_index: Dict[str, List[FileRow]],
-    duration_tolerance: float,
     verbose: bool,
 ) -> Dict[str, str]:
     """Classify a single Gemini entry using DB-level reconciliation.
@@ -130,11 +129,16 @@ def classify_entry(
                 checksum = compute_checksum(gemini_path)
                 if verbose:
                     print(f"[CHECKSUM] computed for {gemini_path}: {checksum}")
-            except Exception as e:
+            except OSError as exc:
                 out["decision"] = "KEEP_NO_DB_ROW"
-                out["reason"] = f"File exists but checksum computation failed: {e}"
+                out["reason"] = (
+                    "File exists but checksum computation failed: "
+                    f"{exc}"
+                )
                 if verbose:
-                    print(f"[KEEP] {gemini_path} : checksum computation failed: {e}")
+                    print(
+                        f"[KEEP] {gemini_path} : checksum computation failed: {exc}"
+                    )
                 return out
 
         out["checksum"] = checksum
@@ -260,29 +264,17 @@ def reconcile(
     verbose: bool,
 ) -> None:
     print("=== RECONCILING GEMINI LIST AGAINST DB (GLOBAL) ===")
+    print(
+        f"Duration tolerance (reserved for future use): "
+        f"{duration_tolerance:.1f} seconds"
+    )
     path_index, checksum_index = load_library_rows(db_path)
 
     os.makedirs(os.path.dirname(out_csv), exist_ok=True)
 
-    with open(analysis_csv, "r", encoding="utf-8") as f_in, open(
-        out_csv, "w", newline="", encoding="utf-8"
-    ) as f_out:
-        reader = csv.DictReader(f_in)
-        fieldnames = [
-            "gemini_path",
-            "exists_on_disk",
-            "in_db",
-            "checksum",
-            "n_db_copies",
-            "n_other_copies",
-            "n_music_copies",
-            "best_music_path",
-            "decision",
-            "reason",
-            "delete_path",
-        ]
-        writer = csv.DictWriter(f_out, fieldnames=fieldnames)
-        writer.writeheader()
+    with dict_reader(analysis_csv) as reader, dict_writer(
+        out_csv, OUTPUT_FIELDNAMES
+    ) as writer:
 
         total = 0
         n_missing = 0
@@ -306,7 +298,6 @@ def reconcile(
                 row,
                 path_index,
                 checksum_index,
-                duration_tolerance=duration_tolerance,
                 verbose=verbose,
             )
             writer.writerow(result)

@@ -188,10 +188,11 @@ Additional workflow documentation lives in:
 - [`docs/`](docs/) – architecture diagrams and historical context.
 
 Legacy tooling, experimental scripts, and prior prototypes have been archived
-under [`dedupe/ARCHIVE/`](dedupe/ARCHIVE/) for historical reference. The new
-package structure under `dedupe/` is the authoritative codebase; archived files
-should not be modified except when adding context about their superseded
-behaviour.
+under [`dedupe/ARCHIVE/`](dedupe/ARCHIVE/) for historical reference. Active
+helpers live under `scripts/` and historical helpers now reside in
+`scripts/legacy/`. See [`docs/script_inventory.md`](docs/script_inventory.md) for
+a current inventory, the decision of what remains archived, and the ongoing
+refactoring plan.
 
 Contributions should update these documents whenever CLI behaviour or schemas
 change.

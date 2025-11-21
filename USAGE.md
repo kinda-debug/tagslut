@@ -101,3 +101,9 @@ flake8 dedupe
 ```
 
 Run both commands before committing changes or opening a pull request.
+
+## Legacy scripts and helpers
+
+Root-level scripts are no longer run from the workspace root.  Any older helpers
+now live in `scripts/legacy/` and are documented (with their status) in
+[`docs/script_inventory.md`](docs/script_inventory.md).

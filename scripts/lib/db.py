@@ -4,7 +4,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from pathlib import Path
 import sqlite3
-from typing import Iterable, Iterator, Sequence
+from typing import Iterator, Sequence
 
 DEFAULT_DB = Path("artifacts/db/library.db")
 
@@ -29,7 +29,7 @@ def connect_context(db_path: Path | str = DEFAULT_DB) -> Iterator[sqlite3.Connec
     conn = connect(db_path)
     try:
         yield conn
-n    finally:
+    finally:
         conn.close()
 
 
@@ -42,7 +42,8 @@ def iter_library_rows(
     order_by: str | None = None,
 ) -> Iterator[sqlite3.Row]:
     """Yield rows from ``library_files`` optionally filtered by root/checksum."""
-    cols = ", ".join(columns) if columns else "path, checksum, duration, sample_rate, bit_rate, bit_depth"
+    default_columns = "path, checksum, duration, sample_rate, bit_rate, bit_depth"
+    cols = ", ".join(columns) if columns else default_columns
     query = f"SELECT {cols} FROM library_files"
     filters: list[str] = []
     params: list[str] = []

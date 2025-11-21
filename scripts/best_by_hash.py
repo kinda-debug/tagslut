@@ -21,8 +21,9 @@ Only rows with action == "MOVE" will be acted on by move_by_csv.sh.
 import argparse
 import csv
 import os
-import sqlite3
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple
+
+from scripts.lib import db as libdb
 
 
 def get_codec_from_path(path: str) -> str:
@@ -64,7 +65,7 @@ def select_keeper_for_group(rows: List[Dict]) -> Dict:
     - Then prefer longer duration,
     - Then lexicographically smallest path (deterministic).
     """
-    def key(row: Dict):
+    def key(row: Dict) -> Tuple[int, float, str]:
         ext = get_codec_from_path(row["path"])
         return (
             codec_rank(ext),
@@ -94,13 +95,11 @@ def main() -> None:
 
     os.makedirs(os.path.dirname(out_csv), exist_ok=True)
 
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
-
-    # Only consider rows with non-null, non-empty checksum
-    cur.execute(
-        """
+    groups: Dict[str, List[Dict]] = {}
+    count = 0
+    with libdb.connect_context(db_path) as conn:
+        cur = conn.execute(
+            """
         SELECT
             path,
             checksum,
@@ -112,28 +111,25 @@ def main() -> None:
         WHERE checksum IS NOT NULL
           AND TRIM(checksum) != ''
         """
-    )
-
-    groups: Dict[str, List[Dict]] = {}
-    count = 0
-    for row in cur:
-        checksum = row["checksum"]
-        d = {
-            "path": row["path"],
-            "checksum": checksum,
-            "duration": row["duration"],
-            "sample_rate": row["sample_rate"],
-            "bit_rate": row["bit_rate"],
-            "bit_depth": row["bit_depth"],
-        }
-        groups.setdefault(checksum, []).append(d)
-        count += 1
-
-    conn.close()
+        )
+        for row in cur:
+            checksum = row["checksum"]
+            d = {
+                "path": row["path"],
+                "checksum": checksum,
+                "duration": row["duration"],
+                "sample_rate": row["sample_rate"],
+                "bit_rate": row["bit_rate"],
+                "bit_depth": row["bit_depth"],
+            }
+            groups.setdefault(checksum, []).append(d)
+            count += 1
 
     print(f"Loaded {count} rows with non-empty checksum.")
     print(f"Unique checksum groups: {len(groups)}")
 
+    total_keep = 0
+    total_move = 0
     with open(out_csv, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(
@@ -151,8 +147,6 @@ def main() -> None:
             ]
         )
 
-        total_keep = 0
-        total_move = 0
         for checksum, rows in groups.items():
             group_size = len(rows)
             if group_size == 1:

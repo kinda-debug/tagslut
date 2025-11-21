@@ -10,6 +10,7 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Iterable, Iterator, Optional
 import os
+import unicodedata
 
 from . import fingerprints, metadata, utils
 
@@ -46,6 +47,7 @@ class ScanConfig:
         include_fingerprints: whether to request Chromaprint fingerprints
         batch_size: number of files per DB upsert
         resume: skip files already indexed and unchanged
+        resume_safe: like resume, but ensures batches with any scanned files are skipped safely
         show_progress: display a progress bar during scanning
     """
 
@@ -54,6 +56,8 @@ class ScanConfig:
     include_fingerprints: bool = False
     batch_size: int = 100
     resume: bool = False
+    resume_safe: bool = False
+    nfd_normalise: bool = True
     show_progress: bool = False
 
 
@@ -111,7 +115,7 @@ def prepare_record(path: Path, include_fingerprints: bool) -> ScanRecord:
         else None
     )
     return ScanRecord(
-        path=utils.normalise_path(str(path)),
+        path=utils.normalise_path(unicodedata.normalize("NFC", str(path))),
         size_bytes=meta.size_bytes,
         mtime=path.stat().st_mtime,
         checksum=checksum,
@@ -203,7 +207,7 @@ def scan_library(config: ScanConfig) -> int:
     # normalised path and record the size and mtime to allow a cheap
     # unchanged-file check without computing checksums.
     existing_index: dict[str, tuple[int, float]] = {}
-    if config.resume and config.database.exists():
+    if (config.resume or config.resume_safe) and config.database.exists():
         with db.connect() as connection:
             initialise_database(connection)
             cursor = connection.execute(
@@ -242,7 +246,25 @@ def scan_library(config: ScanConfig) -> int:
                 except OSError:
                     # skip unreadable files
                     continue
-                if config.resume:
+                if config.resume_safe:
+                    batch.append(path)
+                    if len(batch) >= config.batch_size:
+                        # If any file in batch is in existing_index with matching size and mtime, skip whole batch
+                        skip_batch = False
+                        for p in batch:
+                            np = utils.normalise_path(str(p))
+                            existing = existing_index.get(np)
+                            if existing is not None:
+                                size, mtime = existing
+                                if size == p.stat().st_size and abs(mtime - p.stat().st_mtime) < 1.0:
+                                    skip_batch = True
+                                    break
+                        if skip_batch:
+                            batch = []
+                            continue
+                        yield batch
+                        batch = []
+                elif config.resume:
                     existing = existing_index.get(npath)
                     if existing is not None:
                         size, mtime = existing
@@ -254,12 +276,30 @@ def scan_library(config: ScanConfig) -> int:
                         ):
                             # unchanged; skip
                             continue
-                batch.append(path)
-                if len(batch) >= config.batch_size:
-                    yield batch
-                    batch = []
+                    batch.append(path)
+                    if len(batch) >= config.batch_size:
+                        yield batch
+                        batch = []
+                else:
+                    batch.append(path)
+                    if len(batch) >= config.batch_size:
+                        yield batch
+                        batch = []
             if batch:
-                yield batch
+                if config.resume_safe:
+                    skip_batch = False
+                    for p in batch:
+                        np = utils.normalise_path(str(p))
+                        existing = existing_index.get(np)
+                        if existing is not None:
+                            size, mtime = existing
+                            if size == p.stat().st_size and abs(mtime - p.stat().st_mtime) < 1.0:
+                                skip_batch = True
+                                break
+                    if not skip_batch:
+                        yield batch
+                else:
+                    yield batch
 
         # iterate batches with optional progress bar
         if config.show_progress:

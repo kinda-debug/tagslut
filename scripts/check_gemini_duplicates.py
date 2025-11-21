@@ -1,52 +1,53 @@
 #!/usr/bin/env python3
-import os
-import sys
+import argparse
 import csv
+import os
 import sqlite3
+import hashlib
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
 
-DB_PATH = "artifacts/db/library_final.db"
-GEMINI_LIST = "/Volumes/dotad/duplicates selected by gemini.txt"
-OUT_CSV = "artifacts/reports/gemini_dupe_analysis.csv"
+DB_DEFAULT = "artifacts/db/library_final.db"
 
 
 @dataclass
 class FileRow:
     path: str
     checksum: str
-    bit_rate: int
-    sample_rate: int
-    bit_depth: int
     duration: float
 
 
-def load_music_rows(db_path: str) -> Tuple[Dict[str, FileRow], Dict[str, List[FileRow]]]:
+def compute_checksum(path: str, blocksize: int = 65536) -> str:
     """
-    Load all rows for /Volumes/dotad/MUSIC/* from library_files into:
+    Compute SHA1 checksum for a file on disk.
+    Adjust blocksize if you want, but 64KB is reasonable.
+    """
+    h = hashlib.sha1()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(blocksize), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def load_library_rows(db_path: str) -> Tuple[Dict[str, FileRow], Dict[str, List[FileRow]]]:
+    """Load all rows from library_files into:
       - path_index: path -> FileRow
       - checksum_index: checksum -> [FileRow,...]
     """
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
 
-    # Verify the table exists
     cur.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='library_files';"
     )
     if cur.fetchone() is None:
-        print("ERROR: table 'library_files' not found in DB.", file=sys.stderr)
-        sys.exit(1)
+        raise SystemExit("ERROR: table 'library_files' not found in DB.")
 
     query = """
         SELECT path, checksum,
-               COALESCE(bit_rate, 0),
-               COALESCE(sample_rate, 0),
-               COALESCE(bit_depth, 0),
                COALESCE(duration, 0.0)
         FROM library_files
-        WHERE path LIKE '/Volumes/dotad/MUSIC/%'
-          AND checksum IS NOT NULL
+        WHERE checksum IS NOT NULL
     """
 
     rows = cur.execute(query).fetchall()
@@ -55,212 +56,332 @@ def load_music_rows(db_path: str) -> Tuple[Dict[str, FileRow], Dict[str, List[Fi
     path_index: Dict[str, FileRow] = {}
     checksum_index: Dict[str, List[FileRow]] = {}
 
-    for path, checksum, br, sr, bd, dur in rows:
-        fr = FileRow(
-            path=path,
-            checksum=checksum,
-            bit_rate=int(br) if br is not None else 0,
-            sample_rate=int(sr) if sr is not None else 0,
-            bit_depth=int(bd) if bd is not None else 0,
-            duration=float(dur) if dur is not None else 0.0,
-        )
+    for path, checksum, dur in rows:
+        fr = FileRow(path=path, checksum=checksum, duration=float(dur or 0.0))
         path_index[path] = fr
         checksum_index.setdefault(checksum, []).append(fr)
 
-    print(f"Loaded {len(rows)} rows from library_files under /Volumes/dotad/MUSIC")
-    print(f"Unique checksums in MUSIC: {len(checksum_index)}")
-
-    if not rows:
-        print(
-            "WARNING: No rows for /Volumes/dotad/MUSIC in DB. "
-            "Check that DB_PATH is correct and MUSIC was scanned.",
-            file=sys.stderr,
-        )
-
+    print(f"Loaded {len(rows)} rows from library_files (all roots)")
+    print(f"Unique checksums in DB: {len(checksum_index)}")
     return path_index, checksum_index
 
 
-def read_gemini_paths(txt_path: str) -> List[str]:
-    """
-    Read Gemini's duplicate list: assume one path per line.
-    Ignore blank lines and comment-like lines starting with '#'.
-    """
-    paths: List[str] = []
-    with open(txt_path, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            paths.append(line)
-    print(f"Gemini paths loaded: {len(paths)}")
-    return paths
+def is_in_music_root(path: str) -> bool:
+    """Return True if path is under the canonical MUSIC root."""
+    return path.startswith("/Volumes/dotad/MUSIC/")
 
 
-def quality_key(fr: FileRow) -> Tuple[int, int, int, float]:
+def classify_entry(
+    gemini_path: str,
+    analysis_row: Dict[str, str],
+    path_index: Dict[str, FileRow],
+    checksum_index: Dict[str, List[FileRow]],
+    duration_tolerance: float,
+    verbose: bool,
+) -> Dict[str, str]:
+    """Classify a single Gemini entry using DB-level reconciliation.
+
+    Returns a dict for CSV output with keys:
+      gemini_path, exists_on_disk, in_db, checksum, n_db_copies, n_other_copies,
+      n_music_copies, best_music_path, decision, reason, delete_path
     """
-    Higher is better on all fields.
-    """
-    return (fr.bit_depth, fr.sample_rate, fr.bit_rate, fr.duration)
+    exists = os.path.isfile(gemini_path)
+    exists_on_disk = "1" if exists else "0"
+
+    # Base output structure
+    out: Dict[str, str] = {
+        "gemini_path": gemini_path,
+        "exists_on_disk": exists_on_disk,
+        "in_db": "0",
+        "checksum": "",
+        "n_db_copies": "0",
+        "n_other_copies": "0",
+        "n_music_copies": "0",
+        "best_music_path": "",
+        "decision": "",
+        "reason": "",
+        "delete_path": "",
+    }
+
+    if not exists:
+        out["decision"] = "MISSING_ON_DISK"
+        out["reason"] = "Gemini path does not exist on disk"
+        if verbose:
+            print(f"[MISSING] {gemini_path}")
+        return out
+
+    # DB row for this exact path
+    fr = path_index.get(gemini_path)
+    if fr is None:
+        # Try checksum from analysis CSV
+        checksum = (analysis_row.get("checksum") or "").strip()
+
+        # If analysis has no checksum, compute it from disk now
+        if not checksum:
+            try:
+                checksum = compute_checksum(gemini_path)
+                if verbose:
+                    print(f"[CHECKSUM] computed for {gemini_path}: {checksum}")
+            except Exception as e:
+                out["decision"] = "KEEP_NO_DB_ROW"
+                out["reason"] = f"File exists but checksum computation failed: {e}"
+                if verbose:
+                    print(f"[KEEP] {gemini_path} : checksum computation failed: {e}")
+                return out
+
+        out["checksum"] = checksum
+
+        matches = checksum_index.get(checksum, [])
+        out["n_db_copies"] = str(len(matches))
+        if not matches:
+            out["decision"] = "KEEP_NO_DB_ROW"
+            out["reason"] = "Checksum has no matches in DB"
+            if verbose:
+                print(f"[KEEP] {gemini_path} : checksum {checksum} not found in DB")
+            return out
+
+        music_copies = [m for m in matches if is_in_music_root(m.path)]
+        out["n_music_copies"] = str(len(music_copies))
+
+        if music_copies:
+            best_music = music_copies[0]
+            out["best_music_path"] = best_music.path
+            out["decision"] = "SAFE_TO_DELETE"
+            out["reason"] = (
+                "Gemini file not in DB, checksum matches at least one file in MUSIC; "
+                "MUSIC copy treated as canonical"
+            )
+            out["delete_path"] = gemini_path
+            if verbose:
+                print(
+                    f"[SAFE] {gemini_path}\n"
+                    f"       -> canonical in MUSIC: {best_music.path}"
+                )
+            return out
+
+        # No MUSIC copies, but there are copies elsewhere in DB
+        out["decision"] = "KEEP_DUPES_NO_MUSIC"
+        out["reason"] = "Checksum matches only outside MUSIC; canonical not clear"
+        if verbose:
+            print(
+                f"[KEEP] {gemini_path} : checksum matches {len(matches)} DB rows, "
+                "none in MUSIC"
+            )
+        return out
+
+    # We have a DB row for the Gemini path
+    out["in_db"] = "1"
+    out["checksum"] = fr.checksum
+
+    matches = checksum_index.get(fr.checksum, [])
+    out["n_db_copies"] = str(len(matches))
+
+    # Exclude itself
+    others = [m for m in matches if m.path != fr.path]
+    out["n_other_copies"] = str(len(others))
+
+    music_copies = [m for m in others if is_in_music_root(m.path)]
+    out["n_music_copies"] = str(len(music_copies))
+    if music_copies:
+        best_music = music_copies[0]
+        out["best_music_path"] = best_music.path
+
+    # No other copies anywhere
+    if not others:
+        out["decision"] = "KEEP_UNIQUE"
+        out["reason"] = "No other DB rows share this checksum"
+        if verbose:
+            print(f"[KEEP] {gemini_path} : unique checksum in DB")
+        return out
+
+    # Other copies exist. Now branch on where Gemini lives.
+    if is_in_music_root(fr.path):
+        # Gemini file is itself under MUSIC
+        if music_copies:
+            out["decision"] = "KEEP_DUPES_IN_MUSIC"
+            out["reason"] = (
+                "Gemini file is in MUSIC and other MUSIC copies share the checksum; "
+                "manual review recommended"
+            )
+        else:
+            out["decision"] = "KEEP_IN_MUSIC"
+            out["reason"] = (
+                "Gemini file is in MUSIC and duplicates exist only outside MUSIC; "
+                "treat MUSIC copy as canonical"
+            )
+        if verbose:
+            print(
+                f"[KEEP] {gemini_path} : in MUSIC with {len(others)} other DB copies, "
+                f"{len(music_copies)} also in MUSIC"
+            )
+        return out
+
+    # Gemini file is NOT in MUSIC
+    if music_copies:
+        # Safe: at least one MUSIC copy exists
+        best_music = music_copies[0]
+        out["best_music_path"] = best_music.path
+        out["decision"] = "SAFE_TO_DELETE"
+        out["reason"] = (
+            "Gemini file is outside MUSIC, checksum matches at least one file in MUSIC; "
+            "MUSIC copy treated as canonical"
+        )
+        out["delete_path"] = gemini_path
+        if verbose:
+            print(
+                f"[SAFE] {gemini_path}\n"
+                f"       -> canonical in MUSIC: {best_music.path}"
+            )
+        return out
+
+    # Duplicates exist, but none in MUSIC
+    out["decision"] = "KEEP_DUPES_NO_MUSIC"
+    out["reason"] = "Duplicates exist only outside MUSIC; canonical not clear"
+    if verbose:
+        print(
+            f"[KEEP] {gemini_path} : {len(others)} other DB copies, none in MUSIC"
+        )
+    return out
 
 
-def analyze_gemini_duplicates(
-    db_path: str, gemini_list: str, out_csv: str
+def reconcile(
+    db_path: str,
+    analysis_csv: str,
+    out_csv: str,
+    duration_tolerance: float,
+    verbose: bool,
 ) -> None:
-    # Load DB view of MUSIC
-    print("=== ANALYZING GEMINI DUPLICATE LIST ===")
-    path_index, checksum_index = load_music_rows(db_path)
-
-    # If nothing loaded, stop here
-    if not path_index:
-        print("No MUSIC rows available in DB; aborting.")
-        return
-
-    # Load Gemini paths
-    gemini_paths = read_gemini_paths(gemini_list)
+    print("=== RECONCILING GEMINI LIST AGAINST DB (GLOBAL) ===")
+    path_index, checksum_index = load_library_rows(db_path)
 
     os.makedirs(os.path.dirname(out_csv), exist_ok=True)
-    out_f = open(out_csv, "w", newline="", encoding="utf-8")
-    writer = csv.writer(out_f)
-    writer.writerow(
-        [
+
+    with open(analysis_csv, "r", encoding="utf-8") as f_in, open(
+        out_csv, "w", newline="", encoding="utf-8"
+    ) as f_out:
+        reader = csv.DictReader(f_in)
+        fieldnames = [
             "gemini_path",
             "exists_on_disk",
             "in_db",
             "checksum",
-            "n_same_checksum_in_music",
-            "best_path_in_music",
-            "bit_depth",
-            "sample_rate",
-            "bit_rate",
-            "duration",
-            "decision",  # KEEP / DELETE_LOWER_QUALITY / NOT_IN_DB / NO_DUPES
+            "n_db_copies",
+            "n_other_copies",
+            "n_music_copies",
+            "best_music_path",
+            "decision",
             "reason",
+            "delete_path",
         ]
-    )
+        writer = csv.DictWriter(f_out, fieldnames=fieldnames)
+        writer.writeheader()
 
-    n_missing_disk = 0
-    n_not_in_db = 0
-    n_unique = 0
-    n_keep = 0
-    n_delete_lower = 0
+        total = 0
+        n_missing = 0
+        n_no_checksum = 0
+        n_safe = 0
+        n_in_music_root = 0
+        n_keep_unique = 0
+        n_keep_dupes_no_music = 0
+        n_keep_dupes_in_music = 0
+        n_keep_no_db_row = 0
 
-    for p in gemini_paths:
-        exists = os.path.isfile(p)
-        if not exists:
-            n_missing_disk += 1
-            writer.writerow(
-                [
-                    p,
-                    "0",
-                    "0",
-                    "",
-                    0,
-                    "",
-                    "",
-                    "",
-                    "",
-                    "",
-                    "MISSING_ON_DISK",
-                    "Gemini path does not exist on disk",
-                ]
+        for row in reader:
+            total += 1
+            gemini_path = row.get("gemini_path") or row.get("path") or ""
+            gemini_path = gemini_path.strip()
+            if not gemini_path:
+                continue
+
+            result = classify_entry(
+                gemini_path,
+                row,
+                path_index,
+                checksum_index,
+                duration_tolerance=duration_tolerance,
+                verbose=verbose,
             )
-            continue
+            writer.writerow(result)
 
-        fr = path_index.get(p)
-        if fr is None:
-            # file exists but is not in DB under /Volumes/dotad/MUSIC
-            n_not_in_db += 1
-            writer.writerow(
-                [
-                    p,
-                    "1",
-                    "0",
-                    "",
-                    0,
-                    "",
-                    "",
-                    "",
-                    "",
-                    "",
-                    "NOT_IN_DB",
-                    "File exists on disk but not in library_files for /Volumes/dotad/MUSIC",
-                ]
-            )
-            continue
+            decision = result["decision"]
+            if decision == "MISSING_ON_DISK":
+                n_missing += 1
+            elif decision == "SAFE_TO_DELETE":
+                n_safe += 1
+            elif decision == "KEEP_UNIQUE":
+                n_keep_unique += 1
+            elif decision == "KEEP_DUPES_NO_MUSIC":
+                n_keep_dupes_no_music += 1
+            elif decision == "KEEP_DUPES_IN_MUSIC":
+                n_keep_dupes_in_music += 1
+            elif decision in ("KEEP_IN_MUSIC", "KEEP_NO_DB_ROW"):
+                if decision == "KEEP_NO_DB_ROW":
+                    n_keep_no_db_row += 1
+                else:
+                    n_in_music_root += 1
 
-        # We have a DB row for this Gemini file
-        same = checksum_index.get(fr.checksum, [])
-        # Exclude itself from the other copies list
-        others = [x for x in same if x.path != fr.path]
+            if not result["checksum"]:
+                n_no_checksum += 1
 
-        if not others:
-            # No other copy in MUSIC with same checksum
-            n_unique += 1
-            writer.writerow(
-                [
-                    p,
-                    "1",
-                    "1",
-                    fr.checksum,
-                    1,
-                    fr.path,
-                    fr.bit_depth,
-                    fr.sample_rate,
-                    fr.bit_rate,
-                    fr.duration,
-                    "NO_DUPES",
-                    "No other file in /Volumes/dotad/MUSIC with the same checksum",
-                ]
-            )
-            continue
+    print("=== RECONCILIATION COMPLETE ===")
+    print(f"Output CSV:               {out_csv}")
+    print(f"Total Gemini entries:     {total}")
+    print(f"  Missing on disk:        {n_missing}")
+    print(f"  No checksum:            {n_no_checksum}")
+    print(f"  SAFE_TO_DELETE:         {n_safe}")
+    print(f"  IN_MUSIC_ROOT:          {n_in_music_root}")
+    print(f"  KEEP_UNIQUE:            {n_keep_unique}")
+    print(f"  KEEP_DUPES_NO_MUSIC:    {n_keep_dupes_no_music}")
+    print(f"  KEEP_DUPES_IN_MUSIC:    {n_keep_dupes_in_music}")
+    print(f"  KEEP_NO_DB_ROW:         {n_keep_no_db_row}")
+    print()
+    print("Rows with decision = SAFE_TO_DELETE have delete_path populated.")
+    print("You can feed this CSV to your delete_gemini_dupes.py script if it")
+    print("expects a delete_path column.")
 
-        # There are other copies in MUSIC with the same checksum
-        # Find best-quality among *all* copies (including this one)
-        candidates = same
-        best = max(candidates, key=quality_key)
 
-        if best.path == fr.path:
-            # This Gemini file is the best version
-            n_keep += 1
-            decision = "KEEP"
-            reason = "This Gemini file has the best quality among all same-checksum copies in /Volumes/dotad/MUSIC"
-        else:
-            # This Gemini file is a lower-quality duplicate
-            n_delete_lower += 1
-            decision = "DELETE_LOWER_QUALITY"
-            reason = f"Better quality copy exists in MUSIC: {best.path}"
-
-        writer.writerow(
-            [
-                p,
-                "1",
-                "1",
-                fr.checksum,
-                len(same),
-                best.path,
-                fr.bit_depth,
-                fr.sample_rate,
-                fr.bit_rate,
-                fr.duration,
-                decision,
-                reason,
-            ]
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        description=(
+            "Reconcile Gemini duplicate selections against library_final.db "
+            "using DB-level checksum matches."
         )
+    )
+    p.add_argument("--db", default=DB_DEFAULT, help="Path to SQLite DB (library_final.db)")
+    p.add_argument(
+        "--analysis-csv",
+        required=True,
+        help="Gemini analysis CSV (e.g. gemini_dupe_analysis.csv)",
+    )
+    p.add_argument(
+        "--out",
+        required=True,
+        help="Output CSV with reconciliation + delete_path decisions",
+    )
+    p.add_argument(
+        "--duration-tolerance",
+        type=float,
+        default=2.0,
+        help="Duration tolerance in seconds (reserved for future use)",
+    )
+    p.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Enable verbose per-entry logging",
+    )
+    return p.parse_args()
 
-    out_f.close()
 
-    print("=== DONE ===")
-    print(f"Report written to: {out_csv}")
-    print("----- STATS -----")
-    print(f"Missing on disk:       {n_missing_disk}")
-    print(f"Exists but NOT in DB:  {n_not_in_db}")
-    print(f"No dupes in MUSIC:     {n_unique}")
-    print(f"KEEP (best quality):   {n_keep}")
-    print(f"DELETE_LOWER_QUALITY:  {n_delete_lower}")
-
-
-def main():
-    analyze_gemini_duplicates(DB_PATH, GEMINI_LIST, OUT_CSV)
+def main() -> None:
+    args = parse_args()
+    reconcile(
+        db_path=args.db,
+        analysis_csv=args.analysis_csv,
+        out_csv=args.out,
+        duration_tolerance=args.duration_tolerance,
+        verbose=args.verbose,
+    )
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@ import datetime as _dt
 import json
 import logging
 import sqlite3
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Iterator, Optional, Sequence
@@ -91,7 +92,8 @@ def _collect_existing_index(
         f"SELECT path, size_bytes, mtime FROM {FILES_TABLE}"
     )
     for row in cursor.fetchall():
-        index[row["path"]] = (row["size_bytes"], row["mtime"])
+        npath = utils.normalise_path(row["path"])
+        index[npath] = (row["size_bytes"], row["mtime"])
     return index
 
 
@@ -115,9 +117,10 @@ def _resolve_relative_path(path: Path, root: Path) -> str:
     """Return the POSIX relative path of *path* with respect to *root*."""
 
     try:
-        return path.relative_to(root).as_posix()
+        value = path.relative_to(root).as_posix()
     except ValueError:
-        return path.as_posix()
+        value = path.as_posix()
+    return unicodedata.normalize("NFC", value)
 
 
 def scan_roots(
@@ -143,6 +146,7 @@ def scan_roots(
         The total number of files inserted or updated across all roots.
     """
 
+    database = Path(utils.normalise_path(str(database)))
     utils.ensure_parent_directory(database)
     total = 0
     db = utils.DatabaseContext(database)
@@ -150,9 +154,10 @@ def scan_roots(
     with db.connect() as connection:
         ensure_schema(connection)
 
-    for root in roots:
+    normalised_roots = [Path(utils.normalise_path(str(root))) for root in roots]
+
+    for root in normalised_roots:
         LOGGER.info("Scanning root %s", root)
-        root = root.expanduser().resolve()
         iterator = utils.iter_audio_files(root)
         utils.ensure_parent_directory(database)
         with db.connect() as connection:
@@ -205,8 +210,8 @@ def scan_roots(
                     continue
                 payload = [
                     {
-                        "source_root": root.as_posix(),
-                        "path": record.path,
+                        "source_root": utils.normalise_path(root.as_posix()),
+                        "path": utils.normalise_path(record.path),
                         "relative_path": _resolve_relative_path(
                             Path(record.path),
                             root,
@@ -301,6 +306,7 @@ def scan_roots(
 def parse_recognized_export(path: Path, database: Path) -> int:
     """Parse an R-Studio export and store fragments in *database*."""
 
+    database = Path(utils.normalise_path(str(database)))
     utils.ensure_parent_directory(database)
     records = list(rstudio_parser.parse_export(path))
     db = utils.DatabaseContext(database)

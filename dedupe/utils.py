@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import sqlite3
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Iterator, Optional
@@ -118,9 +119,15 @@ def safe_float(value: Optional[str]) -> Optional[float]:
 
 
 def normalise_path(value: str) -> str:
-    """Return a normalised absolute POSIX path for *value*."""
+    """Return a NFC-normalised absolute POSIX path for *value*.
 
-    return Path(value).expanduser().resolve().as_posix()
+    Paths are expanded (``~`` handling), resolved without requiring the target
+    to exist, and coerced to Unicode NFC to avoid duplicate records caused by
+    differing normalisation forms on disk or within SQLite.
+    """
+
+    resolved = Path(value).expanduser().resolve(strict=False)
+    return unicodedata.normalize("NFC", resolved.as_posix())
 
 
 def chunks(items: Iterable[Path], size: int) -> Iterator[list[Path]]:

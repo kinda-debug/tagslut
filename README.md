@@ -9,7 +9,9 @@ interface.  Each workflow stage is exposed via a dedicated module inside the
 ## Key capabilities
 
 - **Library scanning** – Capture technical metadata, embedded tags, and optional
-  Chromaprint fingerprints for every audio file in a collection.
+  Chromaprint fingerprints for every audio file in a collection while
+  normalising stored paths to Unicode NFC for consistent comparisons and
+  resumable operation.
 - **Recovery parsing** – Ingest R-Studio "Recognized Files" exports into a
   structured SQLite database for repeatable analysis.
 - **Matching engine** – Correlate recovered fragments with the canonical
@@ -35,11 +37,16 @@ python3 -m dedupe.cli --help
 
 Available sub-commands:
 
-- `dedupe scan-library --root <path> --out library.db --resume`
+- `python3 -m dedupe.cli scan-library --root <path> --out library.db --resume-safe --progress`
   Recursively scans an audio collection, writing metadata into a SQLite
   database.  The command records duration, bitrate, channel count, checksum, and
   filename heuristics by default.  Append `--fingerprints` to request optional
-  Chromaprint extraction when `fpcalc` is available.
+  Chromaprint extraction when `fpcalc` is available. Use `--resume` to skip
+  unchanged files individually or `--resume-safe` to skip entire batches when
+  any member is unchanged. Add `--progress` to render a progress bar. Every
+  path is coerced to an absolute, NFC-normalised POSIX string before it is
+  compared or written to the database, ensuring Unicode-equivalent paths match
+  reliably across filesystems.
 - `dedupe parse-rstudio --input recognized.txt --out recovered.db`
   Parses an R-Studio export, normalises file paths, and stores the results in a
   SQLite database.
@@ -54,17 +61,18 @@ Every command accepts `--verbose` to enable detailed logging output.
 
 ### Recommended scan workflows
 
-- **Default library scan** – fingerprints skipped, fastest path:
+- **Default library scan** – fingerprints skipped, fastest path and resume-safe
+  semantics enabled:
 
   ```bash
-  dedupe scan-library --root /path/to/library --out library.db --resume
+  python3 -m dedupe.cli scan-library --root /path/to/library --out library.db --resume-safe --progress
   ```
 
 - **Optional fingerprint scan** – only when you need mastering-level
   differentiation and `fpcalc` is present:
 
   ```bash
-  dedupe scan-library --root /path/to/library --out library.db --resume --fingerprints
+  python3 -m dedupe.cli scan-library --root /path/to/library --out library.db --resume --fingerprints --progress
   ```
 
   Fingerprints are generated only for files missing them when `--resume` is
@@ -90,9 +98,9 @@ logging warnings.
 A single SQLite database can hold metadata for several volumes.  For example:
 
 ```bash
-dedupe scan-library --root /Volumes/dotad --out library.db --resume
-dedupe scan-library --root /Volumes/Vault --out library.db --resume
-dedupe scan-library --root /Volumes/sad --out library.db --resume
+python3 -m dedupe.cli scan-library --root /Volumes/dotad --out library.db --resume
+python3 -m dedupe.cli scan-library --root /Volumes/Vault --out library.db --resume
+python3 -m dedupe.cli scan-library --root /Volumes/sad --out library.db --resume
 ```
 
 The commands may be re-run at any time; unchanged files are skipped and newly
@@ -103,9 +111,9 @@ added files are appended to the shared database.
 1. **Scan multiple volumes into one database**
 
    ```bash
-   dedupe scan-library --root /Volumes/dotad --out library.db --resume
-   dedupe scan-library --root /Volumes/Vault --out library.db --resume
-   dedupe scan-library --root /Volumes/sad --out library.db --resume
+   python3 -m dedupe.cli scan-library --root /Volumes/dotad --out library.db --resume
+   python3 -m dedupe.cli scan-library --root /Volumes/Vault --out library.db --resume
+   python3 -m dedupe.cli scan-library --root /Volumes/sad --out library.db --resume
    ```
 
 2. **Inspect recently indexed files**
@@ -123,7 +131,7 @@ added files are appended to the shared database.
 4. **Fingerprint-only refresh** (after an initial scan)
 
    ```bash
-   dedupe scan-library --root /path/to/library --out library.db --resume --fingerprints
+   python3 -m dedupe.cli scan-library --root /path/to/library --out library.db --resume --fingerprints
    ```
 
    Existing entries retain metadata; missing fingerprints are generated when
@@ -146,7 +154,7 @@ added files are appended to the shared database.
 3. Execute the CLI locally to verify configuration:
 
    ```bash
-   python3 -m dedupe.cli scan-library --root /path/to/library --out library.db --verbose
+   python3 -m dedupe.cli scan-library --root /path/to/library --out library.db --resume --progress --verbose
    ```
 
 ## Module overview

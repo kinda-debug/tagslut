@@ -46,6 +46,7 @@ class ScanConfig:
         include_fingerprints: whether to request Chromaprint fingerprints
         batch_size: number of files per DB upsert
         resume: skip files already indexed and unchanged
+        resume_safe: skip a batch if any member matches an unchanged file
         show_progress: display a progress bar during scanning
     """
 
@@ -54,6 +55,7 @@ class ScanConfig:
     include_fingerprints: bool = False
     batch_size: int = 100
     resume: bool = False
+    resume_safe: bool = False
     show_progress: bool = False
 
 
@@ -120,7 +122,7 @@ def prepare_record(path: Path, include_fingerprints: bool) -> ScanRecord:
         bit_rate=meta.stream.bit_rate,
         channels=meta.stream.channels,
         bit_depth=meta.stream.bit_depth,
-        tags_json=json.dumps(meta.tags, sort_keys=True),
+        tags_json=json.dumps(meta.tags, sort_keys=True, separators=(",", ":")),
         fingerprint=(
             fingerprint_result.fingerprint if fingerprint_result else None
         ),
@@ -203,14 +205,15 @@ def scan_library(config: ScanConfig) -> int:
     # normalised path and record the size and mtime to allow a cheap
     # unchanged-file check without computing checksums.
     existing_index: dict[str, tuple[int, float]] = {}
-    if config.resume and config.database.exists():
+    if (config.resume or config.resume_safe) and config.database.exists():
         with db.connect() as connection:
             initialise_database(connection)
             cursor = connection.execute(
                 "SELECT path, size_bytes, mtime FROM " + LIBRARY_TABLE
             )
             for row in cursor.fetchall():
-                existing_index[row["path"]] = (
+                npath = utils.normalise_path(row["path"])
+                existing_index[npath] = (
                     row["size_bytes"],
                     row["mtime"],
                 )
@@ -233,8 +236,8 @@ def scan_library(config: ScanConfig) -> int:
         )
         # helper to yield batches while skipping unchanged files when resuming
 
-        def batches() -> Iterator[list[Path]]:
-            batch: list[Path] = []
+        def batches() -> Iterator[list[tuple[Path, bool]]]:
+            batch: list[tuple[Path, bool]] = []
             for path in iterator:
                 npath = utils.normalise_path(str(path))
                 try:
@@ -242,19 +245,16 @@ def scan_library(config: ScanConfig) -> int:
                 except OSError:
                     # skip unreadable files
                     continue
-                if config.resume:
+                unchanged = False
+                if config.resume or config.resume_safe:
                     existing = existing_index.get(npath)
                     if existing is not None:
                         size, mtime = existing
-                        # If size and mtime match (within a second) assume
-                        # unchanged and skip recomputing expensive checksums.
-                        if (
+                        unchanged = (
                             size == st.st_size
                             and abs(mtime - st.st_mtime) < 1.0
-                        ):
-                            # unchanged; skip
-                            continue
-                batch.append(path)
+                        )
+                batch.append((path, unchanged))
                 if len(batch) >= config.batch_size:
                     yield batch
                     batch = []
@@ -287,16 +287,28 @@ def scan_library(config: ScanConfig) -> int:
             pbar = None
 
         for batch in batches():
-            records = list(_iter_records(batch, include_fingerprints))
-            if not records:
+            if config.resume_safe and any(item[1] for item in batch):
                 if pbar:
                     pbar.update(len(batch))
+                continue
+
+            paths = [
+                path
+                for path, unchanged in batch
+                if not (config.resume and unchanged)
+            ]
+            if pbar:
+                pbar.update(len(batch))
+
+            if not paths:
+                continue
+
+            records = list(_iter_records(paths, include_fingerprints))
+            if not records:
                 continue
             _upsert_batch(connection, records)
             connection.commit()
             total += len(records)
-            if pbar:
-                pbar.update(len(batch))
             LOGGER.info(
                 "Processed %s files (%.1fs elapsed)",
                 total,
@@ -316,6 +328,7 @@ def scan(
     include_fingerprints: bool = False,
     batch_size: int = 100,
     resume: bool = False,
+    resume_safe: bool = False,
     show_progress: bool = False,
 ) -> int:
     """Compatibility wrapper: simple API for scanning a library.
@@ -331,6 +344,7 @@ def scan(
         include_fingerprints=include_fingerprints,
         batch_size=batch_size,
         resume=resume,
+        resume_safe=resume_safe,
         show_progress=show_progress,
     )
     return scan_library(config)

@@ -69,6 +69,14 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     scan_parser.add_argument(
+        "--resume-safe",
+        action="store_true",
+        help=(
+            "Resume a previous scan but skip entire batches when any file "
+            "matches the database by size + mtime"
+        ),
+    )
+    scan_parser.add_argument(
         "--progress",
         action="store_true",
         help="Show a progress bar during scanning",
@@ -135,14 +143,15 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _command_scan(args: argparse.Namespace) -> int:
-    # Use the compatibility wrapper `scan` which accepts a flat signature.
-    total = scanner.scan(
+    config = scanner.ScanConfig(
         root=args.root,
         database=args.out,
         include_fingerprints=args.fingerprints,
         resume=getattr(args, "resume", False),
+        resume_safe=getattr(args, "resume_safe", False),
         show_progress=getattr(args, "progress", False),
     )
+    total = scanner.scan_library(config)
     LOGGER.info("Indexed %s files", total)
     return 0
 

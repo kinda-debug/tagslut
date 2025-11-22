@@ -91,7 +91,8 @@ def _collect_existing_index(
         f"SELECT path, size_bytes, mtime FROM {FILES_TABLE}"
     )
     for row in cursor.fetchall():
-        index[row["path"]] = (row["size_bytes"], row["mtime"])
+        npath = utils.normalise_path(row["path"])
+        index[npath] = (row["size_bytes"], row["mtime"])
     return index
 
 

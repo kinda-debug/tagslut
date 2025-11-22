@@ -7,7 +7,7 @@ external volumes are unavailable.
 ## 1. Scan the reference library
 
 ```bash
-dedupe scan-library --root /Volumes/dotad/MUSIC --out artifacts/db/library.db --resume
+python3 -m dedupe.cli scan-library --root /Volumes/dotad/MUSIC --out artifacts/db/library.db --resume-safe --progress
 ```
 
 Chromaprint fingerprints are optional.  Use them only when you must
@@ -16,6 +16,9 @@ masters.
 
 - `--resume` skips unchanged files using a size + modification-time check and
   only recomputes metadata for new or modified files.
+- `--resume-safe` treats each batch as atomic; if any file matches an existing
+  database entry by size and mtime, the entire batch is skipped. Use this when
+  rerunning large scans to guarantee idempotent totals.
 - `--fingerprints` requests Chromaprint extraction when `fpcalc` is on `PATH`.
   If `fpcalc` is missing, the scan completes without warnings and fingerprints
   are left as `NULL`.
@@ -23,14 +26,14 @@ masters.
 Optional fingerprint-enabled scan:
 
 ```bash
-dedupe scan-library --root /Volumes/dotad/MUSIC --out artifacts/db/library.db --resume --fingerprints
+python3 -m dedupe.cli scan-library --root /Volumes/dotad/MUSIC --out artifacts/db/library.db --resume --fingerprints --progress
 ```
 
 Run the command against additional volumes to build a consolidated database:
 
 ```bash
-dedupe scan-library --root /Volumes/Vault --out artifacts/db/library.db --resume
-dedupe scan-library --root /Volumes/sad --out artifacts/db/library.db --resume
+python3 -m dedupe.cli scan-library --root /Volumes/Vault --out artifacts/db/library.db --resume
+python3 -m dedupe.cli scan-library --root /Volumes/sad --out artifacts/db/library.db --resume
 ```
 
 After each run you can verify new entries via SQLite:

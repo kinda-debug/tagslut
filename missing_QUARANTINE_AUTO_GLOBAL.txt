@@ -22,7 +22,6 @@
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/.DS_Store
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Garbage/.DS_Store
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Garbage/D/Arvo Pärt/(2012) Adam's Lament/Arvo Pärt - (2012) Adam's Lament - 03. Salve Regina.flac
-/Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Garbage/D/Arvo Pärt/(2012) Serenity: The Beauty of Arvo Pärt/Arvo Pärt - (2012) Serenity: The Beauty of Arvo Pärt - 02-08. Tabula Rasa: II. Silentium. Senza moto.flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Garbage/D/Bachar Mar-Khalifé/(2024) A Live in Paris/Bachar Mar-Khalifé - (2024) A Live in Paris - 10. Wolfpack - A Live in Paris.flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Garbage/D/Baron Retif & Concepcion Perez/(2020) Navettes Remixes/Baron Retif & Concepcion Perez - (2020) Navettes Remixes - 07. The Crave.flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Garbage/D/Beirut/(2006) Gulag Orkestar/Beirut - (2006) Gulag Orkestar - 06. Rhineland (Heartland).flac
@@ -46,12 +45,10 @@
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Garbage/D/Catastrophe/(2018) La nuit est encore jeune - Vision XL/Catastrophe - (2018) La nuit est encore jeune - Vision XL - 09. Virtual Experience.flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Garbage/D/Catastrophe/(2018) La nuit est encore jeune - Vision XL/Catastrophe - (2018) La nuit est encore jeune - Vision XL - 12. Vertigo.flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Garbage/D/Catastrophe/(2018) La nuit est encore jeune - Vision XL/Catastrophe - (2018) La nuit est encore jeune - Vision XL - 20. L'Amour tout nu (Cvd Malibu Remix).flac
-/Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Garbage/D/Chantal Goya/(2021) Chantal Goya chante Noël/Chantal Goya - (2021) Chantal Goya chante Noël - 08. La Petite Étoile de Noël.flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Garbage/D/Clio/(2019) Déjà Venise/Clio - (2019) Déjà Venise - 09. Porque te vas.flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Garbage/D/DJ Koze/(2015) DJ-Kicks: DJ Koze/DJ Koze - (2015) DJ-Kicks: DJ Koze - 10. Come Get It (Tekstrumental)  Modern Family (Kosi Kos Mélange).flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Garbage/D/DJ Koze/(2025) Music Can Hear Us/DJ Koze - (2025) Music Can Hear Us - 09. A dónde vas?.flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Garbage/Dupeguru/Abdou El Omari avec Naima Samih/(2017) Nuits d'été avec Naima Samih/Abdou El Omari avec Naima Samih - (2017) Nuits d'été avec Naima Samih - 02. Zifaf Filfada.flac
-/Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Garbage/Dupeguru/Alex Beaupain/(2007) Les Chansons d'amour/Alex Beaupain - (2007) Les Chansons d'amour - 08. As-tu déjà aimé ?.flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Garbage/Dupeguru/Bachar Mar-Khalifé/(2022) Jnoun - EP/Bachar Mar-Khalifé - (2022) Jnoun - EP - 04. Jnoun ! (Live in Copenhagen).flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Garbage/Dupeguru/Bachar Mar-Khalifé/(2024) A Live in Paris/Bachar Mar-Khalifé - (2024) A Live in Paris - 12. Ya Nas - A Live in Paris.flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Garbage/Dupeguru/Bag Raiders/(2010) Bag Raiders/Bag Raiders - (2010) Bag Raiders - 25. Waves.flac
@@ -69,7 +66,6 @@
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/MUSIC/Bamily/.DS_Store
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/MUSIC/Benny Sings/.DS_Store
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/MUSIC/Cassius/.DS_Store
-/Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/MUSIC/Cassius/(2016) Au Rêve/Cassius - (2016) Au Rêve - 17. The Sound of Violence (Cosmo Vitelli remix).flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/MUSIC/Channel Tres/.DS_Store
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/MUSIC/Cut Copy/.DS_Store
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/MUSIC/David August/(2016) The Spell (single)/David August - (2016) The Spell (single) - 01. The Spell.flac
@@ -84,7 +80,6 @@
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/MUSIC/James Curd/.DS_Store
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/MUSIC/Katerine/.DS_Store
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/MUSIC/Led Zeppelin/.DS_Store
-/Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/MUSIC/Miles Davis/(1958) Ascenseur pour l'échafaud/Miles Davis - (1958) Ascenseur pour l'échafaud - 01. Générique (Bande originale du film.flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/MUSIC/Novaé Lita/(2022) Fantasy Girl/Novaé Lita - (2022) Fantasy Girl - 01. Fantasy Girl.flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/MUSIC/REPAIRED/.DS_Store
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/MUSIC/REPAIRED2/.DS_Store
@@ -164,8 +159,6 @@
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Quarantine/D/Baron Rétif & Concepción Perez/(2023) Funk/Baron Rétif & Concepción Perez - (2023) Funk - 09. Plus de funk.flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Quarantine/D/Ben Böhmer feat. Lykke Li/(2024) Hiding (single)/Ben Böhmer feat. Lykke Li - (2024) Hiding (single) - 01. Hiding.flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Quarantine/D/Ben Böhmer feat. Lykke Li/(2024) Hiding (single)/Ben Böhmer feat. Lykke Li - (2024) Hiding (single) - 02. Best Life.flac
-/Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Quarantine/D/Björk/(2011) The Crystalline Series: Omar Souleyman Versions (single)/Björk - (2011) The Crystalline Series: Omar Souleyman Versions (single) - 01. Crystalline (Omar Souleyman version).flac
-/Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Quarantine/D/Björk/(2011) The Crystalline Series: Omar Souleyman Versions (single)/Björk - (2011) The Crystalline Series: Omar Souleyman Versions (single) - 02. Tesla.flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Quarantine/D/Café del Mar/(2018) Café del Mar Terrace Mix 8/Café del Mar - (2018) Café del Mar Terrace Mix 8 - 01-01. PHILOSOPHY! (Crazy P remix).flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Quarantine/D/Cassady Locke/(2018) Café del Mar - Phuket (Mixed)/Cassady Locke - (2018) Café del Mar - Phuket (Mixed) - 01. Mafele.flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Quarantine/D/Cassius/(2016) Au Rêve/Cassius - (2016) Au Rêve - 06. Telephone Love.flac
@@ -174,13 +167,11 @@
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Quarantine/D/Catastrophe/(2018) La nuit est encore jeune - Vision XL/Catastrophe - (2018) La nuit est encore jeune - Vision XL - 23. Virtual Experience (Inüit Remix).flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Quarantine/D/Catastrophe/(2018) La nuit est encore jeune - Vision XL/Catastrophe - (2018) La nuit est encore jeune - Vision XL - 25. Vertigo (Hervé Bouétard Remix).flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Quarantine/D/Charlotte Adigéry & Bolis Pupul/(2022) Topical Dancer/Charlotte Adigéry & Bolis Pupul - (2022) Topical Dancer - 12. HAHA.flac
-/Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Quarantine/D/Chick Corea & Béla Fleck/(2024) Remembrance/Chick Corea & Béla Fleck - (2024) Remembrance - 06. Lucky Bounce.flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Quarantine/D/Chloé Caillet & SG Lewis/(2024) B Somebody (single)/Chloé Caillet & SG Lewis - (2024) B Somebody (single) - 01. B Somebody.flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Quarantine/D/Chlöe/(2022) Surprise (single)/Chlöe - (2022) Surprise (single) - 01. Surprise.flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Quarantine/D/Chœur des moines de l'Abbaye Saint-Joseph de Clairval Flavigny/(1989) Pâques (Chant grégorien)/Chœur des moines de l'Abbaye Saint-Joseph de Clairval Flavigny - (1989) Pâques (Chant grégorien) - 12. Kyrie I.flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Quarantine/D/Chœur grégorien de Paris/(2013) Dandrieu: Vêpres du jour de Pâques/Chœur grégorien de Paris - (2013) Dandrieu: Vêpres du jour de Pâques - 13. Vêpres du jour de Pâques: Magnificat.flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Quarantine/D/Christian Löffler/(2014) Young Alaska/Christian Löffler - (2014) Young Alaska - 07. Veiled Grey.flac
-/Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Quarantine/D/Christian Löffler/(2021) Parallels: Shellac Reworks by Christian Löffler/Christian Löffler - (2021) Parallels: Shellac Reworks by Christian Löffler - 02. Moldau.flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Quarantine/D/Clio/(2019) Déjà Venise/Clio - (2019) Déjà Venise - 07. Nous perdre au Louvre.flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Quarantine/D/Clio/(2019) Déjà Venise/Clio - (2019) Déjà Venise - 10. Romy S..flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Quarantine/D/Clio/(2019) Déjà Venise/Clio - (2019) Déjà Venise - 11. Sous l'averse.flac
@@ -200,14 +191,10 @@
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Quarantine/D/Deep Purple/(2002) Concerto for Group and Orchestra/Deep Purple - (2002) Concerto for Group and Orchestra - 02-01. Concerto for Group and Orchestra: First Movement: Moderato - Allegro.flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Quarantine/D/DJ Koze/(2025) Music Can Hear Us/DJ Koze - (2025) Music Can Hear Us - 04. Wie schön du bist.flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Quarantine/D/eRRdeKa/(2018) Liebe/eRRdeKa - (2018) Liebe - 01-11. Ethanol.flac
-/Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Quarantine/D/Fairuz/(2010) Safarbarlek - Bint El Harass/Fairuz - (2010) Safarbarlek - Bint El Harass - 11. La Dance Du Café.flac
-/Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Quarantine/D/Fairuz/(2010) Safarbarlek - Bint El Harass/Fairuz - (2010) Safarbarlek - Bint El Harass - 13. L'Entrée Au Serail.flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Quarantine/D/Jacques Loussier/(2002) Play Bach/Jacques Loussier - (2002) Play Bach - 02. Invention No. 8 in F Major (1).flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Quarantine/D/Jacques Loussier/(2002) Play Bach/Jacques Loussier - (2002) Play Bach - 02. Invention No. 8 in F Major (2).flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Quarantine/D/JB Dunckel/(2024) Möbius Morphosis/JB Dunckel - (2024) Möbius Morphosis - 01. Corps Échangés.flac
-/Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Quarantine/D/Philip Glass/(2021) Landscapes: Minimalism/Philip Glass - (2021) Landscapes: Minimalism - 06. Für Alina.flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Quarantine/D/Teruyuki Nobuchika/(2011) Sonorité/Teruyuki Nobuchika - (2011) Sonorité - 13. Kokyu (1).flac
-/Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Quarantine/D/The xx/(2013) Innervisions Remixes/The xx - (2013) Innervisions Remixes - 01. Reunion (Âme remix) (1).flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Quarantine/Dupeguru/_Recovered_from_DUPES_CHECK/Belle MT/(2020) Hollow (single)/Belle MT - (2020) Hollow (single) - 01. Hollow.flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Quarantine/Dupeguru/_Recovered_from_DUPES_CHECK/Confidence Man/(2018) Confident Music for Confident People/Confidence Man - (2018) Confident Music for Confident People - 03. Boyfriend.flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/dotad/NEW_LIBRARY/Quarantine/newgarbage/D/ACDC/(2000) Box Set/ACDC - (2000) Box Set - 05-01. Rock 'n' Roll Damnation.flac
@@ -368,7 +355,6 @@
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/sad/MUSIC/Q/Flavien Berger/(2014) Mars balnéaire/Flavien Berger - (2014) Mars balnéaire - 02. Océan rouge.flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/sad/MUSIC/Q/Glitterbox Radio/.DS_Store
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/sad/MUSIC/Q/Gustav Mahler; Andrés Orozco-Estrada/(2010) 1. Symphonie/Gustav Mahler; Andrés Orozco-Estrada - (2010) 1. Symphonie - 03-04. Symphony No. 1 In D Major: Stürmisch Bewegt.flac
-/Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/sad/MUSIC/Q/Hamza Shakkur & Ensemble Al-Kindî/(1994) Syria: Takasim & Sufi Chants From Damaskus/Hamza Shakkur & Ensemble Al-Kindî - (1994) Syria: Takasim & Sufi Chants From Damaskus - 02. Wasla en sabâ.flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/sad/MUSIC/Q/Hareton Salvanini/(2016) S.P. 73/Hareton Salvanini - (2016) S.P. 73 - 05. Só.flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/sad/MUSIC/Q/Jack White/(2015) That Black Bat Licorice (single)/Jack White - (2015) That Black Bat Licorice (single) - 01. That Black Bat Licorice.flac
 /Volumes/dotad/QUARANTINE_AUTO_GLOBAL/Volumes/sad/MUSIC/Q/Jacques Loussier Trio/(2014) My Personal Favourites: The Jacques Loussier Trio Plays Bach/Jacques Loussier Trio - (2014) My Personal Favourites: The Jacques Loussier Trio Plays Bach - 01-12. Toccata and Fugue in C major: Adagio.flac

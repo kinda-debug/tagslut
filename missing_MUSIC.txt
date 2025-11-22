@@ -5572,10 +5572,7 @@
 /Volumes/dotad/MUSIC/Norah Jones/(2006) Not Too Late/Norah Jones - (2006) Not Too Late - 06. Thinking About You.flac
 /Volumes/dotad/MUSIC/Norah Jones/(2007) Not Too Late/cover.png
 /Volumes/dotad/MUSIC/Norah Jones/(2007) Not Too Late/Norah Jones - (2007) Not Too Late - 06. Thinking About You.flac
-/Volumes/dotad/MUSIC/Nouvelle Vague & Elias Dris/(2025) Do You Really Want to Hurt Me (single)/Nouvelle Vague & Elias Dris - (2025) Do You Really Want to Hurt Me (single) - 01. Do You Really Want to Hurt Me.flac
 /Volumes/dotad/MUSIC/Nouvelle Vague/.DS_Store
-/Volumes/dotad/MUSIC/Nouvelle Vague/(2005) Nouvelle Vague/Nouvelle Vague - (2005) Nouvelle Vague - 08. Making Plans for Nigel.flac
-/Volumes/dotad/MUSIC/Nouvelle Vague/(2024) Nouvelle vague (KCRW session)/Nouvelle Vague - (2024) Nouvelle vague (KCRW session) - 02. Just Can't Get Enough (KCRW session).flac
 /Volumes/dotad/MUSIC/nthng/.DS_Store
 /Volumes/dotad/MUSIC/nthng/(2017) It Never Ends/nthng - (2017) It Never Ends - 04. Soms.flac
 /Volumes/dotad/MUSIC/nthng/(2020) Hypnotherapy/nthng - (2020) Hypnotherapy - 06. Spirit of Ecstasy.flac
@@ -8188,114 +8185,8 @@
 /Volumes/dotad/MUSIC/Quarantine/D/Moscow Liturgic Choir/(1993) Russian Easter Liturgy - The Luminous Resurrection of Christ/Moscow Liturgic Choir - (1993) Russian Easter Liturgy - The Luminous Resurrection of Christ - 11. Christ Is Risen From the Dead.flac
 /Volumes/dotad/MUSIC/Quarantine/D/mouse on the keys/(2018) Tres/mouse on the keys - (2018) Tres - 01. Clarity.flac
 /Volumes/dotad/MUSIC/Quarantine/D/Mylène Farmer/(2008) Point de suture/Mylène Farmer - (2008) Point de suture - 02. Appelle mon numéro.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Napkey/(2017) At Least (Remixes) EP/Napkey - (2017) At Least (Remixes) EP - 02. At Least (Jabberwocky remix).flac
-/Volumes/dotad/MUSIC/Quarantine/D/Napkey/(2017) At Least (Remixes)/Napkey - (2017) At Least (Remixes) - 03. At Least (Mirage Club remix).flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nas/(1994) Illmatic/Nas - (1994) Illmatic - 02. N.Y. State of Mind.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nasri Shamseddine/(2014) Jisr El Qamar, Pt. 1/Nasri Shamseddine - (2014) Jisr El Qamar, Pt. 1 - 02. Te'aou Te'aou.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nasri Shamseddine/(2014) Jisr El Qamar, Pt. 1/Nasri Shamseddine - (2014) Jisr El Qamar, Pt. 1 - 03. Haddouni Haddouni.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nasri Shamseddine/(2014) Jisr El Qamar, Pt. 1/Nasri Shamseddine - (2014) Jisr El Qamar, Pt. 1 - 05. El Qamar bidawi al nass.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nasri Shamseddine/(2014) Jisr El Qamar, Pt. 1/Nasri Shamseddine - (2014) Jisr El Qamar, Pt. 1 - 06. Nehna Men Ahl el Qateh.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nasri Shamseddine/(2014) Jisr El Qamar, Pt. 1/Nasri Shamseddine - (2014) Jisr El Qamar, Pt. 1 - 07. Rakset El Jrar.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nasri Shamseddine/(2014) Jisr El Qamar, Pt. 1/Nasri Shamseddine - (2014) Jisr El Qamar, Pt. 1 - 08. Dialogue Sabe'h & Makhoul.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nasri Shamseddine/(2014) Jisr El Qamar, Pt. 1/Nasri Shamseddine - (2014) Jisr El Qamar, Pt. 1 - 11. Bi Ismak Shaykh El Mshayekh.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nasri Shamseddine/(2014) Jisr El Qamar, Pt. 1/Nasri Shamseddine - (2014) Jisr El Qamar, Pt. 1 - 13. Sini Aan Sini.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nasri Shamseddine/(2014) Jisr El Qamar, Pt. 1/Nasri Shamseddine - (2014) Jisr El Qamar, Pt. 1 - 14. Habibi Qal entourini.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nasri Shamseddine/(2014) Jisr El Qamar, Pt. 1/Nasri Shamseddine - (2014) Jisr El Qamar, Pt. 1 - 17. Men el Qateh jina.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nasri Shamseddine/(2014) Jisr El Qamar, Pt. 2/Nasri Shamseddine - (2014) Jisr El Qamar, Pt. 2 - 03. Ya Helwet al jisr.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nasri Shamseddine/(2014) Jisr El Qamar, Pt. 2/Nasri Shamseddine - (2014) Jisr El Qamar, Pt. 2 - 04. Ya Sheikh El Mshayekh.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nasri Shamseddine/(2014) Jisr El Qamar, Pt. 2/Nasri Shamseddine - (2014) Jisr El Qamar, Pt. 2 - 05. Sabe'h & Makhoul & Warde.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nasri Shamseddine/(2014) Jisr El Qamar, Pt. 2/Nasri Shamseddine - (2014) Jisr El Qamar, Pt. 2 - 06. Warde ya Warde.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nasri Shamseddine/(2014) Jisr El Qamar, Pt. 2/Nasri Shamseddine - (2014) Jisr El Qamar, Pt. 2 - 07. Dialogue Abdo & Warde.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nasri Shamseddine/(2014) Jisr El Qamar, Pt. 2/Nasri Shamseddine - (2014) Jisr El Qamar, Pt. 2 - 11. Jayebli salam.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nasri Shamseddine/(2014) Jisr El Qamar, Pt. 2/Nasri Shamseddine - (2014) Jisr El Qamar, Pt. 2 - 13. Dialogue Ahl El Qateh.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nasri Shamseddine/(2014) Jisr El Qamar, Pt. 2/Nasri Shamseddine - (2014) Jisr El Qamar, Pt. 2 - 14. Dialogue Hayfa.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nasri Shamseddine/(2014) Jisr El Qamar, Pt. 2/Nasri Shamseddine - (2014) Jisr El Qamar, Pt. 2 - 15. Mousika Al Ma'araka.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nasri Shamseddine/(2014) Jisr El Qamar, Pt. 2/Nasri Shamseddine - (2014) Jisr El Qamar, Pt. 2 - 16. Ya Ahali day'elna.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nasri Shamseddine/(2014) Rings for Sale , Pt. 1/Nasri Shamseddine - (2014) Rings for Sale , Pt. 1 - 02. Ya Moukhtar.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nasri Shamseddine/(2014) Rings for Sale , Pt. 1/Nasri Shamseddine - (2014) Rings for Sale , Pt. 1 - 09. Zihou Estafou.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nasri Shamseddine/(2014) Rings for Sale , Pt. 2/Nasri Shamseddine - (2014) Rings for Sale , Pt. 2 - 03. Masa El Kheir.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nasri Shamseddine/(2014) Rings for Sale , Pt. 2/Nasri Shamseddine - (2014) Rings for Sale , Pt. 2 - 07. Alouli Kin.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nasri Shamseddine/(2014) Rings for Sale , Pt. 2/Nasri Shamseddine - (2014) Rings for Sale , Pt. 2 - 08. Ya Helwi Shou Haltali.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nasri Shamseddine/(2014) Rings for Sale , Pt. 2/Nasri Shamseddine - (2014) Rings for Sale , Pt. 2 - 12. Bramna Bil Ghabi.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nasri Shamseddine/(2014) Rings for Sale , Pt. 2/Nasri Shamseddine - (2014) Rings for Sale , Pt. 2 - 15. Tolli Edhakilou.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nasri Shamseddine/(2014) Rings for Sale , Pt. 2/Nasri Shamseddine - (2014) Rings for Sale , Pt. 2 - 16. Bihdurak Ya Moukhtar.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nasri Shamseddine/(2014) Rings for Sale , Pt. 2/Nasri Shamseddine - (2014) Rings for Sale , Pt. 2 - 17. Baddi Abel El Moukhtar.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nasri Shamseddine/(2014) Rings for Sale , Pt. 2/Nasri Shamseddine - (2014) Rings for Sale , Pt. 2 - 18. Ya Biyaa El Khawatem.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nat King Cole/(1961) The Nat King Cole Story/Nat King Cole - (1961) The Nat King Cole Story - 02-01. Unforgettable.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nathan Micay/(2019) Blue Spring/Nathan Micay - (2019) Blue Spring - 07. Moon Scepter Elimination.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nathaniel Rateliff & The Night Sweats/(2024) South of Here/Nathaniel Rateliff & The Night Sweats - (2024) South of Here - 02. Heartless.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nduduzo Makhathini/(2024) uNomkhubulwane/Nduduzo Makhathini - (2024) uNomkhubulwane - 02. Libations: Uxolo.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Neil Diamond/(2018) 50th Anniversary Collector's Edition/Neil Diamond - (2018) 50th Anniversary Collector's Edition - 02-15. Longfellow Serenade (1).flac
-/Volumes/dotad/MUSIC/Quarantine/D/Neil Young with Crazy Horse/(2024) Early Daze/Neil Young with Crazy Horse - (2024) Early Daze - 01. Dance Dance Dance.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Neil Young with Crazy Horse/(2024) Early Daze/Neil Young with Crazy Horse - (2024) Early Daze - 03. Winterlong.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Neil Young/(1995) Mirror Ball/Neil Young - (1995) Mirror Ball - 03. I'm the Ocean.flac
-/Volumes/dotad/MUSIC/Quarantine/D/New Order/(1981) Movement/New Order - (1981) Movement - 01-01. Dreams Never End.flac
-/Volumes/dotad/MUSIC/Quarantine/D/New Order/(1981) Movement/New Order - (1981) Movement - 01-02. Truth.flac
-/Volumes/dotad/MUSIC/Quarantine/D/New Order/(1981) Movement/New Order - (1981) Movement - 01-03. Senses.flac
-/Volumes/dotad/MUSIC/Quarantine/D/New Order/(1981) Movement/New Order - (1981) Movement - 01-05. ICB.flac
-/Volumes/dotad/MUSIC/Quarantine/D/New Order/(1981) Movement/New Order - (1981) Movement - 02-07. Senses (Cargo demo).flac
-/Volumes/dotad/MUSIC/Quarantine/D/New Order/(1981) Movement/New Order - (1981) Movement - 02-10. Mesh (Cargo demo).flac
-/Volumes/dotad/MUSIC/Quarantine/D/New Order/(1981) Movement/New Order - (1981) Movement - 02-11. ICB (Cargo demo).flac
-/Volumes/dotad/MUSIC/Quarantine/D/New Order/(1981) Movement/New Order - (1981) Movement - 02-12. Procession (Cargo demo).flac
-/Volumes/dotad/MUSIC/Quarantine/D/New Order/(1981) Movement/New Order - (1981) Movement - 02-17. Procession (rehearsal recording).flac
-/Volumes/dotad/MUSIC/Quarantine/D/New Order/(1987) Substance/New Order - (1987) Substance - 01-02. Everything's Gone Green.flac
-/Volumes/dotad/MUSIC/Quarantine/D/New Order/(1987) Substance/New Order - (1987) Substance - 01-05. Confusion 87.flac
-/Volumes/dotad/MUSIC/Quarantine/D/New Order/(1987) Substance/New Order - (1987) Substance - 01-06. Thieves Like Us.flac
-/Volumes/dotad/MUSIC/Quarantine/D/New Order/(1987) Substance/New Order - (1987) Substance - 01-11. Bizarre Love Triangle.flac
-/Volumes/dotad/MUSIC/Quarantine/D/New Order/(1987) Substance/New Order - (1987) Substance - 01-12. True Faith.flac
-/Volumes/dotad/MUSIC/Quarantine/D/New Order/(1987) Substance/New Order - (1987) Substance - 02-03. Cries and Whispers.flac
-/Volumes/dotad/MUSIC/Quarantine/D/New Order/(1987) Substance/New Order - (1987) Substance - 02-04. Hurt.flac
-/Volumes/dotad/MUSIC/Quarantine/D/New Order/(1987) Substance/New Order - (1987) Substance - 02-05. The Beach.flac
-/Volumes/dotad/MUSIC/Quarantine/D/New Order/(1987) Substance/New Order - (1987) Substance - 02-06. Confusion (instrumental).flac
-/Volumes/dotad/MUSIC/Quarantine/D/New Order/(1987) Substance/New Order - (1987) Substance - 02-07. Lonesome Tonight.flac
-/Volumes/dotad/MUSIC/Quarantine/D/New Order/(1987) Substance/New Order - (1987) Substance - 02-12. 1963.flac
-/Volumes/dotad/MUSIC/Quarantine/D/New Order/(1987) Substance/New Order - (1987) Substance - 03-03. Temptation.flac
-/Volumes/dotad/MUSIC/Quarantine/D/New Order/(1987) Substance/New Order - (1987) Substance - 03-04. Confusion.flac
-/Volumes/dotad/MUSIC/Quarantine/D/New Order/(1987) Substance/New Order - (1987) Substance - 03-05. Perfect Pit.flac
-/Volumes/dotad/MUSIC/Quarantine/D/New Order/(1987) Substance/New Order - (1987) Substance - 03-06. Dub Vulture.flac
-/Volumes/dotad/MUSIC/Quarantine/D/New Order/(1987) Substance/New Order - (1987) Substance - 03-07. Shellcock.flac
-/Volumes/dotad/MUSIC/Quarantine/D/New Order/(1987) Substance/New Order - (1987) Substance - 03-08. Bizarre Dub Triangle.flac
-/Volumes/dotad/MUSIC/Quarantine/D/New Order/(1987) Substance/New Order - (1987) Substance - 03-09. True Dub.flac
-/Volumes/dotad/MUSIC/Quarantine/D/New Order/(1987) Substance/New Order - (1987) Substance - 03-11. True Faith (remix).flac
-/Volumes/dotad/MUSIC/Quarantine/D/New Order/(1987) Substance/New Order - (1987) Substance - 04-08. Subculture.flac
-/Volumes/dotad/MUSIC/Quarantine/D/New Order/(1993) Republic/New Order - (1993) Republic - 04. Spooky.flac
-/Volumes/dotad/MUSIC/Quarantine/D/New Order/(2005) Singles/New Order - (2005) Singles - 01-02. Procession.flac
-/Volumes/dotad/MUSIC/Quarantine/D/New Order/(2005) Singles/New Order - (2005) Singles - 02-05. Regret.flac
-/Volumes/dotad/MUSIC/Quarantine/D/New Order/(2005) Singles/New Order - (2005) Singles - 02-10. Crystal (radio edit).flac
-/Volumes/dotad/MUSIC/Quarantine/D/New Order/(2005) Singles/New Order - (2005) Singles - 02-13. Krafty (single edit).flac
-/Volumes/dotad/MUSIC/Quarantine/D/New Order/(2005) Singles/New Order - (2005) Singles - 02-14. Jetstream (radio edit).flac
-/Volumes/dotad/MUSIC/Quarantine/D/New Order/(2016) Complete Music/New Order - (2016) Complete Music - 04. Tutti Frutti (extended mix).flac
-/Volumes/dotad/MUSIC/Quarantine/D/New Order/(2016) Singles/New Order - (2016) Singles - 01-05. Blue Monday.flac
-/Volumes/dotad/MUSIC/Quarantine/D/New Order/(2023) Low-Life/New Order - (2023) Low-Life - 04-02. Love Vigilantes.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nicholas Gunn & York feat. Sam Martin/(2021) Higher (single)/Nicholas Gunn & York feat. Sam Martin - (2021) Higher (single) - 01. Higher.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nick Cave & the Bad Seeds/(2011) No More Shall We Part/Nick Cave & the Bad Seeds - (2011) No More Shall We Part - 02-22. And No More Shall We Part (5.1 mix).flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nick Cave & the Bad Seeds/(2011) The Boatman's Call/Nick Cave & the Bad Seeds - (2011) The Boatman's Call - 01. Into My Arms.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nightjar, Pan Amsterdam/(2024) Space-Bar (feat. Pan Amsterdam)/Nightjar, Pan Amsterdam - (2024) Space-Bar (feat. Pan Amsterdam) - 01. Space-Bar (feat. Pan Amsterdam).flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nightmares on Wax/(2018) Shape the Future/Nightmares on Wax - (2018) Shape the Future - 03. Shape the Future.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nija/(2022) Don't Say I Didn't Warn You/Nija - (2022) Don't Say I Didn't Warn You - 08. Ease My Mind (Come Over).flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nirvana/(1993) In Utero/Nirvana - (1993) In Utero - 01. Serve the Servants.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nirvana/(1993) In Utero/Nirvana - (1993) In Utero - 02. Scentless Apprentice.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nirvana/(1993) In Utero/Nirvana - (1993) In Utero - 04. Rape Me.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nirvana/(1993) In Utero/Nirvana - (1993) In Utero - 07. Very Ape.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nirvana/(1993) In Utero/Nirvana - (1993) In Utero - 08. Milk It.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nirvana/(1993) In Utero/Nirvana - (1993) In Utero - 11. Tourette's.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nirvana/(1994) MTV Unplugged In New York/Nirvana - (1994) MTV Unplugged in New York - 01. About a Girl (2).flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nirvana/(1994) MTV Unplugged In New York/Nirvana - (1994) MTV Unplugged in New York - 03. Jesus Doesn't Want Me for a Sunbeam (1).flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nirvana/(1994) MTV Unplugged In New York/Nirvana - (1994) MTV Unplugged in New York - 12. Lake of Fire (1).flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nirvana/(1994) MTV Unplugged In New York/Nirvana - (1994) MTV Unplugged in New York - 14. Where Did You Sleep Last Night?.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Noah Slee/(2017) Otherland/Noah Slee - (2017) Otherland - 09. Reality.flac
 /Volumes/dotad/MUSIC/Quarantine/D/Noir Désir/(2004) 666.667 Club/Noir Désir - (2004) 666.667 Club - 09. L'homme Pressé.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nora Van Elken/(2021) Borealis/Nora Van Elken - (2021) Borealis - 01. Borealis.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Norah Jones/(2002) Come Away With Me/Norah Jones - (2002) Come Away With Me - 01. Come Away With Me.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Norah Jones/(2002) Come Away With Me/Norah Jones - (2002) Come Away With Me - 03-01. Don't Know Why (5.1 mix).flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nordlight/(2009) A Deep Dive/Nordlight - (2009) A Deep Dive - 02. Silk and Roses.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nordlight/(2009) A Deep Dive/Nordlight - (2009) A Deep Dive - 10. Lost In Translation.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Norma Winstone, Kit Downes/(2024) Outpost of Dreams/Norma Winstone, Kit Downes - (2024) Outpost of Dreams - 02. Fly The Wind.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Norma Winstone, Kit Downes/(2024) Outpost of Dreams/Norma Winstone, Kit Downes - (2024) Outpost of Dreams - 03. Jesus Maria.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Notaker/(2016) Infinite/Notaker - (2016) Infinite - 01. Infinite.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Nothing But Thieves/(2017) Broken Machine/Nothing But Thieves - (2017) Broken Machine - 07. I'm Not Made by Design.flac
 /Volumes/dotad/MUSIC/Quarantine/D/Novaé Lita/(2022) Fantasy Girl (single)/Novaé Lita - (2022) Fantasy Girl (single) - 01. Fantasy Girl.flac
-/Volumes/dotad/MUSIC/Quarantine/D/Novecento/(1984) Novecento/Novecento - (1984) Novecento - 06. Movin' On.flac
 /Volumes/dotad/MUSIC/Quarantine/D/Ø/(2025) Sysivalo/Ø - (2025) Sysivalo - 08. Etude 7 (1).flac
 /Volumes/dotad/MUSIC/Quarantine/D/Ø/(2025) Sysivalo/Ø - (2025) Sysivalo - 12. Uusikuu (1).flac
 /Volumes/dotad/MUSIC/Quarantine/D/Ø/(2025) Sysivalo/Ø - (2025) Sysivalo - 18. Sysivalo (1).flac

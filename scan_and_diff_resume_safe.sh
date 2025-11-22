@@ -43,6 +43,9 @@ for d in "${DIRS[@]}"; do
     python3 - <<EOF
 from pathlib import Path
 from dedupe.scanner import ScanConfig, scan_library
+import logging
+
+logging.basicConfig(level=logging.INFO)
 
 config = ScanConfig(
     root=Path("$ROOT_PATH"),

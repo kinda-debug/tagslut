@@ -306,6 +306,7 @@
 /Volumes/dotad/NEW_LIBRARY/QUARANTINE_AUTO/Volumes/dotad/NEW_LIBRARY/Quarantine/D/Beneath Usual/(2017) Beyond - EP/Beneath Usual - (2017) Beyond - EP - 02. Perception.flac
 /Volumes/dotad/NEW_LIBRARY/QUARANTINE_AUTO/Volumes/dotad/NEW_LIBRARY/Quarantine/D/Bruno Berle/(2024) No Reino Dos Afetos 2/Bruno Berle - (2024) No Reino Dos Afetos 2 - 02. New Hit.flac
 /Volumes/dotad/NEW_LIBRARY/QUARANTINE_AUTO/Volumes/dotad/NEW_LIBRARY/Quarantine/D/Bruno Berle/(2024) No Reino Dos Afetos 2/Bruno Berle - (2024) No Reino Dos Afetos 2 - 04. Sonho.flac
+/Volumes/dotad/NEW_LIBRARY/QUARANTINE_AUTO/Volumes/dotad/NEW_LIBRARY/Quarantine/D/Bruno Berle/(2024) No Reino Dos Afetos 2/Bruno Berle - (2024) No Reino Dos Afetos 2 - 05. É Só Você Chegar.flac
 /Volumes/dotad/NEW_LIBRARY/QUARANTINE_AUTO/Volumes/dotad/NEW_LIBRARY/Quarantine/D/Bruno Berle/(2024) No Reino Dos Afetos 2/Bruno Berle - (2024) No Reino Dos Afetos 2 - 05. É Só Você Chegar.flac
 /Volumes/dotad/NEW_LIBRARY/QUARANTINE_AUTO/Volumes/dotad/NEW_LIBRARY/Quarantine/D/Bruno Berle/(2024) No Reino Dos Afetos 2/Bruno Berle - (2024) No Reino Dos Afetos 2 - 08. Dizer Adeus.flac
 /Volumes/dotad/NEW_LIBRARY/QUARANTINE_AUTO/Volumes/dotad/NEW_LIBRARY/Quarantine/D/Hans Zimmer/(2024) Dune: Part Two: Original Motion Picture Soundtrack/Hans Zimmer - (2024) Dune: Part Two: Original Motion Picture Soundtrack - 01-07. Worm Ride.flac
@@ -318,6 +319,12 @@
 /Volumes/dotad/NEW_LIBRARY/QUARANTINE_AUTO/Volumes/dotad/NEW_LIBRARY/Quarantine/D/Moodymann/(2016) DJ-Kicks: Moodymann/Moodymann - (2016) DJ-Kicks: Moodymann - 28. 1044 Coplin (Give You Whatcha Lookin 4).flac
 /Volumes/dotad/NEW_LIBRARY/QUARANTINE_AUTO/Volumes/dotad/NEW_LIBRARY/Quarantine/D/Taroug/(2024) Darts & Kites/Taroug - (2024) Darts & Kites - 03. Queen of Carthage.flac
 /Volumes/dotad/NEW_LIBRARY/QUARANTINE_AUTO/Volumes/dotad/NEW_LIBRARY/Quarantine/D/_dedupe_logs/_Replaced/Bonobo/(2017) Migration/Bonobo - (2017) Migration - 07. Bambro Koyo Ganda.flac
+/Volumes/dotad/NEW_LIBRARY/QUARANTINE_AUTO/Volumes/dotad/NEW_LIBRARY/Quarantine/D/_dedupe_logs/_Replaced_from_margin/Volumes/dotad/MUSIC/Altın Gün/(2019) Gece/Altın Gün - (2019) Gece - 01. Yolcu.flac
+/Volumes/dotad/NEW_LIBRARY/QUARANTINE_AUTO/Volumes/dotad/NEW_LIBRARY/Quarantine/D/_dedupe_logs/_Replaced_from_margin/Volumes/dotad/MUSIC/Altın Gün/(2019) Gece/Altın Gün - (2019) Gece - 02. Vay Dünya.flac
+/Volumes/dotad/NEW_LIBRARY/QUARANTINE_AUTO/Volumes/dotad/NEW_LIBRARY/Quarantine/D/_dedupe_logs/_Replaced_from_margin/Volumes/dotad/MUSIC/Altın Gün/(2019) Gece/Altın Gün - (2019) Gece - 06. Derdimi Dökersem.flac
+/Volumes/dotad/NEW_LIBRARY/QUARANTINE_AUTO/Volumes/dotad/NEW_LIBRARY/Quarantine/D/_dedupe_logs/_Replaced_from_margin/Volumes/dotad/MUSIC/Altın Gün/(2019) Gece/Altın Gün - (2019) Gece - 08. Ervah-ı Ezelde.flac
+/Volumes/dotad/NEW_LIBRARY/QUARANTINE_AUTO/Volumes/dotad/NEW_LIBRARY/Quarantine/D/_dedupe_logs/_Replaced_from_margin/Volumes/dotad/MUSIC/Altın Gün/(2019) Gece/Altın Gün - (2019) Gece - 09. Gesi Bağları.flac
+/Volumes/dotad/NEW_LIBRARY/QUARANTINE_AUTO/Volumes/dotad/NEW_LIBRARY/Quarantine/D/_dedupe_logs/_Replaced_from_margin/Volumes/dotad/MUSIC/Altın Gün/(2019) Gece/Altın Gün - (2019) Gece - 10. Süpürgesi Yoncadan.flac
 /Volumes/dotad/NEW_LIBRARY/QUARANTINE_AUTO/Volumes/dotad/NEW_LIBRARY/Quarantine/D/_dedupe_logs/_Replaced_from_margin/Volumes/dotad/MUSIC/Altın Gün/(2019) Gece/Altın Gün - (2019) Gece - 01. Yolcu.flac
 /Volumes/dotad/NEW_LIBRARY/QUARANTINE_AUTO/Volumes/dotad/NEW_LIBRARY/Quarantine/D/_dedupe_logs/_Replaced_from_margin/Volumes/dotad/MUSIC/Altın Gün/(2019) Gece/Altın Gün - (2019) Gece - 02. Vay Dünya.flac
 /Volumes/dotad/NEW_LIBRARY/QUARANTINE_AUTO/Volumes/dotad/NEW_LIBRARY/Quarantine/D/_dedupe_logs/_Replaced_from_margin/Volumes/dotad/MUSIC/Altın Gün/(2019) Gece/Altın Gün - (2019) Gece - 06. Derdimi Dökersem.flac

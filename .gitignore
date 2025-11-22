@@ -39,3 +39,10 @@ artifacts/db/library_final.db-wal
 artifacts/db/NEW_MUSIC.db
 artifacts/db/library_final.db
 artifacts/db/NEW_LIBRARY.db
+db_MUSIC.txt
+db_MUSIC.txt
+db_NEW_LIBRARY.txt
+db_QUARANTINE_AUTO_GLOBAL.txt
+missing_MUSIC.txt
+missing_NEW_LIBRARY.txt
+missing_QUARANTINE_AUTO_GLOBAL.txt

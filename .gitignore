@@ -46,3 +46,7 @@ db_QUARANTINE_AUTO_GLOBAL.txt
 missing_MUSIC.txt
 missing_NEW_LIBRARY.txt
 missing_QUARANTINE_AUTO_GLOBAL.txt
+missing_MUSIC_flac.txt
+missing_NEW_LIBRARY_flac.txt
+missing_NEW_MUSIC_flac.txt
+missing_QUARANTINE_AUTO_GLOBAL_flac.txt

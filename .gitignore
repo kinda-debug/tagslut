@@ -22,31 +22,27 @@ env/
 # OS
 .DS_Store
 Thumbs.db
-artifacts
-artifacts/reports/recovery_list.csv
-artifacts/db/recovered_candidates.db
-.gitignore
-artifacts/db/library.db-shm
-artifacts/db/library.db-wal
-artifacts/db/library.db
-artifacts/db/library.db
-artifacts/reports/quality_global.csv
-artifacts/db/library.db.bak.20251120T165851Z
-/Users/georgeskhawam/dedupe_repo_reclone/artifacts/db/library_final.db
-artifacts/db/library_final.db
-artifacts/db/library_final.db-shm
-artifacts/db/library_final.db-wal
-artifacts/db/NEW_MUSIC.db
-artifacts/db/library_final.db
-artifacts/db/NEW_LIBRARY.db
-db_MUSIC.txt
-db_MUSIC.txt
-db_NEW_LIBRARY.txt
-db_QUARANTINE_AUTO_GLOBAL.txt
-missing_MUSIC.txt
-missing_NEW_LIBRARY.txt
-missing_QUARANTINE_AUTO_GLOBAL.txt
-missing_MUSIC_flac.txt
-missing_NEW_LIBRARY_flac.txt
-missing_NEW_MUSIC_flac.txt
-missing_QUARANTINE_AUTO_GLOBAL_flac.txt
+# Artifacts and generated outputs (large, inessential)
+/artifacts/
+artifacts/**
+
+# SQLite databases and transient DB files (kept under artifacts/)
+artifacts/db/
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+
+# Reports, logs and other generated output
+artifacts/reports/
+artifacts/logs/
+artifacts/metadata_audit/
+artifacts/recovery/
+
+# Backups, temp files
+*.bak
+*.tmp
+*.log
+
+# Keep other repository-specific text/db lists if needed (already tracked)
+# (db_*.txt and missing_*.txt remain tracked if already committed)

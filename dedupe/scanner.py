@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sqlite3
 import time
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterable, Iterator, Optional
-import os
 
 from . import fingerprints, metadata, utils
 
@@ -147,6 +147,12 @@ def _upsert_batch(
     connection: sqlite3.Connection,
     records: Iterable[ScanRecord],
 ) -> None:
+    payload = []
+    for record in records:
+        row = asdict(record)
+        row["path"] = utils.normalise_path(row["path"])
+        payload.append(row)
+
     connection.executemany(
         f"""
         INSERT INTO {LIBRARY_TABLE} (
@@ -189,14 +195,17 @@ def _upsert_batch(
             fingerprint=excluded.fingerprint,
             fingerprint_duration=excluded.fingerprint_duration
         """,
-        [asdict(record) for record in records],
+        payload,
     )
 
 
 def scan_library(config: ScanConfig) -> int:
     """Scan ``config.root`` and populate ``config.database``."""
-    utils.ensure_parent_directory(config.database)
-    db = utils.DatabaseContext(config.database)
+    root = Path(utils.normalise_path(str(config.root)))
+    database = Path(utils.normalise_path(str(config.database)))
+
+    utils.ensure_parent_directory(database)
+    db = utils.DatabaseContext(database)
     start = time.time()
     total = 0
     include_fingerprints = resolve_fingerprint_usage(config.include_fingerprints)
@@ -205,7 +214,7 @@ def scan_library(config: ScanConfig) -> int:
     # normalised path and record the size and mtime to allow a cheap
     # unchanged-file check without computing checksums.
     existing_index: dict[str, tuple[int, float]] = {}
-    if (config.resume or config.resume_safe) and config.database.exists():
+    if (config.resume or config.resume_safe) and database.exists():
         with db.connect() as connection:
             initialise_database(connection)
             cursor = connection.execute(
@@ -223,14 +232,14 @@ def scan_library(config: ScanConfig) -> int:
     # off progress we avoid the full count.
     total_files = None
     if config.show_progress:
-        total_files = sum(1 for _ in utils.iter_audio_files(config.root))
+        total_files = sum(1 for _ in utils.iter_audio_files(root))
 
     with db.connect() as connection:
         initialise_database(connection)
 
         iterator = (
             Path(dirpath) / filename
-            for dirpath, _, filenames in os.walk(config.root)
+            for dirpath, _, filenames in os.walk(root)
             for filename in filenames
             if utils.is_audio_file(filename)
         )
@@ -318,7 +327,7 @@ def scan_library(config: ScanConfig) -> int:
         if pbar:
             pbar.close()
 
-    LOGGER.info("Completed scan of %s (%s files)", config.root, total)
+    LOGGER.info("Completed scan of %s (%s files)", root, total)
     return total
 
 

@@ -10,7 +10,8 @@ interface.  Each workflow stage is exposed via a dedicated module inside the
 
 - **Library scanning** – Capture technical metadata, embedded tags, and optional
   Chromaprint fingerprints for every audio file in a collection while
-  normalising stored paths to Unicode NFC for consistent comparisons.
+  normalising stored paths to Unicode NFC for consistent comparisons and
+  resumable operation.
 - **Recovery parsing** – Ingest R-Studio "Recognized Files" exports into a
   structured SQLite database for repeatable analysis.
 - **Matching engine** – Correlate recovered fragments with the canonical
@@ -42,7 +43,10 @@ Available sub-commands:
   filename heuristics by default.  Append `--fingerprints` to request optional
   Chromaprint extraction when `fpcalc` is available. Use `--resume` to skip
   unchanged files individually or `--resume-safe` to skip entire batches when
-  any member is unchanged. Add `--progress` to render a progress bar.
+  any member is unchanged. Add `--progress` to render a progress bar. Every
+  path is coerced to an absolute, NFC-normalised POSIX string before it is
+  compared or written to the database, ensuring Unicode-equivalent paths match
+  reliably across filesystems.
 - `dedupe parse-rstudio --input recognized.txt --out recovered.db`
   Parses an R-Studio export, normalises file paths, and stores the results in a
   SQLite database.
@@ -57,7 +61,8 @@ Every command accepts `--verbose` to enable detailed logging output.
 
 ### Recommended scan workflows
 
-- **Default library scan** – fingerprints skipped, fastest path:
+- **Default library scan** – fingerprints skipped, fastest path and resume-safe
+  semantics enabled:
 
   ```bash
   python3 -m dedupe.cli scan-library --root /path/to/library --out library.db --resume-safe --progress

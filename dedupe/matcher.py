@@ -59,8 +59,8 @@ class MatchCandidate:
 
 def _row_to_library_entry(row: sqlite3.Row) -> LibraryEntry:
     return LibraryEntry(
-        path=row["path"],
-        name=Path(row["path"]).name,
+        path=utils.normalise_path(row["path"]),
+        name=Path(utils.normalise_path(row["path"])).name,
         size_bytes=row["size_bytes"],
         duration=row["duration"],
         sample_rate=row["sample_rate"],
@@ -71,7 +71,7 @@ def _row_to_library_entry(row: sqlite3.Row) -> LibraryEntry:
 
 def _row_to_recovery_entry(row: sqlite3.Row) -> RecoveryEntry:
     return RecoveryEntry(
-        source_path=row["source_path"],
+        source_path=utils.normalise_path(row["source_path"]),
         suggested_name=row["suggested_name"],
         size_bytes=row["size_bytes"],
         extension=row["extension"],
@@ -79,7 +79,7 @@ def _row_to_recovery_entry(row: sqlite3.Row) -> RecoveryEntry:
 
 
 def load_library_entries(database: Path) -> list[LibraryEntry]:
-    db = utils.DatabaseContext(database)
+    db = utils.DatabaseContext(Path(utils.normalise_path(str(database))))
     with db.connect() as connection:
         cursor = connection.execute(
             f"SELECT * FROM {scanner.LIBRARY_TABLE}"
@@ -90,7 +90,7 @@ def load_library_entries(database: Path) -> list[LibraryEntry]:
 
 
 def load_recovery_entries(database: Path) -> list[RecoveryEntry]:
-    db = utils.DatabaseContext(database)
+    db = utils.DatabaseContext(Path(utils.normalise_path(str(database))))
     with db.connect() as connection:
         cursor = connection.execute(
             f"SELECT * FROM {rstudio_parser.RECOVERED_TABLE}"
@@ -185,7 +185,9 @@ def match_databases(
         if best_candidate is not None:
             matches.append(best_candidate)
             if best_candidate.recovery_path:
-                used_recoveries.add(best_candidate.recovery_path)
+                used_recoveries.add(
+                    utils.normalise_path(best_candidate.recovery_path)
+                )
         else:
             matches.append(
                 MatchCandidate(
@@ -201,12 +203,13 @@ def match_databases(
             )
 
     for rec in recovery_entries:
-        if rec.source_path in used_recoveries:
+        normalised_source = utils.normalise_path(rec.source_path)
+        if normalised_source in used_recoveries:
             continue
         matches.append(
             MatchCandidate(
                 library_path="",
-                recovery_path=rec.source_path,
+                recovery_path=normalised_source,
                 recovery_name=rec.name,
                 score=0.0,
                 classification="orphan",

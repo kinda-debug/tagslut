@@ -95,6 +95,7 @@ def load_into_database(
 ) -> int:
     """Persist *records* into *database* and return the stored row count."""
 
+    database = Path(utils.normalise_path(str(database)))
     utils.ensure_parent_directory(database)
     db = utils.DatabaseContext(database)
     count = 0

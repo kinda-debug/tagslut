@@ -14,6 +14,9 @@ Chromaprint fingerprints are optional.  Use them only when you must
 differentiate files that match on duration and size but originate from different
 masters.
 
+- All paths written to the database are NFC-normalised absolute POSIX strings.
+  This guarantees that decomposed and composed Unicode spellings compare
+  identically when resuming or matching.
 - `--resume` skips unchanged files using a size + modification-time check and
   only recomputes metadata for new or modified files.
 - `--resume-safe` treats each batch as atomic; if any file matches an existing

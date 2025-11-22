@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 from typing import Iterable, Optional
 
-from . import manifest, matcher, rstudio_parser, scanner
+from . import manifest, matcher, rstudio_parser, scanner, utils
 
 LOGGER = logging.getLogger(__name__)
 
@@ -21,7 +21,9 @@ def _configure_logging(verbose: bool) -> None:
 
 
 def _path(value: str) -> Path:
-    return Path(value).expanduser()
+    """Return a NFC-normalised absolute path from a CLI argument."""
+
+    return Path(utils.normalise_path(value))
 
 
 def build_parser() -> argparse.ArgumentParser:

@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
 
+from . import utils
+
 LOGGER = logging.getLogger(__name__)
 
 
@@ -68,8 +70,16 @@ def _rows_from_matches(matches_csv: Path) -> Iterator[ManifestRow]:
             priority = _priority_for(status, confidence)
             notes = _notes_for(status)
             yield ManifestRow(
-                library_path=library_path,
-                recovery_path=recovery_path,
+                library_path=(
+                    utils.normalise_path(library_path)
+                    if library_path
+                    else ""
+                ),
+                recovery_path=(
+                    utils.normalise_path(recovery_path)
+                    if recovery_path
+                    else ""
+                ),
                 destination_name=destination_name,
                 status=status,
                 confidence=confidence,

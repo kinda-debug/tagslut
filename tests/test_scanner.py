@@ -106,3 +106,46 @@ def test_resume_safe_skips_batch_on_match(tmp_path, monkeypatch) -> None:
         rows = connection.execute("SELECT path FROM library_files").fetchall()
     assert len(rows) == 1
     assert rows[0]["path"] == utils.normalise_path(str(unchanged))
+
+
+def test_upsert_idempotent_and_normalises_paths(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(scanner, "prepare_record", _stub_prepare_record)
+    root = tmp_path / "library"
+    root.mkdir()
+    target = root / "Cafe\u0301.flac"
+    target.write_bytes(b"content")
+
+    database = tmp_path / "library.db"
+    with _initialise_db(database) as connection:
+        record = _stub_prepare_record(target, False)
+        scanner._upsert_batch(connection, [record])
+        scanner._upsert_batch(connection, [record])
+        rows = connection.execute("SELECT path, size_bytes FROM library_files").fetchall()
+    assert len(rows) == 1
+    assert unicodedata.is_normalized("NFC", rows[0]["path"])
+    assert rows[0]["size_bytes"] == target.stat().st_size
+
+
+def test_scan_wrapper_passes_resume_safe(monkeypatch, tmp_path) -> None:
+    captured = {}
+
+    def _fake_scan_library(config: scanner.ScanConfig) -> int:
+        captured["config"] = config
+        return 0
+
+    monkeypatch.setattr(scanner, "scan_library", _fake_scan_library)
+    root = tmp_path / "root"
+    db = tmp_path / "db.sqlite"
+    scanner.scan(
+        root=root,
+        database=db,
+        include_fingerprints=False,
+        batch_size=10,
+        resume=True,
+        resume_safe=True,
+        show_progress=True,
+    )
+
+    assert captured["config"].resume_safe is True
+    assert captured["config"].resume is True
+    assert captured["config"].show_progress is True

@@ -38,3 +38,4 @@ artifacts/db/library_final.db-shm
 artifacts/db/library_final.db-wal
 artifacts/db/NEW_MUSIC.db
 artifacts/db/library_final.db
+artifacts/db/NEW_LIBRARY.db

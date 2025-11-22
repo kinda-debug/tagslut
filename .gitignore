@@ -46,3 +46,7 @@ artifacts/recovery/
 
 # Keep other repository-specific text/db lists if needed (already tracked)
 # (db_*.txt and missing_*.txt remain tracked if already committed)
+missing_MUSIC_flac.txt
+missing_NEW_LIBRARY_flac.txt
+missing_NEW_MUSIC_flac.txt
+missing_QUARANTINE_AUTO_GLOBAL_flac.txt

@@ -1,0 +1,24 @@
+------------------------------------------------------------
+RESTORING RECOVERED FLAC FILES
+------------------------------------------------------------
+
+Processing list: missing_MUSIC_flac.txt
+Original root:   /Volumes/dotad/MUSIC
+Recovered root:  /Volumes/dotad/RECOVERED_FROM_MISSING/MUSIC
+
+Processing list: missing_NEW_MUSIC_flac.txt
+Original root:   /Volumes/dotad/NEW_MUSIC
+Recovered root:  /Volumes/dotad/RECOVERED_FROM_MISSING/NEW_MUSIC
+
+Processing list: missing_NEW_LIBRARY_flac.txt
+Original root:   /Volumes/dotad/NEW_LIBRARY
+Recovered root:  /Volumes/dotad/RECOVERED_FROM_MISSING/NEW_LIBRARY
+
+Processing list: missing_QUARANTINE_AUTO_GLOBAL_flac.txt
+Original root:   /Volumes/dotad/QUARANTINE_AUTO_GLOBAL
+Recovered root:  /Volumes/dotad/RECOVERED_FROM_MISSING/QUARANTINE_AUTO_GLOBAL
+
+------------------------------------------------------------
+RESTORE COMPLETE
+Files copied: 0
+Errors logged in restore_missing_errors.log

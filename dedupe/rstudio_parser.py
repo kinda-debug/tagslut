@@ -41,31 +41,9 @@ def initialise_database(connection: sqlite3.Connection) -> None:
     )
 
 
-def _dialect_for(path: Path) -> Optional[csv.Dialect]:
-    """Try to detect a CSV dialect.
-
-    Return ``None`` when the file appears to be a plain newline-separated
-    listing (no obvious delimiters). This lets the caller fall back to a
-    simple line-oriented parser used by some R-Studio exports.
-    """
+def _dialect_for(path: Path) -> csv.Dialect:
     with path.open("r", encoding="utf8", errors="ignore") as handle:
-        sample = handle.read(8192)
-    # Inspect the first non-comment line: some R-Studio exports include
-    # header/metadata lines (starting with ':#') that may contain
-    # semicolons or other punctuation. If the first meaningful line does
-    # not contain common CSV delimiters, treat the file as a plain
-    # newline-separated listing.
-    first_line = None
-    for raw in sample.splitlines():
-        s = raw.strip()
-        if not s:
-            continue
-        if s.startswith(":#"):
-            continue
-        first_line = s
-        break
-    if first_line is not None and not any(d in first_line for d in (",", "\t", ";")):
-        return None
+        sample = handle.read(4096)
     try:
         dialect = csv.Sniffer().sniff(sample)
     except csv.Error:
@@ -74,33 +52,9 @@ def _dialect_for(path: Path) -> Optional[csv.Dialect]:
 
 
 def parse_export(path: Path) -> Iterator[RecoveredFile]:
-    """Yield :class:`RecoveredFile` rows parsed from *path*.
-
-    Supports both CSV-style exports and simple newline-separated listings.
-    """
+    """Yield :class:`RecoveredFile` rows parsed from *path*."""
 
     dialect = _dialect_for(path)
-    # Plain line-oriented export (no CSV delimiters detected)
-    if dialect is None:
-        with path.open("r", encoding="utf8", errors="ignore") as handle:
-            for raw in handle:
-                line = raw.rstrip("\n\r")
-                if not line:
-                    continue
-                # Skip R-Studio metadata/comment lines starting with ':#'
-                if line.startswith(":#"):
-                    continue
-                source = line.strip()
-                if source:
-                    yield RecoveredFile(
-                        source_path=utils.normalise_path(source),
-                        suggested_name="",
-                        size_bytes=None,
-                        extension=None,
-                    )
-        return
-
-    # CSV-style export
     with path.open(
         "r",
         encoding="utf8",

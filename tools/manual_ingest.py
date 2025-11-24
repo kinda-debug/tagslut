@@ -90,7 +90,7 @@ def get_metadata(file_path: Path) -> Optional[dict[str, object]]:
             "channels": channels,
             "bit_depth": bit_depth,
             "tags_json": json.dumps(
-                tags, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+                tags, sort_keys=True, separators=(",", ":")
             ),
             "fingerprint": None,
             "fingerprint_duration": None,

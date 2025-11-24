@@ -69,9 +69,9 @@ def initialise_database(connection: sqlite3.Connection) -> None:
         f"""
         CREATE TABLE IF NOT EXISTS {LIBRARY_TABLE} (
             path TEXT PRIMARY KEY,
-            size_bytes INTEGER NOT NULL,
-            mtime REAL NOT NULL,
-            checksum TEXT NOT NULL,
+            size_bytes INTEGER,
+            mtime REAL,
+            checksum TEXT,
             duration REAL,
             sample_rate INTEGER,
             bit_rate INTEGER,

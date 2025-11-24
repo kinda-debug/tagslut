@@ -114,9 +114,7 @@ def prepare_record(path: Path, include_fingerprints: bool) -> ScanRecord:
     meta = metadata.probe_audio(path)
     checksum = utils.compute_md5(path)
     fingerprint_result = (
-        fingerprints.generate_chromaprint(path)
-        if include_fingerprints
-        else None
+        fingerprints.generate_chromaprint(path) if include_fingerprints else None
     )
     return ScanRecord(
         path=utils.normalise_path(str(path)),
@@ -129,9 +127,7 @@ def prepare_record(path: Path, include_fingerprints: bool) -> ScanRecord:
         channels=meta.stream.channels,
         bit_depth=meta.stream.bit_depth,
         tags_json=json.dumps(meta.tags, sort_keys=True, separators=(",", ":")),
-        fingerprint=(
-            fingerprint_result.fingerprint if fingerprint_result else None
-        ),
+        fingerprint=(fingerprint_result.fingerprint if fingerprint_result else None),
         fingerprint_duration=(
             fingerprint_result.duration if fingerprint_result else None
         ),
@@ -278,8 +274,7 @@ def scan_library(config: ScanConfig) -> int:
                     if existing is not None:
                         size, mtime = existing
                         unchanged = (
-                            size == st.st_size
-                            and abs(mtime - st.st_mtime) < 1.0
+                            size == st.st_size and abs(mtime - st.st_mtime) < 1.0
                         )
                 batch.append((path, unchanged))
                 if len(batch) >= config.batch_size:
@@ -295,6 +290,7 @@ def scan_library(config: ScanConfig) -> int:
 
                 pbar = tqdm(total=total_files, unit="files")
             except Exception:  # pragma: no cover - fallback if tqdm missing
+
                 class _DummyPbar:
                     def __init__(
                         self,
@@ -320,9 +316,7 @@ def scan_library(config: ScanConfig) -> int:
                 continue
 
             paths = [
-                path
-                for path, unchanged in batch
-                if not (config.resume and unchanged)
+                path for path, unchanged in batch if not (config.resume and unchanged)
             ]
             if pbar:
                 pbar.update(len(batch))

@@ -86,7 +86,9 @@ def deduplicate_database(db_path: Path, report_path: Optional[Path] = None) -> d
 
     if report_path is not None:
         utils.ensure_parent_directory(report_path)
-        report_path.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf8")
+        report_path.write_text(
+            json.dumps(report, indent=2, sort_keys=True), encoding="utf8"
+        )
 
     summary["report"] = str(report_path) if report_path else None
     return summary

@@ -40,17 +40,11 @@ def _priority_for(status: str, confidence: float) -> str:
 
 def _notes_for(status: str) -> str:
     if status == "truncated":
-        return (
-            "Recovered file appears shorter than library copy."
-        )
+        return "Recovered file appears shorter than library copy."
     if status == "potential_upgrade":
-        return (
-            "Recovered file larger than library copy; inspect quality."
-        )
+        return "Recovered file larger than library copy; inspect quality."
     if status == "orphan":
-        return (
-            "No matching library entry; determine target manually."
-        )
+        return "No matching library entry; determine target manually."
     if status == "missing":
         return "Library item has no recovery candidate."
     return ""
@@ -64,21 +58,15 @@ def _rows_from_matches(matches_csv: Path) -> Iterator[ManifestRow]:
             confidence = float(row.get("score") or 0.0)
             library_path = row.get("library_path", "")
             recovery_path = row.get("recovery_path", "")
-            destination_name = Path(
-                library_path or row.get("recovery_name", "")
-            ).name
+            destination_name = Path(library_path or row.get("recovery_name", "")).name
             priority = _priority_for(status, confidence)
             notes = _notes_for(status)
             yield ManifestRow(
                 library_path=(
-                    utils.normalise_path(library_path)
-                    if library_path
-                    else ""
+                    utils.normalise_path(library_path) if library_path else ""
                 ),
                 recovery_path=(
-                    utils.normalise_path(recovery_path)
-                    if recovery_path
-                    else ""
+                    utils.normalise_path(recovery_path) if recovery_path else ""
                 ),
                 destination_name=destination_name,
                 status=status,

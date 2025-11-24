@@ -1,3 +1,5 @@
+"""Module description placeholder."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -52,7 +54,9 @@ def test_match_databases_generates_rows(tmp_path: Path) -> None:
     _create_recovered_db(recovered_db)
 
     matches = matcher.match_databases(library_db, recovered_db, matches_csv)
-    assert any(match.classification != "missing" for match in matches if match.library_path)
+    assert any(
+        match.classification != "missing" for match in matches if match.library_path
+    )
     assert matches_csv.exists()
 
 
@@ -65,7 +69,9 @@ def test_matcher_normalises_loaded_paths(tmp_path: Path) -> None:
     library_entries = matcher.load_library_entries(library_db)
     recovery_entries = matcher.load_recovery_entries(recovered_db)
 
-    assert all(utils.normalise_path(entry.path) == entry.path for entry in library_entries)
+    assert all(
+        utils.normalise_path(entry.path) == entry.path for entry in library_entries
+    )
     assert all(
         utils.normalise_path(entry.source_path) == entry.source_path
         for entry in recovery_entries

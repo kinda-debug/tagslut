@@ -104,8 +104,7 @@ def _parse_stream_info(payload: dict) -> AudioStreamInfo:
         duration=float(duration) if duration is not None else None,
         sample_rate=_maybe_int(audio_stream.get("sample_rate")),
         bit_rate=_maybe_int(
-            audio_stream.get("bit_rate")
-            or payload.get("format", {}).get("bit_rate")
+            audio_stream.get("bit_rate") or payload.get("format", {}).get("bit_rate")
         ),
         channels=_maybe_int(audio_stream.get("channels")),
         bit_depth=_maybe_int(audio_stream.get("bits_per_raw_sample")),

@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 from typing import Iterable, Optional
 
-from . import manifest, matcher, rstudio_parser, scanner, utils
+from . import manifest, matcher, scanner, utils
 
 LOGGER = logging.getLogger(__name__)
 
@@ -84,23 +84,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show a progress bar during scanning",
     )
 
-    parse_parser = subparsers.add_parser(
-        "parse-rstudio",
-        help="Parse an R-Studio Recognized Files export into SQLite",
-    )
-    parse_parser.add_argument(
-        "--input",
-        type=_path,
-        required=True,
-        help="R-Studio export path",
-    )
-    parse_parser.add_argument(
-        "--out",
-        type=_path,
-        required=True,
-        help="SQLite database to store recovery candidates",
-    )
-
     match_parser = subparsers.add_parser(
         "match",
         help="Match scanned library metadata with recovery candidates",
@@ -158,13 +141,6 @@ def _command_scan(args: argparse.Namespace) -> int:
     return 0
 
 
-def _command_parse_rstudio(args: argparse.Namespace) -> int:
-    records = list(rstudio_parser.parse_export(args.input))
-    count = rstudio_parser.load_into_database(records, args.out)
-    LOGGER.info("Captured %s recovery candidates", count)
-    return 0
-
-
 def _command_match(args: argparse.Namespace) -> int:
     matcher.match_databases(args.library, args.recovered, args.out)
     return 0
@@ -177,7 +153,6 @@ def _command_manifest(args: argparse.Namespace) -> int:
 
 COMMAND_HANDLERS = {
     "scan-library": _command_scan,
-    "parse-rstudio": _command_parse_rstudio,
     "match": _command_match,
     "generate-manifest": _command_manifest,
 }

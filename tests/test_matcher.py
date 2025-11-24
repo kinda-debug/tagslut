@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from dedupe import matcher, rstudio_parser, scanner, utils
+from dedupe import matcher, scanner, utils
+
+
+RECOVERED_TABLE = "recovered_files"
 
 
 def _create_library_db(path: Path) -> None:
@@ -10,7 +13,10 @@ def _create_library_db(path: Path) -> None:
     with context.connect() as connection:
         scanner.initialise_database(connection)
         connection.execute(
-            f"INSERT INTO {scanner.LIBRARY_TABLE} (path, size_bytes, mtime, checksum) VALUES (?, ?, ?, ?)",
+            (
+                f"INSERT INTO {scanner.LIBRARY_TABLE} "
+                "(path, size_bytes, mtime, checksum) VALUES (?, ?, ?, ?)"
+            ),
             ("/music/foo.flac", 1000, 0, "deadbeef"),
         )
 
@@ -18,9 +24,22 @@ def _create_library_db(path: Path) -> None:
 def _create_recovered_db(path: Path) -> None:
     context = utils.DatabaseContext(path)
     with context.connect() as connection:
-        rstudio_parser.initialise_database(connection)
         connection.execute(
-            f"INSERT INTO {rstudio_parser.RECOVERED_TABLE} (source_path, suggested_name, size_bytes, extension) VALUES (?, ?, ?, ?)",
+            f"""
+            CREATE TABLE IF NOT EXISTS {RECOVERED_TABLE} (
+                source_path TEXT PRIMARY KEY,
+                suggested_name TEXT,
+                size_bytes INTEGER,
+                extension TEXT
+            )
+            """
+        )
+        connection.execute(
+            (
+                f"INSERT INTO {RECOVERED_TABLE} "
+                "(source_path, suggested_name, size_bytes, extension) "
+                "VALUES (?, ?, ?, ?)"
+            ),
             ("/recover/foo.flac", "foo.flac", 995, "flac"),
         )
 

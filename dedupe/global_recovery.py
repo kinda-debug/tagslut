@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Iterator, Optional, Sequence
 
-from . import rstudio_parser, scanner, utils
+from . import scanner, utils
 
 LOGGER = logging.getLogger(__name__)
 
@@ -303,53 +303,13 @@ def scan_roots(
     return total
 
 
-def parse_recognized_export(path: Path, database: Path) -> int:
-    """Parse an R-Studio export and store fragments in *database*."""
+def parse_recognized_export(_path: Path, _database: Path) -> int:
+    """Legacy hook retained for callers; always raises."""
 
-    database = Path(utils.normalise_path(str(database)))
-    utils.ensure_parent_directory(database)
-    records = list(rstudio_parser.parse_export(path))
-    db = utils.DatabaseContext(database)
-    with db.connect() as connection:
-        ensure_schema(connection)
-        connection.executemany(
-            f"""
-            INSERT INTO {FRAGMENTS_TABLE} (
-                source_path,
-                suggested_name,
-                filename,
-                extension,
-                size_bytes
-            ) VALUES (
-                :source_path,
-                :suggested_name,
-                :filename,
-                :extension,
-                :size_bytes
-            )
-            ON CONFLICT(source_path) DO UPDATE SET
-                suggested_name=excluded.suggested_name,
-                filename=excluded.filename,
-                extension=excluded.extension,
-                size_bytes=excluded.size_bytes,
-                parsed_at=CURRENT_TIMESTAMP
-            """,
-            [
-                {
-                    "source_path": record.source_path,
-                    "suggested_name": record.suggested_name,
-                    "filename": Path(record.source_path).name,
-                    "extension": record.extension,
-                    "size_bytes": record.size_bytes,
-                }
-                for record in records
-            ],
-        )
-        count = connection.execute(
-            f"SELECT COUNT(*) FROM {FRAGMENTS_TABLE}"
-        ).fetchone()[0]
-    LOGGER.info("Recorded %s fragments from %s", len(records), path)
-    return int(count)
+    raise RuntimeError(
+        "R-Studio export parsing was retired; populate global_fragments via "
+        "external tooling instead."
+    )
 
 
 def _normalise_component(text: str) -> str:

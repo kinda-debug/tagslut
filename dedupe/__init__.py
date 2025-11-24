@@ -3,6 +3,7 @@
 from . import (
     cli,
     fingerprints,
+    healthscore,
     manifest,
     matcher,
     metadata,
@@ -13,6 +14,7 @@ from . import (
 __all__ = [
     "cli",
     "fingerprints",
+    "healthscore",
     "manifest",
     "matcher",
     "metadata",

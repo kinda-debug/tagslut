@@ -34,6 +34,9 @@ class ScanRecord:
     tags_json: str
     fingerprint: Optional[str]
     fingerprint_duration: Optional[float]
+    dup_group: Optional[str]
+    duplicate_rank: Optional[int]
+    is_canonical: Optional[int]
 
 
 @dataclass(slots=True)
@@ -66,9 +69,9 @@ def initialise_database(connection: sqlite3.Connection) -> None:
         f"""
         CREATE TABLE IF NOT EXISTS {LIBRARY_TABLE} (
             path TEXT PRIMARY KEY,
-            size_bytes INTEGER NOT NULL,
-            mtime REAL NOT NULL,
-            checksum TEXT NOT NULL,
+            size_bytes INTEGER,
+            mtime REAL,
+            checksum TEXT,
             duration REAL,
             sample_rate INTEGER,
             bit_rate INTEGER,
@@ -76,7 +79,10 @@ def initialise_database(connection: sqlite3.Connection) -> None:
             bit_depth INTEGER,
             tags_json TEXT,
             fingerprint TEXT,
-            fingerprint_duration REAL
+            fingerprint_duration REAL,
+            dup_group TEXT,
+            duplicate_rank INTEGER,
+            is_canonical INTEGER
         )
         """
     )
@@ -108,9 +114,7 @@ def prepare_record(path: Path, include_fingerprints: bool) -> ScanRecord:
     meta = metadata.probe_audio(path)
     checksum = utils.compute_md5(path)
     fingerprint_result = (
-        fingerprints.generate_chromaprint(path)
-        if include_fingerprints
-        else None
+        fingerprints.generate_chromaprint(path) if include_fingerprints else None
     )
     return ScanRecord(
         path=utils.normalise_path(str(path)),
@@ -123,12 +127,13 @@ def prepare_record(path: Path, include_fingerprints: bool) -> ScanRecord:
         channels=meta.stream.channels,
         bit_depth=meta.stream.bit_depth,
         tags_json=json.dumps(meta.tags, sort_keys=True, separators=(",", ":")),
-        fingerprint=(
-            fingerprint_result.fingerprint if fingerprint_result else None
-        ),
+        fingerprint=(fingerprint_result.fingerprint if fingerprint_result else None),
         fingerprint_duration=(
             fingerprint_result.duration if fingerprint_result else None
         ),
+        dup_group=None,
+        duplicate_rank=None,
+        is_canonical=None,
     )
 
 
@@ -167,7 +172,10 @@ def _upsert_batch(
             bit_depth,
             tags_json,
             fingerprint,
-            fingerprint_duration
+            fingerprint_duration,
+            dup_group,
+            duplicate_rank,
+            is_canonical
         ) VALUES (
             :path,
             :size_bytes,
@@ -180,7 +188,10 @@ def _upsert_batch(
             :bit_depth,
             :tags_json,
             :fingerprint,
-            :fingerprint_duration
+            :fingerprint_duration,
+            :dup_group,
+            :duplicate_rank,
+            :is_canonical
         )
         ON CONFLICT(path) DO UPDATE SET
             size_bytes=excluded.size_bytes,
@@ -193,7 +204,10 @@ def _upsert_batch(
             bit_depth=excluded.bit_depth,
             tags_json=excluded.tags_json,
             fingerprint=excluded.fingerprint,
-            fingerprint_duration=excluded.fingerprint_duration
+            fingerprint_duration=excluded.fingerprint_duration,
+            dup_group=excluded.dup_group,
+            duplicate_rank=excluded.duplicate_rank,
+            is_canonical=excluded.is_canonical
         """,
         payload,
     )
@@ -260,8 +274,7 @@ def scan_library(config: ScanConfig) -> int:
                     if existing is not None:
                         size, mtime = existing
                         unchanged = (
-                            size == st.st_size
-                            and abs(mtime - st.st_mtime) < 1.0
+                            size == st.st_size and abs(mtime - st.st_mtime) < 1.0
                         )
                 batch.append((path, unchanged))
                 if len(batch) >= config.batch_size:
@@ -277,6 +290,7 @@ def scan_library(config: ScanConfig) -> int:
 
                 pbar = tqdm(total=total_files, unit="files")
             except Exception:  # pragma: no cover - fallback if tqdm missing
+
                 class _DummyPbar:
                     def __init__(
                         self,
@@ -302,9 +316,7 @@ def scan_library(config: ScanConfig) -> int:
                 continue
 
             paths = [
-                path
-                for path, unchanged in batch
-                if not (config.resume and unchanged)
+                path for path, unchanged in batch if not (config.resume and unchanged)
             ]
             if pbar:
                 pbar.update(len(batch))
@@ -357,3 +369,66 @@ def scan(
         show_progress=show_progress,
     )
     return scan_library(config)
+
+
+def rescan_missing(
+    root: Path,
+    database: Path,
+    include_fingerprints: bool = False,
+) -> dict[str, list[str]]:
+    """Ingest only files absent from the existing database."""
+
+    root = Path(utils.normalise_path(str(root)))
+    database = Path(utils.normalise_path(str(database)))
+    utils.ensure_parent_directory(database)
+    db = utils.DatabaseContext(database)
+    missing: list[str] = []
+    ingested: list[str] = []
+    unreadable: list[str] = []
+    corrupt: list[str] = []
+
+    with db.connect() as connection:
+        initialise_database(connection)
+        connection.row_factory = sqlite3.Row
+        existing = {
+            utils.normalise_path(row["path"])
+            for row in connection.execute(
+                "SELECT path FROM " + LIBRARY_TABLE
+            ).fetchall()
+        }
+
+    def _iter_flac() -> Iterator[Path]:
+        for path in root.rglob("*.flac"):
+            yield path
+
+    targets = []
+    for path in _iter_flac():
+        npath = utils.normalise_path(str(path))
+        if npath in existing:
+            continue
+        missing.append(npath)
+        targets.append(path)
+
+    include = resolve_fingerprint_usage(include_fingerprints)
+    records: list[ScanRecord] = []
+    for path in targets:
+        try:
+            records.append(prepare_record(path, include))
+        except FileNotFoundError:
+            unreadable.append(utils.normalise_path(str(path)))
+        except Exception:  # pragma: no cover - defensive logging
+            LOGGER.exception("Failed to ingest %s", path)
+            corrupt.append(utils.normalise_path(str(path)))
+
+    with db.connect() as connection:
+        if records:
+            _upsert_batch(connection, records)
+            connection.commit()
+            ingested = [r.path for r in records]
+
+    return {
+        "missing": missing,
+        "ingested": ingested,
+        "unreadable": unreadable,
+        "corrupt": corrupt,
+    }

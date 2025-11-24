@@ -6,7 +6,6 @@ from . import (
     manifest,
     matcher,
     metadata,
-    rstudio_parser,
     scanner,
     utils,
 )
@@ -17,7 +16,6 @@ __all__ = [
     "manifest",
     "matcher",
     "metadata",
-    "rstudio_parser",
     "scanner",
     "utils",
 ]

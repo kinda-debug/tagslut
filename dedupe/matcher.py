@@ -11,7 +11,7 @@ from typing import Optional
 
 from difflib import SequenceMatcher
 
-from . import rstudio_parser, scanner, utils
+from . import scanner, utils
 
 LOGGER = logging.getLogger(__name__)
 
@@ -81,9 +81,7 @@ def _row_to_recovery_entry(row: sqlite3.Row) -> RecoveryEntry:
 def load_library_entries(database: Path) -> list[LibraryEntry]:
     db = utils.DatabaseContext(Path(utils.normalise_path(str(database))))
     with db.connect() as connection:
-        cursor = connection.execute(
-            f"SELECT * FROM {scanner.LIBRARY_TABLE}"
-        )
+        cursor = connection.execute(f"SELECT * FROM {scanner.LIBRARY_TABLE}")
         rows = [_row_to_library_entry(row) for row in cursor.fetchall()]
     LOGGER.info("Loaded %s library entries", len(rows))
     return rows
@@ -92,9 +90,7 @@ def load_library_entries(database: Path) -> list[LibraryEntry]:
 def load_recovery_entries(database: Path) -> list[RecoveryEntry]:
     db = utils.DatabaseContext(Path(utils.normalise_path(str(database))))
     with db.connect() as connection:
-        cursor = connection.execute(
-            f"SELECT * FROM {rstudio_parser.RECOVERED_TABLE}"
-        )
+        cursor = connection.execute("SELECT * FROM recovered_files")
         rows = [_row_to_recovery_entry(row) for row in cursor.fetchall()]
     LOGGER.info("Loaded %s recovery entries", len(rows))
     return rows
@@ -177,17 +173,12 @@ def match_databases(
                 size_difference=size_delta,
                 fingerprint_similarity=None,
             )
-            if (
-                best_candidate is None
-                or candidate.score > best_candidate.score
-            ):
+            if best_candidate is None or candidate.score > best_candidate.score:
                 best_candidate = candidate
         if best_candidate is not None:
             matches.append(best_candidate)
             if best_candidate.recovery_path:
-                used_recoveries.add(
-                    utils.normalise_path(best_candidate.recovery_path)
-                )
+                used_recoveries.add(utils.normalise_path(best_candidate.recovery_path))
         else:
             matches.append(
                 MatchCandidate(

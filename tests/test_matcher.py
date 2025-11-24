@@ -1,8 +1,13 @@
+"""Module description placeholder."""
+
 from __future__ import annotations
 
 from pathlib import Path
 
-from dedupe import matcher, rstudio_parser, scanner, utils
+from dedupe import matcher, scanner, utils
+
+
+RECOVERED_TABLE = "recovered_files"
 
 
 def _create_library_db(path: Path) -> None:
@@ -10,7 +15,10 @@ def _create_library_db(path: Path) -> None:
     with context.connect() as connection:
         scanner.initialise_database(connection)
         connection.execute(
-            f"INSERT INTO {scanner.LIBRARY_TABLE} (path, size_bytes, mtime, checksum) VALUES (?, ?, ?, ?)",
+            (
+                f"INSERT INTO {scanner.LIBRARY_TABLE} "
+                "(path, size_bytes, mtime, checksum) VALUES (?, ?, ?, ?)"
+            ),
             ("/music/foo.flac", 1000, 0, "deadbeef"),
         )
 
@@ -18,9 +26,22 @@ def _create_library_db(path: Path) -> None:
 def _create_recovered_db(path: Path) -> None:
     context = utils.DatabaseContext(path)
     with context.connect() as connection:
-        rstudio_parser.initialise_database(connection)
         connection.execute(
-            f"INSERT INTO {rstudio_parser.RECOVERED_TABLE} (source_path, suggested_name, size_bytes, extension) VALUES (?, ?, ?, ?)",
+            f"""
+            CREATE TABLE IF NOT EXISTS {RECOVERED_TABLE} (
+                source_path TEXT PRIMARY KEY,
+                suggested_name TEXT,
+                size_bytes INTEGER,
+                extension TEXT
+            )
+            """
+        )
+        connection.execute(
+            (
+                f"INSERT INTO {RECOVERED_TABLE} "
+                "(source_path, suggested_name, size_bytes, extension) "
+                "VALUES (?, ?, ?, ?)"
+            ),
             ("/recover/foo.flac", "foo.flac", 995, "flac"),
         )
 
@@ -33,7 +54,9 @@ def test_match_databases_generates_rows(tmp_path: Path) -> None:
     _create_recovered_db(recovered_db)
 
     matches = matcher.match_databases(library_db, recovered_db, matches_csv)
-    assert any(match.classification != "missing" for match in matches if match.library_path)
+    assert any(
+        match.classification != "missing" for match in matches if match.library_path
+    )
     assert matches_csv.exists()
 
 
@@ -46,7 +69,9 @@ def test_matcher_normalises_loaded_paths(tmp_path: Path) -> None:
     library_entries = matcher.load_library_entries(library_db)
     recovery_entries = matcher.load_recovery_entries(recovered_db)
 
-    assert all(utils.normalise_path(entry.path) == entry.path for entry in library_entries)
+    assert all(
+        utils.normalise_path(entry.path) == entry.path for entry in library_entries
+    )
     assert all(
         utils.normalise_path(entry.source_path) == entry.source_path
         for entry in recovery_entries

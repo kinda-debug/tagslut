@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 from typing import Iterable, Optional
 
-from . import manifest, matcher, rstudio_parser, scanner, utils
+from . import deduper, healthcheck, manifest, matcher, scanner, utils
 
 LOGGER = logging.getLogger(__name__)
 
@@ -84,23 +84,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show a progress bar during scanning",
     )
 
-    parse_parser = subparsers.add_parser(
-        "parse-rstudio",
-        help="Parse an R-Studio Recognized Files export into SQLite",
-    )
-    parse_parser.add_argument(
-        "--input",
-        type=_path,
-        required=True,
-        help="R-Studio export path",
-    )
-    parse_parser.add_argument(
-        "--out",
-        type=_path,
-        required=True,
-        help="SQLite database to store recovery candidates",
-    )
-
     match_parser = subparsers.add_parser(
         "match",
         help="Match scanned library metadata with recovery candidates",
@@ -141,6 +124,48 @@ def build_parser() -> argparse.ArgumentParser:
         help="Destination CSV for the recovery manifest",
     )
 
+    rescan_parser = subparsers.add_parser(
+        "rescan-missing",
+        help="Ingest only missing FLAC files under a root path",
+    )
+    rescan_parser.add_argument("--root", type=_path, required=True)
+    rescan_parser.add_argument("--out", type=_path, required=True)
+    rescan_parser.add_argument(
+        "--fingerprints",
+        action="store_true",
+        help="Compute fingerprints for missing files when possible",
+    )
+
+    health_parser = subparsers.add_parser(
+        "health",
+        help="Score a single FLAC file",
+    )
+    health_parser.add_argument("path", type=_path)
+
+    health_batch_parser = subparsers.add_parser(
+        "health-batch",
+        help="Score a list of FLAC files from a text list",
+    )
+    health_batch_parser.add_argument("list_path", type=_path)
+
+    dedupe_parser = subparsers.add_parser(
+        "dedupe-db",
+        help="Deduplicate entries in a library database",
+    )
+    dedupe_parser.add_argument("database", type=_path)
+    dedupe_parser.add_argument(
+        "--report",
+        type=_path,
+        help="Optional path to write a JSON duplicate report",
+    )
+
+    hrm_parser = subparsers.add_parser(
+        "hrm-move",
+        help="Move canonical, healthy files into the HRM structure",
+    )
+    hrm_parser.add_argument("database", type=_path)
+    hrm_parser.add_argument("--root", type=_path, required=True)
+
     return parser
 
 
@@ -158,13 +183,6 @@ def _command_scan(args: argparse.Namespace) -> int:
     return 0
 
 
-def _command_parse_rstudio(args: argparse.Namespace) -> int:
-    records = list(rstudio_parser.parse_export(args.input))
-    count = rstudio_parser.load_into_database(records, args.out)
-    LOGGER.info("Captured %s recovery candidates", count)
-    return 0
-
-
 def _command_match(args: argparse.Namespace) -> int:
     matcher.match_databases(args.library, args.recovered, args.out)
     return 0
@@ -175,11 +193,70 @@ def _command_manifest(args: argparse.Namespace) -> int:
     return 0
 
 
+def _command_rescan_missing(args: argparse.Namespace) -> int:
+    """Ingest only FLAC files missing from the target database."""
+
+    result = scanner.rescan_missing(
+        root=args.root,
+        database=args.out,
+        include_fingerprints=args.fingerprints,
+    )
+    LOGGER.info(
+        "Missing: %s | Ingested: %s | Unreadable: %s | Corrupt: %s",
+        len(result["missing"]),
+        len(result["ingested"]),
+        len(result["unreadable"]),
+        len(result["corrupt"]),
+    )
+    return 0
+
+
+def _command_health(args: argparse.Namespace) -> int:
+    """Score a single FLAC file and print the result."""
+
+    report = healthcheck.score_file(args.path)
+    print(report)
+    return 0
+
+
+def _command_health_batch(args: argparse.Namespace) -> int:
+    """Score every path listed in a text file."""
+
+    with open(args.list_path, "r", encoding="utf8") as handle:
+        paths = [Path(line.strip()) for line in handle if line.strip()]
+    for path in paths:
+        report = healthcheck.score_file(path)
+        print(report)
+    return 0
+
+
+def _command_dedupe(args: argparse.Namespace) -> int:
+    """Mark canonical files and report duplicate sets."""
+
+    result = deduper.deduplicate_database(args.database, args.report)
+    LOGGER.info("Deduplicated %s groups", result["groups"])
+    return 0
+
+
+def _command_hrm_move(args: argparse.Namespace) -> int:
+    """Move canonical, healthy files into the HRM hierarchy."""
+
+    from tools.move_to_hrm import move_canonical_to_hrm
+
+    moved = move_canonical_to_hrm(args.database, args.root)
+    LOGGER.info("Moved %s files to HRM", moved)
+    return 0
+
+
 COMMAND_HANDLERS = {
     "scan-library": _command_scan,
-    "parse-rstudio": _command_parse_rstudio,
     "match": _command_match,
     "generate-manifest": _command_manifest,
+    "rescan-missing": _command_rescan_missing,
+    "health": _command_health,
+    "health-batch": _command_health_batch,
+    "dedupe-db": _command_dedupe,
+    "hrm-move": _command_hrm_move,
 }
 
 

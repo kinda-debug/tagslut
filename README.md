@@ -71,6 +71,9 @@ Available sub-commands:
 - `dedupe hrm-move --root /Volumes/dotad/MUSIC/HRM artifacts/db/library_final.db`
   Move only canonical files with a perfect health score into the HRM folder
   structure, updating the database paths to match the relocation.
+- `dedupe upgrade-db /path/to/legacy.db /path/to/upgraded.db`
+  Upgrade a legacy per-volume SQLite database to the unified `library_files`
+  schema so it can be safely attached and merged into a consolidated database.
 
 Every command accepts `--verbose` to enable detailed logging output.
 

@@ -29,3 +29,19 @@ artifacts/**/*.db-shm
 artifacts/**/*.db-wal
 artifacts/logs/
 artifacts/reports/
+
+# Additional ignores
+.DS_Store
+._*
+__pycache__/
+*.pyc
+.venv/
+.vscode/
+.idea/
+*.tmp
+*.log
+*.bak
+*.swp
+/tmp/*.txt
+*.db-shm
+*.db-wal

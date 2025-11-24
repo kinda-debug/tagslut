@@ -55,6 +55,18 @@ Available sub-commands:
 - `dedupe generate-manifest --matches matches.csv --out manifest.csv`
   Converts match results into a prioritised manifest suitable for manual review
   or scripted restoration.
+- `dedupe rescan-missing --root <path> --out library.db [--fingerprints]`
+  Enumerates FLAC files under the provided root and ingests only the entries
+  missing from the target database, reusing the unified scanning pipeline.
+- `dedupe health /path/to/file.flac` and `dedupe health-batch list.txt`
+  Score one or more FLAC files using container validity, audio checksums,
+  required tags, and duration to produce a 0–10 quality score.
+- `dedupe dedupe-db artifacts/db/library_final.db [--report report.json]`
+  Compute duplicate groups using checksum, duration, and fingerprints; mark the
+  best candidate canonical; and optionally emit a JSON report of the clusters.
+- `dedupe hrm-move --root /Volumes/dotad/MUSIC/HRM artifacts/db/library_final.db`
+  Move only canonical files with a perfect health score into the HRM folder
+  structure, updating the database paths to match the relocation.
 
 Every command accepts `--verbose` to enable detailed logging output.
 

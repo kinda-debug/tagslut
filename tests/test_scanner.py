@@ -25,6 +25,9 @@ def _stub_prepare_record(path: Path, include_fingerprints: bool) -> scanner.Scan
         tags_json=json.dumps({"name": path.name}, sort_keys=True, separators=(",", ":")),
         fingerprint=None,
         fingerprint_duration=None,
+        dup_group=None,
+        duplicate_rank=None,
+        is_canonical=None,
     )
 
 
@@ -149,3 +152,22 @@ def test_scan_wrapper_passes_resume_safe(monkeypatch, tmp_path) -> None:
     assert captured["config"].resume_safe is True
     assert captured["config"].resume is True
     assert captured["config"].show_progress is True
+
+
+def test_rescan_missing_ingests_only_absent(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(scanner, "prepare_record", _stub_prepare_record)
+
+    root = tmp_path / "library"
+    root.mkdir()
+    existing = root / "keep.flac"
+    existing.write_bytes(b"a")
+    new_file = root / "new.flac"
+    new_file.write_bytes(b"b")
+
+    database = tmp_path / "library.db"
+    with _initialise_db(database) as connection:
+        scanner._upsert_batch(connection, [_stub_prepare_record(existing, False)])
+
+    result = scanner.rescan_missing(root=root, database=database, include_fingerprints=False)
+    assert utils.normalise_path(str(new_file)) in result["ingested"]
+    assert utils.normalise_path(str(existing)) not in result["ingested"]

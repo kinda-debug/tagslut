@@ -1,11 +1,12 @@
-"""File health scoring utilities."""
+"""Health scoring utilities for FLAC files."""
 
 from __future__ import annotations
 
 import logging
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict
+from typing import Any, Mapping
 
 try:
     from mutagen.flac import FLAC
@@ -13,6 +14,20 @@ except ImportError:  # pragma: no cover - optional dependency
     FLAC = None  # type: ignore
 
 LOGGER = logging.getLogger(__name__)
+
+REQUIRED_TAGS = ("artist", "album", "title", "date")
+TRACK_TAG_CANDIDATES = ("tracknumber", "track")
+
+
+@dataclass(slots=True)
+class HealthResult:
+    """Structured summary of a file's health evaluation."""
+
+    path: Path
+    score: int
+    reasons: list[str]
+    tags_ok: bool
+    audio_ok: bool
 
 
 def _run_flac_test(path: Path) -> bool:
@@ -31,61 +46,92 @@ def _run_flac_test(path: Path) -> bool:
     return result.returncode == 0
 
 
-def score_file(path: Path) -> Dict[str, object]:
-    """Score a FLAC file and return a detailed assessment.
+def _normalise_tags(tags: Mapping[str, Any] | None) -> Mapping[str, Any]:
+    """Return lowercase tag keys for consistent lookup."""
 
-    The score ranges from 0 (unusable) to 10 (perfect). Container validity,
-    audio checksum integrity, required tags, and duration are all considered.
+    return {key.lower(): value for key, value in (tags or {}).items()}
+
+
+def _evaluate_tags(tags: Mapping[str, Any]) -> tuple[bool, list[str]]:
+    """Assess whether the tag set contains the required metadata."""
+
+    reasons: list[str] = []
+    missing = [tag for tag in REQUIRED_TAGS if tag not in tags]
+    if not any(tag in tags for tag in TRACK_TAG_CANDIDATES):
+        missing.append("tracknumber")
+    if missing:
+        reasons.append(f"Missing required tags: {', '.join(sorted(set(missing)))}")
+    return not missing, reasons
+
+
+def evaluate_flac(path: Path) -> HealthResult:
+    """Evaluate the technical and tagging quality of a FLAC file.
+
+    The returned :class:`HealthResult` includes a 0–10 score, a list of
+    human-readable reasons for deductions, and boolean flags describing tag
+    completeness and audio integrity. Scores start at 10 and subtract points
+    for validation failures: 6 for an invalid stream, 2 for missing duration,
+    1 when mutagen reports no MD5 signature, and 2 for missing required tags.
     """
 
+    reasons: list[str] = []
     path = Path(path)
-    is_valid_flac = False
-    audio_md5_ok = False
-    tags_ok = False
-    duration_ok = False
 
-    if FLAC is not None:
+    if not path.is_file():
+        reasons.append("File does not exist or is not a regular file.")
+        return HealthResult(path=path, score=0, reasons=reasons, tags_ok=False, audio_ok=False)
+
+    audio = None
+    duration_ok = False
+    audio_md5_ok = False
+
+    if FLAC is None:
+        reasons.append("mutagen is not available; tag analysis limited.")
+    else:
         try:
             audio = FLAC(path)
-            is_valid_flac = True
-            duration_ok = bool(audio.info.length and audio.info.length > 0)
-            audio_md5_ok = bool(audio.info.md5_signature)
-            tags = {k.lower(): v for k, v in (audio.tags or {}).items()}
-            tags_ok = all(
-                key in tags
-                for key in (
-                    "artist",
-                    "album",
-                    "title",
-                    "tracknumber",
-                    "date",
-                )
-            ) or (
-                all(
-                    key in tags for key in ("artist", "album", "title", "track", "date")
-                )
-            )
         except Exception as exc:  # pragma: no cover - defensive logging
-            LOGGER.debug("Mutagen failed for %s: %s", path, exc)
-    if not is_valid_flac:
-        is_valid_flac = _run_flac_test(path)
+            LOGGER.debug("mutagen failed for %s: %s", path, exc)
+            reasons.append("Unable to parse FLAC metadata with mutagen.")
+        else:
+            duration_ok = bool(getattr(audio.info, "length", 0) and audio.info.length > 0)
+            audio_md5_ok = bool(getattr(audio.info, "md5_signature", None))
 
-    score = 0
-    if is_valid_flac:
-        score += 4
-    if audio_md5_ok:
-        score += 2
-    if tags_ok:
-        score += 2
-    if duration_ok:
-        score += 2
+    tags = _normalise_tags(getattr(audio, "tags", None))
+    if FLAC is None:
+        tags_ok, tag_reasons = False, ["Tags unavailable because mutagen is not installed."]
+    elif tags:
+        tags_ok, tag_reasons = _evaluate_tags(tags)
+    else:
+        tags_ok, tag_reasons = False, ["No tags present."]
+    reasons.extend(tag_reasons)
+
+    audio_valid = duration_ok
+    if not audio_valid:
+        audio_valid = _run_flac_test(path)
+        if not audio_valid:
+            reasons.append("FLAC stream failed validation.")
+    if not duration_ok:
+        reasons.append("Duration missing or zero.")
+    if FLAC is not None and not audio_md5_ok:
+        reasons.append("Audio MD5 signature missing.")
+
+    score = 10
+    if not audio_valid:
+        score -= 6
+    if not duration_ok:
+        score -= 2
+    if FLAC is not None and not audio_md5_ok:
+        score -= 1
+    if not tags_ok:
+        score -= 2
     score = max(0, min(10, score))
 
-    return {
-        "path": str(path),
-        "is_valid_flac": is_valid_flac,
-        "audio_md5_ok": audio_md5_ok,
-        "tags_ok": tags_ok,
-        "duration_ok": duration_ok,
-        "score": score,
-    }
+    return HealthResult(
+        path=path,
+        score=score,
+        reasons=reasons,
+        tags_ok=tags_ok,
+        audio_ok=audio_valid,
+    )
+

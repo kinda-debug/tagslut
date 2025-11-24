@@ -29,6 +29,14 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+## Repository layout
+
+- `dedupe/` – core library modules for scanning, matching, manifests, and recovery helpers.
+- `tools/` – operational scripts such as manual ingest and database upgrades.
+- `artifacts/` – writable workspace for databases, logs, and temporary files (empty placeholders are committed for structure).
+- `tests/` – unit tests that exercise CLI behaviors and module contracts.
+- `archive/legacy_root/` – historical logs and one-off scripts preserved outside the active code path.
+
 ## Unified CLI
 
 All functionality is orchestrated by the `dedupe` command:

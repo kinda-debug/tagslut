@@ -75,6 +75,7 @@ def get_metadata(file_path: Path) -> Optional[dict[str, object]]:
         tags = {key: audio.get(key) for key in audio.keys()}
         duration = audio.info.length
         sample_rate = audio.info.sample_rate
+        bit_rate = getattr(audio.info, "bitrate", None)
         bit_depth = audio.info.bits_per_sample
         channels = audio.info.channels
         checksum = fix_checksum(audio.info.md5_signature, str(file_path))
@@ -86,7 +87,7 @@ def get_metadata(file_path: Path) -> Optional[dict[str, object]]:
             "checksum": checksum,
             "duration": duration,
             "sample_rate": sample_rate,
-            "bit_rate": None,
+            "bit_rate": bit_rate,
             "channels": channels,
             "bit_depth": bit_depth,
             "tags_json": json.dumps(

@@ -1,19 +1,13 @@
 # Runtime dependencies
-# ---------------------
-# The toolkit relies primarily on the Python standard library. Optional extras
-# unlock richer metadata capture:
-#
-#   mutagen>=1.47.0    # tag extraction fallback when available
-#
+mutagen>=1.47.0
+
 # External binaries required for full functionality:
 #   ffprobe / ffmpeg   # stream metadata
 #   fpcalc             # Chromaprint fingerprints
 #   sqlite3            # command-line inspection of generated databases
-#
+
 # Developer tooling
-# -----------------
 # Install the following packages when running linting or contributing changes:
-#
 #   flake8==7.3.0
 #   pytest>=8.0
 #   tqdm>=4.0          # optional progress bars for archived scripts

@@ -1,47 +1,27 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-*.egg-info/
-dist/
-build/
-.venv/
-venv/
-ENV/
-env/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS
-.DS_Store
-Thumbs.db
-
-artifacts/db/
-artifacts/**/*.db
-artifacts/**/*.db-shm
-artifacts/**/*.db-wal
-artifacts/logs/
-artifacts/reports/
-
-# Additional ignores
-.DS_Store
-._*
+# Python cache and build artifacts
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+*.egg-info/
+build/
+dist/
 .venv/
-.vscode/
-.idea/
-*.tmp
+.env
+
+# Project artifacts
+artifacts/db/*.db
+!artifacts/db/.gitkeep
+artifacts/tmp/*
+!artifacts/tmp/.gitkeep
+artifacts/logs/*
+!artifacts/logs/.gitkeep
 *.log
-*.bak
-*.swp
-/tmp/*.txt
-*.db-shm
-*.db-wal
+
+# OS and editor noise
+.DS_Store
+Thumbs.db
+.ipynb_checkpoints/
+archive/*
+!archive/legacy_root/
+!archive/legacy_root/**

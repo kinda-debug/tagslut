@@ -1,3 +1,22 @@
 # Contributing
 
-Thank you for considering a contribution! Please open an issue to discuss substantial changes before submitting a pull request. Follow existing coding conventions and include relevant tests when making code changes.
+Thank you for considering a contribution! To keep changes predictable, please:
+
+## Workflow
+- Discuss large changes in an issue before opening a pull request.
+- Keep pull requests small and focused; reference any multi-step roadmap (for example, a "PR 1–15" plan) so reviewers understand the scope.
+- Avoid altering scanning, matching, ingest, dedupe, fingerprinting, or recovery logic unless explicitly requested.
+
+## Testing
+- Install runtime dependencies (see `requirements.txt` or `pyproject.toml`).
+- Run the full test suite with `pytest` before submitting a PR.
+- Run `flake8` for linting when modifying Python files.
+
+## CLI usage
+- From the repository root, invoke the CLI with `python -m dedupe.cli --help` for available commands.
+- Example scan: `python -m dedupe.cli scan-library --root /path/to/library --out artifacts/db/library.db --resume-safe`.
+
+## Style conventions
+- Follow PEP 8 and prefer explicit type hints for new functions and methods.
+- Add concise docstrings to new modules, classes, and functions.
+- Keep argument names stable and document new CLI options with `--help` text.

@@ -134,4 +134,3 @@ def evaluate_flac(path: Path) -> HealthResult:
         tags_ok=tags_ok,
         audio_ok=audio_valid,
     )
-

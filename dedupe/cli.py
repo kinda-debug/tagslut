@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 from typing import Iterable, Optional
 
-from . import deduper, healthcheck, manifest, matcher, scanner, utils
+from . import deduper, healthcheck, healthscore, manifest, matcher, scanner, utils
 
 LOGGER = logging.getLogger(__name__)
 
@@ -148,6 +148,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     health_batch_parser.add_argument("list_path", type=_path)
 
+    healthscore_parser = subparsers.add_parser(
+        "healthscore",
+        help="Compute read-only health scores for one or more FLAC files",
+    )
+    healthscore_parser.add_argument("paths", nargs="+", type=str)
+    healthscore_parser.set_defaults(func=run_healthscore)
+
     dedupe_parser = subparsers.add_parser(
         "dedupe-db",
         help="Deduplicate entries in a library database",
@@ -230,6 +237,15 @@ def _command_health_batch(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_healthscore(args: argparse.Namespace) -> int:
+    """Compute read-only health scores for one or more FLAC files."""
+
+    for path in args.paths:
+        score, _ = healthscore.score_file(path)
+        print(f"{score}\t{path}")
+    return 0
+
+
 def _command_dedupe(args: argparse.Namespace) -> int:
     """Mark canonical files and report duplicate sets."""
 
@@ -255,6 +271,7 @@ COMMAND_HANDLERS = {
     "rescan-missing": _command_rescan_missing,
     "health": _command_health,
     "health-batch": _command_health_batch,
+    "healthscore": run_healthscore,
     "dedupe-db": _command_dedupe,
     "hrm-move": _command_hrm_move,
 }

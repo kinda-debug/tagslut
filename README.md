@@ -58,6 +58,10 @@ Available sub-commands:
 - `dedupe rescan-missing --root <path> --out library.db [--fingerprints]`
   Enumerates FLAC files under the provided root and ingests only the entries
   missing from the target database, reusing the unified scanning pipeline.
+- `dedupe healthscore /path/to/file1.flac [/path/to/file2.flac ...]`
+  Computes read-only technical health scores for one or more FLAC files using
+  duration, sample rate, channel count, tag availability, and embedded MD5
+  checksums. Each line of output prints `<score>\t<path>`.
 - `dedupe health /path/to/file.flac` and `dedupe health-batch list.txt`
   Score one or more FLAC files using container validity, audio checksums,
   required tags, and duration to produce a 0–10 quality score.

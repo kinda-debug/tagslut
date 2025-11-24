@@ -88,9 +88,7 @@ def _collect_existing_index(
     """Return a mapping of already indexed paths to ``(size, mtime)``."""
 
     index: dict[str, tuple[int, float]] = {}
-    cursor = connection.execute(
-        f"SELECT path, size_bytes, mtime FROM {FILES_TABLE}"
-    )
+    cursor = connection.execute(f"SELECT path, size_bytes, mtime FROM {FILES_TABLE}")
     for row in cursor.fetchall():
         npath = utils.normalise_path(row["path"])
         index[npath] = (row["size_bytes"], row["mtime"])
@@ -162,9 +160,7 @@ def scan_roots(
         utils.ensure_parent_directory(database)
         with db.connect() as connection:
             ensure_schema(connection)
-            existing_index = (
-                _collect_existing_index(connection) if resume else {}
-            )
+            existing_index = _collect_existing_index(connection) if resume else {}
 
             def batches() -> Iterator[list[Path]]:
                 batch: list[Path] = []
@@ -217,9 +213,7 @@ def scan_roots(
                             root,
                         ),
                         "filename": Path(record.path).name,
-                        "extension": Path(record.path)
-                        .suffix.lower()
-                        .lstrip("."),
+                        "extension": Path(record.path).suffix.lower().lstrip("."),
                         "size_bytes": record.size_bytes,
                         "mtime": record.mtime,
                         "duration": record.duration,
@@ -522,11 +516,7 @@ def _load_fragments(connection: sqlite3.Connection) -> list[Fragment]:
     fragments: list[Fragment] = []
     for row in cursor.fetchall():
         raw_name = row["suggested_name"] or row["filename"] or ""
-        tokens = [
-            _normalise_component(token)
-            for token in raw_name.split()
-            if token
-        ]
+        tokens = [_normalise_component(token) for token in raw_name.split() if token]
         if not tokens:
             tokens = [_normalise_component(Path(row["source_path"]).stem)]
         fragments.append(
@@ -585,21 +575,28 @@ def _score_group(
             needs_manual=True,
         )
 
-    max_duration = (
-        max((c.row["duration"] or 0 for c in candidates), default=0) or None
+    max_duration = max((c.row["duration"] or 0 for c in candidates), default=0) or None
+    max_size = (
+        max(
+            (c.row["size_bytes"] or 0 for c in candidates),
+            default=0,
+        )
+        or None
     )
-    max_size = max(
-        (c.row["size_bytes"] or 0 for c in candidates),
-        default=0,
-    ) or None
-    max_bitrate = max(
-        (c.row["bit_rate"] or 0 for c in candidates),
-        default=0,
-    ) or None
-    max_samplerate = max(
-        (c.row["sample_rate"] or 0 for c in candidates),
-        default=0,
-    ) or None
+    max_bitrate = (
+        max(
+            (c.row["bit_rate"] or 0 for c in candidates),
+            default=0,
+        )
+        or None
+    )
+    max_samplerate = (
+        max(
+            (c.row["sample_rate"] or 0 for c in candidates),
+            default=0,
+        )
+        or None
+    )
 
     for candidate in candidates:
         _score_candidate(
@@ -723,9 +720,7 @@ def _write_reports(
     results: Sequence[ResolutionResult],
     config: ResolverConfig,
 ) -> None:
-    keepers_path = config.out_prefix.with_name(
-        f"{config.out_prefix.name}_keepers.csv"
-    )
+    keepers_path = config.out_prefix.with_name(f"{config.out_prefix.name}_keepers.csv")
     improvements_path = config.out_prefix.with_name(
         f"{config.out_prefix.name}_improvements.csv"
     )

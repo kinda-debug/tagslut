@@ -61,7 +61,9 @@ def score_file(path: Path) -> Dict[str, object]:
                     "date",
                 )
             ) or (
-                all(key in tags for key in ("artist", "album", "title", "track", "date"))
+                all(
+                    key in tags for key in ("artist", "album", "title", "track", "date")
+                )
             )
         except Exception as exc:  # pragma: no cover - defensive logging
             LOGGER.debug("Mutagen failed for %s: %s", path, exc)

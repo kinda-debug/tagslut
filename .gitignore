@@ -23,10 +23,9 @@ env/
 .DS_Store
 Thumbs.db
 
-artifacts/reports/recovery_list.csv
-artifacts/db/recovered_candidates.db
-.gitignore
-artifacts/db/library.db-shm
-artifacts/db/library.db-wal
-artifacts/db/library.db
-artifacts/db/library.db
+artifacts/db/
+artifacts/**/*.db
+artifacts/**/*.db-shm
+artifacts/**/*.db-wal
+artifacts/logs/
+artifacts/reports/

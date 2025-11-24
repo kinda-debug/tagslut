@@ -11,7 +11,7 @@ from typing import Optional
 
 from difflib import SequenceMatcher
 
-from . import rstudio_parser, scanner, utils
+from . import scanner, utils
 
 LOGGER = logging.getLogger(__name__)
 
@@ -93,7 +93,7 @@ def load_recovery_entries(database: Path) -> list[RecoveryEntry]:
     db = utils.DatabaseContext(Path(utils.normalise_path(str(database))))
     with db.connect() as connection:
         cursor = connection.execute(
-            f"SELECT * FROM {rstudio_parser.RECOVERED_TABLE}"
+            "SELECT * FROM recovered_files"
         )
         rows = [_row_to_recovery_entry(row) for row in cursor.fetchall()]
     LOGGER.info("Loaded %s recovery entries", len(rows))

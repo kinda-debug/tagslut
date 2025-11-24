@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 from . import deduper, healthcheck, healthscore, manifest, matcher, scanner, utils
+from tools.db_upgrade import upgrade_db
 
 LOGGER = logging.getLogger(__name__)
 
@@ -173,6 +174,22 @@ def build_parser() -> argparse.ArgumentParser:
     hrm_parser.add_argument("database", type=_path)
     hrm_parser.add_argument("--root", type=_path, required=True)
 
+    upgrade_parser = subparsers.add_parser(
+        "upgrade-db",
+        help="Upgrade a legacy per-volume database to the unified schema",
+    )
+    upgrade_parser.add_argument(
+        "legacy_db",
+        type=_path,
+        help="Path to the legacy per-volume SQLite database",
+    )
+    upgrade_parser.add_argument(
+        "out_db",
+        type=_path,
+        help="Destination path for the upgraded database",
+    )
+    upgrade_parser.set_defaults(func=run_upgrade_db)
+
     return parser
 
 
@@ -264,6 +281,14 @@ def _command_hrm_move(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_upgrade_db(args: argparse.Namespace) -> int:
+    """Upgrade a legacy per-volume database into the unified schema."""
+
+    upgrade_db(str(args.legacy_db), str(args.out_db))
+    LOGGER.info("Upgraded legacy database %s -> %s", args.legacy_db, args.out_db)
+    return 0
+
+
 COMMAND_HANDLERS = {
     "scan-library": _command_scan,
     "match": _command_match,
@@ -274,6 +299,7 @@ COMMAND_HANDLERS = {
     "healthscore": run_healthscore,
     "dedupe-db": _command_dedupe,
     "hrm-move": _command_hrm_move,
+    "upgrade-db": run_upgrade_db,
 }
 
 

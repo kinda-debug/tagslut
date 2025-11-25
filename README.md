@@ -76,9 +76,12 @@ Available sub-commands:
 - `dedupe dedupe-db artifacts/db/library_final.db [--report report.json]`
   Compute duplicate groups using checksum, duration, and fingerprints; mark the
   best candidate canonical; and optionally emit a JSON report of the clusters.
-- `dedupe hrm-move --root /Volumes/dotad/MUSIC/HRM artifacts/db/library_final.db`
-  Move only canonical files with a perfect health score into the HRM folder
-  structure, updating the database paths to match the relocation.
+- `python3 -m dedupe.cli relocate-hrm --db artifacts/db/library_final.db \
+  --root /Volumes/dotad/MUSIC --hrm-root /Volumes/dotad/HRM --min-score 10`
+  Relocate healthy, non-duplicate files into the HRM hierarchy using the
+  scoring columns in `library_files`. Generates a relocation manifest at
+  `artifacts/manifests/hrm_relocation.tsv` and updates database paths for every
+  successfully moved file.
 - `dedupe upgrade-db /path/to/legacy.db /path/to/upgraded.db`
   Upgrade a legacy per-volume SQLite database to the unified `library_files`
   schema so it can be safely attached and merged into a consolidated database.

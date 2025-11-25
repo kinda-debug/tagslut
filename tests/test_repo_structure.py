@@ -41,7 +41,6 @@ def test_forbidden_root_files_absent() -> None:
     assert not checkpoints.exists(), "Jupyter checkpoints directory should not be present in root"
 
 
-
 def test_pyproject_toml_parses() -> None:
     """Ensure the packaging metadata file is syntactically valid TOML."""
 

@@ -31,7 +31,7 @@ class LibraryEntry:
 
 @dataclass(slots=True)
 class RecoveryEntry:
-    """Row parsed from R-Studio exports."""
+    """Row parsed from recovered metadata exports."""
 
     source_path: str
     suggested_name: str

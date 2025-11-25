@@ -301,7 +301,7 @@ def parse_recognized_export(_path: Path, _database: Path) -> int:
     """Legacy hook retained for callers; always raises."""
 
     raise RuntimeError(
-        "R-Studio export parsing was retired; populate global_fragments via "
+        "Legacy export parsing was retired; populate global_fragments via "
         "external tooling instead."
     )
 

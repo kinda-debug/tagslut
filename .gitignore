@@ -43,3 +43,4 @@ artifacts/db/SAD_MUSIC.fs.txt
 artifacts/db/SAD_MUSIC.missing_in_db.txt
 artifacts/db/SAD_MUSIC.missing_in_fs.txt
 artifacts/reports/recovery_list.csv
+tests/data/

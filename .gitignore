@@ -11,6 +11,14 @@ dist/
 
 # Project artifacts
 artifacts/db/*.db
+artifacts/db/*.db-shm
+artifacts/db/*.db-wal
+artifacts/db/*.db.tsv
+artifacts/db/*.db_paths.txt
+artifacts/db/*.fs.txt
+artifacts/db/*.fs_raw.txt
+artifacts/db/*.missing_in_db.txt
+artifacts/db/*.missing_in_fs.txt
 !artifacts/db/.gitkeep
 artifacts/tmp/*
 !artifacts/tmp/.gitkeep

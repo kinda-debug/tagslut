@@ -1,4 +1,4 @@
-"""Shared helpers used across the dedupe toolkit."""
+"""Utility helpers shared across dedupe components."""
 
 from __future__ import annotations
 
@@ -11,9 +11,9 @@ import sqlite3
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Iterator, Optional
+from typing import Any, Iterable, Iterator, Optional
 
-LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 AUDIO_EXTENSIONS = {
     ".flac",
@@ -36,7 +36,7 @@ class DatabaseContext:
     def connect(self) -> sqlite3.Connection:
         """Return a SQLite connection with WAL + busy timeout configured."""
 
-        LOGGER.debug("Opening SQLite database at %s", self.path)
+        logger.debug("Opening SQLite database at %s", self.path)
         connection = sqlite3.connect(self.path)
         connection.row_factory = sqlite3.Row
         with connection:
@@ -63,10 +63,10 @@ def iter_audio_files(root: Path) -> Iterator[Path]:
 
 
 def is_audio_file(pathish: str | Path) -> bool:
-    """Return True if *pathish* refers to a file with a recognised audio extension.
+    """Return ``True`` when *pathish* has a recognised audio extension.
 
-    This is a small compatibility shim used by older callers that expect
-    `utils.is_audio_file`. It accepts either a `Path` or a string filename.
+    This compatibility shim accepts either a :class:`Path` or a string filename,
+    mirroring behaviour expected by older callers.
     """
 
     try:
@@ -89,7 +89,7 @@ def compute_md5(path: Path, chunk_size: int = 1 << 16) -> str:
     return digest.hexdigest()
 
 
-def read_json(path: Path) -> dict:
+def read_json(path: Path) -> dict[str, Any]:
     """Load JSON data from *path* if it exists, else return an empty dict."""
 
     if not path.exists():
@@ -155,7 +155,7 @@ def temporary_cwd(path: Path) -> Iterator[None]:
         os.chdir(original)
 
 
-def as_dict(row: sqlite3.Row) -> dict:
+def as_dict(row: sqlite3.Row) -> dict[str, Any]:
     """Convert a SQLite row into a plain ``dict``."""
 
     return {key: row[key] for key in row.keys()}

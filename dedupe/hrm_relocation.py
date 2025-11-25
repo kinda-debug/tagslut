@@ -13,7 +13,7 @@ from typing import Iterable, Optional
 
 from . import utils
 
-LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 REQUIRED_SCORE_COLUMNS = (
     "score_integrity",
@@ -150,7 +150,7 @@ def _remove_with_retries(path: Path, attempts: int = 3, delay: float = 0.5) -> N
         except OSError as exc:
             if attempt == attempts:
                 raise
-            LOGGER.warning("Retrying removal of %s after error: %s", path, exc)
+            logger.warning("Retrying removal of %s after error: %s", path, exc)
             time.sleep(delay)
 
 
@@ -163,13 +163,13 @@ def _move_with_retries(src: Path, dest: Path, attempts: int = 3, delay: float = 
         except OSError as exc:
             if attempt == attempts:
                 raise
-            LOGGER.warning("Retrying move %s -> %s after error: %s", src, dest, exc)
+            logger.warning("Retrying move %s -> %s after error: %s", src, dest, exc)
             time.sleep(delay)
 
 
 def _log_skip(path: Path, reason: str) -> None:
     """Log a skipped relocation candidate with context."""
-    LOGGER.info("Skipping %s: %s", path, reason)
+    logger.info("Skipping %s: %s", path, reason)
 
 
 def relocate_hrm(
@@ -222,7 +222,7 @@ def relocate_hrm(
             manifest_rows.append((str(src), "", checksum, score_total, "skipped"))
             continue
         if not src.exists():
-            LOGGER.warning("Missing source file: %s", src)
+            logger.warning("Missing source file: %s", src)
             stats.missing += 1
             manifest_rows.append((str(src), "", checksum, score_total, "missing_source"))
             continue
@@ -236,7 +236,7 @@ def relocate_hrm(
             continue
 
         if checksum and checksum != source_checksum:
-            LOGGER.warning(
+            logger.warning(
                 "Checksum mismatch for %s (db=%s, computed=%s); skipping",
                 src,
                 checksum,
@@ -251,7 +251,7 @@ def relocate_hrm(
         dest = _build_destination(tags, hrm_root)
         utils.ensure_parent_directory(dest)
 
-        LOGGER.info("Relocating %s -> %s", src, dest)
+        logger.info("Relocating %s -> %s", src, dest)
 
         if dest.exists():
             try:
@@ -273,7 +273,10 @@ def relocate_hrm(
                 )
                 continue
             if dest_checksum == source_checksum:
-                LOGGER.info("Destination already contains identical file; removing source %s", src)
+                logger.info(
+                    "Destination already contains identical file; removing source %s",
+                    src,
+                )
                 try:
                     _remove_with_retries(src)
                 except OSError as exc:
@@ -309,7 +312,7 @@ def relocate_hrm(
                     )
                     connection.commit()
             else:
-                LOGGER.warning("Destination conflict for %s (different checksum)", dest)
+                logger.warning("Destination conflict for %s (different checksum)", dest)
                 stats.conflicts += 1
                 manifest_rows.append(
                     (
@@ -335,7 +338,7 @@ def relocate_hrm(
         try:
             dest_checksum = utils.compute_md5(dest)
         except OSError as exc:
-            LOGGER.error("Unable to compute checksum after move for %s: %s", dest, exc)
+            logger.error("Unable to compute checksum after move for %s: %s", dest, exc)
             stats.conflicts += 1
             manifest_rows.append(
                 (
@@ -349,7 +352,7 @@ def relocate_hrm(
             continue
 
         if dest_checksum != source_checksum:
-            LOGGER.error(
+            logger.error(
                 "Checksum mismatch after move for %s (expected %s, got %s)",
                 dest,
                 source_checksum,
@@ -358,7 +361,7 @@ def relocate_hrm(
             try:
                 shutil.move(dest, src)
             except OSError as exc:  # pragma: no cover - defensive logging
-                LOGGER.error("Failed to restore original file after mismatch: %s", exc)
+                logger.error("Failed to restore original file after mismatch: %s", exc)
             stats.conflicts += 1
             manifest_rows.append(
                 (
@@ -384,7 +387,7 @@ def relocate_hrm(
             connection.commit()
 
     _write_manifest(manifest_path, manifest_rows)
-    LOGGER.info(
+    logger.info(
         "Relocation complete: moved=%s skipped=%s conflicts=%s missing=%s manifest=%s",
         stats.moved,
         stats.skipped,

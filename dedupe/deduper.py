@@ -10,7 +10,7 @@ from typing import List, Optional
 
 from . import scanner, utils
 
-LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def _canonical_sort_key(row: sqlite3.Row) -> tuple:

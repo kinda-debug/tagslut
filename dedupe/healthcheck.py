@@ -13,7 +13,7 @@ try:
 except ImportError:  # pragma: no cover - optional dependency
     FLAC = None  # type: ignore
 
-LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 REQUIRED_TAGS = ("artist", "album", "title", "date")
 TRACK_TAG_CANDIDATES = ("tracknumber", "track")
@@ -91,7 +91,7 @@ def evaluate_flac(path: Path) -> HealthResult:
         try:
             audio = FLAC(path)
         except Exception as exc:  # pragma: no cover - defensive logging
-            LOGGER.debug("mutagen failed for %s: %s", path, exc)
+            logger.debug("mutagen failed for %s: %s", path, exc)
             reasons.append("Unable to parse FLAC metadata with mutagen.")
         else:
             duration_ok = bool(getattr(audio.info, "length", 0) and audio.info.length > 0)

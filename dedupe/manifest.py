@@ -10,7 +10,7 @@ from typing import Iterator
 
 from . import utils
 
-LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -110,5 +110,5 @@ def generate_manifest(
                     "notes": row.notes,
                 }
             )
-    LOGGER.info("Wrote manifest with %s rows to %s", len(rows), output_csv)
+    logger.info("Wrote manifest with %s rows to %s", len(rows), output_csv)
     return rows

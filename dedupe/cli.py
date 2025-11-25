@@ -19,10 +19,11 @@ from . import (
 )
 from tools.db_upgrade import upgrade_db
 
-LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def _configure_logging(verbose: bool) -> None:
+    """Configure basic logging output based on the ``--verbose`` flag."""
     level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(
         level=level,
@@ -87,6 +88,7 @@ def _non_negative_float(value: str) -> float:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build the top-level argument parser for the dedupe CLI."""
     parser = argparse.ArgumentParser(
         prog="dedupe",
         description="Audio recovery and reconciliation toolkit.",
@@ -327,7 +329,7 @@ def _command_scan(args: argparse.Namespace) -> int:
         show_progress=getattr(args, "progress", False),
     )
     total = scanner.scan_library(config)
-    LOGGER.info("Indexed %s files", total)
+    logger.info("Indexed %s files", total)
     return 0
 
 
@@ -349,7 +351,7 @@ def _command_rescan_missing(args: argparse.Namespace) -> int:
         database=args.out,
         include_fingerprints=args.fingerprints,
     )
-    LOGGER.info(
+    logger.info(
         "Missing: %s | Ingested: %s | Unreadable: %s | Corrupt: %s",
         len(result["missing"]),
         len(result["ingested"]),
@@ -371,7 +373,7 @@ def _command_health_batch(args: argparse.Namespace) -> int:
     """Score every path listed in a text file."""
 
     with open(args.list_path, "r", encoding="utf8") as handle:
-        paths = [Path(line.strip()) for line in handle if line.strip()]
+        paths: list[Path] = [Path(line.strip()) for line in handle if line.strip()]
     for path in paths:
         report = healthcheck.score_file(path)
         print(report)
@@ -391,7 +393,7 @@ def _command_dedupe(args: argparse.Namespace) -> int:
     """Mark canonical files and report duplicate sets."""
 
     result = deduper.deduplicate_database(args.database, args.report)
-    LOGGER.info("Deduplicated %s groups", result["groups"])
+    logger.info("Deduplicated %s groups", result["groups"])
     return 0
 
 
@@ -401,7 +403,7 @@ def _command_hrm_move(args: argparse.Namespace) -> int:
     from tools.move_to_hrm import move_canonical_to_hrm
 
     moved = move_canonical_to_hrm(args.database, args.root)
-    LOGGER.info("Moved %s files to HRM", moved)
+    logger.info("Moved %s files to HRM", moved)
     return 0
 
 
@@ -416,9 +418,9 @@ def _command_relocate_hrm(args: argparse.Namespace) -> int:
             min_score=args.min_score,
         )
     except hrm_relocation.MissingScoreColumnsError as exc:
-        LOGGER.error(str(exc))
+        logger.error(str(exc))
         return 1
-    LOGGER.info(
+    logger.info(
         "Relocation results: moved=%s skipped=%s conflicts=%s missing=%s manifest=%s",
         result.moved,
         result.skipped,
@@ -433,7 +435,7 @@ def run_upgrade_db(args: argparse.Namespace) -> int:
     """Upgrade a legacy per-volume database into the unified schema."""
 
     upgrade_db(str(args.legacy_db), str(args.out_db))
-    LOGGER.info("Upgraded legacy database %s -> %s", args.legacy_db, args.out_db)
+    logger.info("Upgraded legacy database %s -> %s", args.legacy_db, args.out_db)
     return 0
 
 
@@ -461,7 +463,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     # regular `parse_args` when it's not available.
     import sys
 
-    arglist = list(argv) if argv is not None else list(sys.argv[1:])
+    arglist: list[str] = list(argv) if argv is not None else list(sys.argv[1:])
 
     # Normalize placement of a small set of known global options so users can
     # place them after the subcommand. This is a pragmatic, minimal shim that
@@ -469,8 +471,8 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     if arglist:
         # index of first positional (likely the subcommand)
         first_pos = None
-        for i, a in enumerate(arglist):
-            if not a.startswith("-"):
+        for i, arg in enumerate(arglist):
+            if not arg.startswith("-"):
                 first_pos = i
                 break
         if first_pos is not None:

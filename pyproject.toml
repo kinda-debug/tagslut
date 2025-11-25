@@ -1,13 +1,34 @@
+
 [project]
 name = "dedupe"
 version = "0.1.0"
 description = "Audio deduplication and recovery toolkit"
-authors = [{ name = "[AUTHOR]", email = "[AUTHOR_EMAIL]" }]
-readme = "README.md"
+readme = { file = "README.md", content-type = "text/markdown" }
+authors = [{ name = "Georges Khawam", email = "tagslut@example.com" }]
+license = { file = "LICENSE" }
 requires-python = ">=3.10"
 dependencies = [
     "mutagen>=1.47.0",
+    "tqdm>=4.66",
+    "tomli>=2.0.1; python_version < \"3.11\"",
 ]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Sound/Audio",
+    "Topic :: Utilities",
+]
+
+[project.urls]
+Homepage = "https://github.com/tagslut/dedupe"
+Repository = "https://github.com/tagslut/dedupe"
 
 [project.scripts]
 dedupe = "dedupe.cli:main"

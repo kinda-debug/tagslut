@@ -1,5 +1,7 @@
 # Runtime dependencies
 mutagen>=1.47.0
+tqdm>=4.66
+tomli>=2.0.1; python_version < "3.11"
 
 # External binaries required for full functionality:
 #   ffprobe / ffmpeg   # stream metadata

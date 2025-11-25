@@ -57,6 +57,10 @@ Available sub-commands:
   path is coerced to an absolute, NFC-normalised POSIX string before it is
   compared or written to the database, ensuring Unicode-equivalent paths match
   reliably across filesystems.
+- `dedupe parse-rstudio --input Recognized.txt --out recovered.db` (deprecated)
+  Legacy import path for R-Studio "Recognized Files" exports that populates the
+  `recovered_files` table for matching workflows. The subcommand is retained for
+  backward compatibility but no longer actively maintained.
 - `dedupe match --library library.db --recovered recovered.db --out matches.csv`
   Produces a ranked set of recovery candidates by comparing filenames, file
   sizes, and other metadata.

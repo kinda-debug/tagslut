@@ -14,6 +14,7 @@ from . import (
     hrm_relocation,
     manifest,
     matcher,
+    rstudio_parser,
     scanner,
     utils,
 )
@@ -92,6 +93,23 @@ def build_parser() -> argparse.ArgumentParser:
         "--progress",
         action="store_true",
         help="Show a progress bar during scanning",
+    )
+
+    rstudio_parser_cli = subparsers.add_parser(
+        "parse-rstudio",
+        help="Parse an R-Studio export (deprecated)",
+    )
+    rstudio_parser_cli.add_argument(
+        "--input",
+        type=_path,
+        required=True,
+        help="Recognized Files export to parse",
+    )
+    rstudio_parser_cli.add_argument(
+        "--out",
+        type=_path,
+        required=True,
+        help="SQLite database path to populate",
     )
 
     match_parser = subparsers.add_parser(
@@ -230,6 +248,15 @@ def _command_scan(args: argparse.Namespace) -> int:
     return 0
 
 
+def _command_parse_rstudio(args: argparse.Namespace) -> int:
+    """Ingest an R-Studio export into the recovered files database."""
+
+    records = list(rstudio_parser.parse_export(args.input))
+    count = rstudio_parser.load_into_database(records, args.out)
+    LOGGER.info("Captured %s recovery candidates", count)
+    return 0
+
+
 def _command_match(args: argparse.Namespace) -> int:
     matcher.match_databases(args.library, args.recovered, args.out)
     return 0
@@ -338,6 +365,7 @@ def run_upgrade_db(args: argparse.Namespace) -> int:
 
 COMMAND_HANDLERS = {
     "scan-library": _command_scan,
+    "parse-rstudio": _command_parse_rstudio,
     "match": _command_match,
     "generate-manifest": _command_manifest,
     "rescan-missing": _command_rescan_missing,

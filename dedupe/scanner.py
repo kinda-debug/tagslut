@@ -20,7 +20,7 @@ LIBRARY_TABLE = "library_files"
 
 @dataclass(slots=True)
 class ScanRecord:
-    """Metadata collected for an audio file."""
+    """Metadata record for a scanned audio file."""
 
     path: str
     size_bytes: int
@@ -37,6 +37,7 @@ class ScanRecord:
     dup_group: Optional[str]
     duplicate_rank: Optional[int]
     is_canonical: Optional[int]
+    extra_json: Optional[str]
 
 
 @dataclass(slots=True)
@@ -82,7 +83,8 @@ def initialise_database(connection: sqlite3.Connection) -> None:
             fingerprint_duration REAL,
             dup_group TEXT,
             duplicate_rank INTEGER,
-            is_canonical INTEGER
+            is_canonical INTEGER,
+            extra_json TEXT
         )
         """
     )
@@ -134,6 +136,7 @@ def prepare_record(path: Path, include_fingerprints: bool) -> ScanRecord:
         dup_group=None,
         duplicate_rank=None,
         is_canonical=None,
+        extra_json=None,
     )
 
 
@@ -175,7 +178,8 @@ def _upsert_batch(
             fingerprint_duration,
             dup_group,
             duplicate_rank,
-            is_canonical
+            is_canonical,
+            extra_json
         ) VALUES (
             :path,
             :size_bytes,
@@ -191,7 +195,8 @@ def _upsert_batch(
             :fingerprint_duration,
             :dup_group,
             :duplicate_rank,
-            :is_canonical
+            :is_canonical,
+            :extra_json
         )
         ON CONFLICT(path) DO UPDATE SET
             size_bytes=excluded.size_bytes,
@@ -207,7 +212,8 @@ def _upsert_batch(
             fingerprint_duration=excluded.fingerprint_duration,
             dup_group=excluded.dup_group,
             duplicate_rank=excluded.duplicate_rank,
-            is_canonical=excluded.is_canonical
+            is_canonical=excluded.is_canonical,
+            extra_json=excluded.extra_json
         """,
         payload,
     )

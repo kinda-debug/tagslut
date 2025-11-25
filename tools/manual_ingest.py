@@ -19,6 +19,8 @@ from typing import Iterable, Optional, Union
 from mutagen import MutagenError
 from mutagen.flac import FLAC
 
+from dedupe import health_score
+
 
 LIBRARY_COLUMNS = (
     "path",
@@ -36,6 +38,7 @@ LIBRARY_COLUMNS = (
     "dup_group",
     "duplicate_rank",
     "is_canonical",
+    "extra_json",
 )
 
 
@@ -80,6 +83,8 @@ def get_metadata(file_path: Path) -> Optional[dict[str, object]]:
         channels = audio.info.channels
         checksum = fix_checksum(audio.info.md5_signature, str(file_path))
 
+        score = health_score.score_flac(str(file_path))
+
         return {
             "path": str(file_path),
             "size_bytes": size,
@@ -98,6 +103,7 @@ def get_metadata(file_path: Path) -> Optional[dict[str, object]]:
             "dup_group": None,
             "duplicate_rank": None,
             "is_canonical": 1,
+            "extra_json": json.dumps(score),
         }
 
     except (MutagenError, OSError) as exc:

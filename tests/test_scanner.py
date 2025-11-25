@@ -32,6 +32,7 @@ def _stub_prepare_record(path: Path, include_fingerprints: bool) -> scanner.Scan
         dup_group=None,
         duplicate_rank=None,
         is_canonical=None,
+        extra_json=None,
     )
 
 

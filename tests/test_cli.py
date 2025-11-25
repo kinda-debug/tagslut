@@ -7,7 +7,7 @@ from pathlib import Path
 from dedupe import cli, scanner, utils
 
 
-def test_scan_library_accepts_resume_safe(monkeypatch, tmp_path) -> None:
+def test_scan_library_argument_parsing_accepts_resume_safe(monkeypatch, tmp_path) -> None:
     captured: dict[str, scanner.ScanConfig] = {}
 
     def _fake_scan(config: scanner.ScanConfig) -> int:

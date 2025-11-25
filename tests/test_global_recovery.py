@@ -108,7 +108,7 @@ def test_resolver_prefers_high_quality_candidate(tmp_path):
         out_prefix=out_prefix,
     )
     results = global_recovery.resolve_database(config)
-    assert results, "Expected at least one resolution result"
+    assert len(results) > 0, "Expected at least one resolution result"
     result = next(res for res in results if res.best)
     assert result.best is not None
     assert result.best.path.endswith("Track.flac")
@@ -172,6 +172,7 @@ def test_resolver_uses_tags_for_group_key(tmp_path):
             out_prefix=out_prefix,
         )
     )
+    assert len(results) == 1
     assert results[0].group_key.startswith("artist::album")
 
 
@@ -208,6 +209,6 @@ def test_fragment_only_group_marked_manual(tmp_path):
             out_prefix=out_prefix,
         )
     )
-    assert results
+    assert len(results) > 0
     manual = results[0]
     assert manual.best is None or manual.needs_manual

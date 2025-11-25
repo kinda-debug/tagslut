@@ -7,7 +7,16 @@ import logging
 from pathlib import Path
 from typing import Iterable, Optional
 
-from . import deduper, healthcheck, healthscore, manifest, matcher, scanner, utils
+from . import (
+    deduper,
+    healthcheck,
+    healthscore,
+    hrm_relocation,
+    manifest,
+    matcher,
+    scanner,
+    utils,
+)
 from tools.db_upgrade import upgrade_db
 
 LOGGER = logging.getLogger(__name__)
@@ -174,6 +183,20 @@ def build_parser() -> argparse.ArgumentParser:
     hrm_parser.add_argument("database", type=_path)
     hrm_parser.add_argument("--root", type=_path, required=True)
 
+    hrm_relocate_parser = subparsers.add_parser(
+        "relocate-hrm",
+        help="Relocate healthy files into the HRM hierarchy",
+    )
+    hrm_relocate_parser.add_argument("--db", type=_path, required=True)
+    hrm_relocate_parser.add_argument("--root", type=_path, required=True)
+    hrm_relocate_parser.add_argument("--hrm-root", type=_path, required=True)
+    hrm_relocate_parser.add_argument(
+        "--min-score",
+        type=float,
+        default=10,
+        help="Minimum total health score required for relocation",
+    )
+
     upgrade_parser = subparsers.add_parser(
         "upgrade-db",
         help="Upgrade a legacy per-volume database to the unified schema",
@@ -281,6 +304,30 @@ def _command_hrm_move(args: argparse.Namespace) -> int:
     return 0
 
 
+def _command_relocate_hrm(args: argparse.Namespace) -> int:
+    """Relocate healthy files into the HRM folder structure."""
+
+    try:
+        result = hrm_relocation.relocate_hrm(
+            db_path=args.db,
+            root=args.root,
+            hrm_root=args.hrm_root,
+            min_score=args.min_score,
+        )
+    except hrm_relocation.MissingScoreColumnsError as exc:
+        LOGGER.error(str(exc))
+        return 1
+    LOGGER.info(
+        "Relocation results: moved=%s skipped=%s conflicts=%s missing=%s manifest=%s",
+        result.moved,
+        result.skipped,
+        result.conflicts,
+        result.missing,
+        result.manifest_path,
+    )
+    return 0
+
+
 def run_upgrade_db(args: argparse.Namespace) -> int:
     """Upgrade a legacy per-volume database into the unified schema."""
 
@@ -299,6 +346,7 @@ COMMAND_HANDLERS = {
     "healthscore": run_healthscore,
     "dedupe-db": _command_dedupe,
     "hrm-move": _command_hrm_move,
+    "relocate-hrm": _command_relocate_hrm,
     "upgrade-db": run_upgrade_db,
 }
 

@@ -18,6 +18,7 @@ def test_scan_library_accepts_resume_safe(monkeypatch, tmp_path) -> None:
 
     root = tmp_path / "library"
     out = tmp_path / "db.sqlite"
+    root.mkdir(parents=True, exist_ok=True)
     cli.main(
         [
             "scan-library",

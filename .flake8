@@ -1,6 +1,9 @@
 [flake8]
 exclude =
-    dedupe/ARCHIVE
-    .git
-    __pycache__
+    dedupe/ARCHIVE,
+    .venv,
+    .git,
+    __pycache__,
+    build,
+    dist
 max-line-length = 100

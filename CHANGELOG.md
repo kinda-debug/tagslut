@@ -12,3 +12,4 @@
   `USAGE.md`.
 - Refreshed architecture and operations documentation to reference the new
   pipeline while marking legacy quarantine workflows as archived.
+>>>>>>> apply/patch-20251113

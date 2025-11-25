@@ -26,8 +26,12 @@ SQLite tables.
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install .
 ```
+
+Installing the project builds the console script `dedupe`, making all commands
+available on your `PATH`. You can also invoke the CLI with
+`python3 -m dedupe.cli` if you prefer module execution.
 
 ## Repository layout
 
@@ -42,12 +46,12 @@ pip install -r requirements.txt
 All functionality is orchestrated by the `dedupe` command:
 
 ```bash
-python3 -m dedupe.cli --help
+dedupe --help
 ```
 
 Available sub-commands:
 
-- `python3 -m dedupe.cli scan-library --root <path> --out library.db [--resume|--resume-safe] [--fingerprints] [--progress]`
+- `dedupe scan-library --root <path> --out library.db [--resume|--resume-safe] [--fingerprints] [--progress]`
   Recursively scan an audio collection into a SQLite database. Use `--resume`
   or `--resume-safe` to skip previously ingested files, `--fingerprints` to
   capture Chromaprint data when `fpcalc` is installed, and `--progress` to show
@@ -69,9 +73,9 @@ Available sub-commands:
   reads a UTF-8 list containing one path per line.
 - `dedupe dedupe-db artifacts/db/library_final.db [--report report.json]`
   Mark canonical files and report duplicate groups within a library database.
-- `python3 -m dedupe.cli hrm-move artifacts/db/library_final.db --root /Volumes/HRM`
+- `dedupe hrm-move artifacts/db/library_final.db --root /Volumes/HRM`
   Move canonical, healthy files into an existing HRM directory structure.
-- `python3 -m dedupe.cli relocate-hrm --db artifacts/db/library_final.db \
+- `dedupe relocate-hrm --db artifacts/db/library_final.db \
   --root /Volumes/dotad/MUSIC --hrm-root /Volumes/dotad/HRM --min-score 10`
   Relocate healthy files into the HRM hierarchy using the scoring columns in
   `library_files` and emit a relocation manifest.
@@ -87,14 +91,14 @@ Every command accepts `--verbose` to enable debug logging output.
   semantics enabled:
 
   ```bash
-  python3 -m dedupe.cli scan-library --root /path/to/library --out library.db --resume-safe --progress
+  dedupe scan-library --root /path/to/library --out library.db --resume-safe --progress
   ```
 
 - **Optional fingerprint scan** – only when you need mastering-level
   differentiation and `fpcalc` is present:
 
   ```bash
-  python3 -m dedupe.cli scan-library --root /path/to/library --out library.db --resume --fingerprints --progress
+  dedupe scan-library --root /path/to/library --out library.db --resume --fingerprints --progress
   ```
 
   Fingerprints are generated only for files missing them when `--resume` is
@@ -120,9 +124,9 @@ logging warnings.
 A single SQLite database can hold metadata for several volumes.  For example:
 
 ```bash
-python3 -m dedupe.cli scan-library --root /Volumes/dotad --out library.db --resume
-python3 -m dedupe.cli scan-library --root /Volumes/Vault --out library.db --resume
-python3 -m dedupe.cli scan-library --root /Volumes/sad --out library.db --resume
+dedupe scan-library --root /Volumes/dotad --out library.db --resume
+dedupe scan-library --root /Volumes/Vault --out library.db --resume
+dedupe scan-library --root /Volumes/sad --out library.db --resume
 ```
 
 The commands may be re-run at any time; unchanged files are skipped and newly
@@ -133,9 +137,9 @@ added files are appended to the shared database.
 1. **Scan multiple volumes into one database**
 
    ```bash
-   python3 -m dedupe.cli scan-library --root /Volumes/dotad --out library.db --resume
-   python3 -m dedupe.cli scan-library --root /Volumes/Vault --out library.db --resume
-   python3 -m dedupe.cli scan-library --root /Volumes/sad --out library.db --resume
+   dedupe scan-library --root /Volumes/dotad --out library.db --resume
+   dedupe scan-library --root /Volumes/Vault --out library.db --resume
+   dedupe scan-library --root /Volumes/sad --out library.db --resume
    ```
 
 2. **Inspect recently indexed files**
@@ -152,9 +156,9 @@ added files are appended to the shared database.
 
 4. **Fingerprint-only refresh** (after an initial scan)
 
-   ```bash
-   python3 -m dedupe.cli scan-library --root /path/to/library --out library.db --resume --fingerprints
-   ```
+  ```bash
+  dedupe scan-library --root /path/to/library --out library.db --resume --fingerprints
+  ```
 
    Existing entries retain metadata; missing fingerprints are generated when
    `fpcalc` is available.
@@ -175,9 +179,9 @@ added files are appended to the shared database.
 
 3. Execute the CLI locally to verify configuration:
 
-   ```bash
-   python3 -m dedupe.cli scan-library --root /path/to/library --out library.db --resume --progress --verbose
-   ```
+  ```bash
+  dedupe scan-library --root /path/to/library --out library.db --resume --progress --verbose
+  ```
 
 ## Module overview
 

@@ -13,7 +13,7 @@ from typing import Iterable, Iterator, Optional
 
 from . import fingerprints, metadata, utils
 
-LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 LIBRARY_TABLE = "library_files"
 
@@ -102,12 +102,12 @@ def resolve_fingerprint_usage(include_requested: bool) -> bool:
     if not include_requested:
         return False
     if not fingerprints.is_fpcalc_available():
-        LOGGER.info(
+        logger.info(
             "Chromaprint fingerprints requested but fpcalc not available; "
             "continuing without fingerprints",
         )
         return False
-    LOGGER.info("Chromaprint fingerprints enabled for this scan")
+    logger.info("Chromaprint fingerprints enabled for this scan")
     return True
 
 
@@ -144,18 +144,20 @@ def _iter_records(
     paths: Iterable[Path],
     include_fingerprints: bool,
 ) -> Iterator[ScanRecord]:
+    """Yield :class:`ScanRecord` objects for each path, logging failures."""
     for path in paths:
         try:
             yield prepare_record(path, include_fingerprints)
         except Exception as exc:  # pragma: no cover - defensive logging
-            LOGGER.exception("Failed to scan %s: %s", path, exc)
+            logger.exception("Failed to scan %s: %s", path, exc)
 
 
 def _upsert_batch(
     connection: sqlite3.Connection,
     records: Iterable[ScanRecord],
 ) -> None:
-    payload = []
+    """Insert or update a batch of records in the library table."""
+    payload: list[dict[str, object]] = []
     for record in records:
         row = asdict(record)
         row["path"] = utils.normalise_path(row["path"])
@@ -220,7 +222,7 @@ def _upsert_batch(
 
 
 def scan_library(config: ScanConfig) -> int:
-    """Scan ``config.root`` and populate ``config.database``."""
+    """Scan ``config.root`` recursively and populate ``config.database``."""
     root = Path(utils.normalise_path(str(config.root)))
     database = Path(utils.normalise_path(str(config.database)))
 
@@ -241,8 +243,8 @@ def scan_library(config: ScanConfig) -> int:
                 "SELECT path, size_bytes, mtime FROM " + LIBRARY_TABLE
             )
             for row in cursor.fetchall():
-                npath = utils.normalise_path(row["path"])
-                existing_index[npath] = (
+                normalised_path = utils.normalise_path(row["path"])
+                existing_index[normalised_path] = (
                     row["size_bytes"],
                     row["mtime"],
                 )
@@ -250,7 +252,7 @@ def scan_library(config: ScanConfig) -> int:
     # Estimate total files for progress reporting (may be I/O heavy for very
     # large libraries but provides a useful progress bar). If the user turns
     # off progress we avoid the full count.
-    total_files = None
+    total_files: Optional[int] = None
     if config.show_progress:
         total_files = sum(1 for _ in utils.iter_audio_files(root))
 
@@ -263,12 +265,12 @@ def scan_library(config: ScanConfig) -> int:
             for filename in filenames
             if utils.is_audio_file(filename)
         )
-        # helper to yield batches while skipping unchanged files when resuming
+        # Helper to yield batches while skipping unchanged files when resuming.
 
         def batches() -> Iterator[list[tuple[Path, bool]]]:
             batch: list[tuple[Path, bool]] = []
             for path in iterator:
-                npath = utils.normalise_path(str(path))
+                normalised_path = utils.normalise_path(str(path))
                 try:
                     st = path.stat()
                 except OSError:
@@ -276,7 +278,7 @@ def scan_library(config: ScanConfig) -> int:
                     continue
                 unchanged = False
                 if config.resume or config.resume_safe:
-                    existing = existing_index.get(npath)
+                    existing = existing_index.get(normalised_path)
                     if existing is not None:
                         size, mtime = existing
                         unchanged = (
@@ -336,7 +338,7 @@ def scan_library(config: ScanConfig) -> int:
             _upsert_batch(connection, records)
             connection.commit()
             total += len(records)
-            LOGGER.info(
+            logger.info(
                 "Processed %s files (%.1fs elapsed)",
                 total,
                 time.time() - start,
@@ -345,7 +347,7 @@ def scan_library(config: ScanConfig) -> int:
         if pbar:
             pbar.close()
 
-    LOGGER.info("Completed scan of %s (%s files)", root, total)
+    logger.info("Completed scan of %s (%s files)", root, total)
     return total
 
 
@@ -358,7 +360,7 @@ def scan(
     resume_safe: bool = False,
     show_progress: bool = False,
 ) -> int:
-    """Compatibility wrapper: simple API for scanning a library.
+    """Compatibility wrapper providing a flat API for scanning a library.
 
     Older or alternative callers (eg. codex refactor) may prefer a flat
     function signature instead of constructing a :class:`ScanConfig`. This
@@ -382,7 +384,7 @@ def rescan_missing(
     database: Path,
     include_fingerprints: bool = False,
 ) -> dict[str, list[str]]:
-    """Ingest only files absent from the existing database."""
+    """Ingest only FLAC files that are absent from the existing database."""
 
     root = Path(utils.normalise_path(str(root)))
     database = Path(utils.normalise_path(str(database)))
@@ -407,12 +409,12 @@ def rescan_missing(
         for path in root.rglob("*.flac"):
             yield path
 
-    targets = []
+    targets: list[Path] = []
     for path in _iter_flac():
-        npath = utils.normalise_path(str(path))
-        if npath in existing:
+        normalised_path = utils.normalise_path(str(path))
+        if normalised_path in existing:
             continue
-        missing.append(npath)
+        missing.append(normalised_path)
         targets.append(path)
 
     include = resolve_fingerprint_usage(include_fingerprints)
@@ -423,7 +425,7 @@ def rescan_missing(
         except FileNotFoundError:
             unreadable.append(utils.normalise_path(str(path)))
         except Exception:  # pragma: no cover - defensive logging
-            LOGGER.exception("Failed to ingest %s", path)
+            logger.exception("Failed to ingest %s", path)
             corrupt.append(utils.normalise_path(str(path)))
 
     with db.connect() as connection:

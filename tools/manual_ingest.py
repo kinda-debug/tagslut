@@ -16,6 +16,7 @@ import sqlite3
 from pathlib import Path
 from typing import Iterable, Optional, Union
 
+from dedupe import health_score
 from mutagen import MutagenError
 from mutagen.flac import FLAC
 
@@ -33,6 +34,7 @@ LIBRARY_COLUMNS = (
     "channels",
     "bit_depth",
     "tags_json",
+    "extra_json",
     "fingerprint",
     "fingerprint_duration",
     "dup_group",
@@ -70,6 +72,12 @@ def fix_checksum(
 def get_metadata(file_path: Path) -> Optional[dict[str, object]]:
     """Extract the columns needed for a ``library_files`` row."""
 
+    health = health_score.score_flac(str(file_path))
+    extra_payload: dict[str, object] = {
+        "health_score": health["health_score"],
+        "health_metrics": health["metrics"],
+    }
+
     try:
         audio = FLAC(file_path)
         size = file_path.stat().st_size
@@ -98,6 +106,9 @@ def get_metadata(file_path: Path) -> Optional[dict[str, object]]:
             "tags_json": json.dumps(
                 tags, sort_keys=True, separators=(",", ":")
             ),
+            "extra_json": json.dumps(
+                extra_payload, sort_keys=True, separators=(",", ":")
+            ),
             "fingerprint": None,
             "fingerprint_duration": None,
             "dup_group": None,
@@ -108,7 +119,31 @@ def get_metadata(file_path: Path) -> Optional[dict[str, object]]:
 
     except (MutagenError, OSError) as exc:
         print("ERROR:", file_path, exc)
-        return None
+        extra_payload["error"] = str(exc)
+        size = file_path.stat().st_size if file_path.exists() else None
+        mtime = file_path.stat().st_mtime if file_path.exists() else None
+        checksum = fix_checksum(None, str(file_path)) if file_path.exists() else None
+
+        return {
+            "path": str(file_path),
+            "size_bytes": size,
+            "mtime": mtime,
+            "checksum": checksum,
+            "duration": None,
+            "sample_rate": None,
+            "bit_rate": None,
+            "channels": None,
+            "bit_depth": None,
+            "tags_json": json.dumps({}, sort_keys=True, separators=(",", ":")),
+            "extra_json": json.dumps(
+                extra_payload, sort_keys=True, separators=(",", ":")
+            ),
+            "fingerprint": None,
+            "fingerprint_duration": None,
+            "dup_group": None,
+            "duplicate_rank": None,
+            "is_canonical": 0,
+        }
 
 
 def validate_schema(connection: sqlite3.Connection) -> None:

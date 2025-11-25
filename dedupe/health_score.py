@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Dict, Iterable
 
@@ -61,8 +62,15 @@ def score_flac(path: str) -> Dict[str, Any]:
     info = audio.info
     # Ensure tags is a dict[str, list[str]]
     tags: dict[str, list[str]] = {}
-    if hasattr(audio, "tags") and audio.tags is not None and isinstance(audio.tags, dict):
-        for k, v in audio.tags.items():
+    if hasattr(audio, "tags") and audio.tags:
+        source = audio.tags
+        if isinstance(source, Mapping):
+            items = source.items()
+        elif hasattr(source, "items"):
+            items = source.items()
+        else:
+            items = []
+        for k, v in items:
             if isinstance(v, list):
                 tags[str(k)] = [str(vv) for vv in v]
             elif v is not None:

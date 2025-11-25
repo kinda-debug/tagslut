@@ -14,7 +14,7 @@ from typing import Iterable, Iterator, Optional, Sequence
 
 from . import scanner, utils
 
-LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 FILES_TABLE = "global_files"
 FRAGMENTS_TABLE = "global_fragments"
@@ -108,7 +108,7 @@ def _iter_scan_records(
                 include_fingerprints,
             )
         except Exception as exc:  # pragma: no cover - defensive logging
-            LOGGER.exception("Failed to scan %s: %s", path, exc)
+            logger.exception("Failed to scan %s: %s", path, exc)
 
 
 def _resolve_relative_path(path: Path, root: Path) -> str:
@@ -155,7 +155,7 @@ def scan_roots(
     normalised_roots = [Path(utils.normalise_path(str(root))) for root in roots]
 
     for root in normalised_roots:
-        LOGGER.info("Scanning root %s", root)
+        logger.info("Scanning root %s", root)
         iterator = utils.iter_audio_files(root)
         utils.ensure_parent_directory(database)
         with db.connect() as connection:
@@ -293,7 +293,7 @@ def scan_roots(
             if progress:
                 progress.close()
 
-    LOGGER.info("Recorded %s files across %s roots", total, len(roots))
+    logger.info("Recorded %s files across %s roots", total, len(roots))
     return total
 
 
@@ -301,7 +301,7 @@ def parse_recognized_export(_path: Path, _database: Path) -> int:
     """Legacy hook retained for callers; always raises."""
 
     raise RuntimeError(
-        "R-Studio export parsing was retired; populate global_fragments via "
+        "Legacy export parsing was retired; populate global_fragments via "
         "external tooling instead."
     )
 
@@ -701,7 +701,7 @@ def resolve_database(config: ResolverConfig) -> list[ResolutionResult]:
         )
 
     _write_reports(results, config)
-    LOGGER.info("Wrote recovery reports to %s", config.out_prefix)
+    logger.info("Wrote recovery reports to %s", config.out_prefix)
     return results
 
 

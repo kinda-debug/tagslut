@@ -11,7 +11,7 @@ from pathlib import Path
 from shutil import which
 from typing import Optional
 
-LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -37,7 +37,7 @@ def generate_chromaprint(
 
     fpcalc = which("fpcalc")
     if fpcalc is None:
-        LOGGER.debug(
+        logger.debug(
             "fpcalc not available; skipping fingerprint for %%s",
             path,
         )
@@ -53,11 +53,11 @@ def generate_chromaprint(
             timeout=timeout,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        LOGGER.warning("fpcalc invocation failed for %s: %s", path, exc)
+        logger.warning("fpcalc invocation failed for %s: %s", path, exc)
         return None
 
     if result.returncode != 0:
-        LOGGER.warning(
+        logger.warning(
             "fpcalc returned non-zero exit status %s for %s",
             result.returncode,
             path,
@@ -67,7 +67,7 @@ def generate_chromaprint(
     try:
         payload = json.loads(result.stdout)
     except json.JSONDecodeError as exc:
-        LOGGER.error("Failed to parse fpcalc output for %s: %s", path, exc)
+        logger.error("Failed to parse fpcalc output for %s: %s", path, exc)
         return None
 
     fingerprint = payload.get("fingerprint")

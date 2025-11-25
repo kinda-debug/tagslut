@@ -14,12 +14,13 @@ def _create_library_db(path: Path) -> None:
     context = utils.DatabaseContext(path)
     with context.connect() as connection:
         scanner.initialise_database(connection)
+        library_path = utils.normalise_path("/music/foo.flac")
         connection.execute(
             (
                 f"INSERT INTO {scanner.LIBRARY_TABLE} "
                 "(path, size_bytes, mtime, checksum) VALUES (?, ?, ?, ?)"
             ),
-            ("/music/foo.flac", 1000, 0, "deadbeef"),
+            (library_path, 1000, 0, "deadbeef"),
         )
 
 
@@ -36,17 +37,18 @@ def _create_recovered_db(path: Path) -> None:
             )
             """
         )
+        recovered_path = utils.normalise_path("/recover/foo.flac")
         connection.execute(
             (
                 f"INSERT INTO {RECOVERED_TABLE} "
                 "(source_path, suggested_name, size_bytes, extension) "
                 "VALUES (?, ?, ?, ?)"
             ),
-            ("/recover/foo.flac", "foo.flac", 995, "flac"),
+            (recovered_path, "foo.flac", 995, "flac"),
         )
 
 
-def test_match_databases_generates_rows(tmp_path: Path) -> None:
+def test_match_databases_emits_matches_csv(tmp_path: Path) -> None:
     library_db = tmp_path / "library.db"
     recovered_db = tmp_path / "recovered.db"
     matches_csv = tmp_path / "matches.csv"

@@ -13,7 +13,7 @@ from difflib import SequenceMatcher
 
 from . import scanner, utils
 
-LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -83,7 +83,7 @@ def load_library_entries(database: Path) -> list[LibraryEntry]:
     with db.connect() as connection:
         cursor = connection.execute(f"SELECT * FROM {scanner.LIBRARY_TABLE}")
         rows = [_row_to_library_entry(row) for row in cursor.fetchall()]
-    LOGGER.info("Loaded %s library entries", len(rows))
+    logger.info("Loaded %s library entries", len(rows))
     return rows
 
 
@@ -92,7 +92,7 @@ def load_recovery_entries(database: Path) -> list[RecoveryEntry]:
     with db.connect() as connection:
         cursor = connection.execute("SELECT * FROM recovered_files")
         rows = [_row_to_recovery_entry(row) for row in cursor.fetchall()]
-    LOGGER.info("Loaded %s recovery entries", len(rows))
+    logger.info("Loaded %s recovery entries", len(rows))
     return rows
 
 
@@ -247,5 +247,5 @@ def match_databases(
                     ),
                 }
             )
-    LOGGER.info("Wrote %s matches to %s", len(matches), output_csv)
+    logger.info("Wrote %s matches to %s", len(matches), output_csv)
     return matches

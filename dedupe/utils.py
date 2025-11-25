@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Iterator, Optional
 
-LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 AUDIO_EXTENSIONS = {
     ".flac",
@@ -36,7 +36,7 @@ class DatabaseContext:
     def connect(self) -> sqlite3.Connection:
         """Return a SQLite connection with WAL + busy timeout configured."""
 
-        LOGGER.debug("Opening SQLite database at %s", self.path)
+        logger.debug("Opening SQLite database at %s", self.path)
         connection = sqlite3.connect(self.path)
         connection.row_factory = sqlite3.Row
         with connection:

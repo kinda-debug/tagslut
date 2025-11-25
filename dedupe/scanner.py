@@ -13,7 +13,7 @@ from typing import Iterable, Iterator, Optional
 
 from . import fingerprints, metadata, utils
 
-LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 LIBRARY_TABLE = "library_files"
 
@@ -100,12 +100,12 @@ def resolve_fingerprint_usage(include_requested: bool) -> bool:
     if not include_requested:
         return False
     if not fingerprints.is_fpcalc_available():
-        LOGGER.info(
+        logger.info(
             "Chromaprint fingerprints requested but fpcalc not available; "
             "continuing without fingerprints",
         )
         return False
-    LOGGER.info("Chromaprint fingerprints enabled for this scan")
+    logger.info("Chromaprint fingerprints enabled for this scan")
     return True
 
 
@@ -145,7 +145,7 @@ def _iter_records(
         try:
             yield prepare_record(path, include_fingerprints)
         except Exception as exc:  # pragma: no cover - defensive logging
-            LOGGER.exception("Failed to scan %s: %s", path, exc)
+            logger.exception("Failed to scan %s: %s", path, exc)
 
 
 def _upsert_batch(
@@ -330,7 +330,7 @@ def scan_library(config: ScanConfig) -> int:
             _upsert_batch(connection, records)
             connection.commit()
             total += len(records)
-            LOGGER.info(
+            logger.info(
                 "Processed %s files (%.1fs elapsed)",
                 total,
                 time.time() - start,
@@ -339,7 +339,7 @@ def scan_library(config: ScanConfig) -> int:
         if pbar:
             pbar.close()
 
-    LOGGER.info("Completed scan of %s (%s files)", root, total)
+    logger.info("Completed scan of %s (%s files)", root, total)
     return total
 
 
@@ -417,7 +417,7 @@ def rescan_missing(
         except FileNotFoundError:
             unreadable.append(utils.normalise_path(str(path)))
         except Exception:  # pragma: no cover - defensive logging
-            LOGGER.exception("Failed to ingest %s", path)
+            logger.exception("Failed to ingest %s", path)
             corrupt.append(utils.normalise_path(str(path)))
 
     with db.connect() as connection:

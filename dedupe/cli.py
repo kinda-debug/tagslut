@@ -19,7 +19,7 @@ from . import (
 )
 from tools.db_upgrade import upgrade_db
 
-LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def _configure_logging(verbose: bool) -> None:
@@ -327,7 +327,7 @@ def _command_scan(args: argparse.Namespace) -> int:
         show_progress=getattr(args, "progress", False),
     )
     total = scanner.scan_library(config)
-    LOGGER.info("Indexed %s files", total)
+    logger.info("Indexed %s files", total)
     return 0
 
 
@@ -349,7 +349,7 @@ def _command_rescan_missing(args: argparse.Namespace) -> int:
         database=args.out,
         include_fingerprints=args.fingerprints,
     )
-    LOGGER.info(
+    logger.info(
         "Missing: %s | Ingested: %s | Unreadable: %s | Corrupt: %s",
         len(result["missing"]),
         len(result["ingested"]),
@@ -391,7 +391,7 @@ def _command_dedupe(args: argparse.Namespace) -> int:
     """Mark canonical files and report duplicate sets."""
 
     result = deduper.deduplicate_database(args.database, args.report)
-    LOGGER.info("Deduplicated %s groups", result["groups"])
+    logger.info("Deduplicated %s groups", result["groups"])
     return 0
 
 
@@ -401,7 +401,7 @@ def _command_hrm_move(args: argparse.Namespace) -> int:
     from tools.move_to_hrm import move_canonical_to_hrm
 
     moved = move_canonical_to_hrm(args.database, args.root)
-    LOGGER.info("Moved %s files to HRM", moved)
+    logger.info("Moved %s files to HRM", moved)
     return 0
 
 
@@ -416,9 +416,9 @@ def _command_relocate_hrm(args: argparse.Namespace) -> int:
             min_score=args.min_score,
         )
     except hrm_relocation.MissingScoreColumnsError as exc:
-        LOGGER.error(str(exc))
+        logger.error(str(exc))
         return 1
-    LOGGER.info(
+    logger.info(
         "Relocation results: moved=%s skipped=%s conflicts=%s missing=%s manifest=%s",
         result.moved,
         result.skipped,
@@ -433,7 +433,7 @@ def run_upgrade_db(args: argparse.Namespace) -> int:
     """Upgrade a legacy per-volume database into the unified schema."""
 
     upgrade_db(str(args.legacy_db), str(args.out_db))
-    LOGGER.info("Upgraded legacy database %s -> %s", args.legacy_db, args.out_db)
+    logger.info("Upgraded legacy database %s -> %s", args.legacy_db, args.out_db)
     return 0
 
 

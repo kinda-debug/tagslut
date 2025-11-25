@@ -57,7 +57,7 @@ Available sub-commands:
   path is coerced to an absolute, NFC-normalised POSIX string before it is
   compared or written to the database, ensuring Unicode-equivalent paths match
   reliably across filesystems.
-- `dedupe parse-rstudio --input Recognized.txt --out recovered.db` (deprecated)
+- `dedupe parse-rstudio --input Recognized.txt --out recovered.db` (Deprecated: scheduled for removal in version x.y)
   Legacy import path for R-Studio "Recognized Files" exports that populates the
   `recovered_files` table for matching workflows. The subcommand is retained for
   backward compatibility but no longer actively maintained.
@@ -235,3 +235,8 @@ behaviour.
 
 Contributions should update these documents whenever CLI behaviour or schemas
 change.
+
+## Removed / Deprecated Features
+
+- R-Studio parser (dedupe.rstudio_parser) — deprecated.
+- parse-rstudio CLI command — deprecated.

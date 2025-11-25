@@ -11,7 +11,7 @@ import sqlite3
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Iterator, Optional
+from typing import Any, Iterable, Iterator, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +89,7 @@ def compute_md5(path: Path, chunk_size: int = 1 << 16) -> str:
     return digest.hexdigest()
 
 
-def read_json(path: Path) -> dict:
+def read_json(path: Path) -> dict[str, Any]:
     """Load JSON data from *path* if it exists, else return an empty dict."""
 
     if not path.exists():
@@ -155,7 +155,7 @@ def temporary_cwd(path: Path) -> Iterator[None]:
         os.chdir(original)
 
 
-def as_dict(row: sqlite3.Row) -> dict:
+def as_dict(row: sqlite3.Row) -> dict[str, Any]:
     """Convert a SQLite row into a plain ``dict``."""
 
     return {key: row[key] for key in row.keys()}

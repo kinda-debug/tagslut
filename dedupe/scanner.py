@@ -152,7 +152,7 @@ def _upsert_batch(
     connection: sqlite3.Connection,
     records: Iterable[ScanRecord],
 ) -> None:
-    payload = []
+    payload: list[dict[str, object]] = []
     for record in records:
         row = asdict(record)
         row["path"] = utils.normalise_path(row["path"])
@@ -244,7 +244,7 @@ def scan_library(config: ScanConfig) -> int:
     # Estimate total files for progress reporting (may be I/O heavy for very
     # large libraries but provides a useful progress bar). If the user turns
     # off progress we avoid the full count.
-    total_files = None
+    total_files: Optional[int] = None
     if config.show_progress:
         total_files = sum(1 for _ in utils.iter_audio_files(root))
 

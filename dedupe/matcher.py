@@ -58,6 +58,7 @@ class MatchCandidate:
 
 
 def _row_to_library_entry(row: sqlite3.Row) -> LibraryEntry:
+    """Convert a SQLite row into a :class:`LibraryEntry`."""
     return LibraryEntry(
         path=utils.normalise_path(row["path"]),
         name=Path(utils.normalise_path(row["path"])).name,
@@ -70,6 +71,7 @@ def _row_to_library_entry(row: sqlite3.Row) -> LibraryEntry:
 
 
 def _row_to_recovery_entry(row: sqlite3.Row) -> RecoveryEntry:
+    """Convert a SQLite row into a :class:`RecoveryEntry`."""
     return RecoveryEntry(
         source_path=utils.normalise_path(row["source_path"]),
         suggested_name=row["suggested_name"],
@@ -79,40 +81,48 @@ def _row_to_recovery_entry(row: sqlite3.Row) -> RecoveryEntry:
 
 
 def load_library_entries(database: Path) -> list[LibraryEntry]:
+    """Load scanned library entries from ``database``."""
     db = utils.DatabaseContext(Path(utils.normalise_path(str(database))))
     with db.connect() as connection:
         cursor = connection.execute(f"SELECT * FROM {scanner.LIBRARY_TABLE}")
-        rows = [_row_to_library_entry(row) for row in cursor.fetchall()]
-    logger.info("Loaded %s library entries", len(rows))
-    return rows
+        entries = [_row_to_library_entry(row) for row in cursor.fetchall()]
+    logger.info("Loaded %s library entries", len(entries))
+    return entries
 
 
 def load_recovery_entries(database: Path) -> list[RecoveryEntry]:
+    """Load recovery entries from the exported metadata database."""
     db = utils.DatabaseContext(Path(utils.normalise_path(str(database))))
     with db.connect() as connection:
         cursor = connection.execute("SELECT * FROM recovered_files")
-        rows = [_row_to_recovery_entry(row) for row in cursor.fetchall()]
-    logger.info("Loaded %s recovery entries", len(rows))
-    return rows
+        entries = [_row_to_recovery_entry(row) for row in cursor.fetchall()]
+    logger.info("Loaded %s recovery entries", len(entries))
+    return entries
 
 
 def _filename_similarity(a: str, b: str) -> float:
+    """Return a similarity ratio between two filenames (case-insensitive)."""
+
     return SequenceMatcher(None, a.lower(), b.lower()).ratio()
 
 
-def _size_difference(lib: LibraryEntry, rec: RecoveryEntry) -> Optional[int]:
-    if rec.size_bytes is None:
+def _size_difference(lib: LibraryEntry, recovery: RecoveryEntry) -> Optional[int]:
+    """Return size delta between library and recovery entries when available."""
+
+    if recovery.size_bytes is None:
         return None
-    return rec.size_bytes - lib.size_bytes
+    return recovery.size_bytes - lib.size_bytes
 
 
 def _quality_classification(
     lib: LibraryEntry,
-    rec: Optional[RecoveryEntry],
+    recovery: Optional[RecoveryEntry],
     score: float,
     size_delta: Optional[int],
 ) -> str:
-    if rec is None:
+    """Classify a match based on similarity and size information."""
+
+    if recovery is None:
         return "missing"
     if score >= 0.9:
         return "exact"
@@ -126,10 +136,12 @@ def _quality_classification(
 
 def _compute_score(
     lib: LibraryEntry,
-    rec: RecoveryEntry,
+    recovery: RecoveryEntry,
 ) -> tuple[float, float, Optional[int]]:
-    name_score = _filename_similarity(lib.name, rec.name)
-    size_delta = _size_difference(lib, rec)
+    """Compute combined match score and supporting metrics for two entries."""
+
+    name_score = _filename_similarity(lib.name, recovery.name)
+    size_delta = _size_difference(lib, recovery)
     if size_delta is None:
         size_score = 0.5
     else:
@@ -144,7 +156,7 @@ def match_databases(
     recovered_db: Path,
     output_csv: Path,
 ) -> list[MatchCandidate]:
-    """Match scanned library entries with recovered candidates."""
+    """Match scanned library entries with recovered candidates and write a CSV."""
 
     library_entries: list[LibraryEntry] = load_library_entries(library_db)
     recovery_entries: list[RecoveryEntry] = load_recovery_entries(recovered_db)
@@ -153,20 +165,20 @@ def match_databases(
 
     for lib in library_entries:
         best_candidate: Optional[MatchCandidate] = None
-        for rec in recovery_entries:
-            score, name_score, size_delta = _compute_score(lib, rec)
+        for recovery in recovery_entries:
+            score, name_score, size_delta = _compute_score(lib, recovery)
             if score < 0.35:
                 continue
             classification = _quality_classification(
                 lib,
-                rec,
+                recovery,
                 score,
                 size_delta,
             )
             candidate = MatchCandidate(
                 library_path=lib.path,
-                recovery_path=rec.source_path,
-                recovery_name=rec.name,
+                recovery_path=recovery.source_path,
+                recovery_name=recovery.name,
                 score=score,
                 classification=classification,
                 filename_similarity=name_score,
@@ -193,15 +205,15 @@ def match_databases(
                 )
             )
 
-    for rec in recovery_entries:
-        normalised_source = utils.normalise_path(rec.source_path)
+    for recovery in recovery_entries:
+        normalised_source = utils.normalise_path(recovery.source_path)
         if normalised_source in used_recoveries:
             continue
         matches.append(
             MatchCandidate(
                 library_path="",
                 recovery_path=normalised_source,
-                recovery_name=rec.name,
+                recovery_name=recovery.name,
                 score=0.0,
                 classification="orphan",
                 filename_similarity=0.0,

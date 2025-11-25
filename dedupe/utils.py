@@ -1,4 +1,4 @@
-"""Shared helpers used across the dedupe toolkit."""
+"""Utility helpers shared across dedupe components."""
 
 from __future__ import annotations
 
@@ -63,10 +63,10 @@ def iter_audio_files(root: Path) -> Iterator[Path]:
 
 
 def is_audio_file(pathish: str | Path) -> bool:
-    """Return True if *pathish* refers to a file with a recognised audio extension.
+    """Return ``True`` when *pathish* has a recognised audio extension.
 
-    This is a small compatibility shim used by older callers that expect
-    `utils.is_audio_file`. It accepts either a `Path` or a string filename.
+    This compatibility shim accepts either a :class:`Path` or a string filename,
+    mirroring behaviour expected by older callers.
     """
 
     try:

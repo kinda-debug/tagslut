@@ -146,8 +146,8 @@ def match_databases(
 ) -> list[MatchCandidate]:
     """Match scanned library entries with recovered candidates."""
 
-    library_entries = load_library_entries(library_db)
-    recovery_entries = load_recovery_entries(recovered_db)
+    library_entries: list[LibraryEntry] = load_library_entries(library_db)
+    recovery_entries: list[RecoveryEntry] = load_recovery_entries(recovered_db)
     used_recoveries: set[str] = set()
     matches: list[MatchCandidate] = []
 

@@ -371,7 +371,7 @@ def _command_health_batch(args: argparse.Namespace) -> int:
     """Score every path listed in a text file."""
 
     with open(args.list_path, "r", encoding="utf8") as handle:
-        paths = [Path(line.strip()) for line in handle if line.strip()]
+        paths: list[Path] = [Path(line.strip()) for line in handle if line.strip()]
     for path in paths:
         report = healthcheck.score_file(path)
         print(report)
@@ -461,7 +461,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     # regular `parse_args` when it's not available.
     import sys
 
-    arglist = list(argv) if argv is not None else list(sys.argv[1:])
+    arglist: list[str] = list(argv) if argv is not None else list(sys.argv[1:])
 
     # Normalize placement of a small set of known global options so users can
     # place them after the subcommand. This is a pragmatic, minimal shim that

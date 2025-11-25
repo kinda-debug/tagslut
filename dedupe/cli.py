@@ -36,180 +36,281 @@ def _path(value: str) -> Path:
     return Path(utils.normalise_path(value))
 
 
+def _existing_dir(value: str) -> Path:
+    """Validate that ``value`` is an existing directory path."""
+
+    path = _path(value)
+    if not path.is_dir():
+        raise argparse.ArgumentTypeError(f"Directory not found: {path}")
+    return path
+
+
+def _existing_file(value: str) -> Path:
+    """Validate that ``value`` is an existing file path."""
+
+    path = _path(value)
+    if not path.is_file():
+        raise argparse.ArgumentTypeError(f"File not found: {path}")
+    return path
+
+
+def _output_path(value: str) -> Path:
+    """Validate that ``value`` points to a writable file location.
+
+    Parent directories may be created later by the caller, but an existing
+    parent must be a directory.
+    """
+
+    path = _path(value)
+    if path.is_dir():
+        raise argparse.ArgumentTypeError(
+            f"Expected a file path but received a directory: {path}"
+        )
+    parent = path.parent if path.parent != Path("") else Path(".")
+    if parent.exists() and not parent.is_dir():
+        raise argparse.ArgumentTypeError(
+            f"Parent path for output is not a directory: {parent}"
+        )
+    return path
+
+
+def _non_negative_float(value: str) -> float:
+    """Return a float value that must be zero or greater."""
+
+    try:
+        parsed = float(value)
+    except ValueError as exc:  # pragma: no cover - argparse guards
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("Value must be zero or greater")
+    return parsed
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="dedupe",
-        description="Audio recovery toolkit",
+        description="Audio recovery and reconciliation toolkit.",
     )
     parser.add_argument(
         "--verbose",
         action="store_true",
-        help="Enable verbose logging output",
+        help="Enable debug logging for troubleshooting.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     scan_parser = subparsers.add_parser(
         "scan-library",
-        help="Scan an audio library and write metadata to SQLite",
+        help="Scan a library directory and write audio metadata to SQLite.",
     )
     scan_parser.add_argument(
         "--root",
-        type=_path,
+        type=_existing_dir,
         required=True,
-        help="Root directory to scan",
+        help="Library root directory to scan (must exist).",
     )
     scan_parser.add_argument(
         "--out",
-        type=_path,
+        type=_output_path,
         required=True,
-        help="SQLite database path to populate",
+        help="SQLite database to populate with scan results.",
     )
     scan_parser.add_argument(
         "--fingerprints",
         action="store_true",
         help=(
-            "Capture optional Chromaprint fingerprints (requires fpcalc; "
-            "skipped automatically when unavailable)"
+            "Capture Chromaprint fingerprints when fpcalc is available; skipped "
+            "automatically otherwise."
         ),
     )
     scan_parser.add_argument(
         "--resume",
         action="store_true",
         help=(
-            "Resume a previous scan by skipping unchanged files present in "
-            "the database (size + mtime check)"
+            "Skip files already recorded in the database when size and mtime "
+            "match."
         ),
     )
     scan_parser.add_argument(
         "--resume-safe",
         action="store_true",
         help=(
-            "Resume a previous scan but skip entire batches when any file "
-            "matches the database by size + mtime"
+            "Skip entire batches if any file matches existing records by size "
+            "and mtime."
         ),
     )
     scan_parser.add_argument(
         "--progress",
         action="store_true",
-        help="Show a progress bar during scanning",
+        help="Display a progress bar during scanning.",
     )
 
     match_parser = subparsers.add_parser(
         "match",
-        help="Match scanned library metadata with recovery candidates",
+        help="Match a scanned library database with recovered files.",
     )
     match_parser.add_argument(
         "--library",
-        type=_path,
+        type=_existing_file,
         required=True,
-        help="Library SQLite database",
+        help="Existing library SQLite database path.",
     )
     match_parser.add_argument(
         "--recovered",
-        type=_path,
+        type=_existing_file,
         required=True,
-        help="Recovered files SQLite database",
+        help="Existing recovered files SQLite database path.",
     )
     match_parser.add_argument(
         "--out",
-        type=_path,
+        type=_output_path,
         required=True,
-        help="CSV file to write match results",
+        help="CSV file to write match results (parent directory must exist).",
     )
 
     manifest_parser = subparsers.add_parser(
         "generate-manifest",
-        help="Create a recovery manifest from match results",
+        help="Create a recovery manifest CSV from match results.",
     )
     manifest_parser.add_argument(
         "--matches",
-        type=_path,
+        type=_existing_file,
         required=True,
-        help="CSV file produced by the match command",
+        help="CSV file produced by the match command.",
     )
     manifest_parser.add_argument(
         "--out",
-        type=_path,
+        type=_output_path,
         required=True,
-        help="Destination CSV for the recovery manifest",
+        help="Destination CSV path for the generated manifest.",
     )
 
     rescan_parser = subparsers.add_parser(
         "rescan-missing",
-        help="Ingest only missing FLAC files under a root path",
+        help="Ingest only FLAC files missing from an existing database.",
     )
-    rescan_parser.add_argument("--root", type=_path, required=True)
-    rescan_parser.add_argument("--out", type=_path, required=True)
+    rescan_parser.add_argument(
+        "--root",
+        type=_existing_dir,
+        required=True,
+        help="Root directory to scan for missing FLAC files.",
+    )
+    rescan_parser.add_argument(
+        "--out",
+        type=_output_path,
+        required=True,
+        help="Target library database; created if it does not exist.",
+    )
     rescan_parser.add_argument(
         "--fingerprints",
         action="store_true",
-        help="Compute fingerprints for missing files when possible",
+        help="Compute fingerprints for missing files when fpcalc is available.",
     )
 
     health_parser = subparsers.add_parser(
         "health",
-        help="Score a single FLAC file",
+        help="Score a single FLAC file and print the report.",
     )
-    health_parser.add_argument("path", type=_path)
+    health_parser.add_argument(
+        "path",
+        type=_existing_file,
+        help="Path to a FLAC file to evaluate.",
+    )
 
     health_batch_parser = subparsers.add_parser(
         "health-batch",
-        help="Score a list of FLAC files from a text list",
+        help="Score each FLAC path listed in a UTF-8 text file.",
     )
-    health_batch_parser.add_argument("list_path", type=_path)
+    health_batch_parser.add_argument(
+        "list_path",
+        type=_existing_file,
+        help="Text file containing one FLAC path per line.",
+    )
 
     healthscore_parser = subparsers.add_parser(
         "healthscore",
-        help="Compute read-only health scores for one or more FLAC files",
+        help="Compute read-only health scores for one or more FLAC files.",
     )
-    healthscore_parser.add_argument("paths", nargs="+", type=str)
+    healthscore_parser.add_argument(
+        "paths",
+        nargs="+",
+        type=_existing_file,
+        help="One or more FLAC files to score.",
+    )
     healthscore_parser.set_defaults(func=run_healthscore)
 
     dedupe_parser = subparsers.add_parser(
         "dedupe-db",
-        help="Deduplicate entries in a library database",
+        help="Mark canonical files and report duplicate groups in a database.",
     )
-    dedupe_parser.add_argument("database", type=_path)
+    dedupe_parser.add_argument(
+        "database",
+        type=_existing_file,
+        help="Library database to deduplicate.",
+    )
     dedupe_parser.add_argument(
         "--report",
-        type=_path,
-        help="Optional path to write a JSON duplicate report",
+        type=_output_path,
+        help="Optional JSON file to write a duplicate report.",
     )
 
     hrm_parser = subparsers.add_parser(
         "hrm-move",
-        help="Move canonical, healthy files into the HRM structure",
+        help="Move canonical, healthy files into the HRM structure.",
     )
-    hrm_parser.add_argument("database", type=_path)
-    hrm_parser.add_argument("--root", type=_path, required=True)
+    hrm_parser.add_argument(
+        "database",
+        type=_existing_file,
+        help="Library database containing canonical selections.",
+    )
+    hrm_parser.add_argument(
+        "--root",
+        type=_existing_dir,
+        required=True,
+        help="Destination HRM root directory (must exist).",
+    )
 
     hrm_relocate_parser = subparsers.add_parser(
         "relocate-hrm",
-        help="Relocate healthy files into the HRM hierarchy",
+        help="Relocate healthy files into the HRM hierarchy.",
     )
-    hrm_relocate_parser.add_argument("--db", type=_path, required=True)
-    hrm_relocate_parser.add_argument("--root", type=_path, required=True)
-    hrm_relocate_parser.add_argument("--hrm-root", type=_path, required=True)
+    hrm_relocate_parser.add_argument(
+        "--db",
+        type=_existing_file,
+        required=True,
+        help="Source library database with health data.",
+    )
+    hrm_relocate_parser.add_argument(
+        "--root",
+        type=_existing_dir,
+        required=True,
+        help="Root directory containing the source audio files.",
+    )
+    hrm_relocate_parser.add_argument(
+        "--hrm-root",
+        type=_existing_dir,
+        required=True,
+        help="HRM root directory where files will be relocated.",
+    )
     hrm_relocate_parser.add_argument(
         "--min-score",
-        type=float,
+        type=_non_negative_float,
         default=10,
-        help="Minimum total health score required for relocation",
+        help="Minimum total health score required for relocation (default: 10).",
     )
 
     upgrade_parser = subparsers.add_parser(
         "upgrade-db",
-        help="Upgrade a legacy per-volume database to the unified schema",
+        help="Upgrade a legacy per-volume database to the unified schema.",
     )
     upgrade_parser.add_argument(
         "legacy_db",
-        type=_path,
-        help="Path to the legacy per-volume SQLite database",
+        type=_existing_file,
+        help="Path to the legacy per-volume SQLite database.",
     )
     upgrade_parser.add_argument(
         "out_db",
-        type=_path,
-        help="Destination path for the upgraded database",
+        type=_output_path,
+        help="Destination path for the upgraded database.",
     )
     upgrade_parser.set_defaults(func=run_upgrade_db)
 

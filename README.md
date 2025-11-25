@@ -47,46 +47,39 @@ python3 -m dedupe.cli --help
 
 Available sub-commands:
 
-- `python3 -m dedupe.cli scan-library --root <path> --out library.db --resume-safe --progress`
-  Recursively scans an audio collection, writing metadata into a SQLite
-  database.  The command records duration, bitrate, channel count, checksum, and
-  filename heuristics by default.  Append `--fingerprints` to request optional
-  Chromaprint extraction when `fpcalc` is available. Use `--resume` to skip
-  unchanged files individually or `--resume-safe` to skip entire batches when
-  any member is unchanged. Add `--progress` to render a progress bar. Every
-  path is coerced to an absolute, NFC-normalised POSIX string before it is
-  compared or written to the database, ensuring Unicode-equivalent paths match
-  reliably across filesystems.
+- `python3 -m dedupe.cli scan-library --root <path> --out library.db [--resume|--resume-safe] [--fingerprints] [--progress]`
+  Recursively scan an audio collection into a SQLite database. Use `--resume`
+  or `--resume-safe` to skip previously ingested files, `--fingerprints` to
+  capture Chromaprint data when `fpcalc` is installed, and `--progress` to show
+  a progress bar. The library root must already exist; output directories are
+  created as needed.
 - `dedupe match --library library.db --recovered recovered.db --out matches.csv`
-  Produces a ranked set of recovery candidates by comparing filenames, file
-  sizes, and other metadata.
+  Compare a scanned library database with recovered files to produce ranked
+  match candidates.
 - `dedupe generate-manifest --matches matches.csv --out manifest.csv`
-  Converts match results into a prioritised manifest suitable for manual review
-  or scripted restoration.
+  Convert match results into a manifest suitable for restoration tooling.
 - `dedupe rescan-missing --root <path> --out library.db [--fingerprints]`
-  Enumerates FLAC files under the provided root and ingests only the entries
-  missing from the target database, reusing the unified scanning pipeline.
+  Ingest only FLAC files missing from the target database, reusing the scanning
+  pipeline. The root must already exist.
 - `dedupe healthscore /path/to/file1.flac [/path/to/file2.flac ...]`
-  Computes read-only technical health scores for one or more FLAC files using
-  duration, sample rate, channel count, tag availability, and embedded MD5
-  checksums. Each line of output prints `<score>\t<path>`.
+  Compute read-only health scores for one or more FLAC files. Output lines
+  print `<score>\t<path>`.
 - `dedupe health /path/to/file.flac` and `dedupe health-batch list.txt`
-  Score one or more FLAC files using container validity, audio checksums,
-  required tags, and duration to produce a 0–10 quality score.
+  Score individual FLAC files. `health` accepts a single file; `health-batch`
+  reads a UTF-8 list containing one path per line.
 - `dedupe dedupe-db artifacts/db/library_final.db [--report report.json]`
-  Compute duplicate groups using checksum, duration, and fingerprints; mark the
-  best candidate canonical; and optionally emit a JSON report of the clusters.
+  Mark canonical files and report duplicate groups within a library database.
+- `python3 -m dedupe.cli hrm-move artifacts/db/library_final.db --root /Volumes/HRM`
+  Move canonical, healthy files into an existing HRM directory structure.
 - `python3 -m dedupe.cli relocate-hrm --db artifacts/db/library_final.db \
   --root /Volumes/dotad/MUSIC --hrm-root /Volumes/dotad/HRM --min-score 10`
-  Relocate healthy, non-duplicate files into the HRM hierarchy using the
-  scoring columns in `library_files`. Generates a relocation manifest at
-  `artifacts/manifests/hrm_relocation.tsv` and updates database paths for every
-  successfully moved file.
+  Relocate healthy files into the HRM hierarchy using the scoring columns in
+  `library_files` and emit a relocation manifest.
 - `dedupe upgrade-db /path/to/legacy.db /path/to/upgraded.db`
   Upgrade a legacy per-volume SQLite database to the unified `library_files`
-  schema so it can be safely attached and merged into a consolidated database.
+  schema.
 
-Every command accepts `--verbose` to enable detailed logging output.
+Every command accepts `--verbose` to enable debug logging output.
 
 ### Recommended scan workflows
 

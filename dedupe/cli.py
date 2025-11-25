@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 def _configure_logging(verbose: bool) -> None:
+    """Configure basic logging output based on the ``--verbose`` flag."""
     level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(
         level=level,
@@ -87,6 +88,7 @@ def _non_negative_float(value: str) -> float:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build the top-level argument parser for the dedupe CLI."""
     parser = argparse.ArgumentParser(
         prog="dedupe",
         description="Audio recovery and reconciliation toolkit.",
@@ -469,8 +471,8 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     if arglist:
         # index of first positional (likely the subcommand)
         first_pos = None
-        for i, a in enumerate(arglist):
-            if not a.startswith("-"):
+        for i, arg in enumerate(arglist):
+            if not arg.startswith("-"):
                 first_pos = i
                 break
         if first_pos is not None:

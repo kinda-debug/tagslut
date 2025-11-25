@@ -141,6 +141,7 @@ def _iter_records(
     paths: Iterable[Path],
     include_fingerprints: bool,
 ) -> Iterator[ScanRecord]:
+    """Yield :class:`ScanRecord` objects for each path, logging failures."""
     for path in paths:
         try:
             yield prepare_record(path, include_fingerprints)
@@ -152,6 +153,7 @@ def _upsert_batch(
     connection: sqlite3.Connection,
     records: Iterable[ScanRecord],
 ) -> None:
+    """Insert or update a batch of records in the library table."""
     payload: list[dict[str, object]] = []
     for record in records:
         row = asdict(record)
@@ -214,7 +216,7 @@ def _upsert_batch(
 
 
 def scan_library(config: ScanConfig) -> int:
-    """Scan ``config.root`` and populate ``config.database``."""
+    """Scan ``config.root`` recursively and populate ``config.database``."""
     root = Path(utils.normalise_path(str(config.root)))
     database = Path(utils.normalise_path(str(config.database)))
 
@@ -235,8 +237,8 @@ def scan_library(config: ScanConfig) -> int:
                 "SELECT path, size_bytes, mtime FROM " + LIBRARY_TABLE
             )
             for row in cursor.fetchall():
-                npath = utils.normalise_path(row["path"])
-                existing_index[npath] = (
+                normalised_path = utils.normalise_path(row["path"])
+                existing_index[normalised_path] = (
                     row["size_bytes"],
                     row["mtime"],
                 )
@@ -257,12 +259,12 @@ def scan_library(config: ScanConfig) -> int:
             for filename in filenames
             if utils.is_audio_file(filename)
         )
-        # helper to yield batches while skipping unchanged files when resuming
+        # Helper to yield batches while skipping unchanged files when resuming.
 
         def batches() -> Iterator[list[tuple[Path, bool]]]:
             batch: list[tuple[Path, bool]] = []
             for path in iterator:
-                npath = utils.normalise_path(str(path))
+                normalised_path = utils.normalise_path(str(path))
                 try:
                     st = path.stat()
                 except OSError:
@@ -270,7 +272,7 @@ def scan_library(config: ScanConfig) -> int:
                     continue
                 unchanged = False
                 if config.resume or config.resume_safe:
-                    existing = existing_index.get(npath)
+                    existing = existing_index.get(normalised_path)
                     if existing is not None:
                         size, mtime = existing
                         unchanged = (
@@ -352,7 +354,7 @@ def scan(
     resume_safe: bool = False,
     show_progress: bool = False,
 ) -> int:
-    """Compatibility wrapper: simple API for scanning a library.
+    """Compatibility wrapper providing a flat API for scanning a library.
 
     Older or alternative callers (eg. codex refactor) may prefer a flat
     function signature instead of constructing a :class:`ScanConfig`. This
@@ -376,7 +378,7 @@ def rescan_missing(
     database: Path,
     include_fingerprints: bool = False,
 ) -> dict[str, list[str]]:
-    """Ingest only files absent from the existing database."""
+    """Ingest only FLAC files that are absent from the existing database."""
 
     root = Path(utils.normalise_path(str(root)))
     database = Path(utils.normalise_path(str(database)))
@@ -401,12 +403,12 @@ def rescan_missing(
         for path in root.rglob("*.flac"):
             yield path
 
-    targets = []
+    targets: list[Path] = []
     for path in _iter_flac():
-        npath = utils.normalise_path(str(path))
-        if npath in existing:
+        normalised_path = utils.normalise_path(str(path))
+        if normalised_path in existing:
             continue
-        missing.append(npath)
+        missing.append(normalised_path)
         targets.append(path)
 
     include = resolve_fingerprint_usage(include_fingerprints)

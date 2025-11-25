@@ -97,3 +97,6 @@ artifacts/db/SAD_MUSIC.missing_in_db.txt
 artifacts/db/SAD_MUSIC.missing_in_fs.txt
 artifacts/reports/recovery_list.csv
 tests/data/
+artifacts/db/dotad_scan.sqlite
+artifacts/db/dotad_scan.sqlite-shm
+artifacts/db/dotad_scan.sqlite-wal

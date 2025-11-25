@@ -1,15 +1,22 @@
-"""Deprecated module: legacy R-Studio recovery parsing; retained for backward compatibility but no longer actively maintained."""
+"""Deprecated module: legacy R-Studio recovery parsing.
+
+Retained for backward compatibility but no longer actively maintained.
+"""
 
 from __future__ import annotations
 
 import csv
 import logging
-import sqlite3
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Iterable, Iterator, Optional
 
 from . import utils
+
+DEPRECATION_WARNING = (
+    "dedupe.rstudio_parser is deprecated and will be removed in a future release."
+)
+logging.warning(DEPRECATION_WARNING)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -29,6 +36,7 @@ class RecoveredFile:
 def parse_export(path: Path) -> Iterator[RecoveredFile]:
     """Yield :class:`RecoveredFile` rows parsed from *path*."""
 
+    logging.warning(DEPRECATION_WARNING)
     with path.open("r", encoding="utf8", errors="ignore") as handle:
         sample = handle.read(4096)
     try:
@@ -76,6 +84,7 @@ def load_into_database(
 ) -> int:
     """Persist *records* into *database* and return the stored row count."""
 
+    logging.warning(DEPRECATION_WARNING)
     database = Path(utils.normalise_path(str(database)))
     utils.ensure_parent_directory(database)
     db = utils.DatabaseContext(database)

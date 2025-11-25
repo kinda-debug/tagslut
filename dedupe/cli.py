@@ -97,7 +97,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     rstudio_parser_cli = subparsers.add_parser(
         "parse-rstudio",
-        help="Parse an R-Studio export (deprecated)",
+        help=(
+            "Parse an R-Studio export (deprecated). "
+            "WARNING: this command is deprecated and will be removed in a future release."
+        ),
     )
     rstudio_parser_cli.add_argument(
         "--input",
@@ -251,6 +254,9 @@ def _command_scan(args: argparse.Namespace) -> int:
 def _command_parse_rstudio(args: argparse.Namespace) -> int:
     """Ingest an R-Studio export into the recovered files database."""
 
+    logging.warning(
+        "dedupe parse-rstudio is deprecated and will be removed in a future release."
+    )
     records = list(rstudio_parser.parse_export(args.input))
     count = rstudio_parser.load_into_database(records, args.out)
     LOGGER.info("Captured %s recovery candidates", count)

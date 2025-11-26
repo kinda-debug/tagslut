@@ -100,3 +100,12 @@ tests/data/
 artifacts/db/dotad_scan.sqlite
 artifacts/db/dotad_scan.sqlite-shm
 artifacts/db/dotad_scan.sqlite-wal
+artifacts/db/dotad_scan.sqlite
+artifacts/db/dotad_scan.sqlite-shm
+artifacts/db/dotad_scan.sqlite-wal
+artifacts/db/dotad_scan.sqlite.bak
+artifacts/reports/duplicates_all.txt
+artifacts/reports/duplicates_existing.txt
+artifacts/reports/duplicates_missing.txt
+artifacts/reports/duplicates.json
+artifacts/reports/safe_to_delete.csv

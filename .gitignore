@@ -26,6 +26,14 @@ artifacts/logs/*
 !artifacts/logs/.gitkeep
 *.log
 
+# Exclude all SQLite DB files and large DBs
+artifacts/db/*.sqlite
+artifacts/db/*.sqlite3
+artifacts/db/*.db
+artifacts/db/*.db-shm
+artifacts/db/*.db-wal
+artifacts/db/*.db-journal
+
 # OS and editor noise
 .DS_Store
 Thumbs.db

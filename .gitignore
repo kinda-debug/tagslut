@@ -142,3 +142,17 @@ artifacts/reports/canonical_bad_flac_groups/summary.txt
 artifacts/reports/canonical_bad_flac_groups/unclassified.txt
 artifacts/reports/canonical_bad_flac_groups/unreadable.txt
 artifacts/reports/canonical_bad_flac_groups/zero_size.txt
+2
+SELECT
+sqlite3
+artifacts/db/dotad_music_scan.sqlite
+artifacts/db/dotad_music_scan.sqlite-shm
+artifacts/db/vault_scan.sqlite
+artifacts/db/dotad_music_scan.sqlite-wal
+artifacts/reports/dotad_canonical_added.txt
+artifacts/reports/dotad_canonical_list_prev.txt
+artifacts/reports/dotad_canonical_removed.txt
+artifacts/reports/healthy_flacs.txt
+artifacts/reports/dotad_canonical_list.txt
+artifacts/reports/metadata_rebuild_log.txt
+artifacts/reports/metadata_rebuild_manifest.txt

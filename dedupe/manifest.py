@@ -1,4 +1,4 @@
-"""Generate recovery manifests from matcher output."""
+"""Generate recovery manifests from match results."""
 
 from __future__ import annotations
 

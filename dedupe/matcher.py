@@ -1,4 +1,4 @@
-"""Matching logic between scanned libraries and recovery candidates."""
+"""Match scanned library entries with recovered file metadata exports."""
 
 from __future__ import annotations
 
@@ -11,7 +11,8 @@ from typing import Optional
 
 from difflib import SequenceMatcher
 
-from . import scanner, utils
+from . import utils
+from .db import LIBRARY_TABLE
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +85,7 @@ def load_library_entries(database: Path) -> list[LibraryEntry]:
     """Load scanned library entries from ``database``."""
     db = utils.DatabaseContext(Path(utils.normalise_path(str(database))))
     with db.connect() as connection:
-        cursor = connection.execute(f"SELECT * FROM {scanner.LIBRARY_TABLE}")
+        cursor = connection.execute(f"SELECT * FROM {LIBRARY_TABLE}")
         entries = [_row_to_library_entry(row) for row in cursor.fetchall()]
     logger.info("Loaded %s library entries", len(entries))
     return entries

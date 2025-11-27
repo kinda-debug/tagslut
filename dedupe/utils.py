@@ -1,4 +1,4 @@
-"""Utility helpers shared across dedupe components."""
+"""Shared utility helpers for filesystem, hashing, and SQLite access."""
 
 from __future__ import annotations
 

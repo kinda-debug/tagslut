@@ -1,4 +1,4 @@
-"""Global multi-volume recovery workflow utilities."""
+"""Global recovery workflow utilities for cross-root reconciliation."""
 
 from __future__ import annotations
 

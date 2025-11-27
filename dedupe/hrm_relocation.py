@@ -1,4 +1,4 @@
-"""Relocate healthy, canonical files into the HRM hierarchy."""
+"""Relocate healthy files into the HRM folder structure."""
 
 from __future__ import annotations
 

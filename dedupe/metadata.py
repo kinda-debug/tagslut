@@ -1,4 +1,4 @@
-"""Metadata extraction helpers for audio files."""
+"""Audio metadata probing utilities."""
 
 from __future__ import annotations
 

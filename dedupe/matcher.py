@@ -11,7 +11,7 @@ from typing import Optional
 
 from difflib import SequenceMatcher
 
-<<<<<<< HEAD
+
 from . import scanner, utils
 from .db import LIBRARY_TABLE
 
@@ -86,11 +86,7 @@ def load_library_entries(database: Path) -> list[LibraryEntry]:
     """Load scanned library entries from ``database``."""
     db = utils.DatabaseContext(Path(utils.normalise_path(str(database))))
     with db.connect() as connection:
-<<<<<<< HEAD
         cursor = connection.execute(f"SELECT * FROM {scanner.LIBRARY_TABLE}")
-=======
-        cursor = connection.execute(f"SELECT * FROM {LIBRARY_TABLE}")
->>>>>>> 5510a1a84ac4c0d31b0bfc433e67cdb1ab6aa257
         entries = [_row_to_library_entry(row) for row in cursor.fetchall()]
     logger.info("Loaded %s library entries", len(entries))
     return entries

@@ -142,3 +142,15 @@ dedupe/__pycache__/__init__.cpython-312.pyc
 dedupe/__pycache__/healthcheck.cpython-312.pyc
 dedupe/__pycache__/metadata.cpython-312.pyc
 dedupe/__pycache__/utils.cpython-312.pyc
+dedupe/__pycache__/scanner.cpython-312.pyc
+dedupe/__pycache__/matcher.cpython-312.pyc
+dedupe/__pycache__/manifest.cpython-312.pyc
+dedupe/__pycache__/health_score.cpython-312.pyc
+dedupe/__pycache__/global_recovery.cpython-312.pyc
+artifacts/db/tmp_scan.sqlite-shm
+artifacts/db/tmp_scan.sqlite-wal
+dedupe/__pycache__/global_recovery.cpython-312.pyc
+dedupe/__pycache__/health_score.cpython-312.pyc
+dedupe/__pycache__/manifest.cpython-312.pyc
+dedupe/__pycache__/matcher.cpython-312.pyc
+dedupe/__pycache__/scanner.cpython-312.pyc

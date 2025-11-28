@@ -1,4 +1,4 @@
-"""Library scanning logic."""
+"""Library scanner that records audio metadata into SQLite."""
 
 from __future__ import annotations
 
@@ -12,10 +12,14 @@ from pathlib import Path
 from typing import Iterable, Iterator, Optional
 
 from . import fingerprints, metadata, utils
+from .db import LIBRARY_TABLE, initialise_library_schema
 
 logger = logging.getLogger(__name__)
+<<<<<<< HEAD
 
 LIBRARY_TABLE = "library_files"
+=======
+>>>>>>> 5510a1a84ac4c0d31b0bfc433e67cdb1ab6aa257
 
 
 @dataclass(slots=True)
@@ -66,6 +70,7 @@ class ScanConfig:
 def initialise_database(connection: sqlite3.Connection) -> None:
     """Ensure the SQLite schema exists."""
 
+<<<<<<< HEAD
     connection.execute(
         f"""
         CREATE TABLE IF NOT EXISTS {LIBRARY_TABLE} (
@@ -88,6 +93,9 @@ def initialise_database(connection: sqlite3.Connection) -> None:
         )
         """
     )
+=======
+    initialise_library_schema(connection)
+>>>>>>> 5510a1a84ac4c0d31b0bfc433e67cdb1ab6aa257
 
 
 def resolve_fingerprint_usage(include_requested: bool) -> bool:

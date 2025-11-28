@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
-"""Minimal ingestion helper for FLAC files.
-
-Use this script to push a list of file paths into the ``library_files`` table
-of an existing SQLite database. Example (imports /tmp/vault_paths.txt into the
-final library snapshot)::
-
-    python tools/manual_ingest.py artifacts/db/library_final.db /tmp/vault_paths.txt
-"""
+"""Manually ingest FLAC metadata into the ``library_files`` table."""
 
 from __future__ import annotations
 
@@ -19,10 +12,6 @@ from typing import Iterable, Optional, Union
 from dedupe import health_score
 from mutagen import MutagenError
 from mutagen.flac import FLAC
-
-from dedupe import health_score
-
-
 LIBRARY_COLUMNS = (
     "path",
     "size_bytes",
@@ -34,7 +23,10 @@ LIBRARY_COLUMNS = (
     "channels",
     "bit_depth",
     "tags_json",
+<<<<<<< HEAD
     "extra_json",
+=======
+>>>>>>> 5510a1a84ac4c0d31b0bfc433e67cdb1ab6aa257
     "fingerprint",
     "fingerprint_duration",
     "dup_group",
@@ -106,15 +98,22 @@ def get_metadata(file_path: Path) -> Optional[dict[str, object]]:
             "tags_json": json.dumps(
                 tags, sort_keys=True, separators=(",", ":")
             ),
+<<<<<<< HEAD
             "extra_json": json.dumps(
                 extra_payload, sort_keys=True, separators=(",", ":")
             ),
+=======
+            "extra_json": json.dumps(extra_payload, sort_keys=True, separators=(",", ":")),
+>>>>>>> 5510a1a84ac4c0d31b0bfc433e67cdb1ab6aa257
             "fingerprint": None,
             "fingerprint_duration": None,
             "dup_group": None,
             "duplicate_rank": None,
             "is_canonical": 1,
+<<<<<<< HEAD
             "extra_json": json.dumps(score),
+=======
+>>>>>>> 5510a1a84ac4c0d31b0bfc433e67cdb1ab6aa257
         }
 
     except (MutagenError, OSError) as exc:

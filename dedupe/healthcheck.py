@@ -1,4 +1,4 @@
-"""Health scoring utilities for FLAC files."""
+"ll of th""Perform detailed FLAC health evaluations."""
 
 from __future__ import annotations
 

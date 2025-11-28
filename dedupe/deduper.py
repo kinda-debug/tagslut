@@ -1,4 +1,4 @@
-"""Deduplication helpers for the library database."""
+"""Deduplication helpers for marking canonical library files."""
 
 from __future__ import annotations
 
@@ -8,7 +8,8 @@ import sqlite3
 from pathlib import Path
 from typing import List, Optional
 
-from . import scanner, utils
+from . import utils
+from .db import LIBRARY_TABLE, initialise_library_schema
 
 logger = logging.getLogger(__name__)
 
@@ -35,14 +36,14 @@ def deduplicate_database(db_path: Path, report_path: Optional[Path] = None) -> d
     report: List[dict[str, object]] = []
 
     with db.connect() as connection:
-        scanner.initialise_database(connection)
+        initialise_library_schema(connection)
         connection.row_factory = sqlite3.Row
         cursor = connection.execute(
-            """
+            f"""
             SELECT path, size_bytes, duration, sample_rate, bit_rate,
                    channels, bit_depth, checksum, fingerprint, fingerprint_duration,
                    tags_json
-            FROM library_files
+            FROM {LIBRARY_TABLE}
             WHERE checksum IS NOT NULL
             """
         )

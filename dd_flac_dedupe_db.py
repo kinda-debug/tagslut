@@ -1,3 +1,4 @@
+ # DEPRECATED: Superseded by the packaged ``dedupe`` workflows; retained for reference only.
 """FLAC audio deduplicator with persistent signal cache.
 
 This module provides a macOS-friendly, dependency-free command line utility

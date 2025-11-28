@@ -9,18 +9,23 @@ dist/
 .venv/
 .env
 
-# Project artifacts
-artifacts/db/*.db
-artifacts/db/*.db-shm
-artifacts/db/*.db-wal
-artifacts/db/*.db.tsv
-artifacts/db/*.db_paths.txt
-artifacts/db/*.fs.txt
-artifacts/db/*.fs_raw.txt
-artifacts/db/*.missing_in_db.txt
-artifacts/db/*.missing_in_fs.txt
-!artifacts/db/.gitkeep
-artifacts/tmp/*
+!artifacts/tmp/.gitkeep
+artifacts/logs/*
+!artifacts/logs/.gitkeep
+*.log
+
+
+# Python cache and build artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+build/
+dist/
+.venv/
+.env
+
 !artifacts/tmp/.gitkeep
 artifacts/logs/*
 !artifacts/logs/.gitkeep
@@ -60,44 +65,6 @@ artifacts/db/SAD_MUSIC.missing_in_db.txt
 artifacts/db/SAD_MUSIC.missing_in_fs.txt
 artifacts/reports/recovery_list.csv
 tests/data/
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-*.egg-info/
-build/
-dist/
-.venv/
-.env
-
-# Project artifacts
-artifacts/db/*.db
-!artifacts/db/.gitkeep
-artifacts/tmp/*
-!artifacts/tmp/.gitkeep
-artifacts/logs/*
-!artifacts/logs/.gitkeep
-*.log
-
-# OS and editor noise
-.DS_Store
-Thumbs.db
-.ipynb_checkpoints/
-archive/*
-!archive/legacy_root/
-!archive/legacy_root/**
-artifacts/db/checksum_group_expanded.tsv
-artifacts/db/MUSIC.db-shm
-artifacts/db/MUSIC.db-wal
-artifacts/db/NEW_LIBRARY.db-shm
-artifacts/db/NEW_LIBRARY.db-wal
-artifacts/db/NEW_MUSIC.db-shm
-artifacts/db/NEW_MUSIC.db-wal
-artifacts/db/QUARANTINE_AUTO_GLOBAL.db-shm
-artifacts/db/QUARANTINE_AUTO_GLOBAL.db-wal
-artifacts/db/SAD_MUSIC.db_paths.txt
-artifacts/db/SAD_MUSIC.db-shm
-artifacts/db/SAD_MUSIC.db-wal
 artifacts/db/SAD_MUSIC.db.tsv
 artifacts/db/SAD_MUSIC.fs_raw.txt
 artifacts/db/SAD_MUSIC.fs.txt
@@ -108,6 +75,7 @@ tests/data/
 artifacts/db/dotad_scan.sqlite
 artifacts/db/dotad_scan.sqlite-shm
 artifacts/db/dotad_scan.sqlite-wal
+<<<<<<< HEAD
 artifacts/db/dotad_scan.sqlite
 artifacts/db/dotad_scan.sqlite-shm
 artifacts/db/dotad_scan.sqlite-wal
@@ -164,3 +132,9 @@ artifacts/reports/healthy_flacs.txt
 artifacts/reports/dotad_canonical_list.txt
 artifacts/reports/metadata_rebuild_log.txt
 artifacts/reports/metadata_rebuild_manifest.txt
+=======
+>>>>>>> 5510a1a84ac4c0d31b0bfc433e67cdb1ab6aa257
+artifacts/db/recovered_from_missing_scan.sqlite-wal
+artifacts/db/recovered_from_missing_scan.sqlite-shm
+dedupe/__pycache__/__init__.cpython-312.pyc
+dedupe/__pycache__/deduper.cpython-312.pyc

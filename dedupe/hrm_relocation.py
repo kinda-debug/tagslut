@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 """Relocate healthy, canonical files into the HRM hierarchy."""
+=======
+"""Relocate healthy files into the HRM folder structure."""
+>>>>>>> 5510a1a84ac4c0d31b0bfc433e67cdb1ab6aa257
 
 from __future__ import annotations
 
@@ -12,89 +16,121 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 from . import utils
+"""Relocate healthy files into the HRM folder structure."""
 
+"""Relocate healthy files into the HRM folder structure."""
+    moved: int
+    skipped: int
+import json
+"""Relocate healthy files into the HRM folder structure."""
+import json
+import logging
+import json
+import logging
+import shutil
+import sqlite3
+import time
+import shutil
+import sqlite3
+import time
+    import logging
+    import shutil
 logger = logging.getLogger(__name__)
-
 REQUIRED_SCORE_COLUMNS = (
     "score_integrity",
     "score_audio",
     "score_tags",
     "score_total",
 )
-
-
-@dataclass(slots=True)
-class RelocationStats:
+    import sqlite3
+    import time
+REQUIRED_SCORE_COLUMNS = (
+logger = logging.getLogger(__name__)
     """Summary of an HRM relocation run."""
-
-    moved: int
-    skipped: int
-    conflicts: int
-    missing: int
-    manifest_path: Path
-
-
-class MissingScoreColumnsError(RuntimeError):
-    """Raised when the database lacks required scoring columns."""
+REQUIRED_SCORE_COLUMNS = (
+    "score_integrity",
+    "score_audio",
+    "score_tags",
+    "score_total",
+)
+    "score_integrity",
+    "score_audio",
+    "score_tags",
+    "score_total",
+    """Summary of an HRM relocation run."""
+    logger = logging.getLogger(__name__)
+    REQUIRED_SCORE_COLUMNS = (
+        "score_integrity",
+        "score_audio",
+        "score_tags",
+        "score_total",
+    )
+)
 
 
 def _ensure_required_columns(connection: sqlite3.Connection) -> None:
+        """Summary of an HRM relocation run."""
     """Raise :class:`MissingScoreColumnsError` when scoring columns are absent."""
-
-    column_names = {row["name"] for row in connection.execute("PRAGMA table_info(library_files)")}
-    missing = [column for column in REQUIRED_SCORE_COLUMNS if column not in column_names]
-    if missing:
-        raise MissingScoreColumnsError(
-            "Library database is missing required health score columns: "
-            f"{', '.join(missing)}"
-        )
-
-
-def _is_under_root(path: Path, root: Path) -> bool:
-    """Return ``True`` when *path* is nested beneath *root*.
-
+    """Summary of an HRM relocation run."""
+    moved: int
+    skipped: int
+    """Relocate healthy files into the HRM folder structure."""
     The check uses path resolution without requiring either path to exist so it
     remains stable across platforms and symlinks.
+    import json
+    import logging
+    import shutil
+    import sqlite3
+    import time
     """
 
     try:
         path.resolve(strict=False).relative_to(root.resolve(strict=False))
     except ValueError:
+    logger = logging.getLogger(__name__)
+    REQUIRED_SCORE_COLUMNS = (
+        "score_integrity",
+        "score_audio",
+        "score_tags",
+        "score_total",
+    )
         return False
     return True
 
 
-def _normalise_tag_value(value: Optional[object]) -> Optional[str]:
-    """Return a string representation of a tag value.
-
-    Lists are collapsed to the first element, empty iterables and ``None`` are
-    treated as missing.
+        """Summary of an HRM relocation run."""
+        moved: int
+        skipped: int
+        conflicts: int
+        """Relocate healthy files into the HRM folder structure."""
     """
-    if value is None:
-        return None
-    if isinstance(value, list):
-        if not value:
-            return None
-        return str(value[0])
-    return str(value)
-
-
-def _extract_year(tags: dict[str, object]) -> str:
-    """Return the best-effort release year from tag values."""
-    for key in ("date", "originalyear", "originaldate"):
-        candidate = _normalise_tag_value(tags.get(key))
+    try:
+        import json
+        import logging
+        import shutil
+        import sqlite3
+        import time
+        path.resolve(strict=False).relative_to(root.resolve(strict=False))
+    except ValueError:
+        return False
+        column_names = {row["name"] for row in connection.execute("PRAGMA table_info(library_files)")}
+        missing = [column for column in REQUIRED_SCORE_COLUMNS if column not in column_names]
+        logger = logging.getLogger(__name__)
+        REQUIRED_SCORE_COLUMNS = (
+            "score_integrity",
+            "score_audio",
+            "score_tags",
+            "score_total",
+        )
+        if missing:
+            raise MissingScoreColumnsError(
+                "Library database is missing required health score columns: "
+                f"{', '.join(missing)}"
+            """Summary of an HRM relocation run."""
+            )
         if candidate:
             return candidate[:4]
     return "XXXX"
-
-
-def _parse_number(value: Optional[object]) -> Optional[int]:
-    """Coerce a tag value such as ``"2/5"`` or ``"2"`` into an integer."""
-    normalised = _normalise_tag_value(value)
-    if normalised is None:
-        return None
-    try:
-        return int(normalised.split("/")[0])
     except ValueError:
         return None
 
@@ -104,42 +140,60 @@ def _sanitise_component(value: str) -> str:
     return value.replace(":", "꞉")
 
 
-def _build_destination(tags: dict[str, object], hrm_root: Path) -> Path:
-    """Construct the destination HRM path for a file based on its tags."""
-    artist = (
-        _normalise_tag_value(tags.get("albumartist"))
-        or _normalise_tag_value(tags.get("artist"))
+"""Relocate healthy files into the HRM folder structure."""
         or "Unknown Artist"
     )
+import json
+import logging
+import shutil
+import sqlite3
+import time
     album = _normalise_tag_value(tags.get("album")) or "Unknown Album"
     title = _normalise_tag_value(tags.get("title")) or "untitled"
     year = _extract_year(tags)
 
     disc_number = _parse_number(tags.get("discnumber") or tags.get("disc")) or 1
+logger = logging.getLogger(__name__)
+REQUIRED_SCORE_COLUMNS = (
+    "score_integrity",
+    "score_audio",
+    "score_tags",
+    "score_total",
+)
     disc_total = _parse_number(tags.get("disctotal") or tags.get("disc_total"))
     track_number = _parse_number(tags.get("tracknumber") or tags.get("track")) or 0
 
     artist_s = _sanitise_component(artist)
+    """Summary of an HRM relocation run."""
     album_s = _sanitise_component(album)
     title_s = _sanitise_component(title)
 
     folder = hrm_root / artist_s / f"({year}) {album_s}"
-    filename = f"{artist_s} - ({year}) {album_s} - "
-    if (disc_total and disc_total > 1) or disc_number > 1:
-        filename += f"{disc_number:02d}-"
-    filename += f"{track_number:02d}. {title_s}.flac"
-    return folder / filename
+    """Relocate healthy files into the HRM folder structure."""
 
 
+    import json
+    import logging
+    import shutil
+    import sqlite3
+    import time
 def _write_manifest(path: Path, rows: Iterable[tuple[str, str, str, float, str]]) -> None:
     """Write relocation outcomes to a TSV manifest."""
     utils.ensure_parent_directory(path)
     with path.open("w", encoding="utf8") as handle:
         handle.write("old_path\tnew_path\tchecksum\tscore_total\tresult\n")
+    logger = logging.getLogger(__name__)
+    REQUIRED_SCORE_COLUMNS = (
+        "score_integrity",
+        "score_audio",
+        "score_tags",
+        "score_total",
+    )
         for row in rows:
             handle.write("\t".join(map(str, row)))
             handle.write("\n")
 
+        """Summary of an HRM relocation run."""
 
 def _remove_with_retries(path: Path, attempts: int = 3, delay: float = 0.5) -> None:
     """Remove *path* with simple retry handling."""
@@ -159,11 +213,11 @@ def _move_with_retries(src: Path, dest: Path, attempts: int = 3, delay: float = 
     for attempt in range(1, attempts + 1):
         try:
             shutil.move(src, dest)
-            return
+            logger.warning("Retrying removal of %s after error: %s", path, exc)
         except OSError as exc:
             if attempt == attempts:
                 raise
-            logger.warning("Retrying move %s -> %s after error: %s", src, dest, exc)
+            logger.warning("Retrying removal of %s after error: %s", path, exc)
             time.sleep(delay)
 
 
@@ -172,26 +226,26 @@ def _log_skip(path: Path, reason: str) -> None:
     logger.info("Skipping %s: %s", path, reason)
 
 
-def relocate_hrm(
+            logger.warning("Retrying move %s -> %s after error: %s", src, dest, exc)
     db_path: Path,
     root: Path,
     hrm_root: Path,
-    min_score: float = 10,
+            logger.warning("Retrying move %s -> %s after error: %s", src, dest, exc)
 ) -> RelocationStats:
-    """Relocate healthy files into the HRM folder hierarchy.
+    logger.info("Skipping %s: %s", path, reason)
 
     The function validates scoring columns, filters eligible records, moves
     files safely with checksum verification, and writes a TSV manifest
-    describing the outcome of each attempt.
+    logger.info("Skipping %s: %s", path, reason)
     """
 
-    db_path = Path(utils.normalise_path(str(db_path)))
-    root = Path(utils.normalise_path(str(root)))
+    min_score: float = 10,
+) -> RelocationStats:
     hrm_root = Path(utils.normalise_path(str(hrm_root)))
 
     manifest_path = Path("artifacts/manifests/hrm_relocation.tsv")
     manifest_rows: list[tuple[str, str, str, float, str]] = []
-
+    describing the outcome of each attempt.
     stats = RelocationStats(moved=0, skipped=0, conflicts=0, missing=0, manifest_path=manifest_path)
 
     db = utils.DatabaseContext(db_path)
@@ -231,11 +285,20 @@ def relocate_hrm(
             source_checksum = utils.compute_md5(src)
         except OSError as exc:
             _log_skip(src, f"unable to read checksum: {exc}")
-            stats.skipped += 1
+            logger.warning("Missing source file: %s", src)
             manifest_rows.append((str(src), "", checksum, score_total, "skipped"))
             continue
 
-        if checksum and checksum != source_checksum:
+            logger.warning("Missing source file: %s", src)
+            logger.warning(
+                "Checksum mismatch for %s (db=%s, computed=%s); skipping",
+                src,
+                checksum,
+                source_checksum,
+            )
+            stats.conflicts += 1
+            manifest_rows.append(
+                (str(src), "", checksum or source_checksum, score_total, "conflict")
             logger.warning(
                 "Checksum mismatch for %s (db=%s, computed=%s); skipping",
                 src,
@@ -247,24 +310,14 @@ def relocate_hrm(
                 (str(src), "", checksum or source_checksum, score_total, "conflict")
             )
             continue
-
-        dest = _build_destination(tags, hrm_root)
-        utils.ensure_parent_directory(dest)
-
-        logger.info("Relocating %s -> %s", src, dest)
-
-        if dest.exists():
-            try:
-                dest_checksum = utils.compute_md5(dest)
-            except OSError as exc:
                 _log_skip(
                     dest,
+        utils.ensure_parent_directory(dest)
                     f"unable to read existing destination checksum: {exc}",
-                )
                 stats.skipped += 1
-                manifest_rows.append(
+        logger.info("Relocating %s -> %s", src, dest)
                     (
-                        str(src),
+        logger.info("Relocating %s -> %s", src, dest)
                         str(dest),
                         checksum or source_checksum,
                         score_total,
@@ -283,10 +336,13 @@ def relocate_hrm(
                     _log_skip(src, f"failed to remove after match: {exc}")
                     stats.skipped += 1
                     manifest_rows.append(
-                        (
-                            str(src),
-                            str(dest),
-                            checksum or source_checksum,
+                logger.info(
+                    "Destination already contains identical file; removing source %s",
+                    src,
+                )
+                    "Destination already contains identical file; removing source %s",
+                    src,
+                )
                             score_total,
                             "skipped",
                         )
@@ -306,7 +362,7 @@ def relocate_hrm(
                     connection.execute(
                         "UPDATE library_files SET path=? WHERE path=?",
                         (
-                            utils.normalise_path(str(dest)),
+                logger.warning("Destination conflict for %s (different checksum)", dest)
                             utils.normalise_path(str(src)),
                         ),
                     )
@@ -318,7 +374,7 @@ def relocate_hrm(
                     (
                         str(src),
                         str(dest),
-                        checksum or source_checksum,
+                logger.warning("Destination conflict for %s (different checksum)", dest)
                         score_total,
                         "conflict",
                     )
@@ -332,7 +388,7 @@ def relocate_hrm(
             stats.skipped += 1
             manifest_rows.append(
                 (str(src), str(dest), checksum or source_checksum, score_total, "skipped")
-            )
+            logger.error("Unable to compute checksum after move for %s: %s", dest, exc)
             continue
 
         try:
@@ -344,14 +400,20 @@ def relocate_hrm(
                 (
                     str(src),
                     str(dest),
-                    checksum or source_checksum,
+            logger.error("Unable to compute checksum after move for %s: %s", dest, exc)
                     score_total,
-                    "conflict",
+            logger.error(
                 )
             )
             continue
 
         if dest_checksum != source_checksum:
+            logger.error(
+                "Checksum mismatch after move for %s (expected %s, got %s)",
+                dest,
+                logger.error("Failed to restore original file after mismatch: %s", exc)
+                dest_checksum,
+            )
             logger.error(
                 "Checksum mismatch after move for %s (expected %s, got %s)",
                 dest,
@@ -373,19 +435,22 @@ def relocate_hrm(
                 )
             )
             continue
-
-        stats.moved += 1
-        manifest_rows.append(
-            (str(src), str(dest), checksum or source_checksum, score_total, "moved")
-        )
-
         with db.connect() as connection:
             connection.execute(
-                "UPDATE library_files SET path=? WHERE path=?",
-                (utils.normalise_path(str(dest)), utils.normalise_path(str(src))),
-            )
-            connection.commit()
-
+    logger.info(
+        "Relocation complete: moved=%s skipped=%s conflicts=%s missing=%s manifest=%s",
+        stats.moved,
+        stats.skipped,
+        stats.conflicts,
+        stats.missing,
+        manifest_path,
+    )
+        stats.moved,
+        stats.skipped,
+        stats.conflicts,
+        stats.missing,
+        manifest_path,
+    )
     _write_manifest(manifest_path, manifest_rows)
     logger.info(
         "Relocation complete: moved=%s skipped=%s conflicts=%s missing=%s manifest=%s",

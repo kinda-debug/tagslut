@@ -1,8 +1,4 @@
-<<<<<<< HEAD
-"""Relocate healthy, canonical files into the HRM hierarchy."""
-=======
 """Relocate healthy files into the HRM folder structure."""
->>>>>>> 5510a1a84ac4c0d31b0bfc433e67cdb1ab6aa257
 
 from __future__ import annotations
 
@@ -16,6 +12,13 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 from . import utils
+logger = logging.getLogger(__name__)
+REQUIRED_SCORE_COLUMNS = (
+    "score_integrity",
+    "score_audio",
+    "score_tags",
+    "score_total",
+)
 """Relocate healthy files into the HRM folder structure."""
 
 """Relocate healthy files into the HRM folder structure."""

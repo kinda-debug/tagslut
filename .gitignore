@@ -138,3 +138,7 @@ artifacts/db/recovered_from_missing_scan.sqlite-wal
 artifacts/db/recovered_from_missing_scan.sqlite-shm
 dedupe/__pycache__/__init__.cpython-312.pyc
 dedupe/__pycache__/deduper.cpython-312.pyc
+dedupe/__pycache__/__init__.cpython-312.pyc
+dedupe/__pycache__/healthcheck.cpython-312.pyc
+dedupe/__pycache__/metadata.cpython-312.pyc
+dedupe/__pycache__/utils.cpython-312.pyc

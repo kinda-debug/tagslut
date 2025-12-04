@@ -222,3 +222,4 @@ artifacts/db/rescan_all/QUARANTINE_AUTO_GLOBAL.sqlite-wal
 artifacts/db/rescan_all/RECOVERED_FROM_MISSING.sqlite
 artifacts/db/rescan_all/RECOVERED_FROM_MISSING.sqlite-shm
 artifacts/db/rescan_all/RECOVERED_FROM_MISSING.sqlite-wal
+scan_progress.txt

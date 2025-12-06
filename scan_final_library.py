@@ -49,51 +49,74 @@ for idx, fpath in enumerate(flac_files, 1):
     path = str(fpath)
     if idx <= start_idx:
         continue
-    mtime = os.path.getmtime(path)
-    c.execute('SELECT checksum, mtime FROM library_files WHERE path=?', (path,))
-    row = c.fetchone()
-    if row:
-        db_checksum, db_mtime = row
-        if db_mtime == mtime:
-            print(f"[{idx}/{total}] SKIP (already indexed, unchanged mtime): {path}")
-            continue
+    try:
+        mtime = os.path.getmtime(path)
+        c.execute('SELECT checksum, mtime FROM library_files WHERE path=?', (path,))
+        row = c.fetchone()
+        if row:
+            db_checksum, db_mtime = row
+            if db_mtime == mtime:
+                print(f"[{idx}/{total}] SKIP (already indexed, unchanged mtime): {path}")
+                continue
+            else:
+                print(f"[{idx}/{total}] REPROCESS (mtime changed): {path}")
         else:
-            print(f"[{idx}/{total}] REPROCESS (mtime changed): {path}")
-    else:
-        print(f"[{idx}/{total}] NEW: {path}")
-    # Calculate checksum
-    with open(path, 'rb') as f:
-        checksum = hashlib.sha256(f.read()).hexdigest()
-    # Get duration and tags using metaflac (edit if you use another tool)
-    try:
-        out = subprocess.check_output([
-            'metaflac', '--show-total-samples', '--show-sample-rate', '--show-tag=ARTIST', '--show-tag=ALBUM', '--show-tag=TITLE', path
-        ], text=True)
-        lines = out.splitlines()
-        samples = int([l for l in lines if l.isdigit()][0])
-        rate = int([l for l in lines if l.isdigit()][1])
-        duration = samples / rate if rate else None
-        artist = next((l.split('=')[1] for l in lines if l.startswith('ARTIST=')), None)
-        album = next((l.split('=')[1] for l in lines if l.startswith('ALBUM=')), None)
-        title = next((l.split('=')[1] for l in lines if l.startswith('TITLE=')), None)
+            print(f"[{idx}/{total}] NEW: {path}")
+        # Calculate checksum
+        try:
+            with open(path, 'rb') as f:
+                checksum = hashlib.sha256(f.read()).hexdigest()
+        except PermissionError as e:
+            print(f"  [ERROR] Permission denied: {path} -- Skipping.")
+            checksum = None
+            duration = None
+            artist = album = title = None
+            # Update progress file after each file
+            try:
+                with open(PROGRESS_FILE, 'w') as pf:
+                    pf.write(str(idx))
+            except Exception as e:
+                print(f"[WARN] Could not update progress file: {e}")
+            continue
+        # Get duration and tags using metaflac (edit if you use another tool)
+        try:
+            out = subprocess.check_output([
+                'metaflac', '--show-total-samples', '--show-sample-rate', '--show-tag=ARTIST', '--show-tag=ALBUM', '--show-tag=TITLE', path
+            ], text=True)
+            lines = out.splitlines()
+            samples = int([l for l in lines if l.isdigit()][0])
+            rate = int([l for l in lines if l.isdigit()][1])
+            duration = samples / rate if rate else None
+            artist = next((l.split('=')[1] for l in lines if l.startswith('ARTIST=')), None)
+            album = next((l.split('=')[1] for l in lines if l.startswith('ALBUM=')), None)
+            title = next((l.split('=')[1] for l in lines if l.startswith('TITLE=')), None)
+        except Exception as e:
+            print(f"  [WARN] Could not extract metadata: {e}")
+            duration = None
+            artist = album = title = None
+        print(f"  Checksum: {checksum}")
+        print(f"  Duration: {duration}")
+        print(f"  Artist: {artist}")
+        print(f"  Album: {album}")
+        print(f"  Title: {title}\n")
+        c.execute('INSERT OR REPLACE INTO library_files VALUES (?, ?, ?, ?, ?, ?, ?)',
+                  (path, checksum, duration, artist, album, title, mtime))
+        conn.commit()
+        # Update progress file after each file
+        try:
+            with open(PROGRESS_FILE, 'w') as pf:
+                pf.write(str(idx))
+        except Exception as e:
+            print(f"[WARN] Could not update progress file: {e}")
     except Exception as e:
-        print(f"  [WARN] Could not extract metadata: {e}")
-        duration = None
-        artist = album = title = None
-    print(f"  Checksum: {checksum}")
-    print(f"  Duration: {duration}")
-    print(f"  Artist: {artist}")
-    print(f"  Album: {album}")
-    print(f"  Title: {title}\n")
-    c.execute('INSERT OR REPLACE INTO library_files VALUES (?, ?, ?, ?, ?, ?, ?)',
-              (path, checksum, duration, artist, album, title, mtime))
-    conn.commit()
-    # Update progress file after each file
-    try:
-        with open(PROGRESS_FILE, 'w') as pf:
-            pf.write(str(idx))
-    except Exception as e:
-        print(f"[WARN] Could not update progress file: {e}")
+        print(f"  [ERROR] Unexpected error for {path}: {e} -- Skipping.")
+        # Update progress file after each file
+        try:
+            with open(PROGRESS_FILE, 'w') as pf:
+                pf.write(str(idx))
+        except Exception as e:
+            print(f"[WARN] Could not update progress file: {e}")
+        continue
 conn.close()
 print("\nScan complete.")
 if os.path.exists(PROGRESS_FILE):
@@ -101,3 +124,4 @@ if os.path.exists(PROGRESS_FILE):
         os.remove(PROGRESS_FILE)
     except Exception as e:
         print(f"[WARN] Could not remove progress file: {e}")
+

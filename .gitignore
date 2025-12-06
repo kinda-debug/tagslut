@@ -223,3 +223,6 @@ artifacts/db/rescan_all/RECOVERED_FROM_MISSING.sqlite
 artifacts/db/rescan_all/RECOVERED_FROM_MISSING.sqlite-shm
 artifacts/db/rescan_all/RECOVERED_FROM_MISSING.sqlite-wal
 scan_progress.txt
+artifacts/reports/finalize_collision_dotad.csv
+artifacts/reports/finalize_collision_report.csv
+artifacts/reports/finalize_map_dotad.csv

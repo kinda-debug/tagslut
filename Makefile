@@ -4,6 +4,11 @@
 .PHONY: help install update lock test lint format clean run sync quarantine-inspect quarantine-inventory quarantine-duration type-check check
 
 help: ## Show this help message
+	scan_final: ## Run canonical library scan and summary
+		bash tools/scan_final_library.sh
+
+	verify_daily: ## Run daily verification of canonical library
+		bash tools/verify_final_library_daily.sh
 	@echo "FLAC Deduplication Project"
 	@echo "Available commands:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-20s %s\n", $$1, $$2}'

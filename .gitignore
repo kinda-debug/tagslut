@@ -226,3 +226,9 @@ scan_progress.txt
 artifacts/reports/finalize_collision_dotad.csv
 artifacts/reports/finalize_collision_report.csv
 artifacts/reports/finalize_map_dotad.csv
+artifacts/reports/missing_by_volume/inner_dotad.txt
+artifacts/reports/missing_by_volume/inner_sad.txt
+artifacts/reports/missing_by_volume/inner_volume_counts.txt
+artifacts/reports/missing_by_volume/malformed_paths.txt
+artifacts/reports/missing_by_volume/missing_Volumes_dotad.csv
+artifacts/reports/missing_by_volume/summary.txt

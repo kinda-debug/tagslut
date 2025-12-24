@@ -143,7 +143,7 @@ main() {
       install_deps
       verify_tools
       prepare_artifacts
-      info "Environment ready. Try: ./setup.sh scan-music"
+      info "Environment ready. Try: ./scripts/shell/setup.sh scan-music"
       ;;
     scan-music)
       activate_venv || true

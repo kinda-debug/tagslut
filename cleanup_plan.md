@@ -3,7 +3,7 @@
 The following items are deprecated or redundant and can be removed after manual verification to keep history intact:
 
 1. **Legacy standalone script**
-   - `dd_flac_dedupe_db.py` — Deprecated in favour of the packaged `dedupe` workflows and CLI; retained only for historical reference.
+   - `scripts/python/dd_flac_dedupe_db.py` — Deprecated in favour of the packaged `dedupe` workflows and CLI; retained only for historical reference.
 
 2. **Archived utilities**
    - `dedupe/ARCHIVE/` (entire package) — Legacy scripts preserved for reference. Confirm no callers remain, then archive elsewhere or remove.

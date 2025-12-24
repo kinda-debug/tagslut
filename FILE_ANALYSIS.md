@@ -5,12 +5,12 @@
 - `pyproject.toml`, `requirements.txt`, `poetry.lock`, `MANIFEST.in` — Packaging and dependency definitions.
 - `config.toml`, `config.example.toml` — Runtime configuration examples.
 - `Makefile` — Convenience commands for linting/testing.
-- `dd_flac_dedupe_db.py` — **Deprecated** standalone dedupe script; superseded by the packaged workflows.
+- `scripts/python/dd_flac_dedupe_db.py` — **Deprecated** standalone dedupe script; superseded by the packaged workflows.
 - `tmp_dedupe_patch.patch`, `tmp_full_patch_no_pyc.patch`, `tmp_missing.patch` — Temporary patch artifacts (cleanup recommended).
 - `patches/` — Patch lists used during migrations; review for removal once obsolete.
 - `artifacts/` — Output area with `db/`, `logs/`, `manifests/`, and `tmp/` subdirectories for runtime data.
 - `archive/legacy_root/` — Historical assets retained for reference.
-- `scripts/` — Maintenance helpers (`apply_patch_subset.py`, `apply_patch_except_pyc.py`, `apply_missing_from_patch.py`, `backup_dbs.sh`, `recover_workflow.py`, `validate_config.py`).
+- `scripts/` — Maintenance helpers plus `scripts/shell/` and `scripts/python/` for legacy root scripts.
 - `tools/` — Importable operational utilities (`db_upgrade.py`, `manual_ingest.py`, `move_to_hrm.py`).
 
 ## Package: `dedupe`

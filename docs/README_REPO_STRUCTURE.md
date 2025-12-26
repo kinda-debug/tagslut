@@ -6,16 +6,11 @@ This repository is organised around a single Python package, `dedupe`, plus a sm
 
 - `dedupe/` — Main application package containing the CLI, scanning, matching, health scoring, and recovery logic.
 - `tools/` — Operational scripts packaged for import (`db_upgrade`, `manual_ingest`, `move_to_hrm`).
-- `tools/ops/` — Operational one-off Python entrypoints (preferred location).
 - `scripts/` — Shell/Python helpers used during maintenance and data patching.
-- `scripts/ops/` — Operational shell entrypoints (preferred location).
-- `sql/` — Operational SQL (policies, queries, exports).
-- `sql/ops/` — One-off operational SQL entrypoints (moved out of repo root).
 - `docs/` — Architecture notes, playbooks, and guides.
 - `tests/` — Automated unit tests and fixtures.
 - `artifacts/` — Runtime outputs; structured with `db/`, `logs/`, `manifests/`, and `tmp/` for collected data.
 - `archive/` and `dedupe/ARCHIVE/` — Legacy materials retained for reference only.
-- `archive/ops_artifacts/` — Archived run outputs (DBs/CSVs/logs) kept out of git.
 
 ## Package overview (`dedupe`)
 
@@ -48,8 +43,8 @@ This repository is organised around a single Python package, `dedupe`, plus a sm
 
 ## Documentation and plans
 
-- `README.md`, `docs/USAGE.md`, `docs/` — User and operator guidance.
-- `docs/plans/cleanup_plan.md` — Proposed removals and deprecated assets.
-- `docs/status/FILE_ANALYSIS.md` — File-by-file commentary on current assets and status.
+- `README.md`, `USAGE.md`, `docs/` — User and operator guidance.
+- `cleanup_plan.md` — Proposed removals and deprecated assets.
+- `FILE_ANALYSIS.md` — File-by-file commentary on current assets and status.
 
 This structure ensures import safety, centralises the schema definition, and makes package responsibilities clear without changing existing behaviour.

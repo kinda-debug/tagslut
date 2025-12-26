@@ -36,7 +36,11 @@ available on your `PATH`. You can also invoke the CLI with
 ## Repository layout
 
 - `dedupe/` – core library modules for scanning, matching, manifests, and recovery helpers.
-- `tools/` – operational scripts such as manual ingest and database upgrades.
+- `tools/` – operational scripts for duplicate review, integrity checking, and decision automation.
+  - **Duplicate review**: Export dupeGuru results to organized A/B folders, listen/compare interactively
+  - **Decision engine**: Deterministic KEEP/DROP/REVIEW recommendations based on integrity, duration, and quality
+  - **Integrity checking**: Parallel FLAC validation with corruption auto-flagging
+- `scripts/` – maintenance helpers organized in `scripts/shell/` and `scripts/python/`.
 - `artifacts/` – writable workspace for databases, logs, and temporary files (empty placeholders are committed for structure).
 - `tests/` – unit tests that exercise CLI behaviors and module contracts.
 - `archive/legacy_root/` – historical logs and one-off scripts preserved outside the active code path.

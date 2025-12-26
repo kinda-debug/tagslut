@@ -11,7 +11,11 @@
 - `artifacts/` — Output area with `db/`, `logs/`, `manifests/`, and `tmp/` subdirectories for runtime data.
 - `archive/legacy_root/` — Historical assets retained for reference.
 - `scripts/` — Maintenance helpers plus `scripts/shell/` and `scripts/python/` for legacy root scripts.
-- `tools/` — Importable operational utilities (`db_upgrade.py`, `manual_ingest.py`, `move_to_hrm.py`).
+- `tools/` — Operational utilities for duplicate review, integrity checking, and decision automation:
+  - **Duplicate review workflow**: `export_dupe_groups.py`, `open_dupe_pair.sh`, `listen_dupes.sh`
+  - **Decision engine**: `recommend_keepers.py`, `review_needed.sh`, `dupeguru_bridge.py`
+  - **Integrity checking**: `scan_flac_integrity.py`, `find_corrupt_flacs.sh`
+  - **Database utilities**: `db_upgrade.py`, `manual_ingest.py`, `move_to_hrm.py`
 
 ## Package: `dedupe`
 - `__init__.py` — Aggregates core modules for package-wide import convenience.

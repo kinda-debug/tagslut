@@ -9,7 +9,9 @@ interface.  Each workflow stage is exposed via a dedicated module inside the
 ## Key capabilities
 
 - **Library scanning** – Capture technical metadata, embedded tags, and optional
-  Chromaprint fingerprints for every audio file in a collection.
+  Chromaprint fingerprints for every audio file in a collection while
+  normalising stored paths to Unicode NFC for consistent comparisons and
+  resumable operation.
 - **Recovery parsing** – Ingest R-Studio "Recognized Files" exports into a
   structured SQLite database for repeatable analysis.
 - **Matching engine** – Correlate recovered fragments with the canonical
@@ -35,10 +37,16 @@ python3 -m dedupe.cli --help
 
 Available sub-commands:
 
-- `dedupe scan-library --root <path> --out library.db [--fingerprints]`
+- `python3 -m dedupe.cli scan-library --root <path> --out library.db --resume-safe --progress`
   Recursively scans an audio collection, writing metadata into a SQLite
   database.  The command records duration, bitrate, channel count, checksum, and
-  optional Chromaprint fingerprints.
+  filename heuristics by default.  Append `--fingerprints` to request optional
+  Chromaprint extraction when `fpcalc` is available. Use `--resume` to skip
+  unchanged files individually or `--resume-safe` to skip entire batches when
+  any member is unchanged. Add `--progress` to render a progress bar. Every
+  path is coerced to an absolute, NFC-normalised POSIX string before it is
+  compared or written to the database, ensuring Unicode-equivalent paths match
+  reliably across filesystems.
 - `dedupe parse-rstudio --input recognized.txt --out recovered.db`
   Parses an R-Studio export, normalises file paths, and stores the results in a
   SQLite database.
@@ -51,53 +59,83 @@ Available sub-commands:
 
 Every command accepts `--verbose` to enable detailed logging output.
 
-## Global multi-volume recovery workflow
+### Recommended scan workflows
 
-The new `scripts/global_recovery.py` entry point aggregates every available
-volume, R-Studio export, and recovered fragment into a unified SQLite database.
-The schema is purpose-built for cross-volume reconciliation:
+- **Default library scan** – fingerprints skipped, fastest path and resume-safe
+  semantics enabled:
 
-- `global_files` – every scanned audio file with path, technical metadata, and
-  optional Chromaprint fingerprint.
-- `global_fragments` – R-Studio "Recognized Files" exports, stored once and
-  re-parsed on re-runs without duplication.
-- `global_resolved_tracks` – the resolver's latest decision for each normalised
-  track group, including score, reason, and confidence value.
+  ```bash
+  python3 -m dedupe.cli scan-library --root /path/to/library --out library.db --resume-safe --progress
+  ```
 
-Typical workflow:
+- **Optional fingerprint scan** – only when you need mastering-level
+  differentiation and `fpcalc` is present:
+
+  ```bash
+  python3 -m dedupe.cli scan-library --root /path/to/library --out library.db --resume --fingerprints --progress
+  ```
+
+  Fingerprints are generated only for files missing them when `--resume` is
+  supplied, allowing incremental updates.
+
+### Fingerprinting is optional
+
+Chromaprint fingerprints enhance matching when two files share identical size
+and duration but differ in mastering.  They are not required for dedupe,
+recovery identification, truncation detection, or library reconciliation.  When
+`--fingerprints` is omitted or `fpcalc` is unavailable, the scanner falls back
+to checksum → duration → bitrate → filename similarity heuristics without
+logging warnings.
+
+- `fpcalc` must be on `PATH` to enable fingerprints.  When missing, scans
+  continue normally without attempting extraction.
+- `--resume` skips unchanged files using a size and modification-time check.
+  During a resumed scan with `--fingerprints`, only files lacking fingerprints
+  are refreshed.
+
+### Working across multiple volumes
+
+A single SQLite database can hold metadata for several volumes.  For example:
 
 ```bash
-# 1. Scan every library root into a single database
-python3 scripts/global_recovery.py scan \
-    --root /Volumes/dotad/NEW_LIBRARY \
-    --root /Volumes/Vault \
-    --db artifacts/db/global_library.db \
-    --resume --show-progress
-
-# 2. Load any R-Studio Recognized*.txt exports
-python3 scripts/global_recovery.py parse-recognized \
-    "Recognized5_5 SanDisk Extreme 55AE 3008.txt" \
-    --db artifacts/db/global_library.db
-
-# 3. Resolve the best candidate per track and emit CSV reports
-python3 scripts/global_recovery.py resolve \
-    --db artifacts/db/global_library.db \
-    --out-prefix artifacts/reports/global_recovery \
-    --min-name-similarity 0.65 \
-    --duration-tolerance 1.0 \
-    --size-tolerance 0.02 \
-    --threshold 0.55
+python3 -m dedupe.cli scan-library --root /Volumes/dotad --out library.db --resume
+python3 -m dedupe.cli scan-library --root /Volumes/Vault --out library.db --resume
+python3 -m dedupe.cli scan-library --root /Volumes/sad --out library.db --resume
 ```
 
-The resolver writes four reports sharing the requested prefix:
+The commands may be re-run at any time; unchanged files are skipped and newly
+added files are appended to the shared database.
 
-- `*_keepers.csv` – canonical files to keep or restore.
-- `*_improvements.csv` – higher-quality replacements identified across roots.
-- `*_manual_repair.csv` – groups needing manual intervention or only fragments.
-- `*_archive_candidates.csv` – obvious losers for quarantine or deletion.
+### Example workflows
 
-Re-running any stage is safe: scans and fragment imports update rows in place,
-and the resolver overwrites existing decisions with the most recent scores.
+1. **Scan multiple volumes into one database**
+
+   ```bash
+   python3 -m dedupe.cli scan-library --root /Volumes/dotad --out library.db --resume
+   python3 -m dedupe.cli scan-library --root /Volumes/Vault --out library.db --resume
+   python3 -m dedupe.cli scan-library --root /Volumes/sad --out library.db --resume
+   ```
+
+2. **Inspect recently indexed files**
+
+   ```bash
+   sqlite3 library.db "SELECT path, size_bytes, duration FROM library_files ORDER BY mtime DESC LIMIT 10;"
+   ```
+
+3. **Match recoveries without fingerprints**
+
+   ```bash
+   dedupe match --library library.db --recovered recovered.db --out matches.csv
+   ```
+
+4. **Fingerprint-only refresh** (after an initial scan)
+
+   ```bash
+   python3 -m dedupe.cli scan-library --root /path/to/library --out library.db --resume --fingerprints
+   ```
+
+   Existing entries retain metadata; missing fingerprints are generated when
+   `fpcalc` is available.
 
 ## Developer workflow
 
@@ -116,7 +154,7 @@ and the resolver overwrites existing decisions with the most recent scores.
 3. Execute the CLI locally to verify configuration:
 
    ```bash
-   python3 -m dedupe.cli scan-library --root /path/to/library --out library.db --verbose
+   python3 -m dedupe.cli scan-library --root /path/to/library --out library.db --resume --progress --verbose
    ```
 
 ## Module overview
@@ -127,11 +165,17 @@ and the resolver overwrites existing decisions with the most recent scores.
 | `dedupe.metadata` | ffprobe and tag extraction helpers with safe fallbacks. |
 | `dedupe.fingerprints` | Chromaprint integration and similarity helpers. |
 | `dedupe.scanner` | Library scanning pipeline producing SQLite records. |
-| `dedupe.global_recovery` | Shared logic for the global multi-volume recovery workflow. |
 | `dedupe.rstudio_parser` | Parser and loader for R-Studio exports. |
 | `dedupe.matcher` | Matching heuristics combining filename, size, and quality signals. |
 | `dedupe.manifest` | Manifest construction utilities for downstream recovery tools. |
 | `dedupe.cli` | Unified command line interface wiring the modules together. |
+
+> **Developer note** – Fingerprint extraction lives in `dedupe.fingerprints` and
+> is invoked via `dedupe.scanner.prepare_record`.  The helper
+> `dedupe.scanner.resolve_fingerprint_usage` centralises the logic that decides
+> whether Chromaprint runs.  Extensions that add new fingerprint behaviour
+> should call this helper so users who skip `--fingerprints` continue to receive
+> the checksum/duration/bitrate/filename heuristics without side effects.
 
 ## External dependencies
 

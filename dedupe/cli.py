@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 from typing import Iterable, Optional
 
-from . import manifest, matcher, rstudio_parser, scanner
+from . import manifest, matcher, rstudio_parser, scanner, utils
 
 LOGGER = logging.getLogger(__name__)
 
@@ -21,7 +21,9 @@ def _configure_logging(verbose: bool) -> None:
 
 
 def _path(value: str) -> Path:
-    return Path(value).expanduser()
+    """Return a NFC-normalised absolute path from a CLI argument."""
+
+    return Path(utils.normalise_path(value))
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -55,14 +57,25 @@ def build_parser() -> argparse.ArgumentParser:
     scan_parser.add_argument(
         "--fingerprints",
         action="store_true",
-        help="Capture Chromaprint fingerprints during scanning",
+        help=(
+            "Capture optional Chromaprint fingerprints (requires fpcalc; "
+            "skipped automatically when unavailable)"
+        ),
     )
     scan_parser.add_argument(
         "--resume",
         action="store_true",
         help=(
-            "Resume a previous scan by skipping unchanged files"
-            " present in the database"
+            "Resume a previous scan by skipping unchanged files present in "
+            "the database (size + mtime check)"
+        ),
+    )
+    scan_parser.add_argument(
+        "--resume-safe",
+        action="store_true",
+        help=(
+            "Resume a previous scan but skip entire batches when any file "
+            "matches the database by size + mtime"
         ),
     )
     scan_parser.add_argument(
@@ -136,6 +149,9 @@ def _command_scan(args: argparse.Namespace) -> int:
         root=args.root,
         database=args.out,
         include_fingerprints=args.fingerprints,
+        resume=getattr(args, "resume", False),
+        resume_safe=getattr(args, "resume_safe", False),
+        show_progress=getattr(args, "progress", False),
     )
     total = scanner.scan_library(config)
     LOGGER.info("Indexed %s files", total)

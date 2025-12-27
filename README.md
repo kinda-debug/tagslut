@@ -35,10 +35,11 @@ python3 -m dedupe.cli --help
 
 Available sub-commands:
 
-- `dedupe scan-library --root <path> --out library.db [--fingerprints]`
+- `dedupe scan-library --root <path> --out library.db --resume`
   Recursively scans an audio collection, writing metadata into a SQLite
   database.  The command records duration, bitrate, channel count, checksum, and
-  optional Chromaprint fingerprints.
+  filename heuristics by default.  Append `--fingerprints` to request optional
+  Chromaprint extraction when `fpcalc` is available.
 - `dedupe parse-rstudio --input recognized.txt --out recovered.db`
   Parses an R-Studio export, normalises file paths, and stores the results in a
   SQLite database.
@@ -50,6 +51,83 @@ Available sub-commands:
   or scripted restoration.
 
 Every command accepts `--verbose` to enable detailed logging output.
+
+### Recommended scan workflows
+
+- **Default library scan** – fingerprints skipped, fastest path:
+
+  ```bash
+  dedupe scan-library --root /path/to/library --out library.db --resume
+  ```
+
+- **Optional fingerprint scan** – only when you need mastering-level
+  differentiation and `fpcalc` is present:
+
+  ```bash
+  dedupe scan-library --root /path/to/library --out library.db --resume --fingerprints
+  ```
+
+  Fingerprints are generated only for files missing them when `--resume` is
+  supplied, allowing incremental updates.
+
+### Fingerprinting is optional
+
+Chromaprint fingerprints enhance matching when two files share identical size
+and duration but differ in mastering.  They are not required for dedupe,
+recovery identification, truncation detection, or library reconciliation.  When
+`--fingerprints` is omitted or `fpcalc` is unavailable, the scanner falls back
+to checksum → duration → bitrate → filename similarity heuristics without
+logging warnings.
+
+- `fpcalc` must be on `PATH` to enable fingerprints.  When missing, scans
+  continue normally without attempting extraction.
+- `--resume` skips unchanged files using a size and modification-time check.
+  During a resumed scan with `--fingerprints`, only files lacking fingerprints
+  are refreshed.
+
+### Working across multiple volumes
+
+A single SQLite database can hold metadata for several volumes.  For example:
+
+```bash
+dedupe scan-library --root /Volumes/dotad --out library.db --resume
+dedupe scan-library --root /Volumes/Vault --out library.db --resume
+dedupe scan-library --root /Volumes/sad --out library.db --resume
+```
+
+The commands may be re-run at any time; unchanged files are skipped and newly
+added files are appended to the shared database.
+
+### Example workflows
+
+1. **Scan multiple volumes into one database**
+
+   ```bash
+   dedupe scan-library --root /Volumes/dotad --out library.db --resume
+   dedupe scan-library --root /Volumes/Vault --out library.db --resume
+   dedupe scan-library --root /Volumes/sad --out library.db --resume
+   ```
+
+2. **Inspect recently indexed files**
+
+   ```bash
+   sqlite3 library.db "SELECT path, size_bytes, duration FROM library_files ORDER BY mtime DESC LIMIT 10;"
+   ```
+
+3. **Match recoveries without fingerprints**
+
+   ```bash
+   dedupe match --library library.db --recovered recovered.db --out matches.csv
+   ```
+
+4. **Fingerprint-only refresh** (after an initial scan)
+
+   ```bash
+   dedupe scan-library --root /path/to/library --out library.db --resume --fingerprints
+   ```
+
+   Existing entries retain metadata; missing fingerprints are generated when
+   `fpcalc` is available.
 
 ## Developer workflow
 
@@ -84,6 +162,13 @@ Every command accepts `--verbose` to enable detailed logging output.
 | `dedupe.manifest` | Manifest construction utilities for downstream recovery tools. |
 | `dedupe.cli` | Unified command line interface wiring the modules together. |
 
+> **Developer note** – Fingerprint extraction lives in `dedupe.fingerprints` and
+> is invoked via `dedupe.scanner.prepare_record`.  The helper
+> `dedupe.scanner.resolve_fingerprint_usage` centralises the logic that decides
+> whether Chromaprint runs.  Extensions that add new fingerprint behaviour
+> should call this helper so users who skip `--fingerprints` continue to receive
+> the checksum/duration/bitrate/filename heuristics without side effects.
+
 ## External dependencies
 
 The toolkit expects the following external binaries when available:
@@ -101,6 +186,12 @@ Additional workflow documentation lives in:
 
 - [`USAGE.md`](USAGE.md) – step-by-step operational notes.
 - [`docs/`](docs/) – architecture diagrams and historical context.
+
+Legacy tooling, experimental scripts, and prior prototypes have been archived
+under [`dedupe/ARCHIVE/`](dedupe/ARCHIVE/) for historical reference. The new
+package structure under `dedupe/` is the authoritative codebase; archived files
+should not be modified except when adding context about their superseded
+behaviour.
 
 Contributions should update these documents whenever CLI behaviour or schemas
 change.

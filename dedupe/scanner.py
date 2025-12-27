@@ -6,7 +6,7 @@ import json
 import logging
 import sqlite3
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Iterable, Iterator, Optional
 
@@ -37,12 +37,23 @@ class ScanRecord:
 
 @dataclass(slots=True)
 class ScanConfig:
-    """Configuration for :func:`scan_library`."""
+    """Configuration for :func:`scan_library`.
+
+    Attributes:
+        root: root path to scan
+        database: sqlite database path
+        include_fingerprints: whether to request Chromaprint fingerprints
+        batch_size: number of files per DB upsert
+        resume: skip files already indexed and unchanged
+        show_progress: display a progress bar during scanning
+    """
 
     root: Path
     database: Path
     include_fingerprints: bool = False
     batch_size: int = 100
+    resume: bool = False
+    show_progress: bool = False
 
 
 def initialise_database(connection: sqlite3.Connection) -> None:
@@ -68,7 +79,29 @@ def initialise_database(connection: sqlite3.Connection) -> None:
     )
 
 
-def _prepare_record(path: Path, include_fingerprints: bool) -> ScanRecord:
+def resolve_fingerprint_usage(include_requested: bool) -> bool:
+    """Return ``True`` when Chromaprint fingerprints should be generated.
+
+    Fingerprints are only generated when the caller explicitly requests them
+    *and* ``fpcalc`` is available on the execution ``PATH``.  The helper keeps
+    the gating logic in a single place so callers do not need to repeat the
+    availability checks.
+    """
+
+    if not include_requested:
+        return False
+    if not fingerprints.is_fpcalc_available():
+        LOGGER.info(
+            "Chromaprint fingerprints requested but fpcalc not available; "
+            "continuing without fingerprints",
+        )
+        return False
+    LOGGER.info("Chromaprint fingerprints enabled for this scan")
+    return True
+
+
+def prepare_record(path: Path, include_fingerprints: bool) -> ScanRecord:
+    """Collect metadata and optional fingerprint information for *path*."""
     meta = metadata.probe_audio(path)
     checksum = utils.compute_md5(path)
     fingerprint_result = (
@@ -102,7 +135,7 @@ def _iter_records(
 ) -> Iterator[ScanRecord]:
     for path in paths:
         try:
-            yield _prepare_record(path, include_fingerprints)
+            yield prepare_record(path, include_fingerprints)
         except Exception as exc:  # pragma: no cover - defensive logging
             LOGGER.exception("Failed to scan %s: %s", path, exc)
 
@@ -153,33 +186,145 @@ def _upsert_batch(
             fingerprint=excluded.fingerprint,
             fingerprint_duration=excluded.fingerprint_duration
         """,
-        [record.__dict__ for record in records],
+        [asdict(record) for record in records],
     )
 
 
 def scan_library(config: ScanConfig) -> int:
     """Scan ``config.root`` and populate ``config.database``."""
-
     utils.ensure_parent_directory(config.database)
     db = utils.DatabaseContext(config.database)
     start = time.time()
     total = 0
+    include_fingerprints = resolve_fingerprint_usage(config.include_fingerprints)
+
+    # Build an index of already-scanned files when resuming. We index by the
+    # normalised path and record the size and mtime to allow a cheap
+    # unchanged-file check without computing checksums.
+    existing_index: dict[str, tuple[int, float]] = {}
+    if config.resume and config.database.exists():
+        with db.connect() as connection:
+            initialise_database(connection)
+            cursor = connection.execute(
+                "SELECT path, size_bytes, mtime FROM " + LIBRARY_TABLE
+            )
+            for row in cursor.fetchall():
+                existing_index[row["path"]] = (
+                    row["size_bytes"],
+                    row["mtime"],
+                )
+
+    # Estimate total files for progress reporting (may be I/O heavy for very
+    # large libraries but provides a useful progress bar). If the user turns
+    # off progress we avoid the full count.
+    total_files = None
+    if config.show_progress:
+        total_files = sum(1 for _ in utils.iter_audio_files(config.root))
+
     with db.connect() as connection:
         initialise_database(connection)
-        for batch in utils.chunks(
-            utils.iter_audio_files(config.root),
-            config.batch_size,
-        ):
-            records = list(_iter_records(batch, config.include_fingerprints))
+
+        iterator = utils.iter_audio_files(config.root)
+        # helper to yield batches while skipping unchanged files when resuming
+
+        def batches() -> Iterator[list[Path]]:
+            batch: list[Path] = []
+            for path in iterator:
+                npath = utils.normalise_path(str(path))
+                try:
+                    st = path.stat()
+                except OSError:
+                    # skip unreadable files
+                    continue
+                if config.resume:
+                    existing = existing_index.get(npath)
+                    if existing is not None:
+                        size, mtime = existing
+                        # If size and mtime match (within a second) assume
+                        # unchanged and skip recomputing expensive checksums.
+                        if (
+                            size == st.st_size
+                            and abs(mtime - st.st_mtime) < 1.0
+                        ):
+                            # unchanged; skip
+                            continue
+                batch.append(path)
+                if len(batch) >= config.batch_size:
+                    yield batch
+                    batch = []
+            if batch:
+                yield batch
+
+        # iterate batches with optional progress bar
+        if config.show_progress:
+            try:
+                from tqdm import tqdm  # type: ignore
+
+                pbar = tqdm(total=total_files, unit="files")
+            except Exception:  # pragma: no cover - fallback if tqdm missing
+                class _DummyPbar:
+                    def __init__(
+                        self,
+                        total: Optional[int] = None,
+                        unit: Optional[str] = None,
+                    ) -> None:
+                        self.total = total
+
+                    def update(self, n: int) -> None:
+                        pass
+
+                    def close(self) -> None:
+                        pass
+
+                pbar = _DummyPbar(total=total_files)
+        else:
+            pbar = None
+
+        for batch in batches():
+            records = list(_iter_records(batch, include_fingerprints))
             if not records:
+                if pbar:
+                    pbar.update(len(batch))
                 continue
             _upsert_batch(connection, records)
             connection.commit()
             total += len(records)
+            if pbar:
+                pbar.update(len(batch))
             LOGGER.info(
                 "Processed %s files (%.1fs elapsed)",
                 total,
                 time.time() - start,
             )
+
+        if pbar:
+            pbar.close()
+
     LOGGER.info("Completed scan of %s (%s files)", config.root, total)
     return total
+
+
+def scan(
+    root: Path,
+    database: Path,
+    include_fingerprints: bool = False,
+    batch_size: int = 100,
+    resume: bool = False,
+    show_progress: bool = False,
+) -> int:
+    """Compatibility wrapper: simple API for scanning a library.
+
+    Older or alternative callers (eg. codex refactor) may prefer a flat
+    function signature instead of constructing a :class:`ScanConfig`. This
+    convenience function builds a :class:`ScanConfig` and delegates to
+    :func:`scan_library` so both APIs are supported.
+    """
+    config = ScanConfig(
+        root=root,
+        database=database,
+        include_fingerprints=include_fingerprints,
+        batch_size=batch_size,
+        resume=resume,
+        show_progress=show_progress,
+    )
+    return scan_library(config)

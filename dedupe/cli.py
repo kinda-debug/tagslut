@@ -132,12 +132,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _command_scan(args: argparse.Namespace) -> int:
-    config = scanner.ScanConfig(
+    # Use the compatibility wrapper `scan` which accepts a flat signature.
+    total = scanner.scan(
         root=args.root,
         database=args.out,
         include_fingerprints=args.fingerprints,
+        resume=getattr(args, "resume", False),
+        show_progress=getattr(args, "progress", False),
     )
-    total = scanner.scan_library(config)
     LOGGER.info("Indexed %s files", total)
     return 0
 

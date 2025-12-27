@@ -1,4 +1,4 @@
-"""Matching logic between scanned libraries and recovery candidates."""
+"""Match scanned library entries with recovered file metadata exports."""
 
 from __future__ import annotations
 
@@ -11,9 +11,11 @@ from typing import Optional
 
 from difflib import SequenceMatcher
 
-from . import rstudio_parser, scanner, utils
 
-LOGGER = logging.getLogger(__name__)
+from . import scanner, utils
+from .db import LIBRARY_TABLE
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -31,7 +33,7 @@ class LibraryEntry:
 
 @dataclass(slots=True)
 class RecoveryEntry:
-    """Row parsed from R-Studio exports."""
+    """Row parsed from recovered metadata exports."""
 
     source_path: str
     suggested_name: str
@@ -58,9 +60,10 @@ class MatchCandidate:
 
 
 def _row_to_library_entry(row: sqlite3.Row) -> LibraryEntry:
+    """Convert a SQLite row into a :class:`LibraryEntry`."""
     return LibraryEntry(
-        path=row["path"],
-        name=Path(row["path"]).name,
+        path=utils.normalise_path(row["path"]),
+        name=Path(utils.normalise_path(row["path"])).name,
         size_bytes=row["size_bytes"],
         duration=row["duration"],
         sample_rate=row["sample_rate"],
@@ -70,8 +73,9 @@ def _row_to_library_entry(row: sqlite3.Row) -> LibraryEntry:
 
 
 def _row_to_recovery_entry(row: sqlite3.Row) -> RecoveryEntry:
+    """Convert a SQLite row into a :class:`RecoveryEntry`."""
     return RecoveryEntry(
-        source_path=row["source_path"],
+        source_path=utils.normalise_path(row["source_path"]),
         suggested_name=row["suggested_name"],
         size_bytes=row["size_bytes"],
         extension=row["extension"],
@@ -79,44 +83,48 @@ def _row_to_recovery_entry(row: sqlite3.Row) -> RecoveryEntry:
 
 
 def load_library_entries(database: Path) -> list[LibraryEntry]:
-    db = utils.DatabaseContext(database)
+    """Load scanned library entries from ``database``."""
+    db = utils.DatabaseContext(Path(utils.normalise_path(str(database))))
     with db.connect() as connection:
-        cursor = connection.execute(
-            f"SELECT * FROM {scanner.LIBRARY_TABLE}"
-        )
-        rows = [_row_to_library_entry(row) for row in cursor.fetchall()]
-    LOGGER.info("Loaded %s library entries", len(rows))
-    return rows
+        cursor = connection.execute(f"SELECT * FROM {scanner.LIBRARY_TABLE}")
+        entries = [_row_to_library_entry(row) for row in cursor.fetchall()]
+    logger.info("Loaded %s library entries", len(entries))
+    return entries
 
 
 def load_recovery_entries(database: Path) -> list[RecoveryEntry]:
-    db = utils.DatabaseContext(database)
+    """Load recovery entries from the exported metadata database."""
+    db = utils.DatabaseContext(Path(utils.normalise_path(str(database))))
     with db.connect() as connection:
-        cursor = connection.execute(
-            f"SELECT * FROM {rstudio_parser.RECOVERED_TABLE}"
-        )
-        rows = [_row_to_recovery_entry(row) for row in cursor.fetchall()]
-    LOGGER.info("Loaded %s recovery entries", len(rows))
-    return rows
+        cursor = connection.execute("SELECT * FROM recovered_files")
+        entries = [_row_to_recovery_entry(row) for row in cursor.fetchall()]
+    logger.info("Loaded %s recovery entries", len(entries))
+    return entries
 
 
 def _filename_similarity(a: str, b: str) -> float:
+    """Return a similarity ratio between two filenames (case-insensitive)."""
+
     return SequenceMatcher(None, a.lower(), b.lower()).ratio()
 
 
-def _size_difference(lib: LibraryEntry, rec: RecoveryEntry) -> Optional[int]:
-    if rec.size_bytes is None:
+def _size_difference(lib: LibraryEntry, recovery: RecoveryEntry) -> Optional[int]:
+    """Return size delta between library and recovery entries when available."""
+
+    if recovery.size_bytes is None:
         return None
-    return rec.size_bytes - lib.size_bytes
+    return recovery.size_bytes - lib.size_bytes
 
 
 def _quality_classification(
     lib: LibraryEntry,
-    rec: Optional[RecoveryEntry],
+    recovery: Optional[RecoveryEntry],
     score: float,
     size_delta: Optional[int],
 ) -> str:
-    if rec is None:
+    """Classify a match based on similarity and size information."""
+
+    if recovery is None:
         return "missing"
     if score >= 0.9:
         return "exact"
@@ -130,10 +138,12 @@ def _quality_classification(
 
 def _compute_score(
     lib: LibraryEntry,
-    rec: RecoveryEntry,
+    recovery: RecoveryEntry,
 ) -> tuple[float, float, Optional[int]]:
-    name_score = _filename_similarity(lib.name, rec.name)
-    size_delta = _size_difference(lib, rec)
+    """Compute combined match score and supporting metrics for two entries."""
+
+    name_score = _filename_similarity(lib.name, recovery.name)
+    size_delta = _size_difference(lib, recovery)
     if size_delta is None:
         size_score = 0.5
     else:
@@ -148,44 +158,41 @@ def match_databases(
     recovered_db: Path,
     output_csv: Path,
 ) -> list[MatchCandidate]:
-    """Match scanned library entries with recovered candidates."""
+    """Match scanned library entries with recovered candidates and write a CSV."""
 
-    library_entries = load_library_entries(library_db)
-    recovery_entries = load_recovery_entries(recovered_db)
+    library_entries: list[LibraryEntry] = load_library_entries(library_db)
+    recovery_entries: list[RecoveryEntry] = load_recovery_entries(recovered_db)
     used_recoveries: set[str] = set()
     matches: list[MatchCandidate] = []
 
     for lib in library_entries:
         best_candidate: Optional[MatchCandidate] = None
-        for rec in recovery_entries:
-            score, name_score, size_delta = _compute_score(lib, rec)
+        for recovery in recovery_entries:
+            score, name_score, size_delta = _compute_score(lib, recovery)
             if score < 0.35:
                 continue
             classification = _quality_classification(
                 lib,
-                rec,
+                recovery,
                 score,
                 size_delta,
             )
             candidate = MatchCandidate(
                 library_path=lib.path,
-                recovery_path=rec.source_path,
-                recovery_name=rec.name,
+                recovery_path=recovery.source_path,
+                recovery_name=recovery.name,
                 score=score,
                 classification=classification,
                 filename_similarity=name_score,
                 size_difference=size_delta,
                 fingerprint_similarity=None,
             )
-            if (
-                best_candidate is None
-                or candidate.score > best_candidate.score
-            ):
+            if best_candidate is None or candidate.score > best_candidate.score:
                 best_candidate = candidate
         if best_candidate is not None:
             matches.append(best_candidate)
             if best_candidate.recovery_path:
-                used_recoveries.add(best_candidate.recovery_path)
+                used_recoveries.add(utils.normalise_path(best_candidate.recovery_path))
         else:
             matches.append(
                 MatchCandidate(
@@ -200,14 +207,15 @@ def match_databases(
                 )
             )
 
-    for rec in recovery_entries:
-        if rec.source_path in used_recoveries:
+    for recovery in recovery_entries:
+        normalised_source = utils.normalise_path(recovery.source_path)
+        if normalised_source in used_recoveries:
             continue
         matches.append(
             MatchCandidate(
                 library_path="",
-                recovery_path=rec.source_path,
-                recovery_name=rec.name,
+                recovery_path=normalised_source,
+                recovery_name=recovery.name,
                 score=0.0,
                 classification="orphan",
                 filename_similarity=0.0,
@@ -253,5 +261,5 @@ def match_databases(
                     ),
                 }
             )
-    LOGGER.info("Wrote %s matches to %s", len(matches), output_csv)
+    logger.info("Wrote %s matches to %s", len(matches), output_csv)
     return matches

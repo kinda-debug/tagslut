@@ -1,32 +1,71 @@
+
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-.Python
+*.pyd
 *.egg-info/
-dist/
 build/
+dist/
 .venv/
 venv/
-ENV/
-env/
+.env
+.pytest_cache/
+.mypy_cache/
+.ipynb_checkpoints/
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS
+# OS / editor
 .DS_Store
 Thumbs.db
+.vscode/
+.idea/
 
-artifacts/reports/recovery_list.csv
-artifacts/db/recovered_candidates.db
-.gitignore
-artifacts/db/library.db-shm
-artifacts/db/library.db-wal
-artifacts/db/library.db
-artifacts/db/library.db
+# Logs / runtime
+*.log
+*.out
+*.pid
+
+# Databases (avoid committing scan/hash outputs)
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+*.sqlite-shm
+*.sqlite-wal
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# Local config
+/config.toml
+
+# Working directories / run outputs
+artifacts/**
+out/
+runs/
+
+# Keep structure placeholders
+!artifacts/
+!artifacts/logs/
+!artifacts/logs/.gitkeep
+!artifacts/tmp/
+!artifacts/tmp/.gitkeep
+
+# Archived run outputs (keep out of git)
+archive/ops_artifacts/**
+
+# Large legacy volumes and exports
+Volumes/
+
+# Known large legacy blobs currently present in history
+ARCHIVE_DBS/*.db*
+ARCHIVE_SCRIPTS/move_plan.sh
+dedupe/ARCHIVE/archive/**
+
+# Local helper binaries / scratch files sometimes in repo root
+/python3
+/sqlite3
+/SELECT
+/rm
+/1
+/2
+/5

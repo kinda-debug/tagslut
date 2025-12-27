@@ -1,4 +1,4 @@
-"""Global multi-volume recovery workflow utilities."""
+"""Global recovery workflow utilities for cross-root reconciliation."""
 
 from __future__ import annotations
 
@@ -7,13 +7,14 @@ import datetime as _dt
 import json
 import logging
 import sqlite3
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Iterator, Optional, Sequence
 
-from . import rstudio_parser, scanner, utils
+from . import scanner, utils
 
-LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 FILES_TABLE = "global_files"
 FRAGMENTS_TABLE = "global_fragments"
@@ -87,11 +88,10 @@ def _collect_existing_index(
     """Return a mapping of already indexed paths to ``(size, mtime)``."""
 
     index: dict[str, tuple[int, float]] = {}
-    cursor = connection.execute(
-        f"SELECT path, size_bytes, mtime FROM {FILES_TABLE}"
-    )
+    cursor = connection.execute(f"SELECT path, size_bytes, mtime FROM {FILES_TABLE}")
     for row in cursor.fetchall():
-        index[row["path"]] = (row["size_bytes"], row["mtime"])
+        npath = utils.normalise_path(row["path"])
+        index[npath] = (row["size_bytes"], row["mtime"])
     return index
 
 
@@ -108,16 +108,17 @@ def _iter_scan_records(
                 include_fingerprints,
             )
         except Exception as exc:  # pragma: no cover - defensive logging
-            LOGGER.exception("Failed to scan %s: %s", path, exc)
+            logger.exception("Failed to scan %s: %s", path, exc)
 
 
 def _resolve_relative_path(path: Path, root: Path) -> str:
     """Return the POSIX relative path of *path* with respect to *root*."""
 
     try:
-        return path.relative_to(root).as_posix()
+        value = path.relative_to(root).as_posix()
     except ValueError:
-        return path.as_posix()
+        value = path.as_posix()
+    return unicodedata.normalize("NFC", value)
 
 
 def scan_roots(
@@ -143,6 +144,7 @@ def scan_roots(
         The total number of files inserted or updated across all roots.
     """
 
+    database = Path(utils.normalise_path(str(database)))
     utils.ensure_parent_directory(database)
     total = 0
     db = utils.DatabaseContext(database)
@@ -150,16 +152,15 @@ def scan_roots(
     with db.connect() as connection:
         ensure_schema(connection)
 
-    for root in roots:
-        LOGGER.info("Scanning root %s", root)
-        root = root.expanduser().resolve()
+    normalised_roots = [Path(utils.normalise_path(str(root))) for root in roots]
+
+    for root in normalised_roots:
+        logger.info("Scanning root %s", root)
         iterator = utils.iter_audio_files(root)
         utils.ensure_parent_directory(database)
         with db.connect() as connection:
             ensure_schema(connection)
-            existing_index = (
-                _collect_existing_index(connection) if resume else {}
-            )
+            existing_index = _collect_existing_index(connection) if resume else {}
 
             def batches() -> Iterator[list[Path]]:
                 batch: list[Path] = []
@@ -205,16 +206,14 @@ def scan_roots(
                     continue
                 payload = [
                     {
-                        "source_root": root.as_posix(),
-                        "path": record.path,
+                        "source_root": utils.normalise_path(root.as_posix()),
+                        "path": utils.normalise_path(record.path),
                         "relative_path": _resolve_relative_path(
                             Path(record.path),
                             root,
                         ),
                         "filename": Path(record.path).name,
-                        "extension": Path(record.path)
-                        .suffix.lower()
-                        .lstrip("."),
+                        "extension": Path(record.path).suffix.lower().lstrip("."),
                         "size_bytes": record.size_bytes,
                         "mtime": record.mtime,
                         "duration": record.duration,
@@ -294,56 +293,17 @@ def scan_roots(
             if progress:
                 progress.close()
 
-    LOGGER.info("Recorded %s files across %s roots", total, len(roots))
+    logger.info("Recorded %s files across %s roots", total, len(roots))
     return total
 
 
-def parse_recognized_export(path: Path, database: Path) -> int:
-    """Parse an R-Studio export and store fragments in *database*."""
+def parse_recognized_export(_path: Path, _database: Path) -> int:
+    """Legacy hook retained for callers; always raises."""
 
-    utils.ensure_parent_directory(database)
-    records = list(rstudio_parser.parse_export(path))
-    db = utils.DatabaseContext(database)
-    with db.connect() as connection:
-        ensure_schema(connection)
-        connection.executemany(
-            f"""
-            INSERT INTO {FRAGMENTS_TABLE} (
-                source_path,
-                suggested_name,
-                filename,
-                extension,
-                size_bytes
-            ) VALUES (
-                :source_path,
-                :suggested_name,
-                :filename,
-                :extension,
-                :size_bytes
-            )
-            ON CONFLICT(source_path) DO UPDATE SET
-                suggested_name=excluded.suggested_name,
-                filename=excluded.filename,
-                extension=excluded.extension,
-                size_bytes=excluded.size_bytes,
-                parsed_at=CURRENT_TIMESTAMP
-            """,
-            [
-                {
-                    "source_path": record.source_path,
-                    "suggested_name": record.suggested_name,
-                    "filename": Path(record.source_path).name,
-                    "extension": record.extension,
-                    "size_bytes": record.size_bytes,
-                }
-                for record in records
-            ],
-        )
-        count = connection.execute(
-            f"SELECT COUNT(*) FROM {FRAGMENTS_TABLE}"
-        ).fetchone()[0]
-    LOGGER.info("Recorded %s fragments from %s", len(records), path)
-    return int(count)
+    raise RuntimeError(
+        "Legacy export parsing was retired; populate global_fragments via "
+        "external tooling instead."
+    )
 
 
 def _normalise_component(text: str) -> str:
@@ -556,11 +516,7 @@ def _load_fragments(connection: sqlite3.Connection) -> list[Fragment]:
     fragments: list[Fragment] = []
     for row in cursor.fetchall():
         raw_name = row["suggested_name"] or row["filename"] or ""
-        tokens = [
-            _normalise_component(token)
-            for token in raw_name.split()
-            if token
-        ]
+        tokens = [_normalise_component(token) for token in raw_name.split() if token]
         if not tokens:
             tokens = [_normalise_component(Path(row["source_path"]).stem)]
         fragments.append(
@@ -619,21 +575,28 @@ def _score_group(
             needs_manual=True,
         )
 
-    max_duration = (
-        max((c.row["duration"] or 0 for c in candidates), default=0) or None
+    max_duration = max((c.row["duration"] or 0 for c in candidates), default=0) or None
+    max_size = (
+        max(
+            (c.row["size_bytes"] or 0 for c in candidates),
+            default=0,
+        )
+        or None
     )
-    max_size = max(
-        (c.row["size_bytes"] or 0 for c in candidates),
-        default=0,
-    ) or None
-    max_bitrate = max(
-        (c.row["bit_rate"] or 0 for c in candidates),
-        default=0,
-    ) or None
-    max_samplerate = max(
-        (c.row["sample_rate"] or 0 for c in candidates),
-        default=0,
-    ) or None
+    max_bitrate = (
+        max(
+            (c.row["bit_rate"] or 0 for c in candidates),
+            default=0,
+        )
+        or None
+    )
+    max_samplerate = (
+        max(
+            (c.row["sample_rate"] or 0 for c in candidates),
+            default=0,
+        )
+        or None
+    )
 
     for candidate in candidates:
         _score_candidate(
@@ -738,7 +701,7 @@ def resolve_database(config: ResolverConfig) -> list[ResolutionResult]:
         )
 
     _write_reports(results, config)
-    LOGGER.info("Wrote recovery reports to %s", config.out_prefix)
+    logger.info("Wrote recovery reports to %s", config.out_prefix)
     return results
 
 
@@ -757,9 +720,7 @@ def _write_reports(
     results: Sequence[ResolutionResult],
     config: ResolverConfig,
 ) -> None:
-    keepers_path = config.out_prefix.with_name(
-        f"{config.out_prefix.name}_keepers.csv"
-    )
+    keepers_path = config.out_prefix.with_name(f"{config.out_prefix.name}_keepers.csv")
     improvements_path = config.out_prefix.with_name(
         f"{config.out_prefix.name}_improvements.csv"
     )

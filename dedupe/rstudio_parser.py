@@ -1,4 +1,4 @@
-"""Parser for R-Studio "Recognized Files" exports."""
+"""Parse R-Studio export files into the recovered_files database."""
 
 from __future__ import annotations
 

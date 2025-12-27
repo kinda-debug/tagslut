@@ -1,25 +1,26 @@
-"""Library scanning logic."""
+"""Library scanner that records audio metadata into SQLite."""
 
 from __future__ import annotations
 
 import json
 import logging
+import os
 import sqlite3
 import time
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterable, Iterator, Optional
 
 from . import fingerprints, metadata, utils
+from .db import LIBRARY_TABLE, initialise_library_schema
 
-LOGGER = logging.getLogger(__name__)
 
-LIBRARY_TABLE = "library_files"
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
 class ScanRecord:
-    """Metadata collected for an audio file."""
+    """Metadata record for a scanned audio file."""
 
     path: str
     size_bytes: int
@@ -33,6 +34,10 @@ class ScanRecord:
     tags_json: str
     fingerprint: Optional[str]
     fingerprint_duration: Optional[float]
+    dup_group: Optional[str]
+    duplicate_rank: Optional[int]
+    is_canonical: Optional[int]
+    extra_json: Optional[str]
 
 
 @dataclass(slots=True)
@@ -45,6 +50,7 @@ class ScanConfig:
         include_fingerprints: whether to request Chromaprint fingerprints
         batch_size: number of files per DB upsert
         resume: skip files already indexed and unchanged
+        resume_safe: skip a batch if any member matches an unchanged file
         show_progress: display a progress bar during scanning
     """
 
@@ -53,30 +59,14 @@ class ScanConfig:
     include_fingerprints: bool = False
     batch_size: int = 100
     resume: bool = False
+    resume_safe: bool = False
     show_progress: bool = False
 
 
 def initialise_database(connection: sqlite3.Connection) -> None:
     """Ensure the SQLite schema exists."""
 
-    connection.execute(
-        f"""
-        CREATE TABLE IF NOT EXISTS {LIBRARY_TABLE} (
-            path TEXT PRIMARY KEY,
-            size_bytes INTEGER NOT NULL,
-            mtime REAL NOT NULL,
-            checksum TEXT NOT NULL,
-            duration REAL,
-            sample_rate INTEGER,
-            bit_rate INTEGER,
-            channels INTEGER,
-            bit_depth INTEGER,
-            tags_json TEXT,
-            fingerprint TEXT,
-            fingerprint_duration REAL
-        )
-        """
-    )
+    initialise_library_schema(connection)
 
 
 def resolve_fingerprint_usage(include_requested: bool) -> bool:
@@ -91,12 +81,12 @@ def resolve_fingerprint_usage(include_requested: bool) -> bool:
     if not include_requested:
         return False
     if not fingerprints.is_fpcalc_available():
-        LOGGER.info(
+        logger.info(
             "Chromaprint fingerprints requested but fpcalc not available; "
             "continuing without fingerprints",
         )
         return False
-    LOGGER.info("Chromaprint fingerprints enabled for this scan")
+    logger.info("Chromaprint fingerprints enabled for this scan")
     return True
 
 
@@ -105,9 +95,7 @@ def prepare_record(path: Path, include_fingerprints: bool) -> ScanRecord:
     meta = metadata.probe_audio(path)
     checksum = utils.compute_md5(path)
     fingerprint_result = (
-        fingerprints.generate_chromaprint(path)
-        if include_fingerprints
-        else None
+        fingerprints.generate_chromaprint(path) if include_fingerprints else None
     )
     return ScanRecord(
         path=utils.normalise_path(str(path)),
@@ -119,13 +107,15 @@ def prepare_record(path: Path, include_fingerprints: bool) -> ScanRecord:
         bit_rate=meta.stream.bit_rate,
         channels=meta.stream.channels,
         bit_depth=meta.stream.bit_depth,
-        tags_json=json.dumps(meta.tags, sort_keys=True),
-        fingerprint=(
-            fingerprint_result.fingerprint if fingerprint_result else None
-        ),
+        tags_json=json.dumps(meta.tags, sort_keys=True, separators=(",", ":")),
+        fingerprint=(fingerprint_result.fingerprint if fingerprint_result else None),
         fingerprint_duration=(
             fingerprint_result.duration if fingerprint_result else None
         ),
+        dup_group=None,
+        duplicate_rank=None,
+        is_canonical=None,
+        extra_json=None,
     )
 
 
@@ -133,17 +123,25 @@ def _iter_records(
     paths: Iterable[Path],
     include_fingerprints: bool,
 ) -> Iterator[ScanRecord]:
+    """Yield :class:`ScanRecord` objects for each path, logging failures."""
     for path in paths:
         try:
             yield prepare_record(path, include_fingerprints)
         except Exception as exc:  # pragma: no cover - defensive logging
-            LOGGER.exception("Failed to scan %s: %s", path, exc)
+            logger.exception("Failed to scan %s: %s", path, exc)
 
 
 def _upsert_batch(
     connection: sqlite3.Connection,
     records: Iterable[ScanRecord],
 ) -> None:
+    """Insert or update a batch of records in the library table."""
+    payload: list[dict[str, object]] = []
+    for record in records:
+        row = asdict(record)
+        row["path"] = utils.normalise_path(row["path"])
+        payload.append(row)
+
     connection.executemany(
         f"""
         INSERT INTO {LIBRARY_TABLE} (
@@ -158,7 +156,11 @@ def _upsert_batch(
             bit_depth,
             tags_json,
             fingerprint,
-            fingerprint_duration
+            fingerprint_duration,
+            dup_group,
+            duplicate_rank,
+            is_canonical,
+            extra_json
         ) VALUES (
             :path,
             :size_bytes,
@@ -171,7 +173,11 @@ def _upsert_batch(
             :bit_depth,
             :tags_json,
             :fingerprint,
-            :fingerprint_duration
+            :fingerprint_duration,
+            :dup_group,
+            :duplicate_rank,
+            :is_canonical,
+            :extra_json
         )
         ON CONFLICT(path) DO UPDATE SET
             size_bytes=excluded.size_bytes,
@@ -184,16 +190,23 @@ def _upsert_batch(
             bit_depth=excluded.bit_depth,
             tags_json=excluded.tags_json,
             fingerprint=excluded.fingerprint,
-            fingerprint_duration=excluded.fingerprint_duration
+            fingerprint_duration=excluded.fingerprint_duration,
+            dup_group=excluded.dup_group,
+            duplicate_rank=excluded.duplicate_rank,
+            is_canonical=excluded.is_canonical,
+            extra_json=excluded.extra_json
         """,
-        [asdict(record) for record in records],
+        payload,
     )
 
 
 def scan_library(config: ScanConfig) -> int:
-    """Scan ``config.root`` and populate ``config.database``."""
-    utils.ensure_parent_directory(config.database)
-    db = utils.DatabaseContext(config.database)
+    """Scan ``config.root`` recursively and populate ``config.database``."""
+    root = Path(utils.normalise_path(str(config.root)))
+    database = Path(utils.normalise_path(str(config.database)))
+
+    utils.ensure_parent_directory(database)
+    db = utils.DatabaseContext(database)
     start = time.time()
     total = 0
     include_fingerprints = resolve_fingerprint_usage(config.include_fingerprints)
@@ -202,14 +215,15 @@ def scan_library(config: ScanConfig) -> int:
     # normalised path and record the size and mtime to allow a cheap
     # unchanged-file check without computing checksums.
     existing_index: dict[str, tuple[int, float]] = {}
-    if config.resume and config.database.exists():
+    if (config.resume or config.resume_safe) and database.exists():
         with db.connect() as connection:
             initialise_database(connection)
             cursor = connection.execute(
                 "SELECT path, size_bytes, mtime FROM " + LIBRARY_TABLE
             )
             for row in cursor.fetchall():
-                existing_index[row["path"]] = (
+                normalised_path = utils.normalise_path(row["path"])
+                existing_index[normalised_path] = (
                     row["size_bytes"],
                     row["mtime"],
                 )
@@ -217,38 +231,39 @@ def scan_library(config: ScanConfig) -> int:
     # Estimate total files for progress reporting (may be I/O heavy for very
     # large libraries but provides a useful progress bar). If the user turns
     # off progress we avoid the full count.
-    total_files = None
+    total_files: Optional[int] = None
     if config.show_progress:
-        total_files = sum(1 for _ in utils.iter_audio_files(config.root))
+        total_files = sum(1 for _ in utils.iter_audio_files(root))
 
     with db.connect() as connection:
         initialise_database(connection)
 
-        iterator = utils.iter_audio_files(config.root)
-        # helper to yield batches while skipping unchanged files when resuming
+        iterator = (
+            Path(dirpath) / filename
+            for dirpath, _, filenames in os.walk(root)
+            for filename in filenames
+            if utils.is_audio_file(filename)
+        )
+        # Helper to yield batches while skipping unchanged files when resuming.
 
-        def batches() -> Iterator[list[Path]]:
-            batch: list[Path] = []
+        def batches() -> Iterator[list[tuple[Path, bool]]]:
+            batch: list[tuple[Path, bool]] = []
             for path in iterator:
-                npath = utils.normalise_path(str(path))
+                normalised_path = utils.normalise_path(str(path))
                 try:
                     st = path.stat()
                 except OSError:
                     # skip unreadable files
                     continue
-                if config.resume:
-                    existing = existing_index.get(npath)
+                unchanged = False
+                if config.resume or config.resume_safe:
+                    existing = existing_index.get(normalised_path)
                     if existing is not None:
                         size, mtime = existing
-                        # If size and mtime match (within a second) assume
-                        # unchanged and skip recomputing expensive checksums.
-                        if (
-                            size == st.st_size
-                            and abs(mtime - st.st_mtime) < 1.0
-                        ):
-                            # unchanged; skip
-                            continue
-                batch.append(path)
+                        unchanged = (
+                            size == st.st_size and abs(mtime - st.st_mtime) < 1.0
+                        )
+                batch.append((path, unchanged))
                 if len(batch) >= config.batch_size:
                     yield batch
                     batch = []
@@ -262,6 +277,7 @@ def scan_library(config: ScanConfig) -> int:
 
                 pbar = tqdm(total=total_files, unit="files")
             except Exception:  # pragma: no cover - fallback if tqdm missing
+
                 class _DummyPbar:
                     def __init__(
                         self,
@@ -281,17 +297,27 @@ def scan_library(config: ScanConfig) -> int:
             pbar = None
 
         for batch in batches():
-            records = list(_iter_records(batch, include_fingerprints))
-            if not records:
+            if config.resume_safe and any(item[1] for item in batch):
                 if pbar:
                     pbar.update(len(batch))
+                continue
+
+            paths = [
+                path for path, unchanged in batch if not (config.resume and unchanged)
+            ]
+            if pbar:
+                pbar.update(len(batch))
+
+            if not paths:
+                continue
+
+            records = list(_iter_records(paths, include_fingerprints))
+            if not records:
                 continue
             _upsert_batch(connection, records)
             connection.commit()
             total += len(records)
-            if pbar:
-                pbar.update(len(batch))
-            LOGGER.info(
+            logger.info(
                 "Processed %s files (%.1fs elapsed)",
                 total,
                 time.time() - start,
@@ -300,7 +326,7 @@ def scan_library(config: ScanConfig) -> int:
         if pbar:
             pbar.close()
 
-    LOGGER.info("Completed scan of %s (%s files)", config.root, total)
+    logger.info("Completed scan of %s (%s files)", root, total)
     return total
 
 
@@ -310,9 +336,10 @@ def scan(
     include_fingerprints: bool = False,
     batch_size: int = 100,
     resume: bool = False,
+    resume_safe: bool = False,
     show_progress: bool = False,
 ) -> int:
-    """Compatibility wrapper: simple API for scanning a library.
+    """Compatibility wrapper providing a flat API for scanning a library.
 
     Older or alternative callers (eg. codex refactor) may prefer a flat
     function signature instead of constructing a :class:`ScanConfig`. This
@@ -325,6 +352,70 @@ def scan(
         include_fingerprints=include_fingerprints,
         batch_size=batch_size,
         resume=resume,
+        resume_safe=resume_safe,
         show_progress=show_progress,
     )
     return scan_library(config)
+
+
+def rescan_missing(
+    root: Path,
+    database: Path,
+    include_fingerprints: bool = False,
+) -> dict[str, list[str]]:
+    """Ingest only FLAC files that are absent from the existing database."""
+
+    root = Path(utils.normalise_path(str(root)))
+    database = Path(utils.normalise_path(str(database)))
+    utils.ensure_parent_directory(database)
+    db = utils.DatabaseContext(database)
+    missing: list[str] = []
+    ingested: list[str] = []
+    unreadable: list[str] = []
+    corrupt: list[str] = []
+
+    with db.connect() as connection:
+        initialise_database(connection)
+        connection.row_factory = sqlite3.Row
+        existing = {
+            utils.normalise_path(row["path"])
+            for row in connection.execute(
+                "SELECT path FROM " + LIBRARY_TABLE
+            ).fetchall()
+        }
+
+    def _iter_flac() -> Iterator[Path]:
+        for path in root.rglob("*.flac"):
+            yield path
+
+    targets: list[Path] = []
+    for path in _iter_flac():
+        normalised_path = utils.normalise_path(str(path))
+        if normalised_path in existing:
+            continue
+        missing.append(normalised_path)
+        targets.append(path)
+
+    include = resolve_fingerprint_usage(include_fingerprints)
+    records: list[ScanRecord] = []
+    for path in targets:
+        try:
+            records.append(prepare_record(path, include))
+        except FileNotFoundError:
+            unreadable.append(utils.normalise_path(str(path)))
+        except Exception:  # pragma: no cover - defensive logging
+            logger.exception("Failed to ingest %s", path)
+            corrupt.append(utils.normalise_path(str(path)))
+
+    with db.connect() as connection:
+        if records:
+            _upsert_batch(connection, records)
+            connection.commit()
+            ingested = [r.path for r in records]
+
+    return {
+        "missing": missing,
+        "ingested": ingested,
+        "unreadable": unreadable,
+        "corrupt": corrupt,
+    }

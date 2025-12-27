@@ -1,4 +1,4 @@
-"""Generate recovery manifests from matcher output."""
+"""Generate recovery manifests from match results."""
 
 from __future__ import annotations
 
@@ -8,7 +8,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
 
-LOGGER = logging.getLogger(__name__)
+from . import utils
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -38,17 +40,11 @@ def _priority_for(status: str, confidence: float) -> str:
 
 def _notes_for(status: str) -> str:
     if status == "truncated":
-        return (
-            "Recovered file appears shorter than library copy."
-        )
+        return "Recovered file appears shorter than library copy."
     if status == "potential_upgrade":
-        return (
-            "Recovered file larger than library copy; inspect quality."
-        )
+        return "Recovered file larger than library copy; inspect quality."
     if status == "orphan":
-        return (
-            "No matching library entry; determine target manually."
-        )
+        return "No matching library entry; determine target manually."
     if status == "missing":
         return "Library item has no recovery candidate."
     return ""
@@ -62,14 +58,16 @@ def _rows_from_matches(matches_csv: Path) -> Iterator[ManifestRow]:
             confidence = float(row.get("score") or 0.0)
             library_path = row.get("library_path", "")
             recovery_path = row.get("recovery_path", "")
-            destination_name = Path(
-                library_path or row.get("recovery_name", "")
-            ).name
+            destination_name = Path(library_path or row.get("recovery_name", "")).name
             priority = _priority_for(status, confidence)
             notes = _notes_for(status)
             yield ManifestRow(
-                library_path=library_path,
-                recovery_path=recovery_path,
+                library_path=(
+                    utils.normalise_path(library_path) if library_path else ""
+                ),
+                recovery_path=(
+                    utils.normalise_path(recovery_path) if recovery_path else ""
+                ),
                 destination_name=destination_name,
                 status=status,
                 confidence=confidence,
@@ -112,5 +110,5 @@ def generate_manifest(
                     "notes": row.notes,
                 }
             )
-    LOGGER.info("Wrote manifest with %s rows to %s", len(rows), output_csv)
+    logger.info("Wrote manifest with %s rows to %s", len(rows), output_csv)
     return rows

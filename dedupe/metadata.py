@@ -1,4 +1,4 @@
-"""Metadata extraction helpers for audio files."""
+"""Audio metadata probing utilities."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from pathlib import Path
 from shutil import which
 from typing import Any, Dict, Optional
 
-LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -37,7 +37,7 @@ class FileMetadata:
 def _run_ffprobe(path: Path, timeout: int = 8) -> Optional[dict]:
     ffprobe = which("ffprobe")
     if ffprobe is None:
-        LOGGER.debug(
+        logger.debug(
             "ffprobe not available in PATH; skipping probe for %s",
             path,
         )
@@ -67,11 +67,11 @@ def _run_ffprobe(path: Path, timeout: int = 8) -> Optional[dict]:
             timeout=timeout,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        LOGGER.warning("ffprobe invocation failed for %s: %s", path, exc)
+        logger.warning("ffprobe invocation failed for %s: %s", path, exc)
         return None
 
     if result.returncode != 0:
-        LOGGER.warning(
+        logger.warning(
             "ffprobe returned non-zero exit status %s for %s",
             result.returncode,
             path,
@@ -81,7 +81,7 @@ def _run_ffprobe(path: Path, timeout: int = 8) -> Optional[dict]:
     try:
         return json.loads(result.stdout)
     except json.JSONDecodeError as exc:
-        LOGGER.error("Unable to parse ffprobe output for %s: %s", path, exc)
+        logger.error("Unable to parse ffprobe output for %s: %s", path, exc)
         return None
 
 
@@ -104,8 +104,7 @@ def _parse_stream_info(payload: dict) -> AudioStreamInfo:
         duration=float(duration) if duration is not None else None,
         sample_rate=_maybe_int(audio_stream.get("sample_rate")),
         bit_rate=_maybe_int(
-            audio_stream.get("bit_rate")
-            or payload.get("format", {}).get("bit_rate")
+            audio_stream.get("bit_rate") or payload.get("format", {}).get("bit_rate")
         ),
         channels=_maybe_int(audio_stream.get("channels")),
         bit_depth=_maybe_int(audio_stream.get("bits_per_raw_sample")),
@@ -127,7 +126,7 @@ def _extract_tags(path: Path) -> Dict[str, Any]:
     try:
         audio = mutagen.File(path)
     except Exception as exc:  # pragma: no cover - mutagen failures
-        LOGGER.debug("mutagen failed to parse %s: %s", path, exc)
+        logger.debug("mutagen failed to parse %s: %s", path, exc)
         return {}
 
     if audio is None or not hasattr(audio, "tags") or audio.tags is None:

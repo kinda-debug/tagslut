@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Continuous verbose output
+set -x
+
+echo "=== DEDUPE DOTAD: MOVE NON-CANONICAL FLAC FILES TO /Volumes/bad ==="
+
+REPO="$HOME/dedupe_repo_reclone"
+FINAL_DB="$REPO/artifacts/db/library_final.db"
+CANON_DB="$REPO/artifacts/db/library_canonical_full.db"
+
+# Where duplicates will be moved TO (cross-device move → frees space on dotad)
+DEST_ROOT="/Volumes/bad/DOTAD_DEDUPED"
+
+LOG_DIR="$REPO/artifacts/logs"
+mkdir -p "$LOG_DIR"
+
+MOVE_LIST="$LOG_DIR/dotad_dupe_paths_flac.txt"
+MOVE_LOG="$LOG_DIR/dotad_dupe_moves.log"
+
+echo
+
+echo "FINAL DB : $FINAL_DB"
+echo "CANON DB : $CANON_DB"
+echo "DEST ROOT: $DEST_ROOT"
+echo "LIST     : $MOVE_LIST"
+echo "LOG      : $MOVE_LOG"
+
+# Basic sanity checks
+if [[ ! -f "$FINAL_DB" ]]; then
+  echo "ERROR: final DB not found at: $FINAL_DB" >&2
+  exit 1
+fi
+
+if [[ ! -f "$CANON_DB" ]]; then
+  echo "ERROR: canonical-full DB not found at: $CANON_DB" >&2
+  exit 1
+fi
+
+if [[ ! -d "$(dirname "$DEST_ROOT")" ]]; then
+  echo "ERROR: destination parent volume does not exist: $(dirname "$DEST_ROOT")" >&2
+  exit 1
+fi
+
+mkdir -p "$DEST_ROOT"
+
+echo
+echo "=== STEP 1: BUILD LIST OF NON-CANONICAL FLAC PATHS ON /Volumes/dotad ==="
+
+# Regenerate list every run
+rm -f "$MOVE_LIST"
+
+sqlite3 "$FINAL_DB" <<SQL
+ATTACH '$CANON_DB' AS canon;
+
+.mode tabs
+.headers off
+.output '$MOVE_LIST'
+
+-- All paths that are present in FINAL but NOT present in CANON,
+-- restricted to /Volumes/dotad and *.flac
+SELECT f.path
+FROM library_files AS f
+LEFT JOIN canon.library_files AS c
+  ON f.path = c.path
+WHERE c.path IS NULL
+  AND f.path LIKE '/Volumes/dotad/%'
+  AND f.path LIKE '%.flac';
+
+.output stdout
+
+DETACH canon;
+SQL
+
+if [[ ! -s "$MOVE_LIST" ]]; then
+  echo "No non-canonical FLAC files found to move. Nothing to do."
+  exit 0
+fi
+
+TOTAL=$(wc -l < "$MOVE_LIST" | tr -d ' ')
+echo "Paths to move: $TOTAL"
+echo "List saved to: $MOVE_LIST"
+
+echo
+echo "=== STEP 2: MOVE FILES OFF /Volumes/dotad (PRESERVE STRUCTURE) ==="
+echo "Moves will be logged to: $MOVE_LOG"
+echo
+
+moved=0
+skipped_missing=0
+skipped_error=0
+
+# Append to log, but mark start of run
+{
+  echo "===================================================================="
+  echo "Run at: $(date)"
+  echo "Source DB: $FINAL_DB"
+  echo "Canon DB : $CANON_DB"
+  echo "Destination root: $DEST_ROOT"
+} >> "$MOVE_LOG"
+
+while IFS= read -r src; do
+  # Skip empty lines
+  [[ -z "$src" ]] && continue
+
+  # Only act on files that still exist (resumable behaviour)
+  if [[ ! -f "$src" ]]; then
+    echo "SKIP (missing): $src"
+    echo "[SKIP missing] $src" >> "$MOVE_LOG"
+    ((skipped_missing++))
+    continue
+  fi
+
+  # Compute relative path under /Volumes/dotad
+  rel="${src#/Volumes/dotad/}"
+  dest="$DEST_ROOT/$rel"
+
+  dest_dir=$(dirname "$dest")
+  if [[ ! -d "$dest_dir" ]]; then
+    echo "MKDIR: $dest_dir"
+    mkdir -pv "$dest_dir" || {
+      echo "ERROR: cannot create directory: $dest_dir" >&2
+      echo "[ERROR mkdir] $src -> $dest_dir" >> "$MOVE_LOG"
+      ((skipped_error++))
+      continue
+    }
+  fi
+
+  echo "MOVE: $src"
+  echo "      -> $dest"
+
+  if mv -v "$src" "$dest" | tee -a "$MOVE_LOG"; then
+    ((moved++))
+  else
+    echo "ERROR: mv failed for: $src" >&2
+    echo "[ERROR mv] $src -> $dest" >> "$MOVE_LOG"
+    ((skipped_error++))
+  fi
+
+done < "$MOVE_LIST"
+
+echo
+echo "=== SUMMARY ==="
+echo "Total listed : $TOTAL"
+echo "Moved        : $moved"
+echo "Missing (skip): $skipped_missing"
+echo "Errors (skip): $skipped_error"
+echo
+echo "Details logged to: $MOVE_LOG"
+echo "Duplicate FLAC files have been moved under: $DEST_ROOT"
+echo "You can re-run this script safely: it will skip already-moved files."

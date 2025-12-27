@@ -1,6 +1,9 @@
+"""Module description placeholder."""
+
 from __future__ import annotations
 
 import hashlib
+import unicodedata
 from pathlib import Path
 
 from dedupe import utils
@@ -20,3 +23,12 @@ def test_iter_audio_files_filters_extensions(tmp_path: Path) -> None:
     ignored.write_text("text")
     found = list(utils.iter_audio_files(tmp_path))
     assert found == [audio]
+
+
+def test_normalise_path_returns_nfc_absolute(tmp_path: Path) -> None:
+    raw = tmp_path / "Cafe\u0301" / "song.flac"
+    expected_dir = raw.parent
+    normalised = utils.normalise_path(str(raw))
+    assert unicodedata.is_normalized("NFC", normalised)
+    assert normalised.endswith("song.flac")
+    assert normalised.startswith(utils.normalise_path(expected_dir.as_posix()))

@@ -167,6 +167,83 @@ added files are appended to the shared database.
    Existing entries retain metadata; missing fingerprints are generated when
    `fpcalc` is available.
 
+### Recommended scan workflows
+
+- **Default library scan** – fingerprints skipped, fastest path:
+
+  ```bash
+  dedupe scan-library --root /path/to/library --out library.db --resume
+  ```
+
+- **Optional fingerprint scan** – only when you need mastering-level
+  differentiation and `fpcalc` is present:
+
+  ```bash
+  dedupe scan-library --root /path/to/library --out library.db --resume --fingerprints
+  ```
+
+  Fingerprints are generated only for files missing them when `--resume` is
+  supplied, allowing incremental updates.
+
+### Fingerprinting is optional
+
+Chromaprint fingerprints enhance matching when two files share identical size
+and duration but differ in mastering.  They are not required for dedupe,
+recovery identification, truncation detection, or library reconciliation.  When
+`--fingerprints` is omitted or `fpcalc` is unavailable, the scanner falls back
+to checksum → duration → bitrate → filename similarity heuristics without
+logging warnings.
+
+- `fpcalc` must be on `PATH` to enable fingerprints.  When missing, scans
+  continue normally without attempting extraction.
+- `--resume` skips unchanged files using a size and modification-time check.
+  During a resumed scan with `--fingerprints`, only files lacking fingerprints
+  are refreshed.
+
+### Working across multiple volumes
+
+A single SQLite database can hold metadata for several volumes.  For example:
+
+```bash
+dedupe scan-library --root /Volumes/dotad --out library.db --resume
+dedupe scan-library --root /Volumes/Vault --out library.db --resume
+dedupe scan-library --root /Volumes/sad --out library.db --resume
+```
+
+The commands may be re-run at any time; unchanged files are skipped and newly
+added files are appended to the shared database.
+
+### Example workflows
+
+1. **Scan multiple volumes into one database**
+
+   ```bash
+   dedupe scan-library --root /Volumes/dotad --out library.db --resume
+   dedupe scan-library --root /Volumes/Vault --out library.db --resume
+   dedupe scan-library --root /Volumes/sad --out library.db --resume
+   ```
+
+2. **Inspect recently indexed files**
+
+   ```bash
+   sqlite3 library.db "SELECT path, size_bytes, duration FROM library_files ORDER BY mtime DESC LIMIT 10;"
+   ```
+
+3. **Match recoveries without fingerprints**
+
+   ```bash
+   dedupe match --library library.db --recovered recovered.db --out matches.csv
+   ```
+
+4. **Fingerprint-only refresh** (after an initial scan)
+
+   ```bash
+   dedupe scan-library --root /path/to/library --out library.db --resume --fingerprints
+   ```
+
+   Existing entries retain metadata; missing fingerprints are generated when
+   `fpcalc` is available.
+
 ## Developer workflow
 
 1. Run the unit tests to confirm the environment:

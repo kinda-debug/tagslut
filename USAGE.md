@@ -7,15 +7,37 @@ external volumes are unavailable.
 ## 1. Scan the reference library
 
 ```bash
-python3 -m dedupe.cli scan-library --root /Volumes/dotad/MUSIC --out artifacts/db/library.db --verbose
+dedupe scan-library --root /Volumes/dotad/MUSIC --out artifacts/db/library.db --resume
 ```
 
-Key options:
+Chromaprint fingerprints are optional.  Use them only when you must
+differentiate files that match on duration and size but originate from different
+masters.
 
-- `--fingerprints` – include Chromaprint fingerprints for downstream matching.
-- `--root` – directory tree to scan (multiple invocations can populate the same
-  database).
-- `--out` – SQLite database storing the `library_files` table.
+- `--resume` skips unchanged files using a size + modification-time check and
+  only recomputes metadata for new or modified files.
+- `--fingerprints` requests Chromaprint extraction when `fpcalc` is on `PATH`.
+  If `fpcalc` is missing, the scan completes without warnings and fingerprints
+  are left as `NULL`.
+
+Optional fingerprint-enabled scan:
+
+```bash
+dedupe scan-library --root /Volumes/dotad/MUSIC --out artifacts/db/library.db --resume --fingerprints
+```
+
+Run the command against additional volumes to build a consolidated database:
+
+```bash
+dedupe scan-library --root /Volumes/Vault --out artifacts/db/library.db --resume
+dedupe scan-library --root /Volumes/sad --out artifacts/db/library.db --resume
+```
+
+After each run you can verify new entries via SQLite:
+
+```bash
+sqlite3 artifacts/db/library.db "SELECT path, fingerprint IS NOT NULL AS has_fp FROM library_files ORDER BY mtime DESC LIMIT 5;"
+```
 
 ## 2. Parse R-Studio exports
 
@@ -30,15 +52,17 @@ command is idempotent, so it can be re-run as more exports arrive.
 ## 3. Match recovered candidates
 
 ```bash
-python3 -m dedupe.cli match \
+dedupe match \
   --library artifacts/db/library.db \
   --recovered artifacts/db/recovered.db \
-  --out artifacts/reports/matches.csv \
-  --verbose
+  --out artifacts/reports/matches.csv
 ```
 
-The matcher compares filename similarity and file sizes to classify each
-recovery candidate.  The resulting CSV includes:
+Matching proceeds through checksum → duration → bitrate → filename similarity
+heuristics.  Fingerprints, when present, are treated as an enhancement on top of
+those signals; their absence does not alter the default ordering.
+
+The resulting CSV includes:
 
 - `classification` – `exact`, `truncated`, `potential_upgrade`, `missing`, or
   `orphan`.
@@ -49,10 +73,9 @@ recovery candidate.  The resulting CSV includes:
 ## 4. Generate a recovery manifest
 
 ```bash
-python3 -m dedupe.cli generate-manifest \
+dedupe generate-manifest \
   --matches artifacts/reports/matches.csv \
-  --out artifacts/reports/recovery_manifest.csv \
-  --verbose
+  --out artifacts/reports/recovery_manifest.csv
 ```
 
 The manifest attaches priorities and operator notes to every match, highlighting

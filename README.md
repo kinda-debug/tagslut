@@ -89,6 +89,21 @@ Available sub-commands:
 
 Every command accepts `--verbose` to enable debug logging output.
 
+## Staged ingestion workflow (Picard-integrated)
+
+New downloads should land in the staging volume and be processed by MusicBrainz
+Picard before promotion into the canonical library. The staging tools live in
+`tools/ingest/` and use `config.toml` for library roots:
+
+```bash
+python tools/ingest/stage.py --db library.db
+python tools/ingest/reconcile.py --db library.db
+python tools/ingest/promote.py --db library.db
+```
+
+Override the default roots with `--root`, `--staging-root`, or `--final-root` if
+needed, and pass `--config /path/to/config.toml` to point at a custom config.
+
 ### Recommended scan workflows
 
 - **Default library scan** – fingerprints skipped, fastest path and resume-safe

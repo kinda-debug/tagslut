@@ -45,6 +45,8 @@ runs/
 
 # Keep structure placeholders
 !artifacts/
+!artifacts/db/
+!artifacts/db/.gitkeep
 !artifacts/logs/
 !artifacts/logs/.gitkeep
 !artifacts/tmp/

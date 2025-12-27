@@ -19,6 +19,12 @@ quarantine = "/Volumes/dotad/NEW_LIBRARY/Quarantine"
 # Directory of confirmed duplicates kept for healthier copies (placed under `root`)
 garbage = "/Volumes/dotad/NEW_LIBRARY/Garbage"
 
+[libraries]
+dotad_final = "/Volumes/dotad/FINAL_LIBRARY"
+dotad_staging = "/Volumes/dotad/STAGING_TAGGED"
+sad = "/Volumes/sad/FLAC"
+bad = "/Volumes/bad/FLAC"
+
 [scan]
 # Number of worker threads for scanning
 workers = 8

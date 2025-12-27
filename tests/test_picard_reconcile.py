@@ -1,0 +1,65 @@
+from __future__ import annotations
+
+import sqlite3
+from pathlib import Path
+
+from dedupe.external.picard import reconcile_picard_changes
+from dedupe.storage import LIBRARY_TABLE, PICARD_MOVES_TABLE, initialise_library_schema
+from dedupe.storage.queries import upsert_library_rows
+from dedupe.utils import compute_md5, normalise_path
+
+
+def _payload_for(path: Path) -> dict[str, object]:
+    stat = path.stat()
+    return {
+        "path": normalise_path(str(path)),
+        "size_bytes": stat.st_size,
+        "mtime": stat.st_mtime,
+        "checksum": compute_md5(path),
+        "duration": None,
+        "sample_rate": None,
+        "bit_rate": None,
+        "channels": None,
+        "bit_depth": None,
+        "tags_json": "{}",
+        "fingerprint": None,
+        "fingerprint_duration": None,
+        "dup_group": None,
+        "duplicate_rank": None,
+        "is_canonical": None,
+        "extra_json": "{}",
+        "library_state": "STAGING",
+        "flac_ok": 1,
+    }
+
+
+def test_reconcile_updates_paths(tmp_path: Path) -> None:
+    staging_root = tmp_path / "staging"
+    staging_root.mkdir()
+    source = staging_root / "artist" / "track.flac"
+    source.parent.mkdir(parents=True)
+    source.write_bytes((Path(__file__).parent / "data" / "healthy.flac").read_bytes())
+
+    db_path = tmp_path / "library.db"
+    with sqlite3.connect(db_path) as connection:
+        connection.row_factory = sqlite3.Row
+        initialise_library_schema(connection)
+        upsert_library_rows(connection, [_payload_for(source)])
+        connection.commit()
+
+        new_path = staging_root / "artist" / "album" / "track.flac"
+        new_path.parent.mkdir(parents=True)
+        source.rename(new_path)
+
+        result = reconcile_picard_changes(connection, staging_root)
+        connection.commit()
+
+        rows = connection.execute(f"SELECT path FROM {LIBRARY_TABLE}").fetchall()
+        assert normalise_path(str(new_path)) == rows[0]["path"]
+        moves = connection.execute(f"SELECT * FROM {PICARD_MOVES_TABLE}").fetchall()
+        assert len(moves) == 1
+        assert moves[0]["old_path"].endswith("/artist/track.flac")
+        assert moves[0]["new_path"].endswith("/artist/album/track.flac")
+        assert result.moved == 1
+        assert result.unchanged == 0
+        assert result.inserted == 0

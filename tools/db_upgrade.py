@@ -22,6 +22,9 @@ LIBRARY_COLUMNS: Sequence[str] = (
     "dup_group",
     "duplicate_rank",
     "is_canonical",
+    "extra_json",
+    "library_state",
+    "flac_ok",
 )
 
 CREATE_TABLE_SQL = """
@@ -40,7 +43,10 @@ CREATE TABLE IF NOT EXISTS library_files(
     fingerprint_duration REAL,
     dup_group TEXT,
     duplicate_rank INTEGER,
-    is_canonical INTEGER
+    is_canonical INTEGER,
+    extra_json TEXT,
+    library_state TEXT DEFAULT 'FINAL',
+    flac_ok INTEGER
 );
 """
 
@@ -90,6 +96,8 @@ def _map_row(row: sqlite3.Row, legacy_columns: Iterable[str]) -> List[object]:
     for column in LIBRARY_COLUMNS:
         if column == "tags_json" and "tags_json" not in legacy_set:
             value = "{}"
+        elif column == "library_state":
+            value = "FINAL"
         elif column in legacy_set:
             value = row[column]
         else:

@@ -12,6 +12,7 @@ from typing import Iterable, Optional, Union
 from dedupe import health_score
 from mutagen import MutagenError
 from mutagen.flac import FLAC
+
 LIBRARY_COLUMNS = (
     "path",
     "size_bytes",
@@ -23,16 +24,14 @@ LIBRARY_COLUMNS = (
     "channels",
     "bit_depth",
     "tags_json",
-<<<<<<< HEAD
-    "extra_json",
-=======
->>>>>>> 5510a1a84ac4c0d31b0bfc433e67cdb1ab6aa257
     "fingerprint",
     "fingerprint_duration",
     "dup_group",
     "duplicate_rank",
     "is_canonical",
     "extra_json",
+    "library_state",
+    "flac_ok",
 )
 
 
@@ -83,8 +82,6 @@ def get_metadata(file_path: Path) -> Optional[dict[str, object]]:
         channels = audio.info.channels
         checksum = fix_checksum(audio.info.md5_signature, str(file_path))
 
-        score = health_score.score_flac(str(file_path))
-
         return {
             "path": str(file_path),
             "size_bytes": size,
@@ -98,22 +95,16 @@ def get_metadata(file_path: Path) -> Optional[dict[str, object]]:
             "tags_json": json.dumps(
                 tags, sort_keys=True, separators=(",", ":")
             ),
-<<<<<<< HEAD
-            "extra_json": json.dumps(
-                extra_payload, sort_keys=True, separators=(",", ":")
-            ),
-=======
-            "extra_json": json.dumps(extra_payload, sort_keys=True, separators=(",", ":")),
->>>>>>> 5510a1a84ac4c0d31b0bfc433e67cdb1ab6aa257
             "fingerprint": None,
             "fingerprint_duration": None,
             "dup_group": None,
             "duplicate_rank": None,
             "is_canonical": 1,
-<<<<<<< HEAD
-            "extra_json": json.dumps(score),
-=======
->>>>>>> 5510a1a84ac4c0d31b0bfc433e67cdb1ab6aa257
+            "extra_json": json.dumps(
+                extra_payload, sort_keys=True, separators=(",", ":")
+            ),
+            "library_state": "FINAL",
+            "flac_ok": 1 if health["health_score"] > 0 else 0,
         }
 
     except (MutagenError, OSError) as exc:
@@ -134,14 +125,16 @@ def get_metadata(file_path: Path) -> Optional[dict[str, object]]:
             "channels": None,
             "bit_depth": None,
             "tags_json": json.dumps({}, sort_keys=True, separators=(",", ":")),
-            "extra_json": json.dumps(
-                extra_payload, sort_keys=True, separators=(",", ":")
-            ),
             "fingerprint": None,
             "fingerprint_duration": None,
             "dup_group": None,
             "duplicate_rank": None,
             "is_canonical": 0,
+            "extra_json": json.dumps(
+                extra_payload, sort_keys=True, separators=(",", ":")
+            ),
+            "library_state": "FINAL",
+            "flac_ok": 0,
         }
 
 
@@ -198,8 +191,7 @@ def main() -> None:
     with sqlite3.connect(args.db_path) as connection:
         validate_schema(connection)
         with args.list_path.open("r", encoding="utf8") as file_list:
-            ingest_paths(connection, (line.strip() for line in file_list))
-
+            ingest_paths(connection, [line.strip() for line in file_list])
         connection.commit()
 
 

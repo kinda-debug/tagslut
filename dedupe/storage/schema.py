@@ -1,75 +1,76 @@
-"""Database schema helpers for the unified dedupe library."""
-
-from __future__ import annotations
-
 import sqlite3
+import logging
+from pathlib import Path
+from typing import List
 
-LIBRARY_TABLE = "library_files"
-PICARD_MOVES_TABLE = "picard_moves"
-DEFAULT_LIBRARY_STATE = "FINAL"
+logger = logging.getLogger("dedupe")
 
+def get_connection(db_path: Path) -> sqlite3.Connection:
+    """
+    Establishes a connection to the SQLite database.
+    Sets row_factory to sqlite3.Row for name-based access.
+    """
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        return conn
+    except sqlite3.Error as e:
+        logger.error(f"Failed to connect to database at {db_path}: {e}")
+        raise
 
-def _ensure_columns(
-    connection: sqlite3.Connection,
-    table: str,
-    columns: dict[str, str],
-) -> None:
-    """Ensure *columns* exist on *table*, adding them if needed."""
-
-    existing = {
-        row[1] for row in connection.execute(f"PRAGMA table_info({table});").fetchall()
+def init_db(conn: sqlite3.Connection) -> None:
+    """
+    Initializes the database schema.
+    Performs additive migrations: creates the table if missing,
+    and adds missing columns if the table exists but is outdated.
+    """
+    # Enable Write-Ahead Logging for better concurrency
+    conn.execute("PRAGMA journal_mode=WAL;")
+    
+    # 1. Create table if it doesn't exist
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS files (
+        path TEXT PRIMARY KEY,
+        checksum TEXT,
+        duration REAL,
+        bit_depth INTEGER,
+        sample_rate INTEGER,
+        bitrate INTEGER,
+        metadata_json TEXT,
+        flac_ok INTEGER,
+        acoustid TEXT
+    );
+    """)
+    
+    # 2. Additive Migrations: Ensure all required columns exist
+    existing_columns = _get_existing_columns(conn, "files")
+    required_columns = {
+        "checksum": "TEXT",
+        "duration": "REAL",
+        "bit_depth": "INTEGER",
+        "sample_rate": "INTEGER",
+        "bitrate": "INTEGER",
+        "metadata_json": "TEXT",
+        "flac_ok": "INTEGER",
+        "acoustid": "TEXT"
     }
-    for column, definition in columns.items():
-        if column in existing:
-            continue
-        connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
+    for col_name, col_type in required_columns.items():
+        if col_name not in existing_columns:
+            logger.info(f"Migrating DB: Adding column '{col_name}' to 'files' table.")
+            try:
+                conn.execute(f"ALTER TABLE files ADD COLUMN {col_name} {col_type}")
+            except sqlite3.OperationalError as e:
+                logger.error(f"Migration failed for column {col_name}: {e}")
+                raise
 
-def initialise_library_schema(connection: sqlite3.Connection) -> None:
-    """Ensure the core library table exists in the provided connection."""
+    # 3. Indices for performance
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_checksum ON files(checksum);")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_acoustid ON files(acoustid);")
+    
+    conn.commit()
 
-    connection.execute(
-        f"""
-        CREATE TABLE IF NOT EXISTS {LIBRARY_TABLE} (
-            path TEXT PRIMARY KEY,
-            size_bytes INTEGER,
-            mtime REAL,
-            checksum TEXT,
-            duration REAL,
-            sample_rate INTEGER,
-            bit_rate INTEGER,
-            channels INTEGER,
-            bit_depth INTEGER,
-            tags_json TEXT,
-            fingerprint TEXT,
-            fingerprint_duration REAL,
-            dup_group TEXT,
-            duplicate_rank INTEGER,
-            is_canonical INTEGER,
-            extra_json TEXT,
-            library_state TEXT DEFAULT '{DEFAULT_LIBRARY_STATE}',
-            flac_ok INTEGER
-        )
-        """
-    )
-
-    _ensure_columns(
-        connection,
-        LIBRARY_TABLE,
-        {
-            "extra_json": "TEXT",
-            "library_state": f"TEXT DEFAULT '{DEFAULT_LIBRARY_STATE}'",
-            "flac_ok": "INTEGER",
-        },
-    )
-
-    connection.execute(
-        f"""
-        CREATE TABLE IF NOT EXISTS {PICARD_MOVES_TABLE} (
-            old_path TEXT NOT NULL,
-            new_path TEXT NOT NULL,
-            checksum TEXT,
-            moved_at REAL
-        )
-        """
-    )
+def _get_existing_columns(conn: sqlite3.Connection, table_name: str) -> List[str]:
+    """Helper to retrieve a list of column names for a table."""
+    cursor = conn.execute(f"PRAGMA table_info({table_name})")
+    return [row["name"] for row in cursor.fetchall()]

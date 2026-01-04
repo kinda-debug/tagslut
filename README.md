@@ -24,6 +24,7 @@ poetry install
 ## Configuration
 
 Copy `config.example.toml` to `config.toml` or `~/.config/dedupe/config.toml`.
+You can also point to a specific config file with `DEDUPE_CONFIG=/path/to/config.toml`.
 
 ```toml
 [libraries]
@@ -39,14 +40,20 @@ priority_order = ["dotad", "sad", "bad"]
 Scans a library, verifies FLAC integrity (`flac -t`), calculates SHA-256 hashes, and upserts to the DB.
 
 ```bash
-python tools/integrity/scan.py /Volumes/Music/FLAC --db music.db --check-integrity
+python tools/integrity/scan.py /Volumes/Music/FLAC --db artifacts/db/music.db --check-integrity
+```
+
+To tag the scanned paths as a named library (recommended when scanning multiple roots):
+
+```bash
+python tools/integrity/scan.py /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY --db artifacts/db/music.db --library recovery --incremental --progress
 ```
 
 ### 2. Find Duplicates & Recommend Actions
 Analyzes the database for duplicates and generates a JSON plan for resolution.
 
 ```bash
-python tools/decide/recommend.py --db music.db --output plan.json
+python tools/decide/recommend.py --db artifacts/db/music.db --output plan.json
 ```
 
 **Decision Logic:**

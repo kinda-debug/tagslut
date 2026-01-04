@@ -1,4 +1,5 @@
 import logging
+import os
 from pathlib import Path
 from typing import Any, Dict
 
@@ -27,7 +28,14 @@ class Config:
     def _load(self):
         """Load configuration from the first found valid source."""
         loaded = False
-        for path in CONFIG_PATHS:
+
+        env_path = os.getenv("DEDUPE_CONFIG")
+        candidate_paths = []
+        if env_path:
+            candidate_paths.append(Path(env_path))
+        candidate_paths.extend(CONFIG_PATHS)
+
+        for path in candidate_paths:
             if path.exists():
                 try:
                     with open(path, "rb") as f:
@@ -52,6 +60,21 @@ class Config:
             return value
         except (KeyError, TypeError):
             return default
+
+    def __getitem__(self, key: str) -> Any:
+        return self._data[key]
+
+    def __contains__(self, key: object) -> bool:
+        return key in self._data
+
+    def keys(self):
+        return self._data.keys()
+
+    def items(self):
+        return self._data.items()
+
+    def values(self):
+        return self._data.values()
 
 def get_config() -> Config:
     """Public accessor for the singleton configuration."""

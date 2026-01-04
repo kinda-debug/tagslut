@@ -32,6 +32,15 @@ def extract_metadata(
         ValueError: If file is not a valid FLAC or cannot be read.
     """
     path_obj = Path(file_path)
+
+    # Cheap stat info for incremental scans / observability
+    try:
+        st = path_obj.stat()
+        mtime = float(st.st_mtime)
+        size = int(st.st_size)
+    except Exception:
+        mtime = None
+        size = None
     
     # Defaults
     flac_ok = False
@@ -81,6 +90,8 @@ def extract_metadata(
     return AudioFile(
         path=path_obj,
         library=library,
+        mtime=mtime,
+        size=size,
         checksum=checksum,
         duration=duration,
         bit_depth=bit_depth,

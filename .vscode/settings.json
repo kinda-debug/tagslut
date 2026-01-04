@@ -7,7 +7,7 @@
             "previewLimit": 50,
             "driver": "SQLite",
             "name": "music",
-            "database": "'/Volumes/RECOVERY_TARGET/Root/Recognized4_APFS Container tree.txt.zip'"
+            "database": "${workspaceFolder:dedupe_repo_reclone}/music.db"
         }
     ]
 }

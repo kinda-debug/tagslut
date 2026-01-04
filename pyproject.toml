@@ -6,6 +6,21 @@ authors = ["Your Name <you@example.com>"]
 readme = "README.md"
 packages = [{include = "dedupe"}]
 
+[project]
+name = "flac-dedupe"
+version = "2.0.0"
+description = "Refactored FLAC music library deduplication system."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+	{ name = "Your Name", email = "you@example.com" },
+]
+dependencies = [
+	"click>=8.1",
+	"mutagen>=1.46",
+	"jsonschema>=4.0",
+]
+
 [tool.poetry.dependencies]
 python = "^3.11"
 click = "^8.1"

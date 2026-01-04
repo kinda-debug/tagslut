@@ -30,6 +30,8 @@ The new system uses a stricter SQLite schema.
 2.  **Plan**: `python tools/decide/recommend.py -o plan.json` (Generates readable JSON)
 3.  **Apply**: `python tools/decide/apply.py plan.json` (Executes deletions safely)
 
+Tip: store scan databases under `artifacts/db/` (the repository has guardrails that forbid `*.db` files in the repo root).
+
 ## API Changes (For Developers)
 
 * **No Global State**: All functions now require explicit arguments (e.g., `db_conn`).

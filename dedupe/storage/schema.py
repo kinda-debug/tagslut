@@ -5,6 +5,10 @@ from typing import List
 
 logger = logging.getLogger("dedupe")
 
+# Legacy unified library schema (used by `dedupe` CLI + tests)
+LIBRARY_TABLE = "library_files"
+PICARD_MOVES_TABLE = "picard_moves"
+
 def get_connection(db_path: Path) -> sqlite3.Connection:
     """
     Establishes a connection to the SQLite database.
@@ -32,6 +36,8 @@ def init_db(conn: sqlite3.Connection) -> None:
     CREATE TABLE IF NOT EXISTS files (
         path TEXT PRIMARY KEY,
         library TEXT,
+        mtime REAL,
+        size INTEGER,
         checksum TEXT,
         duration REAL,
         bit_depth INTEGER,
@@ -47,6 +53,8 @@ def init_db(conn: sqlite3.Connection) -> None:
     existing_columns = _get_existing_columns(conn, "files")
     required_columns = {
         "library": "TEXT",
+        "mtime": "REAL",
+        "size": "INTEGER",
         "checksum": "TEXT",
         "duration": "REAL",
         "bit_depth": "INTEGER",
@@ -71,6 +79,59 @@ def init_db(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_acoustid ON files(acoustid);")
     
     conn.commit()
+
+
+def initialise_library_schema(connection: sqlite3.Connection) -> None:
+    """Create/upgrade the legacy unified library schema.
+
+    This is intentionally additive and safe to call repeatedly.
+    """
+
+    with connection:
+        connection.execute("PRAGMA journal_mode=WAL")
+        connection.execute("PRAGMA busy_timeout=5000")
+        connection.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS {LIBRARY_TABLE} (
+                path TEXT PRIMARY KEY,
+                size_bytes INTEGER,
+                mtime REAL,
+                checksum TEXT,
+                duration REAL,
+                sample_rate INTEGER,
+                bit_rate INTEGER,
+                channels INTEGER,
+                bit_depth INTEGER,
+                tags_json TEXT,
+                fingerprint TEXT,
+                fingerprint_duration REAL,
+                dup_group TEXT,
+                duplicate_rank INTEGER,
+                is_canonical INTEGER,
+                extra_json TEXT,
+                library_state TEXT,
+                flac_ok INTEGER
+            )
+            """
+        )
+        connection.execute(
+            f"CREATE INDEX IF NOT EXISTS idx_{LIBRARY_TABLE}_checksum ON {LIBRARY_TABLE}(checksum)"
+        )
+
+        connection.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS {PICARD_MOVES_TABLE} (
+                id INTEGER PRIMARY KEY,
+                old_path TEXT NOT NULL,
+                new_path TEXT NOT NULL,
+                checksum TEXT,
+                moved_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        connection.execute(
+            f"CREATE INDEX IF NOT EXISTS idx_{PICARD_MOVES_TABLE}_checksum ON {PICARD_MOVES_TABLE}(checksum)"
+        )
 
 def _get_existing_columns(conn: sqlite3.Connection, table_name: str) -> List[str]:
     """Helper to retrieve a list of column names for a table."""

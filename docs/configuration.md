@@ -2,6 +2,14 @@
 
 `config.toml` controls default paths for the synchronisation workflow.
 
+## Config lookup
+
+Configuration is loaded from the first matching source:
+
+1. `DEDUPE_CONFIG` environment variable (explicit override)
+2. `./config.toml` (repo/project root)
+3. `~/.config/dedupe/config.toml`
+
 ```toml
 [paths]
 root = "/Volumes/dotad/MUSIC"

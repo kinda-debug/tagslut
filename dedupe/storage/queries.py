@@ -2,11 +2,85 @@ import sqlite3
 import json
 import logging
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Iterable
 
 from dedupe.storage.models import AudioFile
+from dedupe.storage.schema import LIBRARY_TABLE, PICARD_MOVES_TABLE
 
 logger = logging.getLogger("dedupe")
+
+
+def upsert_library_rows(conn: sqlite3.Connection, rows: Iterable[dict[str, object]]) -> None:
+    """Upsert dict payloads into the legacy `library_files` table."""
+
+    payload = list(rows)
+    if not payload:
+        return
+
+    columns = [
+        "path",
+        "size_bytes",
+        "mtime",
+        "checksum",
+        "duration",
+        "sample_rate",
+        "bit_rate",
+        "channels",
+        "bit_depth",
+        "tags_json",
+        "fingerprint",
+        "fingerprint_duration",
+        "dup_group",
+        "duplicate_rank",
+        "is_canonical",
+        "extra_json",
+        "library_state",
+        "flac_ok",
+    ]
+
+    placeholders = ",".join(["?"] * len(columns))
+    assignments = ",".join([f"{col}=excluded.{col}" for col in columns if col != "path"])
+    query = (
+        f"INSERT INTO {LIBRARY_TABLE} ({', '.join(columns)}) VALUES ({placeholders}) "
+        f"ON CONFLICT(path) DO UPDATE SET {assignments}"
+    )
+
+    values = [tuple(row.get(col) for col in columns) for row in payload]
+    conn.executemany(query, values)
+
+
+def fetch_records_by_state(conn: sqlite3.Connection, library_state: str) -> list[sqlite3.Row]:
+    cursor = conn.execute(
+        f"SELECT * FROM {LIBRARY_TABLE} WHERE library_state = ?",
+        (library_state,),
+    )
+    return cursor.fetchall()
+
+
+def update_library_path(
+    conn: sqlite3.Connection,
+    old_path: Path,
+    new_path: Path,
+    *,
+    library_state: str | None = None,
+) -> None:
+    if library_state is None:
+        conn.execute(
+            f"UPDATE {LIBRARY_TABLE} SET path=? WHERE path=?",
+            (str(new_path), str(old_path)),
+        )
+    else:
+        conn.execute(
+            f"UPDATE {LIBRARY_TABLE} SET path=?, library_state=? WHERE path=?",
+            (str(new_path), library_state, str(old_path)),
+        )
+
+
+def record_picard_move(conn: sqlite3.Connection, old_path: Path, new_path: Path, checksum: str | None) -> None:
+    conn.execute(
+        f"INSERT INTO {PICARD_MOVES_TABLE} (old_path, new_path, checksum) VALUES (?, ?, ?)",
+        (str(old_path), str(new_path), checksum),
+    )
 
 def upsert_file(conn: sqlite3.Connection, file: AudioFile) -> None:
     """
@@ -15,11 +89,13 @@ def upsert_file(conn: sqlite3.Connection, file: AudioFile) -> None:
     """
     query = """
     INSERT INTO files (
-        path, library, checksum, duration, bit_depth, sample_rate, bitrate, 
+        path, library, mtime, size, checksum, duration, bit_depth, sample_rate, bitrate, 
         metadata_json, flac_ok, acoustid
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(path) DO UPDATE SET
         library=excluded.library,
+        mtime=excluded.mtime,
+        size=excluded.size,
         checksum=excluded.checksum,
         duration=excluded.duration,
         bit_depth=excluded.bit_depth,
@@ -37,6 +113,8 @@ def upsert_file(conn: sqlite3.Connection, file: AudioFile) -> None:
         conn.execute(query, (
             str(file.path),
             file.library,
+            file.mtime,
+            file.size,
             file.checksum,
             file.duration,
             file.bit_depth,
@@ -89,9 +167,22 @@ def _row_to_audiofile(row: sqlite3.Row) -> AudioFile:
     except Exception:
         library = None
 
+    mtime = None
+    size = None
+    try:
+        if "mtime" in row.keys():
+            mtime = row["mtime"]
+        if "size" in row.keys():
+            size = row["size"]
+    except Exception:
+        mtime = None
+        size = None
+
     return AudioFile(
         path=Path(row["path"]),
         library=library,
+        mtime=mtime,
+        size=size,
         checksum=row["checksum"],
         duration=row["duration"],
         bit_depth=row["bit_depth"],

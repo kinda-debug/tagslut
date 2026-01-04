@@ -3,7 +3,7 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DB="$REPO/artifacts/db/library_canonical_fresh.db"
-FINAL_ROOT="/Volumes/bad/FINAL_LIBRARY"
+FINAL_ROOT="/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY"
 OUTDIR="$REPO/artifacts/logs/daily_checks"
 mkdir -p "$OUTDIR"
 

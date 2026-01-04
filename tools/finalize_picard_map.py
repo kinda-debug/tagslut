@@ -7,9 +7,9 @@ Dest is built by importing `dedupe.picard_path.build_picard_path` and prefixing
 with provided DEST_ROOT.
 
 Usage:
-  cat canonical_paths.txt | tools/finalize_picard_map.py --dest-root /Volumes/bad/FINAL_LIBRARY
+    cat canonical_paths.txt | tools/finalize_picard_map.py --dest-root /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY
 
-If metadata extraction fails, falls back to mirroring the /Volumes/dotad/ relative path.
+If metadata extraction fails, falls back to mirroring the /Volumes/RECOVERY_TARGET/Root/ relative path.
 """
 import argparse
 import shlex
@@ -68,15 +68,16 @@ def extract_tags(path: str) -> Dict[str, object]:
 
 
 def fallback_relpath(src: str) -> str:
-    # If src is under /Volumes/dotad/, mirror relative path; otherwise use basename
-    if src.startswith('/Volumes/dotad/'):
-        return src[len('/Volumes/dotad/') :]
+    # If src is under /Volumes/RECOVERY_TARGET/Root/, mirror relative path; otherwise use basename
+    base_root = '/Volumes/RECOVERY_TARGET/Root/'
+    if src.startswith(base_root):
+        return src[len(base_root) :]
     return os.path.basename(src)
 
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument('--dest-root', required=True, help='Destination root (e.g., /Volumes/bad/FINAL_LIBRARY)')
+    p.add_argument('--dest-root', required=True, help='Destination root (e.g., /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY)')
     p.add_argument('--dry-run', action='store_true', help='Only print planned mappings')
     args = p.parse_args()
 

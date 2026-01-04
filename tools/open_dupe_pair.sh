@@ -4,7 +4,7 @@
 #
 # Usage:
 #   ./tools/open_dupe_pair.sh group_0001
-#   ./tools/open_dupe_pair.sh /Volumes/sad/_DUPE_REVIEW/group_0042
+#   ./tools/open_dupe_pair.sh /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_DUPE_REVIEW/group_0042
 #
 # Requires:
 #   - VS Code 'code' command in PATH
@@ -13,7 +13,7 @@
 
 set -euo pipefail
 
-REVIEW_ROOT="${DUPE_REVIEW_ROOT:-/Volumes/sad/_DUPE_REVIEW}"
+REVIEW_ROOT="${DUPE_REVIEW_ROOT:-/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_DUPE_REVIEW}"
 
 usage() {
   cat <<EOF
@@ -29,7 +29,7 @@ Environment:
 
 Examples:
   $(basename "$0") group_0001
-  $(basename "$0") /Volumes/sad/_DUPE_REVIEW/group_0042
+  $(basename "$0") /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_DUPE_REVIEW/group_0042
 EOF
   exit 1
 }

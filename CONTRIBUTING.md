@@ -13,8 +13,8 @@ Thank you for considering a contribution! To keep changes predictable, please:
 - Run `flake8` for linting when modifying Python files.
 
 ## CLI usage
-- From the repository root, invoke the CLI with `python -m dedupe.cli --help` for available commands.
-- Example scan: `python -m dedupe.cli scan-library --root /path/to/library --out artifacts/db/library.db --resume-safe`.
+- From the repository root, invoke the CLI with `python3 -m dedupe.cli --help` for available commands.
+- Example scan: `python3 -m dedupe.cli scan-library --root /path/to/library --out artifacts/db/library.db --resume-safe`.
 
 ## Style conventions
 - Follow PEP 8 and prefer explicit type hints for new functions and methods.

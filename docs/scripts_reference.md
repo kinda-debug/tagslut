@@ -11,7 +11,7 @@ Fast file-MD5 byte-identical duplicate scanner.
 - **Speed**: 1-2 sec/file (fast)
 - **Usage**:
   ```bash
-  python scripts/find_dupes_fast.py /Volumes/dotad/MUSIC \
+  python3 scripts/find_dupes_fast.py /Volumes/dotad/MUSIC \
     --output /tmp/dupes_music.csv \
     --heartbeat /tmp/heartbeat.txt \
     --watchdog --watchdog-timeout 180
@@ -22,7 +22,7 @@ Multi-root orchestrator for scanning MUSIC, Quarantine, and Garbage.
 - **Purpose**: Scan all three roots sequentially into shared DB
 - **Usage**:
   ```bash
-  python scripts/scan_all_roots.py \
+  python3 scripts/scan_all_roots.py \
     --db ~/.cache/file_dupes.db \
     --output artifacts/reports/dupes_all.csv
   ```
@@ -33,7 +33,7 @@ Find files with identical names (filename-based duplicates).
 - **Finds**: Same basename, different content (metadata differences)
 - **Usage**:
   ```bash
-  python scripts/find_filename_dupes.py \
+  python3 scripts/find_filename_dupes.py \
     --report artifacts/reports/filename_dupes.csv
   ```
 
@@ -46,11 +46,11 @@ Move byte-identical duplicates to Garbage.
 - **Usage**:
   ```bash
   # Plan
-  python scripts/dedupe_move_duplicates.py \
+  python3 scripts/dedupe_move_duplicates.py \
     --report artifacts/reports/planned_moves.csv
 
   # Execute
-  python scripts/dedupe_move_duplicates.py --commit \
+  python3 scripts/dedupe_move_duplicates.py --commit \
     --report artifacts/reports/executed_moves.csv
   ```
 
@@ -64,12 +64,12 @@ Delete duplicates across all roots (MUSIC, Quarantine, Garbage).
 - **Usage**:
   ```bash
   # Plan
-  python scripts/prune_cross_root_duplicates.py \
+  python3 scripts/prune_cross_root_duplicates.py \
     --db ~/.cache/file_dupes.db \
     --report artifacts/reports/cross_root_prune_plan.csv
 
   # Execute
-  python scripts/prune_cross_root_duplicates.py --commit \
+  python3 scripts/prune_cross_root_duplicates.py --commit \
     --db ~/.cache/file_dupes.db \
     --report artifacts/reports/cross_root_prune_executed.csv
   ```
@@ -81,7 +81,7 @@ Safe Garbage-only cleanup.
   2. If only in Garbage → keep shortest path, delete rest
 - **Usage**:
   ```bash
-  python scripts/prune_garbage_duplicates.py \
+  python3 scripts/prune_garbage_duplicates.py \
     --db ~/.cache/file_dupes.db \
     --report artifacts/reports/garbage_prune_plan.csv
   ```
@@ -93,7 +93,7 @@ Remove stale DB entries for deleted files.
 - **Scope**: Garbage by default, `--scope all` for complete cleanup
 - **Usage**:
   ```bash
-  python scripts/db_prune_missing_files.py \
+  python3 scripts/db_prune_missing_files.py \
     --db ~/.cache/file_dupes.db \
     --report artifacts/reports/db_cleanup.csv
   ```
@@ -107,13 +107,13 @@ Extract and store comprehensive FLAC metadata.
 - **Usage**:
   ```bash
   # Scan single root
-  python scripts/scan_metadata.py /Volumes/dotad/MUSIC
+  python3 scripts/scan_metadata.py /Volumes/dotad/MUSIC
 
   # Scan all roots
-  python scripts/scan_metadata.py --all-roots
+  python3 scripts/scan_metadata.py --all-roots
 
   # Limit for testing
-  python scripts/scan_metadata.py --all-roots --limit 100
+  python3 scripts/scan_metadata.py --all-roots --limit 100
   ```
 
 #### `analyze_filename_dupes_metadata.py`
@@ -122,7 +122,7 @@ Compare metadata for filename duplicates.
 - **Criteria**: Tag completeness, artwork, audio quality
 - **Usage**:
   ```bash
-  python scripts/analyze_filename_dupes_metadata.py \
+  python3 scripts/analyze_filename_dupes_metadata.py \
     --report artifacts/reports/filename_dupes_analysis.csv
   ```
 
@@ -137,7 +137,7 @@ Deep health scanner with audio fingerprinting.
   - Freeze detection
 - **Usage**:
   ```bash
-  python scripts/flac_scan.py --root /Volumes/dotad/MUSIC \
+  python3 scripts/flac_scan.py --root /Volumes/dotad/MUSIC \
     --workers 8 --verbose
   ```
 
@@ -147,7 +147,7 @@ Repair FLAC files using ffmpeg.
 - **Safety**: Creates repaired copies, preserves originals
 - **Usage**:
   ```bash
-  python scripts/flac_repair.py --playlist broken.m3u \
+  python3 scripts/flac_repair.py --playlist broken.m3u \
     --output /path/to/repaired
   ```
 
@@ -162,12 +162,12 @@ Find content duplicates in repaired staging directory.
 - **Usage**:
   ```bash
   # Normal mode
-  python scripts/dedupe_repaired.py \
+  python3 scripts/dedupe_repaired.py \
     --repaired /path/to/ReallyRepaired \
     --out repaired_dupes.csv
 
   # Fast mode (recommended for large trees)
-  python scripts/dedupe_repaired.py --fast \
+  python3 scripts/dedupe_repaired.py --fast \
     --repaired /path/to/ReallyRepaired \
     --out repaired_dupes.csv \
     --move --quarantine /path/to/quarantine
@@ -178,7 +178,7 @@ Compare repaired staging against MUSIC library.
 - **Recommendations**: Keep, replace, skip
 - **Usage**:
   ```bash
-  python scripts/reconcile_repaired.py \
+  python3 scripts/reconcile_repaired.py \
     --repaired /Volumes/dotad/ReallyRepaired \
     --music /Volumes/dotad/MUSIC \
     --out report.csv
@@ -191,7 +191,7 @@ Aggregate prune plan/executed CSV statistics.
 - **Output**: Counts, sizes by (reason, status)
 - **Usage**:
   ```bash
-  python scripts/summarize_prune_csv.py \
+  python3 scripts/summarize_prune_csv.py \
     artifacts/reports/garbage_prune_executed.csv
   ```
 
@@ -200,7 +200,7 @@ Audit deleted files and verify keepers.
 - **Checks**: Keeper exists, size match, policy compliance
 - **Usage**:
   ```bash
-  python scripts/verify_deleted_files.py
+  python3 scripts/verify_deleted_files.py
   ```
 
 ## Archived Scripts
@@ -224,7 +224,7 @@ These delegate to the `dedupe` package:
 
 ### 1. Initial Scan (All Roots)
 ```bash
-python scripts/scan_all_roots.py \
+python3 scripts/scan_all_roots.py \
   --db ~/.cache/file_dupes.db \
   --output artifacts/reports/dupes_all.csv
 ```
@@ -232,35 +232,35 @@ python scripts/scan_all_roots.py \
 ### 2. Cross-Root Deduplication
 ```bash
 # Plan
-python scripts/prune_cross_root_duplicates.py \
+python3 scripts/prune_cross_root_duplicates.py \
   --report artifacts/reports/plan.csv
 
 # Review plan.csv, then execute
-python scripts/prune_cross_root_duplicates.py --commit \
+python3 scripts/prune_cross_root_duplicates.py --commit \
   --report artifacts/reports/executed.csv
 
 # Clean DB
-python scripts/db_prune_missing_files.py \
+python3 scripts/db_prune_missing_files.py \
   --report artifacts/reports/db_cleanup.csv
 ```
 
 ### 3. Filename Duplicate Analysis
 ```bash
 # Find filename duplicates
-python scripts/find_filename_dupes.py \
+python3 scripts/find_filename_dupes.py \
   --report artifacts/reports/filename_dupes.csv
 
 # Scan metadata
-python scripts/scan_metadata.py --all-roots
+python3 scripts/scan_metadata.py --all-roots
 
 # Analyze metadata quality
-python scripts/analyze_filename_dupes_metadata.py \
+python3 scripts/analyze_filename_dupes_metadata.py \
   --report artifacts/reports/metadata_comparison.csv
 ```
 
 ### 4. Garbage Cleanup
 ```bash
-python scripts/prune_garbage_duplicates.py --commit \
+python3 scripts/prune_garbage_duplicates.py --commit \
   --report artifacts/reports/garbage_cleanup.csv
 ```
 

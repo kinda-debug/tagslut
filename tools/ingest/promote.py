@@ -170,8 +170,8 @@ def main() -> None:
     args = parser.parse_args()
     _configure_logging(args.verbose)
 
-    staging_root = _resolve_root(args.config, args.staging_root, "dotad_staging")
-    final_root = _resolve_root(args.config, args.final_root, "dotad_final")
+    staging_root = _resolve_root(args.config, args.staging_root, "recovery_staging")
+    final_root = _resolve_root(args.config, args.final_root, "recovery_final")
 
     with sqlite3.connect(args.db) as connection:
         connection.row_factory = sqlite3.Row

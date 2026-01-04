@@ -103,9 +103,9 @@ def _resolve_root(config_path: Path | None, root: Path | None) -> Path:
 
     config = get_config(config_path)
     libraries = config.get("libraries", {})
-    staging = libraries.get("dotad_staging")
+    staging = libraries.get("recovery_staging")
     if not staging:
-        raise SystemExit("dotad_staging missing from config libraries section")
+        raise SystemExit("recovery_staging missing from config libraries section")
     return Path(normalise_path(str(staging)))
 
 

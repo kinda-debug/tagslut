@@ -3,7 +3,7 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VENVDIR="$REPO/.venv"
-FINAL_ROOT="/Volumes/bad/FINAL_LIBRARY"
+FINAL_ROOT="/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY"
 OUTDB="$REPO/artifacts/db/library_canonical_fresh.db"
 REPORT="$REPO/artifacts/logs/library_canonical_fresh_report.txt"
 

@@ -29,16 +29,16 @@ Arguments:
 
 Examples:
   # Review all REVIEW decisions
-  $(basename "$0") /tmp/sad_recs.csv REVIEW
+  $(basename "$0") /tmp/recovery_recs.csv REVIEW
 
   # Review specific group from _DUPE_REVIEW
-  $(basename "$0") /tmp/sad_recs.csv group_0042
+  $(basename "$0") /tmp/recovery_recs.csv group_0042
 
   # Interactive selection
-  $(basename "$0") /tmp/sad_recs.csv | fzf
+  $(basename "$0") /tmp/recovery_recs.csv | fzf
 
   # Review specific file
-  $(basename "$0") /tmp/sad_recs.csv "/Volumes/sad/..."
+  $(basename "$0") /tmp/recovery_recs.csv "/Volumes/RECOVERY_TARGET/Root/..."
 EOF
   exit 1
 }
@@ -80,7 +80,7 @@ if echo "$PATHS" | head -1 | grep -q "_DUPE_REVIEW"; then
   
   if [[ -n "$GROUP_DIR" ]]; then
     echo "Opening group: $GROUP_DIR"
-    REVIEW_ROOT="${DUPE_REVIEW_ROOT:-/Volumes/sad/_DUPE_REVIEW}"
+    REVIEW_ROOT="${DUPE_REVIEW_ROOT:-/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_DUPE_REVIEW}"
     FULL_DIR="$REVIEW_ROOT/$(basename "$GROUP_DIR")"
     
     if [[ -d "$FULL_DIR" ]]; then

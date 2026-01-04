@@ -1,27 +1,25 @@
-# Example ScaReD Configuration
+# Example Configuration (Recovery-only)
 # Copy this to config.toml and customize as needed
 
 [paths]
-# Root directory for your FLAC library
-root = "/Volumes/dotad/MUSIC"
+# Root directory for your FLAC library (recovery)
+root = "/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY"
 
 # Directory for diagnostic dumps
-diagnostic_root = "/Volumes/dotad/.dedupe_diagnostics"
+diagnostic_root = "/Volumes/RECOVERY_TARGET/Root/.dedupe_diagnostics"
 
 # Playlist file for broken files
-broken_playlist = "/Volumes/dotad/MUSIC/broken_files_unrepaired.m3u"
+broken_playlist = "/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/broken_files_unrepaired.m3u"
 
 # Directory of quarantined files awaiting review
-quarantine = "/Volumes/dotad/Quarantine"
+quarantine = "/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_Quarantine"
 
 # Directory of confirmed duplicates kept for healthier copies
-garbage = "/Volumes/dotad/Garbage"
+garbage = "/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_Garbage"
 
 [libraries]
-dotad_final = "/Volumes/dotad/FINAL_LIBRARY"
-dotad_staging = "/Volumes/dotad/STAGING_TAGGED"
-sad = "/Volumes/sad/FLAC"
-bad = "/Volumes/bad/FLAC"
+recovery_final = "/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY"
+recovery_staging = "/Volumes/RECOVERY_TARGET/Root/STAGING_TAGGED"
 
 [scan]
 # Number of worker threads for scanning (more = faster, but uses more CPU)

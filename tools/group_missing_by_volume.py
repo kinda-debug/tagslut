@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import os, csv, collections, re
-mapfile='artifacts/reports/finalize_map_dotad.csv'
+mapfile='artifacts/reports/finalize_map_recovery.csv'
 out_dir='artifacts/reports/missing_by_volume'
 os.makedirs(out_dir, exist_ok=True)
 def top_vol(path):

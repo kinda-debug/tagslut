@@ -11,7 +11,7 @@ from dedupe.utils.cli_helper import common_options, configure_execution
 @click.command()
 @click.argument("library_path", type=click.Path(exists=True, file_okay=False))
 @click.option("--db", required=True, type=click.Path(dir_okay=False), help="Path to SQLite database")
-@click.option("--library", default=None, help="Logical library name (e.g. dotad/sad/recovery)")
+@click.option("--library", default=None, help="Logical library name (e.g. recovery)")
 @click.option(
     "--incremental/--no-incremental",
     default=False,

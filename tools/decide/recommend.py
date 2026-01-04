@@ -17,7 +17,7 @@ from dedupe.utils.config import get_config
 @click.command()
 @click.option("--db", required=True, type=click.Path(exists=True, dir_okay=False), help="Path to SQLite database")
 @click.option("--output", "-o", type=click.Path(writable=True), help="Output JSON file for the plan")
-@click.option("--priority", "-p", multiple=True, help="Priority keywords (e.g. -p dotad -p sad). Order matters.")
+@click.option("--priority", "-p", multiple=True, help="Priority keywords (e.g. -p recovery). Order matters.")
 @common_options
 def recommend(db, output, priority, verbose, config):
     """
@@ -30,7 +30,7 @@ def recommend(db, output, priority, verbose, config):
     # Load config priorities if not overridden
     if not priority:
         app_config = get_config()
-        priority = app_config.get("decisions.priority_order", ["dotad", "sad", "bad"])
+        priority = app_config.get("decisions.priority_order", ["recovery"]).copy()
 
     logger.info(f"Using priority order: {priority}")
 

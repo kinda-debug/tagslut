@@ -8,14 +8,14 @@ Purpose:
   - Flag duration mismatches despite high similarity (common with stitched files)
 
 Usage:
-  # Import dupeGuru similarity scores
-  tools/dupeguru_bridge.py --db /Volumes/sad/sad_hash.sqlite \\
-                           --dupeguru /Volumes/sad/sad_dupeguru.csv \\
-                           --apply
+    # Import dupeGuru similarity scores
+    tools/dupeguru_bridge.py --db artifacts/db/music.db \\
+                                                     --dupeguru /path/to/dupeguru.csv \\
+                                                     --apply
 
-  # Dry-run (show what would change)
-  tools/dupeguru_bridge.py --db /Volumes/sad/sad_hash.sqlite \\
-                           --dupeguru /Volumes/sad/sad_dupeguru.csv
+    # Dry-run (show what would change)
+    tools/dupeguru_bridge.py --db artifacts/db/music.db \\
+                                                     --dupeguru /path/to/dupeguru.csv
 
 Evidence integration rules:
   - Similarity < 95% + same checksum → flag as REVIEW (possible metadata confusion)

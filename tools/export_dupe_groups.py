@@ -3,17 +3,17 @@
 Export dupeGuru CSV results into organized A/B comparison directories.
 
 Creates clean review structure:
-  _dupe_review/
-    group_0001/
-      A_dotad.flac
-      B_sad.flac
-    group_0002/
-      A_dotad.flac
-      C_bad.flac
+    _dupe_review/
+        group_0001/
+            A_library.flac
+            B_library.flac
+        group_0002/
+            A_library.flac
+            C_library.flac
 
 Usage:
-  python3 tools/export_dupe_groups.py --csv /Volumes/sad/sad_dupeguru.csv \\
-                                      --out /Volumes/sad/_DUPE_REVIEW
+    python3 tools/export_dupe_groups.py --csv /path/to/dupeguru.csv \\
+                                                                            --out /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_DUPE_REVIEW
 """
 import argparse
 import csv
@@ -87,7 +87,7 @@ def main():
     parser.add_argument(
         "--labels",
         nargs="+",
-        default=["dotad=A_dotad", "sad=B_sad", "bad=C_bad"],
+        default=["recovery=A_library"],
         help="Volume label mappings (format: volume=prefix)"
     )
     

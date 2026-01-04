@@ -5,14 +5,14 @@ Scan FLAC files for integrity using 'flac -t' and update database.
 Hard rule: flac_ok=0 → auto-DROP (corrupt files are never kept)
 
 Usage:
-  # Scan all files in database
-  tools/scan_flac_integrity.py --db ~/Projects/_audit/sad_hash.sqlite
+    # Scan all files in database
+    tools/scan_flac_integrity.py --db artifacts/db/music.db
 
-  # Scan only files without integrity check yet
-  tools/scan_flac_integrity.py --db ~/Projects/_audit/sad_hash.sqlite --unchecked-only
+    # Scan only files without integrity check yet
+    tools/scan_flac_integrity.py --db artifacts/db/music.db --unchecked-only
 
-  # Parallel scan (faster)
-  tools/scan_flac_integrity.py --db ~/Projects/_audit/sad_hash.sqlite --parallel 8
+    # Parallel scan (faster)
+    tools/scan_flac_integrity.py --db artifacts/db/music.db --parallel 8
 
 Requires:
   - flac command-line tool (brew install flac)

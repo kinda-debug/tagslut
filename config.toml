@@ -4,31 +4,27 @@
 
 [paths]
 # Root directory for FLAC library
-root = "/Volumes/dotad/NEW_LIBRARY"
+root = "/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY"
 
 # Directory for diagnostic dumps
-diagnostic_root = "/Volumes/dotad/.dedupe_diagnostics"
+diagnostic_root = "/Volumes/RECOVERY_TARGET/Root/.dedupe_diagnostics"
 
 # Playlist file for broken files (kept under library root)
 # Use an absolute path or a path under `root` — here we keep it inside `root`.
-broken_playlist = "/Volumes/dotad/NEW_LIBRARY/MUSIC/broken_files_unrepaired.m3u"
+broken_playlist = "/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/broken_files_unrepaired.m3u"
 
 # Directory of quarantined files awaiting review (placed under `root`)
-quarantine = "/Volumes/dotad/NEW_LIBRARY/Quarantine"
+quarantine = "/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_Quarantine"
 
 # Directory of confirmed duplicates kept for healthier copies (placed under `root`)
-garbage = "/Volumes/dotad/NEW_LIBRARY/Garbage"
+garbage = "/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_Garbage"
 
 [libraries]
-dotad_final = "/Volumes/dotad/FINAL_LIBRARY"
-dotad_staging = "/Volumes/dotad/STAGING_TAGGED"
-dotad = "/Volumes/dotad/FLAC"
-sad = "/Volumes/sad/FLAC"
-bad = "/Volumes/bad/FLAC"
-recovery = "/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY"
+recovery_final = "/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY"
+recovery_staging = "/Volumes/RECOVERY_TARGET/Root/STAGING_TAGGED"
 
 [decisions]
-priority_order = ["dotad", "sad", "recovery"]
+priority_order = ["recovery"]
 
 [scan]
 # Number of worker threads for scanning

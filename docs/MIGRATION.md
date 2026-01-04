@@ -26,9 +26,9 @@ The new system uses a stricter SQLite schema.
 3.  Run shell scripts to parse CSVs and move files.
 
 **New Workflow:**
-1.  **Scan**: `python tools/integrity/scan.py ...` (Populates DB)
-2.  **Plan**: `python tools/decide/recommend.py -o plan.json` (Generates readable JSON)
-3.  **Apply**: `python tools/decide/apply.py plan.json` (Executes deletions safely)
+1.  **Scan**: `python3 tools/integrity/scan.py ...` (Populates DB)
+2.  **Plan**: `python3 tools/decide/recommend.py -o plan.json` (Generates readable JSON)
+3.  **Apply**: `python3 tools/decide/apply.py plan.json` (Executes deletions safely)
 
 Tip: store scan databases under `artifacts/db/` (the repository has guardrails that forbid `*.db` files in the repo root).
 

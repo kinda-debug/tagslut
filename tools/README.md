@@ -8,19 +8,19 @@ Operational utilities for duplicate review, integrity checking, and automated de
 Export dupeGuru CSV results into organized A/B comparison directories.
 
 ```bash
-tools/export_dupe_groups.py --csv /Volumes/sad/sad_dupeguru.csv \
-                            --out /Volumes/sad/_DUPE_REVIEW
+tools/export_dupe_groups.py --csv /path/to/dupeguru.csv \
+                            --out /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_DUPE_REVIEW
 ```
 
 **Output structure:**
 ```
 _DUPE_REVIEW/
   group_0001/
-    A_dotad_track.flac
-    B_sad_track.flac
+    A_library_track.flac
+    B_library_track.flac
   group_0002/
-    A_dotad_track.flac
-    C_bad_track.flac
+    A_library_track.flac
+    C_library_track.flac
 ```
 
 ### listen_dupes.sh
@@ -38,7 +38,7 @@ tools/listen_dupes.sh candidates.txt
 ```
 
 **Environment variables:**
-- `DUPE_REVIEW_ROOT` - Review directory (default: `/Volumes/sad/_DUPE_REVIEW`)
+- `DUPE_REVIEW_ROOT` - Review directory (default: `/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_DUPE_REVIEW`)
 - `PREVIEW_LENGTH` - Preview duration in seconds (default: 15)
 - `PREVIEW_VOLUME` - Playback volume 0-100 (default: 50)
 
@@ -67,12 +67,12 @@ Deterministic KEEP/DROP/REVIEW decision engine for duplicate audio files.
 
 ```bash
 # Dry-run (report only)
-tools/recommend_keepers.py --db ~/Projects/_audit/sad_hash.sqlite \
+tools/recommend_keepers.py --db artifacts/db/music.db \
                            --group-field dupeguru_group_id \
                            --out /tmp/recommendations.csv
 
 # Apply decisions to database
-tools/recommend_keepers.py --db ~/Projects/_audit/sad_hash.sqlite \
+tools/recommend_keepers.py --db artifacts/db/music.db \
                            --group-field dupeguru_group_id \
                            --out /tmp/recommendations.csv \
                            --apply
@@ -96,7 +96,7 @@ tools/review_needed.sh /tmp/recommendations.csv REVIEW
 tools/review_needed.sh /tmp/recommendations.csv group_0042
 
 # Review specific file
-tools/review_needed.sh /tmp/recommendations.csv "/Volumes/sad/..."
+tools/review_needed.sh /tmp/recommendations.csv "/Volumes/RECOVERY_TARGET/Root/..."
 ```
 
 ### dupeguru_bridge.py
@@ -109,8 +109,8 @@ Integrate dupeGuru similarity evidence into decision confidence.
 
 ```bash
 # Import dupeGuru similarity scores
-tools/dupeguru_bridge.py --db ~/Projects/_audit/sad_hash.sqlite \
-                         --dupeguru /Volumes/sad/sad_dupeguru.csv \
+tools/dupeguru_bridge.py --db artifacts/db/music.db \
+                         --dupeguru /path/to/dupeguru.csv \
                          --apply
 ```
 
@@ -123,10 +123,10 @@ Parallel FLAC integrity testing using `flac -t`. Writes `flac_ok` column to data
 
 ```bash
 # Scan all files in database (parallel)
-tools/scan_flac_integrity.py --db ~/Projects/_audit/sad_hash.sqlite --parallel 8
+tools/scan_flac_integrity.py --db artifacts/db/music.db --parallel 8
 
 # Scan only unchecked files
-tools/scan_flac_integrity.py --db ~/Projects/_audit/sad_hash.sqlite --unchecked-only
+tools/scan_flac_integrity.py --db artifacts/db/music.db --unchecked-only
 ```
 
 ### find_corrupt_flacs.sh
@@ -134,13 +134,13 @@ Find corrupt FLAC files in any directory tree.
 
 ```bash
 # Find and list corrupt files
-tools/find_corrupt_flacs.sh /Volumes/sad/_DUPE_REVIEW
+tools/find_corrupt_flacs.sh /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_DUPE_REVIEW
 
 # Save to file
-tools/find_corrupt_flacs.sh /Volumes/sad/_DUPE_REVIEW > corrupt_list.txt
+tools/find_corrupt_flacs.sh /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_DUPE_REVIEW > corrupt_list.txt
 
 # Find and quarantine
-tools/find_corrupt_flacs.sh /Volumes/sad/_DUPE_REVIEW --move-to /Volumes/sad/_CORRUPT
+tools/find_corrupt_flacs.sh /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_DUPE_REVIEW --move-to /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_CORRUPT
 ```
 
 ## Database Utilities
@@ -160,34 +160,34 @@ Move files to HRM directory structure (legacy).
 
 ```bash
 # 1. Export dupeGuru groups to organized folders
-tools/export_dupe_groups.py --csv /Volumes/sad/sad_dupeguru.csv \
-                            --out /Volumes/sad/_DUPE_REVIEW
+tools/export_dupe_groups.py --csv /path/to/dupeguru.csv \
+                            --out /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_DUPE_REVIEW
 
 # 2. Scan FLAC integrity (parallel)
-tools/scan_flac_integrity.py --db ~/Projects/_audit/sad_hash.sqlite --parallel 8
+tools/scan_flac_integrity.py --db artifacts/db/music.db --parallel 8
 
 # 3. Generate keeper recommendations (dry-run first)
-tools/recommend_keepers.py --db ~/Projects/_audit/sad_hash.sqlite \
+tools/recommend_keepers.py --db artifacts/db/music.db \
                            --group-field dupeguru_group_id \
-                           --out /tmp/sad_recs.csv
+                           --out /tmp/recovery_recs.csv
 
 # 4. Review flagged cases
-tools/review_needed.sh /tmp/sad_recs.csv REVIEW
+tools/review_needed.sh /tmp/recovery_recs.csv REVIEW
 
 # 5. Integrate dupeGuru similarity evidence
-tools/dupeguru_bridge.py --db ~/Projects/_audit/sad_hash.sqlite \
-                         --dupeguru /Volumes/sad/sad_dupeguru.csv \
+tools/dupeguru_bridge.py --db artifacts/db/music.db \
+                         --dupeguru /path/to/dupeguru.csv \
                          --apply
 
 # 6. Regenerate recommendations with evidence
-tools/recommend_keepers.py --db ~/Projects/_audit/sad_hash.sqlite \
+tools/recommend_keepers.py --db artifacts/db/music.db \
                            --group-field dupeguru_group_id \
-                           --out /tmp/sad_recs_final.csv
+                           --out /tmp/recovery_recs_final.csv
 
 # 7. Apply decisions to database
-tools/recommend_keepers.py --db ~/Projects/_audit/sad_hash.sqlite \
+tools/recommend_keepers.py --db artifacts/db/music.db \
                            --group-field dupeguru_group_id \
-                           --out /tmp/sad_recs_final.csv \
+                           --out /tmp/recovery_recs_final.csv \
                            --apply
 ```
 

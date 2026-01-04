@@ -7,7 +7,7 @@ external volumes are unavailable.
 ## 1. Scan the reference library
 
 ```bash
-dedupe scan-library --root /Volumes/dotad/MUSIC --out artifacts/db/library.db --resume
+dedupe scan-library --root /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY --out artifacts/db/library.db --resume
 ```
 
 Chromaprint fingerprints are optional.  Use them only when you must
@@ -23,15 +23,10 @@ masters.
 Optional fingerprint-enabled scan:
 
 ```bash
-dedupe scan-library --root /Volumes/dotad/MUSIC --out artifacts/db/library.db --resume --fingerprints
+dedupe scan-library --root /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY --out artifacts/db/library.db --resume --fingerprints
 ```
 
-Run the command against additional volumes to build a consolidated database:
-
-```bash
-dedupe scan-library --root /Volumes/Vault --out artifacts/db/library.db --resume
-dedupe scan-library --root /Volumes/sad --out artifacts/db/library.db --resume
-```
+Run the command against additional volumes only if needed; for recovery-only workflows, scanning the `FINAL_LIBRARY` is sufficient.
 
 After each run you can verify new entries via SQLite:
 
@@ -87,16 +82,16 @@ should be prioritised for restoration.
 ### Export dupeGuru results to organized folders
 
 ```bash
-tools/export_dupe_groups.py --csv /Volumes/sad/sad_dupeguru.csv \
-                            --out /Volumes/sad/_DUPE_REVIEW
+tools/export_dupe_groups.py --csv /path/to/dupeguru.csv \
+                            --out /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_DUPE_REVIEW
 ```
 
 Creates clean A/B comparison directories:
 ```
 _DUPE_REVIEW/
   group_0001/
-    A_dotad_track.flac
-    B_sad_track.flac
+    A_library_track.flac
+    B_library_track.flac
   group_0002/
     ...
 ```
@@ -115,35 +110,35 @@ tools/open_dupe_pair.sh group_0001
 
 ```bash
 # Parallel integrity scan (writes flac_ok column to DB)
-tools/scan_flac_integrity.py --db ~/Projects/_audit/sad_hash.sqlite --parallel 8
+tools/scan_flac_integrity.py --db artifacts/db/music.db --parallel 8
 
 # Find corrupt files in any directory
-tools/find_corrupt_flacs.sh /Volumes/sad/_DUPE_REVIEW
+tools/find_corrupt_flacs.sh /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_DUPE_REVIEW
 
 # Find and quarantine corrupt files
-tools/find_corrupt_flacs.sh /Volumes/sad/_DUPE_REVIEW --move-to /Volumes/sad/_CORRUPT
+tools/find_corrupt_flacs.sh /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_DUPE_REVIEW --move-to /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_CORRUPT
 ```
 
 ### Automated keeper/loser recommendations
 
 ```bash
 # Generate KEEP/DROP/REVIEW decisions (dry-run)
-tools/recommend_keepers.py --db ~/Projects/_audit/sad_hash.sqlite \
+tools/recommend_keepers.py --db artifacts/db/music.db \
                            --group-field dupeguru_group_id \
-                           --out /tmp/sad_recommendations.csv
+                           --out /tmp/recovery_recommendations.csv
 
 # Review files flagged REVIEW
-tools/review_needed.sh /tmp/sad_recommendations.csv REVIEW
+tools/review_needed.sh /tmp/recovery_recommendations.csv REVIEW
 
 # Integrate dupeGuru similarity evidence
-tools/dupeguru_bridge.py --db ~/Projects/_audit/sad_hash.sqlite \
-                         --dupeguru /Volumes/sad/sad_dupeguru.csv \
+tools/dupeguru_bridge.py --db artifacts/db/music.db \
+                         --dupeguru /path/to/dupeguru.csv \
                          --apply
 
 # Apply final decisions to database
-tools/recommend_keepers.py --db ~/Projects/_audit/sad_hash.sqlite \
+tools/recommend_keepers.py --db artifacts/db/music.db \
                            --group-field dupeguru_group_id \
-                           --out /tmp/sad_recommendations.csv \
+                           --out /tmp/recovery_recommendations.csv \
                            --apply
 ```
 

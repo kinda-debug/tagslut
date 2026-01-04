@@ -19,6 +19,10 @@ logger = logging.getLogger(__name__)
 
 LIBRARY_TABLE = "library_files"
 
+# Controls whether checksum hashing runs during record preparation.
+# Set by ScanConfig in scan_library; defaults to True.
+COMPUTE_CHECKSUM: bool = True
+
 
 @dataclass(slots=True)
 class ScanRecord:
@@ -49,6 +53,7 @@ class ScanConfig:
     resume: bool = False
     resume_safe: bool = False
     show_progress: bool = False
+    compute_checksum: bool = True
 
 
 def initialise_database(connection: sqlite3.Connection) -> None:
@@ -96,7 +101,7 @@ def prepare_record(path: Path, include_fingerprints: bool) -> ScanRecord:
         path=utils.normalise_path(str(path)),
         size_bytes=stat.st_size,
         mtime=stat.st_mtime,
-        checksum=utils.compute_md5(path),
+        checksum=utils.compute_md5(path) if COMPUTE_CHECKSUM else None,
         duration=info.stream.duration,
         sample_rate=info.stream.sample_rate,
         bit_rate=info.stream.bit_rate,
@@ -178,30 +183,37 @@ def scan_library(config: ScanConfig) -> int:
             key=lambda p: utils.normalise_path(str(p)),
         )
 
-        for batch in utils.chunks(files, max(1, int(config.batch_size))):
-            if config.resume_safe and not config.resume:
+        # Control checksum computation globally during scanning
+        global COMPUTE_CHECKSUM
+        prev_compute = COMPUTE_CHECKSUM
+        COMPUTE_CHECKSUM = bool(config.compute_checksum)
+        try:
+            for batch in utils.chunks(files, max(1, int(config.batch_size))):
+                if config.resume_safe and not config.resume:
+                    for path in batch:
+                        npath = utils.normalise_path(str(path))
+                        if npath in existing:
+                            return 0
+
+                records: list[ScanRecord] = []
                 for path in batch:
                     npath = utils.normalise_path(str(path))
-                    if npath in existing:
-                        return 0
+                    if config.resume:
+                        db_size, db_mtime = existing.get(npath, (None, None))
+                        try:
+                            stat = path.stat()
+                        except Exception:
+                            stat = None
+                        if stat is not None and db_size == stat.st_size and db_mtime == stat.st_mtime:
+                            continue
 
-            records: list[ScanRecord] = []
-            for path in batch:
-                npath = utils.normalise_path(str(path))
-                if config.resume:
-                    db_size, db_mtime = existing.get(npath, (None, None))
-                    try:
-                        stat = path.stat()
-                    except Exception:
-                        stat = None
-                    if stat is not None and db_size == stat.st_size and db_mtime == stat.st_mtime:
-                        continue
+                    record = prepare_record(path, config.include_fingerprints)
+                    records.append(record)
 
-                record = prepare_record(path, config.include_fingerprints)
-                records.append(record)
-
-            _upsert_batch(connection, records)
-            processed += len(records)
+                _upsert_batch(connection, records)
+                processed += len(records)
+        finally:
+            COMPUTE_CHECKSUM = prev_compute
 
     return processed
 
@@ -260,4 +272,46 @@ def rescan_missing(*, root: Path, database: Path, include_fingerprints: bool) ->
         "unreadable": [],
         "corrupt": [],
     }
+
+
+def hash_missing(*, database: Path, batch_size: int = 500) -> int:
+    """Compute checksums for library rows missing them and update the database.
+
+    Returns the number of rows updated.
+    """
+
+    database = Path(utils.normalise_path(str(database)))
+    utils.ensure_parent_directory(database)
+
+    ctx = utils.DatabaseContext(database)
+    updated = 0
+
+    with ctx.connect() as connection:
+        initialise_database(connection)
+        cursor = connection.execute(
+            f"SELECT path FROM {LIBRARY_TABLE} WHERE checksum IS NULL"
+        )
+        paths = [Path(row[0]) for row in cursor.fetchall()]
+
+        for batch in utils.chunks(paths, max(1, int(batch_size))):
+            payload: list[tuple[str, str]] = []
+            for path in batch:
+                try:
+                    if not path.exists():
+                        continue
+                    checksum = utils.compute_md5(path)
+                except Exception:
+                    checksum = None
+                if checksum:
+                    payload.append((checksum, utils.normalise_path(str(path))))
+
+            if payload:
+                with connection:
+                    connection.executemany(
+                        f"UPDATE {LIBRARY_TABLE} SET checksum=? WHERE path=?",
+                        payload,
+                    )
+                updated += len(payload)
+
+    return updated
 

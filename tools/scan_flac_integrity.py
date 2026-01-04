@@ -19,10 +19,10 @@ Requires:
 """
 import argparse
 import sqlite3
-import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from dedupe.core.integrity import check_flac_integrity
 
 
 def ensure_integrity_column(conn: sqlite3.Connection):
@@ -38,22 +38,11 @@ def ensure_integrity_column(conn: sqlite3.Connection):
 
 
 def test_flac_integrity(path: str) -> tuple[str, bool]:
-    """
-    Test FLAC file integrity using 'flac -t'.
-    
-    Returns:
-        (path, is_ok) tuple
-    """
+    """Wrapper calling centralized integrity check."""
     try:
-        result = subprocess.run(
-            ["flac", "-t", "-s", path],  # -s = silent
-            capture_output=True,
-            timeout=30
-        )
-        return (path, result.returncode == 0)
-    except subprocess.TimeoutExpired:
-        return (path, False)
-    except FileNotFoundError:
+        ok, _msg = check_flac_integrity(Path(path))
+        return (path, ok)
+    except RuntimeError:
         print("ERROR: 'flac' command not found. Install with: brew install flac")
         sys.exit(1)
     except Exception as e:

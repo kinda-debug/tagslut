@@ -14,7 +14,7 @@ Thank you for considering a contribution! To keep changes predictable, please:
 
 ## CLI usage
 - From the repository root, invoke the CLI with `python3 -m dedupe.cli --help` for available commands.
-- Example scan: `python3 -m dedupe.cli scan-library --root /path/to/library --out artifacts/db/library.db --resume-safe`.
+- Example scan: `python3 -m dedupe.cli scan-library --root /path/to/library --out artifacts/db/library.db --resume-safe --verbose`.
 
 ## Style conventions
 - Follow PEP 8 and prefer explicit type hints for new functions and methods.

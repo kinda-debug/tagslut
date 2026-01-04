@@ -145,6 +145,23 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Display a progress bar during scanning.",
     )
+    scan_parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=500,
+        help=(
+            "Number of files per upsert batch (default: 500). Larger batches "
+            "reduce SQLite commit overhead on fast disks."
+        ),
+    )
+    scan_parser.add_argument(
+        "--metadata-only",
+        action="store_true",
+        help=(
+            "Skip checksum hashing during scan to record metadata quickly; "
+            "run 'hash-missing' later to compute checksums."
+        ),
+    )
 
     match_parser = subparsers.add_parser(
         "match",
@@ -316,6 +333,24 @@ def build_parser() -> argparse.ArgumentParser:
     )
     upgrade_parser.set_defaults(func=run_upgrade_db)
 
+    # Compute checksums for rows missing them
+    hash_parser = subparsers.add_parser(
+        "hash-missing",
+        help="Compute checksums for library rows missing them.",
+    )
+    hash_parser.add_argument(
+        "--db",
+        type=_existing_file,
+        required=True,
+        help="Existing library SQLite database path.",
+    )
+    hash_parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=500,
+        help="Rows per update batch (default: 500).",
+    )
+
     return parser
 
 
@@ -324,9 +359,11 @@ def _command_scan(args: argparse.Namespace) -> int:
         root=args.root,
         database=args.out,
         include_fingerprints=args.fingerprints,
+        batch_size=getattr(args, "batch_size", 500),
         resume=getattr(args, "resume", False),
         resume_safe=getattr(args, "resume_safe", False),
         show_progress=getattr(args, "progress", False),
+        compute_checksum=not getattr(args, "metadata_only", False),
     )
     total = scanner.scan_library(config)
     logger.info("Indexed %s files", total)
@@ -340,6 +377,12 @@ def _command_match(args: argparse.Namespace) -> int:
 
 def _command_manifest(args: argparse.Namespace) -> int:
     manifest.generate_manifest(args.matches, args.out)
+    return 0
+
+
+def _command_hash_missing(args: argparse.Namespace) -> int:
+    updated = scanner.hash_missing(database=args.db, batch_size=getattr(args, "batch_size", 500))
+    logger.info("Computed checksums for %s files", updated)
     return 0
 
 
@@ -451,6 +494,7 @@ COMMAND_HANDLERS = {
     "hrm-move": _command_hrm_move,
     "relocate-hrm": _command_relocate_hrm,
     "upgrade-db": run_upgrade_db,
+    "hash-missing": _command_hash_missing,
 }
 
 

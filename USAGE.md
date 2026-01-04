@@ -7,7 +7,7 @@ external volumes are unavailable.
 ## 1. Scan the reference library
 
 ```bash
-dedupe scan-library --root /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY --out artifacts/db/library.db --resume
+python3 -m dedupe.cli scan-library --root /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY --out artifacts/db/library.db --resume --verbose --batch-size 2000
 ```
 
 Chromaprint fingerprints are optional.  Use them only when you must
@@ -23,7 +23,7 @@ masters.
 Optional fingerprint-enabled scan:
 
 ```bash
-dedupe scan-library --root /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY --out artifacts/db/library.db --resume --fingerprints
+python3 -m dedupe.cli scan-library --root /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY --out artifacts/db/library.db --resume --fingerprints --verbose --batch-size 2000
 ```
 
 Run the command against additional volumes only if needed; for recovery-only workflows, scanning the `FINAL_LIBRARY` is sufficient.
@@ -47,10 +47,11 @@ command is idempotent, so it can be re-run as more exports arrive.
 ## 3. Match recovered candidates
 
 ```bash
-dedupe match \
+python3 -m dedupe.cli match \
   --library artifacts/db/library.db \
   --recovered artifacts/db/recovered.db \
-  --out artifacts/reports/matches.csv
+  --out artifacts/reports/matches.csv \
+  --verbose
 ```
 
 Matching proceeds through checksum → duration → bitrate → filename similarity
@@ -68,9 +69,10 @@ The resulting CSV includes:
 ## 4. Generate a recovery manifest
 
 ```bash
-dedupe generate-manifest \
+python3 -m dedupe.cli generate-manifest \
   --matches artifacts/reports/matches.csv \
-  --out artifacts/reports/recovery_manifest.csv
+  --out artifacts/reports/recovery_manifest.csv \
+  --verbose
 ```
 
 The manifest attaches priorities and operator notes to every match, highlighting

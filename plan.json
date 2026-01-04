@@ -1,8 +1,6 @@
 {
   "groups_count": 0,
   "priority_order": [
-    "dotad",
-    "sad",
     "recovery"
   ],
   "plan": []

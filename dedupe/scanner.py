@@ -13,9 +13,24 @@ from dedupe.utils.config import get_config
 
 logger = logging.getLogger("dedupe")
 
+
+def _scan_one_file(args: tuple[Path, bool, bool, Optional[str]]) -> Optional[AudioFile]:
+    path, scan_integrity, scan_hash, library_name = args
+    try:
+        return extract_metadata(
+            path,
+            scan_integrity=scan_integrity,
+            scan_hash=scan_hash,
+            library=library_name,
+        )
+    except Exception as e:
+        logger.error(f"Failed to process {path}: {e}")
+        return None
+
 def scan_library(
     library_path: Path, 
     db_path: Path,
+    library: Optional[str] = None,
     scan_integrity: bool = False,
     scan_hash: bool = False,
     recheck: bool = False
@@ -32,6 +47,30 @@ def scan_library(
     """
     config = get_config()
     workers = config.get("integrity.parallel_workers", None)
+    configured_libraries = config.get("libraries", {}) or {}
+
+    def infer_library_name(root: Path) -> Optional[str]:
+        try:
+            root_resolved = root.resolve()
+        except Exception:
+            root_resolved = root
+
+        for name, configured_root in configured_libraries.items():
+            try:
+                configured_root_path = Path(configured_root).resolve()
+            except Exception:
+                configured_root_path = Path(configured_root)
+
+            try:
+                if root_resolved == configured_root_path or configured_root_path in root_resolved.parents:
+                    return str(name)
+            except Exception:
+                continue
+        return None
+
+    library_name = library or infer_library_name(library_path)
+    if library_name:
+        logger.info(f"Library tag: {library_name}")
 
     logger.info(f"Scanning library: {library_path}")
     
@@ -47,21 +86,11 @@ def scan_library(
     if not flac_files:
         return
 
-    # 3. Define the worker function (must be pickleable)
-    def process_one(path: Path) -> Optional[AudioFile]:
-        try:
-            return extract_metadata(
-                path, 
-                scan_integrity=scan_integrity, 
-                scan_hash=scan_hash
-            )
-        except Exception as e:
-            logger.error(f"Failed to process {path}: {e}")
-            return None
+    scan_args = [(p, scan_integrity, scan_hash, library_name) for p in flac_files]
 
     # 4. Run Parallel Extraction
     start_time = time.time()
-    results = process_map(process_one, flac_files, max_workers=workers)
+    results = process_map(_scan_one_file, scan_args, max_workers=workers)
     duration = time.time() - start_time
     
     logger.info(f"Metadata extraction complete in {duration:.2f}s")

@@ -71,3 +71,11 @@ dedupe/ARCHIVE/archive/**
 /1
 /2
 /5
+tests/data/corrupt.flac
+tests/data/healthy.flac
+tests/__pycache__/conftest.cpython-312-pytest-9.0.1.pyc
+tools/__pycache__/db_upgrade.cpython-312.pyc
+tools/__pycache__/manual_ingest.cpython-312.pyc
+dedupe/__pycache__/scanner.cpython-312.pyc
+dedupe/__pycache__/rstudio_parser.cpython-312.pyc
+dedupe/__pycache__/__init__.cpython-312.pyc

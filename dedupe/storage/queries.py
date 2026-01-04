@@ -15,10 +15,11 @@ def upsert_file(conn: sqlite3.Connection, file: AudioFile) -> None:
     """
     query = """
     INSERT INTO files (
-        path, checksum, duration, bit_depth, sample_rate, bitrate, 
+        path, library, checksum, duration, bit_depth, sample_rate, bitrate, 
         metadata_json, flac_ok, acoustid
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(path) DO UPDATE SET
+        library=excluded.library,
         checksum=excluded.checksum,
         duration=excluded.duration,
         bit_depth=excluded.bit_depth,
@@ -35,6 +36,7 @@ def upsert_file(conn: sqlite3.Connection, file: AudioFile) -> None:
     try:
         conn.execute(query, (
             str(file.path),
+            file.library,
             file.checksum,
             file.duration,
             file.bit_depth,
@@ -80,8 +82,16 @@ def _row_to_audiofile(row: sqlite3.Row) -> AudioFile:
             logger.warning(f"Corrupt metadata JSON for {row['path']}")
             metadata = {}
 
+    library = None
+    try:
+        if "library" in row.keys():
+            library = row["library"]
+    except Exception:
+        library = None
+
     return AudioFile(
         path=Path(row["path"]),
+        library=library,
         checksum=row["checksum"],
         duration=row["duration"],
         bit_depth=row["bit_depth"],

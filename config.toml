@@ -22,8 +22,13 @@ garbage = "/Volumes/dotad/NEW_LIBRARY/Garbage"
 [libraries]
 dotad_final = "/Volumes/dotad/FINAL_LIBRARY"
 dotad_staging = "/Volumes/dotad/STAGING_TAGGED"
+dotad = "/Volumes/dotad/FLAC"
 sad = "/Volumes/sad/FLAC"
 bad = "/Volumes/bad/FLAC"
+recovery = "/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY"
+
+[decisions]
+priority_order = ["dotad", "sad", "recovery"]
 
 [scan]
 # Number of worker threads for scanning

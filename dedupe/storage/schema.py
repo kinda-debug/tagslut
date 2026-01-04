@@ -31,6 +31,7 @@ def init_db(conn: sqlite3.Connection) -> None:
     conn.execute("""
     CREATE TABLE IF NOT EXISTS files (
         path TEXT PRIMARY KEY,
+        library TEXT,
         checksum TEXT,
         duration REAL,
         bit_depth INTEGER,
@@ -45,6 +46,7 @@ def init_db(conn: sqlite3.Connection) -> None:
     # 2. Additive Migrations: Ensure all required columns exist
     existing_columns = _get_existing_columns(conn, "files")
     required_columns = {
+        "library": "TEXT",
         "checksum": "TEXT",
         "duration": "REAL",
         "bit_depth": "INTEGER",

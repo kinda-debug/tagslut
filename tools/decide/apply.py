@@ -56,8 +56,7 @@ def apply(plan_file, dry_run, verbose, config):
                 logger.info(f"Skipping REVIEW item: {path}")
                 stats["reviewed"] += 1
 
-    click.echo("
---- Execution Summary ---")
+    click.echo("\n--- Execution Summary ---")
     click.echo(f"Kept: {stats['kept']}")
     click.echo(f"Dropped: {stats['dropped']}")
     click.echo(f"Left for Review: {stats['reviewed']}")

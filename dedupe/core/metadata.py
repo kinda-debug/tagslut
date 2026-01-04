@@ -11,7 +11,12 @@ from dedupe.core.hashing import calculate_file_hash
 
 logger = logging.getLogger("dedupe")
 
-def extract_metadata(file_path: Path, scan_integrity: bool = False, scan_hash: bool = False) -> AudioFile:
+def extract_metadata(
+    file_path: Path,
+    scan_integrity: bool = False,
+    scan_hash: bool = False,
+    library: str | None = None,
+) -> AudioFile:
     """
     Extracts technical and tag metadata from a FLAC file and returns a populated AudioFile.
 
@@ -75,6 +80,7 @@ def extract_metadata(file_path: Path, scan_integrity: bool = False, scan_hash: b
 
     return AudioFile(
         path=path_obj,
+        library=library,
         checksum=checksum,
         duration=duration,
         bit_depth=bit_depth,

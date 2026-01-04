@@ -15,6 +15,7 @@ class AudioFile:
     bitrate: int
     metadata: Dict[str, Any]
     flac_ok: bool
+    library: Optional[str] = None
     acoustid: Optional[str] = None
 
     def __post_init__(self):

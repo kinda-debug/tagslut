@@ -57,10 +57,14 @@ def recommend(db, output, priority, verbose, config):
         for d in decisions:
             group_entry["decisions"].append({
                 "path": str(d.file.path),
+                "library": d.file.library,
+                "hash": d.file.checksum,
                 "action": d.action,
                 "reason": d.reason,
                 "confidence": d.confidence,
                 "file_details": {
+                    "library": d.file.library,
+                    "checksum": d.file.checksum,
                     "flac_ok": d.file.flac_ok,
                     "bitrate": d.file.bitrate,
                     "sample_rate": d.file.sample_rate

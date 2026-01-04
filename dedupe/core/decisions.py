@@ -15,6 +15,15 @@ def get_library_priority(path: str, priorities: List[str]) -> int:
             return i
     return 999  # No match (lowest priority)
 
+def get_file_priority(file: AudioFile, priorities: List[str]) -> int:
+    """Returns a sortable priority index for an AudioFile."""
+    if getattr(file, "library", None):
+        try:
+            return priorities.index(str(file.library))
+        except ValueError:
+            return 999
+    return get_library_priority(str(file.path), priorities)
+
 def assess_duplicate_group(group: DuplicateGroup, priority_order: List[str] = None) -> List[Decision]:
     """
     Analyzes a group of duplicates and returns a decision for each file.
@@ -28,7 +37,7 @@ def assess_duplicate_group(group: DuplicateGroup, priority_order: List[str] = No
         # 1. Integrity 
         score_integrity = 1 if f.flac_ok else 0
         # 2. Priority 
-        score_priority = -get_library_priority(f.path, priorities) 
+        score_priority = -get_file_priority(f, priorities)
         # 3. Technical Quality
         score_tech = (f.sample_rate, f.bit_depth, f.bitrate)
         # 4. Path preference (Shorter path usually means less nested/cluttered)

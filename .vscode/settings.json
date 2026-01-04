@@ -1,4 +1,13 @@
 {
     "python.analysis.autoImportCompletions": true,
-    "chatgpt.openOnStartup": true
+    "chatgpt.openOnStartup": true,
+    "sqltools.useNodeRuntime": true,
+    "sqltools.connections": [
+        {
+            "previewLimit": 50,
+            "driver": "SQLite",
+            "name": "music",
+            "database": "'/Volumes/RECOVERY_TARGET/Root/Recognized4_APFS Container tree.txt.zip'"
+        }
+    ]
 }

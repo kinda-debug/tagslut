@@ -1,41 +1,134 @@
-# File-by-file analysis
+# Repository Audit Report
 
-## Root
-- `README.md`, `USAGE.md`, `CONTRIBUTING.md`, `CHANGELOG.md`, `LICENSE` — Project documentation and metadata.
-- `pyproject.toml`, `requirements.txt`, `poetry.lock`, `MANIFEST.in` — Packaging and dependency definitions.
-- `config.toml`, `config.example.toml` — Runtime configuration examples for COMMUNE zones.
-- `Makefile` — Convenience commands for linting/testing.
-- `scripts/python/dd_flac_dedupe_db.py` — **Deprecated** standalone dedupe script; superseded by the packaged workflows.
-- `patches/` — Patch lists used during migrations; review for removal once obsolete.
-- `artifacts/` — Output area with `db/`, `logs/`, `manifests/`, and `tmp/` subdirectories for runtime data.
-- `scripts/` — Maintenance helpers plus `scripts/shell/` and `scripts/python/` for legacy root scripts.
-- `scripts/archive/` — Archived one-off scripts retained for historical reference.
-- `tools/` — Operational utilities for duplicate review, integrity checking, and decision automation:
-  - **Duplicate review workflow**: `export_dupe_groups.py`, `open_dupe_pair.sh`, `listen_dupes.sh`
-  - **Decision engine**: `recommend_keepers.py`, `review_needed.sh`, `dupeguru_bridge.py`
-  - **Integrity checking**: `scan_flac_integrity.py`, `find_corrupt_flacs.sh`
-  - **Database utilities**: `db_upgrade.py`, `manual_ingest.py`, `move_to_hrm.py`
+**Status**: Clean  
+**Last Updated**: 2026-01-05  
+**Refactor**: 2025 Architecture Stabilization
 
-## Package: `dedupe`
-- `__init__.py` — Aggregates core modules for package-wide import convenience.
-- `cli.py` — CLI wiring for scanning, matching, manifest generation, health scoring, deduplication, HRM relocation, and DB upgrades.
-- `db/schema.py` — Central definition of `library_files` schema and initializer; exported via `dedupe.db`.
-- `scanner.py` — Scans libraries into SQLite with optional fingerprinting, resume logic, and batch upserts.
-- `matcher.py` — Matches scanned library entries to recovered metadata and writes CSV reports.
-- `manifest.py` — Builds recovery manifest CSVs from match outputs with prioritisation and notes helpers.
-- `health_score.py` — Mutagen-backed FLAC health scoring that reports metrics and clamps scores.
-- `healthscore.py` — Lightweight, read-only scoring helper used by the CLI.
-- `healthcheck.py` — Runs `flac --test`/mutagen checks plus tag completeness heuristics; returns structured results.
-- `fingerprints.py` — Chromaprint integration (availability checks, fingerprint generation, similarity scoring).
-- `metadata.py` — FFprobe/mutagen probing utilities returning structured metadata objects.
-- `utils/` — Shared helpers for path normalisation, hashing, chunking, SQLite access, JSON handling, and COMMUNE zone resolution.
-- `deduper.py` — Marks canonical files within `library_files` and optionally writes duplicate reports.
-- `hrm_relocation.py` — Relocates healthy, canonical files into the HRM hierarchy with checksum validation and manifest output.
-- `global_recovery.py` — Global recovery workflow for multi-root scans, fragment resolution, and report generation.
-- `rstudio_parser.py` — Parses R-Studio exports into the `recovered_files` schema for matching.
-- `healthscore.py`, `health_score.py`, `healthcheck.py` — Parallel health scoring utilities with different scopes (read-only scoring vs. mutagen/`flac` validation).
+---
 
-## Tests
-- `tests/` — Unit tests covering scanner, matcher, manifest, CLI, health scoring, HRM relocation, DB upgrades, metadata utilities, and repository structure. Fixtures reside under `tests/data/`.
+## Summary
 
-This analysis reflects the current organisation after cleanup and highlights deprecated assets for potential removal.
+This repository implements a curator-first FLAC deduplication system with:
+- **Non-destructive** decision-making (no auto-deletes)
+- **Multi-source** integrity scanning (resumable, library/zone-aware)
+- **Centralized** SQLite schema via `dedupe/storage/schema.py`
+- **Layered** architecture (core → storage → utils → tools)
+
+All generated artifacts have been cleaned. Legacy scripts archived. Schema initialization centralized. Zero behavior regressions.
+
+See **[docs/SYSTEM_SPEC.md](docs/SYSTEM_SPEC.md)** for the complete system specification.
+
+---
+
+## Repository Structure
+
+```
+dedupe/           # Core package (hashing, integrity, decisions, metadata)
+├── core/         # Business logic (no I/O)
+├── storage/      # SQLite schema, queries, models
+├── utils/        # Shared utilities (parallel, config, logging)
+├── db/           # Legacy schema re-exports (for backward compatibility)
+└── external/     # Picard/Yate integration
+
+tools/            # Operational CLIs
+├── integrity/    # Integrity scanning (multi-source, resumable)
+├── decide/       # Decision engine (recommend, apply)
+├── ingest/       # Step-0 ingestion pipeline
+└── review/       # Manual review helpers
+
+scripts/          # Maintenance helpers
+├── python/       # Python utilities
+├── shell/        # Shell utilities
+└── archive/      # Legacy scripts (historical reference)
+
+docs/             # Active documentation
+├── examples/     # Example artifacts
+├── plans/        # Recovery/cleanup plans
+└── archive/      # Historical snapshots
+
+tests/            # Unit/integration tests
+├── core/         # Core logic tests
+├── storage/      # Storage layer tests
+└── data/         # Test fixtures
+
+artifacts/        # Runtime output (gitignored except placeholders)
+├── db/           # SQLite databases
+├── logs/         # Scan/integrity logs
+└── tmp/          # Temporary files
+```
+
+---
+
+## Key Files
+
+### Configuration
+- `config.toml` — Runtime configuration (zones, library roots, decision rules)
+- `config.example.toml` — Example config template
+- `pyproject.toml` — Packaging and dependencies
+
+### Core Package
+- **`dedupe/storage/schema.py`** — **Canonical** SQLite schema definitions
+- `dedupe/scanner.py` — Library scanner (delegates to `storage.schema`)
+- `dedupe/integrity_scanner.py` — Multi-source integrity scanner
+- `dedupe/core/hashing.py` — Tiered hashing strategies
+- `dedupe/core/decisions.py` — Decision scoring logic
+- `dedupe/core/metadata.py` — Integrity-aware metadata extraction
+
+### Tools
+- `tools/integrity/scan.py` — Multi-library integrity scanning CLI
+- `tools/decide/recommend.py` — Decision recommendation engine
+- `tools/ingest/run.py` — Step-0 ingestion pipeline
+
+### Documentation
+- **`docs/SYSTEM_SPEC.md`** — Complete system specification
+- `docs/architecture.md` — Architecture overview
+- `docs/step0_pipeline.md` — Step-0 ingestion details
+- `README.md` — Quick start and usage
+
+---
+
+## Audit Results
+
+### ✅ Kept (Active)
+All source files, tests, docs, and operational scripts are retained and aligned with the 2025 architecture refactor.
+
+### 🗄️ Archived
+- `scripts/archive/populate_refractor.py` — Legacy script with destructive helpers
+- `docs/archive/status/*.md` — Historical status snapshots (superseded)
+
+### 🗑️ Deleted (Generated/Redundant)
+- `flac_dedupe.egg-info/` — Build artifacts
+- `out/` — Generated report outputs
+- `runs/` — Generated run outputs
+- `**/__pycache__/` — Python bytecode cache
+- `.output.txt` — Generated output artifact
+- `dedupe/core/actions.py` — Unused deletion helper (contradicts non-destructive policy)
+
+---
+
+## Schema Consolidation
+
+**Before**: Duplicate schema definitions in `dedupe/db/schema.py` and `dedupe/scanner.py`  
+**After**: Single canonical source in `dedupe/storage/schema.py`
+
+`dedupe/scanner.initialise_database()` now delegates to `dedupe.storage.schema.initialise_library_schema()` for backward compatibility.
+
+---
+
+## Zero Behavior Regressions
+
+✅ Scanning remains resumable and incremental  
+✅ Existing DBs remain valid (additive migrations)  
+✅ Existing scans can continue (no CLI changes)  
+✅ Integrity semantics unchanged  
+✅ Decision logic unchanged  
+
+---
+
+## Next Steps
+
+See [docs/SYSTEM_SPEC.md](docs/SYSTEM_SPEC.md) for:
+- Multi-source scanning workflow
+- Decision phase usage
+- Performance guarantees
+- Artifact indexing

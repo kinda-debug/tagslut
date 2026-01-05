@@ -94,16 +94,25 @@ def extract_metadata(
         
         # Tag extraction
         if audio.tags:
-            # Convert mutagen lists to plain Python lists for JSON serialization
+            # Convert ALL mutagen objects to plain Python types
+            # Mutagen returns special list/tuple subclasses that SQLite can't bind
             tags = {}
             for k, v in audio.tags.items():
-                if isinstance(v, list):
-                    if len(v) == 1:
-                        tags[k.lower()] = v[0]
+                # Handle list-like values
+                if isinstance(v, (list, tuple)):
+                    # Convert to plain list, and convert each item to str/int/float
+                    plain_list = [str(item) if not isinstance(item, (int, float)) else item for item in v]
+                    if len(plain_list) == 1:
+                        tags[k.lower()] = plain_list[0]
                     else:
-                        tags[k.lower()] = list(v)  # Convert mutagen list to plain list
+                        tags[k.lower()] = plain_list
+                # Handle other types - convert to plain Python types
                 else:
-                    tags[k.lower()] = v
+                    # Convert to str if it's a mutagen-specific type
+                    if type(v).__module__.startswith('mutagen'):
+                        tags[k.lower()] = str(v)
+                    else:
+                        tags[k.lower()] = v
 
         # If we didn't run explicit integrity check, standard load implies basic header health
         if not scan_integrity:

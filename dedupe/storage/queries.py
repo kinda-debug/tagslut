@@ -510,11 +510,19 @@ def upsert_file(conn: sqlite3.Connection, file: AudioFile) -> None:
         normalize(file.acoustid)
     )
     
+    # Debug logging for tuple binding issues
+    for idx, param in enumerate(params):
+        if isinstance(param, (list, tuple, dict)):
+            logger.error(f"Parameter {idx} is {type(param).__name__}: {param}")
+    
     try:
         conn.execute(query, params)
         conn.commit()
     except sqlite3.Error as e:
         logger.error(f"DB Error upserting {file.path}: {e}")
+        # Additional debug on error
+        for idx, param in enumerate(params):
+            logger.debug(f"  Param {idx}: {type(param).__name__} = {repr(param)[:100]}")
         raise
 
 def get_file(conn: sqlite3.Connection, path: Path) -> Optional[AudioFile]:

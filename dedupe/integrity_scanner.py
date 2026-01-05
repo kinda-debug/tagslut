@@ -107,7 +107,9 @@ def _scan_one_file(args: tuple[Path, bool, bool, Optional[str], Optional[str], i
             print(f"   ✓ Full hash: {result.checksum[7:15]}...")
         if scan_integrity:
             status = "✓" if result.flac_ok else "✗"
-            print(f"   {status} Integrity: {result.integrity_state}")
+            # Handle both string and tuple integrity_state
+            state = result.integrity_state[0] if isinstance(result.integrity_state, tuple) else result.integrity_state
+            print(f"   {status} Integrity: {state}")
         if result.duration:
             print(f"   ♫ Duration: {result.duration:.1f}s, {result.sample_rate}Hz, {result.bit_depth}bit")
         

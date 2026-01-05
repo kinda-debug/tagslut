@@ -7,14 +7,11 @@ name = "COMMUNE"
 root = "/Volumes/COMMUNE"
 
 [library.zones]
-inbox = "00_INBOX"
 staging = "10_STAGING"
 accepted = "20_ACCEPTED"
-rejected = "90_REJECTED"
-yate_db = "_yate_db"
 
 [decisions]
-zone_priority = ["accepted", "staging"]
+zone_priority = ["accepted", "staging", "suspect", "quarantine"]
 
 [scan]
 # Number of worker threads for scanning

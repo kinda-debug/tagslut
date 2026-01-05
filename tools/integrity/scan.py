@@ -49,8 +49,20 @@ def scan(library_path, db, library, zone, incremental, recheck, progress, progre
     """
     configure_execution(verbose, config)
     
-    lib_path = Path(library_path)
-    db_path = Path(db)
+    repo_root = Path(__file__).parents[2].resolve()
+    lib_path = Path(library_path).expanduser().resolve()
+    db_path = Path(db).expanduser().resolve()
+
+    default_db = repo_root / "artifacts/db/music.db"
+    if db_path == (repo_root / "music.db") and db_path.exists() and db_path.stat().st_size == 0:
+        if default_db.exists():
+            raise click.ClickException(
+                f"{db_path} is empty (0 bytes). Did you accidentally delete it? "
+                f"Use --db {default_db} (recommended) or remove the empty file."
+            )
+        raise click.ClickException(
+            f"{db_path} is empty (0 bytes). Remove it or choose a different --db path."
+        )
     
     click.echo(f"Scanning Library: {lib_path}")
     click.echo(f"Database: {db_path}")

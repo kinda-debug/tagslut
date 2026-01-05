@@ -44,6 +44,9 @@ def scan_library(
 ) -> None:
     """Scan a library folder and upsert file metadata into the integrity DB."""
 
+    db_path = db_path.expanduser().resolve()
+    library_path = library_path.expanduser().resolve()
+
     config = get_config()
     workers = config.get("integrity.parallel_workers", None)
     zone_paths = load_zone_paths(config)
@@ -65,10 +68,29 @@ def scan_library(
         raise ValueError(f"Zone '{zone_name}' is out of scope for dedupe.")
 
     logger.info(f"Scanning library: {library_path}")
+    logger.info("Using DB: %s (cwd=%s)", db_path, Path.cwd())
 
     # 1. Initialize DB
     conn = get_connection(db_path)
     init_db(conn)
+
+    table = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='files'"
+    ).fetchone()
+    if not table:
+        legacy = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='library_files'"
+        ).fetchone()
+        conn.close()
+        hint = ""
+        if legacy:
+            hint = (
+                " (this DB has 'library_files' so it looks like the legacy library DB; "
+                "did you mean to use artifacts/db/music.db?)"
+            )
+        raise RuntimeError(
+            f"Integrity DB schema not initialized: missing 'files' table in {db_path}{hint}"
+        )
     conn.close()
 
     # 2. Find files

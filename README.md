@@ -1,8 +1,13 @@
 # FLAC Deduplication System
 
-A curator-first Python system for verifying, reporting, and auditing large FLAC music libraries.
-COMMUNE is the canonical library layout, Yate is the metadata source of truth,
-and the dedupe layer only produces reviewable reports (never auto-deletes).
+A curator-first Python system for verifying, indexing, and auditing large FLAC collections recovered from heterogeneous sources.
+
+**COMMUNE** is the future canonical library layout.  
+**Yate** remains the metadata authority after ingestion.  
+**The dedupe layer never deletes or mutates audio or tags.**  
+It produces reviewable, resumable decisions only.
+
+See **[docs/SYSTEM_SPEC.md](docs/SYSTEM_SPEC.md)** for the complete system specification.
 
 ## Architecture
 
@@ -38,76 +43,67 @@ staging = "10_STAGING"
 accepted = "20_ACCEPTED"
 
 [decisions]
-zone_priority = ["accepted", "staging"]
+zone_priority = ["accepted", "staging", "suspect", "quarantine"]
 ```
 
-Yate is the source of truth for metadata in COMMUNE. The dedupe tooling reads
-tags in `20_ACCEPTED` but will not mutate them.
+Yate is never invoked during scanning. Tag reading is passive only.
 
 ## Tools & Usage
 
-### Step-0 Canonical Ingestion
-Scans arbitrary input directories, validates FLAC integrity (`flac --test`),
-resolves duplicates, and produces a plan for canonical promotion.
+### Multi-Source Integrity Scanning
+
+Scan arbitrary sources into a single long-lived DB (resumable, multi-library aware):
 
 ```bash
-python tools/ingest/run.py scan \
-  --inputs /Volumes/recovery_source_1 /Volumes/recovery_source_2 ~/Downloads/flac \
-  --canonical-root /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY \
-  --quarantine-root /Volumes/RECOVERY_TARGET/Root/QUARANTINE \
-  --db artifacts/db/music.db \
-  --library-tag recovery-2025-01 \
-  --zone recovery \
-  --strict-integrity \
+# Primary recovered library
+python3 tools/integrity/scan.py \
+  /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY \
+  --db ~/Projects/dedupe_db/music.db \
+  --library recovery \
+  --zone accepted \
+  --check-integrity \
+  --incremental \
+  --progress \
+  --verbose
+
+# Older vault material
+python3 tools/integrity/scan.py \
+  /Volumes/Vault \
+  --db ~/Projects/dedupe_db/music.db \
+  --library vault \
+  --zone suspect \
+  --check-integrity \
+  --incremental \
+  --progress
+
+# Known problematic sources
+python3 tools/integrity/scan.py \
+  /Volumes/bad \
+  --db ~/Projects/dedupe_db/music.db \
+  --library bad \
+  --zone quarantine \
+  --check-integrity \
+  --incremental \
   --progress
 ```
 
-Additional Step-0 subcommands:
+**Nothing is copied. Nothing is renamed.**
+
+### Decision Phase (Read-Only)
 
 ```bash
-# Build a plan from existing scan tables.
-python tools/ingest/run.py decide --db artifacts/db/music.db \
-  --canonical-root /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY \
-  --quarantine-root /Volumes/RECOVERY_TARGET/Root/QUARANTINE \
-  --library-tag recovery-2025-01
-
-# Apply a saved plan JSON.
-python tools/ingest/run.py apply --plan plan.json
-
-# Summarize scan progress.
-python tools/ingest/run.py status --db artifacts/db/music.db
-
-# Index artifacts (audit reports, legacy databases, .DOTAD_* markers).
-python tools/ingest/run.py artifacts --inputs /Volumes/RECOVERY_TARGET/Root/artifacts \
-  --db artifacts/db/music.db
+python3 tools/decide/recommend.py \
+  --db ~/Projects/dedupe_db/music.db \
+  --output plan.json
 ```
 
-See `docs/step0_pipeline.md` for the full Step-0 specification and example outputs.
+**Decision Logic (strict order):**
+1. **Integrity**: Bitstream-valid files are preferred.
+2. **Zone**: Accepted > Suspect > Quarantine.
+3. **Quality**: Higher sample rate/bit depth is preferred.
+4. **Provenance confidence**.
 
-### 1. Scan & Verify Integrity
-Scans a library, verifies FLAC integrity (`flac -t`), calculates SHA-256 hashes, and upserts to the DB.
-
-```bash
-python3 tools/integrity/scan.py /Volumes/Music/FLAC --db artifacts/db/music.db --check-integrity
-```
-
-To tag the scanned paths as a zone (staging or accepted):
-
-```bash
-python3 tools/integrity/scan.py /Volumes/COMMUNE/10_STAGING --db artifacts/db/music.db --library COMMUNE --incremental --progress
-```
-
-### 2. Find Duplicates & Recommend Actions
-Analyzes the database for duplicates and generates a JSON report for curator review.
-
-```bash
-python3 tools/decide/recommend.py --db artifacts/db/music.db --output plan.json
-```
-
-**Decision Logic (Review-First):**
-1.  **Integrity**: Bitstream-valid files are preferred.
-2.  **Zone**: Accepted is preferred over staging for reference.
-3.  **Quality**: Higher sample rate/bit depth is preferred.
+**Output:** JSON plan, human-readable explanations, no side effects.
 
 ## Development
 

@@ -38,8 +38,11 @@ def init_db(conn: sqlite3.Connection) -> None:
     Performs additive migrations: creates the table if missing,
     and adds missing columns if the table exists but is outdated.
     """
-    # Enable Write-Ahead Logging for better concurrency
+    # Performance tuning (mandatory for multi-library scans)
     conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA synchronous=NORMAL;")
+    conn.execute("PRAGMA temp_store=MEMORY;")
+    conn.execute("PRAGMA cache_size=-200000;")  # -200000 = 200MB cache
     
     # 1. Create table if it doesn't exist
     conn.execute("""

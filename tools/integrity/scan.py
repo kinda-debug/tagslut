@@ -14,9 +14,9 @@ from dedupe.utils.cli_helper import common_options, configure_execution
 @click.option("--library", default=None, help="Logical library name (e.g. COMMUNE)")
 @click.option(
     "--zone",
-    type=click.Choice(["staging", "accepted"]),
+    type=click.Choice(["staging", "accepted", "suspect", "quarantine"]),
     default=None,
-    help="COMMUNE zone to tag (staging or accepted)",
+    help="Zone to tag (staging, accepted, suspect, or quarantine)",
 )
 @click.option(
     "--incremental/--no-incremental",

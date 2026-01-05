@@ -33,6 +33,87 @@ from dedupe.storage import queries as storage_queries
 logger = logging.getLogger(__name__)
 
 
+def _normalise_prefix(path: Path) -> str:
+    """Return a normalised prefix string for SQLite LIKE filters."""
+
+    normalised = utils.normalise_path(str(path))
+    return normalised.rstrip("/") + "/"
+
+
+def _load_resume_records(
+    connection: sqlite3.Connection,
+    inputs: list[Path],
+) -> list[ScannedFile]:
+    """Load previously scanned Step-0 records for the input roots.
+
+    This allows the Step-0 pipeline to resume a prior run without re-hashing and
+    re-testing files already recorded in the Step-0 tables.
+    """
+
+    prefixes = [_normalise_prefix(path) for path in inputs]
+    if not prefixes:
+        return []
+
+    where = " OR ".join(["ir.path LIKE ?"] * len(prefixes))
+    params = [f"{prefix}%" for prefix in prefixes]
+
+    query = f"""
+    WITH latest AS (
+        SELECT path, MAX(id) AS max_id
+        FROM integrity_results
+        GROUP BY path
+    )
+    SELECT
+        ir.path,
+        ir.content_hash,
+        ir.status,
+        ir.stderr_excerpt,
+        ir.return_code,
+        ac.streaminfo_md5,
+        ac.duration,
+        ac.sample_rate,
+        ac.bit_depth,
+        ac.channels,
+        ih.tags_json
+    FROM integrity_results ir
+    JOIN latest ON latest.path = ir.path AND latest.max_id = ir.id
+    LEFT JOIN audio_content ac ON ac.content_hash = ir.content_hash
+    LEFT JOIN identity_hints ih ON ih.content_hash = ir.content_hash
+    WHERE {where}
+    """
+
+    cursor = connection.execute(query, params)
+    records: list[ScannedFile] = []
+    for row in cursor.fetchall():
+        tags_json = row[10] if len(row) > 10 else None
+        tags: dict[str, object]
+        if tags_json:
+            try:
+                tags = json.loads(tags_json)
+            except json.JSONDecodeError:
+                tags = {}
+        else:
+            tags = {}
+        records.append(
+            ScannedFile(
+                path=row[0],
+                content_hash=row[1],
+                streaminfo_md5=row[5],
+                duration=row[6],
+                sample_rate=row[7],
+                bit_depth=row[8],
+                channels=row[9],
+                tags=tags,
+                integrity=IntegrityResult(
+                    status=row[2],
+                    stderr_excerpt=row[3] or "",
+                    return_code=row[4],
+                ),
+            )
+        )
+    return records
+
+
 def _configure_logging(verbose: bool) -> None:
     """Configure logging based on verbosity."""
 
@@ -308,6 +389,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Apply the plan to the filesystem (default: dry-run).",
     )
     parser.add_argument(
+        "--resume",
+        default=False,
+        action=argparse.BooleanOptionalAction,
+        help=(
+            "Resume from existing Step-0 scan data in the database. When enabled, "
+            "previously scanned files under the --inputs roots are loaded from the "
+            "Step-0 tables and only new files are scanned."
+        ),
+    )
+    parser.add_argument(
         "--move",
         action="store_true",
         help="Move files instead of copying when applying the plan.",
@@ -353,13 +444,26 @@ def main() -> None:
             library_tag=args.library_tag,
         )
         files: list[ScannedFile] = []
+        scanned_paths: set[str] = set()
+
+        if args.resume:
+            files = _load_resume_records(connection, inputs)
+            scanned_paths = {record.path for record in files}
+            logger.info("Resume enabled: loaded %s previously scanned files.", len(files))
+
         for index, path in enumerate(_iter_input_files(inputs), start=1):
             if args.progress and index % 25 == 0:
                 logger.info("Scanned %s files...", index)
             if not path.is_file():
                 continue
+
+            normalised_path = utils.normalise_path(str(path))
+            if args.resume and normalised_path in scanned_paths:
+                continue
+
             record = _scan_file(path, args.strict_integrity)
             files.append(record)
+            scanned_paths.add(record.path)
             hints = extract_identity_hints(record.tags)
             storage_queries.upsert_audio_content(
                 connection,

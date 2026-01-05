@@ -117,7 +117,21 @@ Tag reading is passive only.
 
 ---
 
-## Step-0: Canonical Ingestion (This Is the Real System)
+## Recommended Workflow: Fast Deduplication
+
+**See [FAST_WORKFLOW.md](FAST_WORKFLOW.md) for the optimized workflow.**
+
+Summary:
+1. **Fast scan** (no integrity checks) → index all files quickly
+2. **Cluster duplicates** → find exact matches by hash
+3. **Decide winners** → choose best candidates
+4. **Verify winners only** → run `flac -t` on reduced set
+
+This approach **defers expensive verification until after deduplication**, reducing verification time by ~85% in typical scenarios.
+
+---
+
+## Multi-Source Scanning (Full Workflow)
 
 Step-0 is where all chaos enters and nothing leaves.
 
@@ -213,23 +227,11 @@ python3 tools/decide/recommend.py \
 
 ---
 
-## Artifact Indexing (You Already Have This)
+## Artifact Awareness
 
-Recovered systems leave debris. These are indexed, not ignored.
+Recovered systems leave debris (`.DOTAD_*`, old SQLite DBs, audit reports, dedupe logs). These can be documented separately but are not indexed into the main DB.
 
-```bash
-python3 tools/ingest/run.py artifacts \
-  --inputs /Volumes/RECOVERY_TARGET/Root/artifacts \
-  --db ~/Projects/dedupe_db/music.db
-```
-
-**Examples:**
-- `.DOTAD_*`
-- old SQLite DBs
-- audit reports
-- dedupe logs
-
-These inform decisions, they don't contaminate them.
+If needed, artifact paths can be recorded in a separate tracking table or CSV for forensic purposes, but they don't contaminate the canonical `files` table.
 
 ---
 

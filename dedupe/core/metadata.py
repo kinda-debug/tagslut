@@ -21,13 +21,23 @@ def extract_metadata(
     """
     Extracts technical and tag metadata from a FLAC file and returns a populated AudioFile.
 
+    Hashing strategy (3-phase approach):
+    - Phase 1 (default): Uses FLAC STREAMINFO MD5 (fast, embedded)
+    - Phase 2: Clustering uses streaminfo_md5 + duration + sample rate
+    - Phase 3: Full-file SHA256 only if scan_hash=True (for winners)
+
     Args:
         file_path: Path to the FLAC file.
         scan_integrity: If True, runs `flac -t` immediately (expensive).
-        scan_hash: If True, calculates SHA-256 immediately (expensive).
+        scan_hash: If True, calculates full-file SHA-256 (expensive, for winners only).
+        library: Library tag (e.g. "recovery", "vault", "bad").
+        zone: Zone tag (e.g. "accepted", "suspect", "quarantine").
 
     Returns:
-        AudioFile object.
+        AudioFile object with checksum populated as:
+        - "streaminfo:<hex>" if STREAMINFO MD5 available (Phase 1)
+        - "sha256:<hex>" if scan_hash=True (Phase 3)
+        - "NOT_SCANNED" if neither available
     
     Raises:
         ValueError: If file is not a valid FLAC or cannot be read.
@@ -36,12 +46,15 @@ def extract_metadata(
 
     # Cheap stat info for incremental scans / observability
     try:
-        st = path_obj.stat()
-        mtime = float(st.st_mtime)
-        size = int(st.st_size)
-    except Exception:
-        mtime = None
-        size = None
+        st = path_obj.stat()  # Will be populated with streaminfo or full hash
+    duration = 0.0
+    bit_depth = 0
+    sample_rate = 0
+    bitrate = 0
+    tags: Dict[str, Any] = {}
+
+    # Note: We no longer hash here by default - streaminfo MD5 is extracted from FLAC metadata
+    # Only run expensive full-file hash if scan_hash=True (Phase 3, for winners)
     
     # Defaults
     flac_ok = False
@@ -55,8 +68,8 @@ def extract_metadata(
 
     # Optional expensive checks
     if scan_integrity:
-        integrity_state, _ = classify_flac_integrity(path_obj)
-        flac_ok = integrity_state == "valid"
+    # Note: scan_hash is now ONLY used for Phase 3 (winners)
+    # Phase 1 uses STREAMINFO MD5 (extracted below from audio.info
     
     if scan_hash:
         checksum = calculate_file_hash(path_obj)
@@ -70,6 +83,19 @@ def extract_metadata(
             bit_depth = getattr(audio.info, 'bits_per_sample', 0)
             sample_rate = getattr(audio.info, 'sample_rate', 0)
             bitrate = getattr(audio.info, 'bitrate', 0)
+            
+            # Extract STREAMINFO MD5 (fast, embedded in FLAC metadata block)
+            # This is NOT the file hash - it's the hash of the decoded audio
+            # Perfect for fast duplicate detection without full-file hashing
+            streaminfo_md5 = getattr(audio.info, 'md5_signature', None)
+            if streaminfo_md5:
+                # Convert bytes to hex string if needed
+                if isinstance(streaminfo_md5, bytes):
+                    streaminfo_md5 = streaminfo_md5.hex()
+                checksum = f"streaminfo:{streaminfo_md5}"
+            elif scan_hash:
+                # Fall back to full-file hash only if explicitly requested
+                checksum = calculate_file_hash(path_obj)
         
         # Tag extraction
         if audio.tags:

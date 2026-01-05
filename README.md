@@ -48,6 +48,33 @@ zone_priority = ["accepted", "staging", "suspect", "quarantine"]
 
 Yate is never invoked during scanning. Tag reading is passive only.
 
+## Quick Start: Fast Deduplication Workflow
+
+**Recommended**: Defer integrity checks until after deduplication to save time.
+
+```bash
+DB=~/Projects/dedupe_db/music.db
+
+# 1. Fast scan (no integrity checks)
+python3 tools/integrity/scan.py /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY \
+  --db $DB --library recovery --zone accepted \
+  --no-check-integrity --incremental --progress
+
+# 2. Find duplicates and decide winners
+python3 tools/decide/recommend.py --db $DB --output plan.json
+
+# 3. Extract winner paths
+cat plan.json | jq -r '.plan[].decisions[] | select(.action == "keep") | .path' > winners.txt
+
+# 4. Verify winners only
+python3 tools/integrity/scan.py /path/to/winners \
+  --db $DB --check-integrity --recheck --progress
+```
+
+See **[docs/FAST_WORKFLOW.md](docs/FAST_WORKFLOW.md)** for the complete optimized workflow.
+
+---
+
 ## Tools & Usage
 
 ### Multi-Source Integrity Scanning

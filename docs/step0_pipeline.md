@@ -1,20 +1,46 @@
-## Step-0 Canonical Library Ingestion
+## Consolidated Scanning Workflow
 
-This pipeline performs a content-first ingestion of recovered FLAC files before any
-tagging or library tooling. Paths are treated as ephemeral inputs only.
+**Note**: The original Step-0 tiered-hashing pipeline has been archived to `tools/archive/ingest/`. The current production workflow uses `tools/integrity/scan.py` for all scanning operations.
 
-### Core guarantees
+See **[FAST_WORKFLOW.md](FAST_WORKFLOW.md)** for the recommended workflow:
 
-* **Content is truth**: decisions are made from file integrity and audio metadata.
-* **Strict integrity**: `flac --test` must pass for canonical selection.
-* **One canonical copy per recording**: duplicates are resolved deterministically.
-* **Explicit outcomes**: every file is classified as CANONICAL, REDUNDANT,
-  REACQUIRE, or TRASH.
+```bash
+# Fast scan (no integrity checks)
+python3 tools/integrity/scan.py /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY \
+  --db artifacts/db/music.db \
+  --library recovery \
+  --zone accepted \
+  --no-check-integrity \
+  --incremental \
+  --progress
 
-### CLI usage
+# Generate duplicate clusters
+python3 tools/decide/recommend.py --db artifacts/db/music.db --output plan.json
+
+# Verify winners only
+python3 tools/integrity/scan.py /path/to/winners \
+  --db artifacts/db/music.db \
+  --check-integrity \
+  --recheck \
+  --progress
+```
+
+---
+
+## Legacy Step-0 Pipeline (Archived)
+
+The original tiered-hashing Step-0 pipeline (`tools/archive/ingest/run.py`) provided:
+- Tiered hashing (prehash shortcuts for deduplication)
+- Separate provenance tables (`audio_content`, `integrity_results`, `canonical_map`)
+- Decision/artifact indexing
+- Explicit outcome classification (CANONICAL, REDUNDANT, REACQUIRE, TRASH)
+
+This functionality was superseded by the simpler, faster `tools/integrity/scan.py` + `tools/decide/recommend.py` workflow.
+
+### Original CLI usage (archived)
 
 ```
-python tools/ingest/run.py scan \
+python tools/archive/ingest/run.py scan \
   --inputs /Volumes/recovery_source_1 /Volumes/recovery_source_2 ~/Downloads/flac \
   --canonical-root /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY \
   --quarantine-root /Volumes/RECOVERY_TARGET/Root/QUARANTINE \
@@ -24,29 +50,6 @@ python tools/ingest/run.py scan \
   --strict-integrity \
   --progress
 ```
-
-Run with `--execute` to apply the plan. Without it, the command performs a dry run
-and writes `plan.json` and `reacquire_manifest.csv`.
-
-Additional subcommands:
-
-```
-python tools/ingest/run.py status --db artifacts/db/music.db
-python tools/ingest/run.py decide --db artifacts/db/music.db \
-  --canonical-root /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY \
-  --quarantine-root /Volumes/RECOVERY_TARGET/Root/QUARANTINE \
-  --library-tag recovery-2025-01
-python tools/ingest/run.py apply --plan plan.json
-python tools/ingest/run.py artifacts --inputs /Volumes/RECOVERY_TARGET/Root/artifacts \
-  --db artifacts/db/music.db
-```
-
-### Canonical path format
-
-`Artist/(YYYY) Album/01. Track Title.flac`
-
-Disc handling uses `1-01. Track Title.flac`. Tags are normalized to Unicode NFC
-and unsafe characters are replaced.
 
 ### Database additions
 

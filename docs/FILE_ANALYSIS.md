@@ -75,9 +75,10 @@ artifacts/        # Runtime output (gitignored except placeholders)
 - `dedupe/core/metadata.py` — Integrity-aware metadata extraction
 
 ### Tools
-- `tools/integrity/scan.py` — Multi-library integrity scanning CLI
-- `tools/decide/recommend.py` — Decision recommendation engine
-- `tools/ingest/run.py` — Step-0 ingestion pipeline
+- **`tools/integrity/scan.py`** — **Primary scanner CLI** (multi-library, resumable, optional integrity checks)
+- **`tools/decide/recommend.py`** — **Decision engine** (duplicate clustering, zone-aware recommendations)
+- `tools/decide/apply.py` — Plan executor
+- `tools/archive/ingest/` — Archived Step-0 tiered-hashing pipeline (superseded)
 
 ### Documentation
 - **`docs/SYSTEM_SPEC.md`** — Complete system specification
@@ -94,6 +95,7 @@ All source files, tests, docs, and operational scripts are retained and aligned 
 
 ### 🗄️ Archived
 - `scripts/archive/populate_refractor.py` — Legacy script with destructive helpers
+- `tools/archive/ingest/` — Step-0 tiered-hashing pipeline (superseded by tools/integrity/scan.py)
 - `docs/archive/status/*.md` — Historical status snapshots (superseded)
 
 ### 🗑️ Deleted (Generated/Redundant)

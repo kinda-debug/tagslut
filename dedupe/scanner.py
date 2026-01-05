@@ -15,7 +15,7 @@ from typing import Any, Optional
 
 from . import metadata, utils
 from dedupe.utils.config import get_config
-from dedupe.utils.library import load_zone_paths, ensure_dedupe_zone
+from dedupe.utils.library import load_zone_paths, ensure_dedupe_zone, identify_zone
 
 logger = logging.getLogger(__name__)
 
@@ -203,8 +203,13 @@ def scan_library(config: ScanConfig) -> int:
     zone_paths = load_zone_paths(get_config())
     if zone_paths is not None:
         if zone_name is None:
-            zone_name = ensure_dedupe_zone(root, zone_paths)
-        if zone_name not in ("staging", "accepted"):
+            # Only infer/enforce a zone when the scan root is inside a
+            # configured COMMUNE zone. This allows scanning non-COMMUNE roots
+            # (e.g., FINAL_LIBRARY) even when COMMUNE zones exist in config.
+            inferred = identify_zone(root, zone_paths)
+            if inferred is not None:
+                zone_name = ensure_dedupe_zone(root, zone_paths)
+        elif zone_name not in ("staging", "accepted"):
             raise ValueError(f"Zone '{zone_name}' is out of scope for dedupe.")
 
     with ctx.connect() as connection:
@@ -294,8 +299,10 @@ def rescan_missing(
     zone_paths = load_zone_paths(get_config())
     if zone_paths is not None:
         if zone_name is None:
-            zone_name = ensure_dedupe_zone(root, zone_paths)
-        if zone_name not in ("staging", "accepted"):
+            inferred = identify_zone(root, zone_paths)
+            if inferred is not None:
+                zone_name = ensure_dedupe_zone(root, zone_paths)
+        elif zone_name not in ("staging", "accepted"):
             raise ValueError(f"Zone '{zone_name}' is out of scope for dedupe.")
 
     with ctx.connect() as connection:

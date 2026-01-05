@@ -4,9 +4,9 @@
 # Outputs paths of files that fail 'flac -t'.
 #
 # Usage:
-#   tools/find_corrupt_flacs.sh /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_DUPE_REVIEW
-#   tools/find_corrupt_flacs.sh /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_DUPE_REVIEW > corrupt_list.txt
-#   tools/find_corrupt_flacs.sh /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY --move-to /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_CORRUPT
+#   tools/find_corrupt_flacs.sh /Volumes/COMMUNE/10_STAGING/_DUPE_REVIEW
+#   tools/find_corrupt_flacs.sh /Volumes/COMMUNE/10_STAGING/_DUPE_REVIEW > corrupt_list.txt
+#   tools/find_corrupt_flacs.sh /Volumes/COMMUNE/10_STAGING --move-to /Volumes/COMMUNE/90_REJECTED
 
 set -euo pipefail
 
@@ -25,13 +25,13 @@ Arguments:
 
 Examples:
   # Find and list
-  $(basename "$0") /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_DUPE_REVIEW
+  $(basename "$0") /Volumes/COMMUNE/10_STAGING/_DUPE_REVIEW
 
   # Save to file
-  $(basename "$0") /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_DUPE_REVIEW > corrupt_list.txt
+  $(basename "$0") /Volumes/COMMUNE/10_STAGING/_DUPE_REVIEW > corrupt_list.txt
 
-  # Find and move to quarantine
-  $(basename "$0") /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_DUPE_REVIEW --move-to /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_CORRUPT
+  # Find and move to rejected
+  $(basename "$0") /Volumes/COMMUNE/10_STAGING/_DUPE_REVIEW --move-to /Volumes/COMMUNE/90_REJECTED
 EOF
   exit 1
 }

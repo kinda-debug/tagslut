@@ -11,7 +11,13 @@ from dedupe.utils.cli_helper import common_options, configure_execution
 @click.command()
 @click.argument("library_path", type=click.Path(exists=True, file_okay=False))
 @click.option("--db", required=True, type=click.Path(dir_okay=False), help="Path to SQLite database")
-@click.option("--library", default=None, help="Logical library name (e.g. recovery)")
+@click.option("--library", default=None, help="Logical library name (e.g. COMMUNE)")
+@click.option(
+    "--zone",
+    type=click.Choice(["staging", "accepted"]),
+    default=None,
+    help="COMMUNE zone to tag (staging or accepted)",
+)
 @click.option(
     "--incremental/--no-incremental",
     default=False,
@@ -37,7 +43,7 @@ from dedupe.utils.cli_helper import common_options, configure_execution
 @click.option("--check-integrity/--no-check-integrity", default=False, help="Run flac -t verification")
 @click.option("--check-hash/--no-check-hash", default=True, help="Calculate SHA256 checksums")
 @common_options
-def scan(library_path, db, library, incremental, recheck, progress, progress_interval, check_integrity, check_hash, verbose, config):
+def scan(library_path, db, library, zone, incremental, recheck, progress, progress_interval, check_integrity, check_hash, verbose, config):
     """
     Scans a library folder for FLAC files and populates the database.
     """
@@ -50,6 +56,8 @@ def scan(library_path, db, library, incremental, recheck, progress, progress_int
     click.echo(f"Database: {db_path}")
     if library:
         click.echo(f"Library Tag: {library}")
+    if zone:
+        click.echo(f"Zone: {zone}")
     click.echo(f"Incremental: {'ON' if incremental else 'OFF'}")
     click.echo(f"Recheck: {'ON' if recheck else 'OFF'}")
     click.echo(f"Progress: {'ON' if progress else 'OFF'}")
@@ -63,6 +71,7 @@ def scan(library_path, db, library, incremental, recheck, progress, progress_int
             library_path=lib_path,
             db_path=db_path,
             library=library,
+            zone=zone,
             incremental=incremental,
             recheck=recheck,
             progress=progress,

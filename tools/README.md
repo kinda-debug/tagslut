@@ -9,7 +9,7 @@ Export dupeGuru CSV results into organized A/B comparison directories.
 
 ```bash
 tools/export_dupe_groups.py --csv /path/to/dupeguru.csv \
-                            --out /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_DUPE_REVIEW
+                            --out /Volumes/COMMUNE/10_STAGING/_DUPE_REVIEW
 ```
 
 **Output structure:**
@@ -38,7 +38,7 @@ tools/listen_dupes.sh candidates.txt
 ```
 
 **Environment variables:**
-- `DUPE_REVIEW_ROOT` - Review directory (default: `/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_DUPE_REVIEW`)
+- `DUPE_REVIEW_ROOT` - Review directory (default: `/Volumes/COMMUNE/10_STAGING/_DUPE_REVIEW`)
 - `PREVIEW_LENGTH` - Preview duration in seconds (default: 15)
 - `PREVIEW_VOLUME` - Playback volume 0-100 (default: 50)
 
@@ -56,10 +56,10 @@ tools/open_dupe_pair.sh group_0001
 ## Decision Engine
 
 ### recommend_keepers.py
-Deterministic KEEP/DROP/REVIEW decision engine for duplicate audio files.
+Deterministic KEEP/REVIEW decision engine for duplicate audio files.
 
 **Decision hierarchy:**
-1. **FLAC integrity** - Corrupt files → auto-DROP
+1. **FLAC integrity** - Corrupt files → flag for review
 2. **Identity** - AcoustID conflicts → REVIEW
 3. **Duration** - ±0.2s from reference (longer never wins)
 4. **Quality** - Bit depth > sample rate > bitrate
@@ -80,7 +80,7 @@ tools/recommend_keepers.py --db artifacts/db/music.db \
 
 **Output columns:**
 - `path` - File path
-- `decision` - KEEP | DROP | REVIEW
+- `decision` - KEEP | REVIEW
 - `decision_reason` - Explanation (e.g., `flac_corrupt`, `best_quality`, `duration_mismatch`)
 - `decision_confidence` - HIGH | MEDIUM | LOW
 - `duration_delta` - Seconds from reference duration
@@ -96,7 +96,7 @@ tools/review_needed.sh /tmp/recommendations.csv REVIEW
 tools/review_needed.sh /tmp/recommendations.csv group_0042
 
 # Review specific file
-tools/review_needed.sh /tmp/recommendations.csv "/Volumes/RECOVERY_TARGET/Root/..."
+tools/review_needed.sh /tmp/recommendations.csv "/Volumes/COMMUNE/10_STAGING/..."
 ```
 
 ### dupeguru_bridge.py
@@ -117,9 +117,7 @@ tools/dupeguru_bridge.py --db artifacts/db/music.db \
 ## Integrity Checking
 
 ### scan_flac_integrity.py
-Parallel FLAC integrity testing using `flac -t`. Writes `flac_ok` column to database.
-
-**Hard rule:** Any file with `flac_ok=0` is auto-flagged DROP by decision engine.
+Parallel FLAC integrity testing using `flac -t`. Writes `flac_ok` and `integrity_state` columns to the database.
 
 ```bash
 # Scan all files in database (parallel)
@@ -134,13 +132,13 @@ Find corrupt FLAC files in any directory tree.
 
 ```bash
 # Find and list corrupt files
-tools/find_corrupt_flacs.sh /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_DUPE_REVIEW
+tools/find_corrupt_flacs.sh /Volumes/COMMUNE/10_STAGING/_DUPE_REVIEW
 
 # Save to file
-tools/find_corrupt_flacs.sh /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_DUPE_REVIEW > corrupt_list.txt
+tools/find_corrupt_flacs.sh /Volumes/COMMUNE/10_STAGING/_DUPE_REVIEW > corrupt_list.txt
 
-# Find and quarantine
-tools/find_corrupt_flacs.sh /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_DUPE_REVIEW --move-to /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_CORRUPT
+# Find and reject
+tools/find_corrupt_flacs.sh /Volumes/COMMUNE/10_STAGING/_DUPE_REVIEW --move-to /Volumes/COMMUNE/90_REJECTED
 ```
 
 ## Database Utilities
@@ -161,7 +159,7 @@ Move files to HRM directory structure (legacy).
 ```bash
 # 1. Export dupeGuru groups to organized folders
 tools/export_dupe_groups.py --csv /path/to/dupeguru.csv \
-                            --out /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_DUPE_REVIEW
+                            --out /Volumes/COMMUNE/10_STAGING/_DUPE_REVIEW
 
 # 2. Scan FLAC integrity (parallel)
 tools/scan_flac_integrity.py --db artifacts/db/music.db --parallel 8
@@ -194,7 +192,7 @@ tools/recommend_keepers.py --db artifacts/db/music.db \
 ## Core Principles
 
 1. **Hash before flatten** - Always compute checksums before flattening directory structures
-2. **Integrity beats everything** - Corrupt files auto-DROP, no exceptions
+2. **Integrity beats everything** - Corrupt files are always flagged for review
 3. **Duration authority** - "Longer never wins" (rejects stitched/padded files)
 4. **Listen to verify, not decide** - Automated recommendations; listening confirms edge cases
 5. **Non-destructive by default** - All tools dry-run unless `--apply` specified

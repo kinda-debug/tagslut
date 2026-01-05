@@ -47,8 +47,8 @@ Moved to `archive/scripts_diagnostic_2025/`:
 
 **Duplicate Removal:**
 - `prune_cross_root_duplicates.py` - Cross-root deduplication
-- `prune_garbage_duplicates.py` - Garbage cleanup
-- `dedupe_move_duplicates.py` - Move to Garbage
+- `prune_garbage_duplicates.py` - Rejected cleanup
+- `dedupe_move_duplicates.py` - Move to Rejected
 - `db_prune_missing_files.py` - DB reconciliation
 
 **Health & Repair:**
@@ -65,8 +65,8 @@ Moved to `archive/scripts_diagnostic_2025/`:
 **Legacy Wrappers:**
 - `dedupe_cli.py` → `dedupe.cli`
 - `dedupe_sync.py` → `dedupe.sync`
-- `analyze_quarantine_subdir.py` → `dedupe.legacy_cli`
-- `simple_quarantine_scan.py` → `dedupe.legacy_cli`
+- `analyze_quarantine_subdir.py` → `dedupe.legacy_cli` (legacy staging analysis)
+- `simple_quarantine_scan.py` → `dedupe.legacy_cli` (legacy staging scan)
 - `detect_playback_length_issues.py` → `dedupe.legacy_cli`
 
 ### 4. Documentation Updates

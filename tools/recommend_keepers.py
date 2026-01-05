@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Deterministic KEEP/DROP/REVIEW decision engine for duplicate audio files.
+Deterministic KEEP/REVIEW decision engine for duplicate audio files.
 
 Decision hierarchy (locked in):
   1. Identity layer: AcoustID recording ID conflicts → REVIEW
@@ -12,14 +12,14 @@ Core constraint: "Longer never wins" (recovered files usually too long)
 
 Usage:
   # Dry-run (report only)
-  tools/recommend_keepers.py --db /Volumes/sad/sad_hash.sqlite \\
+  tools/recommend_keepers.py --db /Volumes/COMMUNE/20_ACCEPTED/commune_hash.sqlite \\
                              --group-field checksum \\
-                             --out /tmp/sad_recommendations.csv
+                             --out /tmp/commune_recommendations.csv
 
   # Apply decisions to DB
-  tools/recommend_keepers.py --db /Volumes/sad/sad_hash.sqlite \\
+  tools/recommend_keepers.py --db /Volumes/COMMUNE/20_ACCEPTED/commune_hash.sqlite \\
                              --group-field checksum \\
-                             --out /tmp/sad_recommendations.csv \\
+                             --out /tmp/commune_recommendations.csv \\
                              --apply
 """
 import argparse
@@ -76,7 +76,15 @@ def load_duplicate_groups(conn: sqlite3.Connection, group_field: str) -> Dict[st
     available_cols = {row[1] for row in cursor.fetchall()}
     
     base_cols = ["path", group_field, "duration", "extra_json"]
-    optional_cols = ["acoustid_id", "acoustid_duration", "bit_depth", "sample_rate", "bitrate", "flac_ok"]
+    optional_cols = [
+        "acoustid_id",
+        "acoustid_duration",
+        "bit_depth",
+        "sample_rate",
+        "bitrate",
+        "flac_ok",
+        "integrity_state",
+    ]
     
     cols = base_cols + [c for c in optional_cols if c in available_cols]
     
@@ -131,16 +139,19 @@ def extract_technical_quality(record: Dict) -> Tuple[int, int, int]:
 
 def decide_keeper(group: List[Dict], group_id: str) -> List[Tuple[Dict, str, str, str]]:
     """
-    Decide KEEP/DROP/REVIEW for a duplicate group.
+    Decide KEEP/REVIEW for a duplicate group.
     
     Returns:
         List of (record, decision, reason, confidence) tuples
     """
-    # Hard gate: FLAC integrity (corrupt files auto-DROP)
+    # Integrity gate: flag non-valid files for review
     integrity_results = []
     for record in group:
+        integrity_state = record.get("integrity_state")
         flac_ok = record.get("flac_ok")
-        if flac_ok is not None and flac_ok == 0:
+        if integrity_state in {"recoverable", "corrupt"}:
+            integrity_results.append((record, DECISION_DROP, f"flac_{integrity_state}", CONFIDENCE_HIGH))
+        elif flac_ok is not None and flac_ok == 0:
             integrity_results.append((record, DECISION_DROP, "flac_corrupt", CONFIDENCE_HIGH))
     
     # If all files corrupt, return early
@@ -148,7 +159,12 @@ def decide_keeper(group: List[Dict], group_id: str) -> List[Tuple[Dict, str, str
         return integrity_results
     
     # Filter out corrupt files for further evaluation
-    valid_group = [r for r in group if r.get("flac_ok") != 0]
+    valid_group = [
+        r
+        for r in group
+        if r.get("integrity_state") in (None, "valid")
+        and r.get("flac_ok") != 0
+    ]
     
     # Identity layer: check AcoustID conflicts
     acoustid_ids = {r.get("acoustid_id") for r in valid_group if r.get("acoustid_id")}
@@ -222,7 +238,13 @@ def decide_keeper(group: List[Dict], group_id: str) -> List[Tuple[Dict, str, str
         else:
             decisions.append((record, DECISION_DROP, "duration_mismatch", CONFIDENCE_HIGH))
     
-    return integrity_results + decisions
+    softened = []
+    for record, decision, reason, confidence in integrity_results + decisions:
+        if decision == DECISION_DROP:
+            softened.append((record, DECISION_REVIEW, f"review_{reason}", confidence))
+        else:
+            softened.append((record, decision, reason, confidence))
+    return softened
 
 
 def write_report(decisions: List[Tuple[str, str, str, str, float]], out_path: Path):
@@ -259,7 +281,7 @@ def apply_decisions(conn: sqlite3.Connection, decisions: List[Tuple[str, str, st
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Deterministic KEEP/DROP/REVIEW decision engine"
+        description="Deterministic KEEP/REVIEW decision engine"
     )
     parser.add_argument(
         "--db",

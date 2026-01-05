@@ -2,8 +2,6 @@
 """
 Scan FLAC files for integrity using 'flac -t' and update database.
 
-Hard rule: flac_ok=0 → auto-DROP (corrupt files are never kept)
-
 Usage:
     # Scan all files in database
     tools/scan_flac_integrity.py --db artifacts/db/music.db
@@ -19,14 +17,15 @@ Requires:
 """
 import argparse
 import sqlite3
-import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+from dedupe.core.integrity import classify_flac_integrity
+
 
 def ensure_integrity_column(conn: sqlite3.Connection):
-    """Add flac_ok column if missing."""
+    """Add integrity columns if missing."""
     cursor = conn.cursor()
     cursor.execute("PRAGMA table_info(library_files)")
     existing_cols = {row[1] for row in cursor.fetchall()}
@@ -34,39 +33,38 @@ def ensure_integrity_column(conn: sqlite3.Connection):
     if "flac_ok" not in existing_cols:
         print("Adding column: flac_ok")
         cursor.execute("ALTER TABLE library_files ADD COLUMN flac_ok INTEGER")
-        conn.commit()
+    if "integrity_state" not in existing_cols:
+        print("Adding column: integrity_state")
+        cursor.execute("ALTER TABLE library_files ADD COLUMN integrity_state TEXT")
+    conn.commit()
 
 
-def test_flac_integrity(path: str) -> tuple[str, bool]:
+def test_flac_integrity(path: str) -> tuple[str, str]:
     """
     Test FLAC file integrity using 'flac -t'.
     
     Returns:
-        (path, is_ok) tuple
+        (path, integrity_state) tuple
     """
     try:
-        result = subprocess.run(
-            ["flac", "-t", "-s", path],  # -s = silent
-            capture_output=True,
-            timeout=30
-        )
-        return (path, result.returncode == 0)
+        state, _ = classify_flac_integrity(Path(path))
+        return (path, state)
     except subprocess.TimeoutExpired:
-        return (path, False)
+        return (path, "corrupt")
     except FileNotFoundError:
         print("ERROR: 'flac' command not found. Install with: brew install flac")
         sys.exit(1)
     except Exception as e:
         print(f"WARN: Error testing {path}: {e}")
-        return (path, False)
+        return (path, "corrupt")
 
 
-def update_integrity_result(conn: sqlite3.Connection, path: str, is_ok: bool):
+def update_integrity_result(conn: sqlite3.Connection, path: str, integrity_state: str):
     """Update integrity result in database."""
     cursor = conn.cursor()
     cursor.execute(
-        "UPDATE library_files SET flac_ok = ? WHERE path = ?",
-        (1 if is_ok else 0, path)
+        "UPDATE library_files SET flac_ok = ?, integrity_state = ? WHERE path = ?",
+        (1 if integrity_state == "valid" else 0, integrity_state, path)
     )
     conn.commit()
 
@@ -126,18 +124,22 @@ def main():
     
     # Process in parallel
     ok_count = 0
+    recoverable_count = 0
     corrupt_count = 0
     
     with ThreadPoolExecutor(max_workers=args.parallel) as executor:
         futures = {executor.submit(test_flac_integrity, p): p for p in paths}
         
         for idx, future in enumerate(as_completed(futures), 1):
-            path, is_ok = future.result()
-            update_integrity_result(conn, path, is_ok)
+            path, integrity_state = future.result()
+            update_integrity_result(conn, path, integrity_state)
             
-            if is_ok:
+            if integrity_state == "valid":
                 ok_count += 1
                 status = "✓"
+            elif integrity_state == "recoverable":
+                recoverable_count += 1
+                status = "⚠ RECOVERABLE"
             else:
                 corrupt_count += 1
                 status = "✗ CORRUPT"
@@ -145,7 +147,11 @@ def main():
             
             # Progress
             if idx % 100 == 0 or idx == total:
-                print(f"\r[{idx}/{total}] OK: {ok_count}, Corrupt: {corrupt_count}", end="")
+                print(
+                    f"\r[{idx}/{total}] OK: {ok_count}, Recoverable: {recoverable_count}, "
+                    f"Corrupt: {corrupt_count}",
+                    end="",
+                )
     
     print("\n")
     print("="*60)
@@ -153,11 +159,12 @@ def main():
     print("="*60)
     print(f"Total scanned:  {total:6d}")
     print(f"Valid:          {ok_count:6d}  ({ok_count*100//total if total else 0}%)")
+    print(
+        f"Recoverable:    {recoverable_count:6d}  "
+        f"({recoverable_count*100//total if total else 0}%)"
+    )
     print(f"Corrupt:        {corrupt_count:6d}  ({corrupt_count*100//total if total else 0}%)")
     print("="*60)
-    
-    if corrupt_count > 0:
-        print("\n⚠️  Corrupt files will be auto-flagged DROP in keeper recommendations")
     
     conn.close()
 

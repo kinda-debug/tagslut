@@ -17,11 +17,11 @@ from dedupe.utils.config import get_config
 @click.command()
 @click.option("--db", required=True, type=click.Path(exists=True, dir_okay=False), help="Path to SQLite database")
 @click.option("--output", "-o", type=click.Path(writable=True), help="Output JSON file for the plan")
-@click.option("--priority", "-p", multiple=True, help="Priority keywords (e.g. -p recovery). Order matters.")
+@click.option("--priority", "-p", multiple=True, help="Zone priority order (e.g. -p accepted -p staging).")
 @common_options
 def recommend(db, output, priority, verbose, config):
     """
-    Analyzes duplicates in the DB and recommends KEEP/DROP actions.
+    Analyzes duplicates in the DB and produces curator-facing review guidance.
     Outputs a JSON plan.
     """
     configure_execution(verbose, config)
@@ -30,7 +30,7 @@ def recommend(db, output, priority, verbose, config):
     # Load config priorities if not overridden
     if not priority:
         app_config = get_config()
-        priority = app_config.get("decisions.priority_order", ["recovery"]).copy()
+        priority = app_config.get("decisions.zone_priority", ["accepted", "staging"]).copy()
 
     logger.info(f"Using priority order: {priority}")
 
@@ -58,14 +58,17 @@ def recommend(db, output, priority, verbose, config):
             group_entry["decisions"].append({
                 "path": str(d.file.path),
                 "library": d.file.library,
+                "zone": d.file.zone,
                 "hash": d.file.checksum,
                 "action": d.action,
                 "reason": d.reason,
                 "confidence": d.confidence,
                 "file_details": {
                     "library": d.file.library,
+                    "zone": d.file.zone,
                     "checksum": d.file.checksum,
                     "flac_ok": d.file.flac_ok,
+                    "integrity_state": d.file.integrity_state,
                     "bitrate": d.file.bitrate,
                     "sample_rate": d.file.sample_rate
                 }
@@ -76,7 +79,7 @@ def recommend(db, output, priority, verbose, config):
     # 3. Output
     summary = {
         "groups_count": len(plan_entries),
-        "priority_order": priority,
+        "zone_priority": priority,
         "plan": plan_entries
     }
 

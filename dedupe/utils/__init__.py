@@ -56,6 +56,8 @@ def iter_audio_files(root: Path) -> Iterator[Path]:
     """Yield audio files underneath *root* recursively."""
 
     for entry in root.rglob("*"):
+        if "_yate_db" in entry.parts:
+            continue
         if not entry.is_file():
             continue
         if entry.suffix.lower() in AUDIO_EXTENSIONS:

@@ -4,20 +4,20 @@ set -euo pipefail
 # Continuous verbose output
 set -x
 
-echo "=== DEDUPE DOTAD: MOVE NON-CANONICAL FLAC FILES TO /Volumes/bad ==="
+echo "=== DEDUPE COMMUNE: MOVE NON-CANONICAL FLAC FILES TO /Volumes/COMMUNE/90_REJECTED ==="
 
 REPO="$HOME/dedupe_repo_reclone"
 FINAL_DB="$REPO/artifacts/db/library_final.db"
 CANON_DB="$REPO/artifacts/db/library_canonical_full.db"
 
-# Where duplicates will be moved TO (cross-device move → frees space on dotad)
-DEST_ROOT="/Volumes/bad/DOTAD_DEDUPED"
+# Where duplicates will be moved TO (cross-device move → frees space on accepted)
+DEST_ROOT="/Volumes/COMMUNE/90_REJECTED"
 
 LOG_DIR="$REPO/artifacts/logs"
 mkdir -p "$LOG_DIR"
 
-MOVE_LIST="$LOG_DIR/dotad_dupe_paths_flac.txt"
-MOVE_LOG="$LOG_DIR/dotad_dupe_moves.log"
+MOVE_LIST="$LOG_DIR/commune_dupe_paths_flac.txt"
+MOVE_LOG="$LOG_DIR/commune_dupe_moves.log"
 
 echo
 
@@ -46,7 +46,7 @@ fi
 mkdir -p "$DEST_ROOT"
 
 echo
-echo "=== STEP 1: BUILD LIST OF NON-CANONICAL FLAC PATHS ON /Volumes/dotad ==="
+echo "=== STEP 1: BUILD LIST OF NON-CANONICAL FLAC PATHS ON /Volumes/COMMUNE/20_ACCEPTED ==="
 
 # Regenerate list every run
 rm -f "$MOVE_LIST"
@@ -59,13 +59,13 @@ ATTACH '$CANON_DB' AS canon;
 .output '$MOVE_LIST'
 
 -- All paths that are present in FINAL but NOT present in CANON,
--- restricted to /Volumes/dotad and *.flac
+-- restricted to /Volumes/COMMUNE/20_ACCEPTED and *.flac
 SELECT f.path
 FROM library_files AS f
 LEFT JOIN canon.library_files AS c
   ON f.path = c.path
 WHERE c.path IS NULL
-  AND f.path LIKE '/Volumes/dotad/%'
+  AND f.path LIKE '/Volumes/COMMUNE/20_ACCEPTED/%'
   AND f.path LIKE '%.flac';
 
 .output stdout
@@ -83,7 +83,7 @@ echo "Paths to move: $TOTAL"
 echo "List saved to: $MOVE_LIST"
 
 echo
-echo "=== STEP 2: MOVE FILES OFF /Volumes/dotad (PRESERVE STRUCTURE) ==="
+echo "=== STEP 2: MOVE FILES OFF /Volumes/COMMUNE/20_ACCEPTED (PRESERVE STRUCTURE) ==="
 echo "Moves will be logged to: $MOVE_LOG"
 echo
 
@@ -112,8 +112,8 @@ while IFS= read -r src; do
     continue
   fi
 
-  # Compute relative path under /Volumes/dotad
-  rel="${src#/Volumes/dotad/}"
+  # Compute relative path under /Volumes/COMMUNE/20_ACCEPTED
+  rel="${src#/Volumes/COMMUNE/20_ACCEPTED/}"
   dest="$DEST_ROOT/$rel"
 
   dest_dir=$(dirname "$dest")

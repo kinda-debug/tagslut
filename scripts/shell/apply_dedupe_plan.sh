@@ -4,13 +4,13 @@ set -euo pipefail
 REPO="$HOME/dedupe_repo_reclone"
 DB="$REPO/artifacts/db/library_final.db"
 
-# Timestamped quarantine directory
+# Timestamped staging directory
 TS=$(date +"%Y%m%d_%H%M%S")
-QUAR="/Volumes/dotad/DEDUPER_QUARANTINE_$TS"
+QUAR="/Volumes/COMMUNE/10_STAGING/_DEDUPER_QUARANTINE_$TS"
 
 mkdir -p "$QUAR"
 
-echo "Quarantine directory:"
+echo "Staging directory:"
 echo "  $QUAR"
 echo
 
@@ -28,7 +28,7 @@ echo "Items in dedupe plan:"
 wc -l "$REPO/artifacts/db/dedupe_plan.txt"
 echo
 
-echo "Moving non-canonical duplicates to quarantine…"
+echo "Moving non-canonical duplicates to staging…"
 moved=0
 failed=0
 
@@ -48,5 +48,5 @@ echo
 echo "=== DEDUPE MOVE COMPLETE ==="
 echo "Moved:   $moved"
 echo "Failed:  $failed"
-echo "Quarantined into: $QUAR"
+echo "Staged into: $QUAR"
 echo "Plan file: $REPO/artifacts/db/dedupe_plan.txt"

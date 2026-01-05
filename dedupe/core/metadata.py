@@ -6,7 +6,7 @@ import mutagen
 from mutagen.flac import FLAC, FLACNoHeaderError
 
 from dedupe.storage.models import AudioFile
-from dedupe.core.integrity import check_flac_integrity
+from dedupe.core.integrity import classify_flac_integrity, IntegrityState
 from dedupe.core.hashing import calculate_file_hash
 
 logger = logging.getLogger("dedupe")
@@ -16,6 +16,7 @@ def extract_metadata(
     scan_integrity: bool = False,
     scan_hash: bool = False,
     library: str | None = None,
+    zone: str | None = None,
 ) -> AudioFile:
     """
     Extracts technical and tag metadata from a FLAC file and returns a populated AudioFile.
@@ -44,6 +45,7 @@ def extract_metadata(
     
     # Defaults
     flac_ok = False
+    integrity_state: IntegrityState = "corrupt"
     checksum = "NOT_SCANNED"
     duration = 0.0
     bit_depth = 0
@@ -53,7 +55,8 @@ def extract_metadata(
 
     # Optional expensive checks
     if scan_integrity:
-        flac_ok, _ = check_flac_integrity(path_obj)
+        integrity_state, _ = classify_flac_integrity(path_obj)
+        flac_ok = integrity_state == "valid"
     
     if scan_hash:
         checksum = calculate_file_hash(path_obj)
@@ -75,13 +78,16 @@ def extract_metadata(
 
         # If we didn't run explicit integrity check, standard load implies basic header health
         if not scan_integrity:
+            integrity_state = "valid"
             flac_ok = True 
 
     except FLACNoHeaderError:
         logger.error(f"No FLAC header found: {path_obj}")
+        integrity_state = "corrupt"
         flac_ok = False
     except mutagen.MutagenError as e:
         logger.error(f"Mutagen error reading {path_obj}: {e}")
+        integrity_state = "corrupt"
         flac_ok = False
     except Exception as e:
         logger.error(f"Unexpected error reading metadata for {path_obj}: {e}")
@@ -90,6 +96,7 @@ def extract_metadata(
     return AudioFile(
         path=path_obj,
         library=library,
+        zone=zone,
         mtime=mtime,
         size=size,
         checksum=checksum,
@@ -98,5 +105,6 @@ def extract_metadata(
         sample_rate=sample_rate,
         bitrate=bitrate,
         metadata=tags,
-        flac_ok=flac_ok
+        flac_ok=flac_ok,
+        integrity_state=integrity_state
     )

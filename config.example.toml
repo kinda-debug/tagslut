@@ -1,25 +1,16 @@
-# Example Configuration (Recovery-only)
+# Example Configuration (COMMUNE)
 # Copy this to config.toml and customize as needed
 
-[paths]
-# Root directory for your FLAC library (recovery)
-root = "/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY"
+[library]
+name = "COMMUNE"
+root = "/Volumes/COMMUNE"
 
-# Directory for diagnostic dumps
-diagnostic_root = "/Volumes/RECOVERY_TARGET/Root/.dedupe_diagnostics"
-
-# Playlist file for broken files
-broken_playlist = "/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/broken_files_unrepaired.m3u"
-
-# Directory of quarantined files awaiting review
-quarantine = "/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_Quarantine"
-
-# Directory of confirmed duplicates kept for healthier copies
-garbage = "/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_Garbage"
-
-[libraries]
-recovery_final = "/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY"
-recovery_staging = "/Volumes/RECOVERY_TARGET/Root/STAGING_TAGGED"
+[library.zones]
+inbox = "00_INBOX"
+staging = "10_STAGING"
+accepted = "20_ACCEPTED"
+rejected = "90_REJECTED"
+yate_db = "_yate_db"
 
 [scan]
 # Number of worker threads for scanning (more = faster, but uses more CPU)
@@ -38,8 +29,8 @@ decode_timeout = 30
 # Skip broken files instead of aborting scan
 skip_broken = true
 
-# Auto-quarantine files that cause freezes
-auto_quarantine = false
+# Auto-reject files that cause freezes
+auto_reject = false
 
 # Watchdog timeout (seconds) - how long to wait before warning
 watchdog_timeout = 300
@@ -62,6 +53,10 @@ ffmpeg_args = "-err_detect ignore_err -c:a flac"
 
 # Timeout for repair operations
 timeout = 300
+
+# Decision engine defaults (report-only guidance)
+[decisions]
+zone_priority = ["accepted", "staging"]
 
 [dedupe]
 # Enable verbose output

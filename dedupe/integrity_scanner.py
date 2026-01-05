@@ -10,18 +10,20 @@ from dedupe.storage.schema import get_connection, init_db
 from dedupe.utils.paths import list_files
 from dedupe.utils.parallel import process_map
 from dedupe.utils.config import get_config
+from dedupe.utils.library import load_zone_paths, ensure_dedupe_zone
 
 logger = logging.getLogger("dedupe")
 
 
-def _scan_one_file(args: tuple[Path, bool, bool, Optional[str]]) -> Optional[AudioFile]:
-    path, scan_integrity, scan_hash, library_name = args
+def _scan_one_file(args: tuple[Path, bool, bool, Optional[str], Optional[str]]) -> Optional[AudioFile]:
+    path, scan_integrity, scan_hash, library_name, zone = args
     try:
         return extract_metadata(
             path,
             scan_integrity=scan_integrity,
             scan_hash=scan_hash,
             library=library_name,
+            zone=zone,
         )
     except Exception as e:
         logger.error(f"Failed to process {path}: {e}")
@@ -32,6 +34,7 @@ def scan_library(
     library_path: Path,
     db_path: Path,
     library: Optional[str] = None,
+    zone: Optional[str] = None,
     incremental: bool = False,
     scan_integrity: bool = False,
     scan_hash: bool = False,
@@ -43,33 +46,23 @@ def scan_library(
 
     config = get_config()
     workers = config.get("integrity.parallel_workers", None)
-    configured_libraries = config.get("libraries", {}) or {}
+    zone_paths = load_zone_paths(config)
+    if zone_paths is None:
+        raise ValueError("COMMUNE library zones are not configured.")
 
-    def infer_library_name(root: Path) -> Optional[str]:
-        try:
-            root_resolved = root.resolve()
-        except Exception:
-            root_resolved = root
-
-        for name, configured_root in configured_libraries.items():
-            try:
-                configured_root_path = Path(configured_root).resolve()
-            except Exception:
-                configured_root_path = Path(configured_root)
-
-            try:
-                if (
-                    root_resolved == configured_root_path
-                    or configured_root_path in root_resolved.parents
-                ):
-                    return str(name)
-            except Exception:
-                continue
-        return None
-
-    library_name = library or infer_library_name(library_path)
+    library_name = library or config.get("library.name", "COMMUNE")
     if library_name:
-        logger.info(f"Library tag: {library_name}")
+        logger.info("Library tag: %s", library_name)
+
+    if zone:
+        if zone not in zone_paths.zones:
+            raise ValueError(f"Unknown zone '{zone}' for {library_path}")
+        zone_name = zone
+    else:
+        zone_name = ensure_dedupe_zone(library_path, zone_paths)
+
+    if zone_name not in ("staging", "accepted"):
+        raise ValueError(f"Zone '{zone_name}' is out of scope for dedupe.")
 
     logger.info(f"Scanning library: {library_path}")
 
@@ -95,7 +88,7 @@ def scan_library(
         conn = get_connection(db_path)
         try:
             rows = conn.execute(
-                "SELECT path, mtime, size, library FROM files WHERE path LIKE ?",
+                "SELECT path, mtime, size, library, zone FROM files WHERE path LIKE ?",
                 (prefix + "%",),
             ).fetchall()
         finally:
@@ -123,8 +116,12 @@ def scan_library(
             db_mtime = row["mtime"]
             db_size = row["size"]
             db_library = row["library"]
+            db_zone = row["zone"]
 
             if library_name and db_library != library_name:
+                changed.append(p)
+                continue
+            if zone_name and db_zone != zone_name:
                 changed.append(p)
                 continue
 
@@ -143,7 +140,7 @@ def scan_library(
             logger.info("No changes detected; nothing to do.")
             return
 
-    scan_args = [(p, scan_integrity, scan_hash, library_name) for p in to_process]
+    scan_args = [(p, scan_integrity, scan_hash, library_name, zone_name) for p in to_process]
 
     # 4. Run Parallel Extraction
     start_time = time.time()

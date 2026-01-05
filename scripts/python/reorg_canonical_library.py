@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Reorganize canonical FLACs to:
-/Volumes/bad/FINAL_LIBRARY/Artist/(YYYY) Album Name/Artist - (YYYY) Album Name - [Disc#.]Track#. Title.flac
+/Volumes/COMMUNE/20_ACCEPTED/Artist/(YYYY) Album Name/Artist - (YYYY) Album Name - [Disc#.]Track#. Title.flac
 - Copies files to new structure
 - Verifies copy (checksum)
 - Deletes original if copy is verified
@@ -14,7 +14,7 @@ import hashlib
 from pathlib import Path
 
 DB = os.path.expanduser('~/dedupe_repo_reclone/artifacts/db/library_canonical_fresh.db')
-ROOT = Path('/Volumes/bad/FINAL_LIBRARY')
+ROOT = Path('/Volumes/COMMUNE/20_ACCEPTED')
 LOG = Path('~/dedupe_repo_reclone/artifacts/logs/reorg_canonical.log').expanduser()
 
 os.makedirs(LOG.parent, exist_ok=True)

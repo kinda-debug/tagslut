@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="${1:-/Volumes/dotad}"
+ROOT="${1:-/Volumes/COMMUNE}"
 REPO="${HOME}/dedupe_repo_reclone"
 LOG_DIR="${REPO}/artifacts/logs"
 
 mkdir -p "${LOG_DIR}"
 
 ts="$(date +'%Y%m%d_%H%M%S')"
-LOG_FILE="${LOG_DIR}/cleanup_empty_dirs_dotad_${ts}.log"
+LOG_FILE="${LOG_DIR}/cleanup_empty_dirs_commune_${ts}.log"
 
 echo "=== CLEAN EMPTY DIRECTORIES ON: ${ROOT} ==="
 echo "Log: ${LOG_FILE}"

@@ -3,25 +3,25 @@
 echo "FOLDER STATUS CHECK"
 echo "==================="
 
-if [ -d "/Volumes/dotad/Garbage" ]; then
-    SIZE=$(du -sh "/Volumes/dotad/Garbage" 2>/dev/null | awk '{print $1}')
-    COUNT=$(find "/Volumes/dotad/Garbage" -type f 2>/dev/null | wc -l)
-    echo "✓ Garbage folder STILL EXISTS"
+if [ -d "/Volumes/COMMUNE/90_REJECTED" ]; then
+    SIZE=$(du -sh "/Volumes/COMMUNE/90_REJECTED" 2>/dev/null | awk '{print $1}')
+    COUNT=$(find "/Volumes/COMMUNE/90_REJECTED" -type f 2>/dev/null | wc -l)
+    echo "✓ Rejected folder STILL EXISTS"
     echo "  Size: $SIZE"
     echo "  Files: $COUNT"
 else
-    echo "✗ Garbage folder DELETED"
+    echo "✗ Rejected folder DELETED"
 fi
 
-if [ -d "/Volumes/dotad/Quarantine" ]; then
-    echo "✓ Quarantine folder STILL EXISTS"
+if [ -d "/Volumes/COMMUNE/10_STAGING" ]; then
+    echo "✓ Staging folder STILL EXISTS"
 else
-    echo "✗ Quarantine folder DELETED"
+    echo "✗ Staging folder DELETED"
 fi
 
-if [ -d "/Volumes/dotad/NEW_LIBRARY" ]; then
-    COUNT=$(find "/Volumes/dotad/NEW_LIBRARY" -type f 2>/dev/null | wc -l)
-    echo "✓ NEW_LIBRARY folder EXISTS with $COUNT files"
+if [ -d "/Volumes/COMMUNE/20_ACCEPTED" ]; then
+    COUNT=$(find "/Volumes/COMMUNE/20_ACCEPTED" -type f 2>/dev/null | wc -l)
+    echo "✓ Accepted folder EXISTS with $COUNT files"
 else
-    echo "✗ NEW_LIBRARY folder MISSING"
+    echo "✗ Accepted folder MISSING"
 fi

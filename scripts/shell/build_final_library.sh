@@ -100,12 +100,12 @@ SQL
 
 wc -l "$REPO/artifacts/db/dedupe_plan.txt"
 
-# Step 7: Move non-canonical duplicates to quarantine
+# Step 7: Move non-canonical duplicates to staging
 TS=$(date +"%Y%m%d_%H%M%S")
-QUAR="/Volumes/dotad/DEDUPER_QUARANTINE_$TS"
+QUAR="/Volumes/COMMUNE/10_STAGING/_DEDUPER_QUARANTINE_$TS"
 mkdir -p "$QUAR"
 
-echo "Moving non-canonical duplicates to quarantine: $QUAR"
+echo "Moving non-canonical duplicates to staging: $QUAR"
 moved=0
 failed=0
 while IFS= read -r f; do
@@ -122,7 +122,7 @@ done < "$REPO/artifacts/db/dedupe_plan.txt"
 echo "=== DEDUPE MOVE COMPLETE ==="
 echo "Moved:   $moved"
 echo "Failed:  $failed"
-echo "Quarantined into: $QUAR"
+echo "Staged into: $QUAR"
 echo "Plan file: $REPO/artifacts/db/dedupe_plan.txt"
 
 echo "=== FINALIZING LIBRARY DB ==="

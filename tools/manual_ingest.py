@@ -32,6 +32,8 @@ LIBRARY_COLUMNS = (
     "extra_json",
     "library_state",
     "flac_ok",
+    "integrity_state",
+    "zone",
 )
 
 
@@ -103,8 +105,10 @@ def get_metadata(file_path: Path) -> Optional[dict[str, object]]:
             "extra_json": json.dumps(
                 extra_payload, sort_keys=True, separators=(",", ":")
             ),
-            "library_state": "FINAL",
+            "library_state": "accepted",
             "flac_ok": 1 if health["health_score"] > 0 else 0,
+            "integrity_state": "valid" if health["health_score"] > 0 else "recoverable",
+            "zone": "accepted",
         }
 
     except (MutagenError, OSError) as exc:
@@ -133,8 +137,10 @@ def get_metadata(file_path: Path) -> Optional[dict[str, object]]:
             "extra_json": json.dumps(
                 extra_payload, sort_keys=True, separators=(",", ":")
             ),
-            "library_state": "FINAL",
+            "library_state": "accepted",
             "flac_ok": 0,
+            "integrity_state": "corrupt",
+            "zone": "accepted",
         }
 
 

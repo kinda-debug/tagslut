@@ -3,21 +3,21 @@
 ## Current Status (Nov 13, 2025, ~10:33 AM)
 
 ### Problem
-- **All commands accessing /Volumes/dotad are hanging indefinitely**
+- **All commands accessing /Volumes/COMMUNE are hanging indefinitely**
 - Terminal becomes unresponsive when attempting to access the drive
 - System appears frozen when accessing external drive
 
 ### What We Know
 1. **Last confirmed state (~10:20 AM)**
-   - Garbage folder deletion was in progress
+   - Rejected folder deletion was in progress
    - 118 GB remaining out of original 202 GB (84 GB deleted)
-   - Move to NEW_LIBRARY completed: 19,339 unique files moved successfully
-   - Quarantine (48 GB, 104 files) already fully deleted
+   - Move to 20_ACCEPTED completed: 19,339 unique files moved successfully
+   - Staging (48 GB, 104 files) already fully deleted
 
 2. **Move Plan Distribution**
-   - 6,256 files from MUSIC (kept)
-   - 7,898 files from Quarantine (kept) 
-   - 2,929 files from Garbage (kept)
+   - 6,256 files from Accepted (kept)
+   - 7,898 files from Staging (kept) 
+   - 2,929 files from Rejected (kept)
    - **Selection was source-priority based (no quality metadata available)**
 
 3. **Database Status**
@@ -26,7 +26,7 @@
    - Selection couldn't compare actual audio quality
 
 ### Current Issue
-**The external drive (/Volumes/dotad) is now inaccessible**
+**The external drive (/Volumes/COMMUNE) is now inaccessible**
 - Either: Deletion process is still running and blocking access
 - Or: Drive has become unmounted during deletion
 - Or: Drive has entered a bad state
@@ -40,19 +40,19 @@
 
 ### Recovery Options
 IF drive reconnects:
-1. **Option A: Stop and inspect** - Check if Garbage folder still exists, what's been deleted
+1. **Option A: Stop and inspect** - Check if Rejected folder still exists, what's been deleted
 2. **Option B: Resume deletion** - Continue if satisfied with selection logic
 3. **Option C: Restore from backup** - If you have backups of original folders
 
 ### Files at Risk
-- Garbage folder: ~118 GB still potentially deletable
-- This represents 2,929 unique audio files (duplicates of MUSIC/Quarantine copies)
+- Rejected folder: ~118 GB still potentially deletable
+- This represents 2,929 unique audio files (duplicates of Accepted/Staging copies)
 
 ### Selection Logic Used
-**MUSIC > Garbage > Quarantine**
-- Files from MUSIC folder were preferred when duplicates existed
+**Accepted > Rejected > Staging**
+- Files from Accepted folder were preferred when duplicates existed
 - No actual audio quality comparison was possible (all bitrate=0)
-- Assumption: MUSIC was better-curated original collection
+- Assumption: Accepted was better-curated original collection
 
 ---
 **CRITICAL**: Do NOT attempt further operations until drive status is verified.

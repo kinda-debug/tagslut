@@ -6,7 +6,7 @@ ARCHIVE_DIR="$HOME/dedupe_repo_reclone/ARCHIVE_SCRIPTS"
 mkdir -p "$ARCHIVE_DIR"
 
 # Archive legacy/obsolete scripts
-mv "$HOME/dedupe_repo_reclone/artifacts/reports/move_to_quarantine.sh" "$ARCHIVE_DIR/" 2>/dev/null || true
+mv "$HOME/dedupe_repo_reclone/artifacts/reports/move_to_rejected.sh" "$ARCHIVE_DIR/" 2>/dev/null || true
 mv "$HOME/dedupe_repo_reclone/artifacts/reports/dry_run_delete.sh" "$ARCHIVE_DIR/" 2>/dev/null || true
 mv "$HOME/dedupe_repo_reclone/test_nohup.sh" "$ARCHIVE_DIR/" 2>/dev/null || true
 mv "$HOME/dedupe_repo_reclone/pipefail.sh" "$ARCHIVE_DIR/" 2>/dev/null || true

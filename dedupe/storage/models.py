@@ -2,6 +2,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, Optional, List, Dict, Any
 
+IntegrityState = Literal["valid", "recoverable", "corrupt"]
+Zone = Literal["inbox", "staging", "accepted", "rejected"]
+
 @dataclass
 class AudioFile:
     """
@@ -16,9 +19,11 @@ class AudioFile:
     metadata: Dict[str, Any]
     flac_ok: bool
     library: Optional[str] = None
+    zone: Optional[Zone] = None
     mtime: Optional[float] = None
     size: Optional[int] = None
     acoustid: Optional[str] = None
+    integrity_state: Optional[IntegrityState] = None
 
     def __post_init__(self):
         # Ensure path is always a Path object

@@ -157,7 +157,7 @@ index 37c39ee0c19f4ce9080d613f11b00780f58bc09f..1beb937cd0d9a1c4a96a053beb3dfa38
 -ls -R "$ROOT/_TRASH_DUPES" | head
 -```
 -
--12) Quarantine (frozen) files
+-12) Staging (frozen) files
 -
 -- Files automatically quarantined during freeze detection are moved to
 -  `$ROOT/_BROKEN` when `--auto-quarantine` is enabled on scan.
@@ -339,9 +339,9 @@ index 62a4039fb2daeaa2e07d3e0b8151a6c43916733c..ddcae1f11c126935a51188e33482b5e1
 -- `scan_metadata.py` — Comprehensive metadata extraction
 -
 -### Duplicate Removal
--- `dedupe_move_duplicates.py` — Move duplicates to Garbage
+-- `dedupe_move_duplicates.py` — Move duplicates to Rejected
 -- `prune_cross_root_duplicates.py` — Cross-root deduplication (NO root preference)
--- `prune_garbage_duplicates.py` — Safe Garbage cleanup
+-- `prune_garbage_duplicates.py` — Safe Rejected cleanup
 -- `db_prune_missing_files.py` — Database reconciliation
 -
 -### Health & Repair
@@ -350,7 +350,7 @@ index 62a4039fb2daeaa2e07d3e0b8151a6c43916733c..ddcae1f11c126935a51188e33482b5e1
 -
 -### Specialized Tools
 -- `dedupe_repaired.py` — Content duplicates in repaired staging
--- `reconcile_repaired.py` — Repaired vs MUSIC comparison
+-- `reconcile_repaired.py` — Repaired vs ACCEPTED comparison
 -- `analyze_filename_dupes_metadata.py` — Metadata quality comparison
 -
 -**Complete reference**: See [`docs/scripts_reference.md`](docs/scripts_reference.md) for detailed usage and workflows.
@@ -376,7 +376,7 @@ index 62a4039fb2daeaa2e07d3e0b8151a6c43916733c..ddcae1f11c126935a51188e33482b5e1
 -
 -```bash
 -# Scan the main library with watchdog
--python3 scripts/find_dupes_fast.py /Volumes/dotad/MUSIC \
+-python3 scripts/find_dupes_fast.py /Volumes/COMMUNE/20_ACCEPTED \
 -  --output /tmp/file_dupes_music.csv \
 -  --heartbeat /tmp/find_dupes_fast.music.hb \
 -  --watchdog --watchdog-timeout 180
@@ -390,7 +390,7 @@ index 62a4039fb2daeaa2e07d3e0b8151a6c43916733c..ddcae1f11c126935a51188e33482b5e1
 -  --commit --report artifacts/reports/executed_moves.csv
 -```
 -
--#### Multi-root scanning (MUSIC + Quarantine + Garbage)
+-#### Multi-root scanning (ACCEPTED + Staging + Rejected)
 -
 -Scan all three configured roots into the same DB, then emit a combined report:
 +## Installation
@@ -410,7 +410,7 @@ index 62a4039fb2daeaa2e07d3e0b8151a6c43916733c..ddcae1f11c126935a51188e33482b5e1
 -`/tmp/find_dupes_fast.<tag>.hb`.
 +## Unified CLI
  
--Keeper priority: when duplicates span multiple roots, any path under MUSIC is
+-Keeper priority: when duplicates span multiple roots, any path under ACCEPTED is
 -preferred; otherwise, the shortest path wins with lexicographic tie-break.
 -
 -Optional progress bars
@@ -500,7 +500,7 @@ index 62a4039fb2daeaa2e07d3e0b8151a6c43916733c..ddcae1f11c126935a51188e33482b5e1
 -     manually (or re-rip), then re-run the health scan on the repaired versions
 -     to make sure durations now match expectations.
 -
--3. **Quarantine deep dives**  
+-3. **Staging deep dives**  
 -   The quarantine sub-commands focus on metadata vs. reality mismatches.
 -   `quarantine inspect` captures `ffprobe` details, PCM hashes, and Chromaprint
 -   fingerprints—perfect for spotting two files that look similar but differ in
@@ -552,7 +552,7 @@ index 62a4039fb2daeaa2e07d3e0b8151a6c43916733c..ddcae1f11c126935a51188e33482b5e1
 -     1) Run the fast scanner to update MD5 groups.
 -     2) Generate a move plan with `scripts/dedupe_move_duplicates.py`.
 -     3) Review the CSV; then re-run with `--commit` to move losers into the
--        configured Garbage directory while preserving a reversible audit trail.
+-        configured Rejected directory while preserving a reversible audit trail.
 +   ```bash
 +   flake8 dedupe
 +   ```
@@ -567,8 +567,8 @@ index 62a4039fb2daeaa2e07d3e0b8151a6c43916733c..ddcae1f11c126935a51188e33482b5e1
 -3. Use quarantine analytics to focus on duration mismatches and subtle quality
 -   differences. CSV outputs make it easy to filter by anomalies such as extra
 -   duration or unexpected bit-depth changes.
--   For a step-by-step checklist tailored to `/Volumes/dotad/Quarantine` and
--   `/Volumes/dotad/Garbage`, review `docs/quarantine_garbage_playbook.md`.
+-   For a step-by-step checklist tailored to `/Volumes/COMMUNE/10_STAGING` and
+-   `/Volumes/COMMUNE/90_REJECTED`, review `docs/staging_review_playbook.md`.
 -4. Synchronise and dedupe using staged directories, dry-run reports, and loser
 -   playlists so you can resolve naming inconsistencies and choose the
 -   best-quality copies before committing changes.
@@ -676,7 +676,7 @@ index 27e92fac1e321821f595b07559d63d1ffa1746ae..5b10b57088b6b3ead51ba5845d33824c
  ```bash
 -export PYTHONPATH="$(pwd)"
 -python3 scripts/flac_scan.py --root /path/to/music --workers 8 --verbose
-+python3 -m dedupe.cli scan-library --root /Volumes/dotad/MUSIC --out artifacts/db/library.db --verbose
++python3 -m dedupe.cli scan-library --root /Volumes/COMMUNE/20_ACCEPTED --out artifacts/db/library.db --verbose
  ```
  
 -Fast duplicate scanner (byte-identical)
@@ -690,7 +690,7 @@ index 27e92fac1e321821f595b07559d63d1ffa1746ae..5b10b57088b6b3ead51ba5845d33824c
 +## 2. Parse R-Studio exports
  
  ```bash
--python3 scripts/find_dupes_fast.py /Volumes/dotad/MUSIC \
+-python3 scripts/find_dupes_fast.py /Volumes/COMMUNE/20_ACCEPTED \
 -  --output /tmp/file_dupes_music.csv \
 -  --heartbeat /tmp/find_dupes_fast.music.hb \
 -  --watchdog --watchdog-timeout 180
@@ -702,7 +702,7 @@ index 27e92fac1e321821f595b07559d63d1ffa1746ae..5b10b57088b6b3ead51ba5845d33824c
 +by R-Studio, and persists everything under the `recovered_files` table.  The
 +command is idempotent, so it can be re-run as more exports arrive.
  
--To scan MUSIC, Quarantine, and Garbage sequentially into the same DB and write
+-To scan ACCEPTED, Staging, and Rejected sequentially into the same DB and write
 -one combined report:
 +## 3. Match recovered candidates
  
@@ -719,7 +719,7 @@ index 27e92fac1e321821f595b07559d63d1ffa1746ae..5b10b57088b6b3ead51ba5845d33824c
 +  --verbose
  ```
  
--The mover prefers keepers under the MUSIC root when duplicates span multiple
+-The mover prefers keepers under the ACCEPTED root when duplicates span multiple
 -roots; otherwise, it falls back to shortest path and lexicographic order.
 +The matcher compares filename similarity and file sizes to classify each
 +recovery candidate.  The resulting CSV includes:
@@ -2009,13 +2009,13 @@ index 2cb7439450a315b0e421eb5af69a2901ed9d59bb..00000000000000000000000000000000
 -    "load_path_config",
 -]
 -
--DEFAULT_LIBRARY_ROOT = Path("/Volumes/dotad/MUSIC")
+-DEFAULT_LIBRARY_ROOT = Path("/Volumes/COMMUNE/20_ACCEPTED")
 -# Default location of the primary music library.
 -
--DEFAULT_QUARANTINE_ROOT = Path("/Volumes/dotad/Quarantine")
+-DEFAULT_QUARANTINE_ROOT = Path("/Volumes/COMMUNE/10_STAGING")
 -# Default location for reviewed quarantine files.
 -
--DEFAULT_GARBAGE_ROOT = Path("/Volumes/dotad/Garbage")
+-DEFAULT_GARBAGE_ROOT = Path("/Volumes/COMMUNE/90_REJECTED")
 -# Default location for archived duplicate candidates.
 -
 -_KEY_TEMPLATE = r"^\s*{key}\s*=\s*\"([^\"]+)\""
@@ -6226,21 +6226,21 @@ index 5d2bab3ba0ef42ccbfc99fed368e9c53dc215bda..3c70f5f5693a3c900d742a75ee2f3117
  
 -```toml
 -[paths]
--root = "/Volumes/dotad/MUSIC"
--quarantine = "/Volumes/dotad/Quarantine"
--garbage = "/Volumes/dotad/Garbage"
+-root = "/Volumes/COMMUNE/20_ACCEPTED"
+-quarantine = "/Volumes/COMMUNE/10_STAGING"
+-garbage = "/Volumes/COMMUNE/90_REJECTED"
 +## Recommended environment variables
 +
 +You may still wish to define environment variables for frequently used paths:
 +
 +```bash
-+export DEDUPE_LIBRARY_ROOT="/Volumes/dotad/MUSIC"
-+export DEDUPE_RECOVERED_EXPORT="/Volumes/dotad/Recognized.txt"
++export DEDUPE_LIBRARY_ROOT="/Volumes/COMMUNE/20_ACCEPTED"
++export DEDUPE_RECOVERED_EXPORT="/Volumes/COMMUNE/Recognized.txt"
 +export DEDUPE_ARTIFACT_DIR="$(pwd)/artifacts"
  ```
  
 -- **root** – absolute path to the primary music library. When omitted the
--  synchronisation CLI falls back to `/Volumes/dotad/MUSIC`.
+-  synchronisation CLI falls back to `/Volumes/COMMUNE/20_ACCEPTED`.
 -- **quarantine** – root of the quarantine review area. The commands walk the
 -  directory recursively, so nested artist/album folders are automatically
 -  included.
@@ -6306,7 +6306,7 @@ index c054024075f235219b92e13c9667b14b37f799f4..4f638641a0a8ccfc2b56f379fb1b13ad
 +3. Store the results inside the `library_files` table of the specified SQLite
 +   database.
  
--## Quarantine analysis
+-## Staging analysis
 +## 2. Parse recovery exports
  
  ```
@@ -6355,15 +6355,15 @@ index c054024075f235219b92e13c9667b14b37f799f4..4f638641a0a8ccfc2b56f379fb1b13ad
 +[`dedupe/ARCHIVE/`](../dedupe/ARCHIVE/). Those documents and scripts remain
 +available for historical reference but are superseded by the streamlined
 +four-step process outlined above.
-diff --git a/docs/quarantine_garbage_playbook.md b/docs/quarantine_garbage_playbook.md
+diff --git a/docs/staging_review_playbook.md b/docs/staging_review_playbook.md
 index e257b9594257cfdb1a889719ec1022a197b3f0f7..f7b61f61142a5c8028271aa23669c19bb09cd8a3 100644
---- a/docs/quarantine_garbage_playbook.md
-+++ b/docs/quarantine_garbage_playbook.md
+--- a/docs/staging_review_playbook.md
++++ b/docs/staging_review_playbook.md
 @@ -1,94 +1,51 @@
--# Quarantine and garbage directory playbook
+-# Staging and garbage directory playbook
 -
--Use this checklist to merge healthier copies from `/Volumes/dotad/Quarantine`
--and `/Volumes/dotad/Garbage` back into the main library.
+-Use this checklist to merge healthier copies from `/Volumes/COMMUNE/10_STAGING`
+-and `/Volumes/COMMUNE/90_REJECTED` back into the main library.
 -
 -The commands below use the streamlined quarantine sub-commands introduced to
 -replace the sprawling legacy scripts. Historical aliases (`analyse`, `scan`,
@@ -6371,31 +6371,31 @@ index e257b9594257cfdb1a889719ec1022a197b3f0f7..f7b61f61142a5c8028271aa23669c19b
 -
 -1. **Confirm configuration**
 -   - Ensure `config.toml` lists the three directories under `[paths]`:
--     `/Volumes/dotad/MUSIC`, `/Volumes/dotad/Quarantine`, and
--     `/Volumes/dotad/Garbage`.
+-     `/Volumes/COMMUNE/20_ACCEPTED`, `/Volumes/COMMUNE/10_STAGING`, and
+-     `/Volumes/COMMUNE/90_REJECTED`.
 -   - All commands below traverse each directory recursively, so nested
 -     subfolders do not require additional flags.
 -
 -2. **Audit quarantine inventory**
 -   - Capture a lightweight summary of the quarantine tree:
 -     ```bash
--     python3 -m dedupe.cli quarantine inventory /Volumes/dotad/Quarantine --output quarantine_scan.csv
+-     python3 -m dedupe.cli quarantine inventory /Volumes/COMMUNE/10_STAGING --output quarantine_scan.csv
 -     ```
 -   - Deep-inspect suspicious files when needed:
 -     ```bash
--     python3 -m dedupe.cli quarantine inspect /Volumes/dotad/Quarantine --limit 200 --output quarantine_analysis.csv
+-     python3 -m dedupe.cli quarantine inspect /Volumes/COMMUNE/10_STAGING --limit 200 --output quarantine_analysis.csv
 -     ```
 -   - Spot truncated or overlong audio by comparing container vs. decoded
 -     durations:
 -     ```bash
--     python3 -m dedupe.cli quarantine duration /Volumes/dotad/Quarantine --output quarantine_length.csv
+-     python3 -m dedupe.cli quarantine duration /Volumes/COMMUNE/10_STAGING --output quarantine_length.csv
 -     ```
 -
 -3. **Check playback health before reintegration**
 -   - Run an integrity sweep over each source to flag corrupted copies:
 -     ```bash
--     python3 -m dedupe.cli health scan /Volumes/dotad/Quarantine --log quarantine_health.log
--     python3 -m dedupe.cli health scan /Volumes/dotad/Garbage --log garbage_health.log
+-     python3 -m dedupe.cli health scan /Volumes/COMMUNE/10_STAGING --log quarantine_health.log
+-     python3 -m dedupe.cli health scan /Volumes/COMMUNE/90_REJECTED --log garbage_health.log
 -     ```
 -   - Review the logs for failures and repair or discard broken files before
 -     synchronising anything into the main library.
@@ -6403,11 +6403,11 @@ index e257b9594257cfdb1a889719ec1022a197b3f0f7..f7b61f61142a5c8028271aa23669c19b
 -4. **Dry-run synchronisation against each source**
 -   - Preview how replacements from the quarantine tree would affect the library:
 -     ```bash
--     python3 -m dedupe.cli sync --dedupe-root /Volumes/dotad/Quarantine --dry-run
+-     python3 -m dedupe.cli sync --dedupe-root /Volumes/COMMUNE/10_STAGING --dry-run
 -     ```
 -   - Repeat for the archive of confirmed duplicates:
 -     ```bash
--     python3 -m dedupe.cli sync --dedupe-root /Volumes/dotad/Garbage --dry-run
+-     python3 -m dedupe.cli sync --dedupe-root /Volumes/COMMUNE/90_REJECTED --dry-run
 -     ```
 -   - Investigate any proposed swaps where the quarantine or garbage copies win;
 -     confirm the healthier file really should replace the library version.
@@ -6416,15 +6416,15 @@ index e257b9594257cfdb1a889719ec1022a197b3f0f7..f7b61f61142a5c8028271aa23669c19b
 -   - After auditing the dry-run output, rerun synchronisation without
 -     `--dry-run` for the directories you trust:
 -     ```bash
--     python3 -m dedupe.cli sync --dedupe-root /Volumes/dotad/Quarantine
--     python3 -m dedupe.cli sync --dedupe-root /Volumes/dotad/Garbage
+-     python3 -m dedupe.cli sync --dedupe-root /Volumes/COMMUNE/10_STAGING
+-     python3 -m dedupe.cli sync --dedupe-root /Volumes/COMMUNE/90_REJECTED
 -     ```
 -   - Keep the generated console logs as an audit trail and rerun the health
--     sweep on `/Volumes/dotad/MUSIC` if you want to verify playback across the
+-     sweep on `/Volumes/COMMUNE/20_ACCEPTED` if you want to verify playback across the
 -     entire library (`--verify-library`).
 -
 -Following this procedure ensures both auxiliary directories contribute their
--healthiest tracks back into `/Volumes/dotad/MUSIC` while preserving a repeatable
+-healthiest tracks back into `/Volumes/COMMUNE/20_ACCEPTED` while preserving a repeatable
 -review process.
 -
 -## Optional: progress bars with tqdm
@@ -6445,7 +6445,7 @@ index e257b9594257cfdb1a889719ec1022a197b3f0f7..f7b61f61142a5c8028271aa23669c19b
 -bar during lengthy operations. Example:
 -
 -```bash
--python3 -m dedupe.cli quarantine inventory /Volumes/dotad/Quarantine \
+-python3 -m dedupe.cli quarantine inventory /Volumes/COMMUNE/10_STAGING \
 -  --output quarantine_scan.csv --limit 1000 --verbose
 -```
 -
@@ -6454,7 +6454,7 @@ index e257b9594257cfdb1a889719ec1022a197b3f0f7..f7b61f61142a5c8028271aa23669c19b
 -  passed. Without `tqdm` the CLI will still print coarse progress updates.
 -- Prefer absolute paths for `--output` to avoid ambiguity about where the
 -  file will be written.
-+# Quarantine and garbage playbook (archived)
++# Staging and garbage playbook (archived)
 +
 +> **Status:** Archived. The quarantine-focused workflows documented in earlier
 +> versions of this repository have been superseded by the streamlined recovery
@@ -6523,14 +6523,14 @@ index ede8b741eedf4ae98a120593dbb614e92017e751..2580818aac26b966000bfae8b1312e34
 -- **Speed**: 1-2 sec/file (fast)
 -- **Usage**:
 -  ```bash
--  python scripts/find_dupes_fast.py /Volumes/dotad/MUSIC \
+-  python scripts/find_dupes_fast.py /Volumes/COMMUNE/20_ACCEPTED \
 -    --output /tmp/dupes_music.csv \
 -    --heartbeat /tmp/heartbeat.txt \
 -    --watchdog --watchdog-timeout 180
 -  ```
 -
 -#### `scan_all_roots.py`
--Multi-root orchestrator for scanning MUSIC, Quarantine, and Garbage.
+-Multi-root orchestrator for scanning ACCEPTED, Staging, and Rejected.
 -- **Purpose**: Scan all three roots sequentially into shared DB
 -- **Usage**:
 -  ```bash
@@ -6552,7 +6552,7 @@ index ede8b741eedf4ae98a120593dbb614e92017e751..2580818aac26b966000bfae8b1312e34
 -### Duplicate Removal
 -
 -#### `dedupe_move_duplicates.py`
--Move byte-identical duplicates to Garbage.
+-Move byte-identical duplicates to Rejected.
 -- **Safety**: Dry-run by default (`--commit` to execute)
 -- **Keeper Selection**: Shortest path → lexicographic
 -- **Usage**:
@@ -6567,7 +6567,7 @@ index ede8b741eedf4ae98a120593dbb614e92017e751..2580818aac26b966000bfae8b1312e34
 -  ```
 -
 -#### `prune_cross_root_duplicates.py` ⭐ CRITICAL
--Delete duplicates across all roots (MUSIC, Quarantine, Garbage).
+-Delete duplicates across all roots (ACCEPTED, Staging, Rejected).
 -- **Policy**: Pure shortest-path (NO root preference)
 -- **Safety**: Dry-run by default (`--commit` to execute)
 -- **CSV Columns**:
@@ -6587,10 +6587,10 @@ index ede8b741eedf4ae98a120593dbb614e92017e751..2580818aac26b966000bfae8b1312e34
 -  ```
 -
 -#### `prune_garbage_duplicates.py`
--Safe Garbage-only cleanup.
+-Safe Rejected-only cleanup.
 -- **Rules**:
--  1. If duplicate exists outside Garbage → delete all Garbage copies
--  2. If only in Garbage → keep shortest path, delete rest
+-  1. If duplicate exists outside Rejected → delete all Rejected copies
+-  2. If only in Rejected → keep shortest path, delete rest
 -- **Usage**:
 -  ```bash
 -  python scripts/prune_garbage_duplicates.py \
@@ -6602,7 +6602,7 @@ index ede8b741eedf4ae98a120593dbb614e92017e751..2580818aac26b966000bfae8b1312e34
 -
 -#### `db_prune_missing_files.py`
 -Remove stale DB entries for deleted files.
--- **Scope**: Garbage by default, `--scope all` for complete cleanup
+-- **Scope**: Rejected by default, `--scope all` for complete cleanup
 -- **Usage**:
 -  ```bash
 -  python scripts/db_prune_missing_files.py \
@@ -6619,7 +6619,7 @@ index ede8b741eedf4ae98a120593dbb614e92017e751..2580818aac26b966000bfae8b1312e34
 -- **Usage**:
 -  ```bash
 -  # Scan single root
--  python scripts/scan_metadata.py /Volumes/dotad/MUSIC
+-  python scripts/scan_metadata.py /Volumes/COMMUNE/20_ACCEPTED
 -
 -  # Scan all roots
 -  python scripts/scan_metadata.py --all-roots
@@ -6649,7 +6649,7 @@ index ede8b741eedf4ae98a120593dbb614e92017e751..2580818aac26b966000bfae8b1312e34
 -  - Freeze detection
 -- **Usage**:
 -  ```bash
--  python scripts/flac_scan.py --root /Volumes/dotad/MUSIC \
+-  python scripts/flac_scan.py --root /Volumes/COMMUNE/20_ACCEPTED \
 -    --workers 8 --verbose
 -  ```
 -
@@ -6686,13 +6686,13 @@ index ede8b741eedf4ae98a120593dbb614e92017e751..2580818aac26b966000bfae8b1312e34
 -  ```
 -
 -#### `reconcile_repaired.py`
--Compare repaired staging against MUSIC library.
+-Compare repaired staging against ACCEPTED library.
 -- **Recommendations**: Keep, replace, skip
 -- **Usage**:
 -  ```bash
 -  python scripts/reconcile_repaired.py \
--    --repaired /Volumes/dotad/ReallyRepaired \
--    --music /Volumes/dotad/MUSIC \
+-    --repaired /Volumes/COMMUNE/ReallyRepaired \
+-    --music /Volumes/COMMUNE/20_ACCEPTED \
 -    --out report.csv
 -  ```
 -
@@ -6770,7 +6770,7 @@ index ede8b741eedf4ae98a120593dbb614e92017e751..2580818aac26b966000bfae8b1312e34
 -  --report artifacts/reports/metadata_comparison.csv
 -```
 -
--### 4. Garbage Cleanup
+-### 4. Rejected Cleanup
 -```bash
 -python scripts/prune_garbage_duplicates.py --commit \
 -  --report artifacts/reports/garbage_cleanup.csv
@@ -7742,7 +7742,7 @@ index d454bff1e47efa2660a556cf9202fbc0d17e0123..00000000000000000000000000000000
 -def test_plan_trash_destination_preserves_name() -> None:
 -    with tempfile.TemporaryDirectory() as td:
 -        trash = Path(td) / "trash"
--        file_path = Path("/Volumes/dotad/MUSIC/Artist/Album/song.flac")
+-        file_path = Path("/Volumes/COMMUNE/20_ACCEPTED/Artist/Album/song.flac")
 -        dest = plan_trash_destination(trash, file_path)
 -        assert dest.name == file_path.name
 -        assert str(dest).startswith(str(trash))
@@ -7834,7 +7834,7 @@ index d454bff1e47efa2660a556cf9202fbc0d17e0123..00000000000000000000000000000000
 -def test_plan_trash_destination_preserves_name() -> None:
 -    with tempfile.TemporaryDirectory() as td:
 -        trash = Path(td) / "trash"
--        file_path = Path("/Volumes/dotad/MUSIC/Artist/Album/song.flac")
+-        file_path = Path("/Volumes/COMMUNE/20_ACCEPTED/Artist/Album/song.flac")
 -        dest = plan_trash_destination(trash, file_path)
 -        assert dest.name == file_path.name
 -        assert str(dest).startswith(str(trash))
@@ -7941,9 +7941,9 @@ index b28e47c52197ec51d660ea3c7e4288697791eeb7..00000000000000000000000000000000
 -
 -
 -def test_choose_keeper_prefers_music_root(tmp_path: Path) -> None:
--    music = tmp_path / "MUSIC"
--    quarantine = tmp_path / "Quarantine"
--    garbage = tmp_path / "Garbage"
+-    music = tmp_path / "ACCEPTED"
+-    quarantine = tmp_path / "Staging"
+-    garbage = tmp_path / "Rejected"
 -    for p in (music, quarantine, garbage):
 -        p.mkdir(parents=True, exist_ok=True)
 -
@@ -7957,9 +7957,9 @@ index b28e47c52197ec51d660ea3c7e4288697791eeb7..00000000000000000000000000000000
 -
 -
 -def test_build_plan_classifies_reasons(tmp_path: Path) -> None:
--    music = tmp_path / "MUSIC"
--    quarantine = tmp_path / "Quarantine"
--    garbage = tmp_path / "Garbage"
+-    music = tmp_path / "ACCEPTED"
+-    quarantine = tmp_path / "Staging"
+-    garbage = tmp_path / "Rejected"
 -    for p in (music, quarantine, garbage):
 -        (p / "Artist/Album").mkdir(parents=True, exist_ok=True)
 -
@@ -7986,7 +7986,7 @@ index b28e47c52197ec51d660ea3c7e4288697791eeb7..00000000000000000000000000000000
 -    reasons = {i.reason for i in plan}
 -    # We should have two extras: one quarantine, one garbage
 -    assert reasons == {"extra_quarantine", "extra_garbage"}
--    # Ensure keeper is the MUSIC path
+-    # Ensure keeper is the ACCEPTED path
 -    for item in plan:
 -        assert str(item.keeper).startswith(str(music))
 diff --git a/tests/test_dedupe_sync.py b/tests/test_dedupe_sync.py
@@ -8029,11 +8029,11 @@ index 5995972a1a3f8f7e4d0ddcba7fbb4cb166da1c23..00000000000000000000000000000000
 -    listing = tmp_path / "DEDUPE_DIR.txt"
 -    listing.write_text(
 -        """Last login: now
--/Volumes/dotad/MUSIC/DEDUPE > tree -L 10
+-/Volumes/COMMUNE/20_ACCEPTED/DEDUPE > tree -L 10
 -.""",
 -        encoding="utf-8",
 -    )
--    assert discover_dedupe_root(listing) == Path("/Volumes/dotad/MUSIC/DEDUPE")
+-    assert discover_dedupe_root(listing) == Path("/Volumes/COMMUNE/20_ACCEPTED/DEDUPE")
 -
 -
 -def test_pick_preferred_track_health_priority(tmp_path: Path) -> None:

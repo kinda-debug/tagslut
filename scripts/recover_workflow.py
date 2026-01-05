@@ -8,7 +8,7 @@ Usage examples:
       --out artifacts/db/recovered_candidates.db
 
   # scan a secondary salvage root into a secondary candidates DB
-  ./scripts/recover_workflow.py scan-secondary --root "/Volumes/dotad/Garbage copy" \
+  ./scripts/recover_workflow.py scan-secondary --root "/Volumes/COMMUNE/10_STAGING" \
       --out artifacts/db/secondary_candidates.db
 
   # match candidates against existing library DB with three-tier logic
@@ -421,7 +421,7 @@ def main() -> int:
     p_match = sub.add_parser("match")
     p_match.add_argument("--library", default="artifacts/db/library.db")
     p_match.add_argument("--secondary", default="artifacts/db/secondary_candidates.db",
-                         help="Optional DB with a secondary_candidates table (garbage copy)")
+                         help="Optional DB with a secondary_candidates table (rejected copy)")
     p_match.add_argument("--candidates", default="artifacts/db/recovered_candidates.db")
     p_match.add_argument("--out", default="artifacts/reports/recovery_list.csv")
     p_match.add_argument("--min-name-similarity", type=float, default=0.65,
@@ -437,7 +437,7 @@ def main() -> int:
                          help="Minimum final score to write candidate to CSV")
 
     p_scan = sub.add_parser("scan")
-    p_scan.add_argument("--root", default="/Volumes/dotad/NEW_LIBRARY")
+    p_scan.add_argument("--root", default="/Volumes/COMMUNE/20_ACCEPTED")
     p_scan.add_argument("--db", dest="database", default="artifacts/db/library.db")
     p_scan.add_argument("--include-fp", action="store_true", help="Include fingerprints (slow)")
     p_scan.add_argument("--batch-size", type=int, default=100)

@@ -32,7 +32,7 @@ def safe_album(tags):
 
 def get_year(tags):
     """
-    Picard logic:
+    Tagger logic:
     $if2($left(%date%,4),$left(%originalyear%,4),$left(%originaldate%,4),"XXXX")
     """
     for key in ("date", "originalyear", "originaldate"):
@@ -66,12 +66,12 @@ def safe_title(tags):
 
 
 # -------------------------
-# Canonical Picard Path
+# Canonical tagger path
 # -------------------------
 
 def build_picard_path(tags):
     """
-    Full Picard-style canonical path generator used for FINAL_LIBRARY.
+    Full tagger-style canonical path generator used for 20_ACCEPTED.
     Mirrors your EXACT naming formula.
     """
 

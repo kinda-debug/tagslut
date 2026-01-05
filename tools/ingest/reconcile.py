@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reconcile MusicBrainz Picard moves for staged files."""
+"""Reconcile tagger moves (Yate-first) for staged files."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from pathlib import Path
 from dedupe.external.picard import reconcile_picard_changes
 from dedupe.utils import normalise_path
 from dedupe.utils.config import get_config
+from dedupe.utils.library import load_zone_paths
 
 logger = logging.getLogger(__name__)
 
@@ -32,10 +33,12 @@ def _resolve_root(config_path: Path | None, root: Path | None) -> Path:
         return Path(normalise_path(str(root)))
 
     config = get_config(config_path)
-    libraries = config.get("libraries", {})
-    staging = libraries.get("recovery_staging")
-    if not staging:
-        raise SystemExit("recovery_staging missing from config libraries section")
+    zone_paths = load_zone_paths(config)
+    if zone_paths is None:
+        raise SystemExit("COMMUNE library zones are not configured.")
+    staging = zone_paths.zones.get("staging")
+    if staging is None:
+        raise SystemExit("staging zone missing from config.")
     return Path(normalise_path(str(staging)))
 
 
@@ -73,7 +76,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
-    """CLI entry point for Picard reconciliation."""
+    """CLI entry point for tagger reconciliation."""
 
     parser = build_parser()
     args = parser.parse_args()
@@ -89,7 +92,7 @@ def main() -> None:
         )
         connection.commit()
     logger.info(
-        "Picard reconciliation complete: %s moved, %s unchanged, %s inserted",
+        "Tagger reconciliation complete: %s moved, %s unchanged, %s inserted",
         result.moved,
         result.unchanged,
         result.inserted,

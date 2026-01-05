@@ -38,7 +38,7 @@ Examples:
   $(basename "$0") /tmp/recovery_recs.csv | fzf
 
   # Review specific file
-  $(basename "$0") /tmp/recovery_recs.csv "/Volumes/RECOVERY_TARGET/Root/..."
+  $(basename "$0") /tmp/recovery_recs.csv "/Volumes/COMMUNE/10_STAGING/..."
 EOF
   exit 1
 }
@@ -80,7 +80,7 @@ if echo "$PATHS" | head -1 | grep -q "_DUPE_REVIEW"; then
   
   if [[ -n "$GROUP_DIR" ]]; then
     echo "Opening group: $GROUP_DIR"
-    REVIEW_ROOT="${DUPE_REVIEW_ROOT:-/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_DUPE_REVIEW}"
+    REVIEW_ROOT="${DUPE_REVIEW_ROOT:-/Volumes/COMMUNE/10_STAGING/_DUPE_REVIEW}"
     FULL_DIR="$REVIEW_ROOT/$(basename "$GROUP_DIR")"
     
     if [[ -d "$FULL_DIR" ]]; then

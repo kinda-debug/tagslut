@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 
 import sys
-SCAN_ROOT = os.environ.get('SCAN_ROOT', '/Volumes/bad/FINAL_LIBRARY')
+SCAN_ROOT = os.environ.get('SCAN_ROOT', '/Volumes/COMMUNE/20_ACCEPTED')
 DB_OUT = os.environ.get('DB_OUT', 'library_canonical_fresh.db')
 
 PROGRESS_FILE = os.environ.get('SCAN_PROGRESS', 'scan_progress.txt')
@@ -124,4 +124,3 @@ if os.path.exists(PROGRESS_FILE):
         os.remove(PROGRESS_FILE)
     except Exception as e:
         print(f"[WARN] Could not remove progress file: {e}")
-

@@ -7,7 +7,6 @@ from pathlib import Path
 # Ensure imports work
 sys.path.insert(0, str(Path(__file__).parents[2]))
 
-from dedupe.core.actions import delete_file
 from dedupe.utils.cli_helper import common_options, configure_execution
 
 @click.command()
@@ -38,16 +37,9 @@ def apply(plan_file, dry_run, verbose, config):
             action = decision["action"]
             
             if action == "DROP":
-                if decision["confidence"] == "LOW":
-                    logger.warning(f"Skipping LOW confidence DROP for {path}")
-                    stats["reviewed"] += 1
-                    continue
-
-                success, msg = delete_file(path, dry_run=dry_run)
-                if success:
-                    stats["dropped"] += 1
-                else:
-                    stats["errors"] += 1
+                logger.warning("Skipping DROP action for %s (COMMUNE is review-first)", path)
+                stats["reviewed"] += 1
+                continue
                     
             elif action == "KEEP":
                 stats["kept"] += 1

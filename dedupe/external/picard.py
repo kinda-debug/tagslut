@@ -1,4 +1,4 @@
-"""MusicBrainz Picard reconciliation helpers."""
+"""Tagger reconciliation helpers (Yate-first workflow)."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass(slots=True)
 class PicardReconcileResult:
-    """Summary of a Picard reconciliation run."""
+    """Summary of a tagger reconciliation run."""
 
     moved: int
     unchanged: int
@@ -62,6 +62,7 @@ def _prepare_payload(path: Path, library_state: str) -> dict[str, object]:
 
     meta = metadata.probe_audio(path)
     health = evaluate_flac(path)
+    integrity_state = "valid" if health.audio_ok else "recoverable"
     return {
         "path": normalise_path(str(path)),
         "size_bytes": meta.size_bytes,
@@ -88,6 +89,8 @@ def _prepare_payload(path: Path, library_state: str) -> dict[str, object]:
         ),
         "library_state": library_state,
         "flac_ok": 1 if health.audio_ok else 0,
+        "integrity_state": integrity_state,
+        "zone": "staging" if library_state == "staging" else None,
     }
 
 
@@ -97,14 +100,14 @@ def reconcile_picard_changes(
     *,
     strict: bool = True,
 ) -> PicardReconcileResult:
-    """Detect Picard moves in *staging_root* and reconcile the database."""
+    """Detect tagger moves in *staging_root* and reconcile the database."""
 
     initialise_library_schema(connection)
     staging_root = Path(normalise_path(str(staging_root)))
     if not staging_root.is_dir():
         raise FileNotFoundError(f"Staging root not found: {staging_root}")
 
-    existing = fetch_records_by_state(connection, "STAGING")
+    existing = fetch_records_by_state(connection, "staging")
     index = _build_staging_index(existing)
     seen_paths: set[str] = set()
     moved = 0
@@ -121,14 +124,14 @@ def reconcile_picard_changes(
             match = matches.pop(0)
             seen_paths.add(normalise_path(str(match.path)))
             if normalised != normalise_path(str(match.path)):
-                update_library_path(connection, match.path, path, library_state="STAGING")
+                update_library_path(connection, match.path, path, library_state="staging")
                 record_picard_move(connection, match.path, path, checksum)
                 moved += 1
             else:
                 unchanged += 1
             continue
 
-        payload = _prepare_payload(path, "STAGING")
+        payload = _prepare_payload(path, "staging")
         upsert_library_rows(connection, [payload])
         inserted += 1
 
@@ -138,12 +141,12 @@ def reconcile_picard_changes(
         if normalise_path(row["path"]) not in seen_paths
     ]
     if missing and strict:
-        logger.error("Missing staging files after Picard reconciliation: %s", missing)
+        logger.error("Missing staging files after tagger reconciliation: %s", missing)
         raise RuntimeError(
-            "Picard reconciliation detected missing staging files; "
+            "Tagger reconciliation detected missing staging files; "
             "run with strict=False or rescan staging."
         )
     if missing:
-        logger.warning("Missing staging files after Picard reconciliation: %s", missing)
+        logger.warning("Missing staging files after tagger reconciliation: %s", missing)
 
     return PicardReconcileResult(moved=moved, unchanged=unchanged, inserted=inserted)

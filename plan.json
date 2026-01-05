@@ -1,7 +1,8 @@
 {
   "groups_count": 0,
-  "priority_order": [
-    "recovery"
+  "zone_priority": [
+    "accepted",
+    "staging"
   ],
   "plan": []
 }

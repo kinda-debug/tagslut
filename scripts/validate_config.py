@@ -46,39 +46,32 @@ def main() -> int:
         return 2
 
     cfg = load_config(cfg_path)
-    paths = cfg.get("paths", {})
+    library = cfg.get("library", {})
+    zones = library.get("zones", {})
     keys = [
-        "root",
-        "diagnostic_root",
-        "quarantine",
-        "garbage",
-        "broken_playlist",
+        ("root", library.get("root")),
+        ("inbox", zones.get("inbox")),
+        ("staging", zones.get("staging")),
+        ("accepted", zones.get("accepted")),
+        ("rejected", zones.get("rejected")),
+        ("yate_db", zones.get("yate_db")),
     ]
 
     missing_dirs = []
     print(f"Validating paths from: {cfg_path}\n")
-    for key in keys:
-        val = paths.get(key)
+    for key, val in keys:
         if val is None:
             print(f"- {key}: <not set>")
             continue
         pval = Path(val)
-        if key == "broken_playlist":
-            parent = pval.parent
-            exists = parent.exists()
-            typ = "playlist (parent dir)"
-            name = str(parent)
-        else:
-            exists = pval.exists()
-            typ = "dir"
-            name = str(pval)
+        exists = pval.exists()
+        typ = "dir"
+        name = str(pval)
 
         status = "OK" if exists else "MISSING"
         print(f"- {key}: {name} [{typ}] — {status}")
-        if not exists and (key != "broken_playlist"):
+        if not exists:
             missing_dirs.append(pval)
-        if not exists and key == "broken_playlist":
-            missing_dirs.append(parent)
 
     if missing_dirs:
         print("\nMissing directories:")

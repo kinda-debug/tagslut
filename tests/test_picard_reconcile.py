@@ -28,8 +28,10 @@ def _payload_for(path: Path) -> dict[str, object]:
         "duplicate_rank": None,
         "is_canonical": None,
         "extra_json": "{}",
-        "library_state": "STAGING",
+        "library_state": "staging",
         "flac_ok": 1,
+        "integrity_state": "valid",
+        "zone": "staging",
     }
 
 

@@ -1,4 +1,4 @@
-Below is the revised prompt, with the STAGING_TAGGED + MusicBrainz Picard workflow integrated cleanly and unambiguously, without altering your existing guarantees.
+Below is the revised prompt, with the COMMUNE staging + Yate workflow integrated cleanly and unambiguously, without altering your existing guarantees.
 
 ⸻
 
@@ -43,7 +43,7 @@ What Works Today (Must Be Preserved)
 
 ⸻
 
-New Required Feature: Staged Ingestion + Picard Integration
+New Required Feature: Staged Ingestion + Yate Integration
 
 Objective
 
@@ -52,27 +52,27 @@ Introduce a controlled ingestion pipeline for new downloads, decoupled from the 
 Staging Workflow
 	•	All newly downloaded or externally sourced audio files are first placed in:
 
-/Volumes/dotad/STAGING_TAGGED
+/Volumes/COMMUNE/10_STAGING
 
-	•	Files in STAGING_TAGGED are:
+	•	Files in 10_STAGING are:
 	•	Not considered part of the canonical library
 	•	Fully tracked in the same SQLite database as the main library
-	•	Marked with a clear library_state or equivalent flag (e.g. STAGING, FINAL, ARCHIVED)
+	•	Marked with a clear library_state or equivalent flag (e.g. staging, accepted, rejected)
 
-MusicBrainz Picard Integration
-	•	MusicBrainz Picard is the only allowed tool to:
+Yate Integration
+	•	Yate is the only allowed tool to:
 	•	Rename files
 	•	Rewrite tags
 	•	Restructure paths for staged files
-	•	Picard operations must be observable and reconcilable:
-	•	Pre- and post-Picard paths must be tracked
-	•	Database records must be updated after Picard runs
+	•	Yate operations must be observable and reconcilable:
+	•	Pre- and post-Yate paths must be tracked
+	•	Database records must be updated after Yate runs
 	•	Provide a small integration layer in:
 
 dedupe/external/picard.py
 
 Responsibilities:
-	•	Detect Picard-moved/retagged files
+	•	Detect tagger-moved/retagged files
 	•	Reconcile old paths → new paths
 	•	Update the unified database accordingly
 	•	Prevent orphaned or duplicated DB entries
@@ -84,8 +84,8 @@ Promotion to Canonical Library
 	•	Are not duplicates of existing KEEP files
 may be promoted from:
 
-/Volumes/dotad/STAGING_TAGGED
-→ /Volumes/dotad/FINAL_LIBRARY
+/Volumes/COMMUNE/10_STAGING
+→ /Volumes/COMMUNE/20_ACCEPTED
 
 	•	Promotion must be an explicit, logged operation
 	•	Promotion must update the database atomically
@@ -154,9 +154,9 @@ tools/
 │   ├── dupeguru.py
 │   └── acoustid.py
 └── ingest/
-    ├── stage.py        # register new files into STAGING_TAGGED
-    ├── reconcile.py   # reconcile Picard changes
-    └── promote.py     # move STAGING → FINAL_LIBRARY
+    ├── stage.py        # register new files into 10_STAGING
+    ├── reconcile.py   # reconcile tagger changes
+    └── promote.py     # move staging → accepted
 
 All CLIs must:
 	•	Share consistent flags and logging
@@ -177,7 +177,7 @@ class AudioFile:
     bitrate: int
     metadata: dict
     flac_ok: bool
-    library_state: Literal["STAGING", "FINAL", "ARCHIVED"]
+    library_state: Literal["staging", "accepted", "rejected"]
     acoustid: str | None = None
 
 (Other models unchanged.)
@@ -199,11 +199,14 @@ class AudioFile:
 
 Single source of truth: config.toml
 
-[libraries]
-dotad_final   = "/Volumes/dotad/FINAL_LIBRARY"
-dotad_staging = "/Volumes/dotad/STAGING_TAGGED"
-sad           = "/Volumes/sad/FLAC"
-bad           = "/Volumes/bad/FLAC"
+[library]
+name = "COMMUNE"
+root = "/Volumes/COMMUNE"
+
+[library.zones]
+staging = "10_STAGING"
+accepted = "20_ACCEPTED"
+rejected = "90_REJECTED"
 
 (Database config unchanged.)
 
@@ -219,8 +222,8 @@ Validation Criteria (Non-Negotiable)
 	•	No circular imports
 	•	mypy --strict passes
 	•	pytest ≥ 70% coverage
-	•	Staging → Picard → Promote workflow works end-to-end
-	•	No orphaned DB rows after Picard moves
+	•	Staging → Yate → Promote workflow works end-to-end
+	•	No orphaned DB rows after Yate moves
 	•	No performance regression
 	•	Documentation matches reality
 
@@ -230,7 +233,7 @@ Expected Outcome
 
 A deterministic, testable, and auditable system with:
 	•	Clear separation between staging and canonical library
-	•	First-class MusicBrainz Picard integration
+	•	First-class Yate integration
 	•	Unified database tracking all file states
 	•	Zero duplication
 	•	Preserved behavior

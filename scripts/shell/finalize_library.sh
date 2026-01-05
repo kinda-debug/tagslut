@@ -4,7 +4,7 @@ set -euo pipefail
 REPO="$HOME/dedupe_repo_reclone"
 # Use the fresh canonical DB (contains `library_files`) for finalization
 SRC_DB="$REPO/artifacts/db/library_canonical_fresh.db"
-DEST_ROOT="/Volumes/bad/FINAL_LIBRARY"
+DEST_ROOT="/Volumes/COMMUNE/20_ACCEPTED"
 LIST="$REPO/artifacts/logs/canonical_paths.txt"
 LOG="$REPO/artifacts/logs/finalize_moves.log"
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT=${1:-/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY}
+ROOT=${1:-/Volumes/COMMUNE/20_ACCEPTED}
 DB=${2:-artifacts/db/music.db}
 PLAN=${3:-artifacts/tmp/plan.json}
 

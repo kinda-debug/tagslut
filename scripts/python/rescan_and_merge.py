@@ -4,25 +4,20 @@ import subprocess
 import sqlite3
 
 DIRS = [
-    "/Volumes/dotad/QUARANTINE_AUTO_GLOBAL",
-    "/Volumes/dotad/G_DUPEGURU",
-    "/Volumes/dotad/NEW_LIBRARY",
-    "/Volumes/dotad/NEW_LIBRARY_CLEAN",
-    "/Volumes/dotad/flaccid",
-    "/Volumes/dotad/flacslut",
-    "/Volumes/dotad/sub-optimal",
-    "/Volumes/dotad/NEW_MUSIC",
+    ("/Volumes/COMMUNE/10_STAGING", "staging"),
+    ("/Volumes/COMMUNE/20_ACCEPTED", "accepted"),
 ]
 
 SCAN_DB = "artifacts/db/tmp_scan.sqlite"
 CANON_DB = "artifacts/db/library_canonical.db"
 
-def run_scan(path):
-    print(f"Scanning: {path}")
+def run_scan(path, zone):
+    print(f"Scanning: {path} ({zone})")
     subprocess.run([
         "python3", "-m", "dedupe.cli", "scan-library",
         "--root", path,
-        "--out", SCAN_DB
+        "--out", SCAN_DB,
+        "--zone", zone,
     ], check=True)
 
 def merge_scan():
@@ -39,8 +34,8 @@ def merge_scan():
     print("Merged into canonical DB.")
 
 def main():
-    for d in DIRS:
-        run_scan(d)
+    for d, zone in DIRS:
+        run_scan(d, zone)
         merge_scan()
         Path(SCAN_DB).unlink(missing_ok=True)
 

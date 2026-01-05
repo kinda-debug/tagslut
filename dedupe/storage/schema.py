@@ -36,6 +36,7 @@ def init_db(conn: sqlite3.Connection) -> None:
     CREATE TABLE IF NOT EXISTS files (
         path TEXT PRIMARY KEY,
         library TEXT,
+        zone TEXT,
         mtime REAL,
         size INTEGER,
         checksum TEXT,
@@ -45,6 +46,7 @@ def init_db(conn: sqlite3.Connection) -> None:
         bitrate INTEGER,
         metadata_json TEXT,
         flac_ok INTEGER,
+        integrity_state TEXT,
         acoustid TEXT
     );
     """)
@@ -53,6 +55,7 @@ def init_db(conn: sqlite3.Connection) -> None:
     existing_columns = _get_existing_columns(conn, "files")
     required_columns = {
         "library": "TEXT",
+        "zone": "TEXT",
         "mtime": "REAL",
         "size": "INTEGER",
         "checksum": "TEXT",
@@ -62,6 +65,7 @@ def init_db(conn: sqlite3.Connection) -> None:
         "bitrate": "INTEGER",
         "metadata_json": "TEXT",
         "flac_ok": "INTEGER",
+        "integrity_state": "TEXT",
         "acoustid": "TEXT"
     }
 
@@ -110,13 +114,33 @@ def initialise_library_schema(connection: sqlite3.Connection) -> None:
                 is_canonical INTEGER,
                 extra_json TEXT,
                 library_state TEXT,
-                flac_ok INTEGER
+                flac_ok INTEGER,
+                integrity_state TEXT,
+                zone TEXT
             )
             """
         )
         connection.execute(
             f"CREATE INDEX IF NOT EXISTS idx_{LIBRARY_TABLE}_checksum ON {LIBRARY_TABLE}(checksum)"
         )
+
+        existing_columns = _get_existing_columns(connection, LIBRARY_TABLE)
+        library_columns = {
+            "library_state": "TEXT",
+            "flac_ok": "INTEGER",
+            "integrity_state": "TEXT",
+            "zone": "TEXT",
+        }
+        for col_name, col_type in library_columns.items():
+            if col_name not in existing_columns:
+                logger.info(
+                    "Migrating DB: Adding column '%s' to '%s' table.",
+                    col_name,
+                    LIBRARY_TABLE,
+                )
+                connection.execute(
+                    f"ALTER TABLE {LIBRARY_TABLE} ADD COLUMN {col_name} {col_type}"
+                )
 
         connection.execute(
             f"""

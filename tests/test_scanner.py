@@ -10,7 +10,7 @@ from pathlib import Path
 from dedupe import scanner, utils
 
 
-def _stub_prepare_record(path: Path, include_fingerprints: bool) -> scanner.ScanRecord:
+def _stub_prepare_record(path: Path, include_fingerprints: bool, zone: str | None) -> scanner.ScanRecord:
     """Return a lightweight :class:`ScanRecord` without external tooling."""
 
     stat = path.stat()
@@ -33,6 +33,8 @@ def _stub_prepare_record(path: Path, include_fingerprints: bool) -> scanner.Scan
         duplicate_rank=None,
         is_canonical=None,
         extra_json=None,
+        integrity_state=None,
+        zone=zone,
     )
 
 
@@ -56,7 +58,7 @@ def test_resume_skips_only_unchanged(tmp_path, monkeypatch) -> None:
 
     database = tmp_path / "library.db"
     with _initialise_db(database) as connection:
-        scanner._upsert_batch(connection, [_stub_prepare_record(unchanged, False)])
+        scanner._upsert_batch(connection, [_stub_prepare_record(unchanged, False, "staging")])
 
     config = scanner.ScanConfig(
         root=root,
@@ -95,7 +97,7 @@ def test_resume_safe_skips_batch_on_match(tmp_path, monkeypatch) -> None:
 
     database = tmp_path / "library.db"
     with _initialise_db(database) as connection:
-        scanner._upsert_batch(connection, [_stub_prepare_record(unchanged, False)])
+        scanner._upsert_batch(connection, [_stub_prepare_record(unchanged, False, "staging")])
 
     config = scanner.ScanConfig(
         root=root,
@@ -125,7 +127,7 @@ def test_upsert_idempotent_and_normalises_paths(tmp_path, monkeypatch) -> None:
 
     database = tmp_path / "library.db"
     with _initialise_db(database) as connection:
-        record = _stub_prepare_record(target, False)
+        record = _stub_prepare_record(target, False, "staging")
         scanner._upsert_batch(connection, [record])
         scanner._upsert_batch(connection, [record])
         rows = connection.execute(
@@ -173,7 +175,7 @@ def test_rescan_missing_ingests_only_absent(monkeypatch, tmp_path) -> None:
 
     database = tmp_path / "library.db"
     with _initialise_db(database) as connection:
-        scanner._upsert_batch(connection, [_stub_prepare_record(existing, False)])
+        scanner._upsert_batch(connection, [_stub_prepare_record(existing, False, "staging")])
 
     result = scanner.rescan_missing(
         root=root, database=database, include_fingerprints=False

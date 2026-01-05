@@ -14,6 +14,7 @@ from dedupe.storage import LIBRARY_TABLE, initialise_library_schema
 from dedupe.storage.queries import extract_tags
 from dedupe.utils import normalise_path
 from dedupe.utils.config import get_config
+from dedupe.utils.library import load_zone_paths
 
 logger = logging.getLogger(__name__)
 
@@ -35,15 +36,17 @@ def _resolve_root(config_path: Path | None, root: Path | None, key: str) -> Path
         return Path(normalise_path(str(root)))
 
     config = get_config(config_path)
-    libraries = config.get("libraries", {})
-    library_path = libraries.get(key)
-    if not library_path:
-        raise SystemExit(f"{key} missing from config libraries section")
-    return Path(normalise_path(str(library_path)))
+    zone_paths = load_zone_paths(config)
+    if zone_paths is None:
+        raise SystemExit("COMMUNE library zones are not configured.")
+    zone = zone_paths.zones.get(key)
+    if not zone:
+        raise SystemExit(f"{key} zone missing from config.")
+    return Path(normalise_path(str(zone)))
 
 
-def _has_duplicate_final(connection: sqlite3.Connection, checksum: str | None) -> bool:
-    """Return ``True`` when a checksum already exists in FINAL canonical files."""
+def _has_duplicate_accepted(connection: sqlite3.Connection, checksum: str | None) -> bool:
+    """Return ``True`` when a checksum already exists in ACCEPTED canonical files."""
 
     if not checksum:
         return False
@@ -51,7 +54,7 @@ def _has_duplicate_final(connection: sqlite3.Connection, checksum: str | None) -
         f"""
         SELECT 1 FROM {LIBRARY_TABLE}
         WHERE checksum = ?
-          AND library_state = 'FINAL'
+          AND library_state = 'accepted'
           AND is_canonical = 1
         LIMIT 1
         """,
@@ -71,25 +74,34 @@ def promote_staged(
     connection: sqlite3.Connection,
     staging_root: Path,
     final_root: Path,
+    *,
+    allow_recoverable: bool = False,
 ) -> int:
-    """Promote eligible staged files into the final library."""
+    """Promote eligible staged files into the accepted library."""
 
     initialise_library_schema(connection)
     cursor = connection.execute(
-        f"SELECT * FROM {LIBRARY_TABLE} WHERE library_state = 'STAGING'"
+        f"SELECT * FROM {LIBRARY_TABLE} WHERE library_state = 'staging'"
     )
     rows = cursor.fetchall()
     promoted = 0
 
     for row in rows:
-        if row["flac_ok"] != 1:
-            logger.info("Skipping %s: flac_ok is false", row["path"])
+        integrity_state = row["integrity_state"]
+        if integrity_state == "corrupt":
+            logger.info("Skipping %s: integrity_state is corrupt", row["path"])
+            continue
+        if integrity_state == "recoverable" and not allow_recoverable:
+            logger.info(
+                "Skipping %s: integrity_state is recoverable (override required)",
+                row["path"],
+            )
             continue
         if not _eligible_metadata(row["tags_json"]):
             logger.info("Skipping %s: metadata incomplete", row["path"])
             continue
-        if _has_duplicate_final(connection, row["checksum"]):
-            logger.info("Skipping %s: duplicate of FINAL canonical file", row["path"])
+        if _has_duplicate_accepted(connection, row["checksum"]):
+            logger.info("Skipping %s: duplicate of ACCEPTED canonical file", row["path"])
             continue
 
         source = Path(row["path"])
@@ -113,8 +125,8 @@ def promote_staged(
                 updated = connection.execute(
                     f"""
                     UPDATE {LIBRARY_TABLE}
-                    SET path = ?, library_state = 'FINAL'
-                    WHERE path = ? AND library_state = 'STAGING'
+                    SET path = ?, library_state = 'accepted', zone = 'accepted'
+                    WHERE path = ? AND library_state = 'staging'
                     """,
                     (normalise_path(str(destination)), normalise_path(str(source))),
                 )
@@ -148,7 +160,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--final-root",
         type=Path,
-        help="Final library root directory (defaults to config).",
+        help="Accepted library root directory (defaults to config).",
+    )
+    parser.add_argument(
+        "--allow-recoverable",
+        action="store_true",
+        help="Allow files marked recoverable to be promoted.",
     )
     parser.add_argument(
         "--config",
@@ -170,12 +187,17 @@ def main() -> None:
     args = parser.parse_args()
     _configure_logging(args.verbose)
 
-    staging_root = _resolve_root(args.config, args.staging_root, "recovery_staging")
-    final_root = _resolve_root(args.config, args.final_root, "recovery_final")
+    staging_root = _resolve_root(args.config, args.staging_root, "staging")
+    final_root = _resolve_root(args.config, args.final_root, "accepted")
 
     with sqlite3.connect(args.db) as connection:
         connection.row_factory = sqlite3.Row
-        promoted = promote_staged(connection, staging_root, final_root)
+        promoted = promote_staged(
+            connection,
+            staging_root,
+            final_root,
+            allow_recoverable=args.allow_recoverable,
+        )
 
     logger.info("Promoted %s staged files into %s", promoted, final_root)
 

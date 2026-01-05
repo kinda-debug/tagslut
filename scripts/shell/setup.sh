@@ -75,14 +75,14 @@ TRO
 
 Commands:
   env            Create venv, install dependencies, verify tools (default)
-  scan-music     Run fast MD5 scan on /Volumes/dotad/MUSIC with watchdog
-  scan-quar      Run fast MD5 scan on /Volumes/dotad/Quarantine with watchdog
-  scan-garbage   Run fast MD5 scan on /Volumes/dotad/Garbage with watchdog
+  scan-accepted  Run fast MD5 scan on /Volumes/COMMUNE/20_ACCEPTED with watchdog
+  scan-staging   Run fast MD5 scan on /Volumes/COMMUNE/10_STAGING with watchdog
+  scan-rejected  Disabled (90_REJECTED must not be scanned)
   plan-moves     Generate dedupe move plan CSV from ~/.cache/file_dupes.db
   commit-moves   Execute planned moves (writes executed_moves.csv)
-  prune-garbage  Delete duplicate losers inside Garbage (dry-run unless --commit)
-  prune-cross    Delete all non-keeper duplicates across MUSIC+Quarantine+Garbage
-  db-prune       Remove stale DB rows for missing files (default: under Garbage)
+  prune-rejected Delete duplicate losers inside Rejected (dry-run unless --commit)
+  prune-cross    Delete all non-keeper duplicates across Accepted+Staging+Rejected
+  db-prune       Remove stale DB rows for missing files (default: under Rejected)
   help           Show this help
 
 Environment:
@@ -117,15 +117,15 @@ commit_moves() {
     --report "${ROOT_DIR}/artifacts/reports/executed_moves.csv"
 }
 
-prune_garbage() {
+prune_rejected() {
   # Pass-through for extra args (e.g., --limit 100)
   # Decide report path based on presence of --commit in args
   local report
   local args=("$@")
   if printf '%s\n' "${args[@]}" | grep -q -- "^--commit$"; then
-    report="${ROOT_DIR}/artifacts/reports/garbage_prune_executed.csv"
+    report="${ROOT_DIR}/artifacts/reports/rejected_prune_executed.csv"
   else
-    report="${ROOT_DIR}/artifacts/reports/garbage_prune_plan.csv"
+    report="${ROOT_DIR}/artifacts/reports/rejected_prune_plan.csv"
   fi
   "${PY}" "${ROOT_DIR}/scripts/prune_garbage_duplicates.py" \
     --db "${HOME}/.cache/file_dupes.db" \
@@ -143,28 +143,25 @@ main() {
       install_deps
       verify_tools
       prepare_artifacts
-      info "Environment ready. Try: ./scripts/shell/setup.sh scan-music"
+      info "Environment ready. Try: ./scripts/shell/setup.sh scan-accepted"
       ;;
-    scan-music)
+    scan-accepted)
       activate_venv || true
       run_scan \
-        "/Volumes/dotad/MUSIC" \
+        "/Volumes/COMMUNE/20_ACCEPTED" \
         "/tmp/file_dupes_music.csv" \
         "/tmp/find_dupes_fast.music.hb"
       ;;
-    scan-quar)
+    scan-staging)
       activate_venv || true
       run_scan \
-        "/Volumes/dotad/Quarantine" \
-        "/tmp/file_dupes_quarantine.csv" \
-        "/tmp/find_dupes_fast.quarantine.hb"
+        "/Volumes/COMMUNE/10_STAGING" \
+        "/tmp/file_dupes_staging.csv" \
+        "/tmp/find_dupes_fast.staging.hb"
       ;;
-    scan-garbage)
-      activate_venv || true
-      run_scan \
-        "/Volumes/dotad/Garbage" \
-        "/tmp/file_dupes_garbage.csv" \
-        "/tmp/find_dupes_fast.garbage.hb"
+    scan-rejected)
+      warn "scan-rejected is disabled; 90_REJECTED must not be scanned."
+      exit 2
       ;;
     plan-moves)
       activate_venv || true
@@ -174,11 +171,11 @@ main() {
       activate_venv || true
       commit_moves
       ;;
-    prune-garbage)
+    prune-rejected)
       activate_venv || true
       # Forward all args after the command, e.g., --commit --limit 100
       shift || true
-      prune_garbage "$@"
+      prune_rejected "$@"
       ;;
     prune-cross)
       activate_venv || true

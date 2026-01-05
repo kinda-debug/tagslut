@@ -391,7 +391,7 @@ dedupe/utils.py
 docs/architecture.md
 docs/configuration.md
 docs/process_flow.md
-docs/quarantine_garbage_playbook.md
+docs/staging_review_playbook.md
 docs/scripts_reference.md
 POSTSCAN.md
 README.md

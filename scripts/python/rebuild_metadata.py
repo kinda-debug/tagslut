@@ -9,7 +9,7 @@ from mutagen.flac import FLAC
 # ------------------------------------------------------------
 
 SRC_LIST = Path("artifacts/reports/healthy_flacs.txt")
-DEST_ROOT = Path("/Volumes/dotad/NEW_LIBRARY_CLEAN")
+DEST_ROOT = Path("/Volumes/COMMUNE/10_STAGING/_REBUILT")
 LOG = Path("artifacts/reports/metadata_rebuild_log.txt")
 MANIFEST = Path("artifacts/reports/metadata_rebuild_manifest.txt")
 

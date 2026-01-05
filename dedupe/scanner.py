@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Any, Optional
 
 from . import metadata, utils
+from dedupe.utils.config import get_config
+from dedupe.utils.library import load_zone_paths, ensure_dedupe_zone
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +44,8 @@ class ScanRecord:
     duplicate_rank: Optional[int]
     is_canonical: Optional[int]
     extra_json: Optional[str]
+    integrity_state: Optional[str]
+    zone: Optional[str]
 
 
 @dataclass(slots=True)
@@ -54,6 +58,7 @@ class ScanConfig:
     resume_safe: bool = False
     show_progress: bool = False
     compute_checksum: bool = True
+    zone: Optional[str] = None
 
 
 def initialise_database(connection: sqlite3.Connection) -> None:
@@ -82,16 +87,30 @@ def initialise_database(connection: sqlite3.Connection) -> None:
                 is_canonical INTEGER,
                 extra_json TEXT,
                 library_state TEXT,
-                flac_ok INTEGER
+                flac_ok INTEGER,
+                integrity_state TEXT,
+                zone TEXT
             )
             """
         )
         connection.execute(
             f"CREATE INDEX IF NOT EXISTS idx_{LIBRARY_TABLE}_checksum ON {LIBRARY_TABLE}(checksum)"
         )
+        columns = {
+            "library_state": "TEXT",
+            "flac_ok": "INTEGER",
+            "integrity_state": "TEXT",
+            "zone": "TEXT",
+        }
+        existing = {row["name"] for row in connection.execute(f"PRAGMA table_info({LIBRARY_TABLE})")}
+        for name, col_type in columns.items():
+            if name not in existing:
+                connection.execute(
+                    f"ALTER TABLE {LIBRARY_TABLE} ADD COLUMN {name} {col_type}"
+                )
 
 
-def prepare_record(path: Path, include_fingerprints: bool) -> ScanRecord:
+def prepare_record(path: Path, include_fingerprints: bool, zone: Optional[str]) -> ScanRecord:
     """Probe metadata for *path* and return a ScanRecord."""
 
     stat = path.stat()
@@ -114,6 +133,8 @@ def prepare_record(path: Path, include_fingerprints: bool) -> ScanRecord:
         duplicate_rank=None,
         is_canonical=None,
         extra_json=None,
+        integrity_state=None,
+        zone=zone,
     )
 
 
@@ -129,15 +150,17 @@ def _upsert_batch(connection: sqlite3.Connection, records: list[ScanRecord]) -> 
     query = (
         f"INSERT INTO {LIBRARY_TABLE} ("
         "path,size_bytes,mtime,checksum,duration,sample_rate,bit_rate,channels,bit_depth,"
-        "tags_json,fingerprint,fingerprint_duration,dup_group,duplicate_rank,is_canonical,extra_json"
-        ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+        "tags_json,fingerprint,fingerprint_duration,dup_group,duplicate_rank,is_canonical,extra_json,"
+        "integrity_state,zone"
+        ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
         "ON CONFLICT(path) DO UPDATE SET "
         "size_bytes=excluded.size_bytes,mtime=excluded.mtime,checksum=excluded.checksum,"
         "duration=excluded.duration,sample_rate=excluded.sample_rate,bit_rate=excluded.bit_rate,"
         "channels=excluded.channels,bit_depth=excluded.bit_depth,tags_json=excluded.tags_json,"
         "fingerprint=excluded.fingerprint,fingerprint_duration=excluded.fingerprint_duration,"
         "dup_group=excluded.dup_group,duplicate_rank=excluded.duplicate_rank,"
-        "is_canonical=excluded.is_canonical,extra_json=excluded.extra_json"
+        "is_canonical=excluded.is_canonical,extra_json=excluded.extra_json,"
+        "integrity_state=excluded.integrity_state,zone=excluded.zone"
     )
 
     payload = [
@@ -158,6 +181,8 @@ def _upsert_batch(connection: sqlite3.Connection, records: list[ScanRecord]) -> 
             r.duplicate_rank,
             r.is_canonical,
             r.extra_json,
+            r.integrity_state,
+            r.zone,
         )
         for r in records
     ]
@@ -173,6 +198,14 @@ def scan_library(config: ScanConfig) -> int:
 
     ctx = utils.DatabaseContext(database)
     processed = 0
+
+    zone_name: Optional[str] = config.zone
+    zone_paths = load_zone_paths(get_config())
+    if zone_paths is not None:
+        if zone_name is None:
+            zone_name = ensure_dedupe_zone(root, zone_paths)
+        if zone_name not in ("staging", "accepted"):
+            raise ValueError(f"Zone '{zone_name}' is out of scope for dedupe.")
 
     with ctx.connect() as connection:
         initialise_database(connection)
@@ -207,7 +240,7 @@ def scan_library(config: ScanConfig) -> int:
                         if stat is not None and db_size == stat.st_size and db_mtime == stat.st_mtime:
                             continue
 
-                    record = prepare_record(path, config.include_fingerprints)
+                    record = prepare_record(path, config.include_fingerprints, zone_name)
                     records.append(record)
 
                 _upsert_batch(connection, records)
@@ -227,6 +260,8 @@ def scan(
     resume: bool = False,
     resume_safe: bool = False,
     show_progress: bool = False,
+    compute_checksum: bool = True,
+    zone: Optional[str] = None,
 ) -> int:
     config = ScanConfig(
         root=root,
@@ -236,17 +271,32 @@ def scan(
         resume=resume,
         resume_safe=resume_safe,
         show_progress=show_progress,
+        compute_checksum=compute_checksum,
+        zone=zone,
     )
     return scan_library(config)
 
 
-def rescan_missing(*, root: Path, database: Path, include_fingerprints: bool) -> dict[str, Any]:
+def rescan_missing(
+    *,
+    root: Path,
+    database: Path,
+    include_fingerprints: bool,
+    zone: Optional[str] = None,
+) -> dict[str, Any]:
     root = Path(utils.normalise_path(str(root)))
     database = Path(utils.normalise_path(str(database)))
     utils.ensure_parent_directory(database)
 
     ctx = utils.DatabaseContext(database)
     ingested: list[str] = []
+    zone_name: Optional[str] = zone
+    zone_paths = load_zone_paths(get_config())
+    if zone_paths is not None:
+        if zone_name is None:
+            zone_name = ensure_dedupe_zone(root, zone_paths)
+        if zone_name not in ("staging", "accepted"):
+            raise ValueError(f"Zone '{zone_name}' is out of scope for dedupe.")
 
     with ctx.connect() as connection:
         initialise_database(connection)
@@ -261,7 +311,7 @@ def rescan_missing(*, root: Path, database: Path, include_fingerprints: bool) ->
             npath = utils.normalise_path(str(path))
             if npath in existing_paths:
                 continue
-            record = prepare_record(path, include_fingerprints)
+            record = prepare_record(path, include_fingerprints, zone_name)
             _upsert_batch(connection, [record])
             ingested.append(npath)
             existing_paths.add(npath)
@@ -272,6 +322,7 @@ def rescan_missing(*, root: Path, database: Path, include_fingerprints: bool) ->
         "unreadable": [],
         "corrupt": [],
     }
+
 
 
 def hash_missing(*, database: Path, batch_size: int = 500) -> int:

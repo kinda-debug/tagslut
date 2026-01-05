@@ -8,7 +8,7 @@ Pure business logic. No database connections or CLI args here.
 - `metadata.py`: Mutagen/FLAC interaction logic.
 - `integrity.py`: `flac -t` wrapper.
 - `matching.py`: Logic to group duplicates.
-- `decisions.py`: Deterministic KEEP/DROP ranking engine.
+- `decisions.py`: Deterministic review-first ranking engine.
 - `actions.py`: Safe `delete` and `move` functions.
 
 ### Storage Layer (`dedupe/storage/`)

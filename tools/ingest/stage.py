@@ -15,6 +15,7 @@ from dedupe.storage import initialise_library_schema
 from dedupe.storage.queries import upsert_library_rows
 from dedupe.utils import compute_md5, iter_audio_files, normalise_path
 from dedupe.utils.config import get_config
+from dedupe.utils.library import load_zone_paths
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,7 @@ def _build_payload(path: Path) -> dict[str, object]:
 
     meta = metadata.probe_audio(path)
     health = healthcheck.evaluate_flac(path)
+    integrity_state = "valid" if health.audio_ok else "recoverable"
     return {
         "path": normalise_path(str(path)),
         "size_bytes": meta.size_bytes,
@@ -66,8 +68,10 @@ def _build_payload(path: Path) -> dict[str, object]:
             sort_keys=True,
             separators=(",", ":"),
         ),
-        "library_state": "STAGING",
+        "library_state": "staging",
         "flac_ok": 1 if health.audio_ok else 0,
+        "integrity_state": integrity_state,
+        "zone": "staging",
     }
 
 
@@ -102,10 +106,12 @@ def _resolve_root(config_path: Path | None, root: Path | None) -> Path:
         return Path(normalise_path(str(root)))
 
     config = get_config(config_path)
-    libraries = config.get("libraries", {})
-    staging = libraries.get("recovery_staging")
-    if not staging:
-        raise SystemExit("recovery_staging missing from config libraries section")
+    zone_paths = load_zone_paths(config)
+    if zone_paths is None:
+        raise SystemExit("COMMUNE library zones are not configured.")
+    staging = zone_paths.zones.get("staging")
+    if staging is None:
+        raise SystemExit("staging zone missing from config.")
     return Path(normalise_path(str(staging)))
 
 

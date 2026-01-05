@@ -11,14 +11,14 @@ Fast file-MD5 byte-identical duplicate scanner.
 - **Speed**: 1-2 sec/file (fast)
 - **Usage**:
   ```bash
-  python3 scripts/find_dupes_fast.py /Volumes/dotad/MUSIC \
+  python3 scripts/find_dupes_fast.py /Volumes/COMMUNE/20_ACCEPTED \
     --output /tmp/dupes_music.csv \
     --heartbeat /tmp/heartbeat.txt \
     --watchdog --watchdog-timeout 180
   ```
 
 #### `scan_all_roots.py`
-Multi-root orchestrator for scanning MUSIC, Quarantine, and Garbage.
+Multi-root orchestrator for scanning Accepted, Staging, and Rejected.
 - **Purpose**: Scan all three roots sequentially into shared DB
 - **Usage**:
   ```bash
@@ -40,7 +40,7 @@ Find files with identical names (filename-based duplicates).
 ### Duplicate Removal
 
 #### `dedupe_move_duplicates.py`
-Move byte-identical duplicates to Garbage.
+Move byte-identical duplicates to Rejected.
 - **Safety**: Dry-run by default (`--commit` to execute)
 - **Keeper Selection**: Shortest path → lexicographic
 - **Usage**:
@@ -55,7 +55,7 @@ Move byte-identical duplicates to Garbage.
   ```
 
 #### `prune_cross_root_duplicates.py` ⭐ CRITICAL
-Delete duplicates across all roots (MUSIC, Quarantine, Garbage).
+Delete duplicates across all roots (Accepted, Staging, Rejected).
 - **Policy**: Pure shortest-path (NO root preference)
 - **Safety**: Dry-run by default (`--commit` to execute)
 - **CSV Columns**:
@@ -75,22 +75,22 @@ Delete duplicates across all roots (MUSIC, Quarantine, Garbage).
   ```
 
 #### `prune_garbage_duplicates.py`
-Safe Garbage-only cleanup.
+Safe Rejected-only cleanup.
 - **Rules**:
-  1. If duplicate exists outside Garbage → delete all Garbage copies
-  2. If only in Garbage → keep shortest path, delete rest
+  1. If duplicate exists outside Rejected → delete all Rejected copies
+  2. If only in Rejected → keep shortest path, delete rest
 - **Usage**:
   ```bash
   python3 scripts/prune_garbage_duplicates.py \
     --db ~/.cache/file_dupes.db \
-    --report artifacts/reports/garbage_prune_plan.csv
+    --report artifacts/reports/rejected_prune_plan.csv
   ```
 
 ### Database Maintenance
 
 #### `db_prune_missing_files.py`
 Remove stale DB entries for deleted files.
-- **Scope**: Garbage by default, `--scope all` for complete cleanup
+- **Scope**: Rejected by default, `--scope all` for complete cleanup
 - **Usage**:
   ```bash
   python3 scripts/db_prune_missing_files.py \
@@ -107,7 +107,7 @@ Extract and store comprehensive FLAC metadata.
 - **Usage**:
   ```bash
   # Scan single root
-  python3 scripts/scan_metadata.py /Volumes/dotad/MUSIC
+  python3 scripts/scan_metadata.py /Volumes/COMMUNE/20_ACCEPTED
 
   # Scan all roots
   python3 scripts/scan_metadata.py --all-roots
@@ -137,7 +137,7 @@ Deep health scanner with audio fingerprinting.
   - Freeze detection
 - **Usage**:
   ```bash
-  python3 scripts/flac_scan.py --root /Volumes/dotad/MUSIC \
+  python3 scripts/flac_scan.py --root /Volumes/COMMUNE/20_ACCEPTED \
     --workers 8 --verbose
   ```
 
@@ -170,17 +170,17 @@ Find content duplicates in repaired staging directory.
   python3 scripts/dedupe_repaired.py --fast \
     --repaired /path/to/ReallyRepaired \
     --out repaired_dupes.csv \
-    --move --quarantine /path/to/quarantine
+    --move --rejected /path/to/rejected
   ```
 
 #### `reconcile_repaired.py`
-Compare repaired staging against MUSIC library.
+Compare repaired staging against the accepted library.
 - **Recommendations**: Keep, replace, skip
 - **Usage**:
   ```bash
   python3 scripts/reconcile_repaired.py \
-    --repaired /Volumes/dotad/ReallyRepaired \
-    --music /Volumes/dotad/MUSIC \
+    --repaired /Volumes/COMMUNE/10_STAGING \
+    --music /Volumes/COMMUNE/20_ACCEPTED \
     --out report.csv
   ```
 
@@ -192,7 +192,7 @@ Aggregate prune plan/executed CSV statistics.
 - **Usage**:
   ```bash
   python3 scripts/summarize_prune_csv.py \
-    artifacts/reports/garbage_prune_executed.csv
+    artifacts/reports/rejected_prune_executed.csv
   ```
 
 #### `verify_deleted_files.py`
@@ -216,8 +216,8 @@ See `archive/scripts_diagnostic_2025/` for:
 These delegate to the `dedupe` package:
 - `scripts/dedupe_cli.py` → `dedupe.cli`
 - `scripts/dedupe_sync.py` → `dedupe.sync`
-- `scripts/analyze_quarantine_subdir.py` → `dedupe.legacy_cli`
-- `scripts/simple_quarantine_scan.py` → `dedupe.legacy_cli`
+- `scripts/analyze_quarantine_subdir.py` → `dedupe.legacy_cli` (legacy staging analysis)
+- `scripts/simple_quarantine_scan.py` → `dedupe.legacy_cli` (legacy staging scan)
 - `scripts/detect_playback_length_issues.py` → `dedupe.legacy_cli`
 
 ## Quick Reference: Common Workflows
@@ -258,10 +258,10 @@ python3 scripts/analyze_filename_dupes_metadata.py \
   --report artifacts/reports/metadata_comparison.csv
 ```
 
-### 4. Garbage Cleanup
+### 4. Rejected Cleanup
 ```bash
 python3 scripts/prune_garbage_duplicates.py --commit \
-  --report artifacts/reports/garbage_cleanup.csv
+  --report artifacts/reports/rejected_cleanup.csv
 ```
 
 ## Database Schema

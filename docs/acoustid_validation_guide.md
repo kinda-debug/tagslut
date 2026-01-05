@@ -54,13 +54,13 @@ $$\text{Consistency Ratio} = 1 - \frac{\text{Unique Fingerprints} - 1}{\text{Tot
 ### Basic Validation
 
 ```bash
-python3 scripts/validate_repair_with_acoustid.py /Volumes/dotad/REPAIRED_STAGING --verbose
+python3 scripts/validate_repair_with_acoustid.py /Volumes/COMMUNE/10_STAGING/_REPAIRED --verbose
 ```
 
 ### With CSV Output
 
 ```bash
-python3 scripts/validate_repair_with_acoustid.py /Volumes/dotad/REPAIRED_STAGING \
+python3 scripts/validate_repair_with_acoustid.py /Volumes/COMMUNE/10_STAGING/_REPAIRED \
   --output-csv /tmp/repair_validation.csv \
   --verbose
 ```
@@ -68,7 +68,7 @@ python3 scripts/validate_repair_with_acoustid.py /Volumes/dotad/REPAIRED_STAGING
 ### With Expected Duration
 
 ```bash
-python3 scripts/validate_repair_with_acoustid.py /Volumes/dotad/REPAIRED_STAGING \
+python3 scripts/validate_repair_with_acoustid.py /Volumes/COMMUNE/10_STAGING/_REPAIRED \
   --expected-duration 240.0 \
   --tolerance 2.0 \
   --output-csv /tmp/repair_validation.csv
@@ -96,7 +96,7 @@ The validation script generates a report with these fields:
 
 ```json
 {
-  "path": "/Volumes/dotad/REPAIRED_STAGING/song.flac",
+  "path": "/Volumes/COMMUNE/10_STAGING/_REPAIRED/song.flac",
   "valid": true,
   "reason": "OK",
   "duration": 245.3,
@@ -110,7 +110,7 @@ The validation script generates a report with these fields:
 
 ```json
 {
-  "path": "/Volumes/dotad/REPAIRED_STAGING/song.flac",
+  "path": "/Volumes/COMMUNE/10_STAGING/_REPAIRED/song.flac",
   "valid": false,
   "reason": "Duration mismatch: 180.5s vs expected 240.0s (delta=59.5s)",
   "duration": 180.5,
@@ -123,7 +123,7 @@ The validation script generates a report with these fields:
 
 ```json
 {
-  "path": "/Volumes/dotad/REPAIRED_STAGING/song.flac",
+  "path": "/Volumes/COMMUNE/10_STAGING/_REPAIRED/song.flac",
   "valid": false,
   "reason": "Fingerprints inconsistent (ratio=0.35); possible splice detected",
   "duration": 240.0,
@@ -180,11 +180,11 @@ if consistency_ratio > 0.6:
 
 ## Integration with Repair Pipeline
 
-1. **Repair files** → Output to `/Volumes/dotad/REPAIRED_STAGING`
+1. **Repair files** → Output to `/Volumes/COMMUNE/10_STAGING/_REPAIRED`
 2. **Validate repairs** → Run `validate_repair_with_acoustid.py`
 3. **Review results** → Check CSV for any invalid files
 4. **Handle failures** → Re-repair or manual inspection of flagged files
-5. **Move to production** → Move validated files back to `/Volumes/dotad/Quarantine`
+5. **Move to production** → Move validated files back to `/Volumes/COMMUNE/10_STAGING`
 
 ## Performance
 
@@ -260,7 +260,7 @@ Possible causes:
 
 After validation:
 
-1. **All valid?** → Move files: `cp -r /Volumes/dotad/REPAIRED_STAGING/* /Volumes/dotad/Quarantine/`
+1. **All valid?** → Move files: `cp -r /Volumes/COMMUNE/10_STAGING/_REPAIRED/* /Volumes/COMMUNE/10_STAGING/`
 2. **Some invalid?** → Investigate and potentially re-repair
 3. **Many invalid?** → Review repair strategy (may need different encoder settings)
 

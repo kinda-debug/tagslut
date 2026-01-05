@@ -1,30 +1,20 @@
-# ScaReD Configuration File
-# This file contains default settings for the FLAC deduplication tools
-# Edit these values to customize the behavior of ScaReD commands
+# COMMUNE Configuration File
+# This file contains default settings for the COMMUNE-oriented dedupe tools
+# Edit these values to customize the behavior of dedupe commands
 
-[paths]
-# Root directory for FLAC library
-root = "/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY"
+[library]
+name = "COMMUNE"
+root = "/Volumes/COMMUNE"
 
-# Directory for diagnostic dumps
-diagnostic_root = "/Volumes/RECOVERY_TARGET/Root/.dedupe_diagnostics"
-
-# Playlist file for broken files (kept under library root)
-# Use an absolute path or a path under `root` — here we keep it inside `root`.
-broken_playlist = "/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/broken_files_unrepaired.m3u"
-
-# Directory of quarantined files awaiting review (placed under `root`)
-quarantine = "/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_Quarantine"
-
-# Directory of confirmed duplicates kept for healthier copies (placed under `root`)
-garbage = "/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_Garbage"
-
-[libraries]
-recovery_final = "/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY"
-recovery_staging = "/Volumes/RECOVERY_TARGET/Root/STAGING_TAGGED"
+[library.zones]
+inbox = "00_INBOX"
+staging = "10_STAGING"
+accepted = "20_ACCEPTED"
+rejected = "90_REJECTED"
+yate_db = "_yate_db"
 
 [decisions]
-priority_order = ["recovery"]
+zone_priority = ["accepted", "staging"]
 
 [scan]
 # Number of worker threads for scanning
@@ -43,8 +33,8 @@ decode_timeout = 30
 # Skip broken files instead of aborting
 skip_broken = true
 
-# Auto-quarantine files that cause freezes
-auto_quarantine = false
+# Auto-reject files that cause freezes
+auto_reject = false
 
 # Watchdog timeout (seconds)
 watchdog_timeout = 300

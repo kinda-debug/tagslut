@@ -22,12 +22,12 @@
 4. Apply filesystem changes (move, delete, or swap) and prune empty directories.
 5. Optional: verify playback health across the entire library.
 
-## Quarantine analysis
+## Staging analysis
 
 ```
-quarantine inspect    -> detailed ffprobe + PCM hash + Chromaprint
-quarantine inventory  -> lightweight duration + size inventory
-quarantine duration   -> reported vs decoded duration diff
+staging inspect    -> detailed ffprobe + PCM hash + Chromaprint
+staging inventory  -> lightweight duration + size inventory
+staging duration   -> reported vs decoded duration diff
 ```
 
 All commands share CSV writers so downstream tools can consume consistent

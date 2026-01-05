@@ -36,6 +36,8 @@ def upsert_library_rows(conn: sqlite3.Connection, rows: Iterable[dict[str, objec
         "extra_json",
         "library_state",
         "flac_ok",
+        "integrity_state",
+        "zone",
     ]
 
     placeholders = ",".join(["?"] * len(columns))
@@ -89,11 +91,12 @@ def upsert_file(conn: sqlite3.Connection, file: AudioFile) -> None:
     """
     query = """
     INSERT INTO files (
-        path, library, mtime, size, checksum, duration, bit_depth, sample_rate, bitrate, 
-        metadata_json, flac_ok, acoustid
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        path, library, zone, mtime, size, checksum, duration, bit_depth, sample_rate, bitrate, 
+        metadata_json, flac_ok, integrity_state, acoustid
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(path) DO UPDATE SET
         library=excluded.library,
+        zone=excluded.zone,
         mtime=excluded.mtime,
         size=excluded.size,
         checksum=excluded.checksum,
@@ -103,6 +106,7 @@ def upsert_file(conn: sqlite3.Connection, file: AudioFile) -> None:
         bitrate=excluded.bitrate,
         metadata_json=excluded.metadata_json,
         flac_ok=excluded.flac_ok,
+        integrity_state=excluded.integrity_state,
         acoustid=excluded.acoustid;
     """
     
@@ -113,6 +117,7 @@ def upsert_file(conn: sqlite3.Connection, file: AudioFile) -> None:
         conn.execute(query, (
             str(file.path),
             file.library,
+            file.zone,
             file.mtime,
             file.size,
             file.checksum,
@@ -122,6 +127,7 @@ def upsert_file(conn: sqlite3.Connection, file: AudioFile) -> None:
             file.bitrate,
             meta_json,
             1 if file.flac_ok else 0,
+            file.integrity_state,
             file.acoustid
         ))
         conn.commit()
@@ -161,11 +167,19 @@ def _row_to_audiofile(row: sqlite3.Row) -> AudioFile:
             metadata = {}
 
     library = None
+    zone = None
+    integrity_state = None
     try:
         if "library" in row.keys():
             library = row["library"]
+        if "zone" in row.keys():
+            zone = row["zone"]
+        if "integrity_state" in row.keys():
+            integrity_state = row["integrity_state"]
     except Exception:
         library = None
+        zone = None
+        integrity_state = None
 
     mtime = None
     size = None
@@ -178,9 +192,14 @@ def _row_to_audiofile(row: sqlite3.Row) -> AudioFile:
         mtime = None
         size = None
 
+    flac_ok = bool(row["flac_ok"])
+    if not integrity_state:
+        integrity_state = "valid" if flac_ok else "recoverable"
+
     return AudioFile(
         path=Path(row["path"]),
         library=library,
+        zone=zone,
         mtime=mtime,
         size=size,
         checksum=row["checksum"],
@@ -189,6 +208,7 @@ def _row_to_audiofile(row: sqlite3.Row) -> AudioFile:
         sample_rate=row["sample_rate"],
         bitrate=row["bitrate"],
         metadata=metadata,
-        flac_ok=bool(row["flac_ok"]),
-        acoustid=row["acoustid"]
+        flac_ok=flac_ok,
+        acoustid=row["acoustid"],
+        integrity_state=integrity_state
     )

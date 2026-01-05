@@ -4,21 +4,21 @@ set -euo pipefail
 REPO="${HOME}/dedupe_repo_reclone"
 FINAL_DB="${REPO}/artifacts/db/library_final.db"
 CANON_DB="${REPO}/artifacts/db/library_canonical_full.db"
-SRC_ROOT="/Volumes/dotad"
-DEST_ROOT="/Volumes/bad/DOTAD_DEDUPED"
+SRC_ROOT="/Volumes/COMMUNE/20_ACCEPTED"
+DEST_ROOT="/Volumes/COMMUNE/90_REJECTED"
 LOG_DIR="${REPO}/artifacts/logs"
 
 mkdir -p "${LOG_DIR}"
 
-NONCANON_LIST="${LOG_DIR}/dotad_noncanonical_flac_paths.txt"
-NONCANON_PRESENT="${LOG_DIR}/dotad_noncanonical_still_on_dotad.txt"
-NONCANON_MOVED_OK="${LOG_DIR}/dotad_noncanonical_moved_ok.txt"
-NONCANON_MOVED_MISSING="${LOG_DIR}/dotad_noncanonical_missing_on_bad.txt"
+NONCANON_LIST="${LOG_DIR}/commune_noncanonical_flac_paths.txt"
+NONCANON_PRESENT="${LOG_DIR}/commune_noncanonical_still_on_accepted.txt"
+NONCANON_MOVED_OK="${LOG_DIR}/commune_noncanonical_moved_ok.txt"
+NONCANON_MOVED_MISSING="${LOG_DIR}/commune_noncanonical_missing_on_rejected.txt"
 
 CANON_LIST="${LOG_DIR}/canonical_flac_paths.txt"
 CANON_MISSING="${LOG_DIR}/canonical_missing_on_disk.txt"
 
-echo "=== VERIFY DEDUP STATE: /Volumes/dotad vs canonical DBs ==="
+echo "=== VERIFY DEDUP STATE: /Volumes/COMMUNE/20_ACCEPTED vs canonical DBs ==="
 echo "FINAL DB : ${FINAL_DB}"
 echo "CANON DB : ${CANON_DB}"
 echo "SRC ROOT : ${SRC_ROOT}"
@@ -37,12 +37,12 @@ if [[ ! -f "${CANON_DB}" ]]; then
 fi
 
 echo "=== 1) DB-LEVEL COUNTS ==="
-total_flac_dotad=$(sqlite3 "${FINAL_DB}" "
+total_flac_accepted=$(sqlite3 "${FINAL_DB}" "
   SELECT COUNT(*)
   FROM library_files
   WHERE path LIKE '${SRC_ROOT}/%' AND lower(path) LIKE '%.flac';
 ")
-echo "Total FLAC entries on dotad in FINAL_DB: ${total_flac_dotad}"
+echo "Total FLAC entries on accepted in FINAL_DB: ${total_flac_accepted}"
 
 sqlite3 "${FINAL_DB}" <<SQL > "${NONCANON_LIST}"
 ATTACH '${CANON_DB}' AS canon;
@@ -57,7 +57,7 @@ DETACH canon;
 SQL
 
 noncanon_count_db=$(wc -l < "${NONCANON_LIST}" | tr -d ' ')
-echo "Non-canonical FLAC entries on dotad (DB): ${noncanon_count_db}"
+echo "Non-canonical FLAC entries on accepted (DB): ${noncanon_count_db}"
 echo "Non-canonical list: ${NONCANON_LIST}"
 echo
 
@@ -66,7 +66,7 @@ echo "=== 2) CHECK NON-CANONICAL FILES ON DISK ==="
 > "${NONCANON_MOVED_OK}"
 > "${NONCANON_MOVED_MISSING}"
 
-still_on_dotad=0
+still_on_accepted=0
 moved_ok=0
 moved_missing=0
 
@@ -74,11 +74,11 @@ while IFS= read -r src; do
   [[ -z "${src}" ]] && continue
 
   # Where it should have been moved to (preserving structure)
-  # /Volumes/dotad/...  -> /Volumes/bad/DOTAD_DEDUPED/...
+  # /Volumes/COMMUNE/20_ACCEPTED/...  -> /Volumes/COMMUNE/90_REJECTED/...
   dest="${DEST_ROOT}${src#${SRC_ROOT}}"
 
   if [[ -f "${src}" ]]; then
-    ((still_on_dotad++))
+    ((still_on_accepted++))
     echo "${src}" >> "${NONCANON_PRESENT}"
   fi
 
@@ -91,10 +91,10 @@ while IFS= read -r src; do
   fi
 done < "${NONCANON_LIST}"
 
-echo "Non-canonical FLACs still present on dotad: ${still_on_dotad}"
-echo "Non-canonical FLACs found on /Volumes/bad/DOTAD_DEDUPED: ${moved_ok}"
-echo "Non-canonical FLACs missing on /Volumes/bad/DOTAD_DEDUPED (dest): ${moved_missing}"
-echo "  Still on dotad list : ${NONCANON_PRESENT}"
+echo "Non-canonical FLACs still present on accepted: ${still_on_accepted}"
+echo "Non-canonical FLACs found on /Volumes/COMMUNE/90_REJECTED: ${moved_ok}"
+echo "Non-canonical FLACs missing on /Volumes/COMMUNE/90_REJECTED (dest): ${moved_missing}"
+echo "  Still on accepted list : ${NONCANON_PRESENT}"
 echo "  Dest missing list   : ${NONCANON_MOVED_MISSING}"
 echo
 
@@ -130,10 +130,10 @@ echo "Canonical missing list: ${CANON_MISSING}"
 echo
 
 echo "=== DONE: Verification summary ==="
-echo "  Total FLAC on dotad (DB):          ${total_flac_dotad}"
-echo "  Non-canonical FLAC on dotad (DB):  ${noncanon_count_db}"
-echo "  Non-canonical still on dotad:      ${still_on_dotad}"
-echo "  Non-canonical found on /bad:       ${moved_ok}"
-echo "  Non-canonical missing on /bad:     ${moved_missing}"
+echo "  Total FLAC on accepted (DB):          ${total_flac_accepted}"
+echo "  Non-canonical FLAC on accepted (DB):  ${noncanon_count_db}"
+echo "  Non-canonical still on accepted:      ${still_on_accepted}"
+echo "  Non-canonical found on rejected:      ${moved_ok}"
+echo "  Non-canonical missing on rejected:    ${moved_missing}"
 echo "  Canonical FLAC total:              ${canon_total}"
 echo "  Canonical missing on disk:         ${canon_missing}"

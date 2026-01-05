@@ -21,17 +21,8 @@ TMP_DB="$FINAL_DB.tmp"
 
 # All roots you want scanned
 ROOTS=(
-  "/Volumes/dotad/_QUARANTINE_DUPES"
-  "/Volumes/dotad/DEDUPER_QUARANTINE_20251201_122233"
-  "/Volumes/dotad/DEDUPER_QUARANTINE_20251201_122648"
-  "/Volumes/dotad/DEDUPER_RESCAN"
-  "/Volumes/dotad/G_DUPEGURU"
-  "/Volumes/dotad/MUSIC"
-  "/Volumes/dotad/NEW_LIBRARY"
-  "/Volumes/dotad/NEW_LIBRARY_CLEAN"
-  "/Volumes/dotad/NEW_MUSIC"
-  "/Volumes/dotad/QUARANTINE_AUTO_GLOBAL"
-  "/Volumes/dotad/RECOVERED_FROM_MISSING"
+  "/Volumes/COMMUNE/10_STAGING"
+  "/Volumes/COMMUNE/20_ACCEPTED"
 )
 
 ############################################
@@ -64,7 +55,7 @@ for root in "${ROOTS[@]}"; do
     continue
   fi
 
-  # Turn "/Volumes/dotad/G_DUPEGURU" into "G_DUPEGURU.sqlite" etc.
+  # Turn "/Volumes/COMMUNE/10_STAGING" into "10_STAGING.sqlite" etc.
   root_basename=$(basename "$root")
   out_db="$SCAN_DIR/${root_basename}.sqlite"
 
@@ -75,10 +66,18 @@ for root in "${ROOTS[@]}"; do
   fi
 
   echo "  [SCAN] $root -> $out_db"
+  zone_arg=""
+  if [[ "$root" == *"/10_STAGING" ]]; then
+    zone_arg="--zone staging"
+  elif [[ "$root" == *"/20_ACCEPTED" ]]; then
+    zone_arg="--zone accepted"
+  fi
+
   "$VENV_PY" -m dedupe.cli scan-library \
     --root "$root" \
     --out "$out_db" \
-    --progress
+    --progress \
+    $zone_arg
   
 done
 
@@ -141,7 +140,7 @@ echo "Total rows:"
 sqlite3 "$TMP_DB" "SELECT COUNT(*) FROM library_files;"
 
 echo
-echo "Distinct root prefixes (first component under /Volumes/dotad):"
+echo "Distinct root prefixes (first component under /Volumes/COMMUNE):"
 sqlite3 "$TMP_DB" "
 SELECT DISTINCT
   substr(
@@ -193,7 +192,7 @@ echo "Final merged DB: $FINAL_DB"
 
 echo
 echo "=== ALL DONE ==="
-echo "All requested roots under /Volumes/dotad have been scanned (or reused from existing scan DBs)."
+echo "All requested roots under /Volumes/COMMUNE have been scanned (or reused from existing scan DBs)."
 echo "Merged, full-schema library is now in: $FINAL_DB"
 echo "You can now:"
 echo "  - Run your existing canonical/dedupe pipeline on library_final.db"

@@ -24,4 +24,4 @@
 - Documented the revised commands and developer workflow in `README.md` and
   `USAGE.md`.
 - Refreshed architecture and operations documentation to reference the new
-  pipeline while marking legacy quarantine workflows as archived.
+  pipeline while marking legacy staging workflows as archived.

@@ -13,7 +13,7 @@ Creates clean review structure:
 
 Usage:
     python3 tools/export_dupe_groups.py --csv /path/to/dupeguru.csv \\
-                                                                            --out /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_DUPE_REVIEW
+                                                                            --out /Volumes/COMMUNE/10_STAGING/_DUPE_REVIEW
 """
 import argparse
 import csv

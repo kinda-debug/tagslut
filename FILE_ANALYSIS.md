@@ -3,7 +3,7 @@
 ## Root
 - `README.md`, `USAGE.md`, `CONTRIBUTING.md`, `CHANGELOG.md`, `LICENSE` — Project documentation and metadata.
 - `pyproject.toml`, `requirements.txt`, `poetry.lock`, `MANIFEST.in` — Packaging and dependency definitions.
-- `config.toml`, `config.example.toml` — Runtime configuration examples.
+- `config.toml`, `config.example.toml` — Runtime configuration examples for COMMUNE zones.
 - `Makefile` — Convenience commands for linting/testing.
 - `scripts/python/dd_flac_dedupe_db.py` — **Deprecated** standalone dedupe script; superseded by the packaged workflows.
 - `tmp_dedupe_patch.patch`, `tmp_full_patch_no_pyc.patch`, `tmp_missing.patch` — Temporary patch artifacts (cleanup recommended).
@@ -29,7 +29,7 @@
 - `healthcheck.py` — Runs `flac --test`/mutagen checks plus tag completeness heuristics; returns structured results.
 - `fingerprints.py` — Chromaprint integration (availability checks, fingerprint generation, similarity scoring).
 - `metadata.py` — FFprobe/mutagen probing utilities returning structured metadata objects.
-- `utils.py` — Shared helpers for path normalisation, hashing, chunking, SQLite access, JSON handling, and context managers.
+- `utils/` — Shared helpers for path normalisation, hashing, chunking, SQLite access, JSON handling, and COMMUNE zone resolution.
 - `deduper.py` — Marks canonical files within `library_files` and optionally writes duplicate reports.
 - `hrm_relocation.py` — Relocates healthy, canonical files into the HRM hierarchy with checksum validation and manifest output.
 - `global_recovery.py` — Global recovery workflow for multi-root scans, fragment resolution, and report generation.

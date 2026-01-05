@@ -18,6 +18,7 @@ CONFIG_PATHS = [
 class Config:
     _instance = None
     _data: Dict[str, Any] = {}
+    _override_path: Path | None = None
 
     def __new__(cls):
         if cls._instance is None:
@@ -31,6 +32,8 @@ class Config:
 
         env_path = os.getenv("DEDUPE_CONFIG")
         candidate_paths = []
+        if self._override_path:
+            candidate_paths.append(self._override_path)
         if env_path:
             candidate_paths.append(Path(env_path))
         candidate_paths.extend(CONFIG_PATHS)
@@ -76,6 +79,10 @@ class Config:
     def values(self):
         return self._data.values()
 
-def get_config() -> Config:
+def get_config(config_path: Path | None = None) -> Config:
     """Public accessor for the singleton configuration."""
-    return Config()
+    config = Config()
+    if config_path is not None and config_path != config._override_path:
+        config._override_path = config_path
+        config._load()
+    return config

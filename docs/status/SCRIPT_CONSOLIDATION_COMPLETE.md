@@ -62,8 +62,8 @@ Created comprehensive documentation:
 
 ### Duplicate Removal (4)
 - `prune_cross_root_duplicates.py` - Cross-root deduplication
-- `prune_garbage_duplicates.py` - Garbage cleanup
-- `dedupe_move_duplicates.py` - Move to Garbage
+- `prune_garbage_duplicates.py` - Rejected cleanup
+- `dedupe_move_duplicates.py` - Move to Rejected
 - `db_prune_missing_files.py` - DB reconciliation
 
 ### Health & Repair (4)
@@ -81,7 +81,7 @@ Created comprehensive documentation:
 - `dedupe_cli.py`, `dedupe_sync.py`, etc.
 
 ### Specialized Tools (4)
-- Quarantine processing, parallel processors, etc.
+- Staging processing, parallel processors, etc.
 
 ## Archived Scripts (16 scripts)
 

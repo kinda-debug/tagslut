@@ -20,12 +20,17 @@ def list_files(root: Union[str, Path], extensions: Set[str], recursive: bool = T
 
     try:
         if recursive:
-            for dirpath, _, filenames in os.walk(root_path):
+            for dirpath, dirnames, filenames in os.walk(root_path):
+                if "_yate_db" in Path(dirpath).parts:
+                    continue
+                dirnames[:] = [d for d in dirnames if d != "_yate_db"]
                 for f in filenames:
                     if Path(f).suffix.lower() in valid_exts:
                         yield Path(dirpath) / f
         else:
             for item in root_path.iterdir():
+                if "_yate_db" in item.parts:
+                    continue
                 if item.is_file() and item.suffix.lower() in valid_exts:
                     yield item
     except OSError as e:

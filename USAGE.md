@@ -8,6 +8,8 @@ external volumes are unavailable.
 
 ```bash
 python3 -m dedupe.cli scan-library --root /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY --out artifacts/db/library.db --resume --verbose --batch-size 2000
+# If you are scanning a COMMUNE layout, tag the rows with:
+#   --zone accepted
 ```
 
 Chromaprint fingerprints are optional.  Use them only when you must
@@ -24,9 +26,10 @@ Optional fingerprint-enabled scan:
 
 ```bash
 python3 -m dedupe.cli scan-library --root /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY --out artifacts/db/library.db --resume --fingerprints --verbose --batch-size 2000
+# Optional (COMMUNE layout): add --zone accepted|staging
 ```
 
-Run the command against additional volumes only if needed; for recovery-only workflows, scanning the `FINAL_LIBRARY` is sufficient.
+Run the command against additional volumes only when needed. If you're using a COMMUNE layout, pass `--zone accepted` or `--zone staging` so decision tooling can prioritize keepers correctly.
 
 After each run you can verify new entries via SQLite:
 
@@ -85,7 +88,7 @@ should be prioritised for restoration.
 
 ```bash
 tools/export_dupe_groups.py --csv /path/to/dupeguru.csv \
-                            --out /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_DUPE_REVIEW
+                            --out /Volumes/COMMUNE/10_STAGING/_DUPE_REVIEW
 ```
 
 Creates clean A/B comparison directories:
@@ -111,20 +114,20 @@ tools/open_dupe_pair.sh group_0001
 ### FLAC integrity checking
 
 ```bash
-# Parallel integrity scan (writes flac_ok column to DB)
+# Parallel integrity scan (writes integrity_state and flac_ok columns to DB)
 tools/scan_flac_integrity.py --db artifacts/db/music.db --parallel 8
 
 # Find corrupt files in any directory
-tools/find_corrupt_flacs.sh /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_DUPE_REVIEW
+tools/find_corrupt_flacs.sh /Volumes/COMMUNE/10_STAGING/_DUPE_REVIEW
 
-# Find and quarantine corrupt files
-tools/find_corrupt_flacs.sh /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_DUPE_REVIEW --move-to /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/_CORRUPT
+# Find and reject corrupt files
+tools/find_corrupt_flacs.sh /Volumes/COMMUNE/10_STAGING/_DUPE_REVIEW --move-to /Volumes/COMMUNE/90_REJECTED
 ```
 
 ### Automated keeper/loser recommendations
 
 ```bash
-# Generate KEEP/DROP/REVIEW decisions (dry-run)
+# Generate KEEP/REVIEW decisions (dry-run)
 tools/recommend_keepers.py --db artifacts/db/music.db \
                            --group-field dupeguru_group_id \
                            --out /tmp/recovery_recommendations.csv
@@ -137,7 +140,7 @@ tools/dupeguru_bridge.py --db artifacts/db/music.db \
                          --dupeguru /path/to/dupeguru.csv \
                          --apply
 
-# Apply final decisions to database
+# Apply final decisions to database (review markers only)
 tools/recommend_keepers.py --db artifacts/db/music.db \
                            --group-field dupeguru_group_id \
                            --out /tmp/recovery_recommendations.csv \
@@ -146,7 +149,7 @@ tools/recommend_keepers.py --db artifacts/db/music.db \
 
 ### Decision hierarchy (enforced by recommend_keepers.py)
 
-1. **FLAC integrity** – Corrupt files (`flac -t` fails) → auto-DROP (HIGH confidence)
+1. **FLAC integrity** – `valid`, `recoverable`, `corrupt` states are recorded; non-valid files are flagged for review.
 2. **Identity** – AcoustID recording ID conflicts → REVIEW
 3. **Duration** – Within ±0.2s of reference → VALID; longer files never auto-win
 4. **Quality** – Bit depth > sample rate > bitrate (among VALID files only)

@@ -162,6 +162,11 @@ def build_parser() -> argparse.ArgumentParser:
             "run 'hash-missing' later to compute checksums."
         ),
     )
+    scan_parser.add_argument(
+        "--zone",
+        choices=("staging", "accepted"),
+        help="COMMUNE zone to tag for this scan (staging or accepted).",
+    )
 
     match_parser = subparsers.add_parser(
         "match",
@@ -223,6 +228,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--fingerprints",
         action="store_true",
         help="Compute fingerprints for missing files when fpcalc is available.",
+    )
+    rescan_parser.add_argument(
+        "--zone",
+        choices=("staging", "accepted"),
+        help="COMMUNE zone to tag for this scan (staging or accepted).",
     )
 
     health_parser = subparsers.add_parser(
@@ -364,6 +374,7 @@ def _command_scan(args: argparse.Namespace) -> int:
         resume_safe=getattr(args, "resume_safe", False),
         show_progress=getattr(args, "progress", False),
         compute_checksum=not getattr(args, "metadata_only", False),
+        zone=getattr(args, "zone", None),
     )
     total = scanner.scan_library(config)
     logger.info("Indexed %s files", total)
@@ -393,6 +404,7 @@ def _command_rescan_missing(args: argparse.Namespace) -> int:
         root=args.root,
         database=args.out,
         include_fingerprints=args.fingerprints,
+        zone=getattr(args, "zone", None),
     )
     logger.info(
         "Missing: %s | Ingested: %s | Unreadable: %s | Corrupt: %s",

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-SCAN_ROOT="/Volumes/bad/FINAL_LIBRARY"
+SCAN_ROOT="/Volumes/COMMUNE/20_ACCEPTED"
 DB_OUT="$REPO/artifacts/db/library_canonical_fresh.db"
 LOG="$REPO/artifacts/logs/scan_final_library.log"
 SUMMARY="$REPO/artifacts/logs/scan_final_library_summary.txt"

@@ -2,9 +2,9 @@
 
 ## Summary
 
-Executed cross-root deduplication run deleted 133 duplicate files across MUSIC, Quarantine, and Garbage roots. Post-execution analysis revealed **70 policy violations** where shorter-path files were deleted instead of being kept, contradicting the user's stated "no preference" requirement.
+Executed cross-root deduplication run deleted 133 duplicate files across Accepted, Staging, and Rejected roots. Post-execution analysis revealed **70 policy violations** where shorter-path files were deleted instead of being kept, contradicting the user's stated "no preference" requirement.
 
-**Critical finding**: All deleted files are recoverable from `/Volumes/dotad/.Trashes/501` (macOS moved them to Trash, not permanent deletion). All keeper files verified present and healthy.
+**Critical finding**: All deleted files are recoverable from `/Volumes/COMMUNE/.Trashes/501` (macOS moved them to Trash, not permanent deletion). All keeper files verified present and healthy.
 
 ## Timeline
 
@@ -12,16 +12,16 @@ Executed cross-root deduplication run deleted 133 duplicate files across MUSIC, 
 2. **Validation**: Fresh tri-root rescan showed 0 duplicate groups remaining
 3. **Discovery**: User questioned "0 duplicates" result, investigation uncovered policy bug
 4. **Analysis**: `verify_deleted_files.py` identified 70/133 deletions violated shortest-path policy
-5. **Recovery status**: 85 files confirmed in `/Volumes/dotad/.Trashes/501`
+5. **Recovery status**: 85 files confirmed in `/Volumes/COMMUNE/.Trashes/501`
 
 ## Policy Violation Details
 
 ### Implemented Policy (WRONG)
 ```python
 # From choose_keeper() in prune_cross_root_duplicates.py
-1. Prefer MUSIC (library_root) candidates first
-2. Among MUSIC candidates: shortest path → lexicographic
-3. If no MUSIC candidate: globally shortest → lexicographic
+1. Prefer Accepted (library_root) candidates first
+2. Among Accepted candidates: shortest path → lexicographic
+3. If no Accepted candidate: globally shortest → lexicographic
 ```
 
 ### Required Policy (USER SPECIFICATION)
@@ -33,10 +33,10 @@ NO root preference
 
 ### Impact
 - **70 violations**: Deleted files had shorter paths than keepers
-- **Pattern**: Quarantine subdirectory files (7 parts) deleted, MUSIC files (8 parts) kept
+- **Pattern**: Staging subdirectory files (7 parts) deleted, Accepted files (8 parts) kept
 - **Example**:
-  - ❌ Deleted: `/Volumes/dotad/Quarantine/Dupeguru/REPAIRED_FLACS/Yelle - (2007) Pop-up - 08. Je veux te voir.repaired.flac` (7 parts)
-  - ✅ Kept: `/Volumes/dotad/MUSIC/REPAIRED2/Yelle/(2007) Pop-up/Yelle - (2007) Pop-up - 08. Je veux te voir.flac` (8 parts)
+  - ❌ Deleted: `/Volumes/COMMUNE/10_STAGING/Dupeguru/REPAIRED_FLACS/Yelle - (2007) Pop-up - 08. Je veux te voir.repaired.flac` (7 parts)
+  - ✅ Kept: `/Volumes/COMMUNE/20_ACCEPTED/REPAIRED2/Yelle/(2007) Pop-up/Yelle - (2007) Pop-up - 08. Je veux te voir.flac` (8 parts)
 
 ## Data Integrity Verification
 
@@ -51,22 +51,22 @@ Wrong policy decisions: 70
 ### Sample Validation
 ```bash
 # Keeper exists and matches expected size
-$ test -f "/Volumes/dotad/MUSIC/REPAIRED2/Yelle/(2007) Pop-up/Yelle - (2007) Pop-up - 08. Je veux te voir.flac" && echo "EXISTS"
+$ test -f "/Volumes/COMMUNE/20_ACCEPTED/REPAIRED2/Yelle/(2007) Pop-up/Yelle - (2007) Pop-up - 08. Je veux te voir.flac" && echo "EXISTS"
 EXISTS
 
 # MD5 match confirmed in DB
 $ sqlite3 ~/.cache/file_dupes.db "SELECT file_path FROM file_hashes WHERE file_md5 = '<md5>'"
-/Volumes/dotad/MUSIC/REPAIRED2/Yelle/(2007) Pop-up/Yelle - (2007) Pop-up - 08. Je veux te voir.flac
+/Volumes/COMMUNE/20_ACCEPTED/REPAIRED2/Yelle/(2007) Pop-up/Yelle - (2007) Pop-up - 08. Je veux te voir.flac
 ```
 
 ### Files in Trash
 ```bash
-$ ls /Volumes/dotad/.Trashes/501/*.flac | wc -l
+$ ls /Volumes/COMMUNE/.Trashes/501/*.flac | wc -l
 85
 ```
 
 **Note**: Discrepancy between 133 total deletions and 85 files in Trash likely due to:
-- Some deletions were from Garbage (already duplicates)
+- Some deletions were from Rejected (already duplicates)
 - Some files may have been in different root trash locations
 - Correct policy decisions (63) where keeper was indeed shorter
 
@@ -83,7 +83,7 @@ def choose_keeper(candidates, library_root):
     library_candidates = [c for c in candidates if c.startswith(library_root)]
     if library_candidates:
         return min(library_candidates, key=lambda p: (len(Path(p).parts), p))
-    # Fallback to global shortest only if no MUSIC candidate
+    # Fallback to global shortest only if no Accepted candidate
     return min(candidates, key=lambda p: (len(Path(p).parts), p))
 ```
 
@@ -108,13 +108,13 @@ def choose_keeper(candidates, library_root=None):
 ### Option 1: Restore Wrong-Policy Deletions (Recommended)
 ```bash
 # Restore 70 files from Trash that should have been keepers
-# Then delete their longer-path duplicates from MUSIC
+# Then delete their longer-path duplicates from Accepted
 # Script: scripts/restore_wrong_policy_deletions.py (TO BE CREATED)
 ```
 
-### Option 2: Accept MUSIC-Preferred Result
+### Option 2: Accept Accepted-Preferred Result
 - All duplicates eliminated
-- MUSIC paths favored (organized structure)
+- Accepted paths favored (organized structure)
 - Violates stated "no preference" policy
 - 70 files can remain in Trash
 

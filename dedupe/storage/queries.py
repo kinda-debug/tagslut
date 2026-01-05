@@ -480,25 +480,38 @@ def upsert_file(conn: sqlite3.Connection, file: AudioFile) -> None:
     """
     
     # Serialize metadata to JSON for storage
-    meta_json = json.dumps(file.metadata)
+    # Normalize parameters: convert any tuple/list/dict to JSON string
+    def normalize(value):
+        if value is None:
+            return None
+        if isinstance(value, (list, tuple, dict)):
+            return json.dumps(value, ensure_ascii=False)
+        return value
+    
+    # Normalize all metadata values before JSON serialization
+    normalized_metadata = {k: (v if not isinstance(v, (list, tuple)) else list(v)) for k, v in file.metadata.items()}
+    meta_json = json.dumps(normalized_metadata)
+    
+    # Build params with normalization on all potentially problematic fields
+    params = (
+        str(file.path),
+        normalize(file.library),
+        normalize(file.zone),
+        file.mtime,
+        file.size,
+        normalize(file.checksum),
+        file.duration,
+        file.bit_depth,
+        file.sample_rate,
+        file.bitrate,
+        meta_json,
+        1 if file.flac_ok else 0,
+        normalize(file.integrity_state),
+        normalize(file.acoustid)
+    )
     
     try:
-        conn.execute(query, (
-            str(file.path),
-            file.library,
-            file.zone,
-            file.mtime,
-            file.size,
-            file.checksum,
-            file.duration,
-            file.bit_depth,
-            file.sample_rate,
-            file.bitrate,
-            meta_json,
-            1 if file.flac_ok else 0,
-            file.integrity_state,
-            file.acoustid
-        ))
+        conn.execute(query, params)
         conn.commit()
     except sqlite3.Error as e:
         logger.error(f"DB Error upserting {file.path}: {e}")

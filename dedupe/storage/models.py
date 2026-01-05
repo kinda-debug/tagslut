@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Literal, Optional, List, Dict, Any
 
 IntegrityState = Literal["valid", "recoverable", "corrupt"]
-Zone = Literal["inbox", "staging", "accepted", "rejected"]
+Zone = Literal["inbox", "staging", "accepted", "rejected", "suspect", "quarantine"]
 
 @dataclass
 class AudioFile:

@@ -8,10 +8,10 @@ from typing import Mapping, Optional, Literal
 
 from dedupe.utils.config import Config
 
-Zone = Literal["inbox", "staging", "accepted", "rejected"]
+Zone = Literal["inbox", "staging", "accepted", "rejected", "suspect", "quarantine"]
 
-ZONE_ORDER: tuple[Zone, ...] = ("inbox", "staging", "accepted", "rejected")
-DEDUPE_ZONES: tuple[Zone, ...] = ("staging", "accepted")
+ZONE_ORDER: tuple[Zone, ...] = ("inbox", "staging", "accepted", "rejected", "suspect", "quarantine")
+DEDUPE_ZONES: tuple[Zone, ...] = ("staging", "accepted", "suspect", "quarantine")
 
 
 @dataclass(frozen=True)

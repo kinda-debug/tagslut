@@ -9,8 +9,9 @@ from dedupe.integrity_scanner import scan_library
 from dedupe.utils.cli_helper import common_options, configure_execution
 
 @click.command()
-@click.argument("library_path", type=click.Path(exists=True, file_okay=False))
+@click.argument("library_path", type=click.Path(exists=True, file_okay=False), required=False)
 @click.option("--db", required=True, type=click.Path(dir_okay=False), help="Path to SQLite database")
+@click.option("--paths-from-file", type=click.Path(exists=True, dir_okay=False), help="Read specific file paths from this file (one per line)")
 @click.option("--library", default=None, help="Logical library name (e.g. COMMUNE)")
 @click.option(
     "--zone",
@@ -40,18 +41,45 @@ from dedupe.utils.cli_helper import common_options, configure_execution
     show_default=True,
     help="When --progress is enabled, log every N processed files",
 )
+@click.option("--limit", type=int, default=None, help="Stop after processing N files (for batch processing)")
 @click.option("--check-integrity/--no-check-integrity", default=False, help="Run flac -t verification")
-@click.option("--check-hash/--no-check-hash", default=True, help="Calculate SHA256 checksums")
+@click.option("--check-hash/--no-check-hash", default=False, help="Calculate full-file SHA256 (Phase 3 only)")
+@click.option("--hard-skip", is_flag=True, default=False, help="Alias for --no-check-integrity --no-check-hash (default behavior)")
 @common_options
-def scan(library_path, db, library, zone, incremental, recheck, progress, progress_interval, check_integrity, check_hash, verbose, config):
+def scan(library_path, db, paths_from_file, library, zone, incremental, recheck, progress, progress_interval, limit, check_integrity, check_hash, hard_skip, verbose, config):
     """
     Scans a library folder for FLAC files and populates the database.
+    
+    If --paths-from-file is provided, ignores LIBRARY_PATH and scans only specified files.
     """
     configure_execution(verbose, config)
     
+    # Validate arguments
+    if not library_path and not paths_from_file:
+        raise click.ClickException("Either LIBRARY_PATH or --paths-from-file must be provided")
+    
+    if library_path and paths_from_file:
+        raise click.ClickException("Cannot use both LIBRARY_PATH and --paths-from-file")
+    
+    # Apply --hard-skip logic
+    if hard_skip:
+        check_integrity = False
+        check_hash = False
+    
     repo_root = Path(__file__).parents[2].resolve()
-    lib_path = Path(library_path).expanduser().resolve()
     db_path = Path(db).expanduser().resolve()
+    
+    # Load specific paths if provided
+    specific_paths = None
+    if paths_from_file:
+        paths_file = Path(paths_from_file).expanduser().resolve()
+        click.echo(f"Loading paths from: {paths_file}")
+        with open(paths_file) as f:
+            specific_paths = [Path(line.strip()).expanduser().resolve() for line in f if line.strip()]
+        click.echo(f"Loaded {len(specific_paths)} paths to scan")
+        lib_path = None
+    else:
+        lib_path = Path(library_path).expanduser().resolve()
 
     default_db = repo_root / "artifacts/db/music.db"
     if db_path == (repo_root / "music.db") and db_path.exists() and db_path.stat().st_size == 0:
@@ -64,7 +92,10 @@ def scan(library_path, db, library, zone, incremental, recheck, progress, progre
             f"{db_path} is empty (0 bytes). Remove it or choose a different --db path."
         )
     
-    click.echo(f"Scanning Library: {lib_path}")
+    if lib_path:
+        click.echo(f"Scanning Library: {lib_path}")
+    else:
+        click.echo(f"Scanning {len(specific_paths)} specific paths")
     click.echo(f"Database: {db_path}")
     if library:
         click.echo(f"Library Tag: {library}")
@@ -75,6 +106,8 @@ def scan(library_path, db, library, zone, incremental, recheck, progress, progre
     click.echo(f"Progress: {'ON' if progress else 'OFF'}")
     if progress:
         click.echo(f"Progress Interval: {progress_interval}")
+    if limit:
+        click.echo(f"Batch Limit: {limit} files")
     click.echo(f"Integrity Check: {'ON' if check_integrity else 'OFF'}")
     click.echo(f"Hash Calculation: {'ON' if check_hash else 'OFF'}")
     
@@ -89,7 +122,9 @@ def scan(library_path, db, library, zone, incremental, recheck, progress, progre
             progress=progress,
             progress_interval=progress_interval,
             scan_integrity=check_integrity,
-            scan_hash=check_hash
+            scan_hash=check_hash,
+            specific_paths=specific_paths,
+            limit=limit
         )
         click.echo(click.style("Scan complete.", fg="green"))
     except Exception as e:

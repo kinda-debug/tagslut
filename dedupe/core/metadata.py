@@ -94,8 +94,16 @@ def extract_metadata(
         
         # Tag extraction
         if audio.tags:
-            tags = {k.lower(): v[0] if isinstance(v, list) and len(v) == 1 else v 
-                    for k, v in audio.tags.items()}
+            # Convert mutagen lists to plain Python lists for JSON serialization
+            tags = {}
+            for k, v in audio.tags.items():
+                if isinstance(v, list):
+                    if len(v) == 1:
+                        tags[k.lower()] = v[0]
+                    else:
+                        tags[k.lower()] = list(v)  # Convert mutagen list to plain list
+                else:
+                    tags[k.lower()] = v
 
         # If we didn't run explicit integrity check, standard load implies basic header health
         if not scan_integrity:

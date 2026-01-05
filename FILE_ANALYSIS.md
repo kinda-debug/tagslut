@@ -6,11 +6,10 @@
 - `config.toml`, `config.example.toml` — Runtime configuration examples for COMMUNE zones.
 - `Makefile` — Convenience commands for linting/testing.
 - `scripts/python/dd_flac_dedupe_db.py` — **Deprecated** standalone dedupe script; superseded by the packaged workflows.
-- `tmp_dedupe_patch.patch`, `tmp_full_patch_no_pyc.patch`, `tmp_missing.patch` — Temporary patch artifacts (cleanup recommended).
 - `patches/` — Patch lists used during migrations; review for removal once obsolete.
 - `artifacts/` — Output area with `db/`, `logs/`, `manifests/`, and `tmp/` subdirectories for runtime data.
-- `archive/legacy_root/` — Historical assets retained for reference.
 - `scripts/` — Maintenance helpers plus `scripts/shell/` and `scripts/python/` for legacy root scripts.
+- `scripts/archive/` — Archived one-off scripts retained for historical reference.
 - `tools/` — Operational utilities for duplicate review, integrity checking, and decision automation:
   - **Duplicate review workflow**: `export_dupe_groups.py`, `open_dupe_pair.sh`, `listen_dupes.sh`
   - **Decision engine**: `recommend_keepers.py`, `review_needed.sh`, `dupeguru_bridge.py`
@@ -35,7 +34,6 @@
 - `global_recovery.py` — Global recovery workflow for multi-root scans, fragment resolution, and report generation.
 - `rstudio_parser.py` — Parses R-Studio exports into the `recovered_files` schema for matching.
 - `healthscore.py`, `health_score.py`, `healthcheck.py` — Parallel health scoring utilities with different scopes (read-only scoring vs. mutagen/`flac` validation).
-- `ARCHIVE/` — **Deprecated** legacy scripts retained for historical reference; not part of active workflows.
 
 ## Tests
 - `tests/` — Unit tests covering scanner, matcher, manifest, CLI, health scoring, HRM relocation, DB upgrades, metadata utilities, and repository structure. Fixtures reside under `tests/data/`.

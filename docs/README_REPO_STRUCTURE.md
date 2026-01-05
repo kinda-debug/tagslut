@@ -7,15 +7,15 @@ This repository is organised around a single Python package, `dedupe`, plus a sm
 - `dedupe/` — Main application package containing the CLI, scanning, matching, health scoring, and recovery logic.
 - `tools/` — Operational scripts packaged for import (`db_upgrade`, `manual_ingest`, `move_to_hrm`).
 - `scripts/` — Shell/Python helpers used during maintenance and data patching.
-- `docs/` — Architecture notes, playbooks, and guides.
+- `docs/` — Architecture notes, playbooks, and guides (archived snapshots live under `docs/archive/`).
 - `tests/` — Automated unit tests and fixtures.
 - `artifacts/` — Runtime outputs; structured with `db/`, `logs/`, `manifests/`, and `tmp/` for collected data.
-- `archive/` and `dedupe/ARCHIVE/` — Legacy materials retained for reference only.
+- `scripts/archive/` — Legacy scripts retained for reference only.
 
 ## Package overview (`dedupe`)
 
 - `cli.py` — Entry point wiring subcommands for scanning, matching, manifest generation, health scoring, deduplication, HRM relocation, and DB upgrades.
-- `db/` — Schema helpers (`schema.py`) centralising the `library_files` definition.
+- `db/` — Schema helpers (`schema.py`) centralising the `library_files` definition (implemented in `dedupe/storage/schema.py`).
 - `scanner.py` — Library scanner and ingest pipeline writing metadata to SQLite.
 - `matcher.py` — Correlates scanned library entries with recovered metadata exports.
 - `manifest.py` — Builds recovery manifests from match CSVs with prioritisation rules.
@@ -29,7 +29,6 @@ This repository is organised around a single Python package, `dedupe`, plus a sm
 - `hrm_relocation.py` — Moves healthy, canonical files into the HRM folder layout with manifest output.
 - `global_recovery.py` — Cross-root recovery and resolution workflow for reconciled datasets.
 - `rstudio_parser.py` — Parses R-Studio recovery exports into the recovered files schema.
-- `ARCHIVE/` — Deprecated legacy scripts kept for historical context.
 
 ## Tools
 

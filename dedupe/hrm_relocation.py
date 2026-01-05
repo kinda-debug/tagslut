@@ -111,20 +111,6 @@ def _ensure_required_columns(connection: sqlite3.Connection) -> None:
         )
 
 
-def _remove_with_retries(path: Path, attempts: int = 3, delay: float = 0.5) -> None:
-    """Remove *path* with simple retry handling."""
-
-    for attempt in range(1, attempts + 1):
-        try:
-            path.unlink()
-            return
-        except OSError as exc:
-            if attempt == attempts:
-                raise
-            logger.warning("Retrying removal of %s after error: %s", path, exc)
-            time.sleep(delay)
-
-
 def _move_with_retries(src: Path, dest: Path, attempts: int = 3, delay: float = 0.5) -> None:
     """Move *src* to *dest* with retry handling for transient filesystem errors."""
 

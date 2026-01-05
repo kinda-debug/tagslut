@@ -14,16 +14,21 @@ from pathlib import Path
 from typing import Any, Optional
 
 from . import metadata, utils
+from dedupe.storage.schema import LIBRARY_TABLE, initialise_library_schema
 from dedupe.utils.config import get_config
 from dedupe.utils.library import load_zone_paths, ensure_dedupe_zone, identify_zone
 
 logger = logging.getLogger(__name__)
 
-LIBRARY_TABLE = "library_files"
-
 # Controls whether checksum hashing runs during record preparation.
 # Set by ScanConfig in scan_library; defaults to True.
 COMPUTE_CHECKSUM: bool = True
+
+
+def initialise_database(connection: sqlite3.Connection) -> None:
+    """Backward-compatible shim for initialising the library schema."""
+
+    initialise_library_schema(connection)
 
 
 @dataclass(slots=True)
@@ -59,55 +64,6 @@ class ScanConfig:
     show_progress: bool = False
     compute_checksum: bool = True
     zone: Optional[str] = None
-
-
-def initialise_database(connection: sqlite3.Connection) -> None:
-    """Ensure the legacy library schema exists."""
-
-    with connection:
-        connection.execute("PRAGMA journal_mode=WAL")
-        connection.execute("PRAGMA busy_timeout=5000")
-        connection.execute(
-            f"""
-            CREATE TABLE IF NOT EXISTS {LIBRARY_TABLE} (
-                path TEXT PRIMARY KEY,
-                size_bytes INTEGER,
-                mtime REAL,
-                checksum TEXT,
-                duration REAL,
-                sample_rate INTEGER,
-                bit_rate INTEGER,
-                channels INTEGER,
-                bit_depth INTEGER,
-                tags_json TEXT,
-                fingerprint TEXT,
-                fingerprint_duration REAL,
-                dup_group TEXT,
-                duplicate_rank INTEGER,
-                is_canonical INTEGER,
-                extra_json TEXT,
-                library_state TEXT,
-                flac_ok INTEGER,
-                integrity_state TEXT,
-                zone TEXT
-            )
-            """
-        )
-        connection.execute(
-            f"CREATE INDEX IF NOT EXISTS idx_{LIBRARY_TABLE}_checksum ON {LIBRARY_TABLE}(checksum)"
-        )
-        columns = {
-            "library_state": "TEXT",
-            "flac_ok": "INTEGER",
-            "integrity_state": "TEXT",
-            "zone": "TEXT",
-        }
-        existing = {row["name"] for row in connection.execute(f"PRAGMA table_info({LIBRARY_TABLE})")}
-        for name, col_type in columns.items():
-            if name not in existing:
-                connection.execute(
-                    f"ALTER TABLE {LIBRARY_TABLE} ADD COLUMN {name} {col_type}"
-                )
 
 
 def prepare_record(path: Path, include_fingerprints: bool, zone: Optional[str]) -> ScanRecord:
@@ -213,7 +169,7 @@ def scan_library(config: ScanConfig) -> int:
             raise ValueError(f"Zone '{zone_name}' is out of scope for dedupe.")
 
     with ctx.connect() as connection:
-        initialise_database(connection)
+        initialise_library_schema(connection)
         existing = _existing_index(connection) if (config.resume or config.resume_safe) else {}
 
         files = sorted(
@@ -306,7 +262,7 @@ def rescan_missing(
             raise ValueError(f"Zone '{zone_name}' is out of scope for dedupe.")
 
     with ctx.connect() as connection:
-        initialise_database(connection)
+        initialise_library_schema(connection)
         existing_paths = {
             utils.normalise_path(row["path"])
             for row in connection.execute(f"SELECT path FROM {LIBRARY_TABLE}").fetchall()
@@ -345,7 +301,7 @@ def hash_missing(*, database: Path, batch_size: int = 500) -> int:
     updated = 0
 
     with ctx.connect() as connection:
-        initialise_database(connection)
+        initialise_library_schema(connection)
         cursor = connection.execute(
             f"SELECT path FROM {LIBRARY_TABLE} WHERE checksum IS NULL"
         )
@@ -372,4 +328,3 @@ def hash_missing(*, database: Path, batch_size: int = 500) -> int:
                 updated += len(payload)
 
     return updated
-

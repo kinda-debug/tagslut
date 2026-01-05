@@ -46,17 +46,15 @@ def extract_metadata(
 
     # Cheap stat info for incremental scans / observability
     try:
-        st = path_obj.stat()  # Will be populated with streaminfo or full hash
-    duration = 0.0
-    bit_depth = 0
-    sample_rate = 0
-    bitrate = 0
-    tags: Dict[str, Any] = {}
-
-    # Note: We no longer hash here by default - streaminfo MD5 is extracted from FLAC metadata
-    # Only run expensive full-file hash if scan_hash=True (Phase 3, for winners)
+        st = path_obj.stat()
+        mtime = st.st_mtime
+        size = st.st_size
+    except OSError as e:
+        raise ValueError(f"Cannot stat file {path_obj}: {e}")
     
     # Defaults
+    # Note: We no longer hash here by default - streaminfo MD5 is extracted from FLAC metadata
+    # Only run expensive full-file hash if scan_hash=True (Phase 3, for winners)
     flac_ok = False
     integrity_state: IntegrityState = "corrupt"
     checksum = "NOT_SCANNED"
@@ -66,13 +64,10 @@ def extract_metadata(
     bitrate = 0
     tags: Dict[str, Any] = {}
 
-    # Optional expensive checks
+    # Optional expensive integrity check (Phase 3, for winners)
     if scan_integrity:
-    # Note: scan_hash is now ONLY used for Phase 3 (winners)
-    # Phase 1 uses STREAMINFO MD5 (extracted below from audio.info
-    
-    if scan_hash:
-        checksum = calculate_file_hash(path_obj)
+        integrity_state = classify_flac_integrity(path_obj)
+        flac_ok = (integrity_state == "valid")
 
     try:
         audio = FLAC(path_obj)

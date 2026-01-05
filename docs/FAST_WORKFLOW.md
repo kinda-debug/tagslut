@@ -65,7 +65,8 @@ python3 tools/integrity/scan.py \
   --zone accepted \
   --no-check-integrity \
   --incremental \
-  --progress
+  --progress \
+  --verbose
 
 # Older vault material
 python3 tools/integrity/scan.py \
@@ -75,7 +76,8 @@ python3 tools/integrity/scan.py \
   --zone suspect \
   --no-check-integrity \
   --incremental \
-  --progress
+  --progress \
+  --verbose
 
 # Known problematic sources
 python3 tools/integrity/scan.py \
@@ -85,7 +87,8 @@ python3 tools/integrity/scan.py \
   --zone quarantine \
   --no-check-integrity \
   --incremental \
-  --progress
+  --progress \
+  --verbose
 ```
 
 **What this does:**
@@ -176,7 +179,8 @@ python3 tools/integrity/scan.py \
   --db $DB \
   --check-integrity \
   --recheck \
-  --progress
+  --progress \
+  --verbose
 ```
 
 **What this does:**

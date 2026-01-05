@@ -9,7 +9,11 @@ from dedupe.storage.schema import (
     LIBRARY_TABLE,
     PICARD_MOVES_TABLE,
     STEP0_AUDIO_CONTENT_TABLE,
+    STEP0_ARTIFACTS_TABLE,
     STEP0_CANONICAL_TABLE,
+    STEP0_DECISIONS_TABLE,
+    STEP0_FILES_TABLE,
+    STEP0_HASHES_TABLE,
     STEP0_IDENTITY_TABLE,
     STEP0_INTEGRITY_TABLE,
     STEP0_REACQUIRE_TABLE,
@@ -69,19 +73,23 @@ def upsert_audio_content(
     sample_rate: int | None,
     bit_depth: int | None,
     channels: int | None,
+    hash_type: str | None,
+    coverage: str | None,
 ) -> None:
     """Upsert a Step-0 audio content record."""
 
     query = f"""
     INSERT INTO {STEP0_AUDIO_CONTENT_TABLE} (
-        content_hash, streaminfo_md5, duration, sample_rate, bit_depth, channels
-    ) VALUES (?, ?, ?, ?, ?, ?)
+        content_hash, streaminfo_md5, duration, sample_rate, bit_depth, channels, hash_type, coverage
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(content_hash) DO UPDATE SET
         streaminfo_md5=excluded.streaminfo_md5,
         duration=excluded.duration,
         sample_rate=excluded.sample_rate,
         bit_depth=excluded.bit_depth,
-        channels=excluded.channels
+        channels=excluded.channels,
+        hash_type=excluded.hash_type,
+        coverage=excluded.coverage
     """
     conn.execute(
         query,
@@ -92,6 +100,8 @@ def upsert_audio_content(
             sample_rate,
             bit_depth,
             channels,
+            hash_type,
+            coverage,
         ),
     )
 
@@ -228,6 +238,186 @@ def insert_scan_event(
     ) VALUES (?, ?, ?)
     """
     conn.execute(query, (json.dumps(inputs), version, library_tag))
+
+
+def upsert_step0_file(
+    conn: sqlite3.Connection,
+    *,
+    absolute_path: str,
+    content_hash: str | None,
+    volume: str | None,
+    zone: str | None,
+    library: str | None,
+    size_bytes: int | None,
+    mtime: float | None,
+    scan_timestamp: str | None,
+    audio_integrity: str | None,
+    flac_test_passed: bool | None,
+    flac_error: str | None,
+    duration_seconds: float | None,
+    sample_rate: int | None,
+    bit_depth: int | None,
+    channels: int | None,
+    hash_strategy: str | None,
+    provenance_notes: str | None,
+    orphaned_db: bool | None,
+    legacy_marker: bool | None,
+) -> None:
+    """Upsert a Step-0 file record with provenance information."""
+
+    query = f"""
+    INSERT INTO {STEP0_FILES_TABLE} (
+        absolute_path,
+        content_hash,
+        volume,
+        zone,
+        library,
+        size_bytes,
+        mtime,
+        scan_timestamp,
+        audio_integrity,
+        flac_test_passed,
+        flac_error,
+        duration_seconds,
+        sample_rate,
+        bit_depth,
+        channels,
+        hash_strategy,
+        provenance_notes,
+        orphaned_db,
+        legacy_marker
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(absolute_path) DO UPDATE SET
+        content_hash=excluded.content_hash,
+        volume=excluded.volume,
+        zone=excluded.zone,
+        library=excluded.library,
+        size_bytes=excluded.size_bytes,
+        mtime=excluded.mtime,
+        scan_timestamp=excluded.scan_timestamp,
+        audio_integrity=excluded.audio_integrity,
+        flac_test_passed=excluded.flac_test_passed,
+        flac_error=excluded.flac_error,
+        duration_seconds=excluded.duration_seconds,
+        sample_rate=excluded.sample_rate,
+        bit_depth=excluded.bit_depth,
+        channels=excluded.channels,
+        hash_strategy=excluded.hash_strategy,
+        provenance_notes=excluded.provenance_notes,
+        orphaned_db=excluded.orphaned_db,
+        legacy_marker=excluded.legacy_marker
+    """
+    conn.execute(
+        query,
+        (
+            absolute_path,
+            content_hash,
+            volume,
+            zone,
+            library,
+            size_bytes,
+            mtime,
+            scan_timestamp,
+            audio_integrity,
+            int(flac_test_passed) if flac_test_passed is not None else None,
+            flac_error,
+            duration_seconds,
+            sample_rate,
+            bit_depth,
+            channels,
+            hash_strategy,
+            provenance_notes,
+            int(orphaned_db) if orphaned_db is not None else None,
+            int(legacy_marker) if legacy_marker is not None else None,
+        ),
+    )
+
+
+def upsert_step0_hash(
+    conn: sqlite3.Connection,
+    *,
+    absolute_path: str,
+    hash_type: str,
+    hash_value: str,
+    coverage: str | None,
+) -> None:
+    """Upsert a Step-0 hash record for a file."""
+
+    query = f"""
+    INSERT INTO {STEP0_HASHES_TABLE} (
+        absolute_path, hash_type, hash_value, coverage
+    ) VALUES (?, ?, ?, ?)
+    ON CONFLICT(absolute_path, hash_type) DO UPDATE SET
+        hash_value=excluded.hash_value,
+        coverage=excluded.coverage,
+        created_at=CURRENT_TIMESTAMP
+    """
+    conn.execute(query, (absolute_path, hash_type, hash_value, coverage))
+
+
+def upsert_step0_decision(
+    conn: sqlite3.Connection,
+    *,
+    absolute_path: str,
+    content_hash: str | None,
+    decision: str,
+    reason: str,
+    winner_path: str | None,
+) -> None:
+    """Upsert a Step-0 decision record for a file."""
+
+    query = f"""
+    INSERT INTO {STEP0_DECISIONS_TABLE} (
+        absolute_path, content_hash, decision, reason, winner_path
+    ) VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(absolute_path) DO UPDATE SET
+        content_hash=excluded.content_hash,
+        decision=excluded.decision,
+        reason=excluded.reason,
+        winner_path=excluded.winner_path,
+        updated_at=CURRENT_TIMESTAMP
+    """
+    conn.execute(query, (absolute_path, content_hash, decision, reason, winner_path))
+
+
+def upsert_step0_artifact(
+    conn: sqlite3.Connection,
+    *,
+    path: str,
+    volume: str | None,
+    artifact_type: str,
+    related_path: str | None,
+    orphaned_db: bool | None,
+    legacy_marker: bool | None,
+    provenance_notes: str | None,
+) -> None:
+    """Upsert a Step-0 artifact record."""
+
+    query = f"""
+    INSERT INTO {STEP0_ARTIFACTS_TABLE} (
+        path, volume, artifact_type, related_path, orphaned_db, legacy_marker, provenance_notes
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(path) DO UPDATE SET
+        volume=excluded.volume,
+        artifact_type=excluded.artifact_type,
+        related_path=excluded.related_path,
+        orphaned_db=excluded.orphaned_db,
+        legacy_marker=excluded.legacy_marker,
+        provenance_notes=excluded.provenance_notes,
+        scanned_at=CURRENT_TIMESTAMP
+    """
+    conn.execute(
+        query,
+        (
+            path,
+            volume,
+            artifact_type,
+            related_path,
+            int(orphaned_db) if orphaned_db is not None else None,
+            int(legacy_marker) if legacy_marker is not None else None,
+            provenance_notes,
+        ),
+    )
 
 
 def fetch_records_by_state(conn: sqlite3.Connection, library_state: str) -> list[sqlite3.Row]:

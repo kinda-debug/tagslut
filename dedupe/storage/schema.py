@@ -14,6 +14,10 @@ STEP0_IDENTITY_TABLE = "identity_hints"
 STEP0_CANONICAL_TABLE = "canonical_map"
 STEP0_REACQUIRE_TABLE = "reacquire_manifest"
 STEP0_SCAN_TABLE = "scan_events"
+STEP0_FILES_TABLE = "step0_files"
+STEP0_HASHES_TABLE = "step0_hashes"
+STEP0_DECISIONS_TABLE = "step0_decisions"
+STEP0_ARTIFACTS_TABLE = "step0_artifacts"
 
 def get_connection(db_path: Path) -> sqlite3.Connection:
     """
@@ -182,6 +186,8 @@ def initialise_step0_schema(connection: sqlite3.Connection) -> None:
                 sample_rate INTEGER,
                 bit_depth INTEGER,
                 channels INTEGER,
+                hash_type TEXT,
+                coverage TEXT,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
             """
@@ -248,11 +254,97 @@ def initialise_step0_schema(connection: sqlite3.Connection) -> None:
             """
         )
         connection.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS {STEP0_FILES_TABLE} (
+                absolute_path TEXT PRIMARY KEY,
+                content_hash TEXT,
+                volume TEXT,
+                zone TEXT,
+                library TEXT,
+                size_bytes INTEGER,
+                mtime REAL,
+                scan_timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+                audio_integrity TEXT,
+                flac_test_passed INTEGER,
+                flac_error TEXT,
+                duration_seconds REAL,
+                sample_rate INTEGER,
+                bit_depth INTEGER,
+                channels INTEGER,
+                hash_strategy TEXT,
+                provenance_notes TEXT,
+                orphaned_db INTEGER DEFAULT 0,
+                legacy_marker INTEGER DEFAULT 0
+            )
+            """
+        )
+        connection.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS {STEP0_HASHES_TABLE} (
+                id INTEGER PRIMARY KEY,
+                absolute_path TEXT NOT NULL,
+                hash_type TEXT NOT NULL,
+                hash_value TEXT NOT NULL,
+                coverage TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(absolute_path, hash_type)
+            )
+            """
+        )
+        connection.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS {STEP0_DECISIONS_TABLE} (
+                absolute_path TEXT PRIMARY KEY,
+                content_hash TEXT,
+                decision TEXT,
+                reason TEXT,
+                winner_path TEXT,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        connection.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS {STEP0_ARTIFACTS_TABLE} (
+                path TEXT PRIMARY KEY,
+                volume TEXT,
+                artifact_type TEXT,
+                related_path TEXT,
+                orphaned_db INTEGER DEFAULT 0,
+                legacy_marker INTEGER DEFAULT 0,
+                provenance_notes TEXT,
+                scanned_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        connection.execute(
             f"CREATE INDEX IF NOT EXISTS idx_{STEP0_INTEGRITY_TABLE}_hash ON {STEP0_INTEGRITY_TABLE}(content_hash)"
         )
         connection.execute(
             f"CREATE INDEX IF NOT EXISTS idx_{STEP0_SCAN_TABLE}_timestamp ON {STEP0_SCAN_TABLE}(timestamp)"
         )
+        connection.execute(
+            f"CREATE INDEX IF NOT EXISTS idx_{STEP0_FILES_TABLE}_hash ON {STEP0_FILES_TABLE}(content_hash)"
+        )
+        connection.execute(
+            f"CREATE INDEX IF NOT EXISTS idx_{STEP0_HASHES_TABLE}_hash ON {STEP0_HASHES_TABLE}(hash_value)"
+        )
+
+        existing_audio_content = _get_existing_columns(connection, STEP0_AUDIO_CONTENT_TABLE)
+        audio_content_columns = {
+            "hash_type": "TEXT",
+            "coverage": "TEXT",
+        }
+        for col_name, col_type in audio_content_columns.items():
+            if col_name not in existing_audio_content:
+                logger.info(
+                    "Migrating DB: Adding column '%s' to '%s' table.",
+                    col_name,
+                    STEP0_AUDIO_CONTENT_TABLE,
+                )
+                connection.execute(
+                    f"ALTER TABLE {STEP0_AUDIO_CONTENT_TABLE} ADD COLUMN {col_name} {col_type}"
+                )
 
 def _get_existing_columns(conn: sqlite3.Connection, table_name: str) -> List[str]:
     """Helper to retrieve a list of column names for a table."""

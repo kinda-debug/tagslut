@@ -51,14 +51,35 @@ Scans arbitrary input directories, validates FLAC integrity (`flac --test`),
 resolves duplicates, and produces a plan for canonical promotion.
 
 ```bash
-python tools/ingest/run.py \
+python tools/ingest/run.py scan \
   --inputs /Volumes/recovery_source_1 /Volumes/recovery_source_2 ~/Downloads/flac \
   --canonical-root /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY \
   --quarantine-root /Volumes/RECOVERY_TARGET/Root/QUARANTINE \
   --db artifacts/db/music.db \
   --library-tag recovery-2025-01 \
+  --zone recovery \
   --strict-integrity \
   --progress
+```
+
+Additional Step-0 subcommands:
+
+```bash
+# Build a plan from existing scan tables.
+python tools/ingest/run.py decide --db artifacts/db/music.db \
+  --canonical-root /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY \
+  --quarantine-root /Volumes/RECOVERY_TARGET/Root/QUARANTINE \
+  --library-tag recovery-2025-01
+
+# Apply a saved plan JSON.
+python tools/ingest/run.py apply --plan plan.json
+
+# Summarize scan progress.
+python tools/ingest/run.py status --db artifacts/db/music.db
+
+# Index artifacts (audit reports, legacy databases, .DOTAD_* markers).
+python tools/ingest/run.py artifacts --inputs /Volumes/RECOVERY_TARGET/Root/artifacts \
+  --db artifacts/db/music.db
 ```
 
 See `docs/step0_pipeline.md` for the full Step-0 specification and example outputs.

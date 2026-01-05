@@ -5,7 +5,16 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any, Iterable
 
 from dedupe.storage.models import AudioFile
-from dedupe.storage.schema import LIBRARY_TABLE, PICARD_MOVES_TABLE
+from dedupe.storage.schema import (
+    LIBRARY_TABLE,
+    PICARD_MOVES_TABLE,
+    STEP0_AUDIO_CONTENT_TABLE,
+    STEP0_CANONICAL_TABLE,
+    STEP0_IDENTITY_TABLE,
+    STEP0_INTEGRITY_TABLE,
+    STEP0_REACQUIRE_TABLE,
+    STEP0_SCAN_TABLE,
+)
 
 logger = logging.getLogger("dedupe")
 
@@ -49,6 +58,176 @@ def upsert_library_rows(conn: sqlite3.Connection, rows: Iterable[dict[str, objec
 
     values = [tuple(row.get(col) for col in columns) for row in payload]
     conn.executemany(query, values)
+
+
+def upsert_audio_content(
+    conn: sqlite3.Connection,
+    *,
+    content_hash: str,
+    streaminfo_md5: str | None,
+    duration: float | None,
+    sample_rate: int | None,
+    bit_depth: int | None,
+    channels: int | None,
+) -> None:
+    """Upsert a Step-0 audio content record."""
+
+    query = f"""
+    INSERT INTO {STEP0_AUDIO_CONTENT_TABLE} (
+        content_hash, streaminfo_md5, duration, sample_rate, bit_depth, channels
+    ) VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(content_hash) DO UPDATE SET
+        streaminfo_md5=excluded.streaminfo_md5,
+        duration=excluded.duration,
+        sample_rate=excluded.sample_rate,
+        bit_depth=excluded.bit_depth,
+        channels=excluded.channels
+    """
+    conn.execute(
+        query,
+        (
+            content_hash,
+            streaminfo_md5,
+            duration,
+            sample_rate,
+            bit_depth,
+            channels,
+        ),
+    )
+
+
+def insert_integrity_result(
+    conn: sqlite3.Connection,
+    *,
+    content_hash: str,
+    path: Path,
+    status: str,
+    stderr_excerpt: str,
+    return_code: int | None,
+) -> None:
+    """Insert a Step-0 integrity test result."""
+
+    query = f"""
+    INSERT INTO {STEP0_INTEGRITY_TABLE} (
+        content_hash, path, status, stderr_excerpt, return_code
+    ) VALUES (?, ?, ?, ?, ?)
+    """
+    conn.execute(
+        query,
+        (content_hash, str(path), status, stderr_excerpt, return_code),
+    )
+
+
+def upsert_identity_hints(
+    conn: sqlite3.Connection,
+    *,
+    content_hash: str,
+    hints: dict[str, Optional[str]],
+    tags: dict[str, Any],
+) -> None:
+    """Upsert identity hints for a content hash."""
+
+    query = f"""
+    INSERT INTO {STEP0_IDENTITY_TABLE} (
+        content_hash,
+        isrc,
+        musicbrainz_track_id,
+        musicbrainz_release_id,
+        artist,
+        title,
+        album,
+        track_number,
+        disc_number,
+        date,
+        tags_json
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(content_hash) DO UPDATE SET
+        isrc=excluded.isrc,
+        musicbrainz_track_id=excluded.musicbrainz_track_id,
+        musicbrainz_release_id=excluded.musicbrainz_release_id,
+        artist=excluded.artist,
+        title=excluded.title,
+        album=excluded.album,
+        track_number=excluded.track_number,
+        disc_number=excluded.disc_number,
+        date=excluded.date,
+        tags_json=excluded.tags_json
+    """
+    conn.execute(
+        query,
+        (
+            content_hash,
+            hints.get("isrc"),
+            hints.get("musicbrainz_track_id"),
+            hints.get("musicbrainz_release_id"),
+            hints.get("artist"),
+            hints.get("title"),
+            hints.get("album"),
+            hints.get("track_number"),
+            hints.get("disc_number"),
+            hints.get("date"),
+            json.dumps(tags, sort_keys=True, separators=(",", ":")),
+        ),
+    )
+
+
+def upsert_canonical_map(
+    conn: sqlite3.Connection,
+    *,
+    content_hash: str,
+    canonical_path: str,
+    reason: str,
+) -> None:
+    """Upsert canonical path mapping for a content hash."""
+
+    query = f"""
+    INSERT INTO {STEP0_CANONICAL_TABLE} (
+        content_hash, canonical_path, reason
+    ) VALUES (?, ?, ?)
+    ON CONFLICT(content_hash) DO UPDATE SET
+        canonical_path=excluded.canonical_path,
+        reason=excluded.reason,
+        updated_at=CURRENT_TIMESTAMP
+    """
+    conn.execute(query, (content_hash, canonical_path, reason))
+
+
+def upsert_reacquire_manifest(
+    conn: sqlite3.Connection,
+    *,
+    content_hash: str,
+    reason: str,
+    confidence: float,
+) -> None:
+    """Upsert a Step-0 reacquire manifest entry."""
+
+    query = f"""
+    INSERT INTO {STEP0_REACQUIRE_TABLE} (
+        content_hash, reason, confidence
+    ) VALUES (?, ?, ?)
+    ON CONFLICT(content_hash) DO UPDATE SET
+        reason=excluded.reason,
+        confidence=excluded.confidence,
+        recorded_at=CURRENT_TIMESTAMP
+    """
+    conn.execute(query, (content_hash, reason, confidence))
+
+
+def insert_scan_event(
+    conn: sqlite3.Connection,
+    *,
+    inputs: list[str],
+    version: str,
+    library_tag: str,
+) -> None:
+    """Insert a Step-0 scan event record."""
+
+    query = f"""
+    INSERT INTO {STEP0_SCAN_TABLE} (
+        inputs_json, version, library_tag
+    ) VALUES (?, ?, ?)
+    """
+    conn.execute(query, (json.dumps(inputs), version, library_tag))
 
 
 def fetch_records_by_state(conn: sqlite3.Connection, library_state: str) -> list[sqlite3.Row]:

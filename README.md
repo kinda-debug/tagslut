@@ -46,6 +46,23 @@ tags in `20_ACCEPTED` but will not mutate them.
 
 ## Tools & Usage
 
+### Step-0 Canonical Ingestion
+Scans arbitrary input directories, validates FLAC integrity (`flac --test`),
+resolves duplicates, and produces a plan for canonical promotion.
+
+```bash
+python tools/ingest/run.py \
+  --inputs /Volumes/recovery_source_1 /Volumes/recovery_source_2 ~/Downloads/flac \
+  --canonical-root /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY \
+  --quarantine-root /Volumes/RECOVERY_TARGET/Root/QUARANTINE \
+  --db artifacts/db/music.db \
+  --library-tag recovery-2025-01 \
+  --strict-integrity \
+  --progress
+```
+
+See `docs/step0_pipeline.md` for the full Step-0 specification and example outputs.
+
 ### 1. Scan & Verify Integrity
 Scans a library, verifies FLAC integrity (`flac -t`), calculates SHA-256 hashes, and upserts to the DB.
 

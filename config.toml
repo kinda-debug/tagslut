@@ -21,7 +21,7 @@ zone_priority = ["accepted", "staging"]
 workers = 8
 
 # Enable verbose output by default
-verbose = false
+verbose = true
 
 # Force recomputation of fingerprints
 recompute = false

@@ -20,7 +20,14 @@ import sqlite3
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from dedupe.core.integrity import classify_flac_integrity
+
+# Allow running this file directly without installing the package.
+try:
+    from dedupe.core.integrity import classify_flac_integrity
+except ModuleNotFoundError:  # pragma: no cover
+    repo_root = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(repo_root))
+    from dedupe.core.integrity import classify_flac_integrity
 
 
 def ensure_integrity_column(conn: sqlite3.Connection):

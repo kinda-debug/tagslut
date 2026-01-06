@@ -43,14 +43,19 @@ artifacts/**
 out/
 runs/
 
-# Keep structure placeholders
+# Keep structure placeholders and docs
 !artifacts/
+!artifacts/README.md
 !artifacts/db/
 !artifacts/db/.gitkeep
 !artifacts/logs/
 !artifacts/logs/.gitkeep
 !artifacts/tmp/
 !artifacts/tmp/.gitkeep
+!artifacts/manifests/
+!artifacts/manifests/.gitkeep
+!artifacts/reports/
+!artifacts/reports/.gitkeep
 
 # Archived run outputs (keep out of git)
 archive/ops_artifacts/**

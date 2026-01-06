@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Any
 
@@ -55,19 +56,26 @@ def extract_metadata(
     # Defaults
     # Note: We no longer hash here by default - streaminfo MD5 is extracted from FLAC metadata
     # Only run expensive full-file hash if scan_hash=True (Phase 3, for winners)
-    flac_ok = False
-    integrity_state: IntegrityState = "corrupt"
+    flac_ok: bool | None = None
+    integrity_state: IntegrityState | None = None
     checksum = "NOT_SCANNED"
+    streaminfo_md5: str | None = None
+    sha256: str | None = None
+    integrity_checked_at: str | None = None
+    streaminfo_checked_at: str | None = None
+    sha256_checked_at: str | None = None
     duration = 0.0
     bit_depth = 0
     sample_rate = 0
     bitrate = 0
     tags: Dict[str, Any] = {}
+    now_iso = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
     # Optional expensive integrity check (Phase 3, for winners)
     if scan_integrity:
-        integrity_state = classify_flac_integrity(path_obj)
+        integrity_state, _ = classify_flac_integrity(path_obj)
         flac_ok = (integrity_state == "valid")
+        integrity_checked_at = now_iso
 
     try:
         audio = FLAC(path_obj)
@@ -88,9 +96,13 @@ def extract_metadata(
                 if isinstance(streaminfo_md5, bytes):
                     streaminfo_md5 = streaminfo_md5.hex()
                 checksum = f"streaminfo:{streaminfo_md5}"
-            elif scan_hash:
-                # Fall back to full-file hash only if explicitly requested
-                checksum = calculate_file_hash(path_obj)
+                streaminfo_checked_at = now_iso
+
+            if scan_hash:
+                sha256 = calculate_file_hash(path_obj)
+                sha256_checked_at = now_iso
+                if not streaminfo_md5:
+                    checksum = sha256
         
         # Tag extraction
         if audio.tags:
@@ -115,10 +127,6 @@ def extract_metadata(
                         tags[k.lower()] = v
 
         # If we didn't run explicit integrity check, standard load implies basic header health
-        if not scan_integrity:
-            integrity_state = "valid"
-            flac_ok = True 
-
     except FLACNoHeaderError:
         logger.error(f"No FLAC header found: {path_obj}")
         integrity_state = "corrupt"
@@ -138,11 +146,16 @@ def extract_metadata(
         mtime=mtime,
         size=size,
         checksum=checksum,
+        streaminfo_md5=streaminfo_md5,
+        sha256=sha256,
         duration=duration,
         bit_depth=bit_depth,
         sample_rate=sample_rate,
         bitrate=bitrate,
         metadata=tags,
         flac_ok=flac_ok,
-        integrity_state=integrity_state
+        integrity_state=integrity_state,
+        integrity_checked_at=integrity_checked_at,
+        streaminfo_checked_at=streaminfo_checked_at,
+        sha256_checked_at=sha256_checked_at,
     )

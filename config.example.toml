@@ -5,6 +5,10 @@
 name = "COMMUNE"
 root = "/Volumes/COMMUNE"
 
+[db]
+# Primary integrity database path
+path = "/path/to/music.db"
+
 [library.zones]
 inbox = "00_INBOX"
 staging = "10_STAGING"

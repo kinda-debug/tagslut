@@ -7,10 +7,12 @@ sys.path.insert(0, str(Path(__file__).parents[2]))
 
 from dedupe.integrity_scanner import scan_library
 from dedupe.utils.cli_helper import common_options, configure_execution
+from dedupe.utils.config import get_config
+from dedupe.utils.db import resolve_db_path
 
 @click.command()
 @click.argument("library_path", type=click.Path(exists=True, file_okay=False), required=False)
-@click.option("--db", required=True, type=click.Path(dir_okay=False), help="Path to SQLite database")
+@click.option("--db", required=False, type=click.Path(dir_okay=False), help="Path to SQLite database")
 @click.option("--paths-from-file", type=click.Path(exists=True, dir_okay=False), help="Read specific file paths from this file (one per line)")
 @click.option("--library", default=None, help="Logical library name (e.g. COMMUNE)")
 @click.option(
@@ -21,13 +23,19 @@ from dedupe.utils.cli_helper import common_options, configure_execution
 )
 @click.option(
     "--incremental/--no-incremental",
-    default=False,
-    help="Skip unchanged files by comparing mtime/size stored in the DB",
+    default=True,
+    help="Skip unchanged files unless checks are missing or stale (default: incremental)",
 )
 @click.option(
     "--recheck/--no-recheck",
     default=False,
-    help="Force re-scan of all files even if unchanged (overrides --incremental)",
+    help="Re-run requested checks for missing/stale/failed files (does not force full rescan)",
+)
+@click.option(
+    "--force-all",
+    is_flag=True,
+    default=False,
+    help="Force all requested checks on all files regardless of prior results",
 )
 @click.option(
     "--progress/--no-progress",
@@ -45,14 +53,17 @@ from dedupe.utils.cli_helper import common_options, configure_execution
 @click.option("--check-integrity/--no-check-integrity", default=False, help="Run flac -t verification")
 @click.option("--check-hash/--no-check-hash", default=False, help="Calculate full-file SHA256 (Phase 3 only)")
 @click.option("--hard-skip", is_flag=True, default=False, help="Alias for --no-check-integrity --no-check-hash (default behavior)")
+@click.option("--allow-repo-db", is_flag=True, default=False, help="Allow writing to a repo-local DB path")
+@click.option("--stale-days", type=int, default=None, help="Treat integrity/hash results older than N days as stale")
 @common_options
-def scan(library_path, db, paths_from_file, library, zone, incremental, recheck, progress, progress_interval, limit, check_integrity, check_hash, hard_skip, verbose, config):
+def scan(library_path, db, paths_from_file, library, zone, incremental, recheck, force_all, progress, progress_interval, limit, check_integrity, check_hash, hard_skip, allow_repo_db, stale_days, verbose, config):
     """
     Scans a library folder for FLAC files and populates the database.
     
     If --paths-from-file is provided, ignores LIBRARY_PATH and scans only specified files.
     """
     configure_execution(verbose, config)
+    app_config = get_config()
     
     # Validate arguments
     if not library_path and not paths_from_file:
@@ -67,7 +78,18 @@ def scan(library_path, db, paths_from_file, library, zone, incremental, recheck,
         check_hash = False
     
     repo_root = Path(__file__).parents[2].resolve()
-    db_path = Path(db).expanduser().resolve()
+    try:
+        resolution = resolve_db_path(
+            db,
+            config=app_config,
+            allow_repo_db=allow_repo_db,
+            repo_root=repo_root,
+            purpose="write",
+        )
+    except ValueError as e:
+        raise click.ClickException(str(e))
+    db_path = resolution.path
+    db_source = resolution.source
     
     # Load specific paths if provided
     specific_paths = None
@@ -81,28 +103,18 @@ def scan(library_path, db, paths_from_file, library, zone, incremental, recheck,
     else:
         lib_path = Path(library_path).expanduser().resolve()
 
-    default_db = repo_root / "artifacts/db/music.db"
-    if db_path == (repo_root / "music.db") and db_path.exists() and db_path.stat().st_size == 0:
-        if default_db.exists():
-            raise click.ClickException(
-                f"{db_path} is empty (0 bytes). Did you accidentally delete it? "
-                f"Use --db {default_db} (recommended) or remove the empty file."
-            )
-        raise click.ClickException(
-            f"{db_path} is empty (0 bytes). Remove it or choose a different --db path."
-        )
-    
     if lib_path:
         click.echo(f"Scanning Library: {lib_path}")
     else:
         click.echo(f"Scanning {len(specific_paths)} specific paths")
-    click.echo(f"Database: {db_path}")
+    click.echo(f"Database: {db_path} (source={db_source})")
     if library:
         click.echo(f"Library Tag: {library}")
     if zone:
         click.echo(f"Zone: {zone}")
     click.echo(f"Incremental: {'ON' if incremental else 'OFF'}")
     click.echo(f"Recheck: {'ON' if recheck else 'OFF'}")
+    click.echo(f"Force All: {'ON' if force_all else 'OFF'}")
     click.echo(f"Progress: {'ON' if progress else 'OFF'}")
     if progress:
         click.echo(f"Progress Interval: {progress_interval}")
@@ -110,23 +122,35 @@ def scan(library_path, db, paths_from_file, library, zone, incremental, recheck,
         click.echo(f"Batch Limit: {limit} files")
     click.echo(f"Integrity Check: {'ON' if check_integrity else 'OFF'}")
     click.echo(f"Hash Calculation: {'ON' if check_hash else 'OFF'}")
+    if stale_days is not None:
+        click.echo(f"Stale Days: {stale_days}")
     
     try:
-        scan_library(
+        outcome = scan_library(
             library_path=lib_path,
             db_path=db_path,
+            db_source=db_source,
             library=library,
             zone=zone,
             incremental=incremental,
             recheck=recheck,
+            force_all=force_all,
             progress=progress,
             progress_interval=progress_interval,
             scan_integrity=check_integrity,
             scan_hash=check_hash,
             specific_paths=specific_paths,
-            limit=limit
+            limit=limit,
+            stale_days=stale_days,
+            paths_source=str(paths_from_file) if paths_from_file else None,
         )
-        click.echo(click.style("Scan complete.", fg="green"))
+        if outcome.status == "completed":
+            click.echo(click.style("Scan complete.", fg="green"))
+        elif outcome.status == "aborted":
+            click.echo(click.style("Scan aborted.", fg="yellow"))
+        else:
+            click.echo(click.style("Scan failed.", fg="red"))
+            sys.exit(1)
     except Exception as e:
         click.echo(click.style(f"Scan failed: {e}", fg="red"), err=True)
         sys.exit(1)

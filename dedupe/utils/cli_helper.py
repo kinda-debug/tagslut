@@ -26,3 +26,4 @@ def configure_execution(verbose: bool, config_path: Optional[str] = None):
     
     if config_path:
         logging.info(f"Custom config path provided: {config_path}")
+        get_config(Path(config_path))

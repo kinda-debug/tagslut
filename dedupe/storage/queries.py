@@ -23,6 +23,59 @@ from dedupe.storage.schema import (
 logger = logging.getLogger("dedupe")
 
 
+def _normalize_metadata_value(value: object) -> object:
+    if value is None:
+        return None
+    if isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, (bytes, bytearray)):
+        return value.decode("utf-8", errors="replace")
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, (list, tuple, set)):
+        return [_normalize_metadata_value(item) for item in value]
+    if isinstance(value, dict):
+        return {str(k): _normalize_metadata_value(v) for k, v in value.items()}
+    return str(value)
+
+
+def _normalize_text_field(value: object, field_name: str) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (bytes, bytearray)):
+        return value.decode("utf-8", errors="replace")
+    if isinstance(value, (list, tuple)):
+        candidates: list[str] = []
+        for item in value:
+            if item is None:
+                continue
+            if isinstance(item, str):
+                candidates.append(item)
+            elif isinstance(item, (bytes, bytearray)):
+                candidates.append(item.decode("utf-8", errors="replace"))
+            else:
+                candidates.append(str(item))
+        if not candidates:
+            logger.warning("Dropping %s: empty sequence %r", field_name, value)
+            return None
+        if len(candidates) == 1:
+            return candidates[0]
+        joined = ";".join(candidates)
+        logger.warning("Coalescing %s from sequence to %r", field_name, joined)
+        return joined
+    if isinstance(value, dict):
+        logger.warning("Dropping %s: dict not supported for scalar field", field_name)
+        return None
+    logger.warning(
+        "Dropping %s: unsupported value type %s",
+        field_name,
+        type(value).__name__,
+    )
+    return None
+
+
 def upsert_library_rows(conn: sqlite3.Connection, rows: Iterable[dict[str, object]]) -> None:
     """Upsert dict payloads into the legacy `library_files` table."""
 
@@ -453,6 +506,112 @@ def record_picard_move(conn: sqlite3.Connection, old_path: Path, new_path: Path,
         (str(old_path), str(new_path), checksum),
     )
 
+
+def insert_scan_session(
+    conn: sqlite3.Connection,
+    *,
+    db_path: Path,
+    library: str | None,
+    zone: str | None,
+    root_path: Path | None,
+    paths_source: str | None,
+    scan_integrity: bool,
+    scan_hash: bool,
+    recheck: bool,
+    incremental: bool,
+    force_all: bool,
+    discovered: int,
+    considered: int,
+    skipped: int,
+    host: str | None,
+) -> int:
+    query = """
+    INSERT INTO scan_sessions (
+        db_path, library, zone, root_path, paths_source, scan_integrity, scan_hash,
+        recheck, incremental, force_all, discovered, considered, skipped, status, host
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """
+    cursor = conn.execute(
+        query,
+        (
+            str(db_path),
+            library,
+            zone,
+            str(root_path) if root_path else None,
+            paths_source,
+            int(scan_integrity),
+            int(scan_hash),
+            int(recheck),
+            int(incremental),
+            int(force_all),
+            discovered,
+            considered,
+            skipped,
+            "running",
+            host,
+        ),
+    )
+    return int(cursor.lastrowid)
+
+
+def finalize_scan_session(
+    conn: sqlite3.Connection,
+    *,
+    session_id: int,
+    status: str,
+    succeeded: int,
+    failed: int,
+    ended_at: str,
+) -> None:
+    conn.execute(
+        """
+        UPDATE scan_sessions
+        SET ended_at=?, status=?, succeeded=?, failed=?
+        WHERE id=?
+        """,
+        (ended_at, status, succeeded, failed, session_id),
+    )
+
+
+def insert_file_scan_run(
+    conn: sqlite3.Connection,
+    *,
+    session_id: int,
+    path: Path,
+    file: AudioFile | None = None,
+    error_class: str | None = None,
+    error_message: str | None = None,
+) -> None:
+    def _short(value: str | None, limit: int = 300) -> str | None:
+        if not value:
+            return None
+        return value if len(value) <= limit else value[:limit]
+
+    conn.execute(
+        """
+        INSERT INTO file_scan_runs (
+            session_id, path, mtime, size, streaminfo_md5, streaminfo_checked_at,
+            sha256, sha256_checked_at, flac_ok, integrity_state, integrity_checked_at,
+            error_class, error_message
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            session_id,
+            str(path),
+            file.mtime if file else None,
+            file.size if file else None,
+            _normalize_text_field(file.streaminfo_md5, "streaminfo_md5") if file else None,
+            _normalize_text_field(file.streaminfo_checked_at, "streaminfo_checked_at") if file else None,
+            _normalize_text_field(file.sha256, "sha256") if file else None,
+            _normalize_text_field(file.sha256_checked_at, "sha256_checked_at") if file else None,
+            None if file is None or file.flac_ok is None else int(bool(file.flac_ok)),
+            _normalize_text_field(file.integrity_state, "integrity_state") if file else None,
+            _normalize_text_field(file.integrity_checked_at, "integrity_checked_at") if file else None,
+            _normalize_text_field(error_class, "error_class"),
+            _short(_normalize_text_field(error_message, "error_message")),
+        ),
+    )
+
 def upsert_file(conn: sqlite3.Connection, file: AudioFile) -> None:
     """
     Inserts or Updates a file record in the database.
@@ -460,15 +619,18 @@ def upsert_file(conn: sqlite3.Connection, file: AudioFile) -> None:
     """
     query = """
     INSERT INTO files (
-        path, library, zone, mtime, size, checksum, duration, bit_depth, sample_rate, bitrate, 
-        metadata_json, flac_ok, integrity_state, acoustid
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        path, library, zone, mtime, size, checksum, streaminfo_md5, sha256, duration,
+        bit_depth, sample_rate, bitrate, metadata_json, flac_ok, integrity_state,
+        integrity_checked_at, streaminfo_checked_at, sha256_checked_at, acoustid
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(path) DO UPDATE SET
         library=excluded.library,
         zone=excluded.zone,
         mtime=excluded.mtime,
         size=excluded.size,
         checksum=excluded.checksum,
+        streaminfo_md5=excluded.streaminfo_md5,
+        sha256=excluded.sha256,
         duration=excluded.duration,
         bit_depth=excluded.bit_depth,
         sample_rate=excluded.sample_rate,
@@ -476,51 +638,47 @@ def upsert_file(conn: sqlite3.Connection, file: AudioFile) -> None:
         metadata_json=excluded.metadata_json,
         flac_ok=excluded.flac_ok,
         integrity_state=excluded.integrity_state,
+        integrity_checked_at=excluded.integrity_checked_at,
+        streaminfo_checked_at=excluded.streaminfo_checked_at,
+        sha256_checked_at=excluded.sha256_checked_at,
         acoustid=excluded.acoustid;
     """
-    
-    # Serialize metadata to JSON for storage
-    # Normalize parameters: convert any tuple/list/dict to JSON string
-    def normalize(value):
-        if value is None:
-            return None
-        if isinstance(value, (list, tuple, dict)):
-            return json.dumps(value, ensure_ascii=False)
-        return value
-    
-    # Normalize all metadata values before JSON serialization
-    normalized_metadata = {k: (v if not isinstance(v, (list, tuple)) else list(v)) for k, v in file.metadata.items()}
-    meta_json = json.dumps(normalized_metadata)
-    
-    # Build params with normalization on all potentially problematic fields
+
+    normalized_metadata = {
+        k: _normalize_metadata_value(v) for k, v in (file.metadata or {}).items()
+    }
+    meta_json = json.dumps(normalized_metadata, sort_keys=True, separators=(",", ":"))
+
+    flac_ok_value = None if file.flac_ok is None else int(bool(file.flac_ok))
+    integrity_state = _normalize_text_field(file.integrity_state, "integrity_state")
+    acoustid = _normalize_text_field(file.acoustid, "acoustid")
+
     params = (
         str(file.path),
-        normalize(file.library),
-        normalize(file.zone),
+        _normalize_text_field(file.library, "library"),
+        _normalize_text_field(file.zone, "zone"),
         file.mtime,
         file.size,
-        normalize(file.checksum),
+        _normalize_text_field(file.checksum, "checksum"),
+        _normalize_text_field(file.streaminfo_md5, "streaminfo_md5"),
+        _normalize_text_field(file.sha256, "sha256"),
         file.duration,
         file.bit_depth,
         file.sample_rate,
         file.bitrate,
         meta_json,
-        1 if file.flac_ok else 0,
-        normalize(file.integrity_state),
-        normalize(file.acoustid)
+        flac_ok_value,
+        integrity_state,
+        _normalize_text_field(file.integrity_checked_at, "integrity_checked_at"),
+        _normalize_text_field(file.streaminfo_checked_at, "streaminfo_checked_at"),
+        _normalize_text_field(file.sha256_checked_at, "sha256_checked_at"),
+        acoustid,
     )
-    
-    # Debug logging for tuple binding issues
-    for idx, param in enumerate(params):
-        if isinstance(param, (list, tuple, dict)):
-            logger.error(f"Parameter {idx} is {type(param).__name__}: {param}")
-    
+
     try:
         conn.execute(query, params)
-        conn.commit()
     except sqlite3.Error as e:
         logger.error(f"DB Error upserting {file.path}: {e}")
-        # Additional debug on error
         for idx, param in enumerate(params):
             logger.debug(f"  Param {idx}: {type(param).__name__} = {repr(param)[:100]}")
         raise
@@ -582,8 +740,10 @@ def _row_to_audiofile(row: sqlite3.Row) -> AudioFile:
         mtime = None
         size = None
 
-    flac_ok = bool(row["flac_ok"])
-    if not integrity_state:
+    flac_ok = row["flac_ok"]
+    if flac_ok is not None:
+        flac_ok = bool(flac_ok)
+    if not integrity_state and flac_ok is not None:
         integrity_state = "valid" if flac_ok else "recoverable"
 
     return AudioFile(
@@ -593,6 +753,8 @@ def _row_to_audiofile(row: sqlite3.Row) -> AudioFile:
         mtime=mtime,
         size=size,
         checksum=row["checksum"],
+        streaminfo_md5=row["streaminfo_md5"] if "streaminfo_md5" in row.keys() else None,
+        sha256=row["sha256"] if "sha256" in row.keys() else None,
         duration=row["duration"],
         bit_depth=row["bit_depth"],
         sample_rate=row["sample_rate"],
@@ -600,5 +762,8 @@ def _row_to_audiofile(row: sqlite3.Row) -> AudioFile:
         metadata=metadata,
         flac_ok=flac_ok,
         acoustid=row["acoustid"],
-        integrity_state=integrity_state
+        integrity_state=integrity_state,
+        integrity_checked_at=row["integrity_checked_at"] if "integrity_checked_at" in row.keys() else None,
+        streaminfo_checked_at=row["streaminfo_checked_at"] if "streaminfo_checked_at" in row.keys() else None,
+        sha256_checked_at=row["sha256_checked_at"] if "sha256_checked_at" in row.keys() else None,
     )

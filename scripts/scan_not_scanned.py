@@ -5,18 +5,19 @@ Queries database for NOT_SCANNED files, writes them to a file list,
 and uses the existing scanner tool with --paths-from-file.
 Safe to interrupt and resume - always picks up where it left off.
 """
+import argparse
+import os
 import sqlite3
 import subprocess
 import sys
 from pathlib import Path
 
-DB_PATH = "artifacts/db/music.db"
 BATCH_SIZE = 1000
 PATHS_FILE = "/tmp/not_scanned_paths.txt"
 
-def get_not_scanned_count(library, zone):
+def get_not_scanned_count(db_path, library, zone):
     """Get count of NOT_SCANNED files."""
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     cursor.execute("""
         SELECT COUNT(*) 
@@ -27,9 +28,9 @@ def get_not_scanned_count(library, zone):
     conn.close()
     return count
 
-def get_not_scanned_batch(library, zone, batch_size):
+def get_not_scanned_batch(db_path, library, zone, batch_size):
     """Get batch of NOT_SCANNED file paths."""
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     
     cursor.execute("""
@@ -45,7 +46,7 @@ def get_not_scanned_batch(library, zone, batch_size):
     
     return paths
 
-def scan_batch(paths, library, zone):
+def scan_batch(db_path, paths, library, zone, allow_repo_db):
     """Scan a batch of files using the existing scanner tool."""
     if not paths:
         return False
@@ -63,31 +64,44 @@ def scan_batch(paths, library, zone):
     # Run the scanner
     cmd = [
         "python3", "tools/integrity/scan.py",
-        "--db", DB_PATH,
+        "--db", db_path,
         "--paths-from-file", PATHS_FILE,
         "--library", library,
         "--zone", zone
     ]
+    if allow_repo_db:
+        cmd.append("--allow-repo-db")
     
     result = subprocess.run(cmd)
     return result.returncode == 0
 
 def main():
-    if len(sys.argv) < 3:
-        print("Usage: scan_not_scanned.py <library> <zone> [batch_size]")
-        print("Example: scan_not_scanned.py bad suspect 1000")
+    parser = argparse.ArgumentParser(
+        description="Resumable scanner for NOT_SCANNED files"
+    )
+    parser.add_argument("library", help="Library tag")
+    parser.add_argument("zone", help="Zone tag")
+    parser.add_argument("--db", help="SQLite DB path (or set DEDUPE_DB)")
+    parser.add_argument("--batch-size", type=int, default=BATCH_SIZE)
+    parser.add_argument("--allow-repo-db", action="store_true", help="Allow repo-local DB paths")
+    args = parser.parse_args()
+
+    db_path = args.db or os.getenv("DEDUPE_DB")
+    if not db_path:
+        print("Error: provide --db or set DEDUPE_DB")
         sys.exit(1)
-    
-    library = sys.argv[1]
-    zone = sys.argv[2]
-    batch_size = int(sys.argv[3]) if len(sys.argv) > 3 else BATCH_SIZE
+
+    library = args.library
+    zone = args.zone
+    batch_size = args.batch_size
+    allow_repo_db = args.allow_repo_db
     
     total_scanned = 0
     batch_num = 0
     
     while True:
         # Always query fresh from database (resumable!)
-        remaining = get_not_scanned_count(library, zone)
+        remaining = get_not_scanned_count(db_path, library, zone)
         
         if remaining == 0:
             print(f"\n{'='*70}")
@@ -102,13 +116,13 @@ def main():
         print(f"{'='*70}")
         
         # Get next batch
-        paths = get_not_scanned_batch(library, zone, batch_size)
+        paths = get_not_scanned_batch(db_path, library, zone, batch_size)
         
         if not paths:
             break
         
         # Scan this batch
-        success = scan_batch(paths, library, zone)
+        success = scan_batch(db_path, paths, library, zone, allow_repo_db)
         
         if not success:
             print(f"\n⚠️ Batch {batch_num} failed. Safe to resume - run this script again.")

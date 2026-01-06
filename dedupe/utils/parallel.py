@@ -2,12 +2,19 @@ import concurrent.futures
 import logging
 import multiprocessing
 import time
-from typing import Callable, Iterable, List, TypeVar, Any, Optional
+from dataclasses import dataclass
+from typing import Callable, Iterable, List, TypeVar, Optional, Generic
 
 logger = logging.getLogger("dedupe")
 
 T = TypeVar("T")
 R = TypeVar("R")
+
+
+@dataclass(frozen=True)
+class ProcessMapResult(Generic[R]):
+    results: List[R]
+    interrupted: bool
 
 def process_map(
     func: Callable[[T], R],
@@ -16,7 +23,8 @@ def process_map(
     chunk_size: int = 1,
     progress: bool = False,
     progress_interval: int = 250,
-) -> List[R]:
+    return_interrupt_status: bool = False,
+) -> List[R] | ProcessMapResult[R]:
     """
     Applies `func` to every item in `items` using a process pool.
 
@@ -33,9 +41,12 @@ def process_map(
         max_workers = max(1, multiprocessing.cpu_count() - 1)
 
     results: List[R] = []
+    interrupted = False
     
     item_list = list(items) 
     if not item_list:
+        if return_interrupt_status:
+            return ProcessMapResult(results=[], interrupted=False)
         return []
 
     total = len(item_list)
@@ -67,9 +78,13 @@ def process_map(
                     len(results),
                     total,
                 )
-                return results
+                interrupted = True
+                executor.shutdown(cancel_futures=True)
+                break
     except Exception as e:
         logger.error(f"Parallel processing failed: {e}")
         raise
 
+    if return_interrupt_status:
+        return ProcessMapResult(results=results, interrupted=interrupted)
     return results

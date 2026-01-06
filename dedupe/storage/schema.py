@@ -53,6 +53,8 @@ def init_db(conn: sqlite3.Connection) -> None:
         mtime REAL,
         size INTEGER,
         checksum TEXT,
+        streaminfo_md5 TEXT,
+        sha256 TEXT,
         duration REAL,
         bit_depth INTEGER,
         sample_rate INTEGER,
@@ -60,6 +62,9 @@ def init_db(conn: sqlite3.Connection) -> None:
         metadata_json TEXT,
         flac_ok INTEGER,
         integrity_state TEXT,
+        integrity_checked_at TEXT,
+        streaminfo_checked_at TEXT,
+        sha256_checked_at TEXT,
         acoustid TEXT
     );
     """)
@@ -72,6 +77,8 @@ def init_db(conn: sqlite3.Connection) -> None:
         "mtime": "REAL",
         "size": "INTEGER",
         "checksum": "TEXT",
+        "streaminfo_md5": "TEXT",
+        "sha256": "TEXT",
         "duration": "REAL",
         "bit_depth": "INTEGER",
         "sample_rate": "INTEGER",
@@ -79,6 +86,9 @@ def init_db(conn: sqlite3.Connection) -> None:
         "metadata_json": "TEXT",
         "flac_ok": "INTEGER",
         "integrity_state": "TEXT",
+        "integrity_checked_at": "TEXT",
+        "streaminfo_checked_at": "TEXT",
+        "sha256_checked_at": "TEXT",
         "acoustid": "TEXT"
     }
 
@@ -94,6 +104,58 @@ def init_db(conn: sqlite3.Connection) -> None:
     # 3. Indices for performance
     conn.execute("CREATE INDEX IF NOT EXISTS idx_checksum ON files(checksum);")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_acoustid ON files(acoustid);")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_streaminfo_md5 ON files(streaminfo_md5);")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_sha256 ON files(sha256);")
+
+    # Scan session tracking
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS scan_sessions (
+        id INTEGER PRIMARY KEY,
+        started_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        ended_at TEXT,
+        db_path TEXT,
+        library TEXT,
+        zone TEXT,
+        root_path TEXT,
+        paths_source TEXT,
+        scan_integrity INTEGER,
+        scan_hash INTEGER,
+        recheck INTEGER,
+        incremental INTEGER,
+        force_all INTEGER,
+        discovered INTEGER,
+        considered INTEGER,
+        skipped INTEGER,
+        succeeded INTEGER,
+        failed INTEGER,
+        status TEXT,
+        host TEXT
+    );
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_scan_sessions_started_at ON scan_sessions(started_at);")
+
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS file_scan_runs (
+        id INTEGER PRIMARY KEY,
+        session_id INTEGER NOT NULL,
+        path TEXT NOT NULL,
+        mtime REAL,
+        size INTEGER,
+        streaminfo_md5 TEXT,
+        streaminfo_checked_at TEXT,
+        sha256 TEXT,
+        sha256_checked_at TEXT,
+        flac_ok INTEGER,
+        integrity_state TEXT,
+        integrity_checked_at TEXT,
+        error_class TEXT,
+        error_message TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(session_id) REFERENCES scan_sessions(id)
+    );
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_file_scan_runs_session ON file_scan_runs(session_id);")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_file_scan_runs_path ON file_scan_runs(path);")
     
     conn.commit()
 

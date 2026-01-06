@@ -72,14 +72,10 @@ JavaScript for Automation scripts for macOS integration.
 
 ## Archive (`archive/`)
 
-Deprecated or one-time-use scripts retained for reference:
+Deprecated or one-time-use scripts are kept in the repository history. Use this directory
+to place any scripts you explicitly want archived for future reference.
 
-- **`dd_flac_dedupe_db.py`** - Original 1499-line deduplicator (superseded by `dedupe` package)
-- **`apply_missing_from_patch.py`** - Legacy patch application (refactoring complete)
-- **`apply_patch_except_pyc.py`** - Legacy patch application excluding .pyc files
-- **`apply_patch_subset.py`** - Legacy subset patch application
-- **`scaffold_structure.py`** - One-time directory structure creation (already executed)
-- **`populate_refractor.py`** - Legacy refactoring helper
+- **Placeholder:** `scripts/archive/.gitkeep`
 
 ## Usage Patterns
 

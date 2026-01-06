@@ -205,11 +205,11 @@ Audit deleted files and verify keepers.
 
 ## Archived Scripts
 
-See `archive/scripts_diagnostic_2025/` for:
-- One-time migration scripts (`migrate_metadata_schema.py`)
-- Diagnostic tools (`check_schema.py`, `verify_json_metadata.py`)
-- Experimental versions (`find_dupes_fast_v2.py`, `find_exact_dupes.py`)
-- Superseded implementations (`dedupe_repaired_sizefirst.py`)
+See `scripts/archive/` for any deprecated or one-time-use scripts retained for reference.
+
+- **Placeholder:** `scripts/archive/.gitkeep` (repository-tracked placeholder for archived scripts)
+
+If you need to add a legacy script to the archive, place it under `scripts/archive/` and commit.
 
 ## Legacy Wrappers
 

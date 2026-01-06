@@ -18,6 +18,13 @@ Notes
 - Database files are intentionally excluded from Git to avoid pushing large blobs and to keep sensitive data out of the repository history.
 - Use the provided script `scripts/backup_dbs.sh` to create timestamped backups and rotate older backups (default keeps 7).
 
+Artifacts placeholders
+
+- The repository includes lightweight placeholders for working artifacts (not the DB content itself):
+	- `artifacts/manifests/.gitkeep`
+	- `artifacts/reports/.gitkeep`
+	- These are intended to document and reserve repository structure; actual DB files remain excluded via `.gitignore`.
+
 Script usage
 
 ```bash

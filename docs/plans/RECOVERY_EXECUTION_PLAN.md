@@ -1,91 +1,112 @@
-# Library Recovery: Step-by-Step Execution Plan
+# Library Recovery: Execution Plan
 
-## Current State (Jan 6, 2026)
+## Database State (Jan 6, 2026)
 
-**Database:** `artifacts/db/music.db` (352 MB)
+**File:** `artifacts/db/music.db` (352 MB) | **Table:** `files` | **Rows:** 65,998
 
-| Library | Zone | Total Files | NOT_SCANNED |
-|---------|------|-------------|-------------|
-| bad | suspect | 40,436 | 21,515 |
-| commune | accepted | 5,804 | 3,641 |
-| commune | staging | 858 | 798 |
-| recovery | accepted | 16,286 | 7,515 |
-| recovery | (none) | 151 | 0 |
-| vault | suspect | 2,463 | 1,725 |
+### Inventory by Library/Zone
 
-**Total NOT_SCANNED:** 35,194 files
+| Library | Zone | Total | NOT_SCANNED | Scanned | Corrupt | Size (GB) |
+|---------|------|------:|------------:|--------:|--------:|----------:|
+| bad | suspect | 40,436 | 21,515 | 18,921 | 17 | 1,722.1 |
+| recovery | accepted | 16,286 | 7,515 | 8,771 | 0 | 718.2 |
+| commune | accepted | 5,804 | 3,641 | 2,163 | 9 | 248.4 |
+| vault | suspect | 2,463 | 1,725 | 738 | 2 | 102.5 |
+| commune | staging | 858 | 798 | 60 | 0 | 38.3 |
+| recovery | (none) | 151 | 0 | 151 | 0 | — |
+| **TOTAL** | | **65,998** | **35,194** | **30,804** | **28** | **~2.83 TB** |
 
-**Goal:** Scan all NOT_SCANNED files, then match/decide/relocate recovery sources to canonical library.
+### Scan Progress
+
+- **Scanned:** 30,804 (46.7%)
+- **NOT_SCANNED:** 35,194 (53.3%) ← **blocking**
+
+### Duplicate Analysis (scanned only)
+
+- Unique checksums: 10,702
+- Total scanned: 30,804
+- **Duplicates: 20,102 (65.3%)**
+
+### Audio Quality
+
+| Bit Depth | Count | Sample Rate | Count |
+|----------:|------:|------------:|------:|
+| 16-bit | 40,244 | 44.1 kHz | 53,493 |
+| 24-bit | 25,717 | 96 kHz | 6,647 |
+| 32-bit | 8 | 48 kHz | 3,804 |
+| | | 192 kHz | 1,616 |
+
+### Physical Volume Mapping
+
+| Path Prefix | Files | Notes |
+|-------------|------:|-------|
+| `/Volumes/bad/` | 40,436 | Bad volume (library=bad) |
+| `/Volumes/RECOVERY_TARGET/` | 16,437 | Recovery source |
+| `/Volumes/COMMUNE/` | 6,662 | Canonical destination |
+| `/Volumes/Vault/` | 2,463 | Older material |
+
+### Critical Issues
+
+1. **53% NOT_SCANNED** - Must complete before matching
+2. **65% duplicates** among scanned files
+3. **0% fingerprinted** - No AcoustID data
+4. **28 corrupt files** - 17 on bad, 9 on commune, 2 on vault
 
 ---
 
-## STEP 1: Complete scanning of NOT_SCANNED files
+## STEP 1: Complete Scanning
 
-**Current bottleneck:** 35,194 files need checksums before matching can begin.
+**Blocking:** 35,194 files need checksums.
 
-### 1a. Scan bad/suspect (21,515 remaining)
+### 1a. bad/suspect (21,515)
 
 ```bash
 python3 scripts/scan_not_scanned.py bad suspect 5000
 ```
 
----
-
-### 1b. Scan recovery/accepted (7,515 remaining)
+### 1b. recovery/accepted (7,515)
 
 ```bash
 python3 scripts/scan_not_scanned.py recovery accepted 5000
 ```
 
----
-
-### 1c. Scan commune/accepted (3,641 remaining)
+### 1c. commune/accepted (3,641)
 
 ```bash
 python3 scripts/scan_not_scanned.py commune accepted 5000
 ```
 
----
-
-### 1d. Scan vault/suspect (1,725 remaining)
+### 1d. vault/suspect (1,725)
 
 ```bash
 python3 scripts/scan_not_scanned.py vault suspect 5000
 ```
 
----
-
-### 1e. Scan commune/staging (798 remaining)
+### 1e. commune/staging (798)
 
 ```bash
 python3 scripts/scan_not_scanned.py commune staging 5000
 ```
 
----
-
-### 1f. Verify all scans complete
+### 1f. Verify complete
 
 ```bash
 python3 -c "import sqlite3; conn = sqlite3.connect('artifacts/db/music.db'); cur = conn.cursor(); cur.execute(\"SELECT COUNT(*) FROM files WHERE checksum LIKE 'NOT_SCANNED%'\"); print(f'NOT_SCANNED remaining: {cur.fetchone()[0]}'); conn.close()"
 ```
 
-**Expected output:** `NOT_SCANNED remaining: 0`
+**Expected:** `NOT_SCANNED remaining: 0`
 
 ---
 
-## STEP 2: Check canonical library size
+## STEP 2: Check canonical library
 
 ```bash
 python3 -c "import sqlite3; conn = sqlite3.connect('artifacts/db/music.db'); cur = conn.cursor(); cur.execute(\"SELECT COUNT(*) FROM files WHERE library='commune' AND zone='accepted' AND checksum NOT LIKE 'NOT_SCANNED%'\"); print(f'Canonical library files: {cur.fetchone()[0]}'); conn.close()"
 ```
 
-**This tells us:** How many files are in our "good" canonical library that bad files will match against.
-
 ---
 
-## STEP 3: Run matching - bad files vs canonical library
-
-**COMMAND:**
+## STEP 3: Match bad files vs canonical
 
 ```bash
 python3 -m dedupe.matcher \
@@ -110,9 +131,37 @@ python3 -m dedupe.matcher \
 
 ---
 
-## STEP 4: Review match results
+## STEP 3a: Match vault files vs canonical
 
-**COMMAND:**
+```bash
+python3 -m dedupe.matcher \
+  --db artifacts/db/music.db \
+  --source-library vault \
+  --source-zone suspect \
+  --canonical-library commune \
+  --canonical-zone accepted \
+  --threshold 0.55 \
+  --output artifacts/reports/vault_vs_canonical_matches.csv
+```
+
+---
+
+## STEP 3b: Match recovery files vs canonical
+
+```bash
+python3 -m dedupe.matcher \
+  --db artifacts/db/music.db \
+  --source-library recovery \
+  --source-zone accepted \
+  --canonical-library commune \
+  --canonical-zone accepted \
+  --threshold 0.55 \
+  --output artifacts/reports/recovery_vs_canonical_matches.csv
+```
+
+---
+
+## STEP 4: Review match results
 
 ```bash
 python3 -c "import csv; matches = list(csv.DictReader(open('artifacts/reports/bad_vs_canonical_matches.csv'))); print(f'Total matches: {len(matches)}'); from collections import Counter; counts = Counter(m['classification'] for m in matches); print('\nBy classification:'); [print(f'  {k}: {v}') for k, v in sorted(counts.items())]"
@@ -327,33 +376,31 @@ python3 -m dedupe.cli scan-library \
 
 ## SUCCESS METRICS
 
-Check final state:
-
 ```bash
-python3 -c "import sqlite3; conn = sqlite3.connect('artifacts/db/music.db'); cur = conn.cursor(); cur.execute(\"SELECT library, zone, COUNT(*) FROM files WHERE flac_ok=1 GROUP BY library, zone\"); print('\n=== VERIFIED GOOD FILES ==='); [print(f'{row[0]}/{row[1]}: {row[2]} files') for row in cur.fetchall()]; conn.close()"
+python3 -c "import sqlite3; conn = sqlite3.connect('artifacts/db/music.db'); cur = conn.cursor(); cur.execute(\"SELECT library, zone, COUNT(*) FROM files WHERE flac_ok=1 GROUP BY library, zone\"); print('\\n=== VERIFIED GOOD FILES ==='); [print(f'{row[0]}/{row[1]}: {row[2]} files') for row in cur.fetchall()]; conn.close()"
 ```
 
 **Recovery complete when:**
-- NOT_SCANNED count = 0
-- All KEEP files relocated to canonical structure
+- NOT_SCANNED = 0
+- All KEEP files relocated
 - All DROP files archived
-- Canonical library rescanned with new files
+- Canonical library rescanned
 
 ---
 
-## QUICK START
+## Schema Reference
 
-**If you just want to start NOW:**
-
-1. **Run this first command:**
-   ```bash
-   python3 scripts/scan_not_scanned.py bad suspect 5000
-   ```
-
-2. **Wait for completion** (watch output for progress)
-
-3. **Come back and tell me:** "scan complete" and I'll give you the next command
-
-4. **Keep going** through Steps 1a → 1b → 1c → 2 → 3... one at a time
-
-**I'll guide you through each step when the previous one finishes.**
+| Column | Type | Description |
+|--------|------|-------------|
+| `path` | TEXT | Primary key - absolute path |
+| `library` | TEXT | bad/commune/recovery/vault |
+| `zone` | TEXT | accepted/staging/suspect |
+| `checksum` | TEXT | STREAMINFO MD5 or NOT_SCANNED_* |
+| `duration` | REAL | Seconds |
+| `bit_depth` | INTEGER | 16/24/32 |
+| `sample_rate` | INTEGER | Hz |
+| `size` | INTEGER | Bytes |
+| `metadata_json` | TEXT | Tags JSON |
+| `flac_ok` | INTEGER | 1=valid, 0=corrupt |
+| `integrity_state` | TEXT | valid/corrupt |
+| `acoustid` | TEXT | Fingerprint (empty) |

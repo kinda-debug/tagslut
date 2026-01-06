@@ -15,5 +15,6 @@
             "name": "library",
             "database": "${workspaceFolder:dedupe_repo_reclone}/artifacts/db/library.db"
         }
-    ]
+    ],
+    "markdown.validate.enabled": true
 }

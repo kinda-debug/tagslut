@@ -6,6 +6,7 @@ import sqlite3
 from pathlib import Path
 from typing import Generator, Iterable, List, Sequence
 
+from dedupe.utils.db import open_db, resolve_db_path
 LIBRARY_COLUMNS: Sequence[str] = (
     "path",
     "size_bytes",
@@ -119,7 +120,14 @@ def _map_row(row: sqlite3.Row, legacy_columns: Iterable[str]) -> List[object]:
     return mapped
 
 
-def upgrade_db(legacy_path: str, out_path: str) -> None:
+def upgrade_db(
+    legacy_path: str,
+    out_path: str,
+    *,
+    allow_create: bool = False,
+    allow_repo_db: bool = False,
+    repo_root: Path | None = None,
+) -> None:
     """
     Reads a legacy database at ``legacy_path`` and writes an upgraded copy to
     ``out_path``.
@@ -131,19 +139,32 @@ def upgrade_db(legacy_path: str, out_path: str) -> None:
 
     output = Path(out_path)
     if output.exists():
-        output.unlink()
-    output.parent.mkdir(parents=True, exist_ok=True)
+        raise ValueError(f"Refusing to overwrite existing output DB: {output}")
 
-    with sqlite3.connect(legacy_path) as legacy_conn:
-        legacy_conn.row_factory = sqlite3.Row
+    legacy_resolution = resolve_db_path(
+        legacy_path,
+        repo_root=repo_root,
+        purpose="read",
+        allow_create=False,
+        allow_repo_db=allow_repo_db,
+        source_label="explicit",
+    )
+    output_resolution = resolve_db_path(
+        out_path,
+        repo_root=repo_root,
+        purpose="write",
+        allow_create=allow_create,
+        allow_repo_db=allow_repo_db,
+        source_label="explicit",
+    )
+
+    with open_db(legacy_resolution) as legacy_conn:
         legacy_conn.text_factory = (
             lambda x: x.decode("utf-8", "replace")  # type: ignore[arg-type]
         )
-
         legacy_columns = _read_legacy_columns(legacy_conn)
 
-        with sqlite3.connect(out_path) as output_conn:
-            output_conn.row_factory = sqlite3.Row
+        with open_db(output_resolution) as output_conn:
             _initialise_output(output_conn)
 
             placeholders = ", ".join("?" for _ in LIBRARY_COLUMNS)

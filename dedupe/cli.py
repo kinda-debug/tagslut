@@ -17,6 +17,8 @@ from . import (
     scanner,
     utils,
 )
+from dedupe.utils.config import get_config
+from dedupe.utils.db import resolve_db_path
 from tools.db_upgrade import upgrade_db
 
 logger = logging.getLogger(__name__)
@@ -111,10 +113,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Library root directory to scan (must exist).",
     )
     scan_parser.add_argument(
-        "--out",
+        "--db",
+        dest="db",
         type=_output_path,
-        required=True,
+        required=False,
         help="SQLite database to populate with scan results.",
+    )
+    scan_parser.add_argument(
+        "--out",
+        dest="db",
+        type=_output_path,
+        required=False,
+        help=argparse.SUPPRESS,
     )
     scan_parser.add_argument(
         "--fingerprints",
@@ -166,6 +176,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--zone",
         choices=("staging", "accepted"),
         help="COMMUNE zone to tag for this scan (staging or accepted).",
+    )
+    scan_parser.add_argument(
+        "--create-db",
+        action="store_true",
+        help="Allow creating a new database file.",
+    )
+    scan_parser.add_argument(
+        "--allow-repo-db",
+        action="store_true",
+        help="Allow writing to a repo-local database path.",
     )
 
     match_parser = subparsers.add_parser(
@@ -219,10 +239,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Root directory to scan for missing FLAC files.",
     )
     rescan_parser.add_argument(
-        "--out",
+        "--db",
+        dest="db",
         type=_output_path,
-        required=True,
-        help="Target library database; created if it does not exist.",
+        required=False,
+        help="Target library database.",
+    )
+    rescan_parser.add_argument(
+        "--out",
+        dest="db",
+        type=_output_path,
+        required=False,
+        help=argparse.SUPPRESS,
     )
     rescan_parser.add_argument(
         "--fingerprints",
@@ -233,6 +261,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--zone",
         choices=("staging", "accepted"),
         help="COMMUNE zone to tag for this scan (staging or accepted).",
+    )
+    rescan_parser.add_argument(
+        "--create-db",
+        action="store_true",
+        help="Allow creating a new database file.",
+    )
+    rescan_parser.add_argument(
+        "--allow-repo-db",
+        action="store_true",
+        help="Allow writing to a repo-local database path.",
     )
 
     health_parser = subparsers.add_parser(
@@ -273,6 +311,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     dedupe_parser.add_argument(
         "database",
+        nargs="?",
+        type=_existing_file,
+        help="Deprecated; use --db or DEDUPE_DB.",
+    )
+    dedupe_parser.add_argument(
+        "--db",
         type=_existing_file,
         help="Library database to deduplicate.",
     )
@@ -281,6 +325,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=_output_path,
         help="Optional JSON file to write a duplicate report.",
     )
+    dedupe_parser.add_argument(
+        "--allow-repo-db",
+        action="store_true",
+        help="Allow writing to a repo-local DB (dev only).",
+    )
 
     hrm_parser = subparsers.add_parser(
         "hrm-move",
@@ -288,6 +337,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     hrm_parser.add_argument(
         "database",
+        nargs="?",
+        type=_existing_file,
+        help="Deprecated; use --db or DEDUPE_DB.",
+    )
+    hrm_parser.add_argument(
+        "--db",
         type=_existing_file,
         help="Library database containing canonical selections.",
     )
@@ -297,6 +352,11 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         help="Destination HRM root directory (must exist).",
     )
+    hrm_parser.add_argument(
+        "--allow-repo-db",
+        action="store_true",
+        help="Allow writing to a repo-local DB (dev only).",
+    )
 
     hrm_relocate_parser = subparsers.add_parser(
         "relocate-hrm",
@@ -305,7 +365,6 @@ def build_parser() -> argparse.ArgumentParser:
     hrm_relocate_parser.add_argument(
         "--db",
         type=_existing_file,
-        required=True,
         help="Source library database with health data.",
     )
     hrm_relocate_parser.add_argument(
@@ -341,6 +400,16 @@ def build_parser() -> argparse.ArgumentParser:
         type=_output_path,
         help="Destination path for the upgraded database.",
     )
+    upgrade_parser.add_argument(
+        "--create-db",
+        action="store_true",
+        help="Allow creating a new database file.",
+    )
+    upgrade_parser.add_argument(
+        "--allow-repo-db",
+        action="store_true",
+        help="Allow writing to a repo-local database path.",
+    )
     upgrade_parser.set_defaults(func=run_upgrade_db)
 
     # Compute checksums for rows missing them
@@ -350,9 +419,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     hash_parser.add_argument(
         "--db",
-        type=_existing_file,
-        required=True,
-        help="Existing library SQLite database path.",
+        type=_path,
+        required=False,
+        help="Library SQLite database path.",
     )
     hash_parser.add_argument(
         "--batch-size",
@@ -360,14 +429,33 @@ def build_parser() -> argparse.ArgumentParser:
         default=500,
         help="Rows per update batch (default: 500).",
     )
+    hash_parser.add_argument(
+        "--allow-repo-db",
+        action="store_true",
+        help="Allow writing to a repo-local database path.",
+    )
 
     return parser
 
 
 def _command_scan(args: argparse.Namespace) -> int:
+    repo_root = Path(__file__).resolve().parents[1]
+    try:
+        resolution = resolve_db_path(
+            getattr(args, "db", None),
+            config=get_config(),
+            allow_repo_db=getattr(args, "allow_repo_db", False),
+            repo_root=repo_root,
+            purpose="write",
+            allow_create=getattr(args, "create_db", False),
+        )
+    except ValueError as exc:
+        logger.error(str(exc))
+        return 2
+
     config = scanner.ScanConfig(
         root=args.root,
-        database=args.out,
+        database=resolution.path,
         include_fingerprints=args.fingerprints,
         batch_size=getattr(args, "batch_size", 500),
         resume=getattr(args, "resume", False),
@@ -375,6 +463,8 @@ def _command_scan(args: argparse.Namespace) -> int:
         show_progress=getattr(args, "progress", False),
         compute_checksum=not getattr(args, "metadata_only", False),
         zone=getattr(args, "zone", None),
+        create_db=getattr(args, "create_db", False),
+        allow_repo_db=getattr(args, "allow_repo_db", False),
     )
     total = scanner.scan_library(config)
     logger.info("Indexed %s files", total)
@@ -392,7 +482,24 @@ def _command_manifest(args: argparse.Namespace) -> int:
 
 
 def _command_hash_missing(args: argparse.Namespace) -> int:
-    updated = scanner.hash_missing(database=args.db, batch_size=getattr(args, "batch_size", 500))
+    repo_root = Path(__file__).resolve().parents[1]
+    try:
+        resolution = resolve_db_path(
+            getattr(args, "db", None),
+            config=get_config(),
+            allow_repo_db=getattr(args, "allow_repo_db", False),
+            repo_root=repo_root,
+            purpose="write",
+            allow_create=False,
+        )
+    except ValueError as exc:
+        logger.error(str(exc))
+        return 2
+    updated = scanner.hash_missing(
+        database=resolution.path,
+        batch_size=getattr(args, "batch_size", 500),
+        allow_repo_db=getattr(args, "allow_repo_db", False),
+    )
     logger.info("Computed checksums for %s files", updated)
     return 0
 
@@ -400,11 +507,26 @@ def _command_hash_missing(args: argparse.Namespace) -> int:
 def _command_rescan_missing(args: argparse.Namespace) -> int:
     """Ingest only FLAC files missing from the target database."""
 
+    repo_root = Path(__file__).resolve().parents[1]
+    try:
+        resolution = resolve_db_path(
+            getattr(args, "db", None),
+            config=get_config(),
+            allow_repo_db=getattr(args, "allow_repo_db", False),
+            repo_root=repo_root,
+            purpose="write",
+            allow_create=getattr(args, "create_db", False),
+        )
+    except ValueError as exc:
+        logger.error(str(exc))
+        return 2
     result = scanner.rescan_missing(
         root=args.root,
-        database=args.out,
+        database=resolution.path,
         include_fingerprints=args.fingerprints,
         zone=getattr(args, "zone", None),
+        create_db=getattr(args, "create_db", False),
+        allow_repo_db=getattr(args, "allow_repo_db", False),
     )
     logger.info(
         "Missing: %s | Ingested: %s | Unreadable: %s | Corrupt: %s",
@@ -447,7 +569,28 @@ def run_healthscore(args: argparse.Namespace) -> int:
 def _command_dedupe(args: argparse.Namespace) -> int:
     """Mark canonical files and report duplicate sets."""
 
-    result = deduper.deduplicate_database(args.database, args.report)
+    if args.db and args.database:
+        logger.error("Provide only one of --db or database.")
+        return 2
+    repo_root = Path(__file__).resolve().parents[1]
+    try:
+        resolution = resolve_db_path(
+            args.db or args.database,
+            config=get_config(),
+            allow_repo_db=args.allow_repo_db,
+            repo_root=repo_root,
+            purpose="write",
+            allow_create=False,
+        )
+    except ValueError as exc:
+        logger.error(str(exc))
+        return 2
+    result = deduper.deduplicate_database(
+        resolution.path,
+        args.report,
+        allow_repo_db=args.allow_repo_db,
+        repo_root=repo_root,
+    )
     logger.info("Deduplicated %s groups", result["groups"])
     return 0
 
@@ -457,7 +600,28 @@ def _command_hrm_move(args: argparse.Namespace) -> int:
 
     from tools.move_to_hrm import move_canonical_to_hrm
 
-    moved = move_canonical_to_hrm(args.database, args.root)
+    if args.db and args.database:
+        logger.error("Provide only one of --db or database.")
+        return 2
+    repo_root = Path(__file__).resolve().parents[1]
+    try:
+        resolution = resolve_db_path(
+            args.db or args.database,
+            config=get_config(),
+            allow_repo_db=args.allow_repo_db,
+            repo_root=repo_root,
+            purpose="write",
+            allow_create=False,
+        )
+    except ValueError as exc:
+        logger.error(str(exc))
+        return 2
+    moved = move_canonical_to_hrm(
+        resolution.path,
+        args.root,
+        allow_repo_db=args.allow_repo_db,
+        repo_root=repo_root,
+    )
     logger.info("Moved %s files to HRM", moved)
     return 0
 
@@ -465,9 +629,21 @@ def _command_hrm_move(args: argparse.Namespace) -> int:
 def _command_relocate_hrm(args: argparse.Namespace) -> int:
     """Relocate healthy files into the HRM folder structure."""
 
+    repo_root = Path(__file__).resolve().parents[1]
+    try:
+        resolution = resolve_db_path(
+            args.db,
+            config=get_config(),
+            repo_root=repo_root,
+            purpose="read",
+            allow_create=False,
+        )
+    except ValueError as exc:
+        logger.error(str(exc))
+        return 2
     try:
         result = hrm_relocation.relocate_hrm(
-            db_path=args.db,
+            db_path=resolution.path,
             root=args.root,
             hrm_root=args.hrm_root,
             min_score=args.min_score,
@@ -489,8 +665,28 @@ def _command_relocate_hrm(args: argparse.Namespace) -> int:
 def run_upgrade_db(args: argparse.Namespace) -> int:
     """Upgrade a legacy per-volume database into the unified schema."""
 
-    upgrade_db(str(args.legacy_db), str(args.out_db))
-    logger.info("Upgraded legacy database %s -> %s", args.legacy_db, args.out_db)
+    repo_root = Path(__file__).resolve().parents[1]
+    try:
+        resolution = resolve_db_path(
+            args.out_db,
+            config=get_config(),
+            allow_repo_db=getattr(args, "allow_repo_db", False),
+            repo_root=repo_root,
+            purpose="write",
+            allow_create=getattr(args, "create_db", False),
+        )
+    except ValueError as exc:
+        logger.error(str(exc))
+        return 2
+
+    upgrade_db(
+        str(args.legacy_db),
+        str(resolution.path),
+        allow_create=getattr(args, "create_db", False),
+        allow_repo_db=getattr(args, "allow_repo_db", False),
+        repo_root=repo_root,
+    )
+    logger.info("Upgraded legacy database %s -> %s", args.legacy_db, resolution.path)
     return 0
 
 

@@ -2,12 +2,20 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$REPO/scripts/shell/_resolve_db_path.sh"
 VENVDIR="$REPO/.venv"
-FINAL_ROOT="/Volumes/COMMUNE/20_ACCEPTED"
-OUTDB="$REPO/artifacts/db/library_canonical_fresh.db"
-REPORT="$REPO/artifacts/logs/library_canonical_fresh_report.txt"
+FINAL_ROOT="${FINAL_ROOT:-}"
+OUTDB="${OUTDB:-}"
+REPORT="${REPORT:-$REPO/artifacts/logs/library_canonical_fresh_report.txt}"
 
-mkdir -p "$REPO/artifacts/db"
+FINAL_ROOT="$(require_db_value "$FINAL_ROOT" "FINAL_ROOT")"
+OUTDB="$(require_db_value "$OUTDB" "OUTDB")"
+if [[ -z "${CREATE_DB:-}" ]]; then
+    echo "Error: set CREATE_DB=1 to allow DB creation." >&2
+    exit 1
+fi
+OUTDB="$(resolve_db_path "write" "$OUTDB")"
+
 mkdir -p "$REPO/artifacts/logs"
 
 echo "=== SCAN FINAL LIBRARY: REBUILD AUTHORITATIVE DB ==="
@@ -24,10 +32,17 @@ echo "=== Activating environment ==="
 source "$VENVDIR/bin/activate"
 
 echo "=== Running scanner ==="
-/usr/bin/python3 -m dedupe.cli scan-library \
-    --root "$FINAL_ROOT" \
-    --out "$OUTDB" \
+scan_args=(
+    /usr/bin/python3 -m dedupe.cli scan-library
+    --root "$FINAL_ROOT"
+    --db "$OUTDB"
     --progress
+    --create-db
+)
+if [[ -n "${ALLOW_REPO_DB:-}" ]]; then
+    scan_args+=(--allow-repo-db)
+fi
+"${scan_args[@]}"
 
 echo
 echo "=== Summary report ===" > "$REPORT"

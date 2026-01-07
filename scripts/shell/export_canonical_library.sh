@@ -1,10 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="$HOME/dedupe_repo_reclone"
-SRC_DB="$REPO/artifacts/db/library_final.db"
-OUT_DB="$REPO/artifacts/db/library_canonical_export.db"
-TMPDB="$OUT_DB.tmp"
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "$REPO/scripts/shell/_resolve_db_path.sh"
+
+SRC_DB="${SRC_DB:-}"
+OUT_DB="${OUT_DB:-}"
+LOG_DIR="${LOG_DIR:-$REPO/artifacts/logs}"
+
+SRC_DB="$(require_db_value "$SRC_DB" "SRC_DB")"
+OUT_DB="$(require_db_value "$OUT_DB" "OUT_DB")"
+if [[ -z "${CREATE_DB:-}" ]]; then
+    echo "Error: set CREATE_DB=1 to allow DB creation." >&2
+    exit 1
+fi
+
+SRC_DB="$(resolve_db_path "read" "$SRC_DB")"
+OUT_DB="$(resolve_db_path "write" "$OUT_DB")"
+TMPDB="${OUT_DB}.tmp"
 
 echo "=== Building canonical export ==="
 echo "Source DB: $SRC_DB"
@@ -61,9 +74,10 @@ sqlite3 "$TMPDB" "SELECT COUNT(*) AS canonical_count FROM canonical_tracks;"
 echo "=== Checking on-disk existence ==="
 sqlite3 "$TMPDB" "SELECT path FROM canonical_tracks;" | while read -r p; do
     [[ -f "$p" ]] || echo "MISSING: $p"
-done > "$REPO/artifacts/logs/canonical_missing_paths.log" || true
+mkdir -p "$LOG_DIR"
+done > "$LOG_DIR/canonical_missing_paths.log" || true
 
-echo "Missing file report: artifacts/logs/canonical_missing_paths.log"
+echo "Missing file report: $LOG_DIR/canonical_missing_paths.log"
 echo
 
 echo "=== Finalizing ==="

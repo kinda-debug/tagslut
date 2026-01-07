@@ -9,12 +9,12 @@ Purpose:
 
 Usage:
     # Import dupeGuru similarity scores
-    tools/dupeguru_bridge.py --db artifacts/db/music.db \\
+    tools/dupeguru_bridge.py --db "$DEDUPE_DB" \\
                                                      --dupeguru /path/to/dupeguru.csv \\
                                                      --apply
 
     # Dry-run (show what would change)
-    tools/dupeguru_bridge.py --db artifacts/db/music.db \\
+    tools/dupeguru_bridge.py --db "$DEDUPE_DB" \\
                                                      --dupeguru /path/to/dupeguru.csv
 
 Evidence integration rules:
@@ -29,6 +29,14 @@ import sys
 from pathlib import Path
 from typing import Dict, Set, Tuple
 
+try:
+    from dedupe.utils.config import get_config
+    from dedupe.utils.db import open_db, resolve_db_path
+except ModuleNotFoundError:  # pragma: no cover
+    repo_root = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(repo_root))
+    from dedupe.utils.config import get_config
+    from dedupe.utils.db import open_db, resolve_db_path
 
 SIMILARITY_THRESHOLD_LOW = 80
 SIMILARITY_THRESHOLD_HIGH = 95
@@ -195,9 +203,14 @@ def main():
     )
     parser.add_argument(
         "--db",
-        required=True,
+        required=False,
         type=Path,
         help="SQLite database path"
+    )
+    parser.add_argument(
+        "--allow-repo-db",
+        action="store_true",
+        help="Allow writing to a repo-local database path",
     )
     parser.add_argument(
         "--dupeguru",
@@ -213,8 +226,19 @@ def main():
     
     args = parser.parse_args()
     
-    if not args.db.exists():
-        print(f"ERROR: Database not found: {args.db}")
+    purpose = "write" if args.apply else "read"
+    repo_root = Path(__file__).resolve().parents[1]
+    try:
+        resolution = resolve_db_path(
+            args.db,
+            config=get_config(),
+            allow_repo_db=args.allow_repo_db,
+            repo_root=repo_root,
+            purpose=purpose,
+            allow_create=False,
+        )
+    except ValueError as exc:
+        print(f"ERROR: {exc}")
         sys.exit(1)
     
     if not args.dupeguru.exists():
@@ -222,11 +246,11 @@ def main():
         sys.exit(1)
     
     print(f"Loading similarity data: {args.dupeguru}")
-    print(f"Target database: {args.db}")
+    print(f"Target database: {resolution.path}")
     print(f"Mode: {'APPLY' if args.apply else 'DRY-RUN'}")
     print()
     
-    conn = sqlite3.connect(args.db)
+    conn = open_db(resolution)
     
     # Ensure column exists
     if args.apply:

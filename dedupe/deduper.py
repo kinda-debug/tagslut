@@ -27,11 +27,22 @@ def _canonical_sort_key(row: sqlite3.Row) -> tuple:
     )
 
 
-def deduplicate_database(db_path: Path, report_path: Optional[Path] = None) -> dict:
+def deduplicate_database(
+    db_path: Path,
+    report_path: Optional[Path] = None,
+    *,
+    allow_repo_db: bool = False,
+    repo_root: Optional[Path] = None,
+) -> dict:
     """Identify duplicate files and mark canonical entries."""
 
     db_path = Path(utils.normalise_path(str(db_path)))
-    db = utils.DatabaseContext(db_path)
+    db = utils.DatabaseContext(
+        db_path,
+        purpose="write",
+        allow_repo_db=allow_repo_db,
+        repo_root=repo_root,
+    )
     summary: dict[str, object] = {"groups": 0, "files": 0}
     report: List[dict[str, object]] = []
 

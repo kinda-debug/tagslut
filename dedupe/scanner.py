@@ -8,13 +8,20 @@ from __future__ import annotations
 
 import json
 import logging
+import platform
 import sqlite3
+from datetime import datetime, timezone
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
 from . import metadata, utils
 from dedupe.storage.schema import LIBRARY_TABLE, initialise_library_schema
+from dedupe.storage.queries import (
+    finalize_scan_session,
+    insert_file_scan_run,
+    insert_scan_session,
+)
 from dedupe.utils.config import get_config
 from dedupe.utils.library import load_zone_paths, ensure_dedupe_zone, identify_zone
 
@@ -64,6 +71,8 @@ class ScanConfig:
     show_progress: bool = False
     compute_checksum: bool = True
     zone: Optional[str] = None
+    create_db: bool = False
+    allow_repo_db: bool = False
 
 
 def prepare_record(path: Path, include_fingerprints: bool, zone: Optional[str]) -> ScanRecord:
@@ -150,13 +159,20 @@ def _upsert_batch(connection: sqlite3.Connection, records: list[ScanRecord]) -> 
 def scan_library(config: ScanConfig) -> int:
     root = Path(utils.normalise_path(str(config.root)))
     database = Path(utils.normalise_path(str(config.database)))
-    utils.ensure_parent_directory(database)
 
-    ctx = utils.DatabaseContext(database)
+    ctx = utils.DatabaseContext(
+        database,
+        purpose="write",
+        allow_create=config.create_db,
+        allow_repo_db=config.allow_repo_db,
+    )
     processed = 0
+    failed = 0
+    aborted = False
 
     zone_name: Optional[str] = config.zone
-    zone_paths = load_zone_paths(get_config())
+    app_config = get_config()
+    zone_paths = load_zone_paths(app_config)
     if zone_paths is not None:
         if zone_name is None:
             # Only infer/enforce a zone when the scan root is inside a
@@ -168,6 +184,9 @@ def scan_library(config: ScanConfig) -> int:
         elif zone_name not in ("staging", "accepted"):
             raise ValueError(f"Zone '{zone_name}' is out of scope for dedupe.")
 
+    library_name = app_config.get("library.name")
+    status = "completed"
+
     with ctx.connect() as connection:
         initialise_library_schema(connection)
         existing = _existing_index(connection) if (config.resume or config.resume_safe) else {}
@@ -176,6 +195,27 @@ def scan_library(config: ScanConfig) -> int:
             (p for p in utils.iter_audio_files(root) if p.suffix.lower() == ".flac"),
             key=lambda p: utils.normalise_path(str(p)),
         )
+        total_discovered = len(files)
+
+        session_id = insert_scan_session(
+            connection,
+            db_path=database,
+            library=library_name,
+            zone=zone_name,
+            root_path=root,
+            paths_source=None,
+            scan_integrity=False,
+            scan_hash=config.compute_checksum,
+            recheck=False,
+            incremental=bool(config.resume or config.resume_safe),
+            force_all=False,
+            discovered=total_discovered,
+            considered=total_discovered,
+            skipped=0,
+            scan_limit=None,
+            host=platform.node(),
+        )
+        connection.commit()
 
         # Control checksum computation globally during scanning
         global COMPUTE_CHECKSUM
@@ -187,7 +227,11 @@ def scan_library(config: ScanConfig) -> int:
                     for path in batch:
                         npath = utils.normalise_path(str(path))
                         if npath in existing:
-                            return 0
+                            aborted = True
+                            status = "aborted"
+                            break
+                    if aborted:
+                        break
 
                 records: list[ScanRecord] = []
                 for path in batch:
@@ -201,13 +245,65 @@ def scan_library(config: ScanConfig) -> int:
                         if stat is not None and db_size == stat.st_size and db_mtime == stat.st_mtime:
                             continue
 
-                    record = prepare_record(path, config.include_fingerprints, zone_name)
+                    try:
+                        record = prepare_record(path, config.include_fingerprints, zone_name)
+                    except Exception as exc:
+                        failed += 1
+                        insert_file_scan_run(
+                            connection,
+                            session_id=session_id,
+                            path=path,
+                            outcome="failed",
+                            checked_metadata=False,
+                            checked_hash=False,
+                            checked_integrity=False,
+                            checked_streaminfo=False,
+                            error_class=type(exc).__name__,
+                            error_message=str(exc),
+                        )
+                        continue
                     records.append(record)
 
-                _upsert_batch(connection, records)
-                processed += len(records)
+                if records:
+                    _upsert_batch(connection, records)
+                    processed += len(records)
+                    for record in records:
+                        insert_file_scan_run(
+                            connection,
+                            session_id=session_id,
+                            path=Path(record.path),
+                            outcome="succeeded",
+                            checked_metadata=True,
+                            checked_hash=config.compute_checksum,
+                            checked_integrity=False,
+                            checked_streaminfo=False,
+                            mtime=record.mtime,
+                            size=record.size_bytes,
+                        )
+        except KeyboardInterrupt:
+            aborted = True
+            status = "aborted"
+        except Exception:
+            status = "failed"
+            raise
         finally:
             COMPUTE_CHECKSUM = prev_compute
+            skipped = max(0, total_discovered - processed - failed)
+            ended_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            finalize_scan_session(
+                connection,
+                session_id=session_id,
+                status=status,
+                succeeded=processed,
+                failed=failed,
+                ended_at=ended_at,
+                updated=processed,
+            )
+            connection.execute(
+                "UPDATE scan_sessions SET skipped=?, discovered=?, considered=? WHERE id=?",
+                (skipped, total_discovered, total_discovered, session_id),
+            )
+            connection.commit()
 
     return processed
 
@@ -223,6 +319,8 @@ def scan(
     show_progress: bool = False,
     compute_checksum: bool = True,
     zone: Optional[str] = None,
+    create_db: bool = False,
+    allow_repo_db: bool = False,
 ) -> int:
     config = ScanConfig(
         root=root,
@@ -234,6 +332,8 @@ def scan(
         show_progress=show_progress,
         compute_checksum=compute_checksum,
         zone=zone,
+        create_db=create_db,
+        allow_repo_db=allow_repo_db,
     )
     return scan_library(config)
 
@@ -244,15 +344,23 @@ def rescan_missing(
     database: Path,
     include_fingerprints: bool,
     zone: Optional[str] = None,
+    create_db: bool = False,
+    allow_repo_db: bool = False,
 ) -> dict[str, Any]:
     root = Path(utils.normalise_path(str(root)))
     database = Path(utils.normalise_path(str(database)))
-    utils.ensure_parent_directory(database)
-
-    ctx = utils.DatabaseContext(database)
+    ctx = utils.DatabaseContext(
+        database,
+        purpose="write",
+        allow_create=create_db,
+        allow_repo_db=allow_repo_db,
+    )
     ingested: list[str] = []
+    processed = 0
+    failed = 0
     zone_name: Optional[str] = zone
-    zone_paths = load_zone_paths(get_config())
+    app_config = get_config()
+    zone_paths = load_zone_paths(app_config)
     if zone_paths is not None:
         if zone_name is None:
             inferred = identify_zone(root, zone_paths)
@@ -261,23 +369,94 @@ def rescan_missing(
         elif zone_name not in ("staging", "accepted"):
             raise ValueError(f"Zone '{zone_name}' is out of scope for dedupe.")
 
+    files = sorted(
+        (p for p in utils.iter_audio_files(root) if p.suffix.lower() == ".flac"),
+        key=lambda p: utils.normalise_path(str(p)),
+    )
+    total_discovered = len(files)
+    library_name = app_config.get("library.name")
+
     with ctx.connect() as connection:
         initialise_library_schema(connection)
         existing_paths = {
             utils.normalise_path(row["path"])
             for row in connection.execute(f"SELECT path FROM {LIBRARY_TABLE}").fetchall()
         }
+        session_id = insert_scan_session(
+            connection,
+            db_path=database,
+            library=library_name,
+            zone=zone_name,
+            root_path=root,
+            paths_source=None,
+            scan_integrity=False,
+            scan_hash=True,
+            recheck=False,
+            incremental=True,
+            force_all=False,
+            discovered=total_discovered,
+            considered=total_discovered,
+            skipped=0,
+            scan_limit=None,
+            host=platform.node(),
+        )
+        connection.commit()
 
-        for path in sorted(utils.iter_audio_files(root), key=lambda p: utils.normalise_path(str(p))):
-            if path.suffix.lower() != ".flac":
-                continue
+        for path in files:
             npath = utils.normalise_path(str(path))
             if npath in existing_paths:
                 continue
-            record = prepare_record(path, include_fingerprints, zone_name)
+            try:
+                record = prepare_record(path, include_fingerprints, zone_name)
+            except Exception as exc:
+                failed += 1
+                insert_file_scan_run(
+                    connection,
+                    session_id=session_id,
+                    path=path,
+                    outcome="failed",
+                    checked_metadata=False,
+                    checked_hash=False,
+                    checked_integrity=False,
+                    checked_streaminfo=False,
+                    error_class=type(exc).__name__,
+                    error_message=str(exc),
+                )
+                continue
+
             _upsert_batch(connection, [record])
             ingested.append(npath)
             existing_paths.add(npath)
+            processed += 1
+            insert_file_scan_run(
+                connection,
+                session_id=session_id,
+                path=Path(record.path),
+                outcome="succeeded",
+                checked_metadata=True,
+                checked_hash=True,
+                checked_integrity=False,
+                checked_streaminfo=False,
+                mtime=record.mtime,
+                size=record.size_bytes,
+            )
+
+        skipped = max(0, total_discovered - processed - failed)
+        ended_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        finalize_scan_session(
+            connection,
+            session_id=session_id,
+            status="completed",
+            succeeded=processed,
+            failed=failed,
+            ended_at=ended_at,
+            updated=processed,
+        )
+        connection.execute(
+            "UPDATE scan_sessions SET skipped=?, discovered=?, considered=? WHERE id=?",
+            (skipped, total_discovered, total_discovered, session_id),
+        )
+        connection.commit()
 
     return {
         "missing": [],
@@ -288,17 +467,27 @@ def rescan_missing(
 
 
 
-def hash_missing(*, database: Path, batch_size: int = 500) -> int:
+def hash_missing(
+    *,
+    database: Path,
+    batch_size: int = 500,
+    allow_repo_db: bool = False,
+) -> int:
     """Compute checksums for library rows missing them and update the database.
 
     Returns the number of rows updated.
     """
 
     database = Path(utils.normalise_path(str(database)))
-    utils.ensure_parent_directory(database)
 
-    ctx = utils.DatabaseContext(database)
+    ctx = utils.DatabaseContext(
+        database,
+        purpose="write",
+        allow_create=False,
+        allow_repo_db=allow_repo_db,
+    )
     updated = 0
+    failed = 0
 
     with ctx.connect() as connection:
         initialise_library_schema(connection)
@@ -307,17 +496,51 @@ def hash_missing(*, database: Path, batch_size: int = 500) -> int:
         )
         paths = [Path(row[0]) for row in cursor.fetchall()]
 
+        session_id = insert_scan_session(
+            connection,
+            db_path=database,
+            library=get_config().get("library.name"),
+            zone=None,
+            root_path=None,
+            paths_source=None,
+            scan_integrity=False,
+            scan_hash=True,
+            recheck=False,
+            incremental=True,
+            force_all=False,
+            discovered=len(paths),
+            considered=len(paths),
+            skipped=0,
+            scan_limit=None,
+            host=platform.node(),
+        )
+        connection.commit()
+
         for batch in utils.chunks(paths, max(1, int(batch_size))):
             payload: list[tuple[str, str]] = []
+            updated_paths: list[Path] = []
             for path in batch:
                 try:
                     if not path.exists():
-                        continue
+                        raise FileNotFoundError(str(path))
                     checksum = utils.compute_md5(path)
-                except Exception:
-                    checksum = None
-                if checksum:
-                    payload.append((checksum, utils.normalise_path(str(path))))
+                except Exception as exc:
+                    failed += 1
+                    insert_file_scan_run(
+                        connection,
+                        session_id=session_id,
+                        path=path,
+                        outcome="failed",
+                        checked_metadata=False,
+                        checked_hash=True,
+                        checked_integrity=False,
+                        checked_streaminfo=False,
+                        error_class=type(exc).__name__,
+                        error_message=str(exc),
+                    )
+                    continue
+                payload.append((checksum, utils.normalise_path(str(path))))
+                updated_paths.append(path)
 
             if payload:
                 with connection:
@@ -326,5 +549,33 @@ def hash_missing(*, database: Path, batch_size: int = 500) -> int:
                         payload,
                     )
                 updated += len(payload)
+                for path in updated_paths:
+                    insert_file_scan_run(
+                        connection,
+                        session_id=session_id,
+                        path=path,
+                        outcome="succeeded",
+                        checked_metadata=False,
+                        checked_hash=True,
+                        checked_integrity=False,
+                        checked_streaminfo=False,
+                    )
+
+        skipped = max(0, len(paths) - updated - failed)
+        ended_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        finalize_scan_session(
+            connection,
+            session_id=session_id,
+            status="completed",
+            succeeded=updated,
+            failed=failed,
+            ended_at=ended_at,
+            updated=updated,
+        )
+        connection.execute(
+            "UPDATE scan_sessions SET skipped=?, discovered=?, considered=? WHERE id=?",
+            (skipped, len(paths), len(paths), session_id),
+        )
+        connection.commit()
 
     return updated

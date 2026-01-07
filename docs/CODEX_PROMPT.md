@@ -201,21 +201,21 @@ After implementation, these must work:
 
 ```bash
 # 1. Migrate DB
-python3 -c "from dedupe.db import ensure_schema; ensure_schema('artifacts/db/music.db')"
+python3 -c "from dedupe.storage.schema import init_db; init_db('$DEDUPE_DB')"
 
 # 2. Dry-run counts
-python3 tools/integrity/scan.py /path/to/library --db artifacts/db/music.db --dry-run
+python3 tools/integrity/scan.py /path/to/library --db "$DEDUPE_DB" --dry-run
 
 # 3. Scan only failed
-python3 tools/integrity/scan.py /path/to/library --db artifacts/db/music.db \
+python3 tools/integrity/scan.py /path/to/library --db "$DEDUPE_DB" \
     --check-integrity --only-failed
 
 # 4. Scan explicit paths
-python3 tools/integrity/scan.py --db artifacts/db/music.db \
+python3 tools/integrity/scan.py --db "$DEDUPE_DB" \
     --check-integrity --paths-file artifacts/tmp/suspect_paths.txt
 
 # 5. Query last 20 failures
-sqlite3 artifacts/db/music.db "
+sqlite3 "$DEDUPE_DB" "
 SELECT f.path, ic.state, datetime(ic.checked_at, 'unixepoch') as checked
 FROM integrity_checks ic
 JOIN files f ON ic.file_id = f.id

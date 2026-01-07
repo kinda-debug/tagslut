@@ -6,10 +6,19 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+import sys
 from pathlib import Path
 from typing import Iterable, Optional, Union
 
 from dedupe import health_score
+try:
+    from dedupe.utils.config import get_config
+    from dedupe.utils.db import open_db, resolve_db_path
+except ModuleNotFoundError:  # pragma: no cover
+    repo_root = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(repo_root))
+    from dedupe.utils.config import get_config
+    from dedupe.utils.db import open_db, resolve_db_path
 from mutagen import MutagenError
 from mutagen.flac import FLAC
 
@@ -192,9 +201,23 @@ def main() -> None:
         type=Path,
         help="Text file with one absolute file path per line",
     )
+    parser.add_argument(
+        "--allow-repo-db",
+        action="store_true",
+        help="Allow writing to a repo-local database path",
+    )
     args = parser.parse_args()
 
-    with sqlite3.connect(args.db_path) as connection:
+    repo_root = Path(__file__).resolve().parents[1]
+    resolution = resolve_db_path(
+        args.db_path,
+        config=get_config(),
+        allow_repo_db=args.allow_repo_db,
+        repo_root=repo_root,
+        purpose="write",
+        allow_create=False,
+    )
+    with open_db(resolution) as connection:
         validate_schema(connection)
         with args.list_path.open("r", encoding="utf8") as file_list:
             ingest_paths(connection, [line.strip() for line in file_list])

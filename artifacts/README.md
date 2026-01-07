@@ -50,5 +50,5 @@ After fresh clone:
 ```bash
 # Directories exist via .gitkeep
 # Databases created by scanning:
-python3 -m dedupe.cli scan-library --root /path/to/music --db artifacts/db/music.db
+python3 -m dedupe.cli scan-library --root /path/to/music --db "$DEDUPE_DB"
 ```

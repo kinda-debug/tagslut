@@ -67,12 +67,12 @@ Deterministic KEEP/REVIEW decision engine for duplicate audio files.
 
 ```bash
 # Dry-run (report only)
-tools/recommend_keepers.py --db artifacts/db/music.db \
+tools/recommend_keepers.py --db "$DEDUPE_DB" \
                            --group-field dupeguru_group_id \
                            --out /tmp/recommendations.csv
 
 # Apply decisions to database
-tools/recommend_keepers.py --db artifacts/db/music.db \
+tools/recommend_keepers.py --db "$DEDUPE_DB" \
                            --group-field dupeguru_group_id \
                            --out /tmp/recommendations.csv \
                            --apply
@@ -109,7 +109,7 @@ Integrate dupeGuru similarity evidence into decision confidence.
 
 ```bash
 # Import dupeGuru similarity scores
-tools/dupeguru_bridge.py --db artifacts/db/music.db \
+tools/dupeguru_bridge.py --db "$DEDUPE_DB" \
                          --dupeguru /path/to/dupeguru.csv \
                          --apply
 ```
@@ -121,10 +121,10 @@ Parallel FLAC integrity testing using `flac -t`. Writes `flac_ok` and `integrity
 
 ```bash
 # Scan all files in database (parallel)
-tools/scan_flac_integrity.py --db artifacts/db/music.db --parallel 8
+tools/scan_flac_integrity.py --db "$DEDUPE_DB" --parallel 8
 
 # Scan only unchecked files
-tools/scan_flac_integrity.py --db artifacts/db/music.db --unchecked-only
+tools/scan_flac_integrity.py --db "$DEDUPE_DB" --unchecked-only
 ```
 
 ### find_corrupt_flacs.sh
@@ -162,10 +162,10 @@ tools/export_dupe_groups.py --csv /path/to/dupeguru.csv \
                             --out /Volumes/COMMUNE/10_STAGING/_DUPE_REVIEW
 
 # 2. Scan FLAC integrity (parallel)
-tools/scan_flac_integrity.py --db artifacts/db/music.db --parallel 8
+tools/scan_flac_integrity.py --db "$DEDUPE_DB" --parallel 8
 
 # 3. Generate keeper recommendations (dry-run first)
-tools/recommend_keepers.py --db artifacts/db/music.db \
+tools/recommend_keepers.py --db "$DEDUPE_DB" \
                            --group-field dupeguru_group_id \
                            --out /tmp/recovery_recs.csv
 
@@ -173,17 +173,17 @@ tools/recommend_keepers.py --db artifacts/db/music.db \
 tools/review_needed.sh /tmp/recovery_recs.csv REVIEW
 
 # 5. Integrate dupeGuru similarity evidence
-tools/dupeguru_bridge.py --db artifacts/db/music.db \
+tools/dupeguru_bridge.py --db "$DEDUPE_DB" \
                          --dupeguru /path/to/dupeguru.csv \
                          --apply
 
 # 6. Regenerate recommendations with evidence
-tools/recommend_keepers.py --db artifacts/db/music.db \
+tools/recommend_keepers.py --db "$DEDUPE_DB" \
                            --group-field dupeguru_group_id \
                            --out /tmp/recovery_recs_final.csv
 
 # 7. Apply decisions to database
-tools/recommend_keepers.py --db artifacts/db/music.db \
+tools/recommend_keepers.py --db "$DEDUPE_DB" \
                            --group-field dupeguru_group_id \
                            --out /tmp/recovery_recs_final.csv \
                            --apply

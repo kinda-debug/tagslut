@@ -9,6 +9,8 @@ import sqlite3
 from pathlib import Path
 
 from dedupe import healthcheck, scanner, utils
+from dedupe.utils.config import get_config
+from dedupe.utils.db import resolve_db_path
 
 LOGGER = logging.getLogger(__name__)
 
@@ -62,14 +64,25 @@ def _format_target(tags: dict, root: Path, filename: str) -> Path:
     return folder / filename
 
 
-def move_canonical_to_hrm(db_path: Path, hrm_root: Path) -> int:
+def move_canonical_to_hrm(
+    db_path: Path,
+    hrm_root: Path,
+    *,
+    allow_repo_db: bool = False,
+    repo_root: Path | None = None,
+) -> int:
     """Move canonical, perfect-score files into the HRM tree."""
 
     db_path = Path(utils.normalise_path(str(db_path)))
     hrm_root = Path(utils.normalise_path(str(hrm_root)))
     utils.ensure_parent_directory(hrm_root / "stub")
 
-    db = utils.DatabaseContext(db_path)
+    db = utils.DatabaseContext(
+        db_path,
+        purpose="write",
+        allow_repo_db=allow_repo_db,
+        repo_root=repo_root,
+    )
     moved = 0
     with db.connect() as connection:
         scanner.initialise_database(connection)
@@ -110,8 +123,40 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Move canonical files into HRM")
-    parser.add_argument("database")
+    parser.add_argument(
+        "database",
+        nargs="?",
+        help="Deprecated; use --db or DEDUPE_DB.",
+    )
+    parser.add_argument(
+        "--db",
+        help="Library database containing canonical selections.",
+    )
     parser.add_argument("--root", required=True)
+    parser.add_argument(
+        "--allow-repo-db",
+        action="store_true",
+        help="Allow writing to a repo-local DB (dev only).",
+    )
     args = parser.parse_args()
-    count = move_canonical_to_hrm(Path(args.database), Path(args.root))
+    if args.db and args.database:
+        raise SystemExit("Provide only one of --db or database.")
+    repo_root = Path(__file__).resolve().parents[1]
+    try:
+        resolution = resolve_db_path(
+            args.db or args.database,
+            config=get_config(),
+            allow_repo_db=args.allow_repo_db,
+            repo_root=repo_root,
+            purpose="write",
+            allow_create=False,
+        )
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+    count = move_canonical_to_hrm(
+        Path(resolution.path),
+        Path(args.root),
+        allow_repo_db=args.allow_repo_db,
+        repo_root=repo_root,
+    )
     print(f"Moved {count} files")

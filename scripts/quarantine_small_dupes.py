@@ -7,10 +7,18 @@ Moves files < 10 MB and < 90 seconds to quarantine zones.
 import sqlite3
 import os
 import shutil
-from pathlib import Path
+import sys
 from datetime import datetime
+from pathlib import Path
 
-DB_PATH = 'artifacts/db/music.db'
+try:
+    from dedupe.utils.config import get_config
+    from dedupe.utils.db import open_db, resolve_db_path
+except ModuleNotFoundError:  # pragma: no cover
+    repo_root = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(repo_root))
+    from dedupe.utils.config import get_config
+    from dedupe.utils.db import open_db, resolve_db_path
 SIZE_THRESHOLD_MB = 10
 DURATION_THRESHOLD_SEC = 90
 
@@ -35,7 +43,33 @@ def get_volume_root(path):
     return None
 
 def main():
-    conn = sqlite3.connect(DB_PATH)
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--db",
+        type=Path,
+        required=False,
+        help="SQLite database path (defaults to DEDUPE_DB/config)",
+    )
+    parser.add_argument(
+        "--allow-repo-db",
+        action="store_true",
+        help="Allow writing to a repo-local database path",
+    )
+    args = parser.parse_args()
+
+    repo_root = Path(__file__).resolve().parents[1]
+    resolution = resolve_db_path(
+        args.db,
+        config=get_config(),
+        allow_repo_db=args.allow_repo_db,
+        repo_root=repo_root,
+        purpose="write",
+        allow_create=False,
+    )
+
+    conn = open_db(resolution)
     cursor = conn.cursor()
     
     # Find duplicate files that are small and short

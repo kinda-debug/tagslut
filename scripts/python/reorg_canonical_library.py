@@ -7,17 +7,22 @@ Reorganize canonical FLACs to:
 - Deletes original if copy is verified
 - Logs all actions
 """
-import os
-import sqlite3
-import shutil
+import argparse
 import hashlib
+import os
+import shutil
+import sqlite3
+import sys
 from pathlib import Path
 
-DB = os.path.expanduser('~/dedupe_repo_reclone/artifacts/db/library_canonical_fresh.db')
-ROOT = Path('/Volumes/COMMUNE/20_ACCEPTED')
-LOG = Path('~/dedupe_repo_reclone/artifacts/logs/reorg_canonical.log').expanduser()
-
-os.makedirs(LOG.parent, exist_ok=True)
+try:
+    from dedupe.utils.config import get_config
+    from dedupe.utils.db import open_db, resolve_db_path
+except ModuleNotFoundError:  # pragma: no cover
+    repo_root = Path(__file__).resolve().parents[2]
+    sys.path.insert(0, str(repo_root))
+    from dedupe.utils.config import get_config
+    from dedupe.utils.db import open_db, resolve_db_path
 
 def safe(val, default="[Unknown]"):
     if not val:
@@ -30,7 +35,7 @@ def get_year(*fields):
             return f[:4]
     return 'XXXX'
 
-def build_new_path(tags):
+def build_new_path(tags, root: Path):
     artist = safe(tags.get('albumartist') or tags.get('artist'), '[Unknown Artist]')
     album = safe(tags.get('album'), '[Unknown Album]')
     year = get_year(tags.get('date'), tags.get('originalyear'), tags.get('originaldate'))
@@ -39,7 +44,7 @@ def build_new_path(tags):
     track = tags.get('tracknumber')
     title = safe(tags.get('title'), '[Unknown Title]')
     # Directory
-    dir_path = ROOT / artist / f"({year}) {album}"
+    dir_path = root / artist / f"({year}) {album}"
     # Filename
     disc_part = f"{int(disc):02d}-" if disc and totaldiscs and int(totaldiscs) > 1 else ""
     track_part = f"{int(track):02d}" if track and track.isdigit() else "XX"
@@ -54,14 +59,35 @@ def checksum(path):
     return h.hexdigest()
 
 def main():
-    conn = sqlite3.connect(DB)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--db", type=Path, required=False, help="SQLite DB path")
+    parser.add_argument("--root", type=Path, required=True, help="Destination root directory")
+    parser.add_argument("--log", type=Path, required=True, help="Log file path")
+    parser.add_argument("--allow-repo-db", action="store_true", help="Allow repo-local DB paths")
+    args = parser.parse_args()
+
+    repo_root = Path(__file__).resolve().parents[2]
+    resolution = resolve_db_path(
+        args.db,
+        config=get_config(),
+        allow_repo_db=args.allow_repo_db,
+        repo_root=repo_root,
+        purpose="read",
+        allow_create=False,
+    )
+
+    log_path = args.log.expanduser()
+    os.makedirs(log_path.parent, exist_ok=True)
+    root = args.root.expanduser().resolve()
+
+    conn = open_db(resolution)
     c = conn.cursor()
     c.execute('SELECT path, tags_json FROM library_files')
     rows = c.fetchall()
     moved = 0
     skipped = 0
     failed = 0
-    with open(LOG, 'w') as log:
+    with open(log_path, 'w') as log:
         for src, tags_json in rows:
             src = Path(src)
             if not src.exists():
@@ -73,7 +99,7 @@ def main():
                 tags = json.loads(tags_json) if tags_json else {}
             except Exception:
                 tags = {}
-            dest = build_new_path(tags)
+            dest = build_new_path(tags, root)
             if dest.exists():
                 log.write(f"SKIP (exists): {dest}\n")
                 skipped += 1
@@ -89,7 +115,7 @@ def main():
                 log.write(f"FAILED COPY: {src} -> {dest}\n")
                 dest.unlink(missing_ok=True)
                 failed += 1
-    print(f"Done. Moved: {moved}, Skipped: {skipped}, Failed: {failed}. Log: {LOG}")
+    print(f"Done. Moved: {moved}, Skipped: {skipped}, Failed: {failed}. Log: {log_path}")
 
 if __name__ == "__main__":
     main()

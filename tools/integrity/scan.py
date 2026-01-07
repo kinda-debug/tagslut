@@ -13,6 +13,7 @@ from dedupe.utils.db import resolve_db_path
 @click.command()
 @click.argument("library_path", type=click.Path(exists=True, file_okay=False), required=False)
 @click.option("--db", required=False, type=click.Path(dir_okay=False), help="Path to SQLite database")
+@click.option("--create-db", is_flag=True, default=False, help="Allow creating a new DB file")
 @click.option("--paths-from-file", type=click.Path(exists=True, dir_okay=False), help="Read specific file paths from this file (one per line)")
 @click.option("--library", default=None, help="Logical library name (e.g. COMMUNE)")
 @click.option(
@@ -56,7 +57,7 @@ from dedupe.utils.db import resolve_db_path
 @click.option("--allow-repo-db", is_flag=True, default=False, help="Allow writing to a repo-local DB path")
 @click.option("--stale-days", type=int, default=None, help="Treat integrity/hash results older than N days as stale")
 @common_options
-def scan(library_path, db, paths_from_file, library, zone, incremental, recheck, force_all, progress, progress_interval, limit, check_integrity, check_hash, hard_skip, allow_repo_db, stale_days, verbose, config):
+def scan(library_path, db, create_db, paths_from_file, library, zone, incremental, recheck, force_all, progress, progress_interval, limit, check_integrity, check_hash, hard_skip, allow_repo_db, stale_days, verbose, config):
     """
     Scans a library folder for FLAC files and populates the database.
     
@@ -85,6 +86,7 @@ def scan(library_path, db, paths_from_file, library, zone, incremental, recheck,
             allow_repo_db=allow_repo_db,
             repo_root=repo_root,
             purpose="write",
+            allow_create=create_db,
         )
     except ValueError as e:
         raise click.ClickException(str(e))
@@ -100,8 +102,10 @@ def scan(library_path, db, paths_from_file, library, zone, incremental, recheck,
             specific_paths = [Path(line.strip()).expanduser().resolve() for line in f if line.strip()]
         click.echo(f"Loaded {len(specific_paths)} paths to scan")
         lib_path = None
+        paths_from_file_path = paths_file
     else:
         lib_path = Path(library_path).expanduser().resolve()
+        paths_from_file_path = None
 
     if lib_path:
         click.echo(f"Scanning Library: {lib_path}")
@@ -142,7 +146,10 @@ def scan(library_path, db, paths_from_file, library, zone, incremental, recheck,
             specific_paths=specific_paths,
             limit=limit,
             stale_days=stale_days,
-            paths_source=str(paths_from_file) if paths_from_file else None,
+            paths_source="paths-from-file" if paths_from_file else None,
+            paths_from_file=paths_from_file_path,
+            create_db=create_db,
+            allow_repo_db=allow_repo_db,
         )
         if outcome.status == "completed":
             click.echo(click.style("Scan complete.", fg="green"))

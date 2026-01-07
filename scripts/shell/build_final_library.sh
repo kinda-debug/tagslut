@@ -2,13 +2,30 @@
 set -euo pipefail
 set -x
 
-REPO="$HOME/dedupe_repo_reclone"
-FINAL_DB="$REPO/artifacts/db/library_final.db"
-TMP_DB="$FINAL_DB.tmp"
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "$REPO/scripts/shell/_resolve_db_path.sh"
+
+FINAL_DB="${FINAL_DB:-}"
+RESCAN_DIR="${RESCAN_DIR:-}"
+PLAN_OUT="${PLAN_OUT:-}"
+QUAR_ROOT="${QUAR_ROOT:-}"
+
+FINAL_DB="$(require_db_value "$FINAL_DB" "FINAL_DB")"
+RESCAN_DIR="$(require_db_value "$RESCAN_DIR" "RESCAN_DIR")"
+PLAN_OUT="$(require_db_value "$PLAN_OUT" "PLAN_OUT")"
+QUAR_ROOT="$(require_db_value "$QUAR_ROOT" "QUAR_ROOT")"
+
+if [[ -z "${CREATE_DB:-}" ]]; then
+    echo "Error: set CREATE_DB=1 to allow DB creation." >&2
+    exit 1
+fi
+
+FINAL_DB="$(resolve_db_path "write" "$FINAL_DB")"
+TMP_DB="${FINAL_DB}.tmp"
 
 # Step 1: Backup broken DB if present
 if [[ -f "$FINAL_DB" ]]; then
-    mv "$FINAL_DB" "$REPO/artifacts/db/library_final.broken.db"
+    mv "$FINAL_DB" "${FINAL_DB}.broken.$(date +%Y%m%d_%H%M%S)"
 fi
 
 # Step 2: Activate environment
@@ -42,7 +59,7 @@ CREATE TABLE library_files (
 SQL
 
 echo
-for db in "$REPO"/artifacts/db/rescan/*.sqlite; do
+for db in "$RESCAN_DIR"/*.sqlite; do
     echo "Merging $db"
     sqlite3 "$TMP_DB" <<SQL
 ATTACH '$db' AS scan;
@@ -91,18 +108,18 @@ SELECT * FROM library_files WHERE (checksum, duration, bit_rate, size_bytes) IN 
 SQL
 
 # Step 6: Generate dedupe plan
-sqlite3 "$TMP_DB" <<'SQL' > "$REPO/artifacts/db/dedupe_plan.txt"
+sqlite3 "$TMP_DB" <<'SQL' > "$PLAN_OUT"
 SELECT path
 FROM library_files
 WHERE checksum IN (SELECT checksum FROM canonical)
 AND path NOT IN (SELECT path FROM canonical);
 SQL
 
-wc -l "$REPO/artifacts/db/dedupe_plan.txt"
+wc -l "$PLAN_OUT"
 
 # Step 7: Move non-canonical duplicates to staging
 TS=$(date +"%Y%m%d_%H%M%S")
-QUAR="/Volumes/COMMUNE/10_STAGING/_DEDUPER_QUARANTINE_$TS"
+QUAR="$QUAR_ROOT/_DEDUPER_QUARANTINE_$TS"
 mkdir -p "$QUAR"
 
 echo "Moving non-canonical duplicates to staging: $QUAR"
@@ -117,13 +134,13 @@ while IFS= read -r f; do
         echo "Missing file on disk: $f"
         failed=$((failed+1))
     fi
-done < "$REPO/artifacts/db/dedupe_plan.txt"
+done < "$PLAN_OUT"
 
 echo "=== DEDUPE MOVE COMPLETE ==="
 echo "Moved:   $moved"
 echo "Failed:  $failed"
 echo "Staged into: $QUAR"
-echo "Plan file: $REPO/artifacts/db/dedupe_plan.txt"
+echo "Plan file: $PLAN_OUT"
 
 echo "=== FINALIZING LIBRARY DB ==="
 mv "$TMP_DB" "$FINAL_DB"

@@ -1,13 +1,36 @@
 #!/usr/bin/env python3
+import argparse
 import sqlite3
+import sys
 from pathlib import Path
 
-REPO = Path.home() / "dedupe_repo_reclone"
-DB_PATH = REPO / "artifacts/db/library_final.db"
+try:
+    from dedupe.utils.config import get_config
+    from dedupe.utils.db import open_db, resolve_db_path
+except ModuleNotFoundError:  # pragma: no cover
+    repo_root = Path(__file__).resolve().parents[2]
+    sys.path.insert(0, str(repo_root))
+    from dedupe.utils.config import get_config
+    from dedupe.utils.db import open_db, resolve_db_path
 
-print("=== Ranking duplicates in:", DB_PATH)
+parser = argparse.ArgumentParser(description="Rank duplicates by checksum and path.")
+parser.add_argument("--db", type=Path, required=False, help="SQLite DB path")
+parser.add_argument("--allow-repo-db", action="store_true", help="Allow repo-local DB paths")
+args = parser.parse_args()
 
-conn = sqlite3.connect(DB_PATH)
+repo_root = Path(__file__).resolve().parents[2]
+resolution = resolve_db_path(
+    args.db,
+    config=get_config(),
+    allow_repo_db=args.allow_repo_db,
+    repo_root=repo_root,
+    purpose="write",
+    allow_create=False,
+)
+
+print("=== Ranking duplicates in:", resolution.path)
+
+conn = open_db(resolution)
 conn.row_factory = sqlite3.Row
 cur = conn.cursor()
 

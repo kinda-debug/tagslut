@@ -515,6 +515,7 @@ def insert_scan_session(
     zone: str | None,
     root_path: Path | None,
     paths_source: str | None,
+    paths_from_file: str | None = None,
     scan_integrity: bool,
     scan_hash: bool,
     recheck: bool,
@@ -523,13 +524,15 @@ def insert_scan_session(
     discovered: int,
     considered: int,
     skipped: int,
+    scan_limit: int | None = None,
     host: str | None,
 ) -> int:
     query = """
     INSERT INTO scan_sessions (
-        db_path, library, zone, root_path, paths_source, scan_integrity, scan_hash,
-        recheck, incremental, force_all, discovered, considered, skipped, status, host
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        db_path, library, zone, root_path, paths_source, paths_from_file,
+        scan_integrity, scan_hash, recheck, incremental, force_all,
+        discovered, considered, skipped, scan_limit, status, host
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """
     cursor = conn.execute(
         query,
@@ -539,6 +542,7 @@ def insert_scan_session(
             zone,
             str(root_path) if root_path else None,
             paths_source,
+            paths_from_file,
             int(scan_integrity),
             int(scan_hash),
             int(recheck),
@@ -547,6 +551,7 @@ def insert_scan_session(
             discovered,
             considered,
             skipped,
+            scan_limit,
             "running",
             host,
         ),
@@ -562,14 +567,16 @@ def finalize_scan_session(
     succeeded: int,
     failed: int,
     ended_at: str,
+    updated: int | None = None,
 ) -> None:
+    updated_count = succeeded if updated is None else updated
     conn.execute(
         """
         UPDATE scan_sessions
-        SET ended_at=?, status=?, succeeded=?, failed=?
+        SET ended_at=?, finished_at=?, status=?, succeeded=?, failed=?, updated=?
         WHERE id=?
         """,
-        (ended_at, status, succeeded, failed, session_id),
+        (ended_at, ended_at, status, succeeded, failed, updated_count, session_id),
     )
 
 
@@ -579,34 +586,73 @@ def insert_file_scan_run(
     session_id: int,
     path: Path,
     file: AudioFile | None = None,
+    outcome: str | None = None,
+    checked_metadata: bool | None = None,
+    checked_integrity: bool | None = None,
+    checked_hash: bool | None = None,
+    checked_streaminfo: bool | None = None,
     error_class: str | None = None,
     error_message: str | None = None,
+    mtime: float | None = None,
+    size: int | None = None,
+    streaminfo_md5: str | None = None,
+    streaminfo_checked_at: str | None = None,
+    sha256: str | None = None,
+    sha256_checked_at: str | None = None,
+    flac_ok: bool | None = None,
+    integrity_state: str | None = None,
+    integrity_checked_at: str | None = None,
 ) -> None:
     def _short(value: str | None, limit: int = 300) -> str | None:
         if not value:
             return None
         return value if len(value) <= limit else value[:limit]
 
+    if file:
+        mtime = file.mtime
+        size = file.size
+        streaminfo_md5 = _normalize_text_field(file.streaminfo_md5, "streaminfo_md5")
+        streaminfo_checked_at = _normalize_text_field(
+            file.streaminfo_checked_at, "streaminfo_checked_at"
+        )
+        sha256 = _normalize_text_field(file.sha256, "sha256")
+        sha256_checked_at = _normalize_text_field(file.sha256_checked_at, "sha256_checked_at")
+        flac_ok = None if file.flac_ok is None else bool(file.flac_ok)
+        integrity_state = _normalize_text_field(file.integrity_state, "integrity_state")
+        integrity_checked_at = _normalize_text_field(
+            file.integrity_checked_at, "integrity_checked_at"
+        )
+
+    outcome_value = outcome
+    if outcome_value is None:
+        outcome_value = "failed" if error_class else "succeeded"
+
     conn.execute(
         """
         INSERT INTO file_scan_runs (
             session_id, path, mtime, size, streaminfo_md5, streaminfo_checked_at,
             sha256, sha256_checked_at, flac_ok, integrity_state, integrity_checked_at,
+            outcome, checked_metadata, checked_integrity, checked_hash, checked_streaminfo,
             error_class, error_message
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             session_id,
             str(path),
-            file.mtime if file else None,
-            file.size if file else None,
-            _normalize_text_field(file.streaminfo_md5, "streaminfo_md5") if file else None,
-            _normalize_text_field(file.streaminfo_checked_at, "streaminfo_checked_at") if file else None,
-            _normalize_text_field(file.sha256, "sha256") if file else None,
-            _normalize_text_field(file.sha256_checked_at, "sha256_checked_at") if file else None,
-            None if file is None or file.flac_ok is None else int(bool(file.flac_ok)),
-            _normalize_text_field(file.integrity_state, "integrity_state") if file else None,
-            _normalize_text_field(file.integrity_checked_at, "integrity_checked_at") if file else None,
+            mtime,
+            size,
+            _normalize_text_field(streaminfo_md5, "streaminfo_md5"),
+            _normalize_text_field(streaminfo_checked_at, "streaminfo_checked_at"),
+            _normalize_text_field(sha256, "sha256"),
+            _normalize_text_field(sha256_checked_at, "sha256_checked_at"),
+            None if flac_ok is None else int(bool(flac_ok)),
+            _normalize_text_field(integrity_state, "integrity_state"),
+            _normalize_text_field(integrity_checked_at, "integrity_checked_at"),
+            outcome_value,
+            None if checked_metadata is None else int(bool(checked_metadata)),
+            None if checked_integrity is None else int(bool(checked_integrity)),
+            None if checked_hash is None else int(bool(checked_hash)),
+            None if checked_streaminfo is None else int(bool(checked_streaminfo)),
             _normalize_text_field(error_class, "error_class"),
             _short(_normalize_text_field(error_message, "error_message")),
         ),

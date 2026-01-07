@@ -37,6 +37,8 @@ class ScanTask:
 @dataclass(frozen=True)
 class ScanResult:
     path: Path
+    run_integrity: bool
+    run_hash: bool
     file: Optional[AudioFile] = None
     error_class: Optional[str] = None
     error_message: Optional[str] = None
@@ -156,29 +158,50 @@ def _scan_one_file(task: ScanTask) -> ScanResult:
         if result.duration:
             print(f"   ♫ Duration: {result.duration:.1f}s, {result.sample_rate}Hz, {result.bit_depth}bit")
         
-        return ScanResult(path=path, file=result)
+        return ScanResult(
+            path=path,
+            run_integrity=scan_integrity,
+            run_hash=scan_hash,
+            file=result,
+        )
         
     except ValueError as e:
         print(f"   ✗ Invalid FLAC: {e}")
         logger.error(f"Failed to process {path}: {e}")
         return ScanResult(
             path=path,
+            run_integrity=scan_integrity,
+            run_hash=scan_hash,
             error_class="InvalidFLAC",
             error_message=f"{str(e)[:120]}",
         )
     except FileNotFoundError as e:
         print(f"   ✗ File not found")
         logger.error(f"File not found {path}: {e}")
-        return ScanResult(path=path, error_class="FileNotFound", error_message="File not found")
+        return ScanResult(
+            path=path,
+            run_integrity=scan_integrity,
+            run_hash=scan_hash,
+            error_class="FileNotFound",
+            error_message="File not found",
+        )
     except PermissionError as e:
         print(f"   ✗ Permission denied")
         logger.error(f"Permission denied {path}: {e}")
-        return ScanResult(path=path, error_class="PermissionDenied", error_message="Permission denied")
+        return ScanResult(
+            path=path,
+            run_integrity=scan_integrity,
+            run_hash=scan_hash,
+            error_class="PermissionDenied",
+            error_message="Permission denied",
+        )
     except Exception as e:
         print(f"   ✗ Error: {type(e).__name__}: {str(e)[:50]}")
         logger.error(f"Failed to process {path}: {e}")
         return ScanResult(
             path=path,
+            run_integrity=scan_integrity,
+            run_hash=scan_hash,
             error_class=type(e).__name__,
             error_message=f"Unexpected error: {str(e)[:120]}",
         )
@@ -201,6 +224,9 @@ def scan_library(
     limit: Optional[int] = None,
     stale_days: Optional[int] = None,
     paths_source: Optional[str] = None,
+    paths_from_file: Optional[Path] = None,
+    create_db: bool = False,
+    allow_repo_db: bool = False,
 ) -> ScanOutcome:
     """Scan a library folder and upsert file metadata into the integrity DB.
 
@@ -246,7 +272,12 @@ def scan_library(
         flac_files = list(list_files(library_path, {".flac"}))
 
     # 1. Initialize DB
-    conn = get_connection(db_path)
+    conn = get_connection(
+        db_path,
+        purpose="write",
+        allow_create=create_db,
+        allow_repo_db=allow_repo_db,
+    )
     init_db(conn)
 
     table = conn.execute(
@@ -260,8 +291,8 @@ def scan_library(
         hint = ""
         if legacy:
             hint = (
-                " (this DB has 'library_files' so it looks like the legacy library DB; "
-                "did you mean to use artifacts/db/music.db?)"
+                " (this DB has 'library_files' so it looks like a legacy library DB; "
+                "use the canonical integrity DB resolved via --db/DEDUPE_DB/config)"
             )
         raise RuntimeError(
             f"Integrity DB schema not initialized: missing 'files' table in {db_path}{hint}"
@@ -272,7 +303,12 @@ def scan_library(
     logger.info("Found %d FLAC files.", total_discovered)
 
     if not flac_files:
-        conn = get_connection(db_path)
+        conn = get_connection(
+            db_path,
+            purpose="write",
+            allow_create=create_db,
+            allow_repo_db=allow_repo_db,
+        )
         try:
             session_id = insert_scan_session(
                 conn,
@@ -281,6 +317,7 @@ def scan_library(
                 zone=zone_name,
                 root_path=root_path,
                 paths_source=paths_source,
+                paths_from_file=str(paths_from_file) if paths_from_file else None,
                 scan_integrity=scan_integrity,
                 scan_hash=scan_hash,
                 recheck=recheck,
@@ -289,6 +326,7 @@ def scan_library(
                 discovered=0,
                 considered=0,
                 skipped=0,
+                scan_limit=limit,
                 host=platform.node(),
             )
             ended_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -374,7 +412,11 @@ def scan_library(
         return row["integrity_state"] in ("corrupt", "recoverable")
 
     # 2. Load existing rows
-    conn = get_connection(db_path)
+    conn = get_connection(
+        db_path,
+        purpose="read",
+        allow_repo_db=allow_repo_db,
+    )
     try:
         if specific_paths:
             existing_rows = {}
@@ -497,7 +539,12 @@ def scan_library(
     considered = total_discovered
 
     # 4. Create scan session
-    conn = get_connection(db_path)
+    conn = get_connection(
+        db_path,
+        purpose="write",
+        allow_create=create_db,
+        allow_repo_db=allow_repo_db,
+    )
     try:
         session_id = insert_scan_session(
             conn,
@@ -506,6 +553,7 @@ def scan_library(
             zone=zone_name,
             root_path=root_path,
             paths_source=paths_source,
+            paths_from_file=str(paths_from_file) if paths_from_file else None,
             scan_integrity=scan_integrity,
             scan_hash=scan_hash,
             recheck=recheck,
@@ -514,6 +562,7 @@ def scan_library(
             discovered=total_discovered,
             considered=considered,
             skipped=skipped,
+            scan_limit=limit,
             host=platform.node(),
         )
         conn.commit()
@@ -537,7 +586,12 @@ def scan_library(
 
     if not scan_tasks:
         ended_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
-        conn = get_connection(db_path)
+        conn = get_connection(
+            db_path,
+            purpose="write",
+            allow_create=create_db,
+            allow_repo_db=allow_repo_db,
+        )
         try:
             finalize_scan_session(
                 conn,
@@ -590,7 +644,12 @@ def scan_library(
     logger.info("Metadata extraction complete in %.2fs", duration)
 
     # 6. Write to DB with chunked commits + savepoints
-    conn = get_connection(db_path)
+    conn = get_connection(
+        db_path,
+        purpose="write",
+        allow_create=create_db,
+        allow_repo_db=allow_repo_db,
+    )
     succeeded = 0
     failed = 0
     failure_reasons: dict[str, int] = {}
@@ -607,6 +666,11 @@ def scan_library(
                         session_id=session_id,
                         path=result.path,
                         file=result.file,
+                        outcome="succeeded",
+                        checked_metadata=True,
+                        checked_streaminfo=True,
+                        checked_integrity=result.run_integrity,
+                        checked_hash=result.run_hash,
                     )
                     succeeded += 1
                 else:
@@ -616,6 +680,11 @@ def scan_library(
                         path=result.path,
                         error_class=result.error_class,
                         error_message=result.error_message,
+                        outcome="failed",
+                        checked_metadata=False,
+                        checked_streaminfo=False,
+                        checked_integrity=False,
+                        checked_hash=False,
                     )
                     failed += 1
                     reason = result.error_class or "UnknownError"
@@ -650,7 +719,12 @@ def scan_library(
         status = "aborted"
 
     ended_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    conn = get_connection(db_path)
+    conn = get_connection(
+        db_path,
+        purpose="write",
+        allow_create=create_db,
+        allow_repo_db=allow_repo_db,
+    )
     try:
         finalize_scan_session(
             conn,
@@ -659,6 +733,7 @@ def scan_library(
             succeeded=succeeded,
             failed=failed,
             ended_at=ended_at,
+            updated=succeeded,
         )
         conn.commit()
     finally:

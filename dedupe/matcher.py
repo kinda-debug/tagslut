@@ -84,7 +84,7 @@ def _row_to_recovery_entry(row: sqlite3.Row) -> RecoveryEntry:
 
 def load_library_entries(database: Path) -> list[LibraryEntry]:
     """Load scanned library entries from ``database``."""
-    db = utils.DatabaseContext(Path(utils.normalise_path(str(database))))
+    db = utils.DatabaseContext(Path(utils.normalise_path(str(database))), purpose="read")
     with db.connect() as connection:
         cursor = connection.execute(f"SELECT * FROM {scanner.LIBRARY_TABLE}")
         entries = [_row_to_library_entry(row) for row in cursor.fetchall()]
@@ -94,7 +94,7 @@ def load_library_entries(database: Path) -> list[LibraryEntry]:
 
 def load_recovery_entries(database: Path) -> list[RecoveryEntry]:
     """Load recovery entries from the exported metadata database."""
-    db = utils.DatabaseContext(Path(utils.normalise_path(str(database))))
+    db = utils.DatabaseContext(Path(utils.normalise_path(str(database))), purpose="read")
     with db.connect() as connection:
         cursor = connection.execute("SELECT * FROM recovered_files")
         entries = [_row_to_recovery_entry(row) for row in cursor.fetchall()]

@@ -1,7 +1,9 @@
 import sqlite3
 import logging
 from pathlib import Path
-from typing import List
+from typing import List, Optional, Iterable
+
+from dedupe.utils.db import DbReadOnlyError, DbResolutionError, open_db, resolve_db_path
 
 logger = logging.getLogger("dedupe")
 
@@ -18,146 +20,153 @@ STEP0_FILES_TABLE = "step0_files"
 STEP0_HASHES_TABLE = "step0_hashes"
 STEP0_DECISIONS_TABLE = "step0_decisions"
 STEP0_ARTIFACTS_TABLE = "step0_artifacts"
+SCAN_SESSIONS_TABLE = "scan_sessions"
+FILE_SCAN_RUNS_TABLE = "file_scan_runs"
+SCHEMA_MIGRATIONS_TABLE = "schema_migrations"
+INTEGRITY_SCHEMA_VERSION = 1
+LIBRARY_SCHEMA_VERSION = 1
 
-def get_connection(db_path: Path) -> sqlite3.Connection:
-    """
-    Establishes a connection to the SQLite database.
-    Sets row_factory to sqlite3.Row for name-based access.
-    """
+def get_connection(
+    db_path: Path | str,
+    *,
+    purpose: str = "write",
+    allow_create: bool = False,
+    allow_repo_db: bool = False,
+    repo_root: Optional[Path] = None,
+    source_label: str = "explicit",
+) -> sqlite3.Connection:
+    """Establish a SQLite connection using the canonical resolver."""
     try:
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row
-        return conn
-    except sqlite3.Error as e:
-        logger.error(f"Failed to connect to database at {db_path}: {e}")
+        resolution = resolve_db_path(
+            db_path,
+            allow_repo_db=allow_repo_db,
+            repo_root=repo_root,
+            purpose=purpose,
+            allow_create=allow_create,
+            source_label=source_label,
+        )
+        return open_db(resolution)
+    except (DbResolutionError, DbReadOnlyError, sqlite3.Error) as e:
+        logger.error("Failed to connect to database at %s: %s", db_path, e)
         raise
 
-def init_db(conn: sqlite3.Connection) -> None:
+def init_db(
+    conn: sqlite3.Connection | Path | str,
+    *,
+    allow_create: bool = False,
+    allow_repo_db: bool = False,
+    repo_root: Optional[Path] = None,
+    source_label: str = "explicit",
+) -> None:
     """
     Initializes the database schema.
     Performs additive migrations: creates the table if missing,
     and adds missing columns if the table exists but is outdated.
     """
-    # Performance tuning (mandatory for multi-library scans)
-    conn.execute("PRAGMA journal_mode=WAL;")
-    conn.execute("PRAGMA synchronous=NORMAL;")
-    conn.execute("PRAGMA temp_store=MEMORY;")
-    conn.execute("PRAGMA cache_size=-200000;")  # -200000 = 200MB cache
-    
-    # 1. Create table if it doesn't exist
-    conn.execute("""
-    CREATE TABLE IF NOT EXISTS files (
-        path TEXT PRIMARY KEY,
-        library TEXT,
-        zone TEXT,
-        mtime REAL,
-        size INTEGER,
-        checksum TEXT,
-        streaminfo_md5 TEXT,
-        sha256 TEXT,
-        duration REAL,
-        bit_depth INTEGER,
-        sample_rate INTEGER,
-        bitrate INTEGER,
-        metadata_json TEXT,
-        flac_ok INTEGER,
-        integrity_state TEXT,
-        integrity_checked_at TEXT,
-        streaminfo_checked_at TEXT,
-        sha256_checked_at TEXT,
-        acoustid TEXT
-    );
-    """)
-    
-    # 2. Additive Migrations: Ensure all required columns exist
-    existing_columns = _get_existing_columns(conn, "files")
-    required_columns = {
-        "library": "TEXT",
-        "zone": "TEXT",
-        "mtime": "REAL",
-        "size": "INTEGER",
-        "checksum": "TEXT",
-        "streaminfo_md5": "TEXT",
-        "sha256": "TEXT",
-        "duration": "REAL",
-        "bit_depth": "INTEGER",
-        "sample_rate": "INTEGER",
-        "bitrate": "INTEGER",
-        "metadata_json": "TEXT",
-        "flac_ok": "INTEGER",
-        "integrity_state": "TEXT",
-        "integrity_checked_at": "TEXT",
-        "streaminfo_checked_at": "TEXT",
-        "sha256_checked_at": "TEXT",
-        "acoustid": "TEXT"
-    }
+    close_after = False
+    connection: sqlite3.Connection
+    if isinstance(conn, (str, Path)):
+        resolution = resolve_db_path(
+            conn,
+            allow_repo_db=allow_repo_db,
+            repo_root=repo_root,
+            purpose="write",
+            allow_create=allow_create,
+            source_label=source_label,
+        )
+        connection = open_db(resolution)
+        close_after = True
+    else:
+        connection = conn
 
-    for col_name, col_type in required_columns.items():
-        if col_name not in existing_columns:
-            logger.info(f"Migrating DB: Adding column '{col_name}' to 'files' table.")
-            try:
-                conn.execute(f"ALTER TABLE files ADD COLUMN {col_name} {col_type}")
-            except sqlite3.OperationalError as e:
-                logger.error(f"Migration failed for column {col_name}: {e}")
-                raise
+    original_factory = connection.row_factory
+    connection.row_factory = sqlite3.Row
+    try:
+        # Performance tuning (mandatory for multi-library scans)
+        connection.execute("PRAGMA journal_mode=WAL;")
+        connection.execute("PRAGMA synchronous=NORMAL;")
+        connection.execute("PRAGMA temp_store=MEMORY;")
+        connection.execute("PRAGMA cache_size=-200000;")  # -200000 = 200MB cache
 
-    # 3. Indices for performance
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_checksum ON files(checksum);")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_acoustid ON files(acoustid);")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_streaminfo_md5 ON files(streaminfo_md5);")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_sha256 ON files(sha256);")
+        # 1. Create table if it doesn't exist
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS files (
+                path TEXT PRIMARY KEY,
+                library TEXT,
+                zone TEXT,
+                mtime REAL,
+                size INTEGER,
+                checksum TEXT,
+                streaminfo_md5 TEXT,
+                sha256 TEXT,
+                duration REAL,
+                bit_depth INTEGER,
+                sample_rate INTEGER,
+                bitrate INTEGER,
+                metadata_json TEXT,
+                flac_ok INTEGER,
+                integrity_state TEXT,
+                integrity_checked_at TEXT,
+                streaminfo_checked_at TEXT,
+                sha256_checked_at TEXT,
+                acoustid TEXT
+            );
+            """
+        )
 
-    # Scan session tracking
-    conn.execute("""
-    CREATE TABLE IF NOT EXISTS scan_sessions (
-        id INTEGER PRIMARY KEY,
-        started_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        ended_at TEXT,
-        db_path TEXT,
-        library TEXT,
-        zone TEXT,
-        root_path TEXT,
-        paths_source TEXT,
-        scan_integrity INTEGER,
-        scan_hash INTEGER,
-        recheck INTEGER,
-        incremental INTEGER,
-        force_all INTEGER,
-        discovered INTEGER,
-        considered INTEGER,
-        skipped INTEGER,
-        succeeded INTEGER,
-        failed INTEGER,
-        status TEXT,
-        host TEXT
-    );
-    """)
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_scan_sessions_started_at ON scan_sessions(started_at);")
+        # 2. Additive Migrations: Ensure all required columns exist
+        existing_columns = _get_existing_columns(connection, "files")
+        required_columns = {
+            "library": "TEXT",
+            "zone": "TEXT",
+            "mtime": "REAL",
+            "size": "INTEGER",
+            "checksum": "TEXT",
+            "streaminfo_md5": "TEXT",
+            "sha256": "TEXT",
+            "duration": "REAL",
+            "bit_depth": "INTEGER",
+            "sample_rate": "INTEGER",
+            "bitrate": "INTEGER",
+            "metadata_json": "TEXT",
+            "flac_ok": "INTEGER",
+            "integrity_state": "TEXT",
+            "integrity_checked_at": "TEXT",
+            "streaminfo_checked_at": "TEXT",
+            "sha256_checked_at": "TEXT",
+            "acoustid": "TEXT",
+        }
 
-    conn.execute("""
-    CREATE TABLE IF NOT EXISTS file_scan_runs (
-        id INTEGER PRIMARY KEY,
-        session_id INTEGER NOT NULL,
-        path TEXT NOT NULL,
-        mtime REAL,
-        size INTEGER,
-        streaminfo_md5 TEXT,
-        streaminfo_checked_at TEXT,
-        sha256 TEXT,
-        sha256_checked_at TEXT,
-        flac_ok INTEGER,
-        integrity_state TEXT,
-        integrity_checked_at TEXT,
-        error_class TEXT,
-        error_message TEXT,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY(session_id) REFERENCES scan_sessions(id)
-    );
-    """)
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_file_scan_runs_session ON file_scan_runs(session_id);")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_file_scan_runs_path ON file_scan_runs(path);")
-    
-    conn.commit()
+        for col_name, col_type in required_columns.items():
+            if col_name not in existing_columns:
+                logger.info(
+                    "Migrating DB: Adding column '%s' to 'files' table.",
+                    col_name,
+                )
+                connection.execute(f"ALTER TABLE files ADD COLUMN {col_name} {col_type}")
+
+        # 3. Indices for performance
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_checksum ON files(checksum);")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_acoustid ON files(acoustid);")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_streaminfo_md5 ON files(streaminfo_md5);")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_sha256 ON files(sha256);")
+
+        _ensure_scan_tracking_tables(connection)
+        _record_schema_version(connection, schema_name="integrity", version=INTEGRITY_SCHEMA_VERSION)
+
+        connection.commit()
+    except sqlite3.OperationalError as e:
+        if "readonly" in str(e).lower():
+            raise DbReadOnlyError(
+                "Database is read-only. Fix permissions or open a writable copy "
+                "before running migrations."
+            ) from e
+        raise
+    finally:
+        connection.row_factory = original_factory
+        if close_after:
+            connection.close()
 
 
 def initialise_library_schema(connection: sqlite3.Connection) -> None:
@@ -231,6 +240,8 @@ def initialise_library_schema(connection: sqlite3.Connection) -> None:
         connection.execute(
             f"CREATE INDEX IF NOT EXISTS idx_{PICARD_MOVES_TABLE}_checksum ON {PICARD_MOVES_TABLE}(checksum)"
         )
+        _ensure_scan_tracking_tables(connection)
+        _record_schema_version(connection, schema_name="library", version=LIBRARY_SCHEMA_VERSION)
 
 
 def initialise_step0_schema(connection: sqlite3.Connection) -> None:
@@ -414,4 +425,140 @@ def initialise_step0_schema(connection: sqlite3.Connection) -> None:
 def _get_existing_columns(conn: sqlite3.Connection, table_name: str) -> List[str]:
     """Helper to retrieve a list of column names for a table."""
     cursor = conn.execute(f"PRAGMA table_info({table_name})")
-    return [row["name"] for row in cursor.fetchall()]
+    columns: list[str] = []
+    for row in cursor.fetchall():
+        if isinstance(row, sqlite3.Row):
+            columns.append(row["name"])
+        else:
+            columns.append(row[1])
+    return columns
+
+
+def _add_missing_columns(
+    conn: sqlite3.Connection,
+    table_name: str,
+    columns: dict[str, str],
+) -> None:
+    existing = set(_get_existing_columns(conn, table_name))
+    for name, definition in columns.items():
+        if name in existing:
+            continue
+        logger.info("Migrating DB: Adding column '%s' to '%s' table.", name, table_name)
+        conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {name} {definition}")
+
+
+def _ensure_scan_tracking_tables(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS {SCAN_SESSIONS_TABLE} (
+            id INTEGER PRIMARY KEY,
+            started_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            ended_at TEXT,
+            finished_at TEXT,
+            db_path TEXT,
+            library TEXT,
+            zone TEXT,
+            root_path TEXT,
+            paths_source TEXT,
+            paths_from_file TEXT,
+            scan_integrity INTEGER,
+            scan_hash INTEGER,
+            recheck INTEGER,
+            incremental INTEGER,
+            force_all INTEGER,
+            discovered INTEGER,
+            considered INTEGER,
+            skipped INTEGER,
+            updated INTEGER,
+            succeeded INTEGER,
+            failed INTEGER,
+            scan_limit INTEGER,
+            status TEXT,
+            host TEXT
+        );
+        """
+    )
+    conn.execute(
+        f"CREATE INDEX IF NOT EXISTS idx_{SCAN_SESSIONS_TABLE}_started_at ON {SCAN_SESSIONS_TABLE}(started_at);"
+    )
+
+    scan_session_columns = {
+        "finished_at": "TEXT",
+        "paths_from_file": "TEXT",
+        "updated": "INTEGER",
+        "scan_limit": "INTEGER",
+    }
+    _add_missing_columns(conn, SCAN_SESSIONS_TABLE, scan_session_columns)
+
+    conn.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS {FILE_SCAN_RUNS_TABLE} (
+            id INTEGER PRIMARY KEY,
+            session_id INTEGER NOT NULL,
+            path TEXT NOT NULL,
+            mtime REAL,
+            size INTEGER,
+            streaminfo_md5 TEXT,
+            streaminfo_checked_at TEXT,
+            sha256 TEXT,
+            sha256_checked_at TEXT,
+            flac_ok INTEGER,
+            integrity_state TEXT,
+            integrity_checked_at TEXT,
+            outcome TEXT,
+            checked_metadata INTEGER,
+            checked_integrity INTEGER,
+            checked_hash INTEGER,
+            checked_streaminfo INTEGER,
+            error_class TEXT,
+            error_message TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(session_id) REFERENCES {SCAN_SESSIONS_TABLE}(id)
+        );
+        """
+    )
+    conn.execute(
+        f"CREATE INDEX IF NOT EXISTS idx_{FILE_SCAN_RUNS_TABLE}_session ON {FILE_SCAN_RUNS_TABLE}(session_id);"
+    )
+    conn.execute(
+        f"CREATE INDEX IF NOT EXISTS idx_{FILE_SCAN_RUNS_TABLE}_path ON {FILE_SCAN_RUNS_TABLE}(path);"
+    )
+
+    file_scan_columns = {
+        "outcome": "TEXT",
+        "checked_metadata": "INTEGER",
+        "checked_integrity": "INTEGER",
+        "checked_hash": "INTEGER",
+        "checked_streaminfo": "INTEGER",
+    }
+    _add_missing_columns(conn, FILE_SCAN_RUNS_TABLE, file_scan_columns)
+
+
+def _record_schema_version(
+    conn: sqlite3.Connection,
+    *,
+    schema_name: str,
+    version: int,
+) -> None:
+    conn.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS {SCHEMA_MIGRATIONS_TABLE} (
+            id INTEGER PRIMARY KEY,
+            schema_name TEXT NOT NULL,
+            version INTEGER NOT NULL,
+            applied_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            note TEXT,
+            UNIQUE(schema_name, version)
+        )
+        """
+    )
+    current = conn.execute("PRAGMA user_version").fetchone()[0]
+    if current < version:
+        conn.execute(f"PRAGMA user_version = {version}")
+    conn.execute(
+        f"""
+        INSERT OR IGNORE INTO {SCHEMA_MIGRATIONS_TABLE} (schema_name, version, note)
+        VALUES (?, ?, ?)
+        """,
+        (schema_name, version, f"init_{schema_name}_schema"),
+    )

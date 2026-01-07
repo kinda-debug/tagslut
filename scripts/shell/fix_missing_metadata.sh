@@ -3,9 +3,23 @@
 # ==============================
 # CONFIGURATION
 # ==============================
-CANON_DB="artifacts/db/library_canonical.db"
-RESCAN_DIR="/tmp/rescan_fix_all"
-RESCAN_DB="artifacts/db/tmp_rescan_all.sqlite"
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "$REPO/scripts/shell/_resolve_db_path.sh"
+
+CANON_DB="${CANON_DB:-}"
+RESCAN_DIR="${RESCAN_DIR:-/tmp/rescan_fix_all}"
+RESCAN_DB="${RESCAN_DB:-}"
+PATHS_FILE="${PATHS_FILE:-/tmp/missing_metadata_paths.txt}"
+
+CANON_DB="$(require_db_value "$CANON_DB" "CANON_DB")"
+RESCAN_DB="$(require_db_value "$RESCAN_DB" "RESCAN_DB")"
+if [[ -z "${CREATE_DB:-}" ]]; then
+  echo "Error: set CREATE_DB=1 to allow DB creation." >&2
+  exit 1
+fi
+
+CANON_DB="$(resolve_db_path "write" "$CANON_DB")"
+RESCAN_DB="$(resolve_db_path "write" "$RESCAN_DB")"
 
 # ==============================
 # PREP
@@ -21,9 +35,9 @@ SELECT path
 FROM library_files
 WHERE extra_json IS NULL
    OR extra_json = ''
-;" > /tmp/missing_metadata_paths.txt
+;" > "$PATHS_FILE"
 
-COUNT=$(wc -l < /tmp/missing_metadata_paths.txt)
+COUNT=$(wc -l < "$PATHS_FILE")
 
 echo
 echo "Found $COUNT files with missing metadata."
@@ -46,7 +60,7 @@ while IFS= read -r FILEPATH; do
         echo "WARNING: Missing on disk: $FILEPATH"
         FAILED=$((FAILED+1))
     fi
-done < /tmp/missing_metadata_paths.txt
+done < "$PATHS_FILE"
 
 echo
 echo "Copied: $COPIED"
@@ -59,10 +73,17 @@ echo
 echo "Running metadata rescan…"
 rm -f "$RESCAN_DB"
 
-python3 -m dedupe.cli scan-library \
-    --root "$RESCAN_DIR" \
-    --out "$RESCAN_DB" \
+scan_args=(
+    python3 -m dedupe.cli scan-library
+    --root "$RESCAN_DIR"
+    --db "$RESCAN_DB"
     --progress
+    --create-db
+)
+if [[ -n "${ALLOW_REPO_DB:-}" ]]; then
+    scan_args+=(--allow-repo-db)
+fi
+"${scan_args[@]}"
 
 echo
 echo "Rescan complete."

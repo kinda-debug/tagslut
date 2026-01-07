@@ -129,6 +129,8 @@ def scan_roots(
     batch_size: int = 100,
     resume: bool = False,
     show_progress: bool = False,
+    create_db: bool = False,
+    allow_repo_db: bool = False,
 ) -> int:
     """Scan *roots* and persist file metadata into *database*.
 
@@ -145,9 +147,13 @@ def scan_roots(
     """
 
     database = Path(utils.normalise_path(str(database)))
-    utils.ensure_parent_directory(database)
     total = 0
-    db = utils.DatabaseContext(database)
+    db = utils.DatabaseContext(
+        database,
+        purpose="write",
+        allow_create=create_db,
+        allow_repo_db=allow_repo_db,
+    )
     fingerprints_enabled = scanner.resolve_fingerprint_usage(include_fingerprints)
     with db.connect() as connection:
         ensure_schema(connection)
@@ -401,6 +407,8 @@ class ResolverConfig:
     duration_tolerance: float = 1.0
     size_tolerance: float = 0.02
     threshold: float = 0.55
+    create_db: bool = False
+    allow_repo_db: bool = False
 
 
 @dataclass(slots=True)
@@ -635,9 +643,13 @@ def _score_group(
 def resolve_database(config: ResolverConfig) -> list[ResolutionResult]:
     """Execute the resolver and write CSV reports to ``config.out_prefix``."""
 
-    utils.ensure_parent_directory(config.database)
     utils.ensure_parent_directory(config.out_prefix)
-    db = utils.DatabaseContext(config.database)
+    db = utils.DatabaseContext(
+        config.database,
+        purpose="write",
+        allow_create=config.create_db,
+        allow_repo_db=config.allow_repo_db,
+    )
     results: list[ResolutionResult] = []
     with db.connect() as connection:
         ensure_schema(connection)

@@ -6,18 +6,26 @@ and uses the existing scanner tool with --paths-from-file.
 Safe to interrupt and resume - always picks up where it left off.
 """
 import argparse
-import os
 import sqlite3
 import subprocess
 import sys
 from pathlib import Path
 
+try:
+    from dedupe.utils.config import get_config
+    from dedupe.utils.db import open_db, resolve_db_path
+except ModuleNotFoundError:  # pragma: no cover
+    repo_root = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(repo_root))
+    from dedupe.utils.config import get_config
+    from dedupe.utils.db import open_db, resolve_db_path
+
 BATCH_SIZE = 1000
 PATHS_FILE = "/tmp/not_scanned_paths.txt"
 
-def get_not_scanned_count(db_path, library, zone):
+def get_not_scanned_count(db_resolution, library, zone):
     """Get count of NOT_SCANNED files."""
-    conn = sqlite3.connect(db_path)
+    conn = open_db(db_resolution)
     cursor = conn.cursor()
     cursor.execute("""
         SELECT COUNT(*) 
@@ -28,9 +36,9 @@ def get_not_scanned_count(db_path, library, zone):
     conn.close()
     return count
 
-def get_not_scanned_batch(db_path, library, zone, batch_size):
+def get_not_scanned_batch(db_resolution, library, zone, batch_size):
     """Get batch of NOT_SCANNED file paths."""
-    conn = sqlite3.connect(db_path)
+    conn = open_db(db_resolution)
     cursor = conn.cursor()
     
     cursor.execute("""
@@ -86,10 +94,20 @@ def main():
     parser.add_argument("--allow-repo-db", action="store_true", help="Allow repo-local DB paths")
     args = parser.parse_args()
 
-    db_path = args.db or os.getenv("DEDUPE_DB")
-    if not db_path:
-        print("Error: provide --db or set DEDUPE_DB")
+    repo_root = Path(__file__).resolve().parents[1]
+    try:
+        db_resolution = resolve_db_path(
+            args.db,
+            config=get_config(),
+            allow_repo_db=args.allow_repo_db,
+            repo_root=repo_root,
+            purpose="read",
+            allow_create=False,
+        )
+    except ValueError as exc:
+        print(f"Error: {exc}")
         sys.exit(1)
+    db_path = str(db_resolution.path)
 
     library = args.library
     zone = args.zone
@@ -101,7 +119,7 @@ def main():
     
     while True:
         # Always query fresh from database (resumable!)
-        remaining = get_not_scanned_count(db_path, library, zone)
+        remaining = get_not_scanned_count(db_resolution, library, zone)
         
         if remaining == 0:
             print(f"\n{'='*70}")
@@ -116,7 +134,7 @@ def main():
         print(f"{'='*70}")
         
         # Get next batch
-        paths = get_not_scanned_batch(db_path, library, zone, batch_size)
+        paths = get_not_scanned_batch(db_resolution, library, zone, batch_size)
         
         if not paths:
             break

@@ -1,18 +1,43 @@
 #!/usr/bin/env python3
 """Generate duplicate clustering with filters for file size and duration."""
 
-import sqlite3
+import argparse
 import csv
 import os
+import sqlite3
+import sys
+from pathlib import Path
 
-DB_PATH = 'artifacts/db/music.db'
-OUTPUT_CSV = 'duplicates_clustered.csv'
+try:
+    from dedupe.utils.config import get_config
+    from dedupe.utils.db import open_db, resolve_db_path
+except ModuleNotFoundError:  # pragma: no cover
+    repo_root = Path(__file__).resolve().parent
+    sys.path.insert(0, str(repo_root))
+    from dedupe.utils.config import get_config
+    from dedupe.utils.db import open_db, resolve_db_path
 
 # Filters
 MIN_SIZE_MB = 10
 MIN_DURATION_SEC = 90
 
-conn = sqlite3.connect(DB_PATH)
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--db", type=Path, required=False, help="SQLite DB path")
+parser.add_argument("--out", type=Path, required=True, help="Output CSV path")
+parser.add_argument("--allow-repo-db", action="store_true", help="Allow repo-local DB paths")
+args = parser.parse_args()
+
+repo_root = Path(__file__).resolve().parent
+resolution = resolve_db_path(
+    args.db,
+    config=get_config(),
+    allow_repo_db=args.allow_repo_db,
+    repo_root=repo_root,
+    purpose="read",
+    allow_create=False,
+)
+
+conn = open_db(resolution)
 cursor = conn.cursor()
 
 query = """
@@ -51,7 +76,7 @@ print(f"Filtering files >= {MIN_DURATION_SEC} seconds...")
 cursor.execute(query, (MIN_DURATION_SEC,))
 rows = cursor.fetchall()
 
-with open(OUTPUT_CSV, 'w', newline='') as f:
+with args.out.open('w', newline='') as f:
     writer = csv.writer(f)
     writer.writerow([
         'checksum', 'path', 'library', 'zone', 'duration', 
@@ -77,7 +102,7 @@ with open(OUTPUT_CSV, 'w', newline='') as f:
 keep_count = sum(1 for r in rows if r[7] == 'KEEP')
 delete_count = len(rows) - keep_count
 
-print(f"\n✓ Generated {OUTPUT_CSV}")
+print(f"\n✓ Generated {args.out}")
 print(f"  Total duplicate records: {len(rows):,}")
 print(f"  Files to KEEP: {keep_count:,}")
 print(f"  Files to DELETE: {delete_count:,}")

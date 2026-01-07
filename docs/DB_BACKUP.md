@@ -5,13 +5,13 @@ Location
 - Current backups were copied from the working backup at `~/dedupe_repo_reclone_db_backup/`.
 
 Restore
-- To restore a backup into the repository workspace (for local use only):
+- To restore a backup into the canonical DB location (outside the repo):
 
 ```bash
 # pick a timestamped folder, e.g. 20251125_164857
-cp -a ~/dedupe_db_backups/20251125_164857/. ~/dedupe_repo_reclone/artifacts/db/
+cp -a ~/dedupe_db_backups/20251125_164857/. /Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-01-08/
 # ensure permissions
-chmod -R 700 ~/dedupe_repo_reclone/artifacts/db
+chmod -R 700 /Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-01-08
 ```
 
 Notes

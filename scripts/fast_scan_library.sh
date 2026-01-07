@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
 # Fast library scan helper: uses larger batch size and verbose logging.
 # Usage:
-#   scripts/fast_scan_library.sh /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY artifacts/db/library.db [BATCH]
-# Example:
-#   scripts/fast_scan_library.sh /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY artifacts/db/library.db 2000
+#   scripts/fast_scan_library.sh /path/to/library /absolute/path/to/library.db [BATCH]
 
 set -euo pipefail
 
@@ -18,7 +16,7 @@ BATCH_SIZE="${3:-2000}"
 
 python3 -m dedupe.cli scan-library \
   --root "$LIB_ROOT" \
-  --out "$OUT_DB" \
+  --db "$OUT_DB" \
   --resume \
   --verbose \
   --batch-size "$BATCH_SIZE"

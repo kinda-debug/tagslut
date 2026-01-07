@@ -92,11 +92,18 @@ def parse_export(path: Path) -> Iterator[RecoveredFile]:
 def load_into_database(
     records: Iterable[RecoveredFile],
     database: Path,
+    *,
+    create_db: bool = False,
+    allow_repo_db: bool = False,
 ) -> int:
     """Persist *records* into *database* and return the stored row count."""
 
-    utils.ensure_parent_directory(database)
-    db = utils.DatabaseContext(database)
+    db = utils.DatabaseContext(
+        database,
+        purpose="write",
+        allow_create=create_db,
+        allow_repo_db=allow_repo_db,
+    )
     count = 0
     with db.connect() as connection:
         initialise_database(connection)

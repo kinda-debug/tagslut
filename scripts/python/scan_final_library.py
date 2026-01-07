@@ -1,15 +1,41 @@
+import argparse
+import hashlib
 import os
 import sqlite3
-import hashlib
 import subprocess
+import sys
 from pathlib import Path
 
-import sys
-SCAN_ROOT = os.environ.get('SCAN_ROOT', '/Volumes/COMMUNE/20_ACCEPTED')
-DB_OUT = os.environ.get('DB_OUT', 'library_canonical_fresh.db')
+try:
+    from dedupe.utils.config import get_config
+    from dedupe.utils.db import open_db, resolve_db_path
+except ModuleNotFoundError:  # pragma: no cover
+    repo_root = Path(__file__).resolve().parents[2]
+    sys.path.insert(0, str(repo_root))
+    from dedupe.utils.config import get_config
+    from dedupe.utils.db import open_db, resolve_db_path
 
-PROGRESS_FILE = os.environ.get('SCAN_PROGRESS', 'scan_progress.txt')
-conn = sqlite3.connect(DB_OUT)
+parser = argparse.ArgumentParser(description="Scan a library and populate a minimal library_files table.")
+parser.add_argument("--scan-root", required=True, help="Root directory to scan")
+parser.add_argument("--db", required=False, type=Path, help="Output SQLite DB path")
+parser.add_argument("--progress-file", default="scan_progress.txt", help="Progress checkpoint file")
+parser.add_argument("--create-db", action="store_true", help="Allow creating a new DB file")
+parser.add_argument("--allow-repo-db", action="store_true", help="Allow repo-local DB paths")
+args = parser.parse_args()
+
+repo_root = Path(__file__).resolve().parents[2]
+resolution = resolve_db_path(
+    args.db,
+    config=get_config(),
+    allow_repo_db=args.allow_repo_db,
+    repo_root=repo_root,
+    purpose="write",
+    allow_create=args.create_db,
+)
+
+SCAN_ROOT = args.scan_root
+PROGRESS_FILE = args.progress_file
+conn = open_db(resolution)
 c = conn.cursor()
 c.execute('''CREATE TABLE IF NOT EXISTS library_files (
     path TEXT PRIMARY KEY,

@@ -34,7 +34,7 @@ def recommend(db, output, priority, verbose, config):
 
     logger.info(f"Using priority order: {priority}")
 
-    conn = get_connection(Path(db))
+    conn = get_connection(Path(db), purpose="read")
     
     # 1. Find Duplicates
     logger.info("Searching for exact duplicates...")

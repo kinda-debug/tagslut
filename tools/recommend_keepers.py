@@ -30,6 +30,15 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+try:
+    from dedupe.utils.config import get_config
+    from dedupe.utils.db import open_db, resolve_db_path
+except ModuleNotFoundError:  # pragma: no cover
+    repo_root = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(repo_root))
+    from dedupe.utils.config import get_config
+    from dedupe.utils.db import open_db, resolve_db_path
+
 
 # Decision constants
 DURATION_TOLERANCE = 0.2  # seconds
@@ -285,9 +294,14 @@ def main():
     )
     parser.add_argument(
         "--db",
-        required=True,
+        required=False,
         type=Path,
         help="SQLite database path"
+    )
+    parser.add_argument(
+        "--allow-repo-db",
+        action="store_true",
+        help="Allow writing to a repo-local database path",
     )
     parser.add_argument(
         "--group-field",
@@ -314,17 +328,28 @@ def main():
     
     args = parser.parse_args()
     
-    if not args.db.exists():
-        print(f"ERROR: Database not found: {args.db}")
+    purpose = "write" if args.apply else "read"
+    repo_root = Path(__file__).resolve().parents[1]
+    try:
+        resolution = resolve_db_path(
+            args.db,
+            config=get_config(),
+            allow_repo_db=args.allow_repo_db,
+            repo_root=repo_root,
+            purpose=purpose,
+            allow_create=False,
+        )
+    except ValueError as exc:
+        print(f"ERROR: {exc}")
         sys.exit(1)
     
-    print(f"Loading duplicate groups from: {args.db}")
+    print(f"Loading duplicate groups from: {resolution.path}")
     print(f"Grouping by: {args.group_field}")
     print(f"Duration tolerance: ±{args.duration_tolerance}s")
     print(f"Mode: {'APPLY' if args.apply else 'DRY-RUN'}")
     print()
     
-    conn = sqlite3.connect(args.db)
+    conn = open_db(resolution)
     
     # Ensure columns exist
     if args.apply:

@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Iterator, Optional
 
+from dedupe.utils.db import open_db, resolve_db_path
+
 logger = logging.getLogger(__name__)
 
 AUDIO_EXTENSIONS = {
@@ -29,20 +31,30 @@ AUDIO_EXTENSIONS = {
 
 @dataclass(slots=True)
 class DatabaseContext:
-    """Thin wrapper that manages SQLite connections with sane defaults."""
+    """Thin wrapper that manages SQLite connections with resolver guardrails."""
 
     path: Path
+    purpose: str = "write"
+    allow_create: bool = False
+    allow_repo_db: bool = False
+    repo_root: Optional[Path] = None
+    source_label: str = "explicit"
+    config: Optional[object] = None
 
     def connect(self) -> sqlite3.Connection:
-        """Return a SQLite connection with WAL + busy timeout configured."""
+        """Return a SQLite connection with resolver-enforced safety."""
 
         logger.debug("Opening SQLite database at %s", self.path)
-        connection = sqlite3.connect(self.path)
-        connection.row_factory = sqlite3.Row
-        with connection:
-            connection.execute("PRAGMA journal_mode=WAL")
-            connection.execute("PRAGMA busy_timeout=5000")
-        return connection
+        resolution = resolve_db_path(
+            self.path,
+            config=self.config,
+            allow_repo_db=self.allow_repo_db,
+            repo_root=self.repo_root,
+            purpose=self.purpose,
+            allow_create=self.allow_create,
+            source_label=self.source_label,
+        )
+        return open_db(resolution)
 
 
 def ensure_parent_directory(path: Path) -> None:

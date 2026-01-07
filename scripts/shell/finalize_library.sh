@@ -1,12 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="$HOME/dedupe_repo_reclone"
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "$REPO/scripts/shell/_resolve_db_path.sh"
+
 # Use the fresh canonical DB (contains `library_files`) for finalization
-SRC_DB="$REPO/artifacts/db/library_canonical_fresh.db"
-DEST_ROOT="/Volumes/COMMUNE/20_ACCEPTED"
-LIST="$REPO/artifacts/logs/canonical_paths.txt"
-LOG="$REPO/artifacts/logs/finalize_moves.log"
+SRC_DB="${SRC_DB:-}"
+DEST_ROOT="${DEST_ROOT:-}"
+LIST="${LIST:-$REPO/artifacts/logs/canonical_paths.txt}"
+LOG="${LOG:-$REPO/artifacts/logs/finalize_moves.log}"
+COLLISION_REPORT="${COLLISION_REPORT:-$REPO/artifacts/reports/finalize_collision_report.csv}"
+
+SRC_DB="$(require_db_value "$SRC_DB" "SRC_DB")"
+DEST_ROOT="$(require_db_value "$DEST_ROOT" "DEST_ROOT")"
+SRC_DB="$(resolve_db_path "read" "$SRC_DB")"
 
 echo "=== FINALIZE LIBRARY: MOVE CANONICAL FILES TO $DEST_ROOT ==="
 
@@ -56,7 +63,6 @@ fi
 awk -F, 'NR==FNR{chk[$1]=$2; next} {print $1","$2","(chk[$1]?chk[$1]:"")}' "$CHECKSUMS_FILE" "$MAPS_FILE" > "$FINAL_MAPS_FILE"
 
 # Produce collision report using Python
-COLLISION_REPORT="artifacts/reports/finalize_collision_report.csv"
 mkdir -p "$(dirname "$COLLISION_REPORT")"
 python3 - <<PY
 import csv

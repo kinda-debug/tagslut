@@ -6,24 +6,38 @@ set -x
 # CONFIG
 ############################################
 
-REPO="$HOME/dedupe_repo_reclone"
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "$REPO/scripts/shell/_resolve_db_path.sh"
 VENV="$REPO/.venv/bin/activate"
 
 # Use venv Python for all scans
 VENV_PY="$REPO/.venv/bin/python3"
 
 # Where per-root scan DBs will live
-SCAN_DIR="$REPO/artifacts/db/rescan_all"
-
+SCAN_DIR="${SCAN_DIR:-}"
 # Final merged DB
-FINAL_DB="$REPO/artifacts/db/library_final.db"
-TMP_DB="$FINAL_DB.tmp"
+FINAL_DB="${FINAL_DB:-}"
+ROOTS=("$@")
 
-# All roots you want scanned
-ROOTS=(
-  "/Volumes/COMMUNE/10_STAGING"
-  "/Volumes/COMMUNE/20_ACCEPTED"
-)
+if [[ ${#ROOTS[@]} -eq 0 ]]; then
+  echo "Usage: $0 <ROOT1> [ROOT2 ...] (set SCAN_DIR and FINAL_DB env vars)" >&2
+  exit 1
+fi
+if [[ -z "$SCAN_DIR" ]]; then
+  echo "Error: SCAN_DIR is required." >&2
+  exit 1
+fi
+if [[ -z "$FINAL_DB" ]]; then
+  echo "Error: FINAL_DB is required." >&2
+  exit 1
+fi
+if [[ -z "${CREATE_DB:-}" ]]; then
+  echo "Error: set CREATE_DB=1 to allow DB creation." >&2
+  exit 1
+fi
+
+FINAL_DB="$(resolve_db_path "write" "$FINAL_DB")"
+TMP_DB="${FINAL_DB}.tmp"
 
 ############################################
 # ENV
@@ -40,7 +54,6 @@ else
 fi
 
 mkdir -p "$SCAN_DIR"
-mkdir -p "$REPO/artifacts/db"
 
 ############################################
 # 1. SCAN ALL ROOTS (RESUMABLE)
@@ -73,11 +86,20 @@ for root in "${ROOTS[@]}"; do
     zone_arg="--zone accepted"
   fi
 
-  "$VENV_PY" -m dedupe.cli scan-library \
-    --root "$root" \
-    --out "$out_db" \
-    --progress \
-    $zone_arg
+  scan_args=(
+    "$VENV_PY" -m dedupe.cli scan-library
+    --root "$root"
+    --db "$out_db"
+    --progress
+  )
+  if [[ -n "$zone_arg" ]]; then
+    scan_args+=($zone_arg)
+  fi
+  if [[ -n "${ALLOW_REPO_DB:-}" ]]; then
+    scan_args+=(--allow-repo-db)
+  fi
+  scan_args+=(--create-db)
+  "${scan_args[@]}"
   
 done
 

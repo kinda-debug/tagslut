@@ -5,16 +5,16 @@ against an existing library DB to produce a recovery CSV.
 Usage examples:
   # parse recognized list into a candidates DB
   ./scripts/recover_workflow.py parse-recognized "Recognized5_5 SanDisk Extreme 55AE 3008.txt" \
-      --out artifacts/db/recovered_candidates.db
+      --out /absolute/path/to/recovered_candidates.db --create-db
 
   # scan a secondary salvage root into a secondary candidates DB
   ./scripts/recover_workflow.py scan-secondary --root "/Volumes/COMMUNE/10_STAGING" \
-      --out artifacts/db/secondary_candidates.db
+      --out /absolute/path/to/secondary_candidates.db --create-db
 
   # match candidates against existing library DB with three-tier logic
-  ./scripts/recover_workflow.py match --library artifacts/db/library.db \
-      --secondary artifacts/db/secondary_candidates.db \
-      --candidates artifacts/db/recovered_candidates.db \
+  ./scripts/recover_workflow.py match --library /absolute/path/to/library.db \
+      --secondary /absolute/path/to/secondary_candidates.db \
+      --candidates /absolute/path/to/recovered_candidates.db \
       --out artifacts/reports/recovery_list.csv
 
 This is intentionally conservative: it will not rescan your whole library.
@@ -26,12 +26,18 @@ import argparse
 import csv
 import re
 import sqlite3
+import sys
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT))
+
 from dedupe import scanner as dedupe_scanner
+from dedupe.utils.config import get_config
+from dedupe.utils.db import open_db, resolve_db_path
 
 
 @dataclass
@@ -73,9 +79,23 @@ def parse_recognized(path: Path) -> Iterable[Candidate]:
                 yield Candidate(source_path=fname, filename=fname, ext=Path(fname).suffix.lower())
 
 
-def write_candidates_db(candidates: Iterable[Candidate], out: Path) -> None:
-    out.parent.mkdir(parents=True, exist_ok=True)
-    db = sqlite3.connect(out)
+def write_candidates_db(
+    candidates: Iterable[Candidate],
+    out: Path,
+    *,
+    create_db: bool = False,
+    allow_repo_db: bool = False,
+) -> None:
+    resolution = resolve_db_path(
+        out,
+        config=get_config(),
+        allow_repo_db=allow_repo_db,
+        repo_root=REPO_ROOT,
+        purpose="write",
+        allow_create=create_db,
+        source_label="explicit",
+    )
+    db = open_db(resolution)
     with db:
         db.execute(
             """
@@ -94,16 +114,32 @@ def write_candidates_db(candidates: Iterable[Candidate], out: Path) -> None:
             db.execute(insert, (c.source_path, c.filename, c.ext, c.size, c.duration))
 
 
-def write_secondary_db_from_scan(root: Path, out: Path, include_fingerprints: bool = False, batch_size: int = 100) -> int:
+def write_secondary_db_from_scan(
+    root: Path,
+    out: Path,
+    *,
+    include_fingerprints: bool = False,
+    batch_size: int = 100,
+    create_db: bool = False,
+    allow_repo_db: bool = False,
+) -> int:
     """Scan `root` and write a `secondary_candidates` table into `out` DB.
 
     The table schema mirrors the simple candidates table but includes a few
     extra metadata columns captured from :mod:`dedupe.scanner` records.
-    This function intentionally does not alter `artifacts/db/library.db`.
+    This function intentionally does not alter the primary library DB.
     Returns number of rows written.
     """
-    out.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(out)
+    resolution = resolve_db_path(
+        out,
+        config=get_config(),
+        allow_repo_db=allow_repo_db,
+        repo_root=REPO_ROOT,
+        purpose="write",
+        allow_create=create_db,
+        source_label="explicit",
+    )
+    conn = open_db(resolution)
     with conn:
         conn.execute(
             """
@@ -154,22 +190,40 @@ def write_secondary_db_from_scan(root: Path, out: Path, include_fingerprints: bo
     return count
 
 
-def read_library_db(path: Path) -> List[Dict]:
-    conn = sqlite3.connect(path)
-    conn.row_factory = sqlite3.Row
+def read_library_db(path: Path, *, allow_repo_db: bool = False) -> List[Dict]:
+    resolution = resolve_db_path(
+        path,
+        config=get_config(),
+        allow_repo_db=allow_repo_db,
+        repo_root=REPO_ROOT,
+        purpose="read",
+        allow_create=False,
+        source_label="explicit",
+    )
+    conn = open_db(resolution)
     with conn:
-        cur = conn.execute("SELECT path, size_bytes, duration, sample_rate, bit_rate, checksum FROM library_files")
+        cur = conn.execute(
+            "SELECT path, size_bytes, duration, sample_rate, bit_rate, checksum FROM library_files"
+        )
         return [dict(row) for row in cur.fetchall()]
 
 
-def read_secondary_candidates(path: Path) -> List[Dict]:
+def read_secondary_candidates(path: Path, *, allow_repo_db: bool = False) -> List[Dict]:
     """Read rows from a secondary_candidates table into a list of dicts.
 
     This mirrors the simple candidates table but includes extra metadata
     collected during a salvage-area scan.
     """
-    conn = sqlite3.connect(path)
-    conn.row_factory = sqlite3.Row
+    resolution = resolve_db_path(
+        path,
+        config=get_config(),
+        allow_repo_db=allow_repo_db,
+        repo_root=REPO_ROOT,
+        purpose="read",
+        allow_create=False,
+        source_label="explicit",
+    )
+    conn = open_db(resolution)
     with conn:
         cur = conn.execute(
             "SELECT id, source_path, filename, ext, size, duration, sample_rate, bit_rate, checksum FROM secondary_candidates"
@@ -263,6 +317,7 @@ def match_candidates_wrapper(
     out_csv: Path,
     *,
     secondary_db: Optional[Path] = None,
+    allow_repo_db: bool = False,
     min_name_similarity: float = 0.65,
     size_tolerance: float = 0.02,
     duration_tolerance: float = 1.0,
@@ -271,7 +326,7 @@ def match_candidates_wrapper(
     weight_duration: float = 0.15,
     threshold: float = 0.55,
 ) -> None:
-    libs = read_library_db(library_db)
+    libs = read_library_db(library_db, allow_repo_db=allow_repo_db)
 
     out_csv.parent.mkdir(parents=True, exist_ok=True)
     with out_csv.open("w", newline="", encoding="utf8") as fh:
@@ -312,7 +367,10 @@ def match_candidates_wrapper(
         # Phase 1: secondary candidates (preferred salvage pool)
         secondary_rows = []
         if secondary_db and Path(secondary_db).exists():
-            secondary_rows = read_secondary_candidates(Path(secondary_db))
+            secondary_rows = read_secondary_candidates(
+                Path(secondary_db),
+                allow_repo_db=allow_repo_db,
+            )
 
         for r in secondary_rows:
             cand = Candidate(
@@ -362,8 +420,16 @@ def match_candidates_wrapper(
                     matched_library_paths.add(best_lib["path"])
 
         # Phase 2: R-Studio recognized candidates
-        conn = sqlite3.connect(candidates_db)
-        conn.row_factory = sqlite3.Row
+        cand_resolution = resolve_db_path(
+            candidates_db,
+            config=get_config(),
+            allow_repo_db=allow_repo_db,
+            repo_root=REPO_ROOT,
+            purpose="read",
+            allow_create=False,
+            source_label="explicit",
+        )
+        conn = open_db(cand_resolution)
         with conn:
             rrows = conn.execute("SELECT id, source_path, filename, ext, size, duration FROM candidates").fetchall()
 
@@ -416,14 +482,20 @@ def main() -> int:
 
     p_parse = sub.add_parser("parse-recognized")
     p_parse.add_argument("path", help="Recognized file path")
-    p_parse.add_argument("--out", default="artifacts/db/recovered_candidates.db")
+    p_parse.add_argument("--out", required=True, help="Output candidates DB path")
+    p_parse.add_argument("--create-db", action="store_true", help="Allow creating a new DB file")
+    p_parse.add_argument("--allow-repo-db", action="store_true", help="Allow repo-local DB paths")
 
     p_match = sub.add_parser("match")
-    p_match.add_argument("--library", default="artifacts/db/library.db")
-    p_match.add_argument("--secondary", default="artifacts/db/secondary_candidates.db",
-                         help="Optional DB with a secondary_candidates table (rejected copy)")
-    p_match.add_argument("--candidates", default="artifacts/db/recovered_candidates.db")
-    p_match.add_argument("--out", default="artifacts/reports/recovery_list.csv")
+    p_match.add_argument("--library", required=True, help="Library DB path")
+    p_match.add_argument(
+        "--secondary",
+        default=None,
+        help="Optional DB with a secondary_candidates table (rejected copy)",
+    )
+    p_match.add_argument("--candidates", required=True, help="Candidates DB path")
+    p_match.add_argument("--out", required=True, help="Output recovery CSV path")
+    p_match.add_argument("--allow-repo-db", action="store_true", help="Allow repo-local DB paths")
     p_match.add_argument("--min-name-similarity", type=float, default=0.65,
                          help="Minimum filename similarity to consider a candidate")
     p_match.add_argument("--size-tolerance", type=float, default=0.02,
@@ -437,19 +509,26 @@ def main() -> int:
                          help="Minimum final score to write candidate to CSV")
 
     p_scan = sub.add_parser("scan")
-    p_scan.add_argument("--root", default="/Volumes/COMMUNE/20_ACCEPTED")
-    p_scan.add_argument("--db", dest="database", default="artifacts/db/library.db")
+    p_scan.add_argument("--root", required=True)
+    p_scan.add_argument("--db", dest="database", required=True)
     p_scan.add_argument("--include-fp", action="store_true", help="Include fingerprints (slow)")
     p_scan.add_argument("--batch-size", type=int, default=100)
     p_scan.add_argument("--resume", action="store_true", help="Resume existing DB and skip unchanged files")
     p_scan.add_argument("--progress", action="store_true", help="Show progress bar if tqdm available")
+    p_scan.add_argument("--create-db", action="store_true", help="Allow creating a new DB file")
+    p_scan.add_argument("--allow-repo-db", action="store_true", help="Allow repo-local DB paths")
 
     args = p.parse_args()
     if args.cmd == "parse-recognized":
         path = Path(args.path)
         out = Path(args.out)
         cands = list(parse_recognized(path))
-        write_candidates_db(cands, out)
+        write_candidates_db(
+            cands,
+            out,
+            create_db=bool(args.create_db),
+            allow_repo_db=bool(args.allow_repo_db),
+        )
         print(f"Wrote {len(cands)} candidates to {out}")
         return 0
 
@@ -457,18 +536,35 @@ def main() -> int:
         lib = Path(args.library)
         cdb = Path(args.candidates)
         out = Path(args.out)
-        if not lib.exists():
-            print(f"Library DB not found: {lib}")
+        try:
+            lib_resolution = resolve_db_path(
+                lib,
+                config=get_config(),
+                allow_repo_db=bool(args.allow_repo_db),
+                repo_root=REPO_ROOT,
+                purpose="read",
+                allow_create=False,
+                source_label="explicit",
+            )
+            cand_resolution = resolve_db_path(
+                cdb,
+                config=get_config(),
+                allow_repo_db=bool(args.allow_repo_db),
+                repo_root=REPO_ROOT,
+                purpose="read",
+                allow_create=False,
+                source_label="explicit",
+            )
+        except ValueError as exc:
+            print(f"DB resolution failed: {exc}")
             return 2
-        if not cdb.exists():
-            print(f"Candidates DB not found: {cdb}")
-            return 3
         # call the centralized wrapper implementation (keeps CLI simple)
         match_candidates_wrapper(
-            lib,
-            cdb,
+            lib_resolution.path,
+            cand_resolution.path,
             out,
             secondary_db=Path(args.secondary) if args.secondary else None,
+            allow_repo_db=bool(args.allow_repo_db),
             min_name_similarity=args.min_name_similarity,
             size_tolerance=args.size_tolerance,
             duration_tolerance=args.duration_tolerance,
@@ -483,9 +579,22 @@ def main() -> int:
     if args.cmd == "scan":
         root = Path(args.root)
         db_path = Path(args.database)
+        try:
+            db_resolution = resolve_db_path(
+                db_path,
+                config=get_config(),
+                allow_repo_db=bool(args.allow_repo_db),
+                repo_root=REPO_ROOT,
+                purpose="write",
+                allow_create=bool(args.create_db),
+                source_label="explicit",
+            )
+        except ValueError as exc:
+            print(f"DB resolution failed: {exc}")
+            return 2
         # Construct ScanConfig positionally and set attributes to be robust
         # against possible signature differences in installed modules.
-        cfg = dedupe_scanner.ScanConfig(root, db_path)
+        cfg = dedupe_scanner.ScanConfig(root, db_resolution.path)
         if hasattr(cfg, "include_fingerprints"):
             cfg.include_fingerprints = bool(args.include_fp)
         if hasattr(cfg, "batch_size"):
@@ -494,6 +603,10 @@ def main() -> int:
             cfg.resume = bool(args.resume)
         if hasattr(cfg, "show_progress"):
             cfg.show_progress = bool(args.progress)
+        if hasattr(cfg, "create_db"):
+            cfg.create_db = bool(args.create_db)
+        if hasattr(cfg, "allow_repo_db"):
+            cfg.allow_repo_db = bool(args.allow_repo_db)
         resume_flag = getattr(cfg, "resume", False)
         print(f"Starting scan of {cfg.root} -> {cfg.database} (resume={resume_flag})")
         total = dedupe_scanner.scan_library(cfg)

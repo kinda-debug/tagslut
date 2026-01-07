@@ -4,13 +4,13 @@ Scan FLAC files for integrity using 'flac -t' and update database.
 
 Usage:
     # Scan all files in database
-    tools/scan_flac_integrity.py --db artifacts/db/music.db
+    tools/scan_flac_integrity.py --db "$DEDUPE_DB"
 
     # Scan only files without integrity check yet
-    tools/scan_flac_integrity.py --db artifacts/db/music.db --unchecked-only
+    tools/scan_flac_integrity.py --db "$DEDUPE_DB" --unchecked-only
 
     # Parallel scan (faster)
-    tools/scan_flac_integrity.py --db artifacts/db/music.db --parallel 8
+    tools/scan_flac_integrity.py --db "$DEDUPE_DB" --parallel 8
 
 Requires:
   - flac command-line tool (brew install flac)
@@ -24,10 +24,14 @@ from pathlib import Path
 # Allow running this file directly without installing the package.
 try:
     from dedupe.core.integrity import classify_flac_integrity
+    from dedupe.utils.config import get_config
+    from dedupe.utils.db import open_db, resolve_db_path
 except ModuleNotFoundError:  # pragma: no cover
     repo_root = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(repo_root))
     from dedupe.core.integrity import classify_flac_integrity
+    from dedupe.utils.config import get_config
+    from dedupe.utils.db import open_db, resolve_db_path
 
 
 def ensure_integrity_column(conn: sqlite3.Connection):
@@ -79,9 +83,14 @@ def main():
     )
     parser.add_argument(
         "--db",
-        required=True,
+        required=False,
         type=Path,
         help="SQLite database path"
+    )
+    parser.add_argument(
+        "--allow-repo-db",
+        action="store_true",
+        help="Allow writing to a repo-local database path",
     )
     parser.add_argument(
         "--unchecked-only",
@@ -97,15 +106,25 @@ def main():
     
     args = parser.parse_args()
     
-    if not args.db.exists():
-        print(f"ERROR: Database not found: {args.db}")
+    repo_root = Path(__file__).resolve().parents[1]
+    try:
+        resolution = resolve_db_path(
+            args.db,
+            config=get_config(),
+            allow_repo_db=args.allow_repo_db,
+            repo_root=repo_root,
+            purpose="write",
+            allow_create=False,
+        )
+    except ValueError as exc:
+        print(f"ERROR: {exc}")
         sys.exit(1)
-    
-    print(f"Database: {args.db}")
+
+    print(f"Database: {resolution.path}")
     print(f"Workers: {args.parallel}")
     print()
     
-    conn = sqlite3.connect(args.db)
+    conn = open_db(resolution)
     ensure_integrity_column(conn)
     
     # Load files to check

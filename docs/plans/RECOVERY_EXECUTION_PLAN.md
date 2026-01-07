@@ -2,7 +2,7 @@
 
 ## Database State (Jan 6, 2026)
 
-**File:** `artifacts/db/music.db` (352 MB) | **Table:** `files` | **Rows:** 65,998
+**File:** `$DEDUPE_DB` (352 MB) | **Table:** `files` | **Rows:** 65,998
 
 ### Inventory by Library/Zone
 
@@ -91,7 +91,7 @@ python3 scripts/scan_not_scanned.py commune staging 5000
 ### 1f. Verify complete
 
 ```bash
-python3 -c "import sqlite3; conn = sqlite3.connect('artifacts/db/music.db'); cur = conn.cursor(); cur.execute(\"SELECT COUNT(*) FROM files WHERE checksum LIKE 'NOT_SCANNED%'\"); print(f'NOT_SCANNED remaining: {cur.fetchone()[0]}'); conn.close()"
+python3 -c "import sqlite3; conn = sqlite3.connect('$DEDUPE_DB'); cur = conn.cursor(); cur.execute(\"SELECT COUNT(*) FROM files WHERE checksum LIKE 'NOT_SCANNED%'\"); print(f'NOT_SCANNED remaining: {cur.fetchone()[0]}'); conn.close()"
 ```
 
 **Expected:** `NOT_SCANNED remaining: 0`
@@ -101,7 +101,7 @@ python3 -c "import sqlite3; conn = sqlite3.connect('artifacts/db/music.db'); cur
 ## STEP 2: Check canonical library
 
 ```bash
-python3 -c "import sqlite3; conn = sqlite3.connect('artifacts/db/music.db'); cur = conn.cursor(); cur.execute(\"SELECT COUNT(*) FROM files WHERE library='commune' AND zone='accepted' AND checksum NOT LIKE 'NOT_SCANNED%'\"); print(f'Canonical library files: {cur.fetchone()[0]}'); conn.close()"
+python3 -c "import sqlite3; conn = sqlite3.connect('$DEDUPE_DB'); cur = conn.cursor(); cur.execute(\"SELECT COUNT(*) FROM files WHERE library='commune' AND zone='accepted' AND checksum NOT LIKE 'NOT_SCANNED%'\"); print(f'Canonical library files: {cur.fetchone()[0]}'); conn.close()"
 ```
 
 ---
@@ -110,7 +110,7 @@ python3 -c "import sqlite3; conn = sqlite3.connect('artifacts/db/music.db'); cur
 
 ```bash
 python3 -m dedupe.matcher \
-  --db artifacts/db/music.db \
+  --db $DEDUPE_DB \
   --source-library bad \
   --source-zone suspect \
   --canonical-library commune \
@@ -135,7 +135,7 @@ python3 -m dedupe.matcher \
 
 ```bash
 python3 -m dedupe.matcher \
-  --db artifacts/db/music.db \
+  --db $DEDUPE_DB \
   --source-library vault \
   --source-zone suspect \
   --canonical-library commune \
@@ -150,7 +150,7 @@ python3 -m dedupe.matcher \
 
 ```bash
 python3 -m dedupe.matcher \
-  --db artifacts/db/music.db \
+  --db $DEDUPE_DB \
   --source-library recovery \
   --source-zone accepted \
   --canonical-library commune \
@@ -182,7 +182,7 @@ python3 -c "import csv; matches = list(csv.DictReader(open('artifacts/reports/ba
 
 ```bash
 python3 -m dedupe.decide.plan \
-  --db artifacts/db/music.db \
+  --db $DEDUPE_DB \
   --matches artifacts/reports/bad_vs_canonical_matches.csv \
   --output artifacts/plans/recovery_decision.json \
   --zone-priority accepted,staging,suspect,quarantine
@@ -227,7 +227,7 @@ python3 -c "import json; plan = json.load(open('artifacts/plans/recovery_decisio
 
 ```bash
 python3 tools/integrity/fingerprint.py \
-  --db artifacts/db/music.db \
+  --db $DEDUPE_DB \
   --filter "library='bad' AND zone='suspect'" \
   --workers 8
 ```
@@ -249,7 +249,7 @@ python3 tools/integrity/fingerprint.py \
 
 ```bash
 python3 tools/integrity/verify_winners.py \
-  --db artifacts/db/music.db \
+  --db $DEDUPE_DB \
   --plan artifacts/plans/recovery_decision.json \
   --workers 8 \
   --update-db
@@ -290,7 +290,7 @@ python3 -c "import json; plan = json.load(open('artifacts/plans/recovery_decisio
 
 ```bash
 python3 -m dedupe.hrm_relocation \
-  --db artifacts/db/music.db \
+  --db $DEDUPE_DB \
   --plan artifacts/plans/recovery_decision.json \
   --dest /Volumes/COMMUNE/20_ACCEPTED \
   --manifest artifacts/logs/recovery_moves_manifest.tsv \
@@ -312,7 +312,7 @@ python3 -m dedupe.hrm_relocation \
 
 ```bash
 python3 -m dedupe.hrm_relocation \
-  --db artifacts/db/music.db \
+  --db $DEDUPE_DB \
   --plan artifacts/plans/recovery_decision.json \
   --dest /Volumes/COMMUNE/20_ACCEPTED \
   --manifest artifacts/logs/recovery_moves_manifest.tsv \
@@ -360,7 +360,7 @@ rsync -av --files-from=artifacts/tmp/files_to_archive.txt / /Volumes/COMMUNE/90_
 ```bash
 python3 -m dedupe.cli scan-library \
   --root /Volumes/COMMUNE/20_ACCEPTED \
-  --db artifacts/db/music.db \
+  --db $DEDUPE_DB \
   --library commune \
   --zone accepted \
   --incremental \
@@ -377,7 +377,7 @@ python3 -m dedupe.cli scan-library \
 ## SUCCESS METRICS
 
 ```bash
-python3 -c "import sqlite3; conn = sqlite3.connect('artifacts/db/music.db'); cur = conn.cursor(); cur.execute(\"SELECT library, zone, COUNT(*) FROM files WHERE flac_ok=1 GROUP BY library, zone\"); print('\\n=== VERIFIED GOOD FILES ==='); [print(f'{row[0]}/{row[1]}: {row[2]} files') for row in cur.fetchall()]; conn.close()"
+python3 -c "import sqlite3; conn = sqlite3.connect('$DEDUPE_DB'); cur = conn.cursor(); cur.execute(\"SELECT library, zone, COUNT(*) FROM files WHERE flac_ok=1 GROUP BY library, zone\"); print('\\n=== VERIFIED GOOD FILES ==='); [print(f'{row[0]}/{row[1]}: {row[2]} files') for row in cur.fetchall()]; conn.close()"
 ```
 
 **Recovery complete when:**

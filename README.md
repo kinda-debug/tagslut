@@ -53,22 +53,22 @@ Yate is never invoked during scanning. Tag reading is passive only.
 **Recommended**: Defer integrity checks until after deduplication to save time.
 
 ```bash
-DB=~/Projects/dedupe_db/music.db
+export DEDUPE_DB="/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-01-08/music.db"
 
 # 1. Fast scan (no integrity checks)
 python3 tools/integrity/scan.py /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY \
-  --db $DB --library recovery --zone accepted \
+  --db "$DEDUPE_DB" --library recovery --zone accepted \
   --no-check-integrity --incremental --progress
 
 # 2. Find duplicates and decide winners
-python3 tools/decide/recommend.py --db $DB --output plan.json
+python3 tools/decide/recommend.py --db "$DEDUPE_DB" --output plan.json
 
 # 3. Extract winner paths
 cat plan.json | jq -r '.plan[].decisions[] | select(.action == "keep") | .path' > winners.txt
 
 # 4. Verify winners only
 python3 tools/integrity/scan.py /path/to/winners \
-  --db $DB --check-integrity --recheck --progress
+  --db "$DEDUPE_DB" --check-integrity --recheck --progress
 ```
 
 See **[docs/FAST_WORKFLOW.md](docs/FAST_WORKFLOW.md)** for the complete optimized workflow.
@@ -85,7 +85,7 @@ Scan arbitrary sources into a single long-lived DB (resumable, multi-library awa
 # Primary recovered library
 python3 tools/integrity/scan.py \
   /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY \
-  --db ~/Projects/dedupe_db/music.db \
+  --db "/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-01-08/music.db" \
   --library recovery \
   --zone accepted \
   --check-integrity \
@@ -96,7 +96,7 @@ python3 tools/integrity/scan.py \
 # Older vault material
 python3 tools/integrity/scan.py \
   /Volumes/Vault \
-  --db ~/Projects/dedupe_db/music.db \
+  --db "/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-01-08/music.db" \
   --library vault \
   --zone suspect \
   --check-integrity \
@@ -106,7 +106,7 @@ python3 tools/integrity/scan.py \
 # Known problematic sources
 python3 tools/integrity/scan.py \
   /Volumes/bad \
-  --db ~/Projects/dedupe_db/music.db \
+  --db "/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-01-08/music.db" \
   --library bad \
   --zone quarantine \
   --check-integrity \
@@ -120,7 +120,7 @@ python3 tools/integrity/scan.py \
 
 ```bash
 python3 tools/decide/recommend.py \
-  --db ~/Projects/dedupe_db/music.db \
+  --db "/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-01-08/music.db" \
   --output plan.json
 ```
 

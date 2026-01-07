@@ -14,14 +14,14 @@ Use `--paths-from-file` to target exact files.
 
 ```bash
 # 1. Extract paths of failed files
-sqlite3 artifacts/db/music.db \
+sqlite3 "$DEDUPE_DB" \
   "SELECT path FROM files WHERE integrity_state = 'corrupt' OR flac_ok = 0" \
   > failed_paths.txt
 
 # 2. Run integrity check ONLY on those files
 python3 tools/integrity/scan.py \
   --paths-from-file failed_paths.txt \
-  --db artifacts/db/music.db \
+  --db "$DEDUPE_DB" \
   --check-integrity \
   --recheck \
   --verbose
@@ -43,7 +43,7 @@ EOF
 # Verify just those
 python3 tools/integrity/scan.py \
   --paths-from-file verify_these.txt \
-  --db artifacts/db/music.db \
+  --db "$DEDUPE_DB" \
   --check-integrity \
   --verbose
 ```
@@ -54,14 +54,14 @@ python3 tools/integrity/scan.py \
 
 ```bash
 # Extract all suspect zone paths
-sqlite3 artifacts/db/music.db \
+sqlite3 "$DEDUPE_DB" \
   "SELECT path FROM files WHERE zone = 'suspect'" \
   > suspect_paths.txt
 
 # Run full verification (hash + integrity)
 python3 tools/integrity/scan.py \
   --paths-from-file suspect_paths.txt \
-  --db artifacts/db/music.db \
+  --db "$DEDUPE_DB" \
   --check-integrity \
   --check-hash \
   --recheck \
@@ -95,4 +95,3 @@ Now you can:
 - Verify based on DB queries
 
 **This is forensic work, not bulk work.**
-

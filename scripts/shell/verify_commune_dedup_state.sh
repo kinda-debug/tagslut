@@ -1,12 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="${HOME}/dedupe_repo_reclone"
-FINAL_DB="${REPO}/artifacts/db/library_final.db"
-CANON_DB="${REPO}/artifacts/db/library_canonical_full.db"
-SRC_ROOT="/Volumes/COMMUNE/20_ACCEPTED"
-DEST_ROOT="/Volumes/COMMUNE/90_REJECTED"
-LOG_DIR="${REPO}/artifacts/logs"
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "$REPO/scripts/shell/_resolve_db_path.sh"
+
+FINAL_DB="${FINAL_DB:-}"
+CANON_DB="${CANON_DB:-}"
+SRC_ROOT="${SRC_ROOT:-}"
+DEST_ROOT="${DEST_ROOT:-}"
+LOG_DIR="${LOG_DIR:-$REPO/artifacts/logs}"
+
+FINAL_DB="$(require_db_value "$FINAL_DB" "FINAL_DB")"
+CANON_DB="$(require_db_value "$CANON_DB" "CANON_DB")"
+SRC_ROOT="$(require_db_value "$SRC_ROOT" "SRC_ROOT")"
+DEST_ROOT="$(require_db_value "$DEST_ROOT" "DEST_ROOT")"
+
+FINAL_DB="$(resolve_db_path "read" "$FINAL_DB")"
+CANON_DB="$(resolve_db_path "read" "$CANON_DB")"
 
 mkdir -p "${LOG_DIR}"
 
@@ -25,16 +35,6 @@ echo "SRC ROOT : ${SRC_ROOT}"
 echo "DEST ROOT: ${DEST_ROOT}"
 echo "LOG DIR  : ${LOG_DIR}"
 echo
-
-if [[ ! -f "${FINAL_DB}" ]]; then
-  echo "ERROR: FINAL_DB not found: ${FINAL_DB}"
-  exit 1
-fi
-
-if [[ ! -f "${CANON_DB}" ]]; then
-  echo "ERROR: CANON_DB not found: ${CANON_DB}"
-  exit 1
-fi
 
 echo "=== 1) DB-LEVEL COUNTS ==="
 total_flac_accepted=$(sqlite3 "${FINAL_DB}" "

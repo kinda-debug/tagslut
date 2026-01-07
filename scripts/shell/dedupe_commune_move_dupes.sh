@@ -6,14 +6,22 @@ set -x
 
 echo "=== DEDUPE COMMUNE: MOVE NON-CANONICAL FLAC FILES TO /Volumes/COMMUNE/90_REJECTED ==="
 
-REPO="$HOME/dedupe_repo_reclone"
-FINAL_DB="$REPO/artifacts/db/library_final.db"
-CANON_DB="$REPO/artifacts/db/library_canonical_full.db"
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "$REPO/scripts/shell/_resolve_db_path.sh"
 
-# Where duplicates will be moved TO (cross-device move → frees space on accepted)
-DEST_ROOT="/Volumes/COMMUNE/90_REJECTED"
+FINAL_DB="${FINAL_DB:-}"
+CANON_DB="${CANON_DB:-}"
+SRC_ROOT="${SRC_ROOT:-}"
+DEST_ROOT="${DEST_ROOT:-}"
+LOG_DIR="${LOG_DIR:-$REPO/artifacts/logs}"
 
-LOG_DIR="$REPO/artifacts/logs"
+FINAL_DB="$(require_db_value "$FINAL_DB" "FINAL_DB")"
+CANON_DB="$(require_db_value "$CANON_DB" "CANON_DB")"
+SRC_ROOT="$(require_db_value "$SRC_ROOT" "SRC_ROOT")"
+DEST_ROOT="$(require_db_value "$DEST_ROOT" "DEST_ROOT")"
+
+FINAL_DB="$(resolve_db_path "read" "$FINAL_DB")"
+CANON_DB="$(resolve_db_path "read" "$CANON_DB")"
 mkdir -p "$LOG_DIR"
 
 MOVE_LIST="$LOG_DIR/commune_dupe_paths_flac.txt"
@@ -27,17 +35,6 @@ echo "DEST ROOT: $DEST_ROOT"
 echo "LIST     : $MOVE_LIST"
 echo "LOG      : $MOVE_LOG"
 
-# Basic sanity checks
-if [[ ! -f "$FINAL_DB" ]]; then
-  echo "ERROR: final DB not found at: $FINAL_DB" >&2
-  exit 1
-fi
-
-if [[ ! -f "$CANON_DB" ]]; then
-  echo "ERROR: canonical-full DB not found at: $CANON_DB" >&2
-  exit 1
-fi
-
 if [[ ! -d "$(dirname "$DEST_ROOT")" ]]; then
   echo "ERROR: destination parent volume does not exist: $(dirname "$DEST_ROOT")" >&2
   exit 1
@@ -46,7 +43,7 @@ fi
 mkdir -p "$DEST_ROOT"
 
 echo
-echo "=== STEP 1: BUILD LIST OF NON-CANONICAL FLAC PATHS ON /Volumes/COMMUNE/20_ACCEPTED ==="
+echo "=== STEP 1: BUILD LIST OF NON-CANONICAL FLAC PATHS ON ${SRC_ROOT} ==="
 
 # Regenerate list every run
 rm -f "$MOVE_LIST"
@@ -65,7 +62,7 @@ FROM library_files AS f
 LEFT JOIN canon.library_files AS c
   ON f.path = c.path
 WHERE c.path IS NULL
-  AND f.path LIKE '/Volumes/COMMUNE/20_ACCEPTED/%'
+  AND f.path LIKE '${SRC_ROOT}/%'
   AND f.path LIKE '%.flac';
 
 .output stdout
@@ -112,8 +109,8 @@ while IFS= read -r src; do
     continue
   fi
 
-  # Compute relative path under /Volumes/COMMUNE/20_ACCEPTED
-  rel="${src#/Volumes/COMMUNE/20_ACCEPTED/}"
+  # Compute relative path under SRC_ROOT
+  rel="${src#${SRC_ROOT}/}"
   dest="$DEST_ROOT/$rel"
 
   dest_dir=$(dirname "$dest")

@@ -1,8 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="$HOME/dedupe_repo_reclone"
-DB="$REPO/artifacts/db/library_final.db"
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "$REPO/scripts/shell/_resolve_db_path.sh"
+
+DB="${DB:-${DEDUPE_DB:-}}"
+PLAN_OUT="${PLAN_OUT:-}"
+
+DB="$(require_db_value "$DB" "DB")"
+PLAN_OUT="$(require_db_value "$PLAN_OUT" "PLAN_OUT")"
+DB="$(resolve_db_path "read" "$DB")"
 
 # Timestamped staging directory
 TS=$(date +"%Y%m%d_%H%M%S")
@@ -17,7 +24,7 @@ echo
 echo "Extracting dedupe plan from DB…"
 
 # We regenerate the dedupe plan fresh, from DB, to ensure accuracy.
-sqlite3 "$DB" <<SQL > "$REPO/artifacts/db/dedupe_plan.txt"
+sqlite3 "$DB" <<SQL > "$PLAN_OUT"
 SELECT path
 FROM library_files
 WHERE checksum IN (SELECT checksum FROM canonical)
@@ -25,7 +32,7 @@ AND path NOT IN (SELECT path FROM canonical);
 SQL
 
 echo "Items in dedupe plan:"
-wc -l "$REPO/artifacts/db/dedupe_plan.txt"
+wc -l "$PLAN_OUT"
 echo
 
 echo "Moving non-canonical duplicates to staging…"
@@ -42,11 +49,11 @@ while IFS= read -r f; do
         failed=$((failed+1))
     fi
 
-done < "$REPO/artifacts/db/dedupe_plan.txt"
+done < "$PLAN_OUT"
 
 echo
 echo "=== DEDUPE MOVE COMPLETE ==="
 echo "Moved:   $moved"
 echo "Failed:  $failed"
 echo "Staged into: $QUAR"
-echo "Plan file: $REPO/artifacts/db/dedupe_plan.txt"
+echo "Plan file: $PLAN_OUT"

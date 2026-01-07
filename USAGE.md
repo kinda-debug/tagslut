@@ -7,7 +7,11 @@ external volumes are unavailable.
 ## 1. Scan the reference library
 
 ```bash
-python3 -m dedupe.cli scan-library --root /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY --out artifacts/db/library.db --resume --verbose --batch-size 2000
+export DEDUPE_DB="/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-01-08/music.db"
+export LEGACY_LIBRARY_DB="/Users/georgeskhawam/Projects/dedupe_db/legacy/library.db"
+export RECOVERED_DB="/Users/georgeskhawam/Projects/dedupe_db/legacy/recovered.db"
+
+python3 -m dedupe.cli scan-library --root /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY --db "$LEGACY_LIBRARY_DB" --resume --verbose --batch-size 2000
 # If you are scanning a COMMUNE layout, tag the rows with:
 #   --zone accepted
 ```
@@ -25,7 +29,7 @@ masters.
 Optional fingerprint-enabled scan:
 
 ```bash
-python3 -m dedupe.cli scan-library --root /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY --out artifacts/db/library.db --resume --fingerprints --verbose --batch-size 2000
+python3 -m dedupe.cli scan-library --root /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY --db "$LEGACY_LIBRARY_DB" --resume --fingerprints --verbose --batch-size 2000
 # Optional (COMMUNE layout): add --zone accepted|staging
 ```
 
@@ -34,13 +38,13 @@ Run the command against additional volumes only when needed. If you're using a C
 After each run you can verify new entries via SQLite:
 
 ```bash
-sqlite3 artifacts/db/library.db "SELECT path, fingerprint IS NOT NULL AS has_fp FROM library_files ORDER BY mtime DESC LIMIT 5;"
+sqlite3 "$LEGACY_LIBRARY_DB" "SELECT path, fingerprint IS NOT NULL AS has_fp FROM library_files ORDER BY mtime DESC LIMIT 5;"
 ```
 
 ## 2. Parse R-Studio exports
 
 ```bash
-python3 -m dedupe.cli parse-rstudio --input Recognized.txt --out artifacts/db/recovered.db --verbose
+python3 -m dedupe.cli parse-rstudio --input Recognized.txt --out "$RECOVERED_DB" --verbose
 ```
 
 The parser normalises absolute paths, captures the suggested filenames provided
@@ -51,8 +55,8 @@ command is idempotent, so it can be re-run as more exports arrive.
 
 ```bash
 python3 -m dedupe.cli match \
-  --library artifacts/db/library.db \
-  --recovered artifacts/db/recovered.db \
+  --library "$LEGACY_LIBRARY_DB" \
+  --recovered "$RECOVERED_DB" \
   --out artifacts/reports/matches.csv \
   --verbose
 ```
@@ -115,7 +119,7 @@ tools/open_dupe_pair.sh group_0001
 
 ```bash
 # Parallel integrity scan (writes integrity_state and flac_ok columns to DB)
-tools/scan_flac_integrity.py --db artifacts/db/music.db --parallel 8
+tools/scan_flac_integrity.py --db "$DEDUPE_DB" --parallel 8
 
 # Find corrupt files in any directory
 tools/find_corrupt_flacs.sh /Volumes/COMMUNE/10_STAGING/_DUPE_REVIEW
@@ -128,7 +132,7 @@ tools/find_corrupt_flacs.sh /Volumes/COMMUNE/10_STAGING/_DUPE_REVIEW --move-to /
 
 ```bash
 # Generate KEEP/REVIEW decisions (dry-run)
-tools/recommend_keepers.py --db artifacts/db/music.db \
+tools/recommend_keepers.py --db "$DEDUPE_DB" \
                            --group-field dupeguru_group_id \
                            --out /tmp/recovery_recommendations.csv
 
@@ -136,12 +140,12 @@ tools/recommend_keepers.py --db artifacts/db/music.db \
 tools/review_needed.sh /tmp/recovery_recommendations.csv REVIEW
 
 # Integrate dupeGuru similarity evidence
-tools/dupeguru_bridge.py --db artifacts/db/music.db \
+tools/dupeguru_bridge.py --db "$DEDUPE_DB" \
                          --dupeguru /path/to/dupeguru.csv \
                          --apply
 
 # Apply final decisions to database (review markers only)
-tools/recommend_keepers.py --db artifacts/db/music.db \
+tools/recommend_keepers.py --db "$DEDUPE_DB" \
                            --group-field dupeguru_group_id \
                            --out /tmp/recovery_recommendations.csv \
                            --apply

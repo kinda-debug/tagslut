@@ -16,5 +16,13 @@
             "database": "${workspaceFolder:dedupe_repo_reclone}/artifacts/db/library.db"
         }
     ],
-    "markdown.validate.enabled": true
+    "markdown.validate.enabled": true,
+    "workbench.editorAssociations": {
+        "*.copilotmd": "vscode.markdown.preview.editor",
+        "*.db": "sql-viewer.sqliteViewer",
+        "*.csv": "sqlite-viewer.option",
+        "file:/**/*.xlsx": "jupyter-data-wrangler",
+        "*.md": "markdown-preview-enhanced",
+        "file:/**/*.csv": "jupyter-data-wrangler"
+    }
 }

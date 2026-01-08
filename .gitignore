@@ -119,3 +119,6 @@ prefix_summary_Volumes__Vault__Root.csv
 prefix_summary_Volumes__Vault__Vault.csv
 relative_path_collisions_by_pair.csv
 relative_path_collisions.csv
+missing_paths_checksum_twin_collapse.csv
+missing_paths_checksum_twins_by_prefix.csv
+missing_paths_without_any_checksum_twin.csv

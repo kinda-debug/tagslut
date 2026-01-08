@@ -1,0 +1,24 @@
+sqlite3 -csv -header <<'SQL'
+ATTACH 'file:/Users/georgeskhawam/Projects/dedupe_db/CANONICAL/music_CANONICAL_2026-01-06.db?mode=ro&immutable=1' AS db;
+
+WITH roots AS (
+  SELECT
+    SUBSTR(path, 1,
+      INSTR(
+        SUBSTR(path, INSTR(path, '/Volumes/') + 9),
+        '/'
+      ) + INSTR(path, '/Volumes/') + 8
+    ) AS root,
+    rowid
+  FROM db.files
+  WHERE path LIKE '/Volumes/%'
+)
+SELECT
+  root,
+  COUNT(*) AS file_count,
+  MAX(rowid) AS last_rowid
+FROM roots
+GROUP BY root
+ORDER BY last_rowid DESC
+LIMIT 3;
+SQL

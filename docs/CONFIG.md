@@ -15,6 +15,8 @@ accepted = "Library"
 
 [db]
 path = "/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-01-09/music.db"
+min_disk_space_mb = 50
+write_sanity_check = true
 
 [integrity]
 verbose = true
@@ -27,9 +29,8 @@ check_integrity = false
 check_hash = false
 stale_days = 30
 parallel_workers = 1
-db_write_batch_size = 500
+db_write_batch_size = 50
 db_flush_interval = 60 # seconds
-min_disk_space_mb = 50
 allow_unzoned_paths = true
 default_zone = "accepted"
 

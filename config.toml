@@ -23,11 +23,13 @@ check_hash = false
 stale_days = 30
 parallel_workers = 1
 db_write_batch_size = 50
+db_flush_interval = 60
 allow_unzoned_paths = true
 default_zone = "accepted"
 
 [decisions]
 zone_priority = ["accepted", "staging", "suspect", "quarantine"]
+metadata_tiebreaker = true
 
 [scan]
 # Number of worker threads for scanning
@@ -108,3 +110,5 @@ clean_pycache = true
 
 [db]
 path = "/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-01-09/music.db"
+min_disk_space_mb = 50
+write_sanity_check = true

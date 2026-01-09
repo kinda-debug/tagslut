@@ -1,11 +1,24 @@
 import logging
-from typing import List
+import re
+from typing import Iterable, List
 from dedupe.storage.models import AudioFile, DuplicateGroup, Decision
 
 logger = logging.getLogger("dedupe")
 
 # Configuration for zone priority (lower index = higher priority)
 DEFAULT_ZONE_PRIORITY = ["accepted", "staging"]
+
+def _normalize_meta(value: str) -> str:
+    cleaned = re.sub(r"\\s+", " ", value or "").strip().casefold()
+    return cleaned
+
+def _meta_score(file: AudioFile, fields: Iterable[str]) -> int:
+    score = 0
+    for key in fields:
+        value = file.metadata.get(key, "") if file.metadata else ""
+        if _normalize_meta(value):
+            score += 1
+    return score
 
 def get_zone_priority(file: AudioFile, priorities: List[str]) -> int:
     """Returns a sortable priority index for a file zone."""
@@ -18,7 +31,13 @@ def get_zone_priority(file: AudioFile, priorities: List[str]) -> int:
         return priorities.index("staging") if "staging" in priorities else 999
     return 999
 
-def assess_duplicate_group(group: DuplicateGroup, priority_order: List[str] | None = None) -> List[Decision]:
+def assess_duplicate_group(
+    group: DuplicateGroup,
+    priority_order: List[str] | None = None,
+    *,
+    use_metadata_tiebreaker: bool = False,
+    metadata_fields: Iterable[str] = ("artist", "album", "title"),
+) -> List[Decision]:
     """
     Analyzes a group of duplicates and returns a decision for each file.
     """
@@ -30,7 +49,7 @@ def assess_duplicate_group(group: DuplicateGroup, priority_order: List[str] | No
     has_accepted = "accepted" in group_zones
     has_staging = "staging" in group_zones
 
-    def sort_key(f: AudioFile):
+    def base_key(f: AudioFile):
         # 1. Integrity
         integrity_ok = f.integrity_state == "valid" if f.integrity_state else f.flac_ok
         score_integrity = 1 if integrity_ok else 0
@@ -40,33 +59,36 @@ def assess_duplicate_group(group: DuplicateGroup, priority_order: List[str] | No
         score_tech = (f.sample_rate, f.bit_depth, f.bitrate)
         # 4. Path preference (Shorter path usually means less nested/cluttered)
         score_path_len = -len(str(f.path))
-        # 5. Metadata tie-breaker (Tertiary)
-        # Normalize artist/album for comparison if available
-        score_meta = 0
-        artist = f.metadata.get("artist", "")
-        album = f.metadata.get("album", "")
-        if artist or album:
-            # We don't have a reference here, so we just use the existence of metadata as a tiny boost
-            # in a real tie-breaker we'd compare against a target, but here we can just say
-            # "having metadata is better than not having it"
-            score_meta = 1
+        return (score_integrity, score_priority, score_tech, score_path_len)
 
-        return (score_integrity, score_priority, score_tech, score_path_len, score_meta)
+    def sort_key(f: AudioFile):
+        key = base_key(f)
+        if use_metadata_tiebreaker:
+            return key + (_meta_score(f, metadata_fields),)
+        return key
 
     # Sort descending (best first)
     sorted_files = sorted(group.files, key=sort_key, reverse=True)
     best_file = sorted_files[0]
 
-    # Conflict labeling: Bit-diff matches
-    is_bit_diff = False
-    if group.source == "checksum":
-        # If it's a checksum match, they are bit-identical by definition
-        is_bit_diff = False
+    # Conflict labeling
+    checksums = {f.checksum for f in group.files if f.checksum and f.checksum != "NOT_SCANNED"}
+    has_unknown = any(not f.checksum or f.checksum == "NOT_SCANNED" for f in group.files)
+    if checksums and len(checksums) == 1:
+        conflict_label = "BIT_IDENTICAL"
+    elif has_unknown:
+        conflict_label = "UNKNOWN_NOT_SCANNED"
     else:
-        # If matched via acoustid or other means, check if checksums differ
-        checksums = {f.checksum for f in group.files if f.checksum and f.checksum != "NOT_SCANNED"}
-        if len(checksums) > 1:
-            is_bit_diff = True
+        conflict_label = "ACOUSTIC_MATCH_BIT_DIFF"
+
+    used_meta_tiebreaker = False
+    if use_metadata_tiebreaker:
+        best_base = base_key(best_file)
+        tied = [f for f in group.files if base_key(f) == best_base]
+        if len(tied) > 1:
+            best_score = _meta_score(best_file, metadata_fields)
+            if any(_meta_score(f, metadata_fields) < best_score for f in tied):
+                used_meta_tiebreaker = True
 
     decisions = []
 
@@ -97,26 +119,6 @@ def assess_duplicate_group(group: DuplicateGroup, priority_order: List[str] | No
             if f.bit_depth != best_file.bit_depth:
                 delta["bit_depth_diff"] = f.bit_depth - best_file.bit_depth
 
-        conflict_label = None
-        used_meta_tiebreaker = False
-        if is_bit_diff:
-            conflict_label = "[ACOUSTIC_MATCH | BIT_DIFF]"
-
-        # Check if metadata tie-breaker was actually needed
-        # (This is a bit simplified, but checks if it's the preferred file and has metadata)
-        if f.path == best_file.path and (f.metadata.get("artist") or f.metadata.get("album")):
-             # Find if there was a technical tie with any other file
-             for other in sorted_files:
-                 if other.path == f.path: continue
-                 # Compare only tech scores
-                 if (other.integrity_state == f.integrity_state and
-                     other.sample_rate == f.sample_rate and
-                     other.bit_depth == f.bit_depth and
-                     other.bitrate == f.bitrate and
-                     len(str(other.path)) == len(str(f.path))):
-                     used_meta_tiebreaker = True
-                     break
-
         decisions.append(Decision(
             file=f,
             action=action,
@@ -130,7 +132,7 @@ def assess_duplicate_group(group: DuplicateGroup, priority_order: List[str] | No
                 "integrity_state": f.integrity_state,
                 "risk_delta": delta,
                 "conflict_label": conflict_label,
-                "used_meta_tiebreaker": used_meta_tiebreaker,
+                "used_meta_tiebreaker": used_meta_tiebreaker if f.path == best_file.path else False,
             }
         ))
 

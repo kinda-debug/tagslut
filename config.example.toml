@@ -8,6 +8,8 @@ root = "/Volumes/COMMUNE"
 [db]
 # Primary integrity database path
 path = "/path/to/music.db"
+min_disk_space_mb = 50
+write_sanity_check = true
 
 [library.zones]
 inbox = "00_INBOX"
@@ -29,6 +31,7 @@ check_hash = false
 stale_days = 30
 parallel_workers = 1
 db_write_batch_size = 50
+db_flush_interval = 60
 allow_unzoned_paths = true
 default_zone = "accepted"
 
@@ -77,6 +80,7 @@ timeout = 300
 # Decision engine defaults (report-only guidance)
 [decisions]
 zone_priority = ["accepted", "staging"]
+metadata_tiebreaker = true
 
 [dedupe]
 # Enable verbose output

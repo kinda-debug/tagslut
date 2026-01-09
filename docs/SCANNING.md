@@ -9,8 +9,8 @@ python3 tools/integrity/scan.py
 ## Key Behavior
 
 - **Incremental by default**: skips unchanged files (mtime+size match).
-- **Resumable**: progress is committed in batches and automatically flushed every 60 seconds (adaptive commit).
-- **Safe**: Pre-flight checks for disk space (50MB min) and write sanity tests ensure your filesystem is healthy before scanning.
+- **Resumable**: progress is committed in batches and automatically flushed on a time interval (adaptive commit).
+- **Safe**: Pre-flight checks for disk space (`db.min_disk_space_mb`) and write sanity (`db.write_sanity_check`) ensure the filesystem is writable before scanning.
 - **Verbose**: progress is continuous when enabled in config.
 
 ## Defaults (config.toml)
@@ -28,6 +28,7 @@ check_hash = false
 stale_days = 30
 parallel_workers = 1
 db_write_batch_size = 50
+db_flush_interval = 60
 allow_unzoned_paths = true
 default_zone = "accepted"
 ```

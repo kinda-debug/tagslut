@@ -26,11 +26,17 @@ def recommend(db, output, priority, verbose, config):
     """
     configure_execution(verbose, config)
     logger = logging.getLogger("dedupe")
-    
+
+    app_config = get_config(Path(config) if config else None)
+
     # Load config priorities if not overridden
     if not priority:
-        app_config = get_config()
         priority = app_config.get("decisions.zone_priority", ["accepted", "staging"]).copy()
+
+    use_metadata_tiebreaker = bool(app_config.get("decisions.metadata_tiebreaker", False))
+    metadata_fields = app_config.get("decisions.metadata_fields", None)
+    if not isinstance(metadata_fields, (list, tuple)) or not metadata_fields:
+        metadata_fields = ("artist", "album", "title")
 
     logger.info(f"Using priority order: {priority}")
 
@@ -45,7 +51,12 @@ def recommend(db, output, priority, verbose, config):
     
     # 2. Make Decisions
     for group in groups:
-        decisions = assess_duplicate_group(group, priority_order=list(priority))
+        decisions = assess_duplicate_group(
+            group,
+            priority_order=list(priority),
+            use_metadata_tiebreaker=use_metadata_tiebreaker,
+            metadata_fields=metadata_fields,
+        )
         
         # Convert Decision objects to JSON-serializable dicts
         group_entry = {
@@ -63,6 +74,7 @@ def recommend(db, output, priority, verbose, config):
                 "action": d.action,
                 "reason": d.reason,
                 "confidence": d.confidence,
+                "evidence": d.evidence,
                 "file_details": {
                     "library": d.file.library,
                     "zone": d.file.zone,

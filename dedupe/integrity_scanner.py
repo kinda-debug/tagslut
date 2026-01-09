@@ -240,6 +240,16 @@ def scan_library(
     config = get_config()
     workers = config.get("integrity.parallel_workers", None)
     db_write_batch_size = config.get("integrity.db_write_batch_size", 500)
+    db_flush_interval = config.get("integrity.db_flush_interval_seconds", None)
+    if db_flush_interval is None:
+        db_flush_interval = config.get("integrity.db_flush_interval", 60)
+    if db_flush_interval is not None:
+        try:
+            db_flush_interval = int(db_flush_interval)
+        except (TypeError, ValueError):
+            db_flush_interval = 60
+    if db_flush_interval is not None and db_flush_interval < 0:
+        db_flush_interval = 0
 
     # Handle specific paths mode (e.g., from --paths-from-file)
     if specific_paths:
@@ -665,7 +675,7 @@ def scan_library(
     failed = 0
     failure_reasons: dict[str, int] = {}
     status = "completed"
-    last_flush_time = time.time()
+    last_flush_time = time.monotonic()
     try:
         conn.execute("BEGIN")
         for idx, result in enumerate(results, start=1):
@@ -709,11 +719,14 @@ def scan_library(
                 reason = type(row_error).__name__
                 failure_reasons[reason] = failure_reasons.get(reason, 0) + 1
 
-            # Commit if we reached batch size OR 60 seconds have passed
-            if idx % db_write_batch_size == 0 or (time.time() - last_flush_time) > 60:
+            # Commit if we reached batch size OR flush interval has passed
+            time_due = False
+            if db_flush_interval:
+                time_due = (time.monotonic() - last_flush_time) >= db_flush_interval
+            if idx % db_write_batch_size == 0 or time_due:
                 conn.commit()
                 conn.execute("BEGIN")
-                last_flush_time = time.time()
+                last_flush_time = time.monotonic()
     except KeyboardInterrupt:
         logger.warning("Interrupted by user during DB write")
         status = "aborted"

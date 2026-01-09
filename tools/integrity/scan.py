@@ -60,7 +60,7 @@ from dedupe.utils.db import resolve_db_path
 def scan(library_path, db, create_db, paths_from_file, library, zone, incremental, recheck, force_all, progress, progress_interval, limit, check_integrity, check_hash, hard_skip, allow_repo_db, stale_days, verbose, config):
     """
     Scans a library folder for FLAC files and populates the database.
-    
+
     If --paths-from-file is provided, ignores LIBRARY_PATH and scans only specified files.
     """
     app_config = get_config(Path(config) if config else None)
@@ -87,19 +87,19 @@ def scan(library_path, db, create_db, paths_from_file, library, zone, incrementa
     create_db = _apply_default("create_db", create_db, "integrity.create_db", create_db)
 
     configure_execution(verbose, config)
-    
+
     # Validate arguments
     if not library_path and not paths_from_file:
         raise click.ClickException("Either LIBRARY_PATH or --paths-from-file must be provided")
-    
+
     if library_path and paths_from_file:
         raise click.ClickException("Cannot use both LIBRARY_PATH and --paths-from-file")
-    
+
     # Apply --hard-skip logic
     if hard_skip:
         check_integrity = False
         check_hash = False
-    
+
     repo_root = Path(__file__).parents[2].resolve()
     try:
         resolution = resolve_db_path(
@@ -114,7 +114,7 @@ def scan(library_path, db, create_db, paths_from_file, library, zone, incrementa
         raise click.ClickException(str(e))
     db_path = resolution.path
     db_source = resolution.source
-    
+
     # Load specific paths if provided
     specific_paths = None
     if paths_from_file:
@@ -150,7 +150,7 @@ def scan(library_path, db, create_db, paths_from_file, library, zone, incrementa
     click.echo(f"Hash Calculation: {'ON' if check_hash else 'OFF'}")
     if stale_days is not None:
         click.echo(f"Stale Days: {stale_days}")
-    
+
     try:
         outcome = scan_library(
             library_path=lib_path,

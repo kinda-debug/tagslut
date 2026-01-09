@@ -67,6 +67,8 @@ def _check_writable_db_path(
     allow_create: bool,
     purpose: str = "write",
     is_test: bool = False,
+    min_disk_space_mb: int | None = None,
+    write_sanity_check: bool = True,
 ) -> None:
     issues: list[str] = []
 
@@ -103,13 +105,15 @@ def _check_writable_db_path(
 
     # Perform a write sanity check if we are expecting a writable DB
     if purpose == "write" and db_path.as_posix() != ":memory:" and not is_test:
-        if exists:
-            _write_sanity_check(db_path)
-        else:
-            _write_sanity_check(db_path.parent)
+        if write_sanity_check:
+            if exists:
+                _write_sanity_check(db_path)
+            else:
+                _write_sanity_check(db_path.parent)
 
-        # Pre-flight disk space check (ensure at least 50MB free for DB/WAL)
-        _check_disk_space(db_path.parent, min_bytes=50 * 1024 * 1024)
+        # Pre-flight disk space check (ensure at least min_disk_space_mb free)
+        if min_disk_space_mb is not None and min_disk_space_mb > 0:
+            _check_disk_space(db_path.parent, min_bytes=min_disk_space_mb * 1024 * 1024)
 
 
 def _check_disk_space(path: Path, min_bytes: int) -> None:
@@ -243,12 +247,22 @@ def open_db(
     if resolution.purpose == "write":
         print_db_provenance(resolution)
         is_test = "PYTEST_CURRENT_TEST" in os.environ
+        config = get_config()
+        min_disk_space_mb = config.get("db.min_disk_space_mb", None)
+        if min_disk_space_mb is None:
+            min_disk_space_mb = config.get("integrity.min_disk_space_mb", 50)
+        write_sanity_check = config.get("db.write_sanity_check", None)
+        if write_sanity_check is None:
+            write_sanity_check = config.get("integrity.write_sanity_check", True)
+        write_sanity_check = bool(write_sanity_check)
         _check_writable_db_path(
             resolution.path,
             exists=resolution.exists,
             allow_create=resolution.allow_create,
             purpose=resolution.purpose,
             is_test=is_test,
+            min_disk_space_mb=min_disk_space_mb,
+            write_sanity_check=write_sanity_check,
         )
         if not resolution.exists and (resolution.allow_create or is_test):
             _ensure_parent_directory(resolution.path)

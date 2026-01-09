@@ -227,6 +227,7 @@ def scan_library(
     paths_from_file: Optional[Path] = None,
     create_db: bool = False,
     allow_repo_db: bool = False,
+    error_log: Path | None = None,
 ) -> ScanOutcome:
     """Scan a library folder and upsert file metadata into the integrity DB.
 
@@ -661,6 +662,17 @@ def scan_library(
     )
     results = process_result.results
     interrupted = process_result.interrupted
+    if error_log:
+        try:
+            error_log_path = error_log
+            error_log_path.parent.mkdir(parents=True, exist_ok=True)
+            with error_log_path.open("a", encoding="utf-8") as log_handle:
+                for result in results:
+                    if result.error_class:
+                        message = result.error_message or ""
+                        log_handle.write(f"{result.error_class}: {result.path} {message}\n")
+        except Exception as exc:
+            logger.warning("Unable to write error log %s: %s", error_log, exc)
     duration = time.time() - start_time
     logger.info("Metadata extraction complete in %.2fs", duration)
 

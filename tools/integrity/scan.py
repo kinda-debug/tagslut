@@ -56,8 +56,9 @@ from dedupe.utils.db import resolve_db_path
 @click.option("--hard-skip", is_flag=True, default=False, help="Alias for --no-check-integrity --no-check-hash (default behavior)")
 @click.option("--allow-repo-db", is_flag=True, default=False, help="Allow writing to a repo-local DB path")
 @click.option("--stale-days", type=int, default=None, help="Treat integrity/hash results older than N days as stale")
+@click.option("--error-log", type=click.Path(dir_okay=False), default=None, help="Path to append scan error details (default: scan_errors.log in cwd)")
 @common_options
-def scan(library_path, db, create_db, paths_from_file, library, zone, incremental, recheck, force_all, progress, progress_interval, limit, check_integrity, check_hash, hard_skip, allow_repo_db, stale_days, verbose, config):
+def scan(library_path, db, create_db, paths_from_file, library, zone, incremental, recheck, force_all, progress, progress_interval, limit, check_integrity, check_hash, hard_skip, allow_repo_db, stale_days, error_log, verbose, config):
     """
     Scans a library folder for FLAC files and populates the database.
 
@@ -150,29 +151,36 @@ def scan(library_path, db, create_db, paths_from_file, library, zone, incrementa
     click.echo(f"Hash Calculation: {'ON' if check_hash else 'OFF'}")
     if stale_days is not None:
         click.echo(f"Stale Days: {stale_days}")
+    if error_log:
+        click.echo(f"Error log: {error_log}")
 
+    error_log_path = Path(error_log) if error_log else None
+    if error_log_path is None:
+        error_log_path = Path.cwd() / "scan_errors.log"
+    error_log_path.parent.mkdir(parents=True, exist_ok=True)
     try:
         outcome = scan_library(
-            library_path=lib_path,
-            db_path=db_path,
-            db_source=db_source,
-            library=library,
-            zone=zone,
-            incremental=incremental,
-            recheck=recheck,
-            force_all=force_all,
-            progress=progress,
-            progress_interval=progress_interval,
-            scan_integrity=check_integrity,
-            scan_hash=check_hash,
-            specific_paths=specific_paths,
-            limit=limit,
-            stale_days=stale_days,
-            paths_source="paths-from-file" if paths_from_file else None,
-            paths_from_file=paths_from_file_path,
-            create_db=create_db,
-            allow_repo_db=allow_repo_db,
-        )
+        library_path=lib_path,
+        db_path=db_path,
+        db_source=db_source,
+        library=library,
+        zone=zone,
+        incremental=incremental,
+        recheck=recheck,
+        force_all=force_all,
+        progress=progress,
+        progress_interval=progress_interval,
+        scan_integrity=check_integrity,
+        scan_hash=check_hash,
+        specific_paths=specific_paths,
+        limit=limit,
+        stale_days=stale_days,
+        paths_source="paths-from-file" if paths_from_file else None,
+        paths_from_file=paths_from_file_path,
+        create_db=create_db,
+        allow_repo_db=allow_repo_db,
+        error_log=error_log_path,
+    )
         if outcome.status == "completed":
             click.echo(click.style("Scan complete.", fg="green"))
         elif outcome.status == "aborted":

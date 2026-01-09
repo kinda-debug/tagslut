@@ -9,19 +9,9 @@ import importlib
 from typing import Any
 
 __all__ = [
-    "cli",
-    "db",
-    "deduper",
-    "fingerprints",
-    "global_recovery",
-    "health_score",
-    "healthcheck",
-    "healthscore",
-    "hrm_relocation",
-    "manifest",
-    "matcher",
-    "metadata",
-    "scanner",
+    "core",
+    "integrity_scanner",
+    "storage",
     "utils",
 ]
 

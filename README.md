@@ -5,7 +5,7 @@ This repository is a recovery-first, evidence-preserving toolkit for scanning, a
 ## What You Work With
 
 - `tools/` — operator CLIs (scan, decide, apply)
-- `dedupe/` — core engine (scanner, matcher, decisions)
+- `dedupe/` — core engine (integrity scan, matching, decisions)
 - `docs/` — concise operator documentation
 
 Scripts and one-off artifacts have been archived. Use the tools below.

@@ -16,6 +16,22 @@ accepted = "20_ACCEPTED"
 rejected = "90_REJECTED"
 yate_db = "_yate_db"
 
+[integrity]
+# Defaults for tools/integrity/scan.py
+verbose = true
+progress = true
+progress_interval = 1
+incremental = true
+recheck = false
+force_all = false
+check_integrity = false
+check_hash = false
+stale_days = 30
+parallel_workers = 1
+db_write_batch_size = 50
+allow_unzoned_paths = true
+default_zone = "accepted"
+
 [scan]
 # Number of worker threads for scanning (more = faster, but uses more CPU)
 workers = 8

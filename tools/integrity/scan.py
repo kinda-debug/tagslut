@@ -63,8 +63,30 @@ def scan(library_path, db, create_db, paths_from_file, library, zone, incrementa
     
     If --paths-from-file is provided, ignores LIBRARY_PATH and scans only specified files.
     """
+    app_config = get_config(Path(config) if config else None)
+    ctx = click.get_current_context()
+
+    def _apply_default(param_name, current_value, config_key, fallback=None):
+        if ctx.get_parameter_source(param_name) == click.core.ParameterSource.DEFAULT:
+            value = app_config.get(config_key, fallback)
+            if value is not None:
+                return value
+        return current_value
+
+    verbose = _apply_default("verbose", verbose, "integrity.verbose", app_config.get("scan.verbose", False))
+    progress = _apply_default("progress", progress, "integrity.progress", False)
+    progress_interval = _apply_default("progress_interval", progress_interval, "integrity.progress_interval", progress_interval)
+    incremental = _apply_default("incremental", incremental, "integrity.incremental", incremental)
+    recheck = _apply_default("recheck", recheck, "integrity.recheck", recheck)
+    force_all = _apply_default("force_all", force_all, "integrity.force_all", force_all)
+    check_integrity = _apply_default("check_integrity", check_integrity, "integrity.check_integrity", check_integrity)
+    check_hash = _apply_default("check_hash", check_hash, "integrity.check_hash", check_hash)
+    hard_skip = _apply_default("hard_skip", hard_skip, "integrity.hard_skip", hard_skip)
+    stale_days = _apply_default("stale_days", stale_days, "integrity.stale_days", stale_days)
+    allow_repo_db = _apply_default("allow_repo_db", allow_repo_db, "integrity.allow_repo_db", allow_repo_db)
+    create_db = _apply_default("create_db", create_db, "integrity.create_db", create_db)
+
     configure_execution(verbose, config)
-    app_config = get_config()
     
     # Validate arguments
     if not library_path and not paths_from_file:

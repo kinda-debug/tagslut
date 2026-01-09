@@ -253,10 +253,6 @@ def scan_library(
         if not library_path:
             raise ValueError("Either library_path or specific_paths must be provided")
 
-        zone_paths = load_zone_paths(config)
-        if zone_paths is None:
-            raise ValueError("COMMUNE library zones are not configured.")
-
         library_name = library or config.get("library.name", "COMMUNE")
         if library_name:
             logger.info("Library tag: %s", library_name)
@@ -264,7 +260,22 @@ def scan_library(
         if zone:
             zone_name = zone
         else:
-            zone_name = ensure_dedupe_zone(library_path, zone_paths)
+            zone_paths = load_zone_paths(config)
+            allow_unzoned = bool(config.get("integrity.allow_unzoned_paths", False))
+            default_zone = config.get("integrity.default_zone", None)
+            if zone_paths is None:
+                if allow_unzoned and default_zone:
+                    zone_name = default_zone
+                else:
+                    raise ValueError("COMMUNE library zones are not configured.")
+            else:
+                try:
+                    zone_name = ensure_dedupe_zone(library_path, zone_paths)
+                except ValueError:
+                    if allow_unzoned and default_zone:
+                        zone_name = default_zone
+                    else:
+                        raise
 
         root_path = library_path
         logger.info("Scanning library: %s", library_path)

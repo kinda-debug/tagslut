@@ -58,29 +58,26 @@ def process_map(
             results_iter = executor.map(func, item_list, chunksize=chunk_size)
 
             start_ts = time.time()
-            try:
-                for idx, res in enumerate(results_iter, start=1):
-                    results.append(res)
-                    if progress and (idx % progress_interval == 0 or idx == total):
-                        elapsed = max(0.001, time.time() - start_ts)
-                        rate = idx / elapsed
-                        logger.info(
-                            "Progress: %d/%d (%.1f%%) | %.1f items/s | %.1fs elapsed",
-                            idx,
-                            total,
-                            (idx / total) * 100,
-                            rate,
-                            elapsed,
-                        )
-            except KeyboardInterrupt:
-                logger.warning(
-                    "Parallel processing interrupted by user. Returning %d/%d partial results.",
-                    len(results),
-                    total,
-                )
-                interrupted = True
-                executor.shutdown(cancel_futures=True)
-                break
+            for idx, res in enumerate(results_iter, start=1):
+                results.append(res)
+                if progress and (idx % progress_interval == 0 or idx == total):
+                    elapsed = max(0.001, time.time() - start_ts)
+                    rate = idx / elapsed
+                    logger.info(
+                        "Progress: %d/%d (%.1f%%) | %.1f items/s | %.1fs elapsed",
+                        idx,
+                        total,
+                        (idx / total) * 100,
+                        rate,
+                        elapsed,
+                    )
+    except KeyboardInterrupt:
+        logger.warning(
+            "Parallel processing interrupted by user. Returning %d/%d partial results.",
+            len(results),
+            total,
+        )
+        interrupted = True
     except Exception as e:
         logger.error(f"Parallel processing failed: {e}")
         raise

@@ -7,7 +7,11 @@ A curator-first Python system for verifying, indexing, and auditing large FLAC c
 **The dedupe layer never deletes or mutates audio or tags.**  
 It produces reviewable, resumable decisions only.
 
-See **[docs/SYSTEM_SPEC.md](docs/SYSTEM_SPEC.md)** for the complete system specification.
+See **[docs/SYSTEM_SPEC.md](docs/SYSTEM_SPEC.md)** for the system specification index.
+
+Additional references:
+- **[docs/repo_inventory.md](docs/repo_inventory.md)** — file-by-file inventory and alignment notes
+- **[docs/scripts_reference.md](docs/scripts_reference.md)** — operator scripts reference
 
 ## Architecture
 

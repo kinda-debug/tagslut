@@ -1,1 +1,1 @@
-"""Operational tooling for database upgrades and ingestion."""
+"""Operator tooling for scanning, decisions, and DB utilities."""

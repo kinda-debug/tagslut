@@ -19,7 +19,6 @@ from . import (
 )
 from dedupe.utils.config import get_config
 from dedupe.utils.db import resolve_db_path
-from tools.db_upgrade import upgrade_db
 
 logger = logging.getLogger(__name__)
 
@@ -331,33 +330,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Allow writing to a repo-local DB (dev only).",
     )
 
-    hrm_parser = subparsers.add_parser(
-        "hrm-move",
-        help="Move canonical, healthy files into the HRM structure.",
-    )
-    hrm_parser.add_argument(
-        "database",
-        nargs="?",
-        type=_existing_file,
-        help="Deprecated; use --db or DEDUPE_DB.",
-    )
-    hrm_parser.add_argument(
-        "--db",
-        type=_existing_file,
-        help="Library database containing canonical selections.",
-    )
-    hrm_parser.add_argument(
-        "--root",
-        type=_existing_dir,
-        required=True,
-        help="Destination HRM root directory (must exist).",
-    )
-    hrm_parser.add_argument(
-        "--allow-repo-db",
-        action="store_true",
-        help="Allow writing to a repo-local DB (dev only).",
-    )
-
     hrm_relocate_parser = subparsers.add_parser(
         "relocate-hrm",
         help="Relocate healthy files into the HRM hierarchy.",
@@ -385,32 +357,6 @@ def build_parser() -> argparse.ArgumentParser:
         default=10,
         help="Minimum total health score required for relocation (default: 10).",
     )
-
-    upgrade_parser = subparsers.add_parser(
-        "upgrade-db",
-        help="Upgrade a legacy per-volume database to the unified schema.",
-    )
-    upgrade_parser.add_argument(
-        "legacy_db",
-        type=_existing_file,
-        help="Path to the legacy per-volume SQLite database.",
-    )
-    upgrade_parser.add_argument(
-        "out_db",
-        type=_output_path,
-        help="Destination path for the upgraded database.",
-    )
-    upgrade_parser.add_argument(
-        "--create-db",
-        action="store_true",
-        help="Allow creating a new database file.",
-    )
-    upgrade_parser.add_argument(
-        "--allow-repo-db",
-        action="store_true",
-        help="Allow writing to a repo-local database path.",
-    )
-    upgrade_parser.set_defaults(func=run_upgrade_db)
 
     # Compute checksums for rows missing them
     hash_parser = subparsers.add_parser(
@@ -595,37 +541,6 @@ def _command_dedupe(args: argparse.Namespace) -> int:
     return 0
 
 
-def _command_hrm_move(args: argparse.Namespace) -> int:
-    """Move canonical, healthy files into the HRM hierarchy."""
-
-    from tools.move_to_hrm import move_canonical_to_hrm
-
-    if args.db and args.database:
-        logger.error("Provide only one of --db or database.")
-        return 2
-    repo_root = Path(__file__).resolve().parents[1]
-    try:
-        resolution = resolve_db_path(
-            args.db or args.database,
-            config=get_config(),
-            allow_repo_db=args.allow_repo_db,
-            repo_root=repo_root,
-            purpose="write",
-            allow_create=False,
-        )
-    except ValueError as exc:
-        logger.error(str(exc))
-        return 2
-    moved = move_canonical_to_hrm(
-        resolution.path,
-        args.root,
-        allow_repo_db=args.allow_repo_db,
-        repo_root=repo_root,
-    )
-    logger.info("Moved %s files to HRM", moved)
-    return 0
-
-
 def _command_relocate_hrm(args: argparse.Namespace) -> int:
     """Relocate healthy files into the HRM folder structure."""
 
@@ -662,34 +577,6 @@ def _command_relocate_hrm(args: argparse.Namespace) -> int:
     return 0
 
 
-def run_upgrade_db(args: argparse.Namespace) -> int:
-    """Upgrade a legacy per-volume database into the unified schema."""
-
-    repo_root = Path(__file__).resolve().parents[1]
-    try:
-        resolution = resolve_db_path(
-            args.out_db,
-            config=get_config(),
-            allow_repo_db=getattr(args, "allow_repo_db", False),
-            repo_root=repo_root,
-            purpose="write",
-            allow_create=getattr(args, "create_db", False),
-        )
-    except ValueError as exc:
-        logger.error(str(exc))
-        return 2
-
-    upgrade_db(
-        str(args.legacy_db),
-        str(resolution.path),
-        allow_create=getattr(args, "create_db", False),
-        allow_repo_db=getattr(args, "allow_repo_db", False),
-        repo_root=repo_root,
-    )
-    logger.info("Upgraded legacy database %s -> %s", args.legacy_db, resolution.path)
-    return 0
-
-
 COMMAND_HANDLERS = {
     "scan-library": _command_scan,
     "match": _command_match,
@@ -699,9 +586,7 @@ COMMAND_HANDLERS = {
     "health-batch": _command_health_batch,
     "healthscore": run_healthscore,
     "dedupe-db": _command_dedupe,
-    "hrm-move": _command_hrm_move,
     "relocate-hrm": _command_relocate_hrm,
-    "upgrade-db": run_upgrade_db,
     "hash-missing": _command_hash_missing,
 }
 

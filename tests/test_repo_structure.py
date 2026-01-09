@@ -64,8 +64,6 @@ def test_pyproject_toml_parses() -> None:
         "dedupe.metadata",
         "dedupe.scanner",
         "dedupe.utils",
-        "tools.db_upgrade",
-        "tools.manual_ingest",
     ],
 )
 def test_modules_import_cleanly(module_path: str) -> None:

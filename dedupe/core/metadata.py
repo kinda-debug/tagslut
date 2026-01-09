@@ -39,7 +39,7 @@ def extract_metadata(
         - "streaminfo:<hex>" if STREAMINFO MD5 available (Phase 1)
         - "sha256:<hex>" if scan_hash=True (Phase 3)
         - "NOT_SCANNED" if neither available
-    
+
     Raises:
         ValueError: If file is not a valid FLAC or cannot be read.
     """
@@ -52,13 +52,14 @@ def extract_metadata(
         size = st.st_size
     except OSError as e:
         raise ValueError(f"Cannot stat file {path_obj}: {e}")
-    
+
     # Defaults
     # Note: We no longer hash here by default - streaminfo MD5 is extracted from FLAC metadata
     # Only run expensive full-file hash if scan_hash=True (Phase 3, for winners)
     flac_ok: bool | None = None
     integrity_state: IntegrityState | None = None
     checksum = "NOT_SCANNED"
+    checksum_type: str | None = None
     streaminfo_md5: str | None = None
     sha256: str | None = None
     integrity_checked_at: str | None = None
@@ -79,14 +80,14 @@ def extract_metadata(
 
     try:
         audio = FLAC(path_obj)
-        
+
         # Technical details
         if audio.info:
             duration = getattr(audio.info, 'length', 0.0)
             bit_depth = getattr(audio.info, 'bits_per_sample', 0)
             sample_rate = getattr(audio.info, 'sample_rate', 0)
             bitrate = getattr(audio.info, 'bitrate', 0)
-            
+
             # Extract STREAMINFO MD5 (fast, embedded in FLAC metadata block)
             # This is NOT the file hash - it's the hash of the decoded audio
             # Perfect for fast duplicate detection without full-file hashing
@@ -96,6 +97,7 @@ def extract_metadata(
                 if isinstance(streaminfo_md5, bytes):
                     streaminfo_md5 = streaminfo_md5.hex()
                 checksum = f"streaminfo:{streaminfo_md5}"
+                checksum_type = "STREAMINFO_MD5"
                 streaminfo_checked_at = now_iso
 
             if scan_hash:
@@ -103,7 +105,12 @@ def extract_metadata(
                 sha256_checked_at = now_iso
                 if not streaminfo_md5:
                     checksum = sha256
-        
+                    checksum_type = "SHA256_FULL"
+                else:
+                    # If we have both, SHA256 is the authoritative evidence for the AudioFile.checksum
+                    checksum = sha256
+                    checksum_type = "SHA256_FULL"
+
         # Tag extraction
         if audio.tags:
             # Convert ALL mutagen objects to plain Python types
@@ -158,4 +165,5 @@ def extract_metadata(
         integrity_checked_at=integrity_checked_at,
         streaminfo_checked_at=streaminfo_checked_at,
         sha256_checked_at=sha256_checked_at,
+        checksum_type=checksum_type,
     )

@@ -84,8 +84,9 @@ def _row_to_recovery_entry(row: sqlite3.Row) -> RecoveryEntry:
 
 def load_library_entries(database: Path) -> list[LibraryEntry]:
     """Load scanned library entries from ``database``."""
-    db = utils.DatabaseContext(Path(utils.normalise_path(str(database))), purpose="read")
+    db = utils.DatabaseContext(Path(utils.normalise_path(str(database))), purpose="write")
     with db.connect() as connection:
+        scanner.initialise_database(connection)
         cursor = connection.execute(f"SELECT * FROM {scanner.LIBRARY_TABLE}")
         entries = [_row_to_library_entry(row) for row in cursor.fetchall()]
     logger.info("Loaded %s library entries", len(entries))

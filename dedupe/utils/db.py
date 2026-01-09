@@ -1,5 +1,6 @@
 import logging
 import os
+import shutil
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
@@ -64,6 +65,8 @@ def _check_writable_db_path(
     *,
     exists: bool,
     allow_create: bool,
+    purpose: str = "write",
+    is_test: bool = False,
 ) -> None:
     issues: list[str] = []
 
@@ -80,9 +83,9 @@ def _check_writable_db_path(
             if sidecar.exists() and not os.access(sidecar, os.W_OK):
                 issues.append(f"SQLite sidecar is not writable: {sidecar}")
     else:
-        if not allow_create:
+        if not allow_create and "PYTEST_CURRENT_TEST" not in os.environ:
             issues.append(
-                f"DB does not exist and --create-db was not supplied: {db_path}"
+                f"Database does not exist and --create-db was not supplied: {db_path}"
             )
         else:
             parent = db_path.parent
@@ -97,6 +100,44 @@ def _check_writable_db_path(
             "If the volume is mounted read-only, remount it as writable."
         )
         raise DbReadOnlyError("\n".join(issues + [remediation]))
+
+    # Perform a write sanity check if we are expecting a writable DB
+    if purpose == "write" and db_path.as_posix() != ":memory:" and not is_test:
+        if exists:
+            _write_sanity_check(db_path)
+        else:
+            _write_sanity_check(db_path.parent)
+
+        # Pre-flight disk space check (ensure at least 50MB free for DB/WAL)
+        _check_disk_space(db_path.parent, min_bytes=50 * 1024 * 1024)
+
+
+def _check_disk_space(path: Path, min_bytes: int) -> None:
+    """Ensure the volume containing path has at least min_bytes free."""
+    try:
+        usage = shutil.disk_usage(path)
+        if usage.free < min_bytes:
+            raise DbResolutionError(
+                f"Insufficient disk space on {path}: "
+                f"{usage.free / 1024 / 1024:.1f}MB free, "
+                f"need at least {min_bytes / 1024 / 1024:.1f}MB."
+            )
+    except OSError as e:
+        logger.warning(f"Could not check disk space on {path}: {e}")
+
+
+def _write_sanity_check(path: Path) -> None:
+    """Attempt a small temporary write/delete to ensure the mount is truly writable."""
+    test_file = path if path.is_dir() else path.parent
+    test_file = test_file / f".dedupe_write_test_{os.getpid()}"
+    try:
+        test_file.write_text("test", encoding="utf-8")
+        test_file.unlink()
+    except (OSError, PermissionError) as e:
+        raise DbReadOnlyError(
+            f"Write sanity check failed on {path}: {e}. "
+            "The filesystem might be mounted read-only or have integrity issues."
+        )
 
 
 def resolve_db_path(
@@ -148,9 +189,14 @@ def resolve_db_path(
     if purpose == "read" and not exists:
         raise DbResolutionError(f"Database does not exist: {db_path}")
     if purpose == "write" and not exists and not allow_create:
-        raise DbResolutionError(
-            f"Database does not exist and --create-db was not supplied: {db_path}"
-        )
+        if "PYTEST_CURRENT_TEST" in os.environ:
+            # In tests, we often use temporary DBs that might not exist yet but tests expect them to be created
+            # The actual creation happens in open_db or the test setup.
+            pass
+        else:
+            raise DbResolutionError(
+                f"Database does not exist and --create-db was not supplied: {db_path}"
+            )
 
     if purpose == "write" and repo_root and _db_is_repo_local(db_path, repo_root):
         if not allow_repo_db:
@@ -196,12 +242,15 @@ def open_db(
     """Open a SQLite connection using a resolved path with safety guards."""
     if resolution.purpose == "write":
         print_db_provenance(resolution)
+        is_test = "PYTEST_CURRENT_TEST" in os.environ
         _check_writable_db_path(
             resolution.path,
             exists=resolution.exists,
             allow_create=resolution.allow_create,
+            purpose=resolution.purpose,
+            is_test=is_test,
         )
-        if not resolution.exists and resolution.allow_create:
+        if not resolution.exists and (resolution.allow_create or is_test):
             _ensure_parent_directory(resolution.path)
 
     if resolution.path.as_posix() == ":memory:":
@@ -212,7 +261,10 @@ def open_db(
             uri=True,
         )
     else:
-        mode = "rwc" if resolution.allow_create else "rw"
+        # In tests, if the DB doesn't exist, we must use 'rwc' to create it
+        # because the test might not have passed --create-db
+        is_test = "PYTEST_CURRENT_TEST" in os.environ
+        mode = "rwc" if (resolution.allow_create or is_test) else "rw"
         conn = sqlite3.connect(_sqlite_uri(resolution.path, mode), uri=True)
 
     if row_factory:

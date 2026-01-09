@@ -29,6 +29,7 @@ class AudioFile:
     integrity_checked_at: Optional[str] = None
     streaminfo_checked_at: Optional[str] = None
     sha256_checked_at: Optional[str] = None
+    checksum_type: Optional[str] = None
 
     def __post_init__(self):
         # Ensure path is always a Path object

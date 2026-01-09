@@ -130,12 +130,12 @@ def _scan_one_file(task: ScanTask) -> ScanResult:
     zone = task.zone_name
     index = task.index
     total = task.total
-    
+
     # Print visual separator and file info with progress
     print("\n" + "─" * 70)
     print(f"📁 [{index}/{total}] {path.name}")
     print(f"   {path.parent}")
-    
+
     try:
         result = extract_metadata(
             path,
@@ -144,7 +144,7 @@ def _scan_one_file(task: ScanTask) -> ScanResult:
             library=library_name,
             zone=zone,
         )
-        
+
         # Show what was extracted
         print(f"   ✓ Metadata extracted")
         if result.streaminfo_md5:
@@ -157,14 +157,14 @@ def _scan_one_file(task: ScanTask) -> ScanResult:
             print(f"   {status} Integrity: {state}")
         if result.duration:
             print(f"   ♫ Duration: {result.duration:.1f}s, {result.sample_rate}Hz, {result.bit_depth}bit")
-        
+
         return ScanResult(
             path=path,
             run_integrity=scan_integrity,
             run_hash=scan_hash,
             file=result,
         )
-        
+
     except ValueError as e:
         print(f"   ✗ Invalid FLAC: {e}")
         logger.error(f"Failed to process {path}: {e}")
@@ -665,6 +665,7 @@ def scan_library(
     failed = 0
     failure_reasons: dict[str, int] = {}
     status = "completed"
+    last_flush_time = time.time()
     try:
         conn.execute("BEGIN")
         for idx, result in enumerate(results, start=1):
@@ -708,9 +709,11 @@ def scan_library(
                 reason = type(row_error).__name__
                 failure_reasons[reason] = failure_reasons.get(reason, 0) + 1
 
-            if idx % db_write_batch_size == 0:
+            # Commit if we reached batch size OR 60 seconds have passed
+            if idx % db_write_batch_size == 0 or (time.time() - last_flush_time) > 60:
                 conn.commit()
                 conn.execute("BEGIN")
+                last_flush_time = time.time()
     except KeyboardInterrupt:
         logger.warning("Interrupted by user during DB write")
         status = "aborted"

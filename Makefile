@@ -26,13 +26,14 @@ test: ## Run tests
 	poetry run pytest
 
 lint: ## Run linting (flake8)
-	poetry run flake8 src scripts tests
+	poetry run flake8 dedupe tools tests
 
-format: ## Format code with Black
-	poetry run black src scripts tests
+format: ## Format code
+	# Suggest using black if installed
+	poetry run black dedupe tools tests || echo "Black not found, skipping format"
 
 type-check: ## Run mypy type checking
-	poetry run mypy src
+	poetry run mypy dedupe
 
 clean: ## Clean Python cache files
 	find . -type d -name __pycache__ -exec rm -rf {} +

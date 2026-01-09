@@ -12,8 +12,14 @@ def _init_scored_db(db_path: Path) -> None:
     ctx = utils.DatabaseContext(db_path)
     with ctx.connect() as connection:
         scanner.initialise_database(connection)
+
+        # Check if columns already exist before adding them
+        existing_columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(library_files)")
+        }
         for column in hrm_relocation.REQUIRED_SCORE_COLUMNS:
-            connection.execute(f"ALTER TABLE library_files ADD COLUMN {column} REAL")
+            if column not in existing_columns:
+                connection.execute(f"ALTER TABLE library_files ADD COLUMN {column} REAL")
         connection.commit()
 
 

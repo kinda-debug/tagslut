@@ -16,9 +16,10 @@ authors = [
 	{ name = "Your Name", email = "you@example.com" },
 ]
 dependencies = [
-	"click>=8.1",
-	"mutagen>=1.46",
-	"jsonschema>=4.0",
+    "click>=8.1",
+    "mutagen>=1.46",
+    "jsonschema>=4.0",
+    "tqdm (>=4.66)",
 ]
 
 [tool.poetry.dependencies]
@@ -27,11 +28,12 @@ click = "^8.1"
 mutagen = "^1.46"
 tomli = "^2.0"  # Only needed for Python < 3.11, but harmless to keep
 jsonschema = "^4.0"
+tqdm = "^4.66"
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^7.0"
+pytest = "^9.0.2"
 mypy = "^1.0"
-flake8 = "^6.0"
+flake8 = "^7.0.0"
 types-click = "^7.1"
 
 [build-system]

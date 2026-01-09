@@ -155,6 +155,36 @@ def init_db(
         _ensure_scan_tracking_tables(connection)
         _record_schema_version(connection, schema_name="integrity", version=INTEGRITY_SCHEMA_VERSION)
 
+        # Migrate the 'files' table as well
+        try:
+            existing_files_columns = _get_existing_columns(connection, "files")
+            files_columns = {
+                "checksum_type": "TEXT",
+            }
+            for col_name, col_type in files_columns.items():
+                if col_name not in existing_files_columns:
+                    connection.execute(f"ALTER TABLE files ADD COLUMN {col_name} {col_type}")
+        except sqlite3.OperationalError:
+            # Table 'files' might not exist in some test scenarios
+            pass
+
+        # Handle legacy 'library_files' table if it exists
+        try:
+            existing_library_columns = _get_existing_columns(connection, LIBRARY_TABLE)
+            if existing_library_columns:
+                library_columns = {
+                    "score_integrity": "REAL",
+                    "score_audio": "REAL",
+                    "score_tags": "REAL",
+                    "score_total": "REAL",
+                }
+                for col_name, col_type in library_columns.items():
+                    if col_name not in existing_library_columns:
+                        connection.execute(f"ALTER TABLE {LIBRARY_TABLE} ADD COLUMN {col_name} {col_type}")
+        except sqlite3.OperationalError:
+            # Table LIBRARY_TABLE might not exist yet
+            pass
+
         connection.commit()
     except sqlite3.OperationalError as e:
         if "readonly" in str(e).lower():
@@ -178,6 +208,8 @@ def initialise_library_schema(connection: sqlite3.Connection) -> None:
     with connection:
         connection.execute("PRAGMA journal_mode=WAL")
         connection.execute("PRAGMA busy_timeout=5000")
+
+        # Ensure base columns exist
         connection.execute(
             f"""
             CREATE TABLE IF NOT EXISTS {LIBRARY_TABLE} (
@@ -197,15 +229,12 @@ def initialise_library_schema(connection: sqlite3.Connection) -> None:
                 duplicate_rank INTEGER,
                 is_canonical INTEGER,
                 extra_json TEXT,
-                library_state TEXT,
-                flac_ok INTEGER,
-                integrity_state TEXT,
-                zone TEXT
+                score_integrity REAL,
+                score_audio REAL,
+                score_tags REAL,
+                score_total REAL
             )
             """
-        )
-        connection.execute(
-            f"CREATE INDEX IF NOT EXISTS idx_{LIBRARY_TABLE}_checksum ON {LIBRARY_TABLE}(checksum)"
         )
 
         existing_columns = _get_existing_columns(connection, LIBRARY_TABLE)
@@ -214,6 +243,11 @@ def initialise_library_schema(connection: sqlite3.Connection) -> None:
             "flac_ok": "INTEGER",
             "integrity_state": "TEXT",
             "zone": "TEXT",
+            "checksum_type": "TEXT",
+            "streaminfo_md5": "TEXT",
+            "sha256": "TEXT",
+            "bitrate": "INTEGER",
+            "metadata_json": "TEXT",
         }
         for col_name, col_type in library_columns.items():
             if col_name not in existing_columns:
@@ -222,9 +256,22 @@ def initialise_library_schema(connection: sqlite3.Connection) -> None:
                     col_name,
                     LIBRARY_TABLE,
                 )
-                connection.execute(
-                    f"ALTER TABLE {LIBRARY_TABLE} ADD COLUMN {col_name} {col_type}"
-                )
+                connection.execute(f"ALTER TABLE {LIBRARY_TABLE} ADD COLUMN {col_name} {col_type}")
+
+        connection.execute(
+            f"CREATE INDEX IF NOT EXISTS idx_{LIBRARY_TABLE}_checksum ON {LIBRARY_TABLE}(checksum)"
+        )
+        # Surgical indexing for matching queries
+        connection.execute(
+            f"CREATE INDEX IF NOT EXISTS idx_{LIBRARY_TABLE}_checksum_size ON {LIBRARY_TABLE}(checksum, size_bytes)"
+        )
+        try:
+            connection.execute(
+                f"CREATE INDEX IF NOT EXISTS idx_{LIBRARY_TABLE}_streaminfo ON {LIBRARY_TABLE}(streaminfo_md5)"
+            )
+        except sqlite3.OperationalError:
+            # Table or column might not exist yet if this is called early
+            pass
 
         connection.execute(
             f"""

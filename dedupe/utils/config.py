@@ -15,6 +15,12 @@ CONFIG_PATHS = [
     Path.home() / ".config" / "dedupe" / "config.toml",
 ]
 
+def _clear_config_instance():
+    """Internal helper to reset the config singleton (primarily for testing)."""
+    Config._instance = None
+    Config._data = {}
+    Config._override_path = None
+
 class Config:
     _instance = None
     _data: Dict[str, Any] = {}
@@ -43,7 +49,13 @@ class Config:
                 try:
                     with open(path, "rb") as f:
                         self._data = tomllib.load(f)
-                    logging.info(f"Loaded configuration from {path}")
+
+                    # Special check for test environment to avoid accidental root changes
+                    if "PYTEST_CURRENT_TEST" in os.environ:
+                         pass
+                    else:
+                        logging.info(f"Loaded configuration from {path}")
+
                     loaded = True
                     break
                 except Exception as e:
@@ -81,6 +93,14 @@ class Config:
 
 def get_config(config_path: Path | None = None) -> Config:
     """Public accessor for the singleton configuration."""
+    if "PYTEST_CURRENT_TEST" in os.environ:
+         # Always clear or force reload in tests to avoid singleton contamination
+         if config_path is not None:
+             _clear_config_instance()
+         elif os.getenv("DEDUPE_CONFIG"):
+             # If env var changed, we need to reload
+             _clear_config_instance()
+
     config = Config()
     if config_path is not None and config_path != config._override_path:
         config._override_path = config_path

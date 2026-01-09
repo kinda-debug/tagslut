@@ -1,9 +1,17 @@
 # Runtime dependencies
-mutagen>=1.47.0
+click>=8.1
+mutagen>=1.46
+jsonschema>=4.0
 tqdm>=4.66
-tomli>=2.0.1; python_version < "3.11"
+tomli>=2.0; python_version < "3.11"
 
-# External helpers (not installed automatically):
-#   ffprobe / ffmpeg   # stream metadata
-#   fpcalc             # Chromaprint fingerprints
-#   sqlite3            # command-line inspection of generated databases
+# Development dependencies (optional for installation)
+# pytest>=9.0.2
+# mypy>=1.0
+# flake8>=7.0.0
+# types-click>=7.1
+
+# External system requirements:
+#   flac               # required for integrity checks (flac -t)
+#   ffprobe / ffmpeg   # optional: used for fallback metadata probing
+#   fpcalc             # optional: used for Chromaprint fingerprints

@@ -176,7 +176,7 @@ def relocate_hrm(
         manifest_path=manifest_path,
     )
 
-    db = utils.DatabaseContext(db_path, purpose="read")
+    db = utils.DatabaseContext(db_path, purpose="write")
     with db.connect() as connection:
         _ensure_required_columns(connection)
         rows = connection.execute(

@@ -667,8 +667,9 @@ def upsert_file(conn: sqlite3.Connection, file: AudioFile) -> None:
     INSERT INTO files (
         path, library, zone, mtime, size, checksum, streaminfo_md5, sha256, duration,
         bit_depth, sample_rate, bitrate, metadata_json, flac_ok, integrity_state,
-        integrity_checked_at, streaminfo_checked_at, sha256_checked_at, acoustid
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        integrity_checked_at, streaminfo_checked_at, sha256_checked_at, acoustid,
+        checksum_type
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(path) DO UPDATE SET
         library=excluded.library,
         zone=excluded.zone,
@@ -687,7 +688,8 @@ def upsert_file(conn: sqlite3.Connection, file: AudioFile) -> None:
         integrity_checked_at=excluded.integrity_checked_at,
         streaminfo_checked_at=excluded.streaminfo_checked_at,
         sha256_checked_at=excluded.sha256_checked_at,
-        acoustid=excluded.acoustid;
+        acoustid=excluded.acoustid,
+        checksum_type=excluded.checksum_type;
     """
 
     normalized_metadata = {
@@ -719,6 +721,7 @@ def upsert_file(conn: sqlite3.Connection, file: AudioFile) -> None:
         _normalize_text_field(file.streaminfo_checked_at, "streaminfo_checked_at"),
         _normalize_text_field(file.sha256_checked_at, "sha256_checked_at"),
         acoustid,
+        _normalize_text_field(file.checksum_type, "checksum_type"),
     )
 
     try:
@@ -735,7 +738,7 @@ def get_file(conn: sqlite3.Connection, path: Path) -> Optional[AudioFile]:
     row = cursor.fetchone()
     if not row:
         return None
-    
+
     return _row_to_audiofile(row)
 
 def get_files_by_checksum(conn: sqlite3.Connection, checksum: str) -> List[AudioFile]:
@@ -812,4 +815,5 @@ def _row_to_audiofile(row: sqlite3.Row) -> AudioFile:
         integrity_checked_at=row["integrity_checked_at"] if "integrity_checked_at" in row.keys() else None,
         streaminfo_checked_at=row["streaminfo_checked_at"] if "streaminfo_checked_at" in row.keys() else None,
         sha256_checked_at=row["sha256_checked_at"] if "sha256_checked_at" in row.keys() else None,
+        checksum_type=row["checksum_type"] if "checksum_type" in row.keys() else None,
     )

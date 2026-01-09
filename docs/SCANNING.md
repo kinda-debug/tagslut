@@ -9,9 +9,9 @@ python3 tools/integrity/scan.py
 ## Key Behavior
 
 - **Incremental by default**: skips unchanged files (mtime+size match).
-- **Resumable**: progress is committed in batches.
+- **Resumable**: progress is committed in batches and automatically flushed every 60 seconds (adaptive commit).
+- **Safe**: Pre-flight checks for disk space (50MB min) and write sanity tests ensure your filesystem is healthy before scanning.
 - **Verbose**: progress is continuous when enabled in config.
-- **Safe**: no file moves or deletions.
 
 ## Defaults (config.toml)
 

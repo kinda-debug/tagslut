@@ -10,6 +10,14 @@ This repository is a recovery-first, evidence-preserving toolkit for scanning, a
 
 Scripts and one-off artifacts have been archived. Use the tools below.
 
+## Core Features (Evidence-First)
+
+- **Technical Provenance**: Tracks `checksum_type` (STREAMINFO vs SHA256) for every file.
+- **Resource Guardrails**: Pre-flight disk space and write-sanity checks.
+- **Adaptive Commits**: Time-based (60s) and batch-based database flushing.
+- **Risk Profiling**: Automatic delta analysis (duration, bitrate, etc.) for duplicates.
+- **High Performance**: Surgical indexing for fast queries on large datasets.
+
 ## Quickstart (Minimal)
 
 1) Set your DB path (once):

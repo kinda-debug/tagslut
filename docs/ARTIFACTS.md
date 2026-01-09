@@ -1,0 +1,26 @@
+# Artifacts and Evidence
+
+Store evidence outputs outside the repo when possible.
+
+## Recommended Locations
+
+```
+/Volumes/COMMUNE/M/00_manifests
+/Volumes/COMMUNE/M/01_candidates
+/Volumes/COMMUNE/M/02_unmatched
+/Volumes/COMMUNE/M/03_reports
+```
+
+## Archive Location
+
+```
+/Users/georgeskhawam/Projects/dedupe_archive/
+```
+
+Use dated folders (e.g. `_ARCHIVE_STATE_YYYYMMDD_HHMMSS`).
+
+## Rules
+
+- Do not edit CSV outputs in place.
+- Archive before starting a new analysis phase.
+- Keep DBs and manifests together in the same archive.

@@ -1,143 +1,47 @@
-# FLAC Deduplication System
+# Recovery-First FLAC Deduplication
 
-A curator-first Python system for verifying, indexing, and auditing large FLAC collections recovered from heterogeneous sources.
+This repository is a recovery-first, evidence-preserving toolkit for scanning, auditing, and deduplicating large FLAC libraries. The workflow is **deterministic**, **resumable**, and **non-destructive** unless you explicitly approve changes.
 
-**COMMUNE** is the future canonical library layout.  
-**Yate** remains the metadata authority after ingestion.  
-**The dedupe layer never deletes or mutates audio or tags.**  
-It produces reviewable, resumable decisions only.
+## What You Work With
 
-See **[docs/SYSTEM_SPEC.md](docs/SYSTEM_SPEC.md)** for the system specification index.
+- `tools/` — operator CLIs (scan, decide, apply)
+- `dedupe/` — core engine (scanner, matcher, decisions)
+- `docs/` — concise operator documentation
 
-Additional references:
-- **[docs/repo_inventory.md](docs/repo_inventory.md)** — file-by-file inventory and alignment notes
-- **[docs/scripts_reference.md](docs/scripts_reference.md)** — operator scripts reference
+Scripts and one-off artifacts have been archived. Use the tools below.
 
-## Architecture
+## Quickstart (Minimal)
 
-This repository has been refactored (2025) into a clean, layered architecture:
-
-* **`dedupe/core/`**: Pure business logic (Hashing, Metadata, Integrity, Decisions).
-* **`dedupe/storage/`**: SQLite persistence layer with additive migrations.
-* **`dedupe/utils/`**: Shared utilities (Parallelism, Config, Logging).
-* **`tools/`**: Command-line interfaces (CLIs) for user interaction.
-
-## Installation
-
-Requires Python 3.11+.
-
-```bash
-pip install -r requirements.txt
-# OR
-poetry install
-```
-
-## Configuration
-
-Copy `config.example.toml` to `config.toml` or `~/.config/dedupe/config.toml`.
-You can also point to a specific config file with `DEDUPE_CONFIG=/path/to/config.toml`.
+1) Set your DB path (once):
 
 ```toml
-[library]
-name = "COMMUNE"
-root = "/Volumes/COMMUNE"
-
-[library.zones]
-staging = "10_STAGING"
-accepted = "20_ACCEPTED"
-
-[decisions]
-zone_priority = ["accepted", "staging", "suspect", "quarantine"]
+# config.toml
+[db]
+path = "/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-01-09/music.db"
 ```
 
-Yate is never invoked during scanning. Tag reading is passive only.
-
-## Quick Start: Fast Deduplication Workflow
-
-**Recommended**: Defer integrity checks until after deduplication to save time.
+2) Scan a root (resumable, verbose by default):
 
 ```bash
-export DEDUPE_DB="/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-01-08/music.db"
-
-# 1. Fast scan (no integrity checks)
-python3 tools/integrity/scan.py /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY \
-  --db "$DEDUPE_DB" --library recovery --zone accepted \
-  --no-check-integrity --incremental --progress
-
-# 2. Find duplicates and decide winners
-python3 tools/decide/recommend.py --db "$DEDUPE_DB" --output plan.json
-
-# 3. Extract winner paths
-cat plan.json | jq -r '.plan[].decisions[] | select(.action == "keep") | .path' > winners.txt
-
-# 4. Verify winners only
-python3 tools/integrity/scan.py /path/to/winners \
-  --db "$DEDUPE_DB" --check-integrity --recheck --progress
+python3 tools/integrity/scan.py /Volumes/RECOVERY_TARGET/Root
 ```
 
-See **[docs/FAST_WORKFLOW.md](docs/FAST_WORKFLOW.md)** for the complete optimized workflow.
-
----
-
-## Tools & Usage
-
-### Multi-Source Integrity Scanning
-
-Scan arbitrary sources into a single long-lived DB (resumable, multi-library aware):
+3) Generate a decision plan (read-only):
 
 ```bash
-# Primary recovered library
-python3 tools/integrity/scan.py \
-  /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY \
-  --db "/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-01-08/music.db" \
-  --library recovery \
-  --zone accepted \
-  --check-integrity \
-  --incremental \
-  --progress \
-  --verbose
-
-# Older vault material
-python3 tools/integrity/scan.py \
-  /Volumes/Vault \
-  --db "/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-01-08/music.db" \
-  --library vault \
-  --zone suspect \
-  --check-integrity \
-  --incremental \
-  --progress
-
-# Known problematic sources
-python3 tools/integrity/scan.py \
-  /Volumes/bad \
-  --db "/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-01-08/music.db" \
-  --library bad \
-  --zone quarantine \
-  --check-integrity \
-  --incremental \
-  --progress
+python3 tools/decide/recommend.py --db "/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-01-09/music.db" --output plan.json
 ```
 
-**Nothing is copied. Nothing is renamed.**
-
-### Decision Phase (Read-Only)
+4) Apply decisions only after review:
 
 ```bash
-python3 tools/decide/recommend.py \
-  --db "/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-01-08/music.db" \
-  --output plan.json
+python3 tools/decide/apply.py --db "/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-01-09/music.db" --plan plan.json
 ```
 
-**Decision Logic (strict order):**
-1. **Integrity**: Bitstream-valid files are preferred.
-2. **Zone**: Accepted > Suspect > Quarantine.
-3. **Quality**: Higher sample rate/bit depth is preferred.
-4. **Provenance confidence**.
+## Docs (Start Here)
 
-**Output:** JSON plan, human-readable explanations, no side effects.
-
-## Development
-
-* **Tests**: `pytest`
-* **Type Checking**: `mypy dedupe tools`
-* **Linting**: `flake8 dedupe tools`
+- `docs/OPERATOR_GUIDE.md` — tailored recovery workflow
+- `docs/SCANNING.md` — resumable scanning behavior and defaults
+- `docs/TOOLS.md` — what each CLI does
+- `docs/CONFIG.md` — minimal config for this workflow
+- `docs/ARTIFACTS.md` — where evidence outputs live

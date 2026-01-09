@@ -91,11 +91,15 @@ def extract_metadata(
             # Extract STREAMINFO MD5 (fast, embedded in FLAC metadata block)
             # This is NOT the file hash - it's the hash of the decoded audio
             # Perfect for fast duplicate detection without full-file hashing
-            streaminfo_md5 = getattr(audio.info, 'md5_signature', None)
+            streaminfo_md5 = getattr(audio.info, "md5_signature", None)
             if streaminfo_md5:
-                # Convert bytes to hex string if needed
-                if isinstance(streaminfo_md5, bytes):
+                # Normalize mutagen return types (bytes/int) to a hex string
+                if isinstance(streaminfo_md5, (bytes, bytearray)):
                     streaminfo_md5 = streaminfo_md5.hex()
+                elif isinstance(streaminfo_md5, int):
+                    streaminfo_md5 = f"{streaminfo_md5:032x}"
+                else:
+                    streaminfo_md5 = str(streaminfo_md5)
                 checksum = f"streaminfo:{streaminfo_md5}"
                 checksum_type = "STREAMINFO_MD5"
                 streaminfo_checked_at = now_iso

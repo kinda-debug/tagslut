@@ -10,8 +10,12 @@ DEFAULT_ZONE_PRIORITY = ["accepted", "staging"]
 DecisionAction = Literal["KEEP", "DROP", "REVIEW"]
 DecisionConfidence = Literal["HIGH", "MEDIUM", "LOW"]
 
-def _normalize_meta(value: str) -> str:
-    cleaned = re.sub(r"\\s+", " ", value or "").strip().casefold()
+def _normalize_meta(value: str | Iterable[str] | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, (list, tuple, set)):
+        value = " ".join(filter(None, (str(item) for item in value)))
+    cleaned = re.sub(r"\s+", " ", str(value)).strip().casefold()
     return cleaned
 
 def _meta_score(file: AudioFile, fields: Iterable[str]) -> int:

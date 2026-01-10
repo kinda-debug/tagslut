@@ -1,19 +1,19 @@
 [tool.poetry]
 name = "flac-dedupe"
 version = "2.0.0"
-description = "Refactored FLAC music library deduplication system."
-authors = ["Your Name <you@example.com>"]
+description = "FLAC music library deduplication and integrity management system with provenance tracking."
+authors = ["Georges Khawam <georgeskhawam@users.noreply.github.com>"]
 readme = "README.md"
 packages = [{include = "dedupe"}]
 
 [project]
 name = "flac-dedupe"
 version = "2.0.0"
-description = "Refactored FLAC music library deduplication system."
+description = "FLAC music library deduplication and integrity management system with provenance tracking."
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [
-	{ name = "Your Name", email = "you@example.com" },
+	{ name = "Georges Khawam", email = "georgeskhawam@users.noreply.github.com" },
 ]
 dependencies = [
     "click>=8.1",

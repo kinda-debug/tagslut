@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Iterator, Optional
 
+from dedupe.utils.config import Config
 from dedupe.utils.db import open_db, resolve_db_path
 
 logger = logging.getLogger(__name__)
@@ -39,7 +40,7 @@ class DatabaseContext:
     allow_repo_db: bool = False
     repo_root: Optional[Path] = None
     source_label: str = "explicit"
-    config: Optional[object] = None
+    config: Optional[Config] = None
 
     def connect(self) -> sqlite3.Connection:
         """Return a SQLite connection with resolver-enforced safety."""
@@ -109,7 +110,11 @@ def read_json(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
     with path.open("r", encoding="utf8") as handle:
-        return json.load(handle)
+        data = json.load(handle)
+    if isinstance(data, dict):
+        return data
+    logger.warning("JSON %s is not an object; returning empty dict", path)
+    return {}
 
 
 def safe_int(value: Optional[str]) -> Optional[int]:

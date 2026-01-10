@@ -19,7 +19,13 @@ from dedupe.utils.config import get_config
 @click.option("--output", "-o", type=click.Path(writable=True), help="Output JSON file for the plan")
 @click.option("--priority", "-p", multiple=True, help="Zone priority order (e.g. -p accepted -p staging).")
 @common_options
-def recommend(db, output, priority, verbose, config) -> None:
+def recommend(
+    db: str,
+    output: str | None,
+    priority: tuple[str, ...],
+    verbose: bool,
+    config: str | None,
+) -> None:
     """
     Analyzes duplicates in the DB and produces curator-facing review guidance.
     Outputs a JSON plan.
@@ -28,17 +34,21 @@ def recommend(db, output, priority, verbose, config) -> None:
     logger = logging.getLogger("dedupe")
 
     app_config = get_config(Path(config) if config else None)
-
     # Load config priorities if not overridden
-    if not priority:
-        priority = app_config.get("decisions.zone_priority", ["accepted", "staging"]).copy()
+    priority_order: list[str]
+    if priority:
+        priority_order = list(priority)
+    else:
+        priority_order = list(
+            app_config.get("decisions.zone_priority", ["accepted", "staging"])
+        )
 
     use_metadata_tiebreaker = bool(app_config.get("decisions.metadata_tiebreaker", False))
     metadata_fields = app_config.get("decisions.metadata_fields", None)
     if not isinstance(metadata_fields, (list, tuple)) or not metadata_fields:
         metadata_fields = ("artist", "album", "title")
 
-    logger.info(f"Using priority order: {priority}")
+    logger.info(f"Using priority order: {priority_order}")
 
     conn = get_connection(Path(db), purpose="read")
     
@@ -47,26 +57,27 @@ def recommend(db, output, priority, verbose, config) -> None:
     groups = list(find_exact_duplicates(conn))
     logger.info(f"Found {len(groups)} duplicate groups.")
 
-    plan_entries = []
+    plan_entries: list[dict[str, Any]] = []
     
     # 2. Make Decisions
     for group in groups:
         decisions = assess_duplicate_group(
             group,
-            priority_order=list(priority),
+            priority_order=priority_order,
             use_metadata_tiebreaker=use_metadata_tiebreaker,
             metadata_fields=metadata_fields,
         )
         
         # Convert Decision objects to JSON-serializable dicts
+        decisions_bucket: list[dict[str, Any]] = []
         group_entry = {
             "group_id": group.group_id,
             "similarity": group.similarity,
-            "decisions": []
+            "decisions": decisions_bucket,
         }
-        
+
         for d in decisions:
-            group_entry["decisions"].append({
+            decisions_bucket.append({
                 "path": str(d.file.path),
                 "library": d.file.library,
                 "zone": d.file.zone,
@@ -91,7 +102,7 @@ def recommend(db, output, priority, verbose, config) -> None:
     # 3. Output
     summary = {
         "groups_count": len(plan_entries),
-        "zone_priority": priority,
+        "zone_priority": priority_order,
         "plan": plan_entries
     }
 

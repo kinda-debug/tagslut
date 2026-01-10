@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal, Optional, List, Dict, Any
+from typing import Literal, Optional, List, Dict, Any, cast
 
 IntegrityState = Literal["valid", "recoverable", "corrupt"]
 Zone = Literal["inbox", "staging", "accepted", "rejected", "suspect", "quarantine"]
@@ -31,13 +31,13 @@ class AudioFile:
     sha256_checked_at: Optional[str] = None
     checksum_type: Optional[str] = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         # Ensure path is always a Path object
         if isinstance(self.path, str):
             self.path = Path(self.path)
         # Normalize tuple/list values for scalar fields
         self.acoustid = self._normalize_scalar(self.acoustid)
-        self.integrity_state = self._normalize_scalar(self.integrity_state)
+        self.integrity_state = self._normalize_integrity_state(self.integrity_state)
 
     @staticmethod
     def _normalize_scalar(value: Optional[object]) -> Optional[str]:
@@ -54,6 +54,14 @@ class AudioFile:
                 return str(item)
             return None
         return str(value)
+
+    @staticmethod
+    def _normalize_integrity_state(value: Optional[object]) -> Optional[IntegrityState]:
+        scalar = AudioFile._normalize_scalar(value)
+        allowed: frozenset[str] = frozenset({"valid", "recoverable", "corrupt"})
+        if scalar and scalar in allowed:
+            return cast(IntegrityState, scalar)
+        return None
 
 @dataclass
 class DuplicateGroup:

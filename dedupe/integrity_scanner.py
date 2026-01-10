@@ -1,5 +1,6 @@
 import logging
 import platform
+import sqlite3
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -16,7 +17,7 @@ from dedupe.storage.queries import (
 )
 from dedupe.storage.schema import get_connection, init_db
 from dedupe.utils.paths import list_files
-from dedupe.utils.parallel import process_map
+from dedupe.utils.parallel import process_map, ProcessMapResult
 from dedupe.utils.config import get_config
 from dedupe.utils.library import load_zone_paths, ensure_dedupe_zone
 
@@ -252,6 +253,7 @@ def scan_library(
     if db_flush_interval is not None and db_flush_interval < 0:
         db_flush_interval = 0
 
+    flac_files: list[Path]
     # Handle specific paths mode (e.g., from --paths-from-file)
     if specific_paths:
         logger.info("Processing %d specific paths", len(specific_paths))
@@ -398,7 +400,9 @@ def scan_library(
         age = datetime.now(timezone.utc) - parsed
         return age.days >= stale_days
 
-    def _infer_checksums(row) -> tuple[Optional[str], Optional[str]]:
+    def _infer_checksums(row: sqlite3.Row | None) -> tuple[Optional[str], Optional[str]]:
+        if row is None:
+            return None, None
         streaminfo_md5 = row["streaminfo_md5"]
         sha256 = row["sha256"]
         checksum = row["checksum"]
@@ -411,7 +415,7 @@ def scan_library(
                 sha256 = checksum
         return streaminfo_md5, sha256
 
-    def _metadata_missing(row) -> bool:
+    def _metadata_missing(row: sqlite3.Row | None) -> bool:
         if not row:
             return True
         if row["mtime"] is None or row["size"] is None:
@@ -419,12 +423,12 @@ def scan_library(
         checksum = row["checksum"]
         return not checksum or checksum == "NOT_SCANNED"
 
-    def _integrity_done(row) -> bool:
+    def _integrity_done(row: sqlite3.Row | None) -> bool:
         if not row:
             return False
         return row["integrity_checked_at"] is not None
 
-    def _integrity_failed(row) -> bool:
+    def _integrity_failed(row: sqlite3.Row | None) -> bool:
         if not row:
             return False
         if row["integrity_checked_at"] is None:
@@ -652,7 +656,7 @@ def scan_library(
 
     # 5. Run Parallel Extraction
     start_time = time.time()
-    process_result = process_map(
+    process_result_raw = process_map(
         _scan_one_file,
         scan_tasks,
         max_workers=workers,
@@ -660,8 +664,12 @@ def scan_library(
         progress_interval=progress_interval,
         return_interrupt_status=True,
     )
-    results = process_result.results
-    interrupted = process_result.interrupted
+    if isinstance(process_result_raw, ProcessMapResult):
+        results = process_result_raw.results
+        interrupted = process_result_raw.interrupted
+    else:
+        results = process_result_raw
+        interrupted = False
     if error_log:
         try:
             error_log_path = error_log

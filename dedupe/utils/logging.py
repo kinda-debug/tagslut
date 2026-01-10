@@ -1,8 +1,9 @@
 import logging
 import sys
 from pathlib import Path
+from typing import Optional
 
-def setup_logger(name: str = "dedupe", level: int = logging.INFO, log_file: Path = None) -> logging.Logger:
+def setup_logger(name: str = "dedupe", level: int = logging.INFO, log_file: Optional[Path] = None) -> logging.Logger:
     """
     Configures a structured logger that outputs to stderr and optionally a file.
     """

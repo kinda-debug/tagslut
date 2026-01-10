@@ -556,7 +556,10 @@ def insert_scan_session(
             host,
         ),
     )
-    return int(cursor.lastrowid)
+    rowid = cursor.lastrowid
+    if rowid is None:
+        raise RuntimeError("Failed to insert scan session; no rowid returned.")
+    return rowid
 
 
 def finalize_scan_session(

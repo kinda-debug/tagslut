@@ -51,19 +51,24 @@ def assess_duplicate_group(
     has_accepted = "accepted" in group_zones
     has_staging = "staging" in group_zones
 
-    def base_key(f: AudioFile) -> Tuple[int, int, Tuple[int, int, int], int]:
+    def base_key(f: AudioFile) -> tuple[int, ...]:
         # 1. Integrity
         integrity_ok = f.integrity_state == "valid" if f.integrity_state else f.flac_ok
         score_integrity = 1 if integrity_ok else 0
         # 2. Zone priority
         score_priority = -get_zone_priority(f, priorities)
         # 3. Technical Quality
-        score_tech = (f.sample_rate, f.bit_depth, f.bitrate)
+        score_quality = (f.sample_rate, f.bit_depth, f.bitrate)
         # 4. Path preference (Shorter path usually means less nested/cluttered)
         score_path_len = -len(str(f.path))
-        return (score_integrity, score_priority, score_tech, score_path_len)
+        return (
+            score_integrity,
+            score_priority,
+            *score_quality,
+            score_path_len,
+        )
 
-    def sort_key(f: AudioFile):
+    def sort_key(f: AudioFile) -> tuple[int, ...]:
         key = base_key(f)
         if use_metadata_tiebreaker:
             return key + (_meta_score(f, metadata_fields),)

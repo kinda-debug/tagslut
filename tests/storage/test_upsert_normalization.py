@@ -19,8 +19,8 @@ def test_upsert_normalizes_tuple_fields(tmp_path: Path) -> None:
             bitrate=900,
             metadata={"artist": "Test"},
             flac_ok=True,
-            acoustid=("x", "y"),
-            integrity_state=("valid", "detail"),
+            acoustid=("x", "y"),  # type: ignore[arg-type]
+            integrity_state=("valid", "detail"),  # type: ignore[arg-type]
         )
         upsert_file(conn, audio)
         conn.commit()

@@ -25,7 +25,15 @@ from dedupe.utils.db import resolve_db_path
 )
 @click.option("--print-path", is_flag=True, default=False, help="Print only the resolved path")
 @common_options
-def main(db, allow_repo_db, create_db, purpose, print_path, verbose, config) -> None:
+def main(
+    db: str | None,
+    allow_repo_db: bool,
+    create_db: bool,
+    purpose: str,
+    print_path: bool,
+    verbose: bool,
+    config: str | None,
+) -> None:
     """Print the resolved DB path and precedence chain."""
     configure_execution(verbose, config)
     app_config = get_config()

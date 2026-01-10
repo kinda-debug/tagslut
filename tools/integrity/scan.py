@@ -59,7 +59,28 @@ from dedupe.utils.db import resolve_db_path
 @click.option("--stale-days", type=int, default=None, help="Treat integrity/hash results older than N days as stale")
 @click.option("--error-log", type=click.Path(dir_okay=False), default=None, help="Path to append scan error details (default: scan_errors.log in cwd)")
 @common_options
-def scan(library_path, db, create_db, paths_from_file, library, zone, incremental, recheck, force_all, progress, progress_interval, limit, check_integrity, check_hash, hard_skip, allow_repo_db, stale_days, error_log, verbose, config) -> None:
+def scan(
+    library_path: str | None,
+    db: str | None,
+    create_db: bool,
+    paths_from_file: str | None,
+    library: str | None,
+    zone: str | None,
+    incremental: bool,
+    recheck: bool,
+    force_all: bool,
+    progress: bool,
+    progress_interval: int,
+    limit: int | None,
+    check_integrity: bool,
+    check_hash: bool,
+    hard_skip: bool,
+    allow_repo_db: bool,
+    stale_days: int | None,
+    error_log: str | None,
+    verbose: bool,
+    config: str | None,
+) -> None:
     """
     Scans a library folder for FLAC files and populates the database.
 
@@ -68,7 +89,12 @@ def scan(library_path, db, create_db, paths_from_file, library, zone, incrementa
     app_config = get_config(Path(config) if config else None)
     ctx = click.get_current_context()
 
-    def _apply_default(param_name, current_value, config_key, fallback: Any = None) -> Any:
+    def _apply_default(
+        param_name: str,
+        current_value: Any,
+        config_key: str,
+        fallback: Any = None,
+    ) -> Any:
         if ctx.get_parameter_source(param_name) == click.core.ParameterSource.DEFAULT:
             value = app_config.get(config_key, fallback)
             if value is not None:
@@ -128,13 +154,14 @@ def scan(library_path, db, create_db, paths_from_file, library, zone, incrementa
         lib_path = None
         paths_from_file_path = paths_file
     else:
+        assert library_path is not None
         lib_path = Path(library_path).expanduser().resolve()
         paths_from_file_path = None
 
     if lib_path:
         click.echo(f"Scanning Library: {lib_path}")
     else:
-        click.echo(f"Scanning {len(specific_paths)} specific paths")
+        click.echo(f"Scanning {len(specific_paths or [])} specific paths")
     click.echo(f"Database: {db_path} (source={db_source})")
     if library:
         click.echo(f"Library Tag: {library}")

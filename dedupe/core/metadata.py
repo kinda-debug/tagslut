@@ -1,16 +1,23 @@
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, cast
 
-import mutagen
+from mutagen import MutagenError  # type: ignore[attr-defined]
 from mutagen.flac import FLAC, FLACNoHeaderError
 
-from dedupe.storage.models import AudioFile
+from dedupe.storage.models import AudioFile, Zone
 from dedupe.core.integrity import classify_flac_integrity, IntegrityState
 from dedupe.core.hashing import calculate_file_hash
 
 logger = logging.getLogger("dedupe")
+
+VALID_ZONES: frozenset[str] = frozenset({"inbox", "staging", "accepted", "rejected", "suspect", "quarantine"})
+
+def _coerce_zone(value: str | None) -> Zone | None:
+    if value and value in VALID_ZONES:
+        return cast(Zone, value)
+    return None
 
 def extract_metadata(
     file_path: Path,
@@ -116,11 +123,12 @@ def extract_metadata(
                     checksum_type = "SHA256_FULL"
 
         # Tag extraction
-        if audio.tags:
+        tags_holder = audio.tags
+        if tags_holder and hasattr(tags_holder, "items"):
             # Convert ALL mutagen objects to plain Python types
             # Mutagen returns special list/tuple subclasses that SQLite can't bind
             tags = {}
-            for k, v in audio.tags.items():
+            for k, v in tags_holder.items():
                 # Handle list-like values
                 if isinstance(v, (list, tuple)):
                     # Convert to plain list, and convert each item to str/int/float
@@ -142,7 +150,7 @@ def extract_metadata(
         logger.error(f"No FLAC header found: {path_obj}")
         integrity_state = "corrupt"
         flac_ok = False
-    except mutagen.MutagenError as e:
+    except MutagenError as e:
         logger.error(f"Mutagen error reading {path_obj}: {e}")
         integrity_state = "corrupt"
         flac_ok = False
@@ -153,7 +161,7 @@ def extract_metadata(
     return AudioFile(
         path=path_obj,
         library=library,
-        zone=zone,
+        zone=_coerce_zone(zone),
         mtime=mtime,
         size=size,
         checksum=checksum,

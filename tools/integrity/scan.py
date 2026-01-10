@@ -1,6 +1,7 @@
 import sys
 import click
 from pathlib import Path
+from typing import Any
 
 # Ensure we can import dedupe from root
 sys.path.insert(0, str(Path(__file__).parents[2]))
@@ -58,7 +59,7 @@ from dedupe.utils.db import resolve_db_path
 @click.option("--stale-days", type=int, default=None, help="Treat integrity/hash results older than N days as stale")
 @click.option("--error-log", type=click.Path(dir_okay=False), default=None, help="Path to append scan error details (default: scan_errors.log in cwd)")
 @common_options
-def scan(library_path, db, create_db, paths_from_file, library, zone, incremental, recheck, force_all, progress, progress_interval, limit, check_integrity, check_hash, hard_skip, allow_repo_db, stale_days, error_log, verbose, config):
+def scan(library_path, db, create_db, paths_from_file, library, zone, incremental, recheck, force_all, progress, progress_interval, limit, check_integrity, check_hash, hard_skip, allow_repo_db, stale_days, error_log, verbose, config) -> None:
     """
     Scans a library folder for FLAC files and populates the database.
 
@@ -67,7 +68,7 @@ def scan(library_path, db, create_db, paths_from_file, library, zone, incrementa
     app_config = get_config(Path(config) if config else None)
     ctx = click.get_current_context()
 
-    def _apply_default(param_name, current_value, config_key, fallback=None):
+    def _apply_default(param_name, current_value, config_key, fallback: Any = None) -> Any:
         if ctx.get_parameter_source(param_name) == click.core.ParameterSource.DEFAULT:
             value = app_config.get(config_key, fallback)
             if value is not None:

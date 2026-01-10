@@ -1,7 +1,7 @@
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Iterable
 
 # Prefer standard library tomllib (Python 3.11+)
 try:
@@ -15,7 +15,7 @@ CONFIG_PATHS = [
     Path.home() / ".config" / "dedupe" / "config.toml",
 ]
 
-def _clear_config_instance():
+def _clear_config_instance() -> None:
     """Internal helper to reset the config singleton (primarily for testing)."""
     Config._instance = None
     Config._data = {}
@@ -26,13 +26,13 @@ class Config:
     _data: Dict[str, Any] = {}
     _override_path: Path | None = None
 
-    def __new__(cls):
+    def __new__(cls) -> "Config":
         if cls._instance is None:
             cls._instance = super(Config, cls).__new__(cls)
             cls._instance._load()
         return cls._instance
 
-    def _load(self):
+    def _load(self) -> None:
         """Load configuration from the first found valid source."""
         loaded = False
 
@@ -82,13 +82,13 @@ class Config:
     def __contains__(self, key: object) -> bool:
         return key in self._data
 
-    def keys(self):
+    def keys(self) -> Iterable[str]:
         return self._data.keys()
 
-    def items(self):
+    def items(self) -> Iterable[tuple[str, Any]]:
         return self._data.items()
 
-    def values(self):
+    def values(self) -> Iterable[Any]:
         return self._data.values()
 
 def get_config(config_path: Path | None = None) -> Config:

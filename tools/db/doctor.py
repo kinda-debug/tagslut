@@ -81,7 +81,7 @@ def _print_missing_columns(table: str, missing: list[str]) -> None:
 @click.option("--db", required=False, type=click.Path(dir_okay=False), help="SQLite DB path")
 @click.option("--stale-days", type=int, default=None, help="Treat integrity checks older than N days as stale")
 @click.option("--sessions", type=int, default=5, show_default=True, help="How many recent scan sessions to show")
-def main(db, stale_days, sessions):
+def main(db, stale_days, sessions) -> None:
     app_config = get_config()
     try:
         resolution = resolve_db_path(

@@ -19,7 +19,7 @@ from dedupe.utils.config import get_config
 @click.option("--output", "-o", type=click.Path(writable=True), help="Output JSON file for the plan")
 @click.option("--priority", "-p", multiple=True, help="Zone priority order (e.g. -p accepted -p staging).")
 @common_options
-def recommend(db, output, priority, verbose, config):
+def recommend(db, output, priority, verbose, config) -> None:
     """
     Analyzes duplicates in the DB and produces curator-facing review guidance.
     Outputs a JSON plan.

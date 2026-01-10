@@ -1,12 +1,14 @@
 import logging
 import re
-from typing import Iterable, List
+from typing import Iterable, List, Literal, Sequence, Tuple
 from dedupe.storage.models import AudioFile, DuplicateGroup, Decision
 
 logger = logging.getLogger("dedupe")
 
 # Configuration for zone priority (lower index = higher priority)
 DEFAULT_ZONE_PRIORITY = ["accepted", "staging"]
+DecisionAction = Literal["KEEP", "DROP", "REVIEW"]
+DecisionConfidence = Literal["HIGH", "MEDIUM", "LOW"]
 
 def _normalize_meta(value: str) -> str:
     cleaned = re.sub(r"\\s+", " ", value or "").strip().casefold()
@@ -20,7 +22,7 @@ def _meta_score(file: AudioFile, fields: Iterable[str]) -> int:
             score += 1
     return score
 
-def get_zone_priority(file: AudioFile, priorities: List[str]) -> int:
+def get_zone_priority(file: AudioFile, priorities: Sequence[str]) -> int:
     """Returns a sortable priority index for a file zone."""
     if file.zone and file.zone in priorities:
         return priorities.index(file.zone)
@@ -49,7 +51,7 @@ def assess_duplicate_group(
     has_accepted = "accepted" in group_zones
     has_staging = "staging" in group_zones
 
-    def base_key(f: AudioFile):
+    def base_key(f: AudioFile) -> Tuple[int, int, Tuple[int, int, int], int]:
         # 1. Integrity
         integrity_ok = f.integrity_state == "valid" if f.integrity_state else f.flac_ok
         score_integrity = 1 if integrity_ok else 0
@@ -90,11 +92,11 @@ def assess_duplicate_group(
             if any(_meta_score(f, metadata_fields) < best_score for f in tied):
                 used_meta_tiebreaker = True
 
-    decisions = []
+    decisions: list[Decision] = []
 
     for f in sorted_files:
-        action = "REVIEW"
-        confidence = "MEDIUM"
+        action: DecisionAction = "REVIEW"
+        confidence: DecisionConfidence = "MEDIUM"
 
         # Base reason from zones
         if has_accepted and has_staging:
@@ -108,16 +110,16 @@ def assess_duplicate_group(
             reason = "Duplicate detected; curator review recommended."
 
         # Risk Profile / Delta Summary
-        delta = {}
+        delta: dict[str, float] = {}
         if f.path != best_file.path:
             if f.duration != best_file.duration:
-                delta["duration_diff"] = f.duration - best_file.duration
+                delta["duration_diff"] = float(f.duration - best_file.duration)
             if f.bitrate != best_file.bitrate:
-                delta["bitrate_diff"] = f.bitrate - best_file.bitrate
+                delta["bitrate_diff"] = float(f.bitrate - best_file.bitrate)
             if f.sample_rate != best_file.sample_rate:
-                delta["sample_rate_diff"] = f.sample_rate - best_file.sample_rate
+                delta["sample_rate_diff"] = float(f.sample_rate - best_file.sample_rate)
             if f.bit_depth != best_file.bit_depth:
-                delta["bit_depth_diff"] = f.bit_depth - best_file.bit_depth
+                delta["bit_depth_diff"] = float(f.bit_depth - best_file.bit_depth)
 
         decisions.append(Decision(
             file=f,

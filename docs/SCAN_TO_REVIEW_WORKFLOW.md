@@ -120,9 +120,10 @@ PY
 - Enrich the plan with DB metadata and run `tools/review/prepare_enriched.py` (see `docs/CLEAN_SCAN_WORKPLAN.md`).
 - Apply KEEP/DROP with logging + resume:
 ```
+KEEP_DIR="/Volumes/COMMUNE/M/Library/_staging/$(date +%F)_keep"
 python3 /Users/georgeskhawam/Projects/dedupe/tools/review/apply_marked_actions.py \
   --marked /Users/georgeskhawam/Projects/dedupe/artifacts/M/03_reports/recommend_marked_suggestions.csv \
-  --keep-dest /Volumes/COMMUNE/M/Library/_staging/$(date +%F)_keep \
+  --keep-dest "$KEEP_DIR" \
   --relative-root / \
   --skip-missing \
   --execute \
@@ -136,7 +137,7 @@ Notes:
 - Scan the staging folder once to ingest new paths:
 ```
 python3 /Users/georgeskhawam/Projects/dedupe/tools/integrity/scan.py \
-  /Volumes/COMMUNE/M/Library/_staging/$(date +%F)_keep \
+  "$KEEP_DIR" \
   --db "/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-01-09/music.db" \
   --zone staging \
   --check-integrity --check-hash --incremental \
@@ -146,7 +147,6 @@ python3 /Users/georgeskhawam/Projects/dedupe/tools/integrity/scan.py \
 ## 8) Promote with canonical naming (after verification)
 Dry-run first (omit `--execute`) to inspect the paths.
 ```
-KEEP_DIR="/Volumes/COMMUNE/M/Library/_staging/$(date +%F)_keep"
 python3 /Users/georgeskhawam/Projects/dedupe/tools/review/promote_by_tags.py \
   --source-root "$KEEP_DIR" \
   --dest-root /Volumes/COMMUNE/M/Library \
@@ -157,6 +157,7 @@ python3 /Users/georgeskhawam/Projects/dedupe/tools/review/promote_by_tags.py \
 Notes:
 - Log and resume files are written under `/Users/georgeskhawam/Projects/dedupe/artifacts/M/03_reports/`.
 - Re-run the same command to resume after interruption.
+- Keep `KEEP_DIR` constant for steps 6–8 to avoid accidental restarts.
 
 ## 9) Defer everything else
 - Skip scanning other volumes until FINAL_LIBRARY + staging are done.

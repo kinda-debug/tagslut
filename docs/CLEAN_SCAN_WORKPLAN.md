@@ -201,9 +201,10 @@ Outputs:
 ## 6) Apply (KEEP/DROP)
 Use the apply runner with logging, resume, and clean output:
 ```bash
+KEEP_DIR="/Volumes/COMMUNE/M/Library/_staging/$(date +%F)_keep"
 python3 tools/review/apply_marked_actions.py \
   --marked /Users/georgeskhawam/Projects/dedupe/artifacts/M/03_reports/recommend_marked_suggestions.csv \
-  --keep-dest /Volumes/COMMUNE/M/Library/_staging/$(date +%F)_keep \
+  --keep-dest "$KEEP_DIR" \
   --relative-root / \
   --skip-missing \
   --execute \
@@ -213,11 +214,11 @@ Notes:
 - A log file and resume file are created next to the marked CSV (e.g., `recommend_marked_suggestions.log` and `.resume.json`).
 - `--skip-existing` (default) avoids unnecessary repeats.
 - Use `--no-skip-existing` only if you intentionally want to re-copy/re-delete.
+- Keep `KEEP_DIR` constant for steps 6–7 to avoid accidental restarts.
 
 ## 7) Promote with canonical naming (after verification)
 Dry-run first (omit `--execute`) to review the target paths.
 ```bash
-KEEP_DIR="/Volumes/COMMUNE/M/Library/_staging/$(date +%F)_keep"
 python3 tools/review/promote_by_tags.py \
   --source-root "$KEEP_DIR" \
   --dest-root /Volumes/COMMUNE/M/Library \

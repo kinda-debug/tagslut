@@ -105,9 +105,10 @@ python3 tools/review/prepare_enriched.py \
 
 ## 5) Apply KEEP/DROP (clean output + resume)
 ```bash
+KEEP_DIR="/Volumes/COMMUNE/M/Library/_staging/$(date +%F)_keep"
 python3 tools/review/apply_marked_actions.py \
   --marked /Users/georgeskhawam/Projects/dedupe/artifacts/M/03_reports/recommend_marked_suggestions.csv \
-  --keep-dest /Volumes/COMMUNE/M/Library/_staging/$(date +%F)_keep \
+  --keep-dest "$KEEP_DIR" \
   --relative-root / \
   --skip-missing \
   --execute \
@@ -116,10 +117,11 @@ python3 tools/review/apply_marked_actions.py \
 Notes:
 - Log file and resume file are created next to the marked CSV.
 - Interrupt with Ctrl+C, rerun the same command to resume.
+- Keep `KEEP_DIR` constant for steps 5–7 to avoid accidental restarts.
 
 ## 6) Stage scan (optional verification)
 ```bash
-python3 tools/integrity/scan.py /Volumes/COMMUNE/M/Library/_staging/$(date +%F)_keep \
+python3 tools/integrity/scan.py "$KEEP_DIR" \
   --db "/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-01-09/music.db" \
   --zone staging \
   --check-integrity --check-hash --incremental \
@@ -129,7 +131,6 @@ python3 tools/integrity/scan.py /Volumes/COMMUNE/M/Library/_staging/$(date +%F)_
 ## 7) Promote with canonical naming (after verification)
 Dry-run first (omit `--execute`) to review the target paths.
 ```bash
-KEEP_DIR="/Volumes/COMMUNE/M/Library/_staging/$(date +%F)_keep"
 python3 tools/review/promote_by_tags.py \
   --source-root "$KEEP_DIR" \
   --dest-root /Volumes/COMMUNE/M/Library \
@@ -140,3 +141,7 @@ python3 tools/review/promote_by_tags.py \
 Notes:
 - Log and resume files are written under `/Users/georgeskhawam/Projects/dedupe/artifacts/M/03_reports/`.
 - Re-run the same command to resume after interruption.
+
+## Loop guardrails
+- Rebuild the plan (steps 2–4) only after new scans or after you intentionally changed files.
+- Resume apply/promote by rerunning the exact same command; do not rotate `KEEP_DIR` mid-run.

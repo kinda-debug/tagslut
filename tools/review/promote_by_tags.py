@@ -12,10 +12,12 @@ Naming rules match the Picard template:
 from __future__ import annotations
 
 import argparse
+import errno
 import hashlib
 import json
 import re
 import shutil
+import time
 from pathlib import Path
 from typing import Iterable, TextIO
 
@@ -106,6 +108,17 @@ def normalize_title(title: str) -> str:
     return collapse_ws(out)
 
 
+def limit_filename(name: str, max_len: int = 240) -> str:
+    if len(name) <= max_len:
+        return name
+    base, ext = (name.rsplit(".", 1) + [""])[:2]
+    ext = f".{ext}" if ext else ""
+    allowance = max_len - len(ext)
+    if allowance <= 0:
+        return name[:max_len]
+    return base[:allowance].rstrip(" .") + ext
+
+
 def parse_release_types(tags: dict[str, list[str]]) -> tuple[set[str], str]:
     raw_types = tag_values(tags, ["releasetype", "musicbrainz_albumtype", "albumtype"])
     types: set[str] = set()
@@ -171,7 +184,7 @@ def build_destination(tags: dict[str, list[str]], dest_root: Path) -> Path:
         title = f"{artist} - {title}"
     title = sanitize_component(title, "Unknown Title")
 
-    filename = f"{track_number}. {title}.flac"
+    filename = limit_filename(f"{track_number}. {title}.flac")
     return dest_root / top / album_folder / filename
 
 
@@ -188,6 +201,9 @@ def load_resume(
     sources_hash: str,
     total: int,
     dest_root: Path,
+    dest_root_secondary: Path | None,
+    min_free_gb: float | None,
+    spill_on_enospc: bool,
     mode: str,
     log: callable,
 ) -> int:
@@ -207,10 +223,36 @@ def load_resume(
     if Path(state.get("dest_root", "")) != dest_root:
         log(f"[RESUME] Dest root changed; ignoring resume: {resume_file}", always=True)
         return 0
+    if "dest_root_secondary" in state:
+        if state.get("dest_root_secondary") != (str(dest_root_secondary) if dest_root_secondary else None):
+            log(f"[RESUME] Secondary dest root changed; ignoring resume: {resume_file}", always=True)
+            return 0
+    if "min_free_gb" in state:
+        if state.get("min_free_gb") != min_free_gb:
+            log(f"[RESUME] Min free GB changed; ignoring resume: {resume_file}", always=True)
+            return 0
+    if "spill_on_enospc" in state:
+        if state.get("spill_on_enospc") != spill_on_enospc:
+            log(f"[RESUME] Spill-on-ENOSPC changed; ignoring resume: {resume_file}", always=True)
+            return 0
     if state.get("mode") != mode:
         log(f"[RESUME] Mode changed; ignoring resume: {resume_file}", always=True)
         return 0
     return int(state.get("index", 0))
+
+
+def read_resume_index(resume_file: Path | None, log: callable) -> int | None:
+    if not resume_file or not resume_file.exists():
+        return None
+    try:
+        state = json.loads(resume_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        log(f"[RESUME] Could not read resume file: {resume_file}", always=True)
+        return None
+    try:
+        return int(state.get("index", 0))
+    except (TypeError, ValueError):
+        return None
 
 
 def save_resume(
@@ -219,6 +261,9 @@ def save_resume(
     total: int,
     sources_hash: str,
     dest_root: Path,
+    dest_root_secondary: Path | None,
+    min_free_gb: float | None,
+    spill_on_enospc: bool,
     mode: str,
     log: callable,
 ) -> None:
@@ -229,6 +274,9 @@ def save_resume(
         "total": total,
         "sources_hash": sources_hash,
         "dest_root": str(dest_root),
+        "dest_root_secondary": str(dest_root_secondary) if dest_root_secondary else None,
+        "min_free_gb": min_free_gb,
+        "spill_on_enospc": spill_on_enospc,
         "mode": mode,
     }
     try:
@@ -250,6 +298,8 @@ def collect_sources(source_root: Path | None, paths_from_file: Path | None) -> l
             if not candidate:
                 continue
             path = Path(candidate)
+            if path.name.startswith("._"):
+                continue
             if path.suffix.lower() != ".flac":
                 continue
             sources.append(path)
@@ -257,6 +307,8 @@ def collect_sources(source_root: Path | None, paths_from_file: Path | None) -> l
         assert source_root is not None
         for path in source_root.rglob("*"):
             if path.is_file() and path.suffix.lower() == ".flac":
+                if path.name.startswith("._"):
+                    continue
                 sources.append(path)
     return sorted(sources)
 
@@ -264,15 +316,21 @@ def collect_sources(source_root: Path | None, paths_from_file: Path | None) -> l
 def process(
     sources: list[Path],
     dest_root: Path,
+    dest_root_secondary: Path | None,
+    min_free_gb: float | None,
+    spill_on_enospc: bool,
     mode: str,
     execute: bool,
     skip_existing: bool,
     skip_missing: bool,
     skip_errors: bool,
+    skip_existing_roots: list[Path],
     progress_every: int,
+    progress_every_seconds: float | None,
     log_file: TextIO | None,
     progress_only: bool,
     resume_file: Path | None,
+    resume_index_override: int | None,
 ) -> None:
     def log(message: str, *, always: bool = False) -> None:
         if not progress_only or always:
@@ -283,7 +341,17 @@ def process(
 
     total = len(sources)
     sources_hash = hash_sources(sources)
-    resume_from = load_resume(resume_file, sources_hash, total, dest_root, mode, log)
+    resume_from = resume_index_override if resume_index_override is not None else load_resume(
+        resume_file,
+        sources_hash,
+        total,
+        dest_root,
+        dest_root_secondary,
+        min_free_gb,
+        spill_on_enospc,
+        mode,
+        log,
+    )
     if resume_from:
         log(f"[RESUME] Starting from {resume_from + 1}/{total}", always=True)
 
@@ -300,6 +368,26 @@ def process(
         f"skip_existing={skip_existing} skip_missing={skip_missing} skip_errors={skip_errors}",
         always=True,
     )
+
+    def pick_dest_root() -> Path:
+        if not dest_root_secondary or min_free_gb is None:
+            return dest_root
+        usage = shutil.disk_usage(dest_root)
+        free_gb = usage.free / (1024**3)
+        if free_gb < min_free_gb:
+            return dest_root_secondary
+        return dest_root
+
+    def alternate_root(current: Path) -> Path | None:
+        if not dest_root_secondary:
+            return None
+        if current == dest_root:
+            return dest_root_secondary
+        if current == dest_root_secondary:
+            return dest_root
+        return None
+    last_progress_time = time.monotonic()
+    start_time = last_progress_time
     try:
         for index, source in enumerate(sources, start=1):
             if resume_from and index <= resume_from:
@@ -307,7 +395,18 @@ def process(
             if skip_missing and not source.exists():
                 skipped_missing += 1
                 log(f"[SKIP MISSING] {source}")
-                save_resume(resume_file, index, total, sources_hash, dest_root, mode, log)
+                save_resume(
+                    resume_file,
+                    index,
+                    total,
+                    sources_hash,
+                    dest_root,
+                    dest_root_secondary,
+                    min_free_gb,
+                    spill_on_enospc,
+                    mode,
+                    log,
+                )
                 continue
             try:
                 tags = load_tags(source)
@@ -316,54 +415,191 @@ def process(
                 log(f"[TAG ERROR] {source} -> {exc}")
                 if not skip_errors:
                     raise
-                save_resume(resume_file, index, total, sources_hash, dest_root, mode, log)
+                save_resume(
+                    resume_file,
+                    index,
+                    total,
+                    sources_hash,
+                    dest_root,
+                    dest_root_secondary,
+                    min_free_gb,
+                    spill_on_enospc,
+                    mode,
+                    log,
+                )
                 continue
-            dest = build_destination(tags, dest_root)
+            active_root = pick_dest_root()
+            dest = build_destination(tags, active_root)
             if dest == source:
                 log(f"[SKIP SAME] {source}")
-                save_resume(resume_file, index, total, sources_hash, dest_root, mode, log)
+                save_resume(
+                    resume_file,
+                    index,
+                    total,
+                    sources_hash,
+                    dest_root,
+                    dest_root_secondary,
+                    min_free_gb,
+                    spill_on_enospc,
+                    mode,
+                    log,
+                )
                 continue
             if dest in seen_targets:
                 skipped_duplicate += 1
                 log(f"[SKIP DUPLICATE] {source} -> {dest}")
-                save_resume(resume_file, index, total, sources_hash, dest_root, mode, log)
+                save_resume(
+                    resume_file,
+                    index,
+                    total,
+                    sources_hash,
+                    dest_root,
+                    dest_root_secondary,
+                    min_free_gb,
+                    spill_on_enospc,
+                    mode,
+                    log,
+                )
                 continue
             seen_targets.add(dest)
             if skip_existing and dest.exists():
                 skipped_existing += 1
                 log(f"[SKIP EXISTS] {source} -> {dest}")
-                save_resume(resume_file, index, total, sources_hash, dest_root, mode, log)
+                save_resume(
+                    resume_file,
+                    index,
+                    total,
+                    sources_hash,
+                    dest_root,
+                    dest_root_secondary,
+                    min_free_gb,
+                    spill_on_enospc,
+                    mode,
+                    log,
+                )
                 continue
+            if skip_existing_roots:
+                found_existing = False
+                for root in skip_existing_roots:
+                    existing_dest = build_destination(tags, root)
+                    if existing_dest.exists():
+                        skipped_existing += 1
+                        log(f"[SKIP EXISTS] {source} -> {existing_dest}")
+                        found_existing = True
+                        break
+                if found_existing:
+                    save_resume(
+                        resume_file,
+                        index,
+                        total,
+                        sources_hash,
+                        dest_root,
+                        dest_root_secondary,
+                        min_free_gb,
+                        spill_on_enospc,
+                        mode,
+                        log,
+                    )
+                    continue
+            if skip_existing:
+                other_root = alternate_root(active_root)
+                if other_root:
+                    other_dest = build_destination(tags, other_root)
+                    if other_dest.exists():
+                        skipped_existing += 1
+                        log(f"[SKIP EXISTS] {source} -> {other_dest}")
+                        save_resume(
+                            resume_file,
+                            index,
+                            total,
+                            sources_hash,
+                            dest_root,
+                            dest_root_secondary,
+                            min_free_gb,
+                            spill_on_enospc,
+                            mode,
+                            log,
+                        )
+                        continue
 
             if execute:
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                if mode == "copy":
-                    shutil.copy2(source, dest)
-                    copied += 1
-                    log(f"[COPY] {source} -> {dest}")
-                else:
-                    shutil.move(source, dest)
-                    moved += 1
-                    log(f"[MOVE] {source} -> {dest}")
+                def run_transfer(target_root: Path) -> None:
+                    nonlocal copied, moved
+                    target = build_destination(tags, target_root)
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    if mode == "copy":
+                        shutil.copy2(source, target)
+                        copied += 1
+                        log(f"[COPY] {source} -> {target}")
+                    else:
+                        shutil.move(source, target)
+                        moved += 1
+                        log(f"[MOVE] {source} -> {target}")
+
+                try:
+                    run_transfer(active_root)
+                except OSError as exc:
+                    if (
+                        spill_on_enospc
+                        and exc.errno == errno.ENOSPC
+                        and dest_root_secondary is not None
+                        and active_root != dest_root_secondary
+                    ):
+                        log(f"[SPILL] {source} -> {dest_root_secondary} (ENOSPC)")
+                        run_transfer(dest_root_secondary)
+                    else:
+                        raise
             else:
                 prefix = "COPY" if mode == "copy" else "MOVE"
                 log(f"[DRY {prefix}] {source} -> {dest}")
 
+            remaining = max(total - index, 0)
+            now = time.monotonic()
+            should_log = False
             if progress_every and index % progress_every == 0:
-                remaining = max(total - index, 0)
+                should_log = True
+            if progress_every_seconds is not None and (now - last_progress_time) >= progress_every_seconds:
+                should_log = True
+            if should_log:
+                elapsed = max(now - start_time, 0.001)
+                rate = index / elapsed
+                eta_seconds = int(remaining / rate) if rate > 0 else 0
                 log(
                     f"[PROGRESS] processed {index}/{total} "
-                    f"(COPY {copied}, MOVE {moved}, remaining {remaining})",
+                    f"(COPY {copied}, MOVE {moved}, remaining {remaining}, ETA {eta_seconds}s)",
                     always=True,
                 )
-            save_resume(resume_file, index, total, sources_hash, dest_root, mode, log)
+                last_progress_time = now
+            save_resume(
+                resume_file,
+                index,
+                total,
+                sources_hash,
+                dest_root,
+                dest_root_secondary,
+                min_free_gb,
+                spill_on_enospc,
+                mode,
+                log,
+            )
     except KeyboardInterrupt:
         log(
             f"\nInterrupted. Summary so far: COPY {copied}, MOVE {moved}, "
             f"SKIP {skipped_existing + skipped_missing + skipped_duplicate}, ERR {tag_errors}",
             always=True,
         )
-        save_resume(resume_file, index if "index" in locals() else resume_from, total, sources_hash, dest_root, mode, log)
+        save_resume(
+            resume_file,
+            index if "index" in locals() else resume_from,
+            total,
+            sources_hash,
+            dest_root,
+            dest_root_secondary,
+            min_free_gb,
+            spill_on_enospc,
+            mode,
+            log,
+        )
         return
 
     skipped_total = skipped_existing + skipped_missing + skipped_duplicate
@@ -371,7 +607,18 @@ def process(
         f"Summary: COPY {copied}, MOVE {moved}, SKIP {skipped_total}, ERR {tag_errors} (execute={execute})",
         always=True,
     )
-    save_resume(resume_file, total, total, sources_hash, dest_root, mode, log)
+    save_resume(
+        resume_file,
+        total,
+        total,
+        sources_hash,
+        dest_root,
+        dest_root_secondary,
+        min_free_gb,
+        spill_on_enospc,
+        mode,
+        log,
+    )
 
 
 def main() -> None:
@@ -382,6 +629,22 @@ def main() -> None:
         "--dest-root",
         required=True,
         help="Destination library root (e.g. /Volumes/COMMUNE/M/Library)",
+    )
+    parser.add_argument(
+        "--dest-root-secondary",
+        help="Fallback destination root if primary is low on space",
+    )
+    parser.add_argument(
+        "--spill-min-free-gb",
+        type=float,
+        default=None,
+        help="Spill to secondary if primary has less than this many free GB",
+    )
+    parser.add_argument(
+        "--spill-on-enospc",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Retry on secondary when primary raises ENOSPC (default: True)",
     )
     parser.add_argument(
         "--mode",
@@ -409,10 +672,22 @@ def main() -> None:
         help="Skip tag read errors instead of aborting (default: True)",
     )
     parser.add_argument(
+        "--skip-existing-root",
+        action="append",
+        default=[],
+        help="Skip if target exists under this root (can be repeated)",
+    )
+    parser.add_argument(
         "--progress-every",
         type=int,
         default=500,
         help="Print a progress line every N processed files (0 to disable)",
+    )
+    parser.add_argument(
+        "--progress-every-seconds",
+        type=float,
+        default=None,
+        help="Print a progress line every N seconds (continuous countdown)",
     )
     parser.add_argument("--log-file", help="Append all output to this file")
     parser.add_argument("--no-log-file", action="store_true", help="Disable log file output")
@@ -423,12 +698,27 @@ def main() -> None:
     )
     parser.add_argument("--resume-file", help="Path to resume state file (JSON)")
     parser.add_argument("--no-resume", action="store_true", help="Disable resume state tracking")
+    parser.add_argument(
+        "--resume-from-existing",
+        action="store_true",
+        help="Use the existing resume file index even if settings changed",
+    )
+    parser.add_argument(
+        "--resume-index",
+        type=int,
+        default=None,
+        help="Start after this index (overrides resume file)",
+    )
     args = parser.parse_args()
 
     source_root = Path(args.source_root).expanduser() if args.source_root else None
     paths_from_file = Path(args.paths_from_file).expanduser() if args.paths_from_file else None
     dest_root = Path(args.dest_root).expanduser()
+    dest_root_secondary = Path(args.dest_root_secondary).expanduser() if args.dest_root_secondary else None
     sources = collect_sources(source_root, paths_from_file)
+    if dest_root_secondary:
+        dest_root_secondary.mkdir(parents=True, exist_ok=True)
+    skip_existing_roots = [Path(p).expanduser() for p in args.skip_existing_root]
 
     log_file = None
     if not args.no_log_file:
@@ -444,20 +734,31 @@ def main() -> None:
         resume_path = Path(args.resume_file).expanduser() if args.resume_file else Path(
             "/Users/georgeskhawam/Projects/dedupe/artifacts/M/03_reports/promote_by_tags.resume.json"
         )
+    resume_index_override = None
+    if args.resume_index is not None:
+        resume_index_override = args.resume_index
+    elif args.resume_from_existing:
+        resume_index_override = read_resume_index(resume_path, lambda *_args, **_kwargs: None)
 
     try:
         process(
             sources=sources,
             dest_root=dest_root,
+            dest_root_secondary=dest_root_secondary,
+            min_free_gb=args.spill_min_free_gb,
+            spill_on_enospc=args.spill_on_enospc,
             mode=args.mode,
             execute=args.execute,
             skip_existing=args.skip_existing,
             skip_missing=args.skip_missing,
             skip_errors=args.skip_errors,
+            skip_existing_roots=skip_existing_roots,
             progress_every=max(args.progress_every, 0),
+            progress_every_seconds=args.progress_every_seconds,
             log_file=log_file,
             progress_only=args.progress_only,
             resume_file=resume_path,
+            resume_index_override=resume_index_override,
         )
     finally:
         if log_file:

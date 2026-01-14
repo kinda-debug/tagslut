@@ -372,8 +372,9 @@ def main() -> None:
     )
     parser.add_argument(
         "--skip-missing",
-        action="store_true",
-        help="Skip missing sources instead of aborting",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Skip missing sources instead of aborting (default: True)",
     )
     parser.add_argument(
         "--skip-existing",

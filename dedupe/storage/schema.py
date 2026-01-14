@@ -22,6 +22,7 @@ STEP0_DECISIONS_TABLE = "step0_decisions"
 STEP0_ARTIFACTS_TABLE = "step0_artifacts"
 SCAN_SESSIONS_TABLE = "scan_sessions"
 FILE_SCAN_RUNS_TABLE = "file_scan_runs"
+FILE_QUARANTINE_TABLE = "file_quarantine"
 SCHEMA_MIGRATIONS_TABLE = "schema_migrations"
 INTEGRITY_SCHEMA_VERSION = 1
 LIBRARY_SCHEMA_VERSION = 1
@@ -151,6 +152,51 @@ def init_db(
         connection.execute("CREATE INDEX IF NOT EXISTS idx_acoustid ON files(acoustid);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_streaminfo_md5 ON files(streaminfo_md5);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_sha256 ON files(sha256);")
+
+        connection.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS {FILE_QUARANTINE_TABLE} (
+                id INTEGER PRIMARY KEY,
+                original_path TEXT NOT NULL,
+                quarantine_path TEXT NOT NULL,
+                sha256 TEXT,
+                keeper_path TEXT,
+                source_zone TEXT,
+                reason TEXT,
+                tier TEXT,
+                plan_id TEXT,
+                quarantined_at TEXT NOT NULL,
+                deleted_at TEXT,
+                delete_reason TEXT
+            );
+            """
+        )
+        quarantine_columns = {
+            "original_path": "TEXT",
+            "quarantine_path": "TEXT",
+            "sha256": "TEXT",
+            "keeper_path": "TEXT",
+            "source_zone": "TEXT",
+            "reason": "TEXT",
+            "tier": "TEXT",
+            "plan_id": "TEXT",
+            "quarantined_at": "TEXT",
+            "deleted_at": "TEXT",
+            "delete_reason": "TEXT",
+        }
+        _add_missing_columns(connection, FILE_QUARANTINE_TABLE, quarantine_columns)
+        connection.execute(
+            f"CREATE INDEX IF NOT EXISTS idx_{FILE_QUARANTINE_TABLE}_quarantined_at "
+            f"ON {FILE_QUARANTINE_TABLE}(quarantined_at);"
+        )
+        connection.execute(
+            f"CREATE INDEX IF NOT EXISTS idx_{FILE_QUARANTINE_TABLE}_deleted_at "
+            f"ON {FILE_QUARANTINE_TABLE}(deleted_at);"
+        )
+        connection.execute(
+            f"CREATE INDEX IF NOT EXISTS idx_{FILE_QUARANTINE_TABLE}_sha256 "
+            f"ON {FILE_QUARANTINE_TABLE}(sha256);"
+        )
 
         _ensure_scan_tracking_tables(connection)
         _record_schema_version(connection, schema_name="integrity", version=INTEGRITY_SCHEMA_VERSION)

@@ -198,6 +198,45 @@ Outputs:
 - `recommend_keep_valid.csv`
 - `cross_volume_conflicts.csv`
 
+## Removal policy (approved, quarantine-first)
+- Zone priority: `accepted > staging > suspect > quarantine`
+- Tier 1 - Auto-remove (quarantine then delayed delete):
+  - Same SHA256 (bit-identical).
+  - Keeper is valid (`integrity_state=valid` AND `flac_ok=1`) in a higher-priority zone.
+- Tier 2 - Quarantine only:
+  - Same SHA256, but keeper is corrupt or `flac_ok=0`.
+  - Same SHA256, but keeper only in suspect (no accepted/staging keeper).
+- Tier 3 - Manual review only:
+  - Streaminfo-only matches or any non-SHA256 identity.
+- Retention window: 30 days (default).
+- /Volumes/bad/G override: not enabled by default; only via explicit opt-in flag and logged in the plan.
+
+### Plan removals (dry-run, DB-backed)
+```bash
+python3 tools/review/plan_removals.py \
+  --db "/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-01-09/music.db" \
+  --output /Users/georgeskhawam/Projects/dedupe/artifacts/M/03_reports/removal_plan.csv
+```
+
+### Apply quarantine (no deletes)
+```bash
+python3 tools/review/apply_removals.py \
+  --db "/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-01-09/music.db" \
+  --plan /Users/georgeskhawam/Projects/dedupe/artifacts/M/03_reports/removal_plan.csv \
+  --quarantine-root /Volumes/COMMUNE/M/_quarantine \
+  --execute \
+  --progress-only
+```
+
+### Delete after retention (explicit phase)
+```bash
+python3 tools/review/apply_removals.py \
+  --db "/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-01-09/music.db" \
+  --delete-after-days 30 \
+  --execute \
+  --progress-only
+```
+
 ## 6) Apply (KEEP/DROP)
 Use the apply runner with logging, resume, and clean output:
 ```bash

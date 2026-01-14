@@ -159,6 +159,45 @@ Notes:
 - Re-run the same command to resume after interruption.
 - Keep `KEEP_DIR` constant for steps 6–8 to avoid accidental restarts.
 
+## Removal policy (approved, quarantine-first)
+- Zone priority: `accepted > staging > suspect > quarantine`
+- Tier 1 - Auto-remove (quarantine then delayed delete):
+  - Same SHA256 (bit-identical).
+  - Keeper is valid (`integrity_state=valid` AND `flac_ok=1`) in a higher-priority zone.
+- Tier 2 - Quarantine only:
+  - Same SHA256, but keeper is corrupt or `flac_ok=0`.
+  - Same SHA256, but keeper only in suspect (no accepted/staging keeper).
+- Tier 3 - Manual review only:
+  - Streaminfo-only matches or any non-SHA256 identity.
+- Retention window: 30 days (default).
+- /Volumes/bad/G override: not enabled by default; only via explicit opt-in flag and logged in the plan.
+
+### Plan removals (dry-run, DB-backed)
+```
+python3 /Users/georgeskhawam/Projects/dedupe/tools/review/plan_removals.py \
+  --db "/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-01-09/music.db" \
+  --output /Users/georgeskhawam/Projects/dedupe/artifacts/M/03_reports/removal_plan.csv
+```
+
+### Apply quarantine (no deletes)
+```
+python3 /Users/georgeskhawam/Projects/dedupe/tools/review/apply_removals.py \
+  --db "/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-01-09/music.db" \
+  --plan /Users/georgeskhawam/Projects/dedupe/artifacts/M/03_reports/removal_plan.csv \
+  --quarantine-root /Volumes/COMMUNE/M/_quarantine \
+  --execute \
+  --progress-only
+```
+
+### Delete after retention (explicit phase)
+```
+python3 /Users/georgeskhawam/Projects/dedupe/tools/review/apply_removals.py \
+  --db "/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-01-09/music.db" \
+  --delete-after-days 30 \
+  --execute \
+  --progress-only
+```
+
 ## 9) Defer everything else
 - Skip scanning other volumes until FINAL_LIBRARY + staging are done.
 - When ready, repeat the same pattern per volume. For full detail, see `docs/CLEAN_SCAN_WORKPLAN.md`.

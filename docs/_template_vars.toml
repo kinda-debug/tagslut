@@ -1,0 +1,31 @@
+# Template Variables for Documentation
+# Use these in docs with {{VARIABLE}} pattern
+
+[project]
+name = "dedupe"
+repo_url = "https://github.com/tagslut/dedupe"
+docs_root = "{{REPOROOT}}/docs"
+
+[paths]
+reporoot = "~/Projects/dedupe"
+tools_dir = "{{REPOROOT}}/tools"
+dedupe_core = "{{REPOROOT}}/dedupe"
+db_path = "~/dedupe_db"
+config_file = "{{REPOROOT}}/config.toml"
+
+[commands]
+scan = "python3 {{REPOROOT}}/tools/integrity/scan.py"
+decide = "python3 {{REPOROOT}}/tools/decide/recommend.py"
+apply = "python3 {{REPOROOT}}/tools/decide/apply.py"
+audit = "python3 {{REPOROOT}}/tools/integrity/audit.py"
+
+[examples]
+db_example = "/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-01-09/music.db"
+keep_dir = "/Volumes/COMMUNE/M/_staging__2026-01-14/2026-01-10_keep"
+library_dir = "/Volumes/COMMUNE/M/Library"
+quarantine_dir = "/Volumes/COMMUNE/M/_quarantine"
+
+[requirements]
+python_min = "3.11"
+flac_required = true
+mutagen_required = true

@@ -20,6 +20,7 @@ dependencies = [
     "mutagen>=1.46",
     "jsonschema>=4.0",
     "tqdm (>=4.66)",
+    "pandas (>=2.3.3,<3.0.0)",
 ]
 
 [tool.poetry.dependencies]

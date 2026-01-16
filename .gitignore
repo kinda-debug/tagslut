@@ -188,3 +188,5 @@ Terminal Saved Output.txt
 terminaloutput.txt
 commune_delete_list.txt
 dupeguru.csv
+tests/data/truncated.flac
+plan.json

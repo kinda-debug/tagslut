@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(python3:*)",
-      "Bash(tee:*)"
+      "Bash(tee:*)",
+      "Read(//Volumes/COMMUNE/M/03_reports/**)"
     ]
   }
 }

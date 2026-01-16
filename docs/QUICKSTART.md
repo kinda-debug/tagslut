@@ -3,15 +3,19 @@
 Use this when you just want to scan, plan, suggest, and apply with minimal steps.
 
 ## One-command automation (plan -> suggestions -> optional apply)
+
 ```bash
 tools/review/auto_cycle.sh --apply
 ```
+
 Notes:
+
 - Uses defaults from the playbook (DB, reports dir, jq path).
 - Writes logs/resume files next to the marked CSV.
 - Use `--no-apply` to stop after generating suggestions.
 
 ## 1) Scan a volume (resumable)
+
 ```bash
 python3 tools/integrity/scan.py <volume> \
   --db "/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-01-09/music.db" \
@@ -21,6 +25,7 @@ python3 tools/integrity/scan.py <volume> \
 ```
 
 ## 2) Build the plan
+
 ```bash
 python3 tools/decide/recommend.py \
   --db "/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-01-09/music.db" \
@@ -28,6 +33,7 @@ python3 tools/decide/recommend.py \
 ```
 
 ## 3) Export CSV with a header
+
 ```bash
 {
   echo "group_id,path,action,reason,confidence,conflict_label,duration_diff,bitrate_diff,sample_rate_diff,bit_depth_diff,integrity_state,flac_ok"
@@ -52,12 +58,13 @@ python3 tools/decide/recommend.py \
 ```
 
 ## 4) Enrich and generate suggestions
+
 ```bash
 python3 - <<'PY'
 import csv, sqlite3
 from pathlib import Path
 
-db = "/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-01-09/music.db"
+db = "/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-01-16/music.db"
 src = Path("/Users/georgeskhawam/Projects/dedupe/artifacts/M/03_reports/recommend_plan.csv")
 out = Path("/Users/georgeskhawam/Projects/dedupe/artifacts/M/03_reports/recommend_plan_enriched.csv")
 
@@ -104,6 +111,7 @@ python3 tools/review/prepare_enriched.py \
 ```
 
 ## 5) Apply KEEP/DROP (clean output + resume)
+
 ```bash
 KEEP_DIR="/Volumes/COMMUNE/M/Library/_staging/$(date +%F)_keep"
 python3 tools/review/apply_marked_actions.py \
@@ -114,12 +122,15 @@ python3 tools/review/apply_marked_actions.py \
   --execute \
   --progress-only
 ```
+
 Notes:
+
 - Log file and resume file are created next to the marked CSV.
 - Interrupt with Ctrl+C, rerun the same command to resume.
 - Keep `KEEP_DIR` constant for steps 5–7 to avoid accidental restarts.
 
 ## 6) Stage scan (optional verification)
+
 ```bash
 python3 tools/integrity/scan.py "$KEEP_DIR" \
   --db "/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-01-09/music.db" \
@@ -129,7 +140,9 @@ python3 tools/integrity/scan.py "$KEEP_DIR" \
 ```
 
 ## 7) Promote with canonical naming (after verification)
+
 Dry-run first (omit `--execute`) to review the target paths.
+
 ```bash
 python3 tools/review/promote_by_tags.py \
   --source-root "$KEEP_DIR" \
@@ -138,10 +151,13 @@ python3 tools/review/promote_by_tags.py \
   --execute \
   --progress-only
 ```
+
 Notes:
+
 - Log and resume files are written under `/Users/georgeskhawam/Projects/dedupe/artifacts/M/03_reports/`.
 - Re-run the same command to resume after interruption.
 
 ## Loop guardrails
+
 - Rebuild the plan (steps 2–4) only after new scans or after you intentionally changed files.
 - Resume apply/promote by rerunning the exact same command; do not rotate `KEEP_DIR` mid-run.

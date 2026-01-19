@@ -104,19 +104,14 @@ def assess_duplicate_group(
     decisions: list[Decision] = []
 
     for f in sorted_files:
-        action: DecisionAction = "REVIEW"
-        confidence: DecisionConfidence = "MEDIUM"
-
-        # Base reason from zones
-        if has_accepted and has_staging:
-            reason = "Duplicate spans staging and accepted; review before promotion."
-        elif group_zones == {"accepted"}:
-            reason = "Duplicate inside accepted zone; policy violation for curator review."
+        if f.path == best_file.path:
+            action = "KEEP"
             confidence = "HIGH"
-        elif group_zones == {"staging"}:
-            reason = "Duplicate inside staging; curator review recommended."
+            reason = "Best candidate based on integrity, zone, and quality."
         else:
-            reason = "Duplicate detected; curator review recommended."
+            action = "DROP"
+            confidence = "MEDIUM"
+            reason = "Duplicate of better candidate."
 
         # Risk Profile / Delta Summary
         delta: dict[str, float] = {}

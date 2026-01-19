@@ -51,4 +51,24 @@ quarantine-inventory: ## Run lightweight quarantine scan
 quarantine-duration: ## Detect quarantine playback length issues
 	poetry run dedupe quarantine duration --help
 
+promote-dry: ## Dry-run promote: show what would be copied/moved to canonical layout
+	@echo "Dry-run promote from staging to library..."
+	poetry run python tools/review/promote_by_tags.py \
+		--source-root "$${KEEP_DIR:-/Volumes/COMMUNE/M/_staging}" \
+		--dest-root "$${LIBRARY_ROOT:-/Volumes/COMMUNE/M/Library}" \
+		--db "$${DB_PATH:-artifacts/dedupe.db}" \
+		--mode move \
+		--progress-only
+
+promote: ## Execute promote: copy/move files to canonical layout (requires KEEP_DIR, LIBRARY_ROOT, DB_PATH)
+	@echo "Executing promote from staging to library..."
+	@read -p "This will move files from $${KEEP_DIR:-/Volumes/COMMUNE/M/_staging} to $${LIBRARY_ROOT:-/Volumes/COMMUNE/M/Library}. Continue? [y/N] " confirm && [ "$$confirm" = "y" ]
+	poetry run python tools/review/promote_by_tags.py \
+		--source-root "$${KEEP_DIR:-/Volumes/COMMUNE/M/_staging}" \
+		--dest-root "$${LIBRARY_ROOT:-/Volumes/COMMUNE/M/Library}" \
+		--db "$${DB_PATH:-artifacts/dedupe.db}" \
+		--mode move \
+		--execute \
+		--progress-only
+
 check: lint type-check test ## Run all checks (lint, type-check, test)

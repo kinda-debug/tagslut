@@ -11,12 +11,17 @@ from __future__ import annotations
 import argparse
 import csv
 import shutil
+import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TextIO
 
+# Ensure we can import dedupe from root
+sys.path.insert(0, str(Path(__file__).parents[2]))
+
+from dedupe.utils import env_paths
 from dedupe.storage.schema import init_db
 from dedupe.utils.db import open_db, resolve_db_path
 
@@ -350,15 +355,14 @@ def apply_deletions(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Apply quarantine plans and retention deletions.")
-    parser.add_argument("--db", required=True, help="Path to dedupe DB")
+    parser.add_argument("--db", help="Path to dedupe DB (default: $DEDUPE_DB)")
     parser.add_argument(
         "--plan",
-        help="Removal plan CSV from tools/review/plan_removals.py",
+        help="Removal plan CSV (default: $DEDUPE_REPORTS/removal_plan.csv)",
     )
     parser.add_argument(
         "--quarantine-root",
-        default="/Volumes/COMMUNE/M/_quarantine",
-        help="Destination root for quarantined files",
+        help="Destination root for quarantined files (default: $VOLUME_QUARANTINE)",
     )
     parser.add_argument(
         "--relative-root",
@@ -436,7 +440,7 @@ def main() -> None:
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         manifest = Path(
             args.manifest
-            or f"/Users/georgeskhawam/Projects/dedupe/artifacts/M/03_reports/quarantine_deletions_{timestamp}.csv"
+            or env_paths.get_reports_dir() / f"quarantine_deletions_{timestamp}.csv"
         )
         apply_deletions(
             conn,
@@ -452,12 +456,17 @@ def main() -> None:
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         manifest = Path(
             args.manifest
-            or f"/Users/georgeskhawam/Projects/dedupe/artifacts/M/03_reports/quarantine_manifest_{timestamp}.csv"
+            or env_paths.get_reports_dir() / f"quarantine_manifest_{timestamp}.csv"
         )
+        plan_path = Path(args.plan) if args.plan else env_paths.get_reports_dir() / "removal_plan.csv"
+        quarantine_root = Path(args.quarantine_root) if args.quarantine_root else env_paths.get_quarantine_volume()
+        if not quarantine_root:
+             raise ValueError("Quarantine root not provided and VOLUME_QUARANTINE not set.")
+
         apply_quarantine(
             conn,
-            plan_path=Path(args.plan),
-            quarantine_root=Path(args.quarantine_root),
+            plan_path=plan_path,
+            quarantine_root=quarantine_root,
             relative_root=Path(args.relative_root),
             execute=args.execute,
             skip_missing=args.skip_missing,

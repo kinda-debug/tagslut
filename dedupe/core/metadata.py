@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Any, cast
+from typing import Dict, Any, cast, Optional
 
 from mutagen import MutagenError  # type: ignore[attr-defined]
 from mutagen.flac import FLAC, FLACNoHeaderError
@@ -9,6 +9,8 @@ from mutagen.flac import FLAC, FLACNoHeaderError
 from dedupe.storage.models import AudioFile, Zone
 from dedupe.core.integrity import classify_flac_integrity, IntegrityState
 from dedupe.core.hashing import calculate_file_hash
+from dedupe.core.zone_assignment import determine_zone
+from dedupe.core.duration_validator import check_file_duration
 
 logger = logging.getLogger("dedupe")
 
@@ -24,7 +26,8 @@ def extract_metadata(
     scan_integrity: bool = False,
     scan_hash: bool = False,
     library: str | None = None,
-    zone: str | None = None,
+    library_root: Optional[Path] = None,
+    staging_root: Optional[Path] = None,
 ) -> AudioFile:
     """
     Extracts technical and tag metadata from a FLAC file and returns a populated AudioFile.
@@ -34,12 +37,20 @@ def extract_metadata(
     - Phase 2: Clustering uses streaminfo_md5 + duration + sample rate
     - Phase 3: Full-file SHA256 only if scan_hash=True (for winners)
 
+    Zone assignment is automatic based on scan results:
+    - integrity_ok=False → suspect
+    - is_duplicate=True → suspect
+    - Clean file in library_root → accepted
+    - Clean file in staging_root → staging
+    - Otherwise → suspect
+
     Args:
         file_path: Path to the FLAC file.
         scan_integrity: If True, runs `flac -t` immediately (expensive).
         scan_hash: If True, calculates full-file SHA-256 (expensive, for winners only).
         library: Library tag (e.g. "recovery", "vault", "bad").
-        zone: Zone tag (e.g. "accepted", "suspect", "quarantine").
+        library_root: Path to canonical library (for zone auto-assignment).
+        staging_root: Path to staging area (for zone auto-assignment).
 
     Returns:
         AudioFile object with checksum populated as:
@@ -145,6 +156,18 @@ def extract_metadata(
                     else:
                         tags[k.lower()] = v
 
+        # Check for duration mismatches (stitched/truncated files)
+        duration_suspicious = False
+        if duration > 0 and tags:
+            duration_mismatch = check_file_duration(duration, tags)
+            if duration_mismatch and duration_mismatch.is_suspicious:
+                logger.warning(f"Duration mismatch detected: {path_obj}")
+                logger.warning(f"  Actual: {duration:.2f}s, Expected: {duration_mismatch.expected_duration:.2f}s")
+                logger.warning(f"  Difference: {duration_mismatch.difference:+.2f}s ({duration_mismatch.mismatch_type})")
+                if duration_mismatch.is_likely_stitched:
+                    logger.warning(f"  ⚠️  LIKELY STITCHED RECOVERY FILE")
+                duration_suspicious = True
+
         # If we didn't run explicit integrity check, standard load implies basic header health
     except FLACNoHeaderError:
         logger.error(f"No FLAC header found: {path_obj}")
@@ -158,10 +181,21 @@ def extract_metadata(
         logger.error(f"Unexpected error reading metadata for {path_obj}: {e}")
         raise ValueError(f"Failed to read metadata: {e}")
 
+    # Auto-assign zone based on scan results
+    # Note: is_duplicate check requires database query - will be updated in a later pass
+    # Duration suspicious files are treated like integrity failures
+    zone_str = determine_zone(
+        integrity_ok=flac_ok and not duration_suspicious,
+        is_duplicate=False,  # Will be determined later during duplicate detection
+        file_path=path_obj,
+        library_root=library_root,
+        staging_root=staging_root,
+    )
+
     return AudioFile(
         path=path_obj,
         library=library,
-        zone=_coerce_zone(zone),
+        zone=_coerce_zone(zone_str),
         mtime=mtime,
         size=size,
         checksum=checksum,

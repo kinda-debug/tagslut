@@ -32,7 +32,7 @@
     ┌──────────┐
     │  DECIDE  │  ← OPERATOR DECISION GATE #1
     │(Approve) │    ★ Operator chooses KEEP or QUARANTINE or DELETE
-    └────┬─────┘    ★ Creates "decisions.json" with your choices
+    └────┬─────┘    ★ Review "plan.json" with automated choices
          │
          v
     ┌──────────┐
@@ -107,26 +107,16 @@
 
 ### STEP 4: DECIDE ⭐ OPERATOR DECISION GATE #1
 
-**Goal**: YOU choose KEEP or QUARANTINE or DELETE for each duplicate group
+**Goal**: Review the automated decisions in `plan.json`
 
-**Method 1: Interactive Mode (Small collections)**
-```bash
-☐ Run:
-   python3 tools/decide/decide.py --mode interactive --input plan.json
-☐ For each duplicate group:
-   - See all file versions
-   - Choose which one to KEEP
-   - Suggest action: keep | quarantine | delete
-☐ When done, output: decisions.json
-```
+The `recommend.py` tool has already analyzed the duplicates and made recommendations (KEEP vs DROP) based on your configured priorities.
 
-**Method 2: Auto-Mark + Review (Large collections)
+**Review the Plan**:
 ```bash
-☐ Run auto-ranking:
-   python3 tools/decide/automark.py --plan plan.json --output automark.json
-☐ Review automark.json (check confidence scores)
-☐ Manually edit ONLY low-confidence (< 0.7) decisions
-☐ Save as: decisions.json
+☐ Check summary:
+   cat plan.json | jq '.summary'
+☐ List proposed deletions:
+   cat plan.json | jq '.plan[].decisions[] | select(.action=="DROP") | .path'
 ```
 
 **Critical Questions**:

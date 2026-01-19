@@ -198,6 +198,27 @@ def init_db(
             f"ON {FILE_QUARANTINE_TABLE}(sha256);"
         )
 
+        # Promotions tracking table
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS promotions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_path TEXT NOT NULL UNIQUE,
+                dest_path TEXT NOT NULL,
+                mode TEXT NOT NULL,
+                timestamp TEXT NOT NULL
+            );
+            """
+        )
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_promotions_source "
+            "ON promotions(source_path);"
+        )
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_promotions_timestamp "
+            "ON promotions(timestamp);"
+        )
+
         _ensure_scan_tracking_tables(connection)
         _record_schema_version(connection, schema_name="integrity", version=INTEGRITY_SCHEMA_VERSION)
 

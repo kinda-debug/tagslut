@@ -21,7 +21,7 @@ Use dated folders (e.g. `_ARCHIVE_STATE_YYYYMMDD_HHMMSS`).
 
 ## Database Schema (Evidence-First)
 
-The SQLite database (`library_files` table) stores the following key technical evidence:
+The SQLite database (`files` table) stores the following key technical evidence:
 
 - `checksum`: The primary bit-identity evidence.
 - `checksum_type`: Explicit provenance of the checksum (`STREAMINFO_MD5` or `SHA256_FULL`).

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from dedupe.utils.config import get_config, Config
+from dedupe.utils import env_paths
 
 logger = logging.getLogger("dedupe")
 
@@ -157,7 +158,7 @@ def resolve_db_path(
 ) -> DbResolution:
     """Resolve the SQLite DB path based on CLI/env/config precedence."""
     config = config or get_config()
-    env_db = os.getenv("DEDUPE_DB")
+    env_db = str(env_paths.get_db_path()) if env_paths.get_db_path() else None
     config_db = config.get("db.path") if config else None
     repo_root = repo_root or _default_repo_root()
 

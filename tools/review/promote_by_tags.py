@@ -2,6 +2,24 @@
 """
 Promote FLAC files into a canonical layout using tags.
 
+IMPORTANT: This script is a core part of the workflow and should NOT be removed.
+
+Features:
+- Organizes files based on tags (artist, album, year, etc.)
+- Preserves ALL metadata including MusicBrainz IDs
+- Tracks promotions in database for audit trail
+- Maintains AcoustID and duration data for integrity validation
+
+Duration & AcoustID Integration:
+- Duration alone is insufficient for identifying issues
+- MusicBrainz track length is compared with actual duration to detect:
+  * Stitched files (R-Studio recoveries that are too long)
+  * Truncated files (incomplete or corrupt, too short)
+- AcoustID fingerprints verify audio content matches expected recording
+- Combined approach catches both metadata AND audio corruption
+
+See docs/DURATION_VALIDATION.md for details on duration-based integrity checks.
+
 Dry-run by default; use --execute to copy/move files.
 Naming rules match the Picard template:
   - Top folder: label (if compilation) else albumartist/artist
@@ -17,12 +35,19 @@ import hashlib
 import json
 import re
 import shutil
+import sys
 import time
 from pathlib import Path
 from typing import Iterable, TextIO
 
+# Ensure we can import dedupe from root
+sys.path.insert(0, str(Path(__file__).parents[2]))
+
 from mutagen import MutagenError  # type: ignore[attr-defined]
 from mutagen.flac import FLAC, FLACNoHeaderError
+
+from dedupe.utils import env_paths
+from dedupe.utils.db import open_db
 
 TRUTHY = {"1", "true", "yes", "y", "t"}
 
@@ -331,6 +356,7 @@ def process(
     progress_only: bool,
     resume_file: Path | None,
     resume_index_override: int | None,
+    db_path: Path | None = None,
 ) -> None:
     def log(message: str, *, always: bool = False) -> None:
         if not progress_only or always:
@@ -354,6 +380,15 @@ def process(
     )
     if resume_from:
         log(f"[RESUME] Starting from {resume_from + 1}/{total}", always=True)
+
+    # Database connection for tracking promotions
+    db_conn = None
+    if db_path and execute:
+        try:
+            db_conn = open_db(db_path)
+            log(f"[DB] Connected to {db_path} for promotion tracking", always=True)
+        except Exception as e:
+            log(f"[DB] Warning: Could not connect to database: {e}", always=True)
 
     copied = 0
     moved = 0
@@ -445,22 +480,6 @@ def process(
                     log,
                 )
                 continue
-            if dest in seen_targets:
-                skipped_duplicate += 1
-                log(f"[SKIP DUPLICATE] {source} -> {dest}")
-                save_resume(
-                    resume_file,
-                    index,
-                    total,
-                    sources_hash,
-                    dest_root,
-                    dest_root_secondary,
-                    min_free_gb,
-                    spill_on_enospc,
-                    mode,
-                    log,
-                )
-                continue
             seen_targets.add(dest)
             if skip_existing and dest.exists():
                 skipped_existing += 1
@@ -531,10 +550,34 @@ def process(
                         shutil.copy2(source, target)
                         copied += 1
                         log(f"[COPY] {source} -> {target}")
+                        if db_conn:
+                            try:
+                                db_conn.execute(
+                                    """INSERT INTO promotions (source_path, dest_path, mode, timestamp)
+                                       VALUES (?, ?, ?, datetime('now'))
+                                       ON CONFLICT(source_path) DO UPDATE SET
+                                       dest_path=excluded.dest_path, mode=excluded.mode, timestamp=excluded.timestamp""",
+                                    (str(source), str(target), mode)
+                                )
+                                db_conn.commit()
+                            except Exception as e:
+                                log(f"[DB] Warning: Failed to track promotion: {e}")
                     else:
                         shutil.move(source, target)
                         moved += 1
                         log(f"[MOVE] {source} -> {target}")
+                        if db_conn:
+                            try:
+                                db_conn.execute(
+                                    """INSERT INTO promotions (source_path, dest_path, mode, timestamp)
+                                       VALUES (?, ?, ?, datetime('now'))
+                                       ON CONFLICT(source_path) DO UPDATE SET
+                                       dest_path=excluded.dest_path, mode=excluded.mode, timestamp=excluded.timestamp""",
+                                    (str(source), str(target), mode)
+                                )
+                                db_conn.commit()
+                            except Exception as e:
+                                log(f"[DB] Warning: Failed to track promotion: {e}")
 
                 try:
                     run_transfer(active_root)
@@ -600,6 +643,8 @@ def process(
             mode,
             log,
         )
+        if db_conn:
+            db_conn.close()
         return
 
     skipped_total = skipped_existing + skipped_missing + skipped_duplicate
@@ -619,16 +664,22 @@ def process(
         mode,
         log,
     )
+    if db_conn:
+        db_conn.close()
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Promote FLACs into a canonical layout (dry-run by default).")
-    parser.add_argument("--source-root", help="Root folder to scan for FLACs (e.g. staging keep dir)")
+    parser = argparse.ArgumentParser(
+        description="Promote FLACs into a canonical layout (dry-run by default)."
+    )
+    parser.add_argument(
+        "--source-root",
+        help="Root folder to scan for FLACs (e.g. staging keep dir)"
+    )
     parser.add_argument("--paths-from-file", help="File with newline-separated FLAC paths")
     parser.add_argument(
         "--dest-root",
-        required=True,
-        help="Destination library root (e.g. /Volumes/COMMUNE/M/Library)",
+        help="Destination library root (default: $VOLUME_LIBRARY)",
     )
     parser.add_argument(
         "--dest-root-secondary",
@@ -709,11 +760,20 @@ def main() -> None:
         default=None,
         help="Start after this index (overrides resume file)",
     )
+    parser.add_argument(
+        "--db",
+        help="Database path for tracking promotions (default: $DEDUPE_DB)",
+    )
     args = parser.parse_args()
 
     source_root = Path(args.source_root).expanduser() if args.source_root else None
     paths_from_file = Path(args.paths_from_file).expanduser() if args.paths_from_file else None
-    dest_root = Path(args.dest_root).expanduser()
+
+    dest_root_raw = args.dest_root or env_paths.get_volume("library")
+    if not dest_root_raw:
+        parser.error("--dest-root is required if VOLUME_LIBRARY is not set.")
+    dest_root = Path(dest_root_raw).expanduser()
+
     dest_root_secondary = Path(args.dest_root_secondary).expanduser() if args.dest_root_secondary else None
     sources = collect_sources(source_root, paths_from_file)
     if dest_root_secondary:
@@ -740,6 +800,8 @@ def main() -> None:
     elif args.resume_from_existing:
         resume_index_override = read_resume_index(resume_path, lambda *_args, **_kwargs: None)
 
+    db_path = Path(args.db).expanduser() if args.db else env_paths.get_db_path()
+
     try:
         process(
             sources=sources,
@@ -759,6 +821,7 @@ def main() -> None:
             progress_only=args.progress_only,
             resume_file=resume_path,
             resume_index_override=resume_index_override,
+            db_path=db_path,
         )
     finally:
         if log_file:

@@ -240,6 +240,63 @@ duplicates_removed=$(cat decisions_*.json | jq '.deleted | length')
 echo "Removed $duplicates_removed duplicates"
 ```
 
+## Workflow 3: Promote Files to Canonical Layout
+
+**Purpose**: Move/copy KEEP files from staging to the canonical library with tag-based naming.
+
+### Step 8: Dry-Run Promotion
+
+```bash
+# Preview what would be promoted
+make promote-dry
+
+# Or with custom paths:
+KEEP_DIR=/Volumes/COMMUNE/M/_staging \
+LIBRARY_ROOT=/Volumes/COMMUNE/M/Library \
+DB_PATH=./artifacts/dedupe.db \
+make promote-dry
+```
+
+### Step 9: Execute Promotion
+
+```bash
+# Interactive confirmation before execution
+make promote
+
+# Or with full control:
+python tools/review/promote_by_tags.py \
+  --source-root /path/to/staging \
+  --dest-root /path/to/library \
+  --db ./artifacts/dedupe.db \
+  --mode move \
+  --execute \
+  --progress-only
+```
+
+**Naming Convention** (Picard-compatible):
+- Top folder: `Label` (if compilation) or `AlbumArtist/Artist`
+- Album folder: `(YYYY) Album [Type]` (Type: Bootleg, Live, EP, Single, etc.)
+- Filename: `NN. Artist - Title.flac` (featuring → feat.)
+
+**Features**:
+- Resume support: Rerun same command to continue after interruption
+- Disk space management: Auto-spill to secondary destination when primary is low
+- Database tracking: All promotions logged to `promotions` table
+- Skip existing: Won't overwrite files that already exist in target location
+
+### Step 10: Verify Promotion
+
+```bash
+# Check promotion log
+tail -n 100 artifacts/M/03_reports/promote_by_tags.log
+
+# Query database for promotion history
+sqlite3 ./artifacts/dedupe.db "SELECT * FROM promotions ORDER BY timestamp DESC LIMIT 20;"
+
+# Verify file counts
+find /Volumes/COMMUNE/M/Library -name "*.flac" | wc -l
+```
+
 ## Key Principles
 
 - **Deterministic**: Same input → Same output

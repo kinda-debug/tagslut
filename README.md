@@ -18,38 +18,28 @@ Scripts and one-off artifacts have been archived. Use the tools below.
 - **Risk Profiling**: Automatic delta analysis (duration, bitrate, etc.) for duplicates.
 - **High Performance**: Surgical indexing for fast queries on large datasets.
 
-## Quickstart (Minimal)
+## Quickstart (V2)
 
-1) Set your DB path (once):
+1) Configure your environment:
+   Copy `.env.example` to `.env` and update the paths.
 
-```toml
-# config.toml
-[db]
-path = "/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-01-09/music.db"
-```
-
-2) Scan a root (resumable, verbose by default):
-
+2) Scan a root:
 ```bash
-python3 tools/integrity/scan.py /Volumes/RECOVERY_TARGET/Root
+python3 -m dedupe scan /path/to/volume
 ```
 
-3) Generate a decision plan (read-only):
-
+3) Generate a plan:
 ```bash
-python3 tools/decide/recommend.py --db "/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-01-09/music.db" --output plan.json
+python3 -m dedupe recommend --output plan.json
 ```
 
-4) Apply decisions only after review:
-
+4) Apply decisions (moves to quarantine):
 ```bash
-python3 tools/decide/apply.py --db "/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-01-09/music.db" --plan plan.json
+python3 -m dedupe apply plan.json --confirm
 ```
 
-## Docs (Start Here)
+## Documentation
 
-- `docs/OPERATOR_GUIDE.md` — tailored recovery workflow
-- `docs/SCANNING.md` — resumable scanning behavior and defaults
-- `docs/TOOLS.md` — what each CLI does
-- `docs/CONFIG.md` — minimal config for this workflow
-- `docs/ARTIFACTS.md` — where evidence outputs live
+- **[GUIDE.md](GUIDE.md)** — Authoritative V2 operator guide and workflow.
+- `COMPLEXITY_AUDIT.md` — Modernization roadmap and progress.
+- `docs/` — Legacy documentation (being consolidated).

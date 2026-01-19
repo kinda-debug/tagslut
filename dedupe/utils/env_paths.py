@@ -1,0 +1,240 @@
+"""
+Environment-aware path resolution for dedupe.
+
+All paths should come from environment variables or this module,
+never hardcoded in scripts.
+
+Usage:
+    from dedupe.utils.env_paths import get_db_path, get_volume
+    
+    db = get_db_path()
+    library = get_volume("library")
+"""
+import os
+from pathlib import Path
+from typing import Optional
+
+
+class PathNotConfiguredError(Exception):
+    """Raised when a required path is not configured"""
+    pass
+
+
+def _get_env(var: str, default: Optional[str] = None, required: bool = False) -> Optional[str]:
+    """Get environment variable with validation"""
+    value = os.getenv(var, default)
+    
+    if value is None and required:
+        raise PathNotConfiguredError(
+            f"Required environment variable {var} not set.\n"
+            f"Copy .env.example to .env and configure your paths."
+        )
+    
+    return value
+
+
+def _expand_path(value: Optional[str]) -> Optional[Path]:
+    """Expand environment variables and user home directory in path"""
+    if value is None:
+        return None
+    
+    expanded = os.path.expanduser(os.path.expandvars(value))
+    return Path(expanded)
+
+
+# ============================================================================
+# DATABASE
+# ============================================================================
+
+def get_db_path() -> Path:
+    """Get database path (required)"""
+    path = _get_env("DEDUPE_DB", required=True)
+    return _expand_path(path)
+
+
+# ============================================================================
+# VOLUMES
+# ============================================================================
+
+def get_volume(name: str, required: bool = False) -> Optional[Path]:
+    """
+    Get volume path by name.
+    
+    Args:
+        name: Volume name (library, staging, vault, recovery, quarantine)
+        required: Raise error if not configured
+    
+    Returns:
+        Path to volume or None if not configured
+    """
+    env_var = f"VOLUME_{name.upper()}"
+    path = _get_env(env_var, required=required)
+    return _expand_path(path)
+
+
+def get_library_volume() -> Path:
+    """Get primary library volume (required)"""
+    return get_volume("library", required=True)
+
+
+def get_staging_volume() -> Optional[Path]:
+    """Get staging volume (optional)"""
+    return get_volume("staging")
+
+
+def get_vault_volume() -> Optional[Path]:
+    """Get vault volume (optional)"""
+    return get_volume("vault")
+
+
+def get_recovery_volume() -> Optional[Path]:
+    """Get recovery volume (optional)"""
+    return get_volume("recovery")
+
+
+def get_quarantine_volume() -> Optional[Path]:
+    """Get quarantine volume (optional)"""
+    return get_volume("quarantine")
+
+
+# ============================================================================
+# ARTIFACTS & REPORTS
+# ============================================================================
+
+def get_artifacts_dir() -> Path:
+    """Get artifacts directory"""
+    path = _get_env("DEDUPE_ARTIFACTS", default="./artifacts")
+    return _expand_path(path)
+
+
+def get_reports_dir() -> Path:
+    """Get reports directory"""
+    default = str(get_artifacts_dir() / "M" / "03_reports")
+    path = _get_env("DEDUPE_REPORTS", default=default)
+    return _expand_path(path)
+
+
+def get_log_path(name: str) -> Path:
+    """Get path for a named log file"""
+    return get_reports_dir() / name
+
+
+# ============================================================================
+# SCAN SETTINGS
+# ============================================================================
+
+def get_scan_workers() -> int:
+    """Get number of scan workers"""
+    return int(_get_env("SCAN_WORKERS", default="8"))
+
+
+def get_scan_progress_interval() -> int:
+    """Get scan progress reporting interval"""
+    return int(_get_env("SCAN_PROGRESS_INTERVAL", default="100"))
+
+
+def get_scan_check_integrity() -> bool:
+    """Check if integrity validation is enabled"""
+    return _get_env("SCAN_CHECK_INTEGRITY", default="true").lower() in ("true", "1", "yes")
+
+
+def get_scan_check_hash() -> bool:
+    """Check if hash calculation is enabled"""
+    return _get_env("SCAN_CHECK_HASH", default="true").lower() in ("true", "1", "yes")
+
+
+def get_scan_incremental() -> bool:
+    """Check if incremental scanning is enabled"""
+    return _get_env("SCAN_INCREMENTAL", default="true").lower() in ("true", "1", "yes")
+
+
+# ============================================================================
+# DECISION SETTINGS
+# ============================================================================
+
+def get_auto_approve_threshold() -> float:
+    """Get auto-approval confidence threshold"""
+    return float(_get_env("AUTO_APPROVE_THRESHOLD", default="0.95"))
+
+
+def get_quarantine_retention_days() -> int:
+    """Get quarantine retention period in days"""
+    return int(_get_env("QUARANTINE_RETENTION_DAYS", default="30"))
+
+
+def get_prefer_high_bitrate() -> bool:
+    """Check if high bitrate is preferred"""
+    return _get_env("PREFER_HIGH_BITRATE", default="true").lower() in ("true", "1", "yes")
+
+
+def get_prefer_high_sample_rate() -> bool:
+    """Check if high sample rate is preferred"""
+    return _get_env("PREFER_HIGH_SAMPLE_RATE", default="true").lower() in ("true", "1", "yes")
+
+
+def get_prefer_valid_integrity() -> bool:
+    """Check if valid integrity is preferred"""
+    return _get_env("PREFER_VALID_INTEGRITY", default="true").lower() in ("true", "1", "yes")
+
+
+# ============================================================================
+# VALIDATION
+# ============================================================================
+
+def validate_paths() -> list[str]:
+    """
+    Validate all configured paths exist.
+    
+    Returns:
+        List of error messages (empty if all valid)
+    """
+    errors = []
+    
+    # Check required paths
+    try:
+        db_path = get_db_path()
+        if not db_path.parent.exists():
+            errors.append(f"Database directory does not exist: {db_path.parent}")
+    except PathNotConfiguredError as e:
+        errors.append(str(e))
+    
+    # Check optional volume paths
+    for vol_name in ["library", "staging", "vault", "recovery", "quarantine"]:
+        vol_path = get_volume(vol_name)
+        if vol_path and not vol_path.exists():
+            errors.append(f"Volume '{vol_name}' does not exist: {vol_path}")
+    
+    return errors
+
+
+def print_config():
+    """Print current configuration (for debugging)"""
+    print("=== Dedupe Configuration ===")
+    print(f"Database:    {get_db_path()}")
+    print(f"Artifacts:   {get_artifacts_dir()}")
+    print(f"Reports:     {get_reports_dir()}")
+    print()
+    print("Volumes:")
+    for vol in ["library", "staging", "vault", "recovery", "quarantine"]:
+        path = get_volume(vol)
+        status = "✓" if path and path.exists() else "✗" if path else "-"
+        print(f"  {status} {vol:12} {path or '(not configured)'}")
+    print()
+    print("Scan Settings:")
+    print(f"  Workers:     {get_scan_workers()}")
+    print(f"  Integrity:   {get_scan_check_integrity()}")
+    print(f"  Hash:        {get_scan_check_hash()}")
+    print(f"  Incremental: {get_scan_incremental()}")
+
+
+if __name__ == "__main__":
+    # Test configuration
+    print_config()
+    
+    errors = validate_paths()
+    if errors:
+        print("\n⚠️  Configuration Errors:")
+        for error in errors:
+            print(f"  - {error}")
+    else:
+        print("\n✓ Configuration valid")

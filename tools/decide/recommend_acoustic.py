@@ -1,27 +1,80 @@
+#!/usr/bin/env python3
 import sys
 import json
 import click
 import logging
+import sqlite3
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import Any
 
 # Ensure imports work
 sys.path.insert(0, str(Path(__file__).parents[2]))
 
 from dedupe.storage.schema import get_connection
-from dedupe.core.matching import find_exact_duplicates
 from dedupe.core.decisions import assess_duplicate_group
-from dedupe.utils import env_paths
 from dedupe.utils.cli_helper import common_options, configure_execution
 from dedupe.utils.config import get_config
-from dedupe.utils.db import resolve_db_path
+
+class MockFile:
+    def __init__(self, row: sqlite3.Row):
+        self.path = Path(row['path'])
+        self.library = row['library']
+        self.zone = row['zone']
+        # Use streaminfo_md5 as the checksum for decision logic
+        self.checksum = row['streaminfo_md5']
+        self.flac_ok = row['flac_ok']
+        self.integrity_state = row['integrity_state']
+        
+        # Handle optional columns gracefully
+        keys = row.keys()
+        self.bitrate = row['bitrate'] if 'bitrate' in keys else 0
+        self.sample_rate = row['sample_rate'] if 'sample_rate' in keys else 0
+        self.bit_depth = row['bit_depth'] if 'bit_depth' in keys else 0
+        self.duration = row['duration'] if 'duration' in keys else 0.0
+
+        self.metadata = {}
+        if 'metadata_json' in keys and row['metadata_json']:
+            try:
+                self.metadata = json.loads(row['metadata_json'])
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+class MockGroup(list):
+    def __init__(self, group_id: str, files: list[MockFile]):
+        super().__init__(files)
+        self.group_id = group_id
+        self.files = files
+        self.similarity = "acoustic"
+        self.source = "streaminfo_md5"
+
+def find_acoustic_duplicates(conn: sqlite3.Connection):
+    cursor = conn.cursor()
+    
+    # 1. Find hashes with duplicates
+    query_hashes = """
+        SELECT streaminfo_md5
+        FROM files
+        WHERE streaminfo_md5 IS NOT NULL 
+          AND streaminfo_md5 != '' 
+          AND streaminfo_md5 != 'NOT_SCANNED'
+        GROUP BY streaminfo_md5
+        HAVING COUNT(*) > 1
+    """
+    hashes = [r[0] for r in cursor.execute(query_hashes).fetchall()]
+    
+    # 2. Yield groups
+    for i, h in enumerate(hashes, 1):
+        cursor.execute("SELECT * FROM files WHERE streaminfo_md5 = ?", (h,))
+        rows = cursor.fetchall()
+        files = [MockFile(row) for row in rows]
+        yield MockGroup(f"acoustic-{i:05d}", files)
 
 @click.command()
-@click.option("--db", required=False, type=click.Path(dir_okay=False), help="Path to SQLite database (default: $DEDUPE_DB)")
+@click.option("--db", required=True, type=click.Path(exists=True, dir_okay=False), help="Path to SQLite database")
 @click.option("--output", "-o", type=click.Path(writable=True), help="Output JSON file for the plan")
 @click.option("--priority", "-p", multiple=True, help="Zone priority order (e.g. -p accepted -p staging).")
 @common_options
-def recommend(
+def main(
     db: str,
     output: str | None,
     priority: tuple[str, ...],
@@ -29,39 +82,31 @@ def recommend(
     config: str | None,
 ) -> None:
     """
-    Analyzes duplicates in the DB and produces curator-facing review guidance.
-    Outputs a JSON plan.
+    Analyzes ACOUSTIC duplicates (streaminfo_md5) and produces curator-facing review guidance.
     """
     configure_execution(verbose, config)
     logger = logging.getLogger("dedupe")
 
     app_config = get_config(Path(config) if config else None)
-    # Load config priorities if not overridden
-    priority_order: list[str]
-    if priority:
-        priority_order = list(priority)
-    else:
-        priority_order = list(
-            app_config.get("decisions.zone_priority", ["accepted", "staging"])
-        )
+    priority_order = list(priority) if priority else list(
+        app_config.get("decisions.zone_priority", ["accepted", "staging"])
+    )
 
     use_metadata_tiebreaker = bool(app_config.get("decisions.metadata_tiebreaker", False))
-    metadata_fields = app_config.get("decisions.metadata_fields", None)
-    if not isinstance(metadata_fields, (list, tuple)) or not metadata_fields:
-        metadata_fields = ("artist", "album", "title")
+    metadata_fields = app_config.get("decisions.metadata_fields", ("artist", "album", "title"))
 
     logger.info(f"Using priority order: {priority_order}")
 
-    conn = get_connection(db, purpose="read")
+    # Connect with row_factory=sqlite3.Row
+    conn = get_connection(Path(db), purpose="read")
+    conn.row_factory = sqlite3.Row
 
-    # 1. Find Duplicates
-    logger.info("Searching for exact duplicates...")
-    groups = list(find_exact_duplicates(conn))
+    logger.info("Searching for acoustic duplicates (streaminfo_md5)...")
+    groups = list(find_acoustic_duplicates(conn))
     logger.info(f"Found {len(groups)} duplicate groups.")
 
     plan_entries: list[dict[str, Any]] = []
-
-    # 2. Make Decisions
+    
     for group in groups:
         decisions = assess_duplicate_group(
             group,
@@ -69,8 +114,7 @@ def recommend(
             use_metadata_tiebreaker=use_metadata_tiebreaker,
             metadata_fields=metadata_fields,
         )
-
-        # Convert Decision objects to JSON-serializable dicts
+        
         decisions_bucket: list[dict[str, Any]] = []
         group_entry = {
             "group_id": group.group_id,
@@ -98,10 +142,9 @@ def recommend(
                     "sample_rate": d.file.sample_rate
                 }
             })
-
+        
         plan_entries.append(group_entry)
 
-    # 3. Output
     summary = {
         "groups_count": len(plan_entries),
         "zone_priority": priority_order,
@@ -113,10 +156,9 @@ def recommend(
             json.dump(summary, f, indent=2)
         click.echo(f"Plan saved to {output}")
     else:
-        # Print a friendly summary to stdout
         click.echo(json.dumps(summary, indent=2))
-
+        
     conn.close()
 
 if __name__ == "__main__":
-    recommend()
+    main()

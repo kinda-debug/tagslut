@@ -64,11 +64,12 @@ export DB_PATH="/Users/georgeskhawam/Projects/dedupe_db/EPOCH_$(date +%Y-%m-%d)/
 ```bash
 source .venv/bin/activate
 
-python tools/integrity/scan.py /Volumes/COMMUNE/M/Library \
+python tools/integrity/scan.py //Volumes/COMMUNE/M/Library_CANONICAL \
   --db "$DB_PATH" \
   --zone accepted \
   --check-integrity \
   --check-hash \
+  --create-db \
   --progress
 ```
 
@@ -80,7 +81,8 @@ python tools/integrity/scan.py /Volumes/bad/archive \
   --db "$DB_PATH" \
   --zone suspect \
   --check-integrity \
-  --check-hash \
+  --check-hash\
+  --create-db \ 
   --progress
 
 python tools/integrity/scan.py /Volumes/xtralegroom \
@@ -126,22 +128,22 @@ python tools/review/plan_removals.py \
 
 The CSV contains:
 
-| Column | Meaning |
-|--------|---------|
-| `sha256` | File content hash |
-| `tier` | TIER1 (auto-safe), TIER2 (quarantine), MANUAL (review) |
-| `action` | KEEP or DROP |
-| `path` | File location |
-| `zone` | accepted/staging/suspect/quarantine |
-| `keeper_path` | Which file is being kept |
+| Column          | Meaning                                                |
+| --------------- | ------------------------------------------------------ |
+| `sha256`      | File content hash                                      |
+| `tier`        | TIER1 (auto-safe), TIER2 (quarantine), MANUAL (review) |
+| `action`      | KEEP or DROP                                           |
+| `path`        | File location                                          |
+| `zone`        | accepted/staging/suspect/quarantine                    |
+| `keeper_path` | Which file is being kept                               |
 
 ### Tier Classification
 
-| Tier | Meaning | Action |
-|------|---------|--------|
-| **TIER1** | Valid keeper in higher-priority zone | Auto-quarantine duplicates |
-| **TIER2** | Keeper validity uncertain | Quarantine for review |
-| **MANUAL** | Same-zone duplicates | Human decision required |
+| Tier             | Meaning                              | Action                     |
+| ---------------- | ------------------------------------ | -------------------------- |
+| **TIER1**  | Valid keeper in higher-priority zone | Auto-quarantine duplicates |
+| **TIER2**  | Keeper validity uncertain            | Quarantine for review      |
+| **MANUAL** | Same-zone duplicates                 | Human decision required    |
 
 ---
 
@@ -304,12 +306,12 @@ GROUP BY status;
 
 ## Zone Priority (DO NOT CHANGE)
 
-| Priority | Zone | Meaning |
-|----------|------|---------|
-| 1 (highest) | `accepted` | Verified keeper files |
-| 2 | `staging` | Candidates under review |
-| 3 | `suspect` | Questionable files |
-| 4 (lowest) | `quarantine` | Marked for deletion |
+| Priority    | Zone           | Meaning                 |
+| ----------- | -------------- | ----------------------- |
+| 1 (highest) | `accepted`   | Verified keeper files   |
+| 2           | `staging`    | Candidates under review |
+| 3           | `suspect`    | Questionable files      |
+| 4 (lowest)  | `quarantine` | Marked for deletion     |
 
 When duplicates exist across zones, the file in the **highest priority zone** is kept.
 
@@ -358,13 +360,13 @@ Another process is using the database. Close other terminals or use `--db` flag 
 
 ## File Locations
 
-| Resource | Path |
-|----------|------|
-| Repository | `/Users/georgeskhawam/Projects/dedupe` |
-| Database | `/Users/georgeskhawam/Projects/dedupe_db/EPOCH_YYYY-MM-DD/music.db` |
-| Config | `/Users/georgeskhawam/Projects/dedupe/config.toml` |
-| Primary Library | `/Volumes/COMMUNE/M/Library` |
-| Quarantine | `/Volumes/COMMUNE/M/_quarantine` |
+| Resource        | Path                                                                  |
+| --------------- | --------------------------------------------------------------------- |
+| Repository      | `/Users/georgeskhawam/Projects/dedupe`                              |
+| Database        | `/Users/georgeskhawam/Projects/dedupe_db/EPOCH_YYYY-MM-DD/music.db` |
+| Config          | `/Users/georgeskhawam/Projects/dedupe/config.toml`                  |
+| Primary Library | `/Volumes/COMMUNE/M/Library`                                        |
+| Quarantine      | `/Volumes/COMMUNE/M/_quarantine`                                    |
 
 ---
 
@@ -379,3 +381,144 @@ Another process is using the database. Close other terminals or use `--db` flag 
 ```
 
 **That's it. No other tools needed.**
+
+---
+
+## Stage 6: PROMOTE UNIQUE FILES (Optional)
+
+**Goal:** Copy files that exist only in suspect zones to the canonical library.
+
+### Find Unique Files
+
+```bash
+# Files in suspect zone with no duplicate in accepted zone
+sqlite3 "$DB_PATH" "
+SELECT path FROM files
+WHERE zone = 'suspect'
+  AND sha256 IS NOT NULL
+  AND sha256 NOT IN (SELECT sha256 FROM files WHERE zone = 'accepted' AND sha256 IS NOT NULL)
+ORDER BY path;
+" > unique_files_to_promote.txt
+
+# Count
+wc -l unique_files_to_promote.txt
+```
+
+### Dry Run Promotion
+
+```bash
+python tools/review/promote_by_tags.py \
+  --paths-from-file unique_files_to_promote.txt \
+  --dest-root /Volumes/COMMUNE/M/Library_CANONICAL \
+  --mode copy \
+  --no-resume \
+  --progress-every-seconds 5
+```
+
+Review output for errors (filename too long, missing tags, etc.)
+
+### Execute Promotion
+
+```bash
+python tools/review/promote_by_tags.py \
+  --paths-from-file unique_files_to_promote.txt \
+  --dest-root /Volumes/COMMUNE/M/Library_CANONICAL_final \
+  --mode copy \
+  --no-resume \
+  --execute \
+  --progress-every-seconds 5 \
+  --log-file promote_execute.log
+```
+
+### Verify Promotion
+
+```bash
+# Check log for errors
+grep -i error promote_execute.log
+
+# Rescan accepted zone to index new files
+python tools/integrity/scan.py /Volumes/COMMUNE/M/Library_CANONICAL \
+  --db "$DB_PATH" \
+  --zone accepted \
+  --check-integrity \
+  --check-hash \
+  --progress
+```
+
+### Handle Problem Files
+
+Files with extremely long names may fail. Exclude and handle manually:
+
+```bash
+# Find files with long paths
+awk 'length > 200' unique_files_to_promote.txt
+
+# Remove problematic files from list
+grep -v "problematic pattern" unique_files_to_promote.txt > unique_files_fixed.txt
+```
+
+---
+
+## Complete Batch Workflow Example
+
+For processing a new batch of files:
+
+```bash
+# 1. Set database path
+export DB_PATH="/Users/georgeskhawam/Projects/dedupe_db/EPOCH_$(date +%Y-%m-%d)/music.db"
+cd /Users/georgeskhawam/Projects/dedupe
+source .venv/bin/activate
+
+# 2. Scan canonical library (accepted zone)
+python tools/integrity/scan.py /Volumes/COMMUNE/M/Library_CANONICAL \
+  --db "$DB_PATH" --zone accepted --check-integrity --check-hash --create-db --progress
+
+# 3. Scan new batch (suspect zone)
+python tools/integrity/scan.py /path/to/new/batch \
+  --db "$DB_PATH" --zone suspect --check-integrity --check-hash --progress
+
+# 4. Check database state
+sqlite3 "$DB_PATH" "
+SELECT zone, COUNT(*) as files,
+       SUM(CASE WHEN integrity_state='valid' THEN 1 ELSE 0 END) as valid,
+       SUM(CASE WHEN integrity_state='corrupt' THEN 1 ELSE 0 END) as corrupt
+FROM files GROUP BY zone;
+"
+
+# 5. Generate removal plan
+python tools/review/plan_removals.py \
+  --db "$DB_PATH" --output removal_plan.csv --zone-priority "accepted,suspect"
+
+# 6. Review plan
+head -20 removal_plan.csv
+cut -d',' -f2 removal_plan.csv | sort | uniq -c  # Count by tier
+
+# 7. Find unique files (not in canonical library)
+sqlite3 "$DB_PATH" "
+SELECT path FROM files
+WHERE zone = 'suspect' AND sha256 IS NOT NULL
+  AND sha256 NOT IN (SELECT sha256 FROM files WHERE zone = 'accepted')
+" > unique_files.txt
+
+# 8. Promote unique files (dry run first)
+python tools/review/promote_by_tags.py \
+  --paths-from-file unique_files.txt \
+  --dest-root /Volumes/COMMUNE/M/Library_CANONICAL \
+  --mode copy --no-resume
+
+# 9. Execute promotion
+python tools/review/promote_by_tags.py \
+  --paths-from-file unique_files.txt \
+  --dest-root /Volumes/COMMUNE/M/Library_CANONICAL \
+  --mode copy --no-resume --execute
+
+# 10. Quarantine duplicates (dry run first)
+python tools/review/apply_removals.py \
+  --db "$DB_PATH" --plan removal_plan.csv \
+  --quarantine-root /Volumes/COMMUNE/M/_quarantine --dry-run
+
+# 11. Execute quarantine
+python tools/review/apply_removals.py \
+  --db "$DB_PATH" --plan removal_plan.csv \
+  --quarantine-root /Volumes/COMMUNE/M/_quarantine --execute
+```

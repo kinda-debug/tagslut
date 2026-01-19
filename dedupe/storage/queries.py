@@ -46,6 +46,9 @@ def _normalize_text_field(value: object, field_name: str) -> str | None:
         return value
     if isinstance(value, (bytes, bytearray)):
         return value.decode("utf-8", errors="replace")
+    if isinstance(value, int):
+        # streaminfo_md5 can be an int from mutagen
+        return f"{value:032x}" if field_name == "streaminfo_md5" else str(value)
     if isinstance(value, (list, tuple)):
         candidates: list[str] = []
         for item in value:

@@ -20,6 +20,7 @@ from dedupe.utils.paths import list_files
 from dedupe.utils.parallel import process_map, ProcessMapResult
 from dedupe.utils.config import get_config
 from dedupe.utils.library import load_zone_paths, ensure_dedupe_zone
+from dedupe.utils import env_paths
 
 logger = logging.getLogger("dedupe")
 
@@ -30,7 +31,8 @@ class ScanTask:
     run_integrity: bool
     run_hash: bool
     library_name: Optional[str]
-    zone_name: Optional[str]
+    library_root: Optional[Path]
+    staging_root: Optional[Path]
     index: int
     total: int
 
@@ -67,7 +69,7 @@ def _print_scan_summary(
     scan_integrity: bool,
     scan_hash: bool,
     library_name: str,
-    zone_name: str,
+    zone_name: str,  # Will be "auto" to indicate auto-assignment
     db_path: Path,
     failure_reasons: dict[str, int] | None = None,
     skip_reasons: dict[str, int] | None = None,
@@ -84,7 +86,7 @@ def _print_scan_summary(
     print("=" * 70)
 
     print(f"\nSession: {session_id}")
-    print(f"Library: {library_name} / Zone: {zone_name}")
+    print(f"Library: {library_name} / Zone: {zone_name} (auto-assigned)")
     print(f"Database: {db_path}")
     print(f"\nDiscovered: {discovered:,}")
     print(f"Queued:     {queued:,}")
@@ -127,8 +129,8 @@ def _scan_one_file(task: ScanTask) -> ScanResult:
     path = task.path
     scan_integrity = task.run_integrity
     scan_hash = task.run_hash
-    library_name = task.library_name
-    zone = task.zone_name
+    library_root = task.library_root
+    staging_root = task.staging_root
     index = task.index
     total = task.total
 
@@ -142,8 +144,9 @@ def _scan_one_file(task: ScanTask) -> ScanResult:
             path,
             scan_integrity=scan_integrity,
             scan_hash=scan_hash,
-            library=library_name,
-            zone=zone,
+            library=task.library_name,
+            library_root=library_root,
+            staging_root=staging_root,
         )
 
         # Show what was extracted
@@ -213,7 +216,6 @@ def scan_library(
     db_path: Path,
     db_source: str = "unknown",
     library: Optional[str] = None,
-    zone: Optional[str] = None,
     incremental: bool = True,
     scan_integrity: bool = False,
     scan_hash: bool = False,
@@ -233,6 +235,7 @@ def scan_library(
     """Scan a library folder and upsert file metadata into the integrity DB.
 
     If specific_paths is provided, scans only those files instead of discovering from library_path.
+    Zone assignment is now automatic based on scan results and file location.
     """
 
     db_path = db_path.expanduser().resolve()
@@ -253,13 +256,16 @@ def scan_library(
     if db_flush_interval is not None and db_flush_interval < 0:
         db_flush_interval = 0
 
+    # Get library and staging roots from environment for zone auto-assignment
+    library_root = env_paths.get_volume("library")
+    staging_root = env_paths.get_volume("staging")
+
     flac_files: list[Path]
     # Handle specific paths mode (e.g., from --paths-from-file)
     if specific_paths:
         logger.info("Processing %d specific paths", len(specific_paths))
         flac_files = [p for p in specific_paths if p.suffix.lower() == ".flac"]
         library_name = library or "adhoc"
-        zone_name = zone or "adhoc"
         root_path = None
         paths_source = paths_source or "paths-from-file"
     else:
@@ -270,30 +276,13 @@ def scan_library(
         if library_name:
             logger.info("Library tag: %s", library_name)
 
-        if zone:
-            zone_name = zone
-        else:
-            zone_paths = load_zone_paths(config)
-            allow_unzoned = bool(config.get("integrity.allow_unzoned_paths", False))
-            default_zone = config.get("integrity.default_zone", None)
-            if zone_paths is None:
-                if allow_unzoned and default_zone:
-                    zone_name = default_zone
-                else:
-                    raise ValueError("COMMUNE library zones are not configured.")
-            else:
-                try:
-                    zone_name = ensure_dedupe_zone(library_path, zone_paths)
-                except ValueError:
-                    if allow_unzoned and default_zone:
-                        zone_name = default_zone
-                    else:
-                        raise
-
         root_path = library_path
         logger.info("Scanning library: %s", library_path)
         logger.info("Using DB: %s (cwd=%s)", db_path, Path.cwd())
         flac_files = list(list_files(library_path, {".flac"}))
+
+    # Zone is now auto-assigned based on scan results
+    zone_name = "auto"  # For logging purposes only
 
     # 1. Initialize DB
     conn = get_connection(
@@ -500,8 +489,8 @@ def scan_library(
                 file_changed = True
         if row and library_name and row["library"] != library_name:
             file_changed = True
-        if row and zone_name and row["zone"] != zone_name:
-            file_changed = True
+        # Zone reassignment check removed - zones are now auto-assigned during each scan
+        # based on integrity results and file location
 
         integrity_stale = _is_stale_by_time(row["integrity_checked_at"] if row else None)
         streaminfo_md5, sha256 = _infer_checksums(row) if row else (None, None)
@@ -533,7 +522,8 @@ def scan_library(
                     run_integrity=needs_integrity,
                     run_hash=needs_hash,
                     library_name=library_name,
-                    zone_name=zone_name,
+                    library_root=library_root,
+                    staging_root=staging_root,
                     index=0,
                     total=0,
                 )
@@ -553,7 +543,8 @@ def scan_library(
                 run_integrity=task.run_integrity,
                 run_hash=task.run_hash,
                 library_name=task.library_name,
-                zone_name=task.zone_name,
+                library_root=task.library_root,
+                staging_root=task.staging_root,
                 index=idx + 1,
                 total=total_tasks,
             )

@@ -7,22 +7,17 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).parents[2]))
 
 from dedupe.integrity_scanner import scan_library
+from dedupe.utils import env_paths
 from dedupe.utils.cli_helper import common_options, configure_execution
 from dedupe.utils.config import get_config
 from dedupe.utils.db import resolve_db_path
 
 @click.command()
 @click.argument("library_path", type=click.Path(exists=True, file_okay=False), required=False)
-@click.option("--db", required=False, type=click.Path(dir_okay=False), help="Path to SQLite database")
+@click.option("--db", required=False, type=click.Path(dir_okay=False), help="Path to SQLite database (default: $DEDUPE_DB)")
 @click.option("--create-db", is_flag=True, default=False, help="Allow creating a new DB file")
 @click.option("--paths-from-file", type=click.Path(exists=True, dir_okay=False), help="Read specific file paths from this file (one per line)")
 @click.option("--library", default=None, help="Logical library name (e.g. COMMUNE)")
-@click.option(
-    "--zone",
-    type=click.Choice(["staging", "accepted", "suspect", "quarantine"]),
-    default=None,
-    help="Zone to tag (staging, accepted, suspect, or quarantine)",
-)
 @click.option(
     "--incremental/--no-incremental",
     default=True,
@@ -65,7 +60,6 @@ def scan(
     create_db: bool,
     paths_from_file: str | None,
     library: str | None,
-    zone: str | None,
     incremental: bool,
     recheck: bool,
     force_all: bool,
@@ -83,6 +77,8 @@ def scan(
 ) -> None:
     """
     Scans a library folder for FLAC files and populates the database.
+
+    Zones are now auto-assigned based on scan results and file location.
 
     If --paths-from-file is provided, ignores LIBRARY_PATH and scans only specified files.
     """
@@ -165,8 +161,7 @@ def scan(
     click.echo(f"Database: {db_path} (source={db_source})")
     if library:
         click.echo(f"Library Tag: {library}")
-    if zone:
-        click.echo(f"Zone: {zone}")
+    click.echo(f"Zone: auto-assigned based on scan results")
     click.echo(f"Incremental: {'ON' if incremental else 'OFF'}")
     click.echo(f"Recheck: {'ON' if recheck else 'OFF'}")
     click.echo(f"Force All: {'ON' if force_all else 'OFF'}")
@@ -181,10 +176,10 @@ def scan(
         click.echo(f"Stale Days: {stale_days}")
     if error_log:
         click.echo(f"Error log: {error_log}")
+    else:
+        click.echo(f"Error log: {env_paths.get_reports_dir() / 'scan_errors.log'} (default)")
 
-    error_log_path = Path(error_log) if error_log else None
-    if error_log_path is None:
-        error_log_path = Path.cwd() / "scan_errors.log"
+    error_log_path = Path(error_log) if error_log else env_paths.get_log_path("scan_errors.log")
     error_log_path.parent.mkdir(parents=True, exist_ok=True)
     try:
         outcome = scan_library(
@@ -192,8 +187,6 @@ def scan(
         db_path=db_path,
         db_source=db_source,
         library=library,
-        zone=zone,
-        incremental=incremental,
         recheck=recheck,
         force_all=force_all,
         progress=progress,

@@ -13,12 +13,17 @@ from __future__ import annotations
 
 import argparse
 import csv
+import sys
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
+# Ensure imports work
+sys.path.insert(0, str(Path(__file__).parents[2]))
+
+from dedupe.utils import env_paths
 from dedupe.utils.db import open_db, resolve_db_path
 
 
@@ -84,13 +89,11 @@ def main() -> None:
     )
     parser.add_argument(
         "--db",
-        required=True,
-        help="Path to dedupe DB",
+        help="Path to dedupe DB (default: $DEDUPE_DB)",
     )
     parser.add_argument(
         "--output",
-        default="/Users/georgeskhawam/Projects/dedupe/artifacts/M/03_reports/removal_plan.csv",
-        help="Where to write the removal plan CSV",
+        help="Where to write the removal plan CSV (default: $DEDUPE_REPORTS/removal_plan.csv)",
     )
     parser.add_argument(
         "--zone-priority",
@@ -243,8 +246,8 @@ def main() -> None:
     if args.summary_only:
         return
 
-    output = Path(args.output)
-    output.parent.mkdir(parents=True, exist_ok=True)
+    output_path = Path(args.output) if args.output else env_paths.get_reports_dir() / "removal_plan.csv"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     fieldnames = [
         "plan_id",
         "tier",
@@ -261,11 +264,11 @@ def main() -> None:
         "keeper_valid",
         "group_count",
     ]
-    with output.open("w", newline="") as f:
+    with output_path.open("w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(planned_rows)
-    print(f"Wrote {output}")
+    print(f"Wrote {output_path}")
 
 
 if __name__ == "__main__":

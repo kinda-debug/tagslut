@@ -46,9 +46,9 @@ def _expand_path(value: Optional[str]) -> Optional[Path]:
 # DATABASE
 # ============================================================================
 
-def get_db_path() -> Path:
-    """Get database path (required)"""
-    path = _get_env("DEDUPE_DB", required=True)
+def get_db_path() -> Optional[Path]:
+    """Get database path from environment."""
+    path = _get_env("DEDUPE_DB", required=False)
     return _expand_path(path)
 
 
@@ -193,7 +193,7 @@ def validate_paths() -> list[str]:
     # Check required paths
     try:
         db_path = get_db_path()
-        if not db_path.parent.exists():
+        if db_path and not db_path.parent.exists():
             errors.append(f"Database directory does not exist: {db_path.parent}")
     except PathNotConfiguredError as e:
         errors.append(str(e))

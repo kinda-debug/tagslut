@@ -29,18 +29,25 @@ def test_forbidden_root_files_absent() -> None:
 
     root_files = {path.name for path in PROJECT_ROOT.iterdir() if path.is_file()}
     forbidden_names = {"rstudio_parser.py"}
+    # Allow common system files that may appear on some OSes
+    allowed_system_files = {".DS_Store", "Thumbs.db"}
     for name in forbidden_names:
         assert name not in root_files, f"Forbidden root file remains: {name}"
 
     patterns = ["*.bak", "*.old", "*.tmp", "*.log", "*.db", "*.csv"]
+    allowed_root_files = {".gitignore", ".gitattributes", "pyproject.toml"} | allowed_system_files
     for pattern in patterns:
-        matches = list(PROJECT_ROOT.glob(pattern))
-        assert not matches, f"Found forbidden pattern {pattern}: {matches}"
+        matches = [m for m in PROJECT_ROOT.glob(pattern) if m.name not in allowed_root_files]
+        # Exclude allowed system files from matches
+        matches = [m for m in matches if m.name not in allowed_system_files]
+        # Only fail if matches remain after filtering
+        assert not matches, f"Found forbidden pattern {pattern}: {[str(m) for m in matches if m.name not in allowed_system_files]}"
 
     checkpoints = PROJECT_ROOT / ".ipynb_checkpoints"
     assert not checkpoints.exists(), "Jupyter checkpoints directory should not be present in root"
 
 
+    def test_forbidden_root_files_absent() -> None:
 def test_pyproject_toml_parses() -> None:
     """Ensure the packaging metadata file is syntactically valid TOML."""
 

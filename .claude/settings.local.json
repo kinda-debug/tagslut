@@ -3,7 +3,18 @@
     "allow": [
       "Bash(python3:*)",
       "Bash(tee:*)",
-      "Read(//Volumes/COMMUNE/M/03_reports/**)"
+      "Read(//Volumes/COMMUNE/M/03_reports/**)",
+      "Bash(sqlite3:*)",
+      "Bash(ls:*)",
+      "Bash(/Users/georgeskhawam/Projects/dedupe/.venv/bin/python:*)",
+      "Bash(brew list:*)",
+      "Bash(mdfind:*)",
+      "Bash(/opt/homebrew/bin/brew list)",
+      "Bash(/opt/homebrew/bin/brew:*)",
+      "Bash(source .venv/bin/activate)",
+      "Bash(pip install:*)",
+      "Bash(python:*)",
+      "Bash(chmod:*)"
     ]
   }
 }

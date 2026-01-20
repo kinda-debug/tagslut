@@ -1,0 +1,337 @@
+./DEFINITIVE_WORKFLOW.md:python tools/integrity/scan.py //Volumes/COMMUNE/M/Library_CANONICAL \
+./DEFINITIVE_WORKFLOW.md:python tools/integrity/scan.py /Volumes/bad/archive \
+./DEFINITIVE_WORKFLOW.md:python tools/integrity/scan.py /Volumes/xtralegroom \
+./DEFINITIVE_WORKFLOW.md:- [ ] All KEEP files are in `/Volumes/COMMUNE/M/Library` (accepted zone)?
+./DEFINITIVE_WORKFLOW.md:  --quarantine-root /Volumes/COMMUNE/M/_quarantine \
+./DEFINITIVE_WORKFLOW.md:  --quarantine-root /Volumes/COMMUNE/M/_quarantine \
+./DEFINITIVE_WORKFLOW.md:du -sh /Volumes/COMMUNE/M/_quarantine
+./DEFINITIVE_WORKFLOW.md:| Primary Library | `/Volumes/COMMUNE/M/Library`                                        |
+./DEFINITIVE_WORKFLOW.md:| Quarantine      | `/Volumes/COMMUNE/M/_quarantine`                                    |
+./DEFINITIVE_WORKFLOW.md:  --dest-root /Volumes/COMMUNE/M/Library_CANONICAL \
+./DEFINITIVE_WORKFLOW.md:  --dest-root /Volumes/COMMUNE/M/Library_CANONICAL_final \
+./DEFINITIVE_WORKFLOW.md:python tools/integrity/scan.py /Volumes/COMMUNE/M/Library_CANONICAL \
+./DEFINITIVE_WORKFLOW.md:python tools/integrity/scan.py /Volumes/COMMUNE/M/Library_CANONICAL \
+./DEFINITIVE_WORKFLOW.md:  --dest-root /Volumes/COMMUNE/M/Library_CANONICAL \
+./DEFINITIVE_WORKFLOW.md:  --dest-root /Volumes/COMMUNE/M/Library_CANONICAL \
+./DEFINITIVE_WORKFLOW.md:  --quarantine-root /Volumes/COMMUNE/M/_quarantine --dry-run
+./DEFINITIVE_WORKFLOW.md:  --quarantine-root /Volumes/COMMUNE/M/_quarantine --execute
+./config.example.toml:root = "/Volumes/COMMUNE"
+./chatgpew.md:  --source-root /Volumes/COMMUNE/M/_staging \
+./chatgpew.md:  --dest-root /Volumes/COMMUNE/M/Library \
+./chatgpew.md:User: i want to scan /Volumes/Vault/Vault as suspect
+./chatgpew.md:  /Volumes/Vault/Vault \
+./chatgpew.md:  /Volumes/Vault/Vault \
+./chatgpew.md:  /Volumes/Vault/Vault \
+./chatgpew.md:User: scan /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY also suspoect 
+./chatgpew.md:  /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY \
+./chatgpew.md:Searched for regex `/Users/georgeskhawam|/Volumes/COMMUNE|/Volumes/RECOVERY_TARGET|/Volumes/Vault|/Volumes/bad`, 100 results
+./chatgpew.md:Searched for regex `EPOCH_20260119|dedupe_db|/Users/|/Volumes` (`**/tools/integrity/scan.py`), no results
+./chatgpew.md:Searched for regex `/Users/georgeskhawam|EPOCH_20260119|/Volumes/(COMMUNE|Vault|RECOVERY)`, 50 results
+./chatgpew.md:1. library_integrity_check.py - has hardcoded `/Volumes/COMMUNE/M/Library`
+./chatgpew.md:2. move_commune_big.sh - has hardcoded `/Volumes/COMMUNE/M/_quarantine__2026-01-14`
+./chatgpew.md:Searched for regex `/Volumes/(COMMUNE|Vault|RECOVERY|bad)|EPOCH_2026` (`**/*.{py,sh,toml}`), 28 results
+./chatgpew.md:scan.py /Volumes/Vault/Vault --zone suspect
+./chatgpew.md:scan.py /Volumes/Vault/Vault
+./chatgpew.md:- **accepted** → Clean file already in canonical library (integrity_ok=True, location=/Volumes/COMMUNE/M/Library)
+./chatgpew.md:python tools/integrity/scan.py /Volumes/FINAL_LIBRARY --check-integrity
+./chatgpew.md:User: backup the db and lets try too scan /Volumes/RECOVERY_TARGET/_QUARANTINE - dont pay attention to the name qurantine 
+./chatgpew.md:Ran terminal command:  export $(cat .env | grep -v '^#' | xargs) && /Users/georgeskhawam/Projects/dedupe/.venv/bin/python tools/integrity/scan.py /Volumes/RECOVERY_TARGET/_QUARANTINE --check-integrity -v
+./chatgpew.md:Ran terminal command:  export $(cat .env | grep -v '^#' | xargs) && /Users/georgeskhawam/Projects/dedupe/.venv/bin/python tools/integrity/scan.py /Volumes/RECOVERY_TARGET/_QUARANTINE --check-integrity -v
+./chatgpew.md:Ran terminal command:  export $(cat .env | grep -v '^#' | xargs) && /Users/georgeskhawam/Projects/dedupe/.venv/bin/python tools/integrity/scan.py /Volumes/RECOVERY_TARGET/_QUARANTINE --check-integrity -v
+./chatgpew.md:GitHub Copilot: Ran terminal command:  export $(cat .env | grep -v '^#' | xargs) && /Users/georgeskhawam/Projects/dedupe/.venv/bin/python tools/integrity/scan.py /Volumes/RECOVERY_TARGET/_QUARANTINE --check-integrity --check-hash -v
+./chatgpew.md:cursor.execute('SELECT path, zone, flac_ok FROM files WHERE path LIKE \"/Volumes/Vault/%\"')
+./chatgpew.md:print(f'Files on /Volumes/Vault: {len(vault_files)}')
+./chatgpew.md:- **338 files on /Volumes/Vault** (likely unmounted/legacy)
+./chatgpew.md:- /Volumes/RECOVERY_TARGET/: 11,718 files
+./chatgpew.md:- /Volumes/COMMUNE/: 11,518 files (accepted zone)
+./chatgpew.md:- /Volumes/Vault/: 338 files (legacy? unmounted?)
+./chatgpew.md:1. **338 files on /Volumes/Vault** - May be unmounted/inaccessible
+./chatgpew.md:Ran terminal command:  ls -lh /Volumes/Vault 2>&1
+./chatgpew.md:WHERE path LIKE '/Volumes/Vault/%'
+./chatgpew.md:WHERE path LIKE '/Volumes/Vault/%'
+./chatgpew.md:vault = conn.execute('SELECT COUNT(*) FROM files WHERE path LIKE \"/Volumes/Vault/%\"').fetchone()[0]
+./chatgpew.md:print(f'  DELETE {vault} files from interrupted /Volumes/Vault scan')
+./chatgpew.md:SELECT 'Vault files: ' || COUNT(*) FROM files WHERE path LIKE '/Volumes/Vault/%';
+./chatgpew.md:DELETE FROM files WHERE path LIKE '/Volumes/Vault/%';
+./chatgpew.md:Ran terminal command:  export $(cat .env | grep -v '^#' | xargs) && sqlite3 "$DEDUPE_DB" "DELETE FROM files WHERE path LIKE '/Volumes/Vault/%'; SELECT 'Deleted ' || changes() || ' files';"
+./chatgpew.md:Ran terminal command:  export $(cat .env | grep -v '^#' | xargs) && sqlite3 "$DEDUPE_DB" "DELETE FROM files WHERE path LIKE '/Volumes/Vault/%';"
+./chatgpew.md:This roon export is the library in /Volumes/COMMUNE/M/Library_CANONICAL onlu 
+./chatgpew.md:GitHub Copilot: I'm **NOT deleting anything**! I was just checking if /Volumes/Vault is mounted (it's not currently). The 338 files are from your interrupted scan this morning.
+./chatgpew.md:To resume scanning /Volumes/Vault with the v2 tools: 
+./chatgpew.md:Ran terminal command:  ls -lh /Volumes/ | grep -i vault
+./chatgpew.md:# Scan /Volumes/Vault with integrity + SHA256 hashing
+./chatgpew.md:python tools/integrity/scan.py /Volumes/Vault --check-integrity --check-hash -v
+./chatgpew.md:- The Roon export only covers **/Volumes/COMMUNE/M/Library_CANONICAL** (11,502 tracks)
+./chatgpew.md:- The 338 files on /Volumes/Vault are separate from Roon data
+./chatgpew.md:/Pr/dedupe release/modernization-complete ⇡1 !19 ?32 ❯ # Scan /Volumes/Vault with integrity + SHA256 hashing
+./chatgpew.md:python tools/integrity/scan.py /Volumes/Vault --check-integrity --check-hash -v
+./chatgpew.md:Ran terminal command:  export $(cat .env | grep -v '^#' | xargs) && /Users/georgeskhawam/Projects/dedupe/.venv/bin/python tools/integrity/scan.py /Volumes/Vault --check-integrity --check-hash -v
+./chatgpew.md:Ran terminal command:  export $(cat .env | grep -v '^#' | xargs) && sqlite3 "$DEDUPE_DB" "SELECT COUNT(*) as total, SUM(CASE WHEN sha256 IS NOT NULL THEN 1 ELSE 0 END) as with_hash FROM files WHERE path LIKE '/Volumes/Vault/%';"
+./chatgpew.md:python tools/integrity/scan.py /Volumes/Vault --check-integrity --check-hash --incremental -v
+./chatgpew.md:python tools/integrity/scan.py /Volumes/Vault --check-integrity --check-hash --incremental -v
+./chatgpew.md:     root: /Volumes/Vault
+./chatgpew.md:     root: /Volumes/Vault
+./chatgpew.md:     root: /Volumes/Vault
+./chatgpew.md:     root: /Volumes/Vault
+./chatgpew.md:     root: /Volumes/Vault
+./chatgpew.md:python tools/integrity/scan.py /Volumes/Vault --check-integrity --incremental -v
+./chatgpew.md:python tools/integrity/scan.py /Volumes/Vault --check-integrity --check-hash --incremental -v
+./chatgpew.md:python tools/review/promote_by_tags.py --source-root /Volumes/COMMUNE/M/Staging --dest-root /Volumes/COMMUNE/M/Library_CANONICAL --execute --db "$DEDUPE_DB"
+./chatgpew.md:python tools/review/promote_by_tags.py --source-root /Volumes/COMMUNE/M/Staging --dest-root /Volumes/COMMUNE/M/Library_CANONICAL --execute
+./chatgpew.md:python tools/review/promote_by_tags.py --paths-from-file my_filelist.txt --dest-root /Volumes/COMMUNE/M/Library_CANONICAL --execute
+./chatgpew.md:   python tools/review/promote_by_tags.py --paths-from-file kept.txt --dest-root /Volumes/COMMUNE/M/Library_CANONICAL --execute
+./chatgpew.md:User: [SKIP DUPLICATE] /Volumes/COMMUNE/M/Library/_staging/2026-01-10_keep/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/Alan Fitzpatrick vs. Patrice Rushen/(2021) Haven't You Heard/Alan Fitzpatrick vs. Patrice Rushen - (2021) Haven't You Heard - 01. Haven't You Heard (Fitzy's Fully Charged Mix).flac -> /Volumes/COMMUNE/M/Library/Alan Fitzpatrick vs. Patrice Rushen/(2021) Haven't You Heard [Single]/01. Haven't You Heard (Fitzy's Fully Charged Mix).flac
+./chatgpew.md:[SKIP DUPLICATE] /Volumes/COMMUNE/M/Library/_staging/2026-01-10_keep/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/Alanis Morissette/(2015) Jagged Little Pill (collector's edition)/Alanis Morissette - (2015) Jagged Little Pill (collector's edition) - 01. All I Really Want__e37bb3f5.flac -> /Volumes/COMMUNE/M/Library/Alanis Morissette/(2015) Jagged Little Pill (collector's edition)/01. All I Really Want.flac
+./chatgpew.md:[SKIP DUPLICATE] /Volumes/COMMUNE/M/Library/_staging/2026-01-10_keep/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/Alanis Morissette/(2015) Jagged Little Pill (collector's edition)/Alanis Morissette - (2015) Jagged Little Pill (collector's edition) - 01. All I Really Want__f1d3dff4.flac -> /Volumes/COMMUNE/M/Library/Alanis Morissette/(2015) Jagged Little Pill (collector's edition)/01. All I Really Want.flac
+./chatgpew.md:[SKIP DUPLICATE] /Volumes/COMMUNE/M/Library/_staging/2026-01-10_keep/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/Alanis Morissette/(2015) Jagged Little Pill (collector's edition)/Alanis Morissette - (2015) Jagged Little Pill (collector's edition) - 06. Forgiven__5a448d43.flac -> /Volumes/COMMUNE/M/Library/Alanis Morissette/(2015) Jagged Little Pill (collector's edition)/06. Forgiven.flac
+./chatgpew.md:[SKIP DUPLICATE] /Volumes/COMMUNE/M/Library/_staging/2026-01-10_keep/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/Alanis Morissette/(2015) Jagged Little Pill (collector's edition)/Alanis Morissette - (2015) Jagged Little Pill (collector's edition) - 09. Mary Jane__b841086f.flac -> /Volumes/COMMUNE/M/Library/Alanis Morissette/(2015) Jagged Little Pill (collector's edition)/09. Mary Jane.flac
+./chatgpew.md:[SKIP DUPLICATE] /Volumes/COMMUNE/M/Library/_staging/2026-01-10_keep/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/BC Camplight/(2025) A Sober Conversation/BC Camplight - (2025) A Sober Conversation - 06. Bubbles in the Gasoline.flac -> /Volumes/COMMUNE/M/Library/BC Camplight/(2025) A Sober Conversation/06. Bubbles in the Gasoline.flac
+./chatgpew.md:[SKIP DUPLICATE] /Volumes/COMMUNE/M/Library/_staging/2026-01-10_keep/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/BC Camplight/(2025) A Sober Conversation/BC Camplight - (2025) A Sober Conversation - 07. Rock Gently in Disorder.flac -> /Volumes/COMMUNE/M/Library/BC Camplight/(2025) A Sober Conversation/07. Rock Gently in Disorder.flac
+./chatgpew.md:[SKIP DUPLICATE] /Volumes/COMMUNE/M/Library/_staging/2026-01-10_keep/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/BC Camplight feat. Abigail Morris/(2025) A Sober Conversation/BC Camplight feat. Abigail Morris - (2025) A Sober Conversation - 02. Two Legged Dog.flac -> /Volumes/COMMUNE/M/Library/BC Camplight/(2025) A Sober Conversation/02. Two Legged Dog.flac
+./chatgpew.md:[SKIP DUPLICATE] /Volumes/COMMUNE/M/Library/_staging/2026-01-10_keep/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/Charli xcx/(2024) Brat and it's completely different but also still brat/Charli xcx - (2024) Brat and it's completely different but also still brat - 01. 360__7324b2c5.flac -> /Volumes/COMMUNE/M/Library/Charli xcx/(2024) Brat and it's completely different but also still brat/01. 360.flac
+./chatgpew.md:[SKIP DUPLICATE] /Volumes/COMMUNE/M/Library/_staging/2026-01-10_keep/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/Charli xcx feat. Shygirl/(2024) Brat and it's completely different but also still brat/Charli xcx feat. Shygirl - (2024) Brat and it's completely different but also still brat - 15. 365.flac -> /Volumes/COMMUNE/M/Library/Charli xcx/(2024) Brat and it's completely different but also still brat/15. 365.flac
+./chatgpew.md:[SKIP DUPLICATE] /Volumes/COMMUNE/M/Library/_staging/2026-01-10_keep/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/Kris Davis/(2022) Petroleum (Fabio Vanore Remix)/Kris Davis - (2022) Petroleum (Fabio Vanore Remix) - 01. Petroleum (Fabio Vanore Remix)__3eb654ca.flac -> /Volumes/COMMUNE/M/Library/Kris Davis/(2022) Petroleum (Fabio Vanore Remix)/01. Petroleum (Fabio Vanore Remix).flac
+./chatgpew.md:[SKIP DUPLICATE] /Volumes/COMMUNE/M/Library/_staging/2026-01-10_keep/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/Lemelle/(0011) Glitterbox Radio Episode 008 (presented by Melvo Baptiste) [DJ Mix]/Lemelle - (0011) Glitterbox Radio Episode 008 (presented by Melvo Baptiste) [DJ Mix] - 05. You Got Something Special (Dr Packer Edit) [Mixed]__670991d9.flac -> /Volumes/COMMUNE/M/Library/Glitterbox Radio/(0011) Glitterbox Radio Episode 008 (presented by Melvo Baptiste) [DJ Mix]/05. You Got Something Special (Dr Packer Edit) [Mixed].flac
+./chatgpew.md:[SKIP DUPLICATE] /Volumes/COMMUNE/M/Library/_staging/2026-01-10_keep/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/Modeselektor/(2025) DJ-Kicks꞉ Modeselektor/Modeselektor - (2025) DJ-Kicks꞉ Modeselektor - 01. Prey__1e8380d4.flac -> /Volumes/COMMUNE/M/Library/!K7/(2025) DJ-Kicks: Modeselektor [Compilation]/01. Szary - Prey.flac
+./chatgpew.md:[SKIP DUPLICATE] /Volumes/COMMUNE/M/Library/_staging/2026-01-10_keep/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/Modeselektor/(2025) DJ-Kicks꞉ Modeselektor/Modeselektor - (2025) DJ-Kicks꞉ Modeselektor - 05. Source__7041e53c.flac -> /Volumes/COMMUNE/M/Library/!K7/(2025) DJ-Kicks: Modeselektor [Compilation]/05. GAISTER - Source.flac
+./chatgpew.md:[SKIP DUPLICATE] /Volumes/COMMUNE/M/Library/_staging/2026-01-10_keep/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY/Modeselektor/(2025) DJ-Kicks꞉ Modeselektor/Modeselektor - (2025) DJ-Kicks꞉ Modeselektor - 06. Kupfer__e2205eef.flac -> /Volumes/COMMUNE/M/Library/!K7/(2025) DJ-Kicks: Modeselektor [Compilation]/06. Modeselektor - Kupfer.flac
+./chatgpew.md:GitHub Copilot: Ran terminal command:  python3 tools/review/promote_by_tags.py --paths-from-file kept.txt --source-root /Volumes/COMMUNE/M/Library/_staging/2026-01-10_keep --dest-root /Volumes/COMMUNE/M/Library --execute --log artifacts/M/03_reports/promote_by_tags_fixed.log
+./chatgpew.md:Ran terminal command:  python3 tools/review/promote_by_tags.py --paths-from-file kept.txt --source-root /Volumes/COMMUNE/M/Library/_staging/2026-01-10_keep --dest-root /Volumes/COMMUNE/M/Library --execute --log artifacts/M/03_reports/promote_by_tags_fixed.log
+./chatgpew.md:Ran terminal command:  /Users/georgeskhawam/Projects/dedupe/.venv/bin/python tools/review/promote_by_tags.py --paths-from-file kept.txt --source-root /Volumes/COMMUNE/M/Library/_staging/2026-01-10_keep --dest-root /Volumes/COMMUNE/M/Library --execute --log artifacts/M/03_reports/promote_by_tags_fixed.log
+./chatgpew.md:Ran terminal command:  /Users/georgeskhawam/Projects/dedupe/.venv/bin/python tools/review/promote_by_tags.py --paths-from-file kept.txt --dest-root /Volumes/COMMUNE/M/Library --execute --log artifacts/M/03_reports/promote_by_tags_fixed.log
+./chatgpew.md:Ran terminal command:  ls -l /Volumes/COMMUNE/M/Library_CANONICAL | head -40
+./chatgpew.md:Ran terminal command:  ls -l /Volumes/COMMUNE/M/Library_CANONICAL/Wolf\ +\ Lamb\ vs.\ Soul\ Clap/(2011)\ DJ-Kicks:\ Exclusives\ EP1/
+./chatgpew.md:Ran terminal command:  ls -l '/Volumes/COMMUNE/M/Library_CANONICAL/Wolf + Lamb vs. Soul Clap/'
+./chatgpew.md:Ran terminal command:  ls -l '/Volumes/COMMUNE/M/Library_CANONICAL/Wolf + Lamb vs. Soul Clap/(2011) DJ-Kicks: Exclusives EP1/'
+./chatgpew.md:Summarized conversation historyThe directory /Volumes/COMMUNE/M/Library_CANONICAL/Wolf + Lamb vs. Soul Clap/(2011) DJ-Kicks: Exclusives EP1/ exists, but it is empty—no files are present. This confirms that at least some files listed in kept.txt are indeed missing from the source directory.
+./chatgpew.md:- VOLUME_LIBRARY: /Volumes/COMMUNE/M/Library (primary library)
+./chatgpew.md:- The "path" column in your database (files table) shows the original location of each file (e.g., /Volumes/COMMUNE/M/Library_CANONICAL/!!!/(2010) Jamie, My Intentions Are Bass/01. Jamie, My Intentions Are Bass.flac).
+./chatgpew.md:User: /Volumes/COMMUNE/M/Library_CANONICAL/Wolf + Lamb vs. Soul Clap/(2011) DJ‐Kicks: Exclusives EP2/05. Deniz Kurtel - Gadi Mizrahi - Camburn - Crank It Up.flac	COMMUNE
+./chatgpew.md:/Volumes/COMMUNE/M/Library_CANONICAL/Wolf + Lamb vs. Soul Clap/(2011) DJ‐Kicks: Exclusives EP2/05. Deniz Kurtel - Gadi Mizrahi - Camburn - Crank It Up.flac
+./chatgpew.md:User: why dop i still have files in /Volumes/COMMUNE/M/Suspect?
+./chatgpew.md:Searched for text `/Volumes/COMMUNE/M/Suspect` (`**/file_location_report.csv`), no results
+./chatgpew.md:Searched for text `/Volumes/COMMUNE/M/Suspect`, 100 results
+./chatgpew.md:You still have files in /Volumes/COMMUNE/M/Suspect because they are listed as "suspect" or "not provably valid" in your deduplication and quarantine workflow. These files appear in reports like quarantine_manifest_20260119_081921.csv and unique_files_to_promote.txt, often with reasons such as "keeper not provably valid" or being part of a quarantine or integrity check.
+./chatgpew.md:GitHub Copilot: Understood. The presence of unmoved files in /Volumes/COMMUNE/M/Suspect after deduplication and quarantine is not acceptable for a clean, final state. To solve this, we need to:
+./chatgpew.md:I will start by generating a full list of files in /Volumes/COMMUNE/M/Suspect and cross-reference them with your latest quarantine and dedupe reports to identify the reason for each unmoved file. 
+./chatgpew.md:Ran terminal command:  find /Volumes/COMMUNE/M/Suspect -type f > suspect_files_full_list.txt
+./chatgpew.md:The root cause of unmoved files in /Volumes/COMMUNE/M/Suspect is that thousands of files remain there after deduplication, integrity, and quarantine steps. This is not acceptable for a final, clean state.
+./chatgpew.md:GitHub Copilot: If you already scanned these files, but they remain unmoved in /Volumes/COMMUNE/M/Suspect, it means one or more of the following likely occurred:
+./deep_audit_nowhere.py:cursor.execute("SELECT path, sha256 FROM files WHERE path LIKE '/Volumes/COMMUNE/M/Library_CANONICAL/%'")
+./PROGRESS_AND_GOAL.md:- No unmoved or orphaned files remain in the /Volumes/COMMUNE/M/Suspect directory after deduplication and review.
+./file_paths_table.md:/Volumes/COMMUNE/M/Library_CANONICAL/!!!/(2005) Take Ecstacy with Me - Get Up/02. Get Up.flac
+./file_paths_table.md:/Volumes/COMMUNE/M/Library_CANONICAL/!!!/(2007) Myth Takes/01. Myth Takes.flac
+./file_paths_table.md:/Volumes/COMMUNE/M/Library_CANONICAL/!!!/(2007) Myth Takes/02. All My Heroes Are Weirdos.flac
+./file_paths_table.md:/Volumes/COMMUNE/M/Library_CANONICAL/!!!/(2007) Myth Takes/05. Heart of Hearts.flac
+./file_paths_table.md:/Volumes/COMMUNE/M/Library_CANONICAL/!!!/(2007) Myth Takes/06. Sweet Life.flac
+./file_paths_table.md:/Volumes/COMMUNE/M/Library_CANONICAL/!!!/(2007) Myth Takes/07. Yadnus.flac
+./file_paths_table.md:/Volumes/COMMUNE/M/Library_CANONICAL/!!!/(2007) Myth Takes/08. Bend Over Beethoven.flac
+./file_paths_table.md:/Volumes/COMMUNE/M/Library_CANONICAL/!!!/(2007) Myth Takes/09. Break in Case of Anything.flac
+./file_paths_table.md:/Volumes/COMMUNE/M/Library_CANONICAL/!!!/(2007) Myth Takes/10. Infinifold.flac
+./file_paths_table.md:/Volumes/COMMUNE/M/Library_CANONICAL/!!!/(2010) Jamie, My Intentions Are Bass/01. Jamie, My Intentions Are Bass.flac
+./file_paths_table.md:/Volumes/COMMUNE/M/Library_CANONICAL/!!!/(2013) Thr!!!er/01. Even When the Water's Cold.flac
+./file_paths_table.md:/Volumes/COMMUNE/M/Library_CANONICAL/!!!/(2013) Thr!!!er/03. One Girl - One Boy.flac
+./file_paths_table.md:/Volumes/COMMUNE/M/Library_CANONICAL/!!!/(2015) As If/01. All U Writers.flac
+./file_paths_table.md:/Volumes/COMMUNE/M/Library_CANONICAL/!!!/(2015) As If/07. Til the Money Runs Out.flac
+./file_paths_table.md:/Volumes/COMMUNE/M/Library_CANONICAL/!!!/(2015) As If/11. I Feel So Free (Citation Needed).flac
+./file_paths_table.md:/Volumes/COMMUNE/M/Library_CANONICAL/!!!/(2017) Shake the Shudder/03. Dancing Is the Best Revenege.flac
+./file_paths_table.md:/Volumes/COMMUNE/M/Library_CANONICAL/!!!/(2017) Shake the Shudder/08. Throttle Service.flac
+./file_paths_table.md:/Volumes/COMMUNE/M/Library_CANONICAL/!!!/(2019) Wallop/05. Serbia Drums.flac
+./file_paths_table.md:/Volumes/COMMUNE/M/Library_CANONICAL/!!!/(2022) Let It Be Blue/01. Normal People.flac
+./file_paths_table.md:/Volumes/COMMUNE/M/Library_CANONICAL/!!!/(2022) Let It Be Blue/03. !!! - Maria Uzor - Storm Around the World.flac
+./file_paths_table.md:/Volumes/COMMUNE/M/Library_CANONICAL/!!!/(2022) Let It Be Blue/07. !!! - Meah Pace - Man on the Moon.flac
+./file_paths_table.md:/Volumes/COMMUNE/M/Library_CANONICAL/!K7/(2008) Sessions [Compilation]/03. Paperclip People - Throw (Unreleased version).flac
+./file_paths_table.md:/Volumes/COMMUNE/M/Library_CANONICAL/!K7/(2016) DJ-Kicks: Moodymann [Compilation]/16. Daniel Bortz - Cuz You're the One (Moodymann edit).flac
+./file_paths_table.md:/Volumes/COMMUNE/M/Library_CANONICAL/"Little" Louis Vega/(1994) Strictly Rhythm Mix/08. The Believers - Who Dares To Believe In Me? (Original Mix).flac
+./file_paths_table.md:/Volumes/COMMUNE/M/Library_CANONICAL/2 Lane Summer/(2023) I Don't/01. I Don't.flac
+./file_paths_table.md:/Volumes/COMMUNE/M/Library_CANONICAL/2 Unlimited/(1994) Let the Beat Control Your Body/01. Let the Beat Control Your Body.flac
+./file_paths_table.md:/Volumes/COMMUNE/M/Library_CANONICAL/3kelves & Dylan C. Greene/(2022) Get Up, Get Out/01. 3kelves - Dylan C. Greene - Get Up, Get Out.flac
+./file_paths_table.md:/Volumes/COMMUNE/M/Library_CANONICAL/3kelves & Dylan C. Greene/(2022) Get Up, Get Out/02. 3kelves - Dylan C. Greene - Get Up, Get Out (extended version).flac
+./file_paths_table.md:/Volumes/COMMUNE/M/Library_CANONICAL/3rd Degree/(2011) Mutation (single) [Single]/01. Mutation.flac
+./file_paths_table.md:/Volumes/COMMUNE/M/Library_CANONICAL/40 Thieves & Ian Urbina/(2021) An Incredible Moment (The Noam Chomsky Music Project) - EP/03. The Work of a Craftsman.flac
+./file_paths_table.md:/Volumes/COMMUNE/M/Library_CANONICAL/40 Thieves/(2010) Don't Turn It Off/03. Don't Turn It Off (Greg Wilson edit).flac
+./file_paths_table.md:/Volumes/COMMUNE/M/Library_CANONICAL/40 Thieves/(2010) Don't Turn It Off/04. Don't Turn It Off (Greg Wilson instrumental edit).flac
+./file_paths_table.md:/Volumes/COMMUNE/M/Library_CANONICAL/47 Soul/(2020) Semitics/01. 47SOUL - Witness.flac
+./file_paths_table.md:/Volumes/COMMUNE/M/Library_CANONICAL/47 Soul/(2020) Semitics/02. 47SOUL - Shadia Mansour - Fedzilla - Border Ctrl.flac
+./file_paths_table.md:/Volumes/COMMUNE/M/Library_CANONICAL/47 Soul/(2020) Semitics/03. 47SOUL - Arab Arab.flac
+./file_paths_table.md:/Volumes/COMMUNE/M/Library_CANONICAL/47 Soul/(2020) Semitics/05. 47SOUL - Thobe.flac
+./file_paths_table.md:/Volumes/COMMUNE/M/Library_CANONICAL/47 Soul/(2020) Semitics/06. 47SOUL - Dabke System.flac
+./file_paths_table.md:/Volumes/COMMUNE/M/Library_CANONICAL/47 Soul/(2020) Semitics/07. 47SOUL - Sam's People.flac
+./file_paths_table.md:/Volumes/COMMUNE/M/Library_CANONICAL/47 Soul/(2020) Semitics/08. 47SOUL - The Synaptik - Tamer Nafar - Run.flac
+./file_paths_table.md:/Volumes/COMMUNE/M/Library_CANONICAL/47 Soul/(2020) Semitics/09. 47SOUL - Lil Disco.flac
+./tools/batch_process.py:DEFAULT_CANONICAL = Path("/Volumes/COMMUNE/M/Library_CANONICAL")
+./tools/batch_process.py:DEFAULT_QUARANTINE = Path("/Volumes/COMMUNE/M/_quarantine")
+./tools/batch_process.py:    python tools/batch_process.py /Volumes/new_music
+./tools/batch_process.py:    python tools/batch_process.py /Volumes/new_music --execute
+./tools/batch_process.py:    python tools/batch_process.py /Volumes/new_music --db-epoch 2026-01-19
+./tools/batch_process.py:    python tools/batch_process.py /Volumes/new_music --canonical /path/to/library
+./tools/analysis/execute_suspect_resolution.py:    library_root = Path("/Volumes/COMMUNE/M/Library")
+./tools/analysis/execute_suspect_resolution.py:    quarantine_root = Path("/Volumes/COMMUNE/M/_quarantine/suspect_duplicates")
+./tools/analysis/execute_suspect_resolution.py:    suspect_root = Path("/Volumes/COMMUNE/M/Suspect")
+./tools/review/apply_removals.py:        default="/Volumes/COMMUNE/M/_quarantine",
+./tools/review/promote_by_tags.py:        help="Destination library root (e.g. /Volumes/COMMUNE/M/Library)",
+./tests/conftest.py:        "mount_path": "/Volumes/Music",
+./tests/test_config.py:    config_path.write_text("[library]\nname = 'COMMUNE'\nroot = '/Volumes/COMMUNE'\n")
+./tests/test_config.py:    assert data["library"]["root"] == "/Volumes/COMMUNE"
+./DURATION_VALIDATION_SUMMARY.md:   python tools/integrity/scan.py /Volumes/RECOVERY --check-integrity
+./final_audit.py:cursor.execute("SELECT path, size FROM files WHERE path LIKE '/Volumes/COMMUNE/M/Library_CANONICAL/%'")
+./final_audit.py:    WHERE f1.path LIKE '/Volumes/COMMUNE/M/Library_CANONICAL/%'
+./final_audit.py:    AND f2.path LIKE '/Volumes/RECOVERY_TARGET/%'
+./docs/SCANNING.md:python3 tools/integrity/scan.py /Volumes/RECOVERY_TARGET/Root
+./docs/SCANNING.md:python3 tools/integrity/scan.py /Volumes/RECOVERY_TARGET/_QUARANTINE
+./docs/AUDIO_INTEGRITY_WORKFLOW.md:python tools/integrity/scan.py /Volumes/RECOVERY --check-integrity
+./docs/AUDIO_INTEGRITY_WORKFLOW.md:  /Volumes/STAGING \
+./docs/AUDIO_INTEGRITY_WORKFLOW.md:  /Volumes/LIBRARY \
+./docs/AUDIO_INTEGRITY_WORKFLOW.md:python tools/integrity/scan.py /Volumes/RECOVERY/Album --check-integrity
+./docs/_template_vars.toml:keep_dir = "/Volumes/COMMUNE/M/_staging__2026-01-14/2026-01-10_keep"
+./docs/_template_vars.toml:library_dir = "/Volumes/COMMUNE/M/Library"
+./docs/_template_vars.toml:quarantine_dir = "/Volumes/COMMUNE/M/_quarantine"
+./docs/NAMING_WORKFLOW.md:KEEP_DIR="/Volumes/COMMUNE/M/_staging__2026-01-14/2026-01-10_keep"
+./docs/NAMING_WORKFLOW.md:  --dest-root /Volumes/COMMUNE/M/Library \
+./docs/NAMING_WORKFLOW.md:  --dest-root-secondary /Volumes/xtralegroom \
+./docs/NAMING_WORKFLOW.md:  --skip-existing-root /Volumes/COMMUNE/M/Library \
+./docs/QUICKSTART.md:KEEP_DIR="/Volumes/COMMUNE/M/Library/_staging/$(date +%F)_keep"
+./docs/QUICKSTART.md:  --dest-root /Volumes/COMMUNE/M/Library \
+./docs/PROGRESS_SNAPSHOT.md:- Library root: `/Volumes/COMMUNE/M/Library`
+./docs/PROGRESS_SNAPSHOT.md:- Staging archive: `/Volumes/COMMUNE/M/_staging__2026-01-14`
+./docs/PROGRESS_SNAPSHOT.md:- Quarantine archive: `/Volumes/COMMUNE/M/_quarantine__2026-01-14`
+./docs/PROGRESS_SNAPSHOT.md:- Archived keep dir: `/Volumes/COMMUNE/M/_staging__2026-01-14/2026-01-10_keep`
+./docs/PROGRESS_SNAPSHOT.md:- Promote resume file shows `index=19387/19387`, last run target `/Volumes/xtralegroom`.
+./docs/PROGRESS_SNAPSHOT.md:- #24 completed, `/Volumes/bad/G` zone=suspect: discovered 464, skipped 464, succeeded 0, failed 0.
+./docs/PROGRESS_SNAPSHOT.md:- #23 completed, `/Volumes/bad/G` zone=suspect: discovered 464, skipped 0, succeeded 464, failed 0.
+./docs/PROGRESS_SNAPSHOT.md:- #22 completed, `/Volumes/bad/G` zone=accepted: discovered 464, skipped 0, succeeded 464, failed 0.
+./docs/PROGRESS_SNAPSHOT.md:- #21 completed, `/Volumes/COMMUNE/M/Library/_staging/2026-01-10_keep` zone=staging: discovered 21,070, skipped 14,204, succeeded 6,866, failed 0.
+./docs/PROGRESS_SNAPSHOT.md:- #20 completed, `/Volumes/Vault/Vault` zone=suspect: discovered 2,799, skipped 0, succeeded 2,312, failed 487 (InvalidFLAC).
+./docs/PROGRESS_SNAPSHOT.md:- #19 completed, `/Volumes/COMMUNE/M/Library/_staging/2026-01-10_keep` zone=staging: discovered 15,373, skipped 0, succeeded 15,373, failed 0.
+./docs/PROGRESS_SNAPSHOT.md:  - `Summary: COPY 1284, SKIP 103, ERR 0 (execute=True)` (spillover to `/Volumes/xtralegroom`).
+./docs/PROGRESS_SNAPSHOT.md:  - `Summary: COPY 2020, SKIP 17367, ERR 0 (execute=True)` (copy into `/Volumes/COMMUNE/M/Library`).
+./docs/PROGRESS_SNAPSHOT.md:## /Volumes/bad/G duplicates
+./docs/ARTIFACTS.md:/Volumes/COMMUNE/M/00_manifests
+./docs/ARTIFACTS.md:/Volumes/COMMUNE/M/01_candidates
+./docs/ARTIFACTS.md:/Volumes/COMMUNE/M/02_unmatched
+./docs/ARTIFACTS.md:/Volumes/COMMUNE/M/03_reports
+./docs/CONFIG.md:root = "/Volumes/COMMUNE/M"
+./docs/DURATION_VALIDATION.md:   python tools/integrity/scan.py /Volumes/RECOVERY --check-integrity
+./docs/SCAN_TO_REVIEW_WORKFLOW.md:Goal: finish `/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY` once with full evidence, recheck only its failures, generate the plan, and stage healthy tracks. Defer other volumes until later.
+./docs/SCAN_TO_REVIEW_WORKFLOW.md:  /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY \
+./docs/SCAN_TO_REVIEW_WORKFLOW.md:    "COMMUNE": "/Volumes/COMMUNE/",
+./docs/SCAN_TO_REVIEW_WORKFLOW.md:    "RECOVERY_TARGET": "/Volumes/RECOVERY_TARGET/",
+./docs/SCAN_TO_REVIEW_WORKFLOW.md:    "bad": "/Volumes/bad/",
+./docs/SCAN_TO_REVIEW_WORKFLOW.md:    "Vault": "/Volumes/Vault/",
+./docs/SCAN_TO_REVIEW_WORKFLOW.md:KEEP_DIR="/Volumes/COMMUNE/M/Library/_staging/$(date +%F)_keep"
+./docs/SCAN_TO_REVIEW_WORKFLOW.md:  --dest-root /Volumes/COMMUNE/M/Library \
+./docs/SCAN_TO_REVIEW_WORKFLOW.md:- /Volumes/bad/G override: not enabled by default; only via explicit opt-in flag and logged in the plan.
+./docs/SCAN_TO_REVIEW_WORKFLOW.md:  --quarantine-root /Volumes/COMMUNE/M/_quarantine \
+./docs/OPERATOR_GUIDE.md:- **Source of truth (current)**: `/Volumes/RECOVERY_TARGET/Root`
+./docs/OPERATOR_GUIDE.md:- **Canonical target (new)**: `/Volumes/COMMUNE/M/Library`
+./docs/OPERATOR_GUIDE.md:- **Staging**: `/Volumes/COMMUNE/M/01_candidates`
+./docs/OPERATOR_GUIDE.md:python3 tools/integrity/scan.py /Volumes/RECOVERY_TARGET/Root
+./docs/OPERATOR_GUIDE.md:/Volumes/COMMUNE/M/01_candidates
+./docs/OPERATOR_GUIDE.md:/Volumes/COMMUNE/M/Library
+./docs/CLEAN_SCAN_WORKPLAN.md:    "COMMUNE": "/Volumes/COMMUNE/",
+./docs/CLEAN_SCAN_WORKPLAN.md:    "RECOVERY_TARGET": "/Volumes/RECOVERY_TARGET/",
+./docs/CLEAN_SCAN_WORKPLAN.md:    "bad": "/Volumes/bad/",
+./docs/CLEAN_SCAN_WORKPLAN.md:    "Vault": "/Volumes/Vault/",
+./docs/CLEAN_SCAN_WORKPLAN.md:- /Volumes/bad/G override: not enabled by default; only via explicit opt-in flag and logged in the plan.
+./docs/CLEAN_SCAN_WORKPLAN.md:  --quarantine-root /Volumes/COMMUNE/M/_quarantine \
+./docs/CLEAN_SCAN_WORKPLAN.md:KEEP_DIR="/Volumes/COMMUNE/M/Library/_staging/$(date +%F)_keep"
+./docs/CLEAN_SCAN_WORKPLAN.md:  --dest-root /Volumes/COMMUNE/M/Library \
+./docs/CLEAN_SCAN_WORKPLAN.md:python3 tools/integrity/scan.py /Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY \
+./docs/CLEAN_SCAN_WORKPLAN.md:python3 tools/integrity/scan.py /Volumes/bad \
+./docs/CLEAN_SCAN_WORKPLAN.md:python3 tools/integrity/scan.py /Volumes/Vault/Vault \
+./docs/CLEAN_SCAN_WORKPLAN.md:root = Path("/Volumes/COMMUNE/M/Library/_staging/2026-01-10_keep")
+./docs/CLEAN_SCAN_WORKPLAN.md:needle = "/Volumes/COMMUNE/M/Library/_staging/2026-01-10_keep/Volumes/COMMUNE/M/Library/_staging/2026-01-10_keep"
+./docs/OPERATOR_RUNBOOK.md:KEEP_DIR=/Volumes/COMMUNE/M/_staging \
+./docs/OPERATOR_RUNBOOK.md:LIBRARY_ROOT=/Volumes/COMMUNE/M/Library \
+./docs/OPERATOR_RUNBOOK.md:find /Volumes/COMMUNE/M/Library -name "*.flac" | wc -l
+./docs/HANDOVER.md:- Canonical library: `/Volumes/COMMUNE/M/Library`
+./docs/HANDOVER.md:- Staging keep (current): `/Volumes/COMMUNE/M/Library/_staging/2026-01-10_keep`
+./docs/HANDOVER.md:  - `/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY`
+./docs/HANDOVER.md:  - `/Volumes/bad`
+./docs/HANDOVER.md:  - `/Volumes/Vault/Vault`
+./docs/HANDOVER.md:3) Promote from staging into `/Volumes/COMMUNE/M/Library` using `promote_by_tags.py`.
+./dedupe_v2/README.md:VOLUME_LIBRARY=/Volumes/COMMUNE/M/Library_CANONICAL
+./dedupe_v2/README.md:VOLUME_STAGING=/Volumes/COMMUNE/M/Staging
+./dedupe_v2/README.md:python tools/integrity/scan.py /Volumes/MyDrive --check-integrity -v
+./dedupe_v2/README.md:python tools/integrity/scan.py /Volumes/MyDrive --check-integrity --check-hash -v
+./dedupe_v2/README.md:python tools/integrity/scan.py /Volumes/MyDrive --check-integrity --check-hash --parallel 8 -v
+./dedupe_v2/README.md:   python tools/review/promote_by_tags.py --paths-from-file kept.txt --dest-root /Volumes/COMMUNE/M/Library_CANONICAL --execute
+./dedupe_v2/README.md:# VOLUME_LIBRARY=/Volumes/COMMUNE/M/Library_CANONICAL
+./dedupe_v2/README.md:# VOLUME_STAGING=/Volumes/COMMUNE/M/Staging
+./dedupe_v2/README.md:python tools/integrity/scan.py /Volumes/MyDrive --check-integrity -v 2>&1 | grep "Zone="
+./dedupe_v2/test_zone_logic.py:    library = Path("/Volumes/COMMUNE/M/Library")
+./dedupe_v2/test_zone_logic.py:    staging = Path("/Volumes/COMMUNE/M/_staging")
+./dedupe_v2/test_zone_logic.py:        (False, False, Path("/Volumes/Vault/file.flac"), "suspect", "Integrity failed"),
+./dedupe_v2/test_zone_logic.py:        (True, True, Path("/Volumes/COMMUNE/M/Library/file.flac"), "suspect", "Duplicate in library"),
+./dedupe_v2/test_zone_logic.py:        (True, False, Path("/Volumes/COMMUNE/M/Library/artist/album/01.flac"), "accepted", "Clean file in library"),
+./dedupe_v2/test_zone_logic.py:        (True, False, Path("/Volumes/COMMUNE/M/_staging/new/01.flac"), "staging", "Clean file in staging"),
+./dedupe_v2/test_zone_logic.py:        (True, False, Path("/Volumes/Vault/Vault/unknown/01.flac"), "suspect", "Clean file in unknown location"),
+./dedupe_v2/test_zone_logic.py:        (True, True, Path("/Volumes/Vault/Vault/dup.flac"), "suspect", "Duplicate in vault"),
+./README.md:python3 tools/integrity/scan.py /Volumes/RECOVERY_TARGET/Root
+./COMPLEXITY_AUDIT.md:- `/Volumes/COMMUNE/M/Library`
+./V2_ARCHITECTURE.md:LIBRARY_PATH=/Volumes/Library
+./V2_ARCHITECTURE.md:STAGING_PATH=/Volumes/Staging
+./V2_ARCHITECTURE.md:SUSPECT_PATH=/Volumes/Suspect
+./V2_ARCHITECTURE.md:QUARANTINE_PATH=/Volumes/Quarantine
+./DEDUPE PRODUCTION SYSTEM — OPERATIONAL HANDOVER.md:find /Volumes/bad/_integration_staging_20260115 -type f | wc -l && \
+./DEDUPE PRODUCTION SYSTEM — OPERATIONAL HANDOVER.md:find /Volumes/bad/_integration_staging_20260115 -type f | sed 's/.*\.//' | sort | uniq -c
+./DEDUPE PRODUCTION SYSTEM — OPERATIONAL HANDOVER.md:find /Volumes/COMMUNE/M/Library -name "*.flac" -type f | wc -l
+./DEDUPE PRODUCTION SYSTEM — OPERATIONAL HANDOVER.md:find /Volumes/Vault -name "*.flac" -type f | wc -l
+./DEDUPE PRODUCTION SYSTEM — OPERATIONAL HANDOVER.md:find /Volumes/bad -name "*.flac" -type f | wc -l
+./DEDUPE PRODUCTION SYSTEM — OPERATIONAL HANDOVER.md:STAGING_COUNT=$(find /Volumes/bad/_integration_staging_20260115 -type f | wc -l)
+./DEDUPE PRODUCTION SYSTEM — OPERATIONAL HANDOVER.md:STAGING_FLAC=$(find /Volumes/bad/_integration_staging_20260115 -name "*.flac" | wc -l)
+./DEDUPE PRODUCTION SYSTEM — OPERATIONAL HANDOVER.md:STAGING_MP3=$(find /Volumes/bad/_integration_staging_20260115 -name "*.mp3" | wc -l)
+./DEDUPE PRODUCTION SYSTEM — OPERATIONAL HANDOVER.md:CANONICAL_FLAC=$(find /Volumes/COMMUNE/M/Library -name "*.flac" -type f | wc -l)
+./DEDUPE PRODUCTION SYSTEM — OPERATIONAL HANDOVER.md:find /Volumes -name "_ARCHIVE_STATE_20260109*" -type d 2>/dev/null
+./DEDUPE PRODUCTION SYSTEM — OPERATIONAL HANDOVER.md:find /Volumes -name "music.db" -path "*ARCHIVE_STATE*" 2>/dev/null | \
+./DEDUPE PRODUCTION SYSTEM — OPERATIONAL HANDOVER.md:  → Promote all to /Volumes/COMMUNE/M/Library/
+./DEDUPE PRODUCTION SYSTEM — OPERATIONAL HANDOVER.md:mkdir -p /Volumes/bad/_STAGING_BY_FORMAT/{FLAC,MP3,AAC,WAV,OTHER}
+./DEDUPE PRODUCTION SYSTEM — OPERATIONAL HANDOVER.md:staging_dir = Path("/Volumes/bad/_integration_staging_20260115")
+./DEDUPE PRODUCTION SYSTEM — OPERATIONAL HANDOVER.md:    target_dir = f"/Volumes/bad/_STAGING_BY_FORMAT/{fmt.upper()}"
+./DEDUPE PRODUCTION SYSTEM — OPERATIONAL HANDOVER.md:staging = Path("/Volumes/bad/_integration_staging_20260115")
+./DEDUPE PRODUCTION SYSTEM — OPERATIONAL HANDOVER.md:  --source /Volumes/bad/_integration_staging_20260115 \
+./DEDUPE PRODUCTION SYSTEM — OPERATIONAL HANDOVER.md:  --source /Volumes/bad/_integration_staging_20260115 \
+./DEDUPE PRODUCTION SYSTEM — OPERATIONAL HANDOVER.md:  --target /Volumes/COMMUNE/M/Library \
+./DEDUPE PRODUCTION SYSTEM — OPERATIONAL HANDOVER.md:  --log /Volumes/COMMUNE/M/03_reports/promotion_20260115.log
+./DEDUPE PRODUCTION SYSTEM — OPERATIONAL HANDOVER.md:mkdir -p /Volumes/bad/_STAGING_ARCHIVE/non_flac_20260115
+./DEDUPE PRODUCTION SYSTEM — OPERATIONAL HANDOVER.md:find /Volumes/bad/_integration_staging_20260115 -NOT -name "*.flac" \
+./DEDUPE PRODUCTION SYSTEM — OPERATIONAL HANDOVER.md:  -exec mv {} /Volumes/bad/_STAGING_ARCHIVE/non_flac_20260115/ \;
+./DEDUPE PRODUCTION SYSTEM — OPERATIONAL HANDOVER.md:non_flac_dir = Path("/Volumes/bad/_integration_staging_20260115")
+./DEDUPE PRODUCTION SYSTEM — OPERATIONAL HANDOVER.md:Staging Directory:      /Volumes/bad/_integration_staging_20260115/
+./DEDUPE PRODUCTION SYSTEM — OPERATIONAL HANDOVER.md:Canonical Library:      /Volumes/COMMUNE/M/Library/
+./DEDUPE PRODUCTION SYSTEM — OPERATIONAL HANDOVER.md:Operation Logs:         /Volumes/COMMUNE/M/03_reports/
+./DEDUPE PRODUCTION SYSTEM — OPERATIONAL HANDOVER.md:Archive (Master):       /Volumes/COMMUNE/M/_ARCHIVE_STATE_20260109_011532/
+./DEDUPE PRODUCTION SYSTEM — OPERATIONAL HANDOVER.md:Quarantine (COMMUNE):   /Volumes/bad/_commune_quarantine_2026-01-14_FINAL/
+./DEDUPE PRODUCTION SYSTEM — OPERATIONAL HANDOVER.md:Quarantine (Vault):     /Volumes/bad/_vault_quarantine/
+./DEDUPE PRODUCTION SYSTEM — OPERATIONAL HANDOVER.md:tail -100 /Volumes/COMMUNE/M/03_reports/promotion_*.log
+./DEDUPE PRODUCTION SYSTEM — OPERATIONAL HANDOVER.md:cp /Volumes/COMMUNE/M/_ARCHIVE_STATE_20260109_011532/dedupe_db/music.db \
+./DEDUPE PRODUCTION SYSTEM — OPERATIONAL HANDOVER.md:- `/Volumes/COMMUNE/M/_ARCHIVE_STATE_20260109_011532/`
+./DEDUPE PRODUCTION SYSTEM — OPERATIONAL HANDOVER.md:- `/Volumes/COMMUNE/M/03_reports/`
+./DEDUPE PRODUCTION SYSTEM — OPERATIONAL HANDOVER.md:cat >> /Volumes/COMMUNE/M/03_reports/OPERATIONS_LOG.txt <<'LOG'
+./test_integration.py:test_path = Path("/Volumes/COMMUNE/M/Library/Artist/Album/01.flac")
+./test_integration.py:    library_root=Path("/Volumes/COMMUNE/M/Library"),
+./test_integration.py:    staging_root=Path("/Volumes/COMMUNE/M/_staging"),
+./config.toml:root = "/Volumes/COMMUNE/M"
+./AI_AGENT_HANDOVER_REPORT.md:   ├─ /Volumes/COMMUNE/M/Library/...              → KEEPER
+./AI_AGENT_HANDOVER_REPORT.md:   ├─ /Volumes/bad/archive/...                    → CANDIDATE FOR DELETION
+./AI_AGENT_HANDOVER_REPORT.md:   ├─ /Volumes/bad/archive/.../_DEDUPED_DISCARDS/ → CANDIDATE
+./AI_AGENT_HANDOVER_REPORT.md:   └─ /Volumes/xtralegroom/...                    → CANDIDATE
+./AI_AGENT_HANDOVER_REPORT.md:   ├─ /Volumes/COMMUNE/M/Library/...              → KEEPER
+./AI_AGENT_HANDOVER_REPORT.md:   ├─ /Volumes/bad/quarantine/...                 → CANDIDATE
+./AI_AGENT_HANDOVER_REPORT.md:   ├─ /Volumes/bad/quarantine/.../hex_suffix/...  → CANDIDATE
+./AI_AGENT_HANDOVER_REPORT.md:   └─ /Volumes/xtralegroom/...                    → CANDIDATE
+./AI_AGENT_HANDOVER_REPORT.md:root = "/Volumes/COMMUNE/M"
+./AI_AGENT_HANDOVER_REPORT.md:quarantine_dir = Path("/Volumes/COMMUNE/M/quarantine/auto_deduped")
+./AI_AGENT_HANDOVER_REPORT.md:| Primary (Library) | `/Volumes/COMMUNE/M/Library` | 12,186 |
+./AI_AGENT_HANDOVER_REPORT.md:| Quarantine | `/Volumes/COMMUNE/M/quarantine` | 7,938 |
+./AI_AGENT_HANDOVER_REPORT.md:| Suspect | `/Volumes/bad/archive` | 3,268 |
+./AI_AGENT_HANDOVER_REPORT.md:| Suspect | `/Volumes/xtralegroom` | 1,284 |
+./AI_AGENT_HANDOVER_REPORT.md:- Files in `/Volumes/bad/archive/.../_DEDUPED_DISCARDS/` — already marked as trash
+./AI_AGENT_HANDOVER_REPORT.md:   - `/Volumes/bad/archive/.../_DEDUPED_DISCARDS/`
+./AI_AGENT_HANDOVER_REPORT.md:   - `/Volumes/bad/quarantine/.../hex_suffix/`
+./IMMEDIATE_ACTIONS.md:LIBRARY_PATH=/Volumes/COMMUNE/M/Library
+./IMMEDIATE_ACTIONS.md:STAGING_PATH=/Volumes/COMMUNE/M/_staging
+./IMMEDIATE_ACTIONS.md:SUSPECT_PATH=/Volumes/Vault/Vault
+./IMMEDIATE_ACTIONS.md:QUARANTINE_PATH=/Volumes/COMMUNE/M/_quarantine
+./IMMEDIATE_ACTIONS.md:RECOVERY_PATH=/Volumes/RECOVERY_TARGET/Root/FINAL_LIBRARY
+./IMMEDIATE_ACTIONS.md:2. **Library**: /Volumes/COMMUNE/M/Library

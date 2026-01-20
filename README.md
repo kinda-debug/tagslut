@@ -2,44 +2,27 @@
 
 This repository is a recovery-first, evidence-preserving toolkit for scanning, auditing, and deduplicating large FLAC libraries. The workflow is **deterministic**, **resumable**, and **non-destructive** unless you explicitly approve changes.
 
-## What You Work With
+## 🛠️ Project Structure
 
-- `tools/` — operator CLIs (scan, decide, apply)
-- `dedupe/` — core engine (integrity scan, matching, decisions)
-- `docs/` — concise operator documentation
+*   **`dedupe/`** — **The Engine**: Core library containing the unified CLI, hashing tiers, metadata extraction, and storage logic.
+*   **`tools/`** — **The Workbench**: Categorized operational scripts for scanning, decision review, database maintenance, and specialized recovery tasks.
+*   **`docs/`** — **The Library**: Technical manuals, system architecture, and archived history.
 
-Scripts and one-off artifacts have been archived. Use the tools below.
+---
 
-## Core Features (Evidence-First)
+## 🚀 Quickstart (V2)
 
-- **Technical Provenance**: Tracks `checksum_type` (STREAMINFO vs SHA256) for every file.
-- **Resource Guardrails**: Pre-flight disk space and write-sanity checks.
-- **Adaptive Commits**: Time-based (60s) and batch-based database flushing.
-- **Risk Profiling**: Automatic delta analysis (duration, bitrate, etc.) for duplicates.
-- **High Performance**: Surgical indexing for fast queries on large datasets.
+1.  **Configure**: Copy `.env.example` to `.env` and update your volume paths and database location.
+2.  **Scan**: `python3 -m dedupe scan /path/to/music` (Builds your library index).
+3.  **Recommend**: `python3 -m dedupe recommend --output plan.json` (Finds duplicates).
+4.  **Apply**: `python3 -m dedupe apply plan.json --confirm` (Quarantines duplicates).
 
-## Quickstart (V2)
+---
 
-1) Configure your environment:
-   Copy `.env.example` to `.env` and update the paths.
+## 📘 Essential Documentation
 
-2) Scan a root:
-```bash
-python3 -m dedupe scan /path/to/volume
-```
-
-3) Generate a plan:
-```bash
-python3 -m dedupe recommend --output plan.json
-```
-
-4) Apply decisions (moves to quarantine):
-```bash
-python3 -m dedupe apply plan.json --confirm
-```
-
-## Documentation
-
-- **[GUIDE.md](GUIDE.md)** — Authoritative V2 operator guide and workflow.
-- `COMPLEXITY_AUDIT.md` — Modernization roadmap and progress.
-- `docs/` — Legacy documentation (being consolidated).
+For detailed technical information, please refer to:
+*   **[GUIDE.md](GUIDE.md)** — **Operator Guide**: Tiered hashing, keeper selection logic, and full workflow details.
+*   **[docs/V2_ARCHITECTURE.md](docs/V2_ARCHITECTURE.md)** — **System Design**: How the unified package and CLI are structured.
+*   **[docs/RESTORATION_PLAN.md](docs/RESTORATION_PLAN.md)** — **Data Recovery**: Detailed procedures for restoring files and resolving path conflicts.
+*   **[docs/ROON_INTEGRATION.md](docs/ROON_INTEGRATION.md)** — **Roon Guide**: Managing your canonical library for Roon compatibility.

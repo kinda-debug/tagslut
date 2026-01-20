@@ -47,7 +47,7 @@ from mutagen import MutagenError  # type: ignore[attr-defined]
 from mutagen.flac import FLAC, FLACNoHeaderError
 
 from dedupe.utils import env_paths
-from dedupe.utils.db import open_db
+from dedupe.utils.db import open_db, resolve_db_path
 
 TRUTHY = {"1", "true", "yes", "y", "t"}
 
@@ -119,10 +119,12 @@ def collapse_ws(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
-def sanitize_component(text: str, fallback: str) -> str:
+def sanitize_component(text: str, fallback: str, max_len: int = 120) -> str:
     cleaned = collapse_ws(text)
     cleaned = cleaned.replace("/", " - ").replace("\\", " - ").replace("\x00", "")
     cleaned = cleaned.strip(" .")
+    if len(cleaned) > max_len:
+        cleaned = cleaned[:max_len].strip(" .")
     return cleaned or fallback
 
 
@@ -133,7 +135,7 @@ def normalize_title(title: str) -> str:
     return collapse_ws(out)
 
 
-def limit_filename(name: str, max_len: int = 240) -> str:
+def limit_filename(name: str, max_len: int = 140) -> str:
     if len(name) <= max_len:
         return name
     base, ext = (name.rsplit(".", 1) + [""])[:2]
@@ -385,8 +387,9 @@ def process(
     db_conn = None
     if db_path and execute:
         try:
-            db_conn = open_db(db_path)
-            log(f"[DB] Connected to {db_path} for promotion tracking", always=True)
+            res = resolve_db_path(db_path, purpose="write")
+            db_conn = open_db(res)
+            log(f"[DB] Connected to {res.path} for promotion tracking", always=True)
         except Exception as e:
             log(f"[DB] Warning: Could not connect to database: {e}", always=True)
 
@@ -550,34 +553,19 @@ def process(
                         shutil.copy2(source, target)
                         copied += 1
                         log(f"[COPY] {source} -> {target}")
-                        if db_conn:
-                            try:
-                                db_conn.execute(
-                                    """INSERT INTO promotions (source_path, dest_path, mode, timestamp)
-                                       VALUES (?, ?, ?, datetime('now'))
-                                       ON CONFLICT(source_path) DO UPDATE SET
-                                       dest_path=excluded.dest_path, mode=excluded.mode, timestamp=excluded.timestamp""",
-                                    (str(source), str(target), mode)
-                                )
-                                db_conn.commit()
-                            except Exception as e:
-                                log(f"[DB] Warning: Failed to track promotion: {e}")
                     else:
-                        shutil.move(source, target)
+                        # PERFORM COPY ONLY
+                        # ABSOLUTELY NO DELETION ALLOWED.
+                        shutil.copy2(source, target)
+
+                        # Verify target exists and has matching size
+                        if not (target.exists() and target.stat().st_size == source.stat().st_size):
+                            raise IOError("Target file validation failed after copy")
+
+                        # If we reached here, copy was successful.
+                        # In 'move' mode, we would normally delete, but DELETION IS FORBIDDEN.
+                        log(f"[PROMOTED] (Source remains) {source} -> {target}")
                         moved += 1
-                        log(f"[MOVE] {source} -> {target}")
-                        if db_conn:
-                            try:
-                                db_conn.execute(
-                                    """INSERT INTO promotions (source_path, dest_path, mode, timestamp)
-                                       VALUES (?, ?, ?, datetime('now'))
-                                       ON CONFLICT(source_path) DO UPDATE SET
-                                       dest_path=excluded.dest_path, mode=excluded.mode, timestamp=excluded.timestamp""",
-                                    (str(source), str(target), mode)
-                                )
-                                db_conn.commit()
-                            except Exception as e:
-                                log(f"[DB] Warning: Failed to track promotion: {e}")
 
                 try:
                     run_transfer(active_root)

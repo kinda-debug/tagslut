@@ -39,10 +39,26 @@ class PlanRow:
 
 
 def rel_to(path: Path, root: Path) -> Path:
+    """
+    Safely compute relative path for quarantine.
+    Handles /Volumes/Name/ vs plain root paths.
+    """
+    path_str = path.as_posix()
+
+    # 1. Handle common /Volumes/ path pattern
+    # parts: ('/', 'Volumes', 'VolumeName', 'Subdir1', ...)
+    if len(path.parts) > 3 and path.parts[1] == "Volumes":
+        # Extract everything after the Volume name
+        return Path(*path.parts[3:])
+
+    # 2. Try standard relative_to (as fallback)
     try:
         return path.relative_to(root)
     except ValueError:
-        return Path(path.as_posix().lstrip("/"))
+        pass
+
+    # 3. Last resort fallback: strip leading slash
+    return Path(path_str.lstrip("/"))
 
 
 def write_manifest_header(writer: csv.DictWriter) -> None:
@@ -147,8 +163,25 @@ def apply_quarantine(
 
             quarantined_at = now_utc()
             if execute:
+                # 1. Ensure target directory exists
                 target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.move(src, target)
+
+                # 2. PERFORM COPY ONLY
+                # ABSOLUTELY NO DELETION ALLOWED.
+                # Use shutil.copy2 to preserve metadata while copying
+                try:
+                    shutil.copy2(src, target)
+
+                    # Verify target exists and has matching size
+                    if not (target.exists() and target.stat().st_size == src.stat().st_size):
+                        raise IOError("Target file validation failed after copy")
+
+                except Exception as e:
+                    log_message(f"[ERR] Failed to copy {src} to {target}: {e}", log_file=log_file, progress_only=progress_only, always=True)
+                    skipped += 1
+                    continue
+
+                # 3. Update Database (Mark as quarantined, but source remains)
                 with conn:
                     conn.execute(
                         """
@@ -238,119 +271,17 @@ def apply_deletions(
     progress_only: bool,
     manifest_path: Path,
 ) -> None:
-    cutoff = datetime.now(timezone.utc) - timedelta(days=delete_after_days)
-    rows = conn.execute(
-        """
-        SELECT id, original_path, quarantine_path, sha256, keeper_path, quarantined_at
-        FROM file_quarantine
-        WHERE deleted_at IS NULL AND quarantined_at <= ?
-        """,
-        (cutoff.isoformat(),),
-    ).fetchall()
-
-    manifest_path.parent.mkdir(parents=True, exist_ok=True)
-    manifest_fields = [
-        "original_path",
-        "quarantine_path",
-        "keeper_path",
-        "sha256",
-        "quarantined_at",
-        "deleted_at",
-    ]
-    with manifest_path.open("w", newline="") as manifest_file:
-        writer = csv.DictWriter(manifest_file, fieldnames=manifest_fields)
-        write_manifest_header(writer)
-
-        last_progress = time.time()
-        deleted = 0
-        skipped = 0
-        total = len(rows)
-        log_message(
-            f"Start delete phase: eligible={total} execute={execute} cutoff={cutoff.isoformat()}",
-            log_file=log_file,
-            progress_only=progress_only,
-            always=True,
-        )
-
-        for index, row in enumerate(rows, start=1):
-            quarantine_path = Path(row["quarantine_path"])
-            keeper_path = row["keeper_path"]
-            sha256 = row["sha256"]
-            quarantined_at = row["quarantined_at"]
-            if not quarantine_path.exists():
-                log_message(f"[SKIP] missing quarantine file: {quarantine_path}", log_file=log_file, progress_only=progress_only)
-                skipped += 1
-                continue
-
-            keeper = conn.execute(
-                "SELECT sha256, integrity_state, flac_ok FROM files WHERE path = ?",
-                (keeper_path,),
-            ).fetchone()
-            if not keeper:
-                log_message(f"[SKIP] missing keeper: {keeper_path}", log_file=log_file, progress_only=progress_only)
-                skipped += 1
-                continue
-            if keeper["sha256"] != sha256 or keeper["integrity_state"] != "valid" or keeper["flac_ok"] != 1:
-                log_message(
-                    f"[SKIP] keeper not valid: {keeper_path}",
-                    log_file=log_file,
-                    progress_only=progress_only,
-                )
-                skipped += 1
-                continue
-
-            deleted_at = now_utc()
-            if execute:
-                quarantine_path.unlink(missing_ok=True)
-                with conn:
-                    conn.execute(
-                        "UPDATE file_quarantine SET deleted_at = ?, delete_reason = ? WHERE id = ?",
-                        (deleted_at, "retention_window_elapsed", row["id"]),
-                    )
-                    conn.execute("DELETE FROM files WHERE path = ?", (str(quarantine_path),))
-                log_message(f"[DELETE] {quarantine_path}", log_file=log_file, progress_only=progress_only)
-            else:
-                log_message(f"[DRY DELETE] {quarantine_path}", log_file=log_file, progress_only=progress_only)
-                deleted_at = ""
-
-            writer.writerow(
-                {
-                    "original_path": row["original_path"],
-                    "quarantine_path": str(quarantine_path),
-                    "keeper_path": keeper_path,
-                    "sha256": sha256,
-                    "quarantined_at": quarantined_at,
-                    "deleted_at": deleted_at,
-                }
-            )
-            deleted += 1
-
-            if progress_every and index % progress_every == 0:
-                remaining = max(total - index, 0)
-                log_message(
-                    f"[PROGRESS] processed {index}/{total} (deleted {deleted}, skipped {skipped}, remaining {remaining})",
-                    log_file=log_file,
-                    progress_only=progress_only,
-                    always=True,
-                )
-            if progress_every_seconds:
-                now_ts = time.time()
-                if now_ts - last_progress >= progress_every_seconds:
-                    remaining = max(total - index, 0)
-                    log_message(
-                        f"[PROGRESS] processed {index}/{total} (deleted {deleted}, skipped {skipped}, remaining {remaining})",
-                        log_file=log_file,
-                        progress_only=progress_only,
-                        always=True,
-                    )
-                    last_progress = now_ts
-
-        log_message(
-            f"Summary: DELETE {deleted}, SKIP {skipped} (execute={execute})",
-            log_file=log_file,
-            progress_only=progress_only,
-            always=True,
-        )
+    """
+    STUB: DELETION IS DISABLED.
+    No code is allowed to remove any file.
+    """
+    log_message(
+        "CRITICAL: Deletion phase is DISABLED. No files will be removed.",
+        log_file=log_file,
+        progress_only=progress_only,
+        always=True,
+    )
+    return
 
 
 def main() -> None:

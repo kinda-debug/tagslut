@@ -7,7 +7,6 @@ import argparse
 import csv
 import hashlib
 from pathlib import Path
-from typing import Set
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -15,22 +14,20 @@ BASE_DIR = Path(__file__).resolve().parent
 def sha256_file(path: Path) -> str:
     h = hashlib.sha256()
     with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(8192), b""):
+        while chunk := stream.read(8192):
             h.update(chunk)
     return h.hexdigest()
 
 
-def load_matches(path: Path):
-    matches = []
+def iter_matches(path: Path):
+    """Yields rows from the matches CSV, validating headers."""
     with path.open(newline="") as handle:
         reader = csv.DictReader(handle)
         required = {"relative_path", "checksum", "match_prefix"}
         missing = required - set(reader.fieldnames or [])
         if missing:
             raise SystemExit(f"Missing columns in {path}: {', '.join(sorted(missing))}")
-        for row in reader:
-            matches.append(row)
-    return matches
+        yield from reader
 
 
 def main():
@@ -55,8 +52,6 @@ def main():
     )
     args = parser.parse_args()
 
-    matches = load_matches(args.matches)
-
     all_paths: Set[str] = set()
     paths_with_match: Set[str] = set()
     prefix_paths: dict[str, set[str]] = {}
@@ -64,28 +59,31 @@ def main():
     prefix_rows: dict[str, int] = {}
     path_checksums: dict[str, set[str]] = {}
     path_prefixes: dict[str, set[str]] = {}
-    path_match_paths: dict[str, Set[str]] = {}
-    path_checksum_prefix: dict[str, Set[tuple[str | None, str]]] = {}
+    path_match_paths: dict[str, set[str]] = {}
+    path_checksum_prefix: dict[str, set[tuple[str | None, str]]] = {}
     dedup = set()
 
-    for row in matches:
+    for row in iter_matches(args.matches):
         rel = row["relative_path"]
         checksum = row.get("checksum") or ""
         prefix = row.get("match_prefix") or ""
         match_path = row.get("match_path") or ""
 
+        # Dedup exact rows (including match_path) to avoid processing duplicates
+        # but allow multiple twins for the same file/prefix.
+        row_key = (rel, checksum, prefix, match_path)
+        if row_key in dedup:
+            continue
+        dedup.add(row_key)
+
         all_paths.add(rel)
         if prefix:
             paths_with_match.add(rel)
-            key = (rel, checksum, prefix)
-            if key in dedup:
-                continue
-            dedup.add(key)
             prefix_paths.setdefault(prefix, set()).add(rel)
             if checksum:
                 prefix_checksums.setdefault(prefix, set()).add(checksum)
             prefix_rows[prefix] = prefix_rows.get(prefix, 0) + 1
-            path_checksum_prefix.setdefault(rel, set()).add((checksum or "", prefix))
+            path_checksum_prefix.setdefault(rel, set()).add((checksum, prefix))
         if checksum:
             path_checksums.setdefault(rel, set()).add(checksum)
         if prefix:

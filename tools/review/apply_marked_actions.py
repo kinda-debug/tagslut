@@ -141,25 +141,24 @@ def process(
                         if execute:
                             try:
                                 target.parent.mkdir(parents=True, exist_ok=True)
-                                shutil.move(path, target)
-                                log(f"[DROP] moved {path} -> {target}")
+                                # PERFORM COPY ONLY
+                                # ABSOLUTELY NO DELETION ALLOWED.
+                                shutil.copy2(path, target)
+                                if not (target.exists() and target.stat().st_size == path.stat().st_size):
+                                    raise IOError("Validation failed")
+                                log(f"[DROP] copied {path} -> {target}")
                             except FileNotFoundError:
                                 if skip_missing:
                                     log(f"[MISSING DROP] {path} (skipping)")
                                     continue
                                 raise
                         else:
-                            log(f"[DRY DROP] would move {path} -> {target}")
+                            log(f"[DRY DROP] would copy {path} -> {target}")
                     else:
                         if execute:
-                            try:
-                                path.unlink(missing_ok=True)
-                                log(f"[DROP] deleted {path}")
-                            except FileNotFoundError:
-                                if skip_missing:
-                                    log(f"[MISSING DROP] {path} (skipping)")
-                                    continue
-                                raise
+                            # ABSOLUTELY NO DELETION ALLOWED.
+                            # path.unlink(missing_ok=True)
+                            log(f"[STUB DROP] skipped deletion: {path}")
                         else:
                             log(f"[DRY DROP] would delete {path}")
                     drop_actions += 1

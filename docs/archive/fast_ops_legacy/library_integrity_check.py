@@ -1,11 +1,19 @@
 #!/usr/bin/env python3
 """Run flac -t integrity check on entire library."""
+import sys
 import subprocess
 import concurrent.futures
 from pathlib import Path
 from datetime import datetime
 
-library_path = Path("/Volumes/COMMUNE/M/Library")
+# Ensure we can import dedupe from root
+sys.path.insert(0, str(Path(__file__).parents[1]))
+from dedupe.utils import env_paths
+
+library_path = env_paths.get_volume("library")
+if not library_path:
+    print("Error: VOLUME_LIBRARY not configured in .env")
+    sys.exit(1)
 
 print(f"{'='*70}")
 print(f"LIBRARY INTEGRITY CHECK")
@@ -87,7 +95,7 @@ print(f"Errors: {len(error_files)}")
 print(f"Duration: {duration:.1f} seconds ({len(flac_files)/duration:.1f} files/sec)")
 
 # Write detailed results
-report_path = Path("/Volumes/COMMUNE/M/03_reports/library_integrity_20260116.txt")
+report_path = env_paths.get_reports_dir() / f"library_integrity_{datetime.now().strftime('%Y%m%d')}.txt"
 with open(report_path, "w") as f:
     f.write(f"Library Integrity Check Report\n")
     f.write(f"Generated: {datetime.now().isoformat()}\n")

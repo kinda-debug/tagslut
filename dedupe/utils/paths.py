@@ -1,6 +1,30 @@
 import logging
 import os
 from pathlib import Path
+
+def sanitize_path_part(part: str, max_length: int = 140) -> str:
+    """
+    Sanitize a path component (folder or filename) for macOS/Unix.
+    - Removes /
+    - Limits length to prevent 'File name too long' errors.
+    - Default limit is conservative (MacOS limit is 255 bytes, but full path limits exist).
+    """
+    if not part:
+        return "Unknown"
+
+    # Replace slashes and other dangerous characters
+    sanitized = part.replace("/", "_").replace(":", "-").strip()
+
+    # Truncate if too long (preserving extension if it looks like a file)
+    if len(sanitized) > max_length:
+        if "." in sanitized and len(sanitized.split(".")[-1]) <= 5:
+            # It's a file with extension
+            name, ext = sanitized.rsplit(".", 1)
+            sanitized = name[:max_length - len(ext) - 1].strip() + "." + ext
+        else:
+            sanitized = sanitized[:max_length].strip()
+
+    return sanitized or "Unknown"
 from typing import Iterator, Set, Union
 
 logger = logging.getLogger("dedupe")
@@ -10,7 +34,7 @@ def list_files(root: Union[str, Path], extensions: Set[str], recursive: bool = T
     Yields paths to files within root matching the given extensions (case-insensitive).
     """
     root_path = Path(root).resolve()
-    
+
     if not root_path.exists():
         logger.error(f"Root path does not exist: {root_path}")
         return

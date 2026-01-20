@@ -132,12 +132,14 @@ def _check_disk_space(path: Path, min_bytes: int) -> None:
 
 
 def _write_sanity_check(path: Path) -> None:
-    """Attempt a small temporary write/delete to ensure the mount is truly writable."""
+    """Attempt a small temporary write ONLY to ensure the mount is truly writable."""
     test_file = path if path.is_dir() else path.parent
     test_file = test_file / f".dedupe_write_test_{os.getpid()}"
     try:
+        # We only perform the write to verify permissions.
+        # We NO LONGER call unlink() here to be 100% sure NO CODE removes ANY file.
         test_file.write_text("test", encoding="utf-8")
-        test_file.unlink()
+        # test_file.unlink()  <-- REMOVED: NO DELETION ALLOWED
     except (OSError, PermissionError) as e:
         raise DbReadOnlyError(
             f"Write sanity check failed on {path}: {e}. "

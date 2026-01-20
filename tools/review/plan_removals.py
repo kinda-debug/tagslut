@@ -107,6 +107,12 @@ def main() -> None:
         help="Optional PREFIX=ZONE overrides (repeatable, logged in plan)",
     )
     parser.add_argument(
+        "--handle-same-zone",
+        action="store_true",
+        default=True,
+        help="Plan removals even if files are in the same priority zone (TIER3) [Default: True]",
+    )
+    parser.add_argument(
         "--summary-only",
         action="store_true",
         help="Print summary only (no output file)",
@@ -195,80 +201,48 @@ def main() -> None:
                     reason = "Tier2: keeper not provably valid"
                 else:
                     reason = "Tier2: keeper only in suspect/quarantine"
-            else:
-                skipped_same_zone += 1
-                continue
-
+            # Simplified logic: every redundant file is a DUPLICATE
             planned_rows.append(
                 {
                     "plan_id": plan_id,
-                    "tier": tier,
+                    "tier": "DUPLICATE",
                     "action": "QUARANTINE",
-                    "reason": reason,
+                    "reason": f"Redundant copy of {keeper.path}",
                     "sha256": sha256,
                     "path": item.path,
-                    "source_zone": item.zone,
-                    "effective_zone": item.effective_zone,
-                    "zone_override": item.zone_override,
+                    "source_zone": item.zone or "unknown",
                     "keeper_path": keeper.path,
-                    "keeper_zone": keeper.zone,
-                    "keeper_effective_zone": keeper.effective_zone,
-                    "keeper_valid": "True" if keeper_valid else "False",
-                    "group_count": str(len(items)),
                 }
             )
 
-            tier_counts[tier] += 1
-            tier_by_zone[(tier, item.zone or "")] += 1
-
     conn.close()
 
-    print(f"Plan id: {plan_id}")
-    print(f"Duplicate groups scanned: {len(groups)}")
-    print(f"Rows planned: {len(planned_rows)}")
-    print(f"Skipped same-zone duplicates: {skipped_same_zone}")
-    if overrides:
-        print("Zone overrides in use:")
-        for prefix, zone in overrides:
-            print(f"  {prefix} -> {zone}")
+    print(f"Plan ID: {plan_id}")
+    print(f"Total Groups Scanned: {len(groups)}")
+    print(f"Total Files to Move: {len(planned_rows)}")
 
-    if tier_counts:
-        print("Tier counts:")
-        for tier, count in tier_counts.items():
-            print(f"  {tier}: {count}")
+    # Simple Summary
+    counts: dict[str, int] = {}
+    for r in planned_rows:
+        z = r["source_zone"]
+        counts[z] = counts.get(z, 0) + 1
 
-    if tier_by_zone:
-        print("Tier by source zone:")
-        for (tier, zone), count in sorted(tier_by_zone.items()):
-            label = zone or "unknown"
-            print(f"  {tier} / {label}: {count}")
+    print("\nFiles to move by current location:")
+    for zone, count in sorted(counts.items()):
+        print(f"  {zone}: {count}")
 
     if args.summary_only:
         return
 
     output_path = Path(args.output) if args.output else env_paths.get_reports_dir() / "removal_plan.csv"
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fieldnames = [
-        "plan_id",
-        "tier",
-        "action",
-        "reason",
-        "sha256",
-        "path",
-        "source_zone",
-        "effective_zone",
-        "zone_override",
-        "keeper_path",
-        "keeper_zone",
-        "keeper_effective_zone",
-        "keeper_valid",
-        "group_count",
-    ]
+
     with output_path.open("w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer = csv.DictWriter(f, fieldnames=["plan_id", "tier", "action", "reason", "sha256", "path", "source_zone", "keeper_path"])
         writer.writeheader()
         writer.writerows(planned_rows)
-    print(f"Wrote {output_path}")
+
+    print(f"\nWrote plan to {output_path}")
 
 
 if __name__ == "__main__":

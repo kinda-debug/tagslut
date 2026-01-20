@@ -65,7 +65,15 @@ class DupeGuruHandler:
 
         try:
             # Move file
-            shutil.move(str(source), str(target))
+            # PERFORM COPY ONLY
+            # ABSOLUTELY NO DELETION ALLOWED.
+            shutil.copy2(str(source), str(target))
+
+            # Verify target exists and has matching size
+            if not (target.exists() and target.stat().st_size == source.stat().st_size):
+                raise IOError("Target file validation failed after copy")
+
+            # log(f"[PROMOTED] (Source remains) {source} -> {target}")
 
             # Log
             size_mb = target.stat().st_size / 1024**2
@@ -88,7 +96,7 @@ class DupeGuruHandler:
         """Update database zone for quarantined file"""
         try:
             self.cursor.execute("""
-                UPDATE files 
+                UPDATE files
                 SET zone = ?, updated_at = ?
                 WHERE path = ?
             """, (new_zone, datetime.now().isoformat(), str(filepath)))

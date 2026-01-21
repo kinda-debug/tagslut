@@ -48,6 +48,10 @@ from mutagen.flac import FLAC, FLACNoHeaderError
 
 from dedupe.utils import env_paths
 from dedupe.utils.db import open_db, resolve_db_path
+from dedupe.utils.console_ui import ConsoleUI
+from dedupe.utils.safety_gates import SafetyGates
+from dedupe.utils.file_operations import FileOperations
+
 
 TRUTHY = {"1", "true", "yes", "y", "t"}
 
@@ -347,7 +351,6 @@ def process(
     min_free_gb: float | None,
     spill_on_enospc: bool,
     mode: str,
-    actual_move: bool,
     execute: bool,
     skip_existing: bool,
     skip_missing: bool,
@@ -361,15 +364,23 @@ def process(
     resume_index_override: int | None,
     db_path: Path | None = None,
 ) -> None:
-    def log(message: str, *, always: bool = False) -> None:
-        if not progress_only or always:
-            print(message)
+    ui = ConsoleUI(quiet=progress_only)
+    gates = SafetyGates(ui)
+    file_ops = FileOperations(ui, gates, dry_run=not execute)
+
+    def log_to_file(message: str):
         if log_file:
             log_file.write(message + "\n")
             log_file.flush()
 
     total = len(sources)
     sources_hash = hash_sources(sources)
+    
+    # Custom log function for resume logic that needs to write to file
+    def resume_log(message: str, *, always: bool = False):
+        ui.print(message)
+        log_to_file(message)
+
     resume_from = resume_index_override if resume_index_override is not None else load_resume(
         resume_file,
         sources_hash,
@@ -379,10 +390,10 @@ def process(
         min_free_gb,
         spill_on_enospc,
         mode,
-        log,
+        resume_log,
     )
     if resume_from:
-        log(f"[RESUME] Starting from {resume_from + 1}/{total}", always=True)
+        ui.print(f"[RESUME] Starting from {resume_from + 1}/{total}")
 
     # Database connection for tracking promotions
     db_conn = None
@@ -390,9 +401,9 @@ def process(
         try:
             res = resolve_db_path(db_path, purpose="write")
             db_conn = open_db(res)
-            log(f"[DB] Connected to {res.path} for promotion tracking", always=True)
+            ui.print(f"[DB] Connected to {res.path} for promotion tracking")
         except Exception as e:
-            log(f"[DB] Warning: Could not connect to database: {e}", always=True)
+            ui.warning(f"[DB] Warning: Could not connect to database: {e}")
 
     copied = 0
     moved = 0
@@ -546,34 +557,16 @@ def process(
                         continue
 
             if execute:
-                def run_transfer(target_root: Path) -> None:
-                    nonlocal copied, moved
-                    target = build_destination(tags, target_root)
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    if mode == "copy":
-                        shutil.copy2(source, target)
-                        copied += 1
-                        log(f"[COPY] {source} -> {target}")
-                    elif mode == "move":
-                        if actual_move:
-                            shutil.move(str(source), str(target))
-                            moved += 1
-                            log(f"[MOVE] {source} -> {target}")
-                        else:
-                            # PERFORM COPY ONLY
-                            # ABSOLUTELY NO DELETION ALLOWED.
-                            shutil.copy2(source, target)
-
-                            # Verify target exists and has matching size
-                            if not (target.exists() and target.stat().st_size == source.stat().st_size):
-                                raise IOError("Target file validation failed after copy")
-
-                            # If we reached here, copy was successful.
-                            # In 'move' mode, we would normally delete, but DELETION IS FORBIDDEN.
-                            log(f"[PROMOTED] (Source remains) {source} -> {target}")
-                            moved += 1
+                operation_successful = False
                 try:
-                    run_transfer(active_root)
+                    if mode == "copy":
+                        if file_ops.safe_copy(source, dest):
+                            copied += 1
+                            operation_successful = True
+                    elif mode == "move":
+                        if file_ops.safe_move(source, dest, confirmation_phrase=f"promote {source}"):
+                            moved += 1
+                            operation_successful = True
                 except OSError as exc:
                     if (
                         spill_on_enospc
@@ -581,16 +574,26 @@ def process(
                         and dest_root_secondary is not None
                         and active_root != dest_root_secondary
                     ):
-                        log(f"[SPILL] {source} -> {dest_root_secondary} (ENOSPC)")
-                        run_transfer(dest_root_secondary)
+                        ui.print(f"[SPILL] {source} -> {dest_root_secondary} (ENOSPC)")
+                        if mode == "copy":
+                            if file_ops.safe_copy(source, build_destination(tags, dest_root_secondary)):
+                                copied += 1
+                                operation_successful = True
+                        elif mode == "move":
+                            if file_ops.safe_move(source, build_destination(tags, dest_root_secondary), confirmation_phrase=f"promote {source}"):
+                                moved += 1
+                                operation_successful = True
                     else:
-                        raise
+                        ui.error(f"OS error processing {source}: {exc}")
+
+                if not operation_successful:
+                    ui.error(f"Failed to process {source}")
+
             else:
                 prefix = "COPY" if mode == "copy" else "MOVE"
-                log(f"[DRY {prefix}] {source} -> {dest}")
+                ui.print(f"[DRY {prefix}] {source} -> {dest}")
 
             remaining = max(total - index, 0)
-            now = time.monotonic()
             should_log = False
             if progress_every and index % progress_every == 0:
                 should_log = True
@@ -600,10 +603,9 @@ def process(
                 elapsed = max(now - start_time, 0.001)
                 rate = index / elapsed
                 eta_seconds = int(remaining / rate) if rate > 0 else 0
-                log(
+                ui.print(
                     f"[PROGRESS] processed {index}/{total} "
-                    f"(COPY {copied}, MOVE {moved}, remaining {remaining}, ETA {eta_seconds}s)",
-                    always=True,
+                    f"(COPY {copied}, MOVE {moved}, remaining {remaining}, ETA {eta_seconds}s)"
                 )
                 last_progress_time = now
             save_resume(
@@ -616,13 +618,12 @@ def process(
                 min_free_gb,
                 spill_on_enospc,
                 mode,
-                log,
+                resume_log,
             )
     except KeyboardInterrupt:
-        log(
+        ui.warning(
             f"\nInterrupted. Summary so far: COPY {copied}, MOVE {moved}, "
-            f"SKIP {skipped_existing + skipped_missing + skipped_duplicate}, ERR {tag_errors}",
-            always=True,
+            f"SKIP {skipped_existing + skipped_missing + skipped_duplicate}, ERR {tag_errors}"
         )
         save_resume(
             resume_file,
@@ -634,16 +635,15 @@ def process(
             min_free_gb,
             spill_on_enospc,
             mode,
-            log,
+            resume_log,
         )
         if db_conn:
             db_conn.close()
         return
 
     skipped_total = skipped_existing + skipped_missing + skipped_duplicate
-    log(
-        f"Summary: COPY {copied}, MOVE {moved}, SKIP {skipped_total}, ERR {tag_errors} (execute={execute})",
-        always=True,
+    ui.print(
+        f"Summary: COPY {copied}, MOVE {moved}, SKIP {skipped_total}, ERR {tag_errors} (execute={execute})"
     )
     save_resume(
         resume_file,
@@ -655,7 +655,7 @@ def process(
         min_free_gb,
         spill_on_enospc,
         mode,
-        log,
+        resume_log,
     )
     if db_conn:
         db_conn.close()
@@ -696,7 +696,6 @@ def main() -> None:
         default="move",
         help="Use move or copy when --execute is set (default: move)",
     )
-    parser.add_argument("--move", action="store_true", help="When mode is 'move', performs a real move (deletes source file).")
     parser.add_argument("--execute", action="store_true", help="Perform filesystem changes")
     parser.add_argument(
         "--skip-existing",
@@ -760,6 +759,15 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    ui = ConsoleUI()
+
+    if args.execute:
+        gates = SafetyGates(ui)
+        operation_name = "promoting files with 'move'" if args.mode == "move" else "promoting files with 'copy'"
+        if not gates.confirm_destructive_operation(operation_name, "I have backed up my files and accept the risks"):
+            ui.warning("Operation cancelled by user.")
+            sys.exit(0)
+
     source_root = Path(args.source_root).expanduser() if args.source_root else None
     paths_from_file = Path(args.paths_from_file).expanduser() if args.paths_from_file else None
 
@@ -804,7 +812,6 @@ def main() -> None:
             min_free_gb=args.spill_min_free_gb,
             spill_on_enospc=args.spill_on_enospc,
             mode=args.mode,
-            actual_move=args.move,
             execute=args.execute,
             skip_existing=args.skip_existing,
             skip_missing=args.skip_missing,

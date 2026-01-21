@@ -1,9 +1,16 @@
 from __future__ import annotations
 import os
-import shutil
 import pandas as pd
 from pathlib import Path
 import argparse
+import sys
+
+sys.path.insert(0, str(Path(__file__).parents[2]))
+
+from dedupe.utils.console_ui import ConsoleUI
+from dedupe.utils.safety_gates import SafetyGates
+from dedupe.utils.file_operations import FileOperations
+
 
 def execute_resolution(report_csv: str, dry_run: bool = True):
     if not os.path.exists(report_csv):
@@ -11,9 +18,12 @@ def execute_resolution(report_csv: str, dry_run: bool = True):
         return
 
     df = pd.read_csv(report_csv)
+    ui = ConsoleUI()
+    gates = SafetyGates(ui)
+    file_ops = FileOperations(ui, gates, dry_run=dry_run)
 
-    print(f"Executing resolution from {report_csv}")
-    print(f"Dry run: {dry_run}")
+    ui.print(f"Executing resolution from {report_csv}")
+    ui.print(f"Dry run: {dry_run}")
 
     counts = {"PROMOTE": 0, "QUARANTINE": 0, "DELETE": 0, "SKIP": 0, "ERROR": 0}
 
@@ -26,49 +36,42 @@ def execute_resolution(report_csv: str, dry_run: bool = True):
         action = row["action"]
 
         if not path.exists():
-            print(f"File not found, skipping: {path}")
+            ui.warning(f"File not found, skipping: {path}")
             counts["SKIP"] += 1
             continue
 
         try:
             if action == "DELETE":
-                if dry_run:
-                    print(f"[DRY-RUN] Would delete: {path}")
+                if file_ops.safe_delete(path, "delete suspect file"):
+                    counts["DELETE"] += 1
                 else:
-                    path.unlink()
-                counts["DELETE"] += 1
+                    counts["ERROR"] += 1
 
             elif action == "QUARANTINE":
                 rel_path = path.relative_to(suspect_root)
                 dest = quarantine_root / rel_path
-                if dry_run:
-                    print(f"[DRY-RUN] Would move to quarantine: {path} -> {dest}")
+                if file_ops.safe_move(path, dest, confirmation_phrase="quarantine suspect file"):
+                    counts["QUARANTINE"] += 1
                 else:
-                    dest.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.move(str(path), str(dest))
-                counts["QUARANTINE"] += 1
+                    counts["ERROR"] += 1
 
             elif action == "PROMOTE":
-                # For promotion, we maintain the relative path within the library
-                # If it's already in a subfolder like '2026-01-16_corrupt_canonical', we might want to strip that.
-                # However, to be safe, we'll keep the relative path from /Suspect
                 rel_path = path.relative_to(suspect_root)
                 dest = library_root / rel_path
-                if dry_run:
-                    print(f"[DRY-RUN] Would promote: {path} -> {dest}")
+                if file_ops.safe_move(path, dest, confirmation_phrase="promote suspect file"):
+                    counts["PROMOTE"] += 1
                 else:
-                    dest.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.move(str(path), str(dest))
-                counts["PROMOTE"] += 1
+                    counts["ERROR"] += 1
             else:
                 counts["SKIP"] += 1
         except Exception as e:
-            print(f"Error processing {path}: {e}")
+            ui.error(f"Error processing {path}: {e}")
             counts["ERROR"] += 1
 
-    print("\nExecution Summary:")
+    ui.print("\nExecution Summary:")
     for k, v in counts.items():
-        print(f"{k}: {v}")
+        ui.print(f"{k}: {v}")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

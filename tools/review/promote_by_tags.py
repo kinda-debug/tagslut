@@ -347,6 +347,7 @@ def process(
     min_free_gb: float | None,
     spill_on_enospc: bool,
     mode: str,
+    actual_move: bool,
     execute: bool,
     skip_existing: bool,
     skip_missing: bool,
@@ -553,20 +554,24 @@ def process(
                         shutil.copy2(source, target)
                         copied += 1
                         log(f"[COPY] {source} -> {target}")
-                    else:
-                        # PERFORM COPY ONLY
-                        # ABSOLUTELY NO DELETION ALLOWED.
-                        shutil.copy2(source, target)
+                    elif mode == "move":
+                        if actual_move:
+                            shutil.move(str(source), str(target))
+                            moved += 1
+                            log(f"[MOVE] {source} -> {target}")
+                        else:
+                            # PERFORM COPY ONLY
+                            # ABSOLUTELY NO DELETION ALLOWED.
+                            shutil.copy2(source, target)
 
-                        # Verify target exists and has matching size
-                        if not (target.exists() and target.stat().st_size == source.stat().st_size):
-                            raise IOError("Target file validation failed after copy")
+                            # Verify target exists and has matching size
+                            if not (target.exists() and target.stat().st_size == source.stat().st_size):
+                                raise IOError("Target file validation failed after copy")
 
-                        # If we reached here, copy was successful.
-                        # In 'move' mode, we would normally delete, but DELETION IS FORBIDDEN.
-                        log(f"[PROMOTED] (Source remains) {source} -> {target}")
-                        moved += 1
-
+                            # If we reached here, copy was successful.
+                            # In 'move' mode, we would normally delete, but DELETION IS FORBIDDEN.
+                            log(f"[PROMOTED] (Source remains) {source} -> {target}")
+                            moved += 1
                 try:
                     run_transfer(active_root)
                 except OSError as exc:
@@ -691,6 +696,7 @@ def main() -> None:
         default="move",
         help="Use move or copy when --execute is set (default: move)",
     )
+    parser.add_argument("--move", action="store_true", help="When mode is 'move', performs a real move (deletes source file).")
     parser.add_argument("--execute", action="store_true", help="Perform filesystem changes")
     parser.add_argument(
         "--skip-existing",
@@ -798,6 +804,7 @@ def main() -> None:
             min_free_gb=args.spill_min_free_gb,
             spill_on_enospc=args.spill_on_enospc,
             mode=args.mode,
+            actual_move=args.move,
             execute=args.execute,
             skip_existing=args.skip_existing,
             skip_missing=args.skip_missing,

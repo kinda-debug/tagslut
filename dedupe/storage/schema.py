@@ -137,6 +137,16 @@ def init_db(
             "streaminfo_checked_at": "TEXT",
             "sha256_checked_at": "TEXT",
             "acoustid": "TEXT",
+            # Recovery columns
+            "recovery_status": "TEXT",
+            "recovery_method": "TEXT",
+            "backup_path": "TEXT",
+            "recovered_at": "TEXT",
+            "new_duration": "REAL",
+            "duration_delta": "REAL",
+            "pcm_md5": "TEXT",
+            "silence_events": "INTEGER",
+            "verified_at": "TEXT",
         }
 
         for col_name, col_type in required_columns.items():
@@ -152,6 +162,8 @@ def init_db(
         connection.execute("CREATE INDEX IF NOT EXISTS idx_acoustid ON files(acoustid);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_streaminfo_md5 ON files(streaminfo_md5);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_sha256 ON files(sha256);")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_recovery_status ON files(recovery_status);")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_integrity_state ON files(integrity_state);")
 
         connection.execute(
             f"""

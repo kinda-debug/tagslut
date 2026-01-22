@@ -1,2 +1,0 @@
-Artist,Title,Album,Duration,ISRC,Confidence,Reason
-Example Artist,Example Track,Example Album,215.4,USRC17607839,0.80,Integrity failure but identity hints present.

@@ -248,3 +248,4 @@ flac_recovery_pipeline/flac_state.csv
 /Users/georgeskhawam/Projects/dedupe/flac_recovery_pipeline
 .gitignore
 tests/legacy/test_zone_logic.py.disabled
+.claude/settings.local.json

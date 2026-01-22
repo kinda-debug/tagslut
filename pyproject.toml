@@ -23,6 +23,12 @@ dependencies = [
     "pandas (>=2.3.3,<3.0.0)",
 ]
 
+[project.scripts]
+dedupe = "dedupe.cli.main:cli"
+
+[tool.poetry.scripts]
+dedupe = "dedupe.cli.main:cli"
+
 [tool.poetry.dependencies]
 python = "^3.11"
 click = "^8.1"

@@ -8,11 +8,13 @@ sys.path.insert(0, str(Path(__file__).parents[2]))
 
 logger = logging.getLogger("dedupe")
 
+
 @click.group()
 @click.version_option(version="2.0.0")
 def cli():
     """Dedupe Library Management CLI"""
     pass
+
 
 @cli.command(context_settings=dict(ignore_unknown_options=True, help_option_names=[]))
 @click.argument('args', nargs=-1, type=click.UNPROCESSED)
@@ -25,6 +27,7 @@ def scan(args):
     sys.argv = ['dedupe scan'] + list(args)
     scan_cmd()
 
+
 @cli.command(context_settings=dict(ignore_unknown_options=True, help_option_names=[]))
 @click.argument('args', nargs=-1, type=click.UNPROCESSED)
 def recommend(args):
@@ -32,6 +35,7 @@ def recommend(args):
     from tools.decide.recommend import recommend as recommend_cmd
     sys.argv = ['dedupe recommend'] + list(args)
     recommend_cmd()
+
 
 @cli.command(context_settings=dict(ignore_unknown_options=True, help_option_names=[]))
 @click.argument('args', nargs=-1, type=click.UNPROCESSED)
@@ -104,7 +108,8 @@ def _interactive_init() -> dict:
     click.echo("   Move mode: Delete backups after verification (saves space)")
     move = click.confirm("   Use move mode (delete backups after verification)?", default=False)
     config["move"] = move
-    click.echo(f"   -> {'Move mode (backups will be deleted)' if move else 'Copy mode (backups preserved)'}")
+    mode_msg = "Move mode (backups will be deleted)" if move else "Copy mode (backups preserved)"
+    click.echo(f"   -> {mode_msg}")
 
     # Workers
     click.echo("\n6. PARALLEL WORKERS")
@@ -143,11 +148,14 @@ def _interactive_init() -> dict:
 @click.option('--output', type=click.Path(), help='Report output path (CSV or JSON)')
 @click.option('--workers', default=4, help='Parallel workers for scan phase')
 @click.option('--execute', is_flag=True, help='Actually perform repairs (default: dry-run)')
-@click.option('--move', is_flag=True, help='Move mode: delete backups after successful verification')
+@click.option('--move', is_flag=True, help='Delete backups after successful verification')
 @click.option('--include-valid', is_flag=True, help='Include valid files in reports')
 @click.option('--init', 'interactive', is_flag=True, help='Interactive session initialization')
 @click.option('-v', '--verbose', is_flag=True, help='Verbose output')
-def recover(path, db, phase, backup_dir, output, workers, execute, move, include_valid, interactive, verbose):
+def recover(
+    path, db, phase, backup_dir, output, workers,
+    execute, move, include_valid, interactive, verbose
+):
     """
     Recover corrupted FLAC files.
 

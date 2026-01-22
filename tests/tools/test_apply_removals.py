@@ -6,6 +6,9 @@ import os
 import tempfile
 from tools.review import apply_removals
 
+from dedupe.utils.safety_gates import SafetyGates
+from dedupe.utils.console_ui import ConsoleUI
+
 class TestApplyRemovals(unittest.TestCase):
 
     def setUp(self):
@@ -15,6 +18,8 @@ class TestApplyRemovals(unittest.TestCase):
         self.plan_path = self.temp_path / "plan.csv"
         self.quarantine_root = self.temp_path / "quarantine"
         self.quarantine_root.mkdir()
+        self.ui = ConsoleUI(quiet=True)
+        self.gates = SafetyGates(self.ui)
 
         with open(self.plan_path, "w") as f:
             f.write("path,action\n")
@@ -28,11 +33,11 @@ class TestApplyRemovals(unittest.TestCase):
 
     @patch('builtins.input', return_value='I understand the risks and wish to proceed')
     def test_confirm_execution_success(self, mock_input):
-        self.assertTrue(apply_removals.confirm_execution("test prompt", "I understand the risks and wish to proceed"))
+        self.assertTrue(self.gates.confirm_destructive_operation("test prompt", "I understand the risks and wish to proceed"))
 
     @patch('builtins.input', return_value='no')
     def test_confirm_execution_fail(self, mock_input):
-        self.assertFalse(apply_removals.confirm_execution("test prompt", "I understand the risks and wish to proceed"))
+        self.assertFalse(self.gates.confirm_destructive_operation("test prompt", "I understand the risks and wish to proceed"))
 
     def test_preflight_validator(self) -> None:
         # Ensure db, plan, and quarantine root exist

@@ -375,9 +375,9 @@ def process(
 
     total = len(sources)
     sources_hash = hash_sources(sources)
-    
+
     # Custom log function for resume logic that needs to write to file
-    def resume_log(message: str, *, always: bool = False):
+    def log(message: str, *, always: bool = False):
         ui.print(message)
         log_to_file(message)
 
@@ -390,7 +390,7 @@ def process(
         min_free_gb,
         spill_on_enospc,
         mode,
-        resume_log,
+        log,
     )
     if resume_from:
         ui.print(f"[RESUME] Starting from {resume_from + 1}/{total}")
@@ -564,7 +564,7 @@ def process(
                             copied += 1
                             operation_successful = True
                     elif mode == "move":
-                        if file_ops.safe_move(source, dest, confirmation_phrase=f"promote {source}"):
+                        if file_ops.safe_move(source, dest, skip_confirmation=True):
                             moved += 1
                             operation_successful = True
                 except OSError as exc:
@@ -580,7 +580,7 @@ def process(
                                 copied += 1
                                 operation_successful = True
                         elif mode == "move":
-                            if file_ops.safe_move(source, build_destination(tags, dest_root_secondary), confirmation_phrase=f"promote {source}"):
+                            if file_ops.safe_move(source, build_destination(tags, dest_root_secondary), skip_confirmation=True):
                                 moved += 1
                                 operation_successful = True
                     else:
@@ -595,6 +595,7 @@ def process(
 
             remaining = max(total - index, 0)
             should_log = False
+            now = time.monotonic()
             if progress_every and index % progress_every == 0:
                 should_log = True
             if progress_every_seconds is not None and (now - last_progress_time) >= progress_every_seconds:
@@ -618,7 +619,7 @@ def process(
                 min_free_gb,
                 spill_on_enospc,
                 mode,
-                resume_log,
+                log,
             )
     except KeyboardInterrupt:
         ui.warning(
@@ -635,7 +636,7 @@ def process(
             min_free_gb,
             spill_on_enospc,
             mode,
-            resume_log,
+                        log,
         )
         if db_conn:
             db_conn.close()
@@ -655,7 +656,7 @@ def process(
         min_free_gb,
         spill_on_enospc,
         mode,
-        resume_log,
+                    log,
     )
     if db_conn:
         db_conn.close()

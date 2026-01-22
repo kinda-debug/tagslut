@@ -74,6 +74,7 @@ class FileOperations:
         destination: Path,
         verify_checksum: bool = True,
         confirmation_phrase: str = "I understand this is a move operation.",
+        skip_confirmation: bool = False,
     ) -> bool:
         """
         Safely moves a file from source to destination.
@@ -84,10 +85,10 @@ class FileOperations:
             return True
 
         if self.safe_copy(source, destination, verify_checksum):
-            return self.safe_delete(source, confirmation_phrase)
+            return self.safe_delete(source, confirmation_phrase, skip_confirmation=skip_confirmation)
         return False
 
-    def safe_delete(self, path: Path, confirmation_phrase: str) -> bool:
+    def safe_delete(self, path: Path, confirmation_phrase: str, skip_confirmation: bool = False) -> bool:
         """
         Safely deletes a file after asking for user confirmation.
         """
@@ -95,7 +96,7 @@ class FileOperations:
             self.ui.print(f"[DRY-RUN] Would delete: {path}")
             return True
 
-        if self.gates.confirm_destructive_operation("file deletion", confirmation_phrase):
+        if skip_confirmation or self.gates.confirm_destructive_operation("file deletion", confirmation_phrase):
             try:
                 path.unlink()
                 self.ui.print(f"[DELETE] {path}")

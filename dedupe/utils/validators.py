@@ -9,8 +9,15 @@ from pathlib import Path
 
 from dedupe.utils.db import resolve_db_path, open_db
 
+
 class PreFlightValidator:
-    def __init__(self, quarantine_root: Path | None, plan_path: Path | None, db_path: str | None, execute: bool):
+    def __init__(
+        self,
+        quarantine_root: Path | None,
+        plan_path: Path | None,
+        db_path: str | None,
+        execute: bool
+    ):
         self.quarantine_root = quarantine_root
         self.plan_path = plan_path
         self.db_path = db_path

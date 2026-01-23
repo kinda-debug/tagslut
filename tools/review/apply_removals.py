@@ -216,7 +216,7 @@ def main() -> None:
         quarantine_root = Path(args.quarantine_root) if args.quarantine_root else env_paths.get_quarantine_volume()
         if not quarantine_root:
              raise ValueError("Quarantine root not provided and VOLUME_QUARANTINE not set.")
-        progress_log_path = env_paths.get_logs_dir() / "quarantine_progress.log"
+        progress_log_path = env_paths.get_log_path("quarantine_progress.log")
         apply_quarantine(
             conn, plan_path=plan_path, quarantine_root=quarantine_root, relative_root=Path(args.relative_root),
             ui=ui, file_ops=file_ops, skip_missing=args.skip_missing, skip_existing=args.skip_existing,

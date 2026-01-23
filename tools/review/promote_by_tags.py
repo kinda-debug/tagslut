@@ -236,6 +236,7 @@ def load_resume(
     min_free_gb: float | None,
     spill_on_enospc: bool,
     mode: str,
+    execute: bool,
     log: callable,
 ) -> int:
     if not resume_file or not resume_file.exists():
@@ -269,6 +270,10 @@ def load_resume(
     if state.get("mode") != mode:
         log(f"[RESUME] Mode changed; ignoring resume: {resume_file}", always=True)
         return 0
+    # If we are in execute mode, only resume from a previous execute run.
+    if execute and state.get("execute") is not True:
+        log(f"[RESUME] Invalid resume state for --execute run; starting over.", always=True)
+        return 0
     return int(state.get("index", 0))
 
 
@@ -296,6 +301,7 @@ def save_resume(
     min_free_gb: float | None,
     spill_on_enospc: bool,
     mode: str,
+    execute: bool,
     log: callable,
 ) -> None:
     if not resume_file:
@@ -309,6 +315,7 @@ def save_resume(
         "min_free_gb": min_free_gb,
         "spill_on_enospc": spill_on_enospc,
         "mode": mode,
+        "execute": execute,
     }
     try:
         resume_file.write_text(json.dumps(state, indent=2), encoding="utf-8")
@@ -390,10 +397,14 @@ def process(
         min_free_gb,
         spill_on_enospc,
         mode,
+        execute,
         log,
     )
     if resume_from:
-        ui.print(f"[RESUME] Starting from {resume_from + 1}/{total}")
+        if resume_from >= total:
+            ui.print(f"[RESUME] All {total} items were already processed in a previous session.")
+        else:
+            ui.print(f"[RESUME] Starting from {resume_from + 1}/{total}")
 
     # Database connection for tracking promotions
     db_conn = None
@@ -410,6 +421,7 @@ def process(
     skipped_existing = 0
     skipped_missing = 0
     skipped_duplicate = 0
+    skipped_resume = 0
     tag_errors = 0
     seen_targets: set[Path] = set()
 
@@ -441,6 +453,7 @@ def process(
     try:
         for index, source in enumerate(sources, start=1):
             if resume_from and index <= resume_from:
+                skipped_resume += 1
                 continue
             if skip_missing and not source.exists():
                 skipped_missing += 1
@@ -455,6 +468,7 @@ def process(
                     min_free_gb,
                     spill_on_enospc,
                     mode,
+                    execute,
                     log,
                 )
                 continue
@@ -475,6 +489,7 @@ def process(
                     min_free_gb,
                     spill_on_enospc,
                     mode,
+                    execute,
                     log,
                 )
                 continue
@@ -492,6 +507,7 @@ def process(
                     min_free_gb,
                     spill_on_enospc,
                     mode,
+                    execute,
                     log,
                 )
                 continue
@@ -509,6 +525,7 @@ def process(
                     min_free_gb,
                     spill_on_enospc,
                     mode,
+                    execute,
                     log,
                 )
                 continue
@@ -532,6 +549,7 @@ def process(
                         min_free_gb,
                         spill_on_enospc,
                         mode,
+                        execute,
                         log,
                     )
                     continue
@@ -552,6 +570,7 @@ def process(
                             min_free_gb,
                             spill_on_enospc,
                             mode,
+                            execute,
                             log,
                         )
                         continue
@@ -619,12 +638,13 @@ def process(
                 min_free_gb,
                 spill_on_enospc,
                 mode,
+                execute,
                 log,
             )
     except KeyboardInterrupt:
         ui.warning(
             f"\nInterrupted. Summary so far: COPY {copied}, MOVE {moved}, "
-            f"SKIP {skipped_existing + skipped_missing + skipped_duplicate}, ERR {tag_errors}"
+            f"SKIP {skipped_existing + skipped_missing + skipped_duplicate + skipped_resume}, ERR {tag_errors}"
         )
         save_resume(
             resume_file,
@@ -636,13 +656,14 @@ def process(
             min_free_gb,
             spill_on_enospc,
             mode,
+            execute,
                         log,
         )
         if db_conn:
             db_conn.close()
         return
 
-    skipped_total = skipped_existing + skipped_missing + skipped_duplicate
+    skipped_total = skipped_existing + skipped_missing + skipped_duplicate + skipped_resume
     ui.print(
         f"Summary: COPY {copied}, MOVE {moved}, SKIP {skipped_total}, ERR {tag_errors} (execute={execute})"
     )
@@ -656,6 +677,7 @@ def process(
         min_free_gb,
         spill_on_enospc,
         mode,
+        execute,
                     log,
     )
     if db_conn:
@@ -663,6 +685,7 @@ def process(
 
 
 def main() -> None:
+    print(">>> RUNNING MODIFIED promote_by_tags.py SCRIPT <<<", file=sys.stderr)
     parser = argparse.ArgumentParser(
         description="Promote FLACs into a canonical layout (dry-run by default)."
     )
@@ -762,12 +785,7 @@ def main() -> None:
 
     ui = ConsoleUI()
 
-    if args.execute:
-        gates = SafetyGates(ui)
-        operation_name = "promoting files with 'move'" if args.mode == "move" else "promoting files with 'copy'"
-        if not gates.confirm_destructive_operation(operation_name, "I have backed up my files and accept the risks"):
-            ui.warning("Operation cancelled by user.")
-            sys.exit(0)
+
 
     source_root = Path(args.source_root).expanduser() if args.source_root else None
     paths_from_file = Path(args.paths_from_file).expanduser() if args.paths_from_file else None

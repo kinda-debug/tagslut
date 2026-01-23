@@ -251,3 +251,7 @@ tests/legacy/test_zone_logic.py.disabled
 .claude/settings.local.json
 acoustic_recommendations.json
 report.json
+poetry.lock
+pyproject.toml
+poetry.lock
+pyproject.toml

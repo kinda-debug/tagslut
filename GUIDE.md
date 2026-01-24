@@ -101,7 +101,7 @@ grep "TIER1,DROP" removal_plan.csv | head -20
 python tools/review/apply_removals.py \
   --db "$DB_PATH" \
   --plan removal_plan.csv \
-  --quarantine-root _work/quarantine \
+  --quarantine-root /Volumes/SAD/QU \
   --dry-run
 ```
 
@@ -111,7 +111,7 @@ This command will only perform copies. Your originals will not be touched.
 python tools/review/apply_removals.py \
   --db "$DB_PATH" \
   --plan removal_plan.csv \
-  --quarantine-root _work/quarantine \
+  --quarantine-root /Volumes/SAD/QU \
   --execute
 ```
 
@@ -122,7 +122,7 @@ python tools/review/apply_removals.py \
 # Copy corrupt files to the suspect folder (preserving structure)
 python tools/review/isolate_suspects.py \
   --db "$DB_PATH" \
-  --dest _work/suspect \
+  --dest /Volumes/SAD/SU \
   --execute
 ```
 
@@ -148,8 +148,8 @@ python tools/review/promote_by_tags.py \
 
 # 2. Execute (Organizes and creates new copies)
 python tools/review/promote_by_tags.py \
-  --source-root /path/to/recovered_files \
-  --dest-root Music_Library \
+  --source-root /Users/georgeskhawam/Music/INCOMING \
+  --dest-root /Volumes/SAD/MU \
   --execute
 ```
 

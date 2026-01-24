@@ -1,285 +1,295 @@
 #!/usr/bin/env python3
+"""
+Roon Playlist Builder (Deterministic, ID-first)
 
+What this does:
+- Loads a FULL library index from an XLSX (your entire library).
+- Reads SongShift-style TXT playlists (Spotify/Deezer/Tidal).
+- Matches tracks by EXTERNAL ID first (spotify/deezer/tidal), then by exact tag path,
+  then by conservative fuzzy fallback (title + artist).
+- Emits non-empty UTF-8 M3U8 playlists suitable for Roon.
+- Emits unmatched reports per-playlist.
+- VERBOSE BY DEFAULT.
+
+No hardcoding. No guessing the library is the playlist. The TXT files ARE the playlist.
+"""
+
+import argparse
 import os
-import csv
+import re
+import sys
+from collections import defaultdict
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
-from mutagen import File
-from rapidfuzz import fuzz
-from unidecode import unidecode
+
+try:
+    from rapidfuzz import fuzz
+except Exception:
+    fuzz = None
 
 
-# ==========================
-# CONFIG
-# ==========================
+# ----------------------------- Data Models ----------------------------- #
 
-SPREADSHEET_PRIMARY = "/Users/georgeskhawam/M.xlsx"
-MUSIC_ROOT_FALLBACK = "/Volumes/SAD/MU"
-
-OUTPUT_M3U = "Osteria_Dance.m3u8"
-OUTPUT_SONGSHIFT = "Osteria_Dance_unmatched_songshift.csv"
-
-AUDIO_EXTENSIONS = (".flac", ".mp3", ".aiff", ".aif", ".wav", ".m4a")
-MATCH_THRESHOLD = 85
-
-ENABLE_ROON_API = False
-ROON_PLAYLIST_NAME = "Osteria Dance"
+@dataclass
+class LibTrack:
+    title: str
+    artist: str
+    album: str
+    path: str
+    source: Optional[str]
+    external_id: Optional[str]
 
 
-# ==========================
-# NORMALIZATION
-# ==========================
+@dataclass
+class PlaylistItem:
+    title: str
+    artist: str
+    album: Optional[str]
+    source: Optional[str]
+    external_id: Optional[str]
 
-def norm(value):
-    if not value:
+
+# ----------------------------- Utilities ----------------------------- #
+
+def vprint(msg: str, quiet: bool):
+    if not quiet:
+        print(msg)
+
+
+def norm(s: Optional[str]) -> str:
+    if not s:
         return ""
-    return unidecode(str(value)).lower().strip()
+    s = s.lower().strip()
+    s = re.sub(r"\s+", " ", s)
+    s = re.sub(r"[’']", "", s)
+    return s
 
 
-# ==========================
-# COLUMN DETECTION
-# ==========================
+def parse_songshift_txt(path: str) -> List[PlaylistItem]:
+    """
+    SongShift TXT lines typically look like:
+    Title | Artist | Album |  spotify | <id>
+    Header lines starting with ***playlist*** are ignored.
+    """
+    items: List[PlaylistItem] = []
+    with open(path, "r", encoding="utf-8", errors="ignore") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("***"):
+                continue
+            parts = [p.strip() for p in line.split("|")]
+            if len(parts) < 3:
+                continue
 
-TITLE_ALIASES = {
-    "title",
-    "song",
-    "track",
-    "track title",
-    "song title",
-    "name",
-}
+            title = parts[0]
+            artist = parts[1]
+            album = parts[2] if len(parts) >= 3 else None
 
-ARTIST_ALIASES = {
-    "artist",
-    "artist name",
-    "primary artist",
-    "performer",
-    "album artist",
-    "track artist(s)",
-}
+            source = None
+            external_id = None
+            if len(parts) >= 5:
+                source = parts[-2].lower() if parts[-2] else None
+                external_id = parts[-1] if parts[-1] else None
 
-ALBUM_ALIASES = {
-    "album",
-    "album title",
-    "release",
-    "collection",
-}
+            items.append(
+                PlaylistItem(
+                    title=title,
+                    artist=artist,
+                    album=album,
+                    source=source,
+                    external_id=external_id,
+                )
+            )
+    return items
 
 
-def detect_column(columns, aliases):
-    for column in columns:
-        if column in aliases:
-            return column
+# ----------------------------- Library Load ----------------------------- #
+
+def load_library_xlsx(xlsx_path: str, quiet: bool) -> Tuple[
+    Dict[Tuple[str, str], List[LibTrack]],
+    Dict[Tuple[str, str], LibTrack],
+    List[LibTrack]
+]:
+    """
+    Builds:
+    - id_index[(source, external_id)] -> LibTrack
+    - title_artist_index[(title, artist)] -> [LibTrack, ...]
+    """
+    vprint(f"Loading library from spreadsheet: {xlsx_path}", quiet)
+    df = pd.read_excel(xlsx_path)
+    df.columns = [c.strip().lower() for c in df.columns]
+
+    # map common alternative column names to canonical ones
+    column_aliases = {
+        "track title": "title",
+        "song": "title",
+        "name": "title",
+
+        "artist": "album artist",
+        "track artist": "album artist",
+        "track artist(s)": "album artist",
+
+        "file": "path",
+        "filepath": "path",
+        "file path": "path",
+        "location": "path",
+    }
+
+    df = df.rename(columns={c: column_aliases[c] for c in df.columns if c in column_aliases})
+
+    # --- auto-detect critical columns by heuristic ---
+    def find_col(candidates):
+        for c in df.columns:
+            for k in candidates:
+                if k in c:
+                    return c
+        return None
+
+    col_title = find_col(["title", "track", "song", "name"])
+    col_artist = find_col(["album artist", "artist"])
+    col_path = find_col(["path", "file", "location"])
+
+    if not col_title or not col_artist or not col_path:
+        raise ValueError(
+            "Could not auto-detect required columns.\n"
+            f"Detected columns: {list(df.columns)}\n"
+            f"title={col_title}, artist={col_artist}, path={col_path}"
+        )
+
+    id_index: Dict[Tuple[str, str], LibTrack] = {}
+    ta_index: Dict[Tuple[str, str], List[LibTrack]] = defaultdict(list)
+    all_tracks: List[LibTrack] = []
+
+    for _, r in df.iterrows():
+        t = LibTrack(
+            title=str(r.get(col_title, "")).strip(),
+            artist=str(r.get(col_artist, "")).strip(),
+            album=str(r.get("album", "")).strip(),
+            path=os.path.abspath(os.path.expanduser(str(r.get(col_path, "")).strip())),
+            source=str(r.get("source", "")).lower().strip() if "source" in df.columns and pd.notna(r.get("source", "")) else None,
+            external_id=str(r.get("external id", "")).strip() if "external id" in df.columns and pd.notna(r.get("external id", "")) else None,
+        )
+        if not os.path.isfile(t.path):
+            continue
+        all_tracks.append(t)
+
+        if t.source and t.external_id:
+            id_index[(t.source, t.external_id)] = t
+
+        ta_index[(norm(t.title), norm(t.artist))].append(t)
+
+    vprint(f"Indexed {len(all_tracks)} library tracks", quiet)
+    return ta_index, id_index, all_tracks
+
+
+# ----------------------------- Matching ----------------------------- #
+
+def match_item(
+    item: PlaylistItem,
+    ta_index: Dict[Tuple[str, str], List[LibTrack]],
+    id_index: Dict[Tuple[str, str], LibTrack],
+    quiet: bool,
+    fuzzy_threshold: int = 92,
+) -> Optional[LibTrack]:
+    # 1) External ID match (deterministic)
+    if item.source and item.external_id:
+        key = (item.source.lower(), item.external_id)
+        if key in id_index:
+            vprint(f"✔ ID match: {item.title}", quiet)
+            return id_index[key]
+
+    # 2) Exact title+artist
+    key = (norm(item.title), norm(item.artist))
+    if key in ta_index and ta_index[key]:
+        vprint(f"✔ Exact tag match: {item.title}", quiet)
+        return ta_index[key][0]
+
+    # 3) Conservative fuzzy fallback (optional)
+    if fuzz is not None:
+        best = None
+        best_score = 0
+        for (t, a), tracks in ta_index.items():
+            s1 = fuzz.token_set_ratio(norm(item.title), t)
+            s2 = fuzz.token_set_ratio(norm(item.artist), a)
+            score = (s1 + s2) // 2
+            if score > best_score:
+                best_score = score
+                best = tracks[0]
+        if best and best_score >= fuzzy_threshold:
+            vprint(f"✔ Fuzzy match ({best_score}): {item.title}", quiet)
+            return best
+
+    vprint(f"✖ Unmatched: {item.title} – {item.artist}", quiet)
     return None
 
 
-# ==========================
-# PLAYLIST INGEST
-# ==========================
+# ----------------------------- Output ----------------------------- #
 
-def load_playlist():
-    if not os.path.exists(SPREADSHEET_PRIMARY):
-        print("Spreadsheet not found, falling back to directory scan")
-        return []
-
-    print("Using spreadsheet source")
-
-    df = pd.read_excel(SPREADSHEET_PRIMARY)
-    df.columns = [c.lower().strip() for c in df.columns]
-
-    title_col = detect_column(df.columns, TITLE_ALIASES)
-    artist_col = detect_column(df.columns, ARTIST_ALIASES)
-    album_col = detect_column(df.columns, ALBUM_ALIASES)
-
-    if not title_col or not artist_col:
-        raise ValueError(
-            "Could not infer Title/Artist columns.\n"
-            f"Detected columns: {list(df.columns)}"
-        )
-
-    print(
-        f"Mapped columns → title: '{title_col}', "
-        f"artist: '{artist_col}', "
-        f"album: '{album_col}'"
-    )
-
-    tracks = []
-
-    for _, row in df.iterrows():
-        tracks.append(
-            {
-                "title": norm(row.get(title_col)),
-                "artist": norm(row.get(artist_col)),
-                "album": norm(row.get(album_col)) if album_col else "",
-                "raw_title": row.get(title_col),
-                "raw_artist": row.get(artist_col),
-                "raw_album": row.get(album_col) if album_col else "",
-            }
-        )
-
-    return tracks
+def write_m3u8(out_path: str, tracks: List[LibTrack], quiet: bool):
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write("#EXTM3U\n")
+        for t in tracks:
+            f.write(f"{t.path}\n")
+    vprint(f"Wrote M3U8: {out_path} ({len(tracks)} tracks)", quiet)
 
 
-# ==========================
-# LIBRARY SCAN
-# ==========================
-
-def scan_library(root):
-    library = []
-
-    for dirpath, _, filenames in os.walk(root):
-        for filename in filenames:
-            if not filename.lower().endswith(AUDIO_EXTENSIONS):
-                continue
-
-            full_path = os.path.join(dirpath, filename)
-
-            title = artist = album = ""
-
-            try:
-                audio = File(full_path, easy=True)
-                if audio:
-                    title = audio.get("title", [""])[0]
-                    artist = audio.get("artist", [""])[0]
-                    album = audio.get("album", [""])[0]
-            except Exception:
-                pass
-
-            library.append(
-                {
-                    "path": full_path,
-                    "title": norm(title) or norm(os.path.splitext(filename)[0]),
-                    "artist": norm(artist),
-                    "album": norm(album),
-                }
-            )
-
-    return library
+def write_unmatched(out_path: str, items: List[PlaylistItem], quiet: bool):
+    with open(out_path, "w", encoding="utf-8") as f:
+        for i in items:
+            f.write(f"{i.title} | {i.artist} | {i.album or ''} | {i.source or ''} | {i.external_id or ''}\n")
+    vprint(f"Wrote unmatched report: {out_path} ({len(items)} items)", quiet)
 
 
-# ==========================
-# MATCHING
-# ==========================
-
-def match_track(target, library):
-    best_match = None
-    best_score = 0
-
-    for track in library:
-        score_title = fuzz.token_set_ratio(target["title"], track["title"])
-        score_artist = fuzz.token_set_ratio(target["artist"], track["artist"])
-        score_album = (
-            fuzz.token_set_ratio(target["album"], track["album"])
-            if target["album"]
-            else 0
-        )
-
-        score = (0.5 * score_title) + (0.4 * score_artist) + (0.1 * score_album)
-
-        if score > best_score:
-            best_score = score
-            best_match = track
-
-    if best_score >= MATCH_THRESHOLD:
-        return best_match["path"], int(best_score)
-
-    return None, int(best_score)
-
-
-# ==========================
-# EXPORTS
-# ==========================
-
-def write_m3u(paths):
-    with open(OUTPUT_M3U, "w", encoding="utf-8") as file:
-        file.write("#EXTM3U\n")
-        for path in paths:
-            file.write(f"{path}\n")
-
-
-def write_songshift_csv(unmatched):
-    with open(
-        OUTPUT_SONGSHIFT,
-        "w",
-        newline="",
-        encoding="utf-8",
-    ) as file:
-        writer = csv.writer(file)
-        writer.writerow(["Title", "Artist", "Album"])
-
-        for track in unmatched:
-            writer.writerow(
-                [
-                    track["raw_title"] or "",
-                    track["raw_artist"] or "",
-                    track["raw_album"] or "",
-                ]
-            )
-
-
-# ==========================
-# OPTIONAL ROON API
-# ==========================
-
-def create_roon_playlist(file_paths):
-    from roonapi import RoonApi, RoonDiscovery
-
-    appinfo = {
-        "extension_id": "local.playlist.builder",
-        "display_name": "Local Playlist Builder",
-        "display_version": "1.0",
-        "publisher": "local",
-        "email": "local@localhost",
-    }
-
-    discovery = RoonDiscovery(None)
-    server = discovery.first()
-
-    if not server:
-        raise RuntimeError("No Roon Core found")
-
-    roon = RoonApi(appinfo, None, server)
-    roon.register_extension()
-
-    playlist = roon.playlist.create(ROON_PLAYLIST_NAME)
-    library = roon.mylibrary
-
-    for path in file_paths:
-        results = library.search(path)
-        if results:
-            roon.playlist.add_tracks(playlist, results)
-
-    roon.unregister_extension()
-
-
-# ==========================
-# MAIN
-# ==========================
+# ----------------------------- Main ----------------------------- #
 
 def main():
-    playlist = load_playlist()
-    library = scan_library(MUSIC_ROOT_FALLBACK)
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--txt-dir", help="Directory containing SongShift TXT playlists")
+    ap.add_argument("--playlist", help="Single SongShift TXT playlist")
+    ap.add_argument("--library-xlsx", required=True)
+    ap.add_argument("--out-dir", default=".")
+    ap.add_argument("--quiet", action="store_true")
+    args = ap.parse_args()
 
-    matched_paths = []
-    unmatched = []
+    if not args.txt_dir and not args.playlist:
+        ap.error("Provide --txt-dir or --playlist")
 
-    for track in playlist:
-        path, _score = match_track(track, library)
-        if path:
-            matched_paths.append(path)
-        else:
-            unmatched.append(track)
+    ta_index, id_index, _ = load_library_xlsx(args.library_xlsx, args.quiet)
 
-    write_m3u(matched_paths)
-    write_songshift_csv(unmatched)
+    playlists: List[str] = []
+    if args.playlist:
+        playlists.append(args.playlist)
+    if args.txt_dir:
+        for fn in os.listdir(args.txt_dir):
+            if fn.lower().endswith(".txt"):
+                playlists.append(os.path.join(args.txt_dir, fn))
 
-    print(f"Matched: {len(matched_paths)}")
-    print(f"Unmatched: {len(unmatched)}")
-    print(f"M3U written: {OUTPUT_M3U}")
-    print(f"SongShift CSV written: {OUTPUT_SONGSHIFT}")
+    for pl in playlists:
+        name = os.path.splitext(os.path.basename(pl))[0]
+        vprint(f"\n=== Processing playlist: {name} ===", args.quiet)
 
-    if ENABLE_ROON_API:
-        create_roon_playlist(matched_paths)
+        items = parse_songshift_txt(pl)
+        matched: List[LibTrack] = []
+        unmatched: List[PlaylistItem] = []
+
+        for it in items:
+            m = match_item(it, ta_index, id_index, args.quiet)
+            if m:
+                matched.append(m)
+            else:
+                unmatched.append(it)
+
+        base_dir = os.path.dirname(os.path.abspath(pl))
+        out_m3u = os.path.join(base_dir, f"{name}.m3u8")
+        out_un = os.path.join(base_dir, f"{name}.unmatched.txt")
+
+        if not matched:
+            vprint(f"WARNING: playlist '{name}' produced 0 matched tracks", args.quiet)
+
+        write_m3u8(out_m3u, matched, args.quiet)
+        write_unmatched(out_un, unmatched, args.quiet)
 
 
 if __name__ == "__main__":

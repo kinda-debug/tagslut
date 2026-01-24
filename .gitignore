@@ -255,3 +255,4 @@ poetry.lock
 pyproject.toml
 poetry.lock
 pyproject.toml
+flac_paths.txt

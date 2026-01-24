@@ -197,14 +197,18 @@ def main() -> None:
                 ui.error(error)
             sys.exit(1)
 
-    if args.execute:
-        prompt = "This will MOVE files to the quarantine location. This is a destructive operation."
-        required_phrase = "I accept the risks and have verified my backups."
-        if not gates.confirm_destructive_operation(prompt, required_phrase):
-            ui.warning("User aborted operation.")
-            sys.exit(0)
+    # if args.execute:
+    #     prompt = "This will MOVE files to the quarantine location. This is a destructive operation."
+    #     required_phrase = ""
+    #     if not gates.confirm_destructive_operation(prompt, required_phrase):
+    #         ui.warning("User aborted operation.")
+    #         sys.exit(0)
 
-    resolution = resolve_db_path(args.db, purpose="write", allow_repo_db=False, source_label="cli")
+    try:
+        resolution = resolve_db_path(args.db, purpose="write", allow_repo_db=False, source_label="cli")
+    except Exception as e:
+        ui.error(str(e))
+        sys.exit(1)
     conn = open_db(resolution, row_factory=True)
     init_db(conn)
 

@@ -785,10 +785,36 @@ def main() -> None:
 
     ui = ConsoleUI()
 
-
+    db_path = Path(args.db).expanduser() if args.db else env_paths.get_db_path()
+    if not db_path:
+        parser.error("--db is required if DEDUPE_DB is not set.")
 
     source_root = Path(args.source_root).expanduser() if args.source_root else None
     paths_from_file = Path(args.paths_from_file).expanduser() if args.paths_from_file else None
+    all_sources = collect_sources(source_root, paths_from_file)
+
+    accepted_paths = set()
+    try:
+        res = resolve_db_path(db_path, purpose="read")
+        db_conn = open_db(res)
+        cursor = db_conn.cursor()
+        # This is hardcoded for now, based on user context
+        cursor.execute("SELECT path FROM files WHERE library = 'TODO' AND zone = 'accepted'")
+        rows = cursor.fetchall()
+        for row in rows:
+            accepted_paths.add(Path(row[0]))
+        db_conn.close()
+        ui.print(f"[DB] Found {len(accepted_paths)} 'accepted' files in 'TODO' library.")
+    except Exception as e:
+        ui.error(f"[DB] Error querying database for accepted files: {e}")
+        return
+
+    sources = [s for s in all_sources if s in accepted_paths]
+    ui.print(f"Filtered source list to {len(sources)} files to be processed.")
+
+    if not sources:
+        ui.print("No accepted files found to process. Exiting.")
+        return
 
     dest_root_raw = args.dest_root or env_paths.get_volume("library")
     if not dest_root_raw:
@@ -796,7 +822,6 @@ def main() -> None:
     dest_root = Path(dest_root_raw).expanduser()
 
     dest_root_secondary = Path(args.dest_root_secondary).expanduser() if args.dest_root_secondary else None
-    sources = collect_sources(source_root, paths_from_file)
     if dest_root_secondary:
         dest_root_secondary.mkdir(parents=True, exist_ok=True)
     skip_existing_roots = [Path(p).expanduser() for p in args.skip_existing_root]
@@ -820,8 +845,6 @@ def main() -> None:
         resume_index_override = args.resume_index
     elif args.resume_from_existing:
         resume_index_override = read_resume_index(resume_path, lambda *_args, **_kwargs: None)
-
-    db_path = Path(args.db).expanduser() if args.db else env_paths.get_db_path()
 
     try:
         process(

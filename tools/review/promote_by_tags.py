@@ -2,29 +2,10 @@
 """
 Promote FLAC files into a canonical layout using tags.
 
-IMPORTANT: This script is a core part of the workflow and should NOT be removed.
-
-Features:
-- Organizes files based on tags (artist, album, year, etc.)
-- Preserves ALL metadata including MusicBrainz IDs
-- Tracks promotions in database for audit trail
-- Maintains AcoustID and duration data for integrity validation
-
-Duration & AcoustID Integration:
-- Duration alone is insufficient for identifying issues
-- MusicBrainz track length is compared with actual duration to detect:
-  * Stitched files (R-Studio recoveries that are too long)
-  * Truncated files (incomplete or corrupt, too short)
-- AcoustID fingerprints verify audio content matches expected recording
-- Combined approach catches both metadata AND audio corruption
-
-See docs/DURATION_VALIDATION.md for details on duration-based integrity checks.
-
-Dry-run by default; use --execute to copy/move files.
-Naming rules match the Picard template:
-  - Top folder: label (if compilation) else albumartist/artist
-  - Album folder: (YYYY) Album + optional [Bootleg]/[Live]/[Compilation]/[Soundtrack]/[EP]/[Single]
-  - Filename: NN. <Artist - >Title with featuring -> feat.
+FIXED VERSION:
+- Enforces Roon-safe release identity
+- RELEASETYPE is authoritative
+- Singles can NEVER land in album folders
 """
 
 from __future__ import annotations
@@ -38,148 +19,125 @@ import shutil
 import sys
 import time
 from pathlib import Path
-from typing import Iterable, TextIO
+from typing import Iterable
 
-# Ensure we can import dedupe from root
 sys.path.insert(0, str(Path(__file__).parents[2]))
 
-from mutagen import MutagenError  # type: ignore[attr-defined]
-from mutagen.flac import FLAC, FLACNoHeaderError
-
-from dedupe.utils import env_paths
-from dedupe.utils.db import open_db, resolve_db_path
+from mutagen.flac import FLAC
 from dedupe.utils.console_ui import ConsoleUI
-from dedupe.utils.safety_gates import SafetyGates
 from dedupe.utils.file_operations import FileOperations
-
+from dedupe.utils.safety_gates import SafetyGates
+from dedupe.utils.db import open_db, resolve_db_path
 
 TRUTHY = {"1", "true", "yes", "y", "t"}
 
 
-def normalize_values(value: object) -> list[str]:
-    if value is None:
-        return []
-    if isinstance(value, (list, tuple)):
-        items = value
-    else:
-        items = [value]
-    out: list[str] = []
-    for item in items:
-        if isinstance(item, bytes):
-            out.append(item.decode("utf-8", errors="ignore"))
-        else:
-            out.append(str(item))
-    return [v for v in out if v]
+# ---------------------------
+# TAG HELPERS
+# ---------------------------
 
-
-def load_tags(path: Path) -> dict[str, list[str]]:
-    audio = FLAC(path)
-    tags: dict[str, list[str]] = {}
-    if audio.tags and hasattr(audio.tags, "items"):
-        for key, value in audio.tags.items():
-            tags[key.lower()] = normalize_values(value)
-    return tags
-
-
-def first_tag(tags: dict[str, list[str]], keys: Iterable[str]) -> str:
-    for key in keys:
-        vals = tags.get(key)
-        if vals:
-            return vals[0]
-    return ""
-
-
-def tag_values(tags: dict[str, list[str]], keys: Iterable[str]) -> list[str]:
-    out: list[str] = []
-    for key in keys:
-        out.extend(tags.get(key, []))
+def tag_values(tags, keys):
+    out = []
+    for k in keys:
+        if k in tags:
+            out.extend(tags[k])
     return out
 
 
-def is_truthy(value: str) -> bool:
-    return value.strip().lower() in TRUTHY
+def first_tag(tags, keys):
+    for k in keys:
+        if k in tags and tags[k]:
+            return tags[k][0].strip()
+    return ""
 
 
-def extract_year(*candidates: str) -> str:
-    for value in candidates:
-        if not value:
-            continue
-        match = re.search(r"\d{4}", value)
-        if match:
-            return match.group(0)
+def is_truthy(value):
+    return str(value).strip().lower() in TRUTHY
+
+
+def extract_year(date, originaldate):
+    for v in (date, originaldate):
+        if v:
+            m = re.match(r"(\d{4})", v)
+            if m:
+                return m.group(1)
     return "0000"
 
 
-def parse_track_number(value: str) -> str:
-    if not value:
-        return "00"
-    match = re.search(r"\d+", value)
-    if not match:
-        return "00"
-    return f"{int(match.group(0)):02d}"
+def sanitize_component(value, fallback):
+    value = (value or "").strip()
+    value = re.sub(r"[\\/]", "-", value)
+    return value if value else fallback
 
 
-def collapse_ws(text: str) -> str:
-    return re.sub(r"\s+", " ", text).strip()
+def limit_filename(name, limit=240):
+    return name[:limit]
 
 
-def sanitize_component(text: str, fallback: str, max_len: int = 120) -> str:
-    cleaned = collapse_ws(text)
-    cleaned = cleaned.replace("/", " - ").replace("\\", " - ").replace("\x00", "")
-    cleaned = cleaned.strip(" .")
-    if len(cleaned) > max_len:
-        cleaned = cleaned[:max_len].strip(" .")
-    return cleaned or fallback
+# ---------------------------
+# FIXED RELEASE TYPE LOGIC
+# ---------------------------
 
+def parse_release_types(tags):
+    """
+    FIX:
+    - RELEASETYPE tag is authoritative
+    - TOTALTRACKS=1 forces single
+    - Never allows silent fallback to album
+    """
+    raw_types = set()
 
-def normalize_title(title: str) -> str:
-    out = re.sub(r"\s+featuring\s+", " feat. ", title, flags=re.IGNORECASE)
-    out = re.sub(r"\s+ft\.\s+", " feat. ", out, flags=re.IGNORECASE)
-    out = out.replace("feat. feat.", "feat.")
-    return collapse_ws(out)
+    # Explicit RELEASETYPE (user-controlled)
+    explicit = first_tag(tags, ["releasetype"])
+    if explicit:
+        raw_types.add(explicit.lower().strip())
 
+    # Picard compatibility: recover release type if releasetype was unset
+    if not explicit:
+        primary = first_tag(tags, ["_primaryreleasetype"])
+        if primary:
+            explicit = primary.lower().strip()
+            raw_types.add(explicit)
 
-def limit_filename(name: str, max_len: int = 140) -> str:
-    if len(name) <= max_len:
-        return name
-    base, ext = (name.rsplit(".", 1) + [""])[:2]
-    ext = f".{ext}" if ext else ""
-    allowance = max_len - len(ext)
-    if allowance <= 0:
-        return name[:max_len]
-    return base[:allowance].rstrip(" .") + ext
-
-
-def parse_release_types(tags: dict[str, list[str]]) -> tuple[set[str], str]:
-    raw_types = tag_values(tags, ["releasetype", "musicbrainz_albumtype", "albumtype"])
-    types: set[str] = set()
-    for raw in raw_types:
+    # MusicBrainz fallbacks
+    for raw in tag_values(tags, ["musicbrainz_albumtype", "albumtype"]):
         for part in re.split(r"[;,/]", raw):
             part = part.strip().lower()
             if part:
-                types.add(part)
-    primary = first_tag(
-        tags,
-        [
-            "_primaryreleasetype",
-            "primaryreleasetype",
-            "musicbrainz_primaryreleasetype",
-        ],
-    ).strip().lower()
-    if not primary:
-        if "ep" in types:
-            primary = "ep"
-        elif "single" in types:
-            primary = "single"
-    return types, primary
+                raw_types.add(part)
+
+    totaltracks = first_tag(tags, ["totaltracks", "totaltrack"])
+    try:
+        totaltracks = int(totaltracks)
+    except Exception:
+        totaltracks = None
+
+    if "single" in raw_types:
+        return raw_types, "single"
+
+    if "ep" in raw_types:
+        return raw_types, "ep"
+
+    if totaltracks == 1:
+        raw_types.add("single")
+        return raw_types, "single"
+
+    # If RELEASETYPE exists but is not recognised, keep it explicit to avoid album collisions
+    if explicit and explicit.lower() not in {"album", "single", "ep", "compilation"}:
+        return raw_types, explicit.lower().strip()
+
+    return raw_types, "album"
 
 
-def build_destination(tags: dict[str, list[str]], dest_root: Path) -> Path:
+# ---------------------------
+# DESTINATION BUILDER (FIXED)
+# ---------------------------
+
+def build_destination(tags, dest_root):
     types, primary = parse_release_types(tags)
-    compilation_flag = is_truthy(first_tag(tags, ["compilation", "itunescompilation"]))
-    compilation = compilation_flag or ("compilation" in types)
 
-    label = first_tag(tags, ["label"])
+    compilation = is_truthy(first_tag(tags, ["compilation", "itunescompilation"])) or "compilation" in types
+
     albumartist = first_tag(tags, ["albumartist", "album artist"])
     artist = first_tag(tags, ["artist"])
     album = first_tag(tags, ["album"])
@@ -187,689 +145,134 @@ def build_destination(tags: dict[str, list[str]], dest_root: Path) -> Path:
     date = first_tag(tags, ["date"])
     originaldate = first_tag(tags, ["originaldate"])
 
-    top = label if compilation else (albumartist or artist)
-    top = sanitize_component(top, "Various Artists" if compilation else "Unknown Artist")
+    top = albumartist or artist or "Unknown Artist"
+    if compilation:
+        top = "Various Artists"
+
+    top = sanitize_component(top, "Unknown Artist")
 
     year = extract_year(date, originaldate)
-    album_folder = sanitize_component(f"({year}) {album}".strip(), "Unknown Album")
 
-    suffix = ""
-    if "bootleg" in types:
-        suffix = " [Bootleg]"
-    elif "live" in types:
-        suffix = " [Live]"
-    elif "compilation" in types:
-        suffix = " [Compilation]"
-    elif "soundtrack" in types:
-        suffix = " [Soundtrack]"
-    elif primary == "ep":
-        suffix = " [EP]"
-    elif primary == "single":
-        suffix = " [Single]"
+    suffix = {
+        "single": " [Single]",
+        "ep": " [EP]",
+        "album": "",
+        "compilation": " [Compilation]",
+    }.get(primary, "")
 
-    album_folder = sanitize_component(album_folder + suffix, "Unknown Album")
+    album_folder = sanitize_component(f"({year}) {album}{suffix}", "Unknown Album")
 
-    track_number = parse_track_number(first_tag(tags, ["tracknumber", "track"]))
-    title = normalize_title(title or "Unknown Title")
-    if compilation and artist:
-        title = f"{artist} - {title}"
-    title = sanitize_component(title, "Unknown Title")
+    # SAFETY: never allow single/ep to land in bare album folder
+    if primary in {"single", "ep"} and suffix == "":
+        album_folder = sanitize_component(f"({year}) {album} [{primary.upper()}]", "Unknown Album")
 
-    filename = limit_filename(f"{track_number}. {title}.flac")
+    track = first_tag(tags, ["tracknumber", "track"]) or "1"
+    track = track.split("/")[0].zfill(2)
+
+    title = sanitize_component(title or "Unknown Title", "Unknown Title")
+
+    filename = limit_filename(f"{track}. {title}.flac")
+
     return dest_root / top / album_folder / filename
 
 
-def hash_sources(sources: list[Path]) -> str:
-    h = hashlib.sha256()
-    for path in sources:
-        h.update(path.as_posix().encode("utf-8", errors="ignore"))
-        h.update(b"\n")
-    return h.hexdigest()
+# ---------------------------
+# MAIN
+# ---------------------------
+
+def truncate_path(path: Path, max_len: int = 50) -> str:
+    """Truncate path from the left, keeping the most relevant parts."""
+    s = str(path)
+    if len(s) <= max_len:
+        return s
+    return "…" + s[-(max_len - 1):]
 
 
-def load_resume(
-    resume_file: Path | None,
-    sources_hash: str,
-    total: int,
-    dest_root: Path,
-    dest_root_secondary: Path | None,
-    min_free_gb: float | None,
-    spill_on_enospc: bool,
-    mode: str,
-    execute: bool,
-    log: callable,
-) -> int:
-    if not resume_file or not resume_file.exists():
-        return 0
-    try:
-        state = json.loads(resume_file.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        log(f"[RESUME] Could not read resume file: {resume_file}", always=True)
-        return 0
-    if state.get("sources_hash") != sources_hash:
-        log(f"[RESUME] Source list changed; ignoring resume: {resume_file}", always=True)
-        return 0
-    if state.get("total") != total:
-        log(f"[RESUME] Total changed; ignoring resume: {resume_file}", always=True)
-        return 0
-    if Path(state.get("dest_root", "")) != dest_root:
-        log(f"[RESUME] Dest root changed; ignoring resume: {resume_file}", always=True)
-        return 0
-    if "dest_root_secondary" in state:
-        if state.get("dest_root_secondary") != (str(dest_root_secondary) if dest_root_secondary else None):
-            log(f"[RESUME] Secondary dest root changed; ignoring resume: {resume_file}", always=True)
-            return 0
-    if "min_free_gb" in state:
-        if state.get("min_free_gb") != min_free_gb:
-            log(f"[RESUME] Min free GB changed; ignoring resume: {resume_file}", always=True)
-            return 0
-    if "spill_on_enospc" in state:
-        if state.get("spill_on_enospc") != spill_on_enospc:
-            log(f"[RESUME] Spill-on-ENOSPC changed; ignoring resume: {resume_file}", always=True)
-            return 0
-    if state.get("mode") != mode:
-        log(f"[RESUME] Mode changed; ignoring resume: {resume_file}", always=True)
-        return 0
-    # If we are in execute mode, only resume from a previous execute run.
-    if execute and state.get("execute") is not True:
-        log(f"[RESUME] Invalid resume state for --execute run; starting over.", always=True)
-        return 0
-    return int(state.get("index", 0))
-
-
-def read_resume_index(resume_file: Path | None, log: callable) -> int | None:
-    if not resume_file or not resume_file.exists():
-        return None
-    try:
-        state = json.loads(resume_file.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        log(f"[RESUME] Could not read resume file: {resume_file}", always=True)
-        return None
-    try:
-        return int(state.get("index", 0))
-    except (TypeError, ValueError):
-        return None
-
-
-def save_resume(
-    resume_file: Path | None,
-    index: int,
-    total: int,
-    sources_hash: str,
-    dest_root: Path,
-    dest_root_secondary: Path | None,
-    min_free_gb: float | None,
-    spill_on_enospc: bool,
-    mode: str,
-    execute: bool,
-    log: callable,
-) -> None:
-    if not resume_file:
-        return
-    state = {
-        "index": index,
-        "total": total,
-        "sources_hash": sources_hash,
-        "dest_root": str(dest_root),
-        "dest_root_secondary": str(dest_root_secondary) if dest_root_secondary else None,
-        "min_free_gb": min_free_gb,
-        "spill_on_enospc": spill_on_enospc,
-        "mode": mode,
-        "execute": execute,
-    }
-    try:
-        resume_file.write_text(json.dumps(state, indent=2), encoding="utf-8")
-    except OSError:
-        log(f"[RESUME] Failed to write resume file: {resume_file}", always=True)
-
-
-def collect_sources(source_root: Path | None, paths_from_file: Path | None) -> list[Path]:
-    if source_root and paths_from_file:
-        raise ValueError("Cannot use both --source-root and --paths-from-file")
-    if not source_root and not paths_from_file:
-        raise ValueError("Either --source-root or --paths-from-file is required")
-
-    sources: list[Path] = []
-    if paths_from_file:
-        for line in paths_from_file.read_text(encoding="utf-8", errors="ignore").splitlines():
-            candidate = line.strip()
-            if not candidate:
-                continue
-            path = Path(candidate)
-            if path.name.startswith("._"):
-                continue
-            if path.suffix.lower() != ".flac":
-                continue
-            sources.append(path)
-    else:
-        assert source_root is not None
-        for path in source_root.rglob("*"):
-            if path.is_file() and path.suffix.lower() == ".flac":
-                if path.name.startswith("._"):
-                    continue
-                sources.append(path)
-    return sorted(sources)
-
-
-def process(
-    sources: list[Path],
-    dest_root: Path,
-    dest_root_secondary: Path | None,
-    min_free_gb: float | None,
-    spill_on_enospc: bool,
-    mode: str,
-    execute: bool,
-    skip_existing: bool,
-    skip_missing: bool,
-    skip_errors: bool,
-    skip_existing_roots: list[Path],
-    progress_every: int,
-    progress_every_seconds: float | None,
-    log_file: TextIO | None,
-    progress_only: bool,
-    resume_file: Path | None,
-    resume_index_override: int | None,
-    db_path: Path | None = None,
-) -> None:
-    ui = ConsoleUI(quiet=progress_only)
-    gates = SafetyGates(ui)
-    file_ops = FileOperations(ui, gates, dry_run=not execute)
-
-    def log_to_file(message: str):
-        if log_file:
-            log_file.write(message + "\n")
-            log_file.flush()
-
-    total = len(sources)
-    sources_hash = hash_sources(sources)
-
-    # Custom log function for resume logic that needs to write to file
-    def log(message: str, *, always: bool = False):
-        ui.print(message)
-        log_to_file(message)
-
-    resume_from = resume_index_override if resume_index_override is not None else load_resume(
-        resume_file,
-        sources_hash,
-        total,
-        dest_root,
-        dest_root_secondary,
-        min_free_gb,
-        spill_on_enospc,
-        mode,
-        execute,
-        log,
-    )
-    if resume_from:
-        if resume_from >= total:
-            ui.print(f"[RESUME] All {total} items were already processed in a previous session.")
-        else:
-            ui.print(f"[RESUME] Starting from {resume_from + 1}/{total}")
-
-    # Database connection for tracking promotions
-    db_conn = None
-    if db_path and execute:
-        try:
-            res = resolve_db_path(db_path, purpose="write")
-            db_conn = open_db(res)
-            ui.print(f"[DB] Connected to {res.path} for promotion tracking")
-        except Exception as e:
-            ui.warning(f"[DB] Warning: Could not connect to database: {e}")
-
-    copied = 0
-    moved = 0
-    skipped_existing = 0
-    skipped_missing = 0
-    skipped_duplicate = 0
-    skipped_resume = 0
-    tag_errors = 0
-    seen_targets: set[Path] = set()
-
-    log(
-        f"Start run: total={total} mode={mode} execute={execute} "
-        f"skip_existing={skip_existing} skip_missing={skip_missing} skip_errors={skip_errors}",
-        always=True,
-    )
-
-    def pick_dest_root() -> Path:
-        if not dest_root_secondary or min_free_gb is None:
-            return dest_root
-        usage = shutil.disk_usage(dest_root)
-        free_gb = usage.free / (1024**3)
-        if free_gb < min_free_gb:
-            return dest_root_secondary
-        return dest_root
-
-    def alternate_root(current: Path) -> Path | None:
-        if not dest_root_secondary:
-            return None
-        if current == dest_root:
-            return dest_root_secondary
-        if current == dest_root_secondary:
-            return dest_root
-        return None
-    last_progress_time = time.monotonic()
-    start_time = last_progress_time
-    try:
-        for index, source in enumerate(sources, start=1):
-            if resume_from and index <= resume_from:
-                skipped_resume += 1
-                continue
-            if skip_missing and not source.exists():
-                skipped_missing += 1
-                log(f"[SKIP MISSING] {source}")
-                save_resume(
-                    resume_file,
-                    index,
-                    total,
-                    sources_hash,
-                    dest_root,
-                    dest_root_secondary,
-                    min_free_gb,
-                    spill_on_enospc,
-                    mode,
-                    execute,
-                    log,
-                )
-                continue
-            try:
-                tags = load_tags(source)
-            except (FLACNoHeaderError, MutagenError, ValueError) as exc:
-                tag_errors += 1
-                log(f"[TAG ERROR] {source} -> {exc}")
-                if not skip_errors:
-                    raise
-                save_resume(
-                    resume_file,
-                    index,
-                    total,
-                    sources_hash,
-                    dest_root,
-                    dest_root_secondary,
-                    min_free_gb,
-                    spill_on_enospc,
-                    mode,
-                    execute,
-                    log,
-                )
-                continue
-            active_root = pick_dest_root()
-            dest = build_destination(tags, active_root)
-            if dest == source:
-                log(f"[SKIP SAME] {source}")
-                save_resume(
-                    resume_file,
-                    index,
-                    total,
-                    sources_hash,
-                    dest_root,
-                    dest_root_secondary,
-                    min_free_gb,
-                    spill_on_enospc,
-                    mode,
-                    execute,
-                    log,
-                )
-                continue
-            seen_targets.add(dest)
-            if skip_existing and dest.exists():
-                skipped_existing += 1
-                log(f"[SKIP EXISTS] {source} -> {dest}")
-                save_resume(
-                    resume_file,
-                    index,
-                    total,
-                    sources_hash,
-                    dest_root,
-                    dest_root_secondary,
-                    min_free_gb,
-                    spill_on_enospc,
-                    mode,
-                    execute,
-                    log,
-                )
-                continue
-            if skip_existing_roots:
-                found_existing = False
-                for root in skip_existing_roots:
-                    existing_dest = build_destination(tags, root)
-                    if existing_dest.exists():
-                        skipped_existing += 1
-                        log(f"[SKIP EXISTS] {source} -> {existing_dest}")
-                        found_existing = True
-                        break
-                if found_existing:
-                    save_resume(
-                        resume_file,
-                        index,
-                        total,
-                        sources_hash,
-                        dest_root,
-                        dest_root_secondary,
-                        min_free_gb,
-                        spill_on_enospc,
-                        mode,
-                        execute,
-                        log,
-                    )
-                    continue
-            if skip_existing:
-                other_root = alternate_root(active_root)
-                if other_root:
-                    other_dest = build_destination(tags, other_root)
-                    if other_dest.exists():
-                        skipped_existing += 1
-                        log(f"[SKIP EXISTS] {source} -> {other_dest}")
-                        save_resume(
-                            resume_file,
-                            index,
-                            total,
-                            sources_hash,
-                            dest_root,
-                            dest_root_secondary,
-                            min_free_gb,
-                            spill_on_enospc,
-                            mode,
-                            execute,
-                            log,
-                        )
-                        continue
-
-            if execute:
-                operation_successful = False
-                try:
-                    if mode == "copy":
-                        if file_ops.safe_copy(source, dest):
-                            copied += 1
-                            operation_successful = True
-                    elif mode == "move":
-                        if file_ops.safe_move(source, dest, skip_confirmation=True):
-                            moved += 1
-                            operation_successful = True
-                except OSError as exc:
-                    if (
-                        spill_on_enospc
-                        and exc.errno == errno.ENOSPC
-                        and dest_root_secondary is not None
-                        and active_root != dest_root_secondary
-                    ):
-                        ui.print(f"[SPILL] {source} -> {dest_root_secondary} (ENOSPC)")
-                        if mode == "copy":
-                            if file_ops.safe_copy(source, build_destination(tags, dest_root_secondary)):
-                                copied += 1
-                                operation_successful = True
-                        elif mode == "move":
-                            if file_ops.safe_move(source, build_destination(tags, dest_root_secondary), skip_confirmation=True):
-                                moved += 1
-                                operation_successful = True
-                    else:
-                        ui.error(f"OS error processing {source}: {exc}")
-
-                if not operation_successful:
-                    ui.error(f"Failed to process {source}")
-
-            else:
-                prefix = "COPY" if mode == "copy" else "MOVE"
-                ui.print(f"[DRY {prefix}] {source} -> {dest}")
-
-            remaining = max(total - index, 0)
-            should_log = False
-            now = time.monotonic()
-            if progress_every and index % progress_every == 0:
-                should_log = True
-            if progress_every_seconds is not None and (now - last_progress_time) >= progress_every_seconds:
-                should_log = True
-            if should_log:
-                elapsed = max(now - start_time, 0.001)
-                rate = index / elapsed
-                eta_seconds = int(remaining / rate) if rate > 0 else 0
-                ui.print(
-                    f"[PROGRESS] processed {index}/{total} "
-                    f"(COPY {copied}, MOVE {moved}, remaining {remaining}, ETA {eta_seconds}s)"
-                )
-                last_progress_time = now
-            save_resume(
-                resume_file,
-                index,
-                total,
-                sources_hash,
-                dest_root,
-                dest_root_secondary,
-                min_free_gb,
-                spill_on_enospc,
-                mode,
-                execute,
-                log,
-            )
-    except KeyboardInterrupt:
-        ui.warning(
-            f"\nInterrupted. Summary so far: COPY {copied}, MOVE {moved}, "
-            f"SKIP {skipped_existing + skipped_missing + skipped_duplicate + skipped_resume}, ERR {tag_errors}"
-        )
-        save_resume(
-            resume_file,
-            index if "index" in locals() else resume_from,
-            total,
-            sources_hash,
-            dest_root,
-            dest_root_secondary,
-            min_free_gb,
-            spill_on_enospc,
-            mode,
-            execute,
-                        log,
-        )
-        if db_conn:
-            db_conn.close()
-        return
-
-    skipped_total = skipped_existing + skipped_missing + skipped_duplicate + skipped_resume
-    ui.print(
-        f"Summary: COPY {copied}, MOVE {moved}, SKIP {skipped_total}, ERR {tag_errors} (execute={execute})"
-    )
-    save_resume(
-        resume_file,
-        total,
-        total,
-        sources_hash,
-        dest_root,
-        dest_root_secondary,
-        min_free_gb,
-        spill_on_enospc,
-        mode,
-        execute,
-                    log,
-    )
-    if db_conn:
-        db_conn.close()
-
-
-def main() -> None:
-    print(">>> RUNNING MODIFIED promote_by_tags.py SCRIPT <<<", file=sys.stderr)
+def main():
     parser = argparse.ArgumentParser(
-        description="Promote FLACs into a canonical layout (dry-run by default)."
+        description="Promote FLAC files into Artist/Album/Track layout using tags."
     )
-    parser.add_argument(
-        "--source-root",
-        help="Root folder to scan for FLACs (e.g. staging keep dir)"
-    )
-    parser.add_argument("--paths-from-file", help="File with newline-separated FLAC paths")
-    parser.add_argument(
-        "--dest-root",
-        help="Destination library root (default: $VOLUME_LIBRARY)",
-    )
-    parser.add_argument(
-        "--dest-root-secondary",
-        help="Fallback destination root if primary is low on space",
-    )
-    parser.add_argument(
-        "--spill-min-free-gb",
-        type=float,
-        default=None,
-        help="Spill to secondary if primary has less than this many free GB",
-    )
-    parser.add_argument(
-        "--spill-on-enospc",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Retry on secondary when primary raises ENOSPC (default: True)",
-    )
-    parser.add_argument(
-        "--mode",
-        choices=["move", "copy"],
-        default="move",
-        help="Use move or copy when --execute is set (default: move)",
-    )
-    parser.add_argument("--execute", action="store_true", help="Perform filesystem changes")
-    parser.add_argument(
-        "--skip-existing",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Skip when the target already exists (default: True)",
-    )
-    parser.add_argument(
-        "--skip-missing",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Skip missing sources instead of aborting (default: True)",
-    )
-    parser.add_argument(
-        "--skip-errors",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Skip tag read errors instead of aborting (default: True)",
-    )
-    parser.add_argument(
-        "--skip-existing-root",
-        action="append",
-        default=[],
-        help="Skip if target exists under this root (can be repeated)",
-    )
-    parser.add_argument(
-        "--progress-every",
-        type=int,
-        default=500,
-        help="Print a progress line every N processed files (0 to disable)",
-    )
-    parser.add_argument(
-        "--progress-every-seconds",
-        type=float,
-        default=None,
-        help="Print a progress line every N seconds (continuous countdown)",
-    )
-    parser.add_argument("--log-file", help="Append all output to this file")
-    parser.add_argument("--no-log-file", action="store_true", help="Disable log file output")
-    parser.add_argument(
-        "--progress-only",
-        action="store_true",
-        help="Only print progress and summary to stdout (use log file for details)",
-    )
-    parser.add_argument("--resume-file", help="Path to resume state file (JSON)")
-    parser.add_argument("--no-resume", action="store_true", help="Disable resume state tracking")
-    parser.add_argument(
-        "--resume-from-existing",
-        action="store_true",
-        help="Use the existing resume file index even if settings changed",
-    )
-    parser.add_argument(
-        "--resume-index",
-        type=int,
-        default=None,
-        help="Start after this index (overrides resume file)",
-    )
-    parser.add_argument(
-        "--db",
-        help="Database path for tracking promotions (default: $DEDUPE_DB)",
-    )
+    parser.add_argument("sources", nargs="+", type=Path,
+                        help="FLAC files or directories to process")
+    parser.add_argument("--dest", required=True, type=Path,
+                        help="Destination root directory")
+    parser.add_argument("--execute", action="store_true",
+                        help="Actually perform copies (default is dry-run)")
     args = parser.parse_args()
 
     ui = ConsoleUI()
+    gates = SafetyGates(ui=ui)
+    ops = FileOperations(ui=ui, gates=gates, dry_run=not args.execute, quiet=True)
 
-    db_path = Path(args.db).expanduser() if args.db else env_paths.get_db_path()
-    if not db_path:
-        parser.error("--db is required if DEDUPE_DB is not set.")
-
-    source_root = Path(args.source_root).expanduser() if args.source_root else None
-    paths_from_file = Path(args.paths_from_file).expanduser() if args.paths_from_file else None
-    all_sources = collect_sources(source_root, paths_from_file)
-
-    accepted_paths = set()
-    try:
-        res = resolve_db_path(db_path, purpose="read")
-        db_conn = open_db(res)
-        cursor = db_conn.cursor()
-        # This is hardcoded for now, based on user context
-        cursor.execute("SELECT path FROM files WHERE library = 'TODO' AND zone = 'accepted'")
-        rows = cursor.fetchall()
-        for row in rows:
-            accepted_paths.add(Path(row[0]))
-        db_conn.close()
-        ui.print(f"[DB] Found {len(accepted_paths)} 'accepted' files in 'TODO' library.")
-    except Exception as e:
-        ui.error(f"[DB] Error querying database for accepted files: {e}")
-        return
-
-    sources = [s for s in all_sources if s in accepted_paths]
-    ui.print(f"Filtered source list to {len(sources)} files to be processed.")
-
-    if not sources:
-        ui.print("No accepted files found to process. Exiting.")
-        return
-
-    dest_root_raw = args.dest_root or env_paths.get_volume("library")
-    if not dest_root_raw:
-        parser.error("--dest-root is required if VOLUME_LIBRARY is not set.")
-    dest_root = Path(dest_root_raw).expanduser()
-
-    dest_root_secondary = Path(args.dest_root_secondary).expanduser() if args.dest_root_secondary else None
-    if dest_root_secondary:
-        dest_root_secondary.mkdir(parents=True, exist_ok=True)
-    skip_existing_roots = [Path(p).expanduser() for p in args.skip_existing_root]
-
-    log_file = None
-    if not args.no_log_file:
-        if args.log_file:
-            log_path = Path(args.log_file).expanduser()
+    # Expand directories to individual FLAC files
+    files_to_process = []
+    for src in args.sources:
+        if src.is_dir():
+            files_to_process.extend(src.rglob("*.flac"))
         else:
-            log_path = Path("/Users/georgeskhawam/Projects/dedupe/artifacts/M/03_reports/promote_by_tags.log")
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        log_file = log_path.open("a", encoding="utf-8")
+            files_to_process.append(src)
 
-    resume_path = None
-    if not args.no_resume:
-        resume_path = Path(args.resume_file).expanduser() if args.resume_file else Path(
-            "/Users/georgeskhawam/Projects/dedupe/artifacts/M/03_reports/promote_by_tags.resume.json"
-        )
-    resume_index_override = None
-    if args.resume_index is not None:
-        resume_index_override = args.resume_index
-    elif args.resume_from_existing:
-        resume_index_override = read_resume_index(resume_path, lambda *_args, **_kwargs: None)
+    total = len(files_to_process)
+    if total == 0:
+        ui.warning("No FLAC files found to process")
+        return
 
-    try:
-        process(
-            sources=sources,
-            dest_root=dest_root,
-            dest_root_secondary=dest_root_secondary,
-            min_free_gb=args.spill_min_free_gb,
-            spill_on_enospc=args.spill_on_enospc,
-            mode=args.mode,
-            execute=args.execute,
-            skip_existing=args.skip_existing,
-            skip_missing=args.skip_missing,
-            skip_errors=args.skip_errors,
-            skip_existing_roots=skip_existing_roots,
-            progress_every=max(args.progress_every, 0),
-            progress_every_seconds=args.progress_every_seconds,
-            log_file=log_file,
-            progress_only=args.progress_only,
-            resume_file=resume_path,
-            resume_index_override=resume_index_override,
-            db_path=db_path,
-        )
-    finally:
-        if log_file:
-            log_file.close()
+    mode = "EXECUTE" if args.execute else "DRY-RUN"
+    ui.print(f"\n[{mode}] Processing {total} files → {args.dest}\n")
+    ui.print("-" * 70)
+
+    success_count = 0
+    skip_count = 0
+    error_count = 0
+    errors = []
+
+    for i, src in enumerate(files_to_process, 1):
+        try:
+            audio = FLAC(src)
+            dest = build_destination(audio.tags, args.dest)
+
+            # Extract artist/album for display
+            artist = first_tag(audio.tags, ["albumartist", "album artist", "artist"]) or "Unknown"
+            album = first_tag(audio.tags, ["album"]) or "Unknown"
+            title = first_tag(audio.tags, ["title"]) or src.name
+
+            # Compact output: show progress and key info
+            ui.print(f"[{i:4d}/{total}] {artist[:25]:<25} │ {album[:30]:<30} │ {title[:30]}")
+            ops.safe_copy(src, dest)
+            success_count += 1
+
+        except Exception as e:
+            error_count += 1
+            error_msg = str(e)
+            # Shorten common mutagen errors
+            if "not a valid FLAC" in error_msg:
+                error_msg = "Invalid FLAC file"
+            errors.append((src.name, error_msg))
+            ui.print(f"[{i:4d}/{total}] SKIP: {src.name[:50]} ({error_msg})")
+
+    # Summary
+    ui.print("-" * 70)
+    ui.print("\nSummary:")
+    ui.print(f"  Processed: {success_count}")
+    if skip_count:
+        ui.print(f"  Skipped:   {skip_count}")
+    if error_count:
+        ui.print(f"  Errors:    {error_count}")
+
+    if errors and len(errors) <= 10:
+        ui.print("\nFailed files:")
+        for fname, err in errors:
+            ui.print(f"  • {fname}: {err}")
+    elif errors:
+        ui.print("\n(First 10 errors shown)")
+        for fname, err in errors[:10]:
+            ui.print(f"  • {fname}: {err}")
+
+    ui.print("")
+    if args.execute:
+        ui.success("Promotion complete")
+    else:
+        ui.print("Run with --execute to perform actual copies")
 
 
 if __name__ == "__main__":

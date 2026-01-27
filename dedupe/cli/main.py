@@ -316,5 +316,212 @@ def recover(
             click.echo(f"Exported {rows} records to {output_path}")
 
 
+@cli.group()
+def metadata():
+    """Metadata enrichment commands."""
+    pass
+
+
+@metadata.command()
+@click.option('--db', type=click.Path(), required=True, help='Database path')
+@click.option('--path', type=str, help='Filter files by path pattern (SQL LIKE)')
+@click.option('--providers', default='spotify', help='Comma-separated list of providers')
+@click.option('--limit', type=int, help='Maximum files to process')
+@click.option('--force', is_flag=True, help='Re-enrich already-enriched files')
+@click.option('--execute', is_flag=True, help='Actually update database (default: dry-run)')
+@click.option('-v', '--verbose', is_flag=True, help='Verbose output')
+def enrich(db, path, providers, limit, force, execute, verbose):
+    """
+    Enrich healthy files with metadata from external providers.
+
+    Fetches BPM, key, genre, and other metadata from services like
+    Spotify, Beatport, Qobuz, and Tidal. Uses ISRC and text search
+    to identify tracks, then applies cascade rules to select the
+    best values.
+
+    \b
+    Examples:
+        # Dry-run on all eligible files
+        dedupe metadata enrich --db music.db
+
+        # Enrich files in a specific folder
+        dedupe metadata enrich --db music.db --path "/Volumes/Music/DJ/%" --execute
+
+        # Force re-enrich with multiple providers
+        dedupe metadata enrich --db music.db --providers spotify,beatport --force --execute
+
+        # Limit to 100 files for testing
+        dedupe metadata enrich --db music.db --limit 100 --execute
+    """
+    from dedupe.metadata.enricher import Enricher
+    from dedupe.metadata.auth import TokenManager
+    from dedupe.storage.schema import init_db
+    import sqlite3
+
+    # Configure logging
+    log_level = logging.DEBUG if verbose else logging.INFO
+    logging.basicConfig(
+        level=log_level,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
+
+    db_path = Path(db)
+    if not db_path.exists():
+        raise click.ClickException(f"Database not found: {db_path}")
+
+    # Ensure schema is up to date
+    conn = sqlite3.connect(db_path)
+    init_db(conn)
+    conn.close()
+
+    # Parse providers
+    provider_list = [p.strip() for p in providers.split(',')]
+
+    # Initialize token manager
+    token_manager = TokenManager()
+
+    # Check token status
+    status = token_manager.status()
+    for provider in provider_list:
+        if provider in status:
+            pstatus = status[provider]
+            if not pstatus.get('configured'):
+                click.echo(f"Warning: {provider} not configured in tokens.json")
+            elif pstatus.get('expired'):
+                click.echo(f"Warning: {provider} token expired, will attempt refresh")
+
+    click.echo(f"\n{'='*50}")
+    click.echo("METADATA ENRICHMENT")
+    click.echo(f"{'='*50}")
+
+    if not execute:
+        click.echo("[DRY-RUN MODE - use --execute to update database]")
+
+    click.echo(f"Database: {db_path}")
+    click.echo(f"Providers: {', '.join(provider_list)}")
+    if path:
+        click.echo(f"Path filter: {path}")
+    if limit:
+        click.echo(f"Limit: {limit}")
+    if force:
+        click.echo("Force: re-enriching already-enriched files")
+
+    def progress(current, total, filepath):
+        if verbose:
+            click.echo(f"[{current}/{total}] {filepath}")
+        elif current % 10 == 0 or current == total:
+            click.echo(f"Progress: {current}/{total}")
+
+    with Enricher(
+        db_path=db_path,
+        token_manager=token_manager,
+        providers=provider_list,
+        dry_run=not execute,
+    ) as enricher:
+        stats = enricher.enrich_all(
+            path_pattern=path,
+            limit=limit,
+            force=force,
+            progress_callback=progress if not verbose else progress,
+        )
+
+    click.echo(f"\n{'='*50}")
+    click.echo("RESULTS")
+    click.echo(f"{'='*50}")
+    click.echo(f"Total files:     {stats.total}")
+    click.echo(f"Enriched:        {stats.enriched}")
+    click.echo(f"No match:        {stats.no_match}")
+    click.echo(f"Failed:          {stats.failed}")
+
+
+@metadata.command()
+@click.option('--tokens-path', type=click.Path(), help='Path to tokens.json')
+def auth_status(tokens_path):
+    """
+    Show authentication status for all providers.
+
+    Displays which providers are configured and whether their tokens
+    are valid or expired.
+    """
+    from dedupe.metadata.auth import TokenManager, DEFAULT_TOKENS_PATH
+
+    path = Path(tokens_path) if tokens_path else DEFAULT_TOKENS_PATH
+    token_manager = TokenManager(path)
+
+    click.echo(f"\nTokens file: {path}")
+    click.echo(f"{'='*50}")
+
+    status = token_manager.status()
+    if not status:
+        click.echo("No providers configured.")
+        click.echo(f"\nRun 'dedupe metadata auth-init' to create a template.")
+        return
+
+    for provider, info in status.items():
+        configured = "✓" if info.get('configured') else "✗"
+        has_token = "✓" if info.get('has_token') else "✗"
+
+        if info.get('expired') is True:
+            token_status = "EXPIRED"
+        elif info.get('has_token'):
+            token_status = "valid"
+        else:
+            token_status = "missing"
+
+        click.echo(f"{provider:12} | configured: {configured} | token: {has_token} ({token_status})")
+
+
+@metadata.command()
+@click.option('--tokens-path', type=click.Path(), help='Path to tokens.json')
+def auth_init(tokens_path):
+    """
+    Initialize tokens.json with template structure.
+
+    Creates a new tokens.json file with placeholders for all supported
+    providers. You'll need to fill in your API credentials.
+    """
+    from dedupe.metadata.auth import TokenManager, DEFAULT_TOKENS_PATH
+
+    path = Path(tokens_path) if tokens_path else DEFAULT_TOKENS_PATH
+    token_manager = TokenManager(path)
+    token_manager.init_template()
+
+    click.echo(f"Created tokens template at: {path}")
+    click.echo("\nEdit this file to add your API credentials:")
+    click.echo("  - Spotify: client_id and client_secret")
+    click.echo("  - Beatport: access_token")
+    click.echo("  - Qobuz: app_id and user_auth_token")
+    click.echo("  - Tidal: access_token")
+
+
+@metadata.command()
+@click.argument('provider')
+@click.option('--tokens-path', type=click.Path(), help='Path to tokens.json')
+def auth_refresh(provider, tokens_path):
+    """
+    Refresh access token for a provider.
+
+    Currently supports automatic refresh for:
+    - spotify (using client credentials flow)
+
+    Other providers require manual token refresh.
+    """
+    from dedupe.metadata.auth import TokenManager, DEFAULT_TOKENS_PATH
+
+    path = Path(tokens_path) if tokens_path else DEFAULT_TOKENS_PATH
+    token_manager = TokenManager(path)
+
+    if provider == 'spotify':
+        click.echo("Refreshing Spotify token...")
+        token = token_manager.refresh_spotify_token()
+        if token:
+            click.echo(f"Success! Token valid until: {token.expires_at}")
+        else:
+            click.echo("Failed to refresh token. Check client_id and client_secret.")
+    else:
+        click.echo(f"Automatic refresh not implemented for {provider}.")
+        click.echo("Please update the token manually in tokens.json.")
+
+
 if __name__ == "__main__":
     cli()

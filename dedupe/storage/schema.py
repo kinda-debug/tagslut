@@ -147,6 +147,20 @@ def init_db(
             "pcm_md5": "TEXT",
             "silence_events": "INTEGER",
             "verified_at": "TEXT",
+            # Enrichment columns
+            "canonical_bpm": "REAL",
+            "canonical_key": "TEXT",
+            "canonical_genre": "TEXT",
+            "canonical_isrc": "TEXT",
+            "canonical_label": "TEXT",
+            "canonical_year": "INTEGER",
+            "canonical_duration": "REAL",
+            "canonical_duration_source": "TEXT",
+            "enriched_at": "TEXT",
+            "enrichment_providers": "TEXT",
+            "enrichment_confidence": "TEXT",
+            "metadata_health": "TEXT",
+            "metadata_health_reason": "TEXT",
         }
 
         for col_name, col_type in required_columns.items():
@@ -164,6 +178,8 @@ def init_db(
         connection.execute("CREATE INDEX IF NOT EXISTS idx_sha256 ON files(sha256);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_recovery_status ON files(recovery_status);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_integrity_state ON files(integrity_state);")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_enriched_at ON files(enriched_at);")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_canonical_isrc ON files(canonical_isrc);")
 
         connection.execute(
             f"""
@@ -229,6 +245,78 @@ def init_db(
         connection.execute(
             "CREATE INDEX IF NOT EXISTS idx_promotions_timestamp "
             "ON promotions(timestamp);"
+        )
+
+        # Library tracks table (canonical track identity for enrichment)
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS library_tracks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                library_track_key TEXT UNIQUE,
+                title TEXT,
+                artist TEXT,
+                album TEXT,
+                duration_ms INTEGER,
+                isrc TEXT,
+                release_date TEXT,
+                explicit INTEGER,
+                best_cover_url TEXT,
+                lyrics_excerpt TEXT,
+                genre TEXT,
+                bpm REAL,
+                musical_key TEXT,
+                label TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+            """
+        )
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_library_tracks_isrc ON library_tracks(isrc);"
+        )
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_library_tracks_key ON library_tracks(library_track_key);"
+        )
+
+        # Library track sources table (per-provider metadata snapshots)
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS library_track_sources (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                library_track_key TEXT,
+                service TEXT,
+                service_track_id TEXT,
+                url TEXT,
+                metadata_json TEXT,
+                duration_ms INTEGER,
+                isrc TEXT,
+                album_art_url TEXT,
+                pdf_companions TEXT,
+                lyrics_excerpt TEXT,
+                genre TEXT,
+                bpm REAL,
+                musical_key TEXT,
+                album_title TEXT,
+                artist_name TEXT,
+                track_number INTEGER,
+                disc_number INTEGER,
+                match_confidence TEXT,
+                fetched_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(library_track_key) REFERENCES library_tracks(library_track_key)
+            );
+            """
+        )
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_library_track_sources_key "
+            "ON library_track_sources(library_track_key);"
+        )
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_library_track_sources_service "
+            "ON library_track_sources(service);"
+        )
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_library_track_sources_isrc "
+            "ON library_track_sources(isrc);"
         )
 
         _ensure_scan_tracking_tables(connection)

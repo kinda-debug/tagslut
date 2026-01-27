@@ -43,9 +43,10 @@ The scanner automatically determines the status (**zone**) for each file based o
 
 ```bash
 # Scan any path (Zones are auto-assigned)
-python tools/integrity/scan.py /path/to/scan \
+python tools/integrity/scan.py /Volumes/SAD/MU \
+  --library MU \
   --db "$DB_PATH" \
-  --library LOGICAL_NAME \
+  --library MU \
   --check-integrity \
   --check-hash \
   --create-db \
@@ -143,8 +144,8 @@ The promotion tool organizes your files into Artist/Album/Track structure. It wi
 ```bash
 # 1. Dry Run (Simulates the organization by tags)
 python tools/review/promote_by_tags.py \
-  --source-root /path/to/recovered_files \
-  --dest-root Music_Library
+  --source-root '/Volumes/SAD/Music Hi-Res'\
+  --dest-root /Volumes/SAD/M 
 
 # 2. Execute (Organizes and creates new copies)
 python tools/review/promote_by_tags.py \

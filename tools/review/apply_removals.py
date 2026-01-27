@@ -83,8 +83,13 @@ def apply_quarantine(
         write_manifest_header(writer)
 
         last_progress = time.time()
-        quarantined, skipped, total = 0, 0, len(rows)
-        ui.print(f"Start run: plan={plan_path} total={total} execute={not file_ops.dry_run} skip_missing={skip_missing} skip_existing={skip_existing}")
+        quarantined, skipped, failed, total = 0, 0, 0, len(rows)
+        mode = "EXECUTE" if not file_ops.dry_run else "DRY-RUN"
+
+        ui.print(f"\n[{mode}] Quarantine: {total} files → {quarantine_root}")
+        ui.print(f"  Plan: {plan_path.name}")
+        ui.print(f"  Options: skip_missing={skip_missing}, skip_existing={skip_existing}")
+        ui.print("-" * 60)
 
         for index, row in enumerate(rows, start=1):
             src = Path(row.path)
@@ -95,12 +100,10 @@ def apply_quarantine(
             rel = rel_to(src, relative_root)
             target = quarantine_root / rel
             if skip_existing and target.exists():
-                ui.print(f"[SKIP] target exists: {target}")
                 skipped += 1
                 continue
             if not src.exists():
                 if skip_missing:
-                    ui.warning(f"[MISSING] {src}")
                     skipped += 1
                     continue
                 raise FileNotFoundError(src)
@@ -109,7 +112,7 @@ def apply_quarantine(
             if not file_ops.dry_run:
                 progress_log_file.write(f"{str(src)}\n")
                 progress_log_file.flush()
-                
+
                 if file_ops.safe_copy(src, target, verify_checksum=True):
                     with conn:
                         conn.execute(
@@ -117,20 +120,13 @@ def apply_quarantine(
                             (str(src), str(target), row.sha256, row.keeper_path, row.source_zone, row.reason, row.tier, row.plan_id, quarantined_at),
                         )
                         conn.execute("UPDATE files SET path = ?, zone = 'quarantine' WHERE path = ?", (str(target), str(src)))
-                    ui.print(f"[QUARANTINE] {src} -> {target}")
                 else:
-                    ui.error(f"Failed to copy or verify {src} to {target}")
                     # Move corrupted file to failed directory
                     failed_target = failed_dir / rel
-                    if file_ops.safe_move(target, failed_target, confirmation_phrase="move corrupted file"):
-                        ui.print(f"Moved corrupted file to {failed_target}")
-                    else:
-                        ui.error(f"Could not move corrupted file at {target}")
-                    skipped += 1
+                    file_ops.safe_move(target, failed_target, confirmation_phrase="move corrupted file", skip_confirmation=True)
+                    failed += 1
                     continue
-            else:
-                ui.print(f"[DRY QUARANTINE] {src} -> {target}")
-                quarantined_at = ""
+            quarantined_at = "" if file_ops.dry_run else quarantined_at
 
             writer.writerow({
                 "plan_id": row.plan_id, "tier": row.tier, "original_path": str(src),
@@ -139,13 +135,26 @@ def apply_quarantine(
             })
             quarantined += 1
 
+            # Progress reporting
             if progress_every and index % progress_every == 0:
-                print(f"[PROGRESS] processed {index}/{total} (quarantined {quarantined}, skipped {skipped}, remaining {max(total - index, 0)})")
-            if progress_every_seconds and (time.time() - last_progress >= progress_every_seconds):
-                print(f"[PROGRESS] processed {index}/{total} (quarantined {quarantined}, skipped {skipped}, remaining {max(total - index, 0)})")
+                remaining = max(total - index, 0)
+                ui.print(f"[{index:5d}/{total}] ✓ {quarantined} quarantined, {skipped} skipped, {remaining} remaining")
+            elif progress_every_seconds and (time.time() - last_progress >= progress_every_seconds):
+                remaining = max(total - index, 0)
+                ui.print(f"[{index:5d}/{total}] ✓ {quarantined} quarantined, {skipped} skipped, {remaining} remaining")
                 last_progress = time.time()
-        
-        ui.print(f"Summary: QUARANTINE {quarantined}, SKIP {skipped} (execute={not file_ops.dry_run})")
+
+        # Summary
+        ui.print("-" * 60)
+        ui.print("\nSummary:")
+        ui.print(f"  Quarantined: {quarantined}")
+        if skipped:
+            ui.print(f"  Skipped:     {skipped}")
+        if failed:
+            ui.print(f"  Failed:      {failed}")
+        ui.print("")
+        if file_ops.dry_run:
+            ui.print("Run with --execute to perform actual quarantine")
 
 def apply_deletions(
     conn,

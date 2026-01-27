@@ -256,3 +256,58 @@ pyproject.toml
 poetry.lock
 pyproject.toml
 flac_paths.txt
+scanned_files.txt
+pyproject.toml
+.gitignore
+metadata_guide.md
+metadata_token_mgmt.md
+docs/metadata/Core idea multi-service metadata and summary.md
+.gitignore
+docs/metadata/metadata-extraction-report.md
+docs/metadata/info.txt
+.gitignore
+EPOCH_2026-01-24/.dedupe_write_test_29399
+EPOCH_2026-01-24/.dedupe_write_test_52723
+EPOCH_2026-01-24/.dedupe_write_test_52517
+EPOCH_2026-01-24/.dedupe_write_test_7676
+docs/metadata/metadata_bible.md
+.gitignore
+phase1_harvest/env_exports.sh
+phase1_harvest/harvest_duration.sh
+phase1_harvest/harvest_metadata_full.sh
+phase1_harvest/tracks_input.csv
+phase1_harvest/tracks_raw.csv
+phase1_harvest/tracks.csv
+phase1_harvest/reconnaissance/beatport_isrc_search_test.json
+phase1_harvest/reconnaissance/beatport_reconnaissance_report.txt
+phase1_harvest/reconnaissance/beatport_search_fresh.json
+phase1_harvest/reconnaissance/beatport_test_1_isrc_search.json
+phase1_harvest/reconnaissance/beatport_test_1.json
+phase1_harvest/reconnaissance/decision.txt
+phase1_harvest/reconnaissance/qobuz_isrc_search_test.json
+phase1_harvest/reconnaissance/qobuz_test_1.json
+phase1_harvest/reconnaissance/SERVICE_COMPARISON_REPORT.md
+phase1_harvest/reconnaissance/spotify_audio_features.json
+phase1_harvest/reconnaissance/spotify_client_token.txt
+phase1_harvest/reconnaissance/spotify_isrc_search_client.json
+phase1_harvest/reconnaissance/spotify_isrc_search_test.json
+phase1_harvest/reconnaissance/spotify_test_1.json
+phase1_harvest/reconnaissance/spotify_text_search_test.json
+phase1_harvest/reconnaissance/tidal_isrc_search_test.json
+phase1_harvest/reconnaissance/tidal_test_1.json
+phase1_harvest/reconnaissance/tidal_text_search_test.json
+postman/collections/apple Copy.postman_collection.json
+postman/collections/bp4 Copy.postman_collection.json
+postman/collections/itunes Copy.postman_collection.json
+postman/collections/qob Copy.postman_collection.json
+postman/collections/tid2 Copy.postman_collection.json
+postman/globals/workspace.postman_globals.json
+metadata_add.md
+pyproject.toml
+.claude/settings.local.json
+.postman/config.json
+.claude/settings.local.json
+pyproject.toml
+pyproject.toml
+.claude/settings.local.json
+pyproject.toml

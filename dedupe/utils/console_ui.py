@@ -24,6 +24,11 @@ class ConsoleUI:
         if exit_code is not None:
             sys.exit(exit_code)
 
+    def success(self, message: str):
+        """Prints a success message to stdout."""
+        if not self.quiet:
+            print(f"✓ {message}")
+
     def confirm(self, prompt: str, required_phrase: str) -> bool:
         """
         Requires the user to type a specific phrase to confirm an action.

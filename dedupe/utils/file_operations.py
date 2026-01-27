@@ -21,10 +21,16 @@ class FileOperations:
     A centralized class for performing safe file system operations.
     """
 
-    def __init__(self, ui: ConsoleUI, gates: SafetyGates, dry_run: bool = True):
+    def __init__(self, ui: ConsoleUI, gates: SafetyGates, dry_run: bool = True, quiet: bool = False):
         self.ui = ui
         self.gates = gates
         self.dry_run = dry_run
+        self.quiet = quiet  # Suppress per-file output (caller handles it)
+
+    def _log(self, message: str):
+        """Internal logging that respects quiet mode."""
+        if not self.quiet:
+            self.ui.print(message)
 
     def safe_copy(
         self,
@@ -44,13 +50,13 @@ class FileOperations:
             True if the operation was successful, False otherwise.
         """
         if self.dry_run:
-            self.ui.print(f"[DRY-RUN] Would copy: {source} -> {destination}")
+            self._log(f"[DRY-RUN] Would copy: {source} -> {destination}")
             return True
 
         try:
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, destination)
-            self.ui.print(f"[COPY] {source} -> {destination}")
+            self._log(f"[COPY] {source.name} -> {destination.parent.name}/{destination.name}")
 
             # Verify the copy
             if destination.stat().st_size != source.stat().st_size:
@@ -81,7 +87,7 @@ class FileOperations:
         This is implemented as a safe_copy followed by a safe_delete.
         """
         if self.dry_run:
-            self.ui.print(f"[DRY-RUN] Would move: {source} -> {destination}")
+            self._log(f"[DRY-RUN] Would move: {source.name} -> {destination.parent.name}/")
             return True
 
         if self.safe_copy(source, destination, verify_checksum):
@@ -93,13 +99,13 @@ class FileOperations:
         Safely deletes a file after asking for user confirmation.
         """
         if self.dry_run:
-            self.ui.print(f"[DRY-RUN] Would delete: {path}")
+            self._log(f"[DRY-RUN] Would delete: {path.name}")
             return True
 
         if skip_confirmation or self.gates.confirm_destructive_operation("file deletion", confirmation_phrase):
             try:
                 path.unlink()
-                self.ui.print(f"[DELETE] {path}")
+                self._log(f"[DELETE] {path.name}")
                 return True
             except OSError as e:
                 self.ui.error(f"Failed to delete {path}: {e}")

@@ -16,7 +16,14 @@
       "Bash(python:*)",
       "Bash(chmod:*)",
       "Bash(find:*)",
-      "Bash(wc:*)"
+      "Bash(wc:*)",
+      "Bash(jq:*)",
+      "Bash(env)",
+      "Bash(~/Projects/dedupe/phase1_harvest/tracks_raw.csv)",
+      "Bash(echo:*)",
+      "Bash(echo \"QOBUZ_USER_AUTH_TOKEN: $QOBUZ_USER_AUTH_TOKEN:0:10...\")",
+      "Bash(curl:*)",
+      "Bash(TIDAL_REFRESH_TOKEN=\"eyJraWQiOiJoUzFKYTdVMCIsImFsZyI6IkVTNTEyIn0.eyJ0eXBlIjoibzJfcmVmcmVzaCIsInVpZCI6MjA2NTE2NDUwLCJzY29wZSI6Indfc3ViIHJfdXNyIHdfdXNyIiwiY2lkIjoxMzMxOSwic1ZlciI6MCwiZ1ZlciI6MCwiaXNzIjoiaHR0cHM6Ly9hdXRoLnRpZGFsLmNvbS92MSJ9.AEUN-iIXrRbxhhSfTXvIrgXLD0nx-pqCP6gWzxvI8YOqWbrf2hXfPXWMP1NzEpgkEbq2s6I7HJNmgacgKivBrC9uAGO9x4NzZLt7xN32aqF1drMioedcRQ_uD25Ckgvvl4ZsJ6U-pepD-OrmDHr6rhcVsAykJgK_KfngjH0eiYXqcMOJ\")"
     ]
   }
 }

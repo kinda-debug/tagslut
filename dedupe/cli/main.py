@@ -151,10 +151,11 @@ def _interactive_init() -> dict:
 @click.option('--move', is_flag=True, help='Delete backups after successful verification')
 @click.option('--include-valid', is_flag=True, help='Include valid files in reports')
 @click.option('--init', 'interactive', is_flag=True, help='Interactive session initialization')
+@click.option('--enrich', is_flag=True, help='Enrich salvaged files with metadata after verification')
 @click.option('-v', '--verbose', is_flag=True, help='Verbose output')
 def recover(
     path, db, phase, backup_dir, output, workers,
-    execute, move, include_valid, interactive, verbose
+    execute, move, include_valid, interactive, enrich, verbose
 ):
     """
     Recover corrupted FLAC files.
@@ -298,6 +299,47 @@ def recover(
             click.echo(f"  Deleted: {cleanup_stats['deleted']}")
             click.echo(f"  Failed: {cleanup_stats['failed']}")
             click.echo(f"  Skipped: {cleanup_stats['skipped']}")
+
+    if enrich and phase in ('verify', 'all'):
+        click.echo(f"\n{'='*50}")
+        click.echo("PHASE 3.5: ENRICH SALVAGED FILES")
+        click.echo(f"{'='*50}")
+
+        from dedupe.metadata.enricher import Enricher
+        from dedupe.metadata.auth import TokenManager
+
+        token_manager = TokenManager()
+        # Using default providers for now, could be an option
+        provider_list = ["spotify", "beatport", "qobuz", "tidal", "itunes"]
+
+        click.echo(f"Enriching with providers: {', '.join(provider_list)}")
+
+        with Enricher(
+            db_path=db_path,
+            token_manager=token_manager,
+            providers=provider_list,
+            dry_run=not execute,
+        ) as enricher:
+            # Get salvaged and verified files
+            path_pattern = """
+                (SELECT path FROM files WHERE recovery_status = 'salvaged' AND verified_at IS NOT NULL)
+            """
+            # This is a bit of a hack; the enricher expects a LIKE pattern,
+            # but we can use a subquery to get the exact paths.
+            # A better solution would be a dedicated method in the enricher.
+            
+            # The enricher's get_eligible_files needs a LIKE pattern. 
+            # This is a work-around and might be inefficient, but works for this scope.
+            conn = sqlite3.connect(db_path)
+            salvaged_paths = [row[0] for row in conn.execute("SELECT path FROM files WHERE recovery_status = 'salvaged' AND verified_at IS NOT NULL")]
+            conn.close()
+
+            if not salvaged_paths:
+                click.echo("No salvaged and verified files to enrich.")
+            else:
+                for i, file_path in enumerate(salvaged_paths):
+                    click.echo(f"Enriching [{i+1}/{len(salvaged_paths)}] {file_path}")
+                    enricher.enrich_all(path_pattern=file_path, force=True)
 
     if phase in ('report', 'all'):
         click.echo(f"\n{'='*50}")

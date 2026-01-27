@@ -86,9 +86,18 @@ class Enricher:
         if name not in self._providers:
             if name == "spotify":
                 self._providers[name] = SpotifyProvider(self.token_manager)
-            # Add other providers here as they're implemented
-            # elif name == "beatport":
-            #     self._providers[name] = BeatportProvider(self.token_manager)
+            elif name == "beatport":
+                from dedupe.metadata.providers.beatport import BeatportProvider
+                self._providers[name] = BeatportProvider(self.token_manager)
+            elif name == "qobuz":
+                from dedupe.metadata.providers.qobuz import QobuzProvider
+                self._providers[name] = QobuzProvider(self.token_manager)
+            elif name == "tidal":
+                from dedupe.metadata.providers.tidal import TidalProvider
+                self._providers[name] = TidalProvider(self.token_manager)
+            elif name == "itunes":
+                from dedupe.metadata.providers.itunes import iTunesProvider
+                self._providers[name] = iTunesProvider()
             else:
                 logger.warning("Unknown provider: %s", name)
                 return None

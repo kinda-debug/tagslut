@@ -1,3 +1,52 @@
+# Ignore .state and .ndjson files
+*.state
+*.ndjson
+**/*.state
+**/*.ndjson
+# Ignore all JSON files
+*.json
+**/*.json
+# Ignore all log and txt files
+*.log
+*.txt
+*.out
+*.err
+*.bak
+*.tmp
+*.swp
+*.swo
+*.gz
+*.zip
+*.7z
+*.tar
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.csv
+*.tsv
+*.jsonl
+*.pid
+logs/
+**/logs/
+**/*.log
+**/*.txt
+**/*.out
+**/*.err
+**/*.bak
+**/*.tmp
+**/*.swp
+**/*.swo
+**/*.gz
+**/*.zip
+**/*.7z
+**/*.tar
+**/*.tar.gz
+**/*.tar.bz2
+**/*.tar.xz
+**/*.csv
+**/*.tsv
+**/*.jsonl
+**/*.pid
 
 # Python
 __pycache__/
@@ -311,3 +360,14 @@ pyproject.toml
 pyproject.toml
 .claude/settings.local.json
 pyproject.toml
+poetry.lock
+docs/WORKFLOW_METADATA.md
+poetry.lock
+.claude/settings.local.json
+EPOCH_2026-01-27/.dedupe_write_test_59391
+EPOCH_2026-01-28/.dedupe_write_test_13493
+EPOCH_2026-01-27/.dedupe_write_test_82381
+.claude/settings.local.json
+poetry.lock
+.claude/settings.local.json
+poetry.lock

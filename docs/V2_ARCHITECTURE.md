@@ -29,10 +29,10 @@ dedupe/
 │   └── queries.py       # Optimized SQL for library operations
 └── utils/               # Shared helpers (Config, Logging, Paths)
 
-tools/                   # Operational Workbench
-├── integrity/           # scan.py (Production scanner tool)
-├── review/              # plan_removals.py (Decision tool)
-└── decide/              # recommend.py (Analysis tool)
+legacy/tools/            # Archived workbench (legacy scripts)
+├── integrity/           # scan.py (legacy scanner)
+├── review/              # plan_removals.py (legacy decision tools)
+└── decide/              # recommend.py (legacy analysis)
 ```
 
 ---
@@ -440,8 +440,8 @@ tests/e2e/
 
 ### Phase 1: Add Config Support (Non-Breaking)
 ```bash
-# Old way still works
-python tools/integrity/scan.py /path --db /db/path
+# Old way still works (legacy script)
+python legacy/tools/integrity/scan.py /path --db /db/path
 
 # New way
 dedupe scan /path  # Uses config
@@ -449,7 +449,7 @@ dedupe scan /path  # Uses config
 
 ### Phase 2: Deprecation Warnings
 ```bash
-python tools/integrity/scan.py /path
+python legacy/tools/integrity/scan.py /path
 # Warning: This script is deprecated. Use 'dedupe scan' instead.
 ```
 

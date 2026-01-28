@@ -2,8 +2,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, Optional, List, Dict, Any, cast
 
+from dedupe.utils.zones import Zone, coerce_zone
+
 IntegrityState = Literal["valid", "recoverable", "corrupt"]
-Zone = Literal["inbox", "staging", "accepted", "rejected", "suspect", "quarantine"]
+
 
 @dataclass
 class AudioFile:
@@ -38,6 +40,8 @@ class AudioFile:
         # Normalize tuple/list values for scalar fields
         self.acoustid = self._normalize_scalar(self.acoustid)
         self.integrity_state = self._normalize_integrity_state(self.integrity_state)
+        if self.zone is not None:
+            self.zone = coerce_zone(self.zone)  # type: ignore[assignment]
 
     @staticmethod
     def _normalize_scalar(value: Optional[object]) -> Optional[str]:
@@ -63,6 +67,7 @@ class AudioFile:
             return cast(IntegrityState, scalar)
         return None
 
+
 @dataclass
 class DuplicateGroup:
     """
@@ -72,6 +77,7 @@ class DuplicateGroup:
     files: List[AudioFile]
     similarity: float
     source: Literal["checksum", "acoustid", "dupeguru"]
+
 
 @dataclass
 class Decision:

@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any, Iterable
 
 from dedupe.storage.models import AudioFile
+from dedupe.utils.zones import coerce_zone
 from dedupe.storage.schema import (
     LIBRARY_TABLE,
     PICARD_MOVES_TABLE,
@@ -42,6 +43,11 @@ def _normalize_metadata_value(value: object) -> object:
 def _normalize_text_field(value: object, field_name: str) -> str | None:
     if value is None:
         return None
+    if hasattr(value, "value") and not isinstance(value, (str, bytes, bytearray)):
+        try:
+            return str(getattr(value, "value"))
+        except Exception:
+            pass
     if isinstance(value, str):
         return value
     if isinstance(value, (bytes, bytearray)):
@@ -776,7 +782,7 @@ def _row_to_audiofile(row: sqlite3.Row) -> AudioFile:
         if "library" in row.keys():
             library = row["library"]
         if "zone" in row.keys():
-            zone = row["zone"]
+            zone = coerce_zone(row["zone"])
         if "integrity_state" in row.keys():
             integrity_state = row["integrity_state"]
     except Exception:

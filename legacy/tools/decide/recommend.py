@@ -10,11 +10,11 @@ sys.path.insert(0, str(Path(__file__).parents[2]))
 
 from dedupe.storage.schema import get_connection
 from dedupe.core.matching import find_exact_duplicates
-from dedupe.core.decisions import assess_duplicate_group
-from dedupe.utils import env_paths
+from dedupe.core.keeper_selection import select_keeper_for_group
 from dedupe.utils.cli_helper import common_options, configure_execution
 from dedupe.utils.config import get_config
 from dedupe.utils.db import resolve_db_path
+from dedupe.utils.zones import load_zone_manager
 
 @click.command()
 @click.option("--db", required=False, type=click.Path(dir_okay=False), help="Path to SQLite database (default: $DEDUPE_DB)")
@@ -52,6 +52,10 @@ def recommend(
 
     logger.info(f"Using priority order: {priority_order}")
 
+    zone_manager = load_zone_manager(config=getattr(app_config, "_data", None))
+    if priority_order:
+        zone_manager = zone_manager.override_priorities(priority_order)
+
     conn = get_connection(db, purpose="read")
 
     # 1. Find Duplicates
@@ -63,18 +67,20 @@ def recommend(
 
     # 2. Make Decisions
     for group in groups:
-        decisions = assess_duplicate_group(
+        selection = select_keeper_for_group(
             group,
-            priority_order=priority_order,
+            zone_manager=zone_manager,
             use_metadata_tiebreaker=use_metadata_tiebreaker,
             metadata_fields=metadata_fields,
         )
+        decisions = selection.decisions
 
         # Convert Decision objects to JSON-serializable dicts
         decisions_bucket: list[dict[str, Any]] = []
         group_entry = {
             "group_id": group.group_id,
             "similarity": group.similarity,
+            "explanations": selection.explanations,
             "decisions": decisions_bucket,
         }
 
@@ -95,7 +101,8 @@ def recommend(
                     "flac_ok": d.file.flac_ok,
                     "integrity_state": d.file.integrity_state,
                     "bitrate": d.file.bitrate,
-                    "sample_rate": d.file.sample_rate
+                    "sample_rate": d.file.sample_rate,
+                    "size": d.file.size,
                 }
             })
 
@@ -105,7 +112,8 @@ def recommend(
     summary = {
         "groups_count": len(plan_entries),
         "zone_priority": priority_order,
-        "plan": plan_entries
+        "plan": plan_entries,
+        "zone_config_source": zone_manager.source,
     }
 
     if output:

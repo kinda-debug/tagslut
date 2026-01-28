@@ -19,8 +19,7 @@ from dedupe.storage.schema import get_connection, init_db
 from dedupe.utils.paths import list_files
 from dedupe.utils.parallel import process_map, ProcessMapResult
 from dedupe.utils.config import get_config
-from dedupe.utils.library import load_zone_paths, ensure_dedupe_zone
-from dedupe.utils import env_paths
+from dedupe.utils.zones import ZoneManager, load_zone_manager
 
 logger = logging.getLogger("dedupe")
 
@@ -31,8 +30,7 @@ class ScanTask:
     run_integrity: bool
     run_hash: bool
     library_name: Optional[str]
-    library_root: Optional[Path]
-    staging_root: Optional[Path]
+    zone_manager: Optional[ZoneManager]
     index: int
     total: int
 
@@ -129,8 +127,6 @@ def _scan_one_file(task: ScanTask) -> ScanResult:
     path = task.path
     scan_integrity = task.run_integrity
     scan_hash = task.run_hash
-    library_root = task.library_root
-    staging_root = task.staging_root
     index = task.index
     total = task.total
 
@@ -145,8 +141,7 @@ def _scan_one_file(task: ScanTask) -> ScanResult:
             scan_integrity=scan_integrity,
             scan_hash=scan_hash,
             library=task.library_name,
-            library_root=library_root,
-            staging_root=staging_root,
+            zone_manager=task.zone_manager,
         )
 
         # Show what was extracted
@@ -256,9 +251,7 @@ def scan_library(
     if db_flush_interval is not None and db_flush_interval < 0:
         db_flush_interval = 0
 
-    # Get library and staging roots from environment for zone auto-assignment
-    library_root = env_paths.get_volume("library")
-    staging_root = env_paths.get_volume("staging")
+    zone_manager = load_zone_manager(config=getattr(config, "_data", None))
 
     flac_files: list[Path]
     # Handle specific paths mode (e.g., from --paths-from-file)
@@ -522,8 +515,7 @@ def scan_library(
                     run_integrity=needs_integrity,
                     run_hash=needs_hash,
                     library_name=library_name,
-                    library_root=library_root,
-                    staging_root=staging_root,
+                    zone_manager=zone_manager,
                     index=0,
                     total=0,
                 )
@@ -543,8 +535,7 @@ def scan_library(
                 run_integrity=task.run_integrity,
                 run_hash=task.run_hash,
                 library_name=task.library_name,
-                library_root=task.library_root,
-                staging_root=task.staging_root,
+                zone_manager=task.zone_manager,
                 index=idx + 1,
                 total=total_tasks,
             )

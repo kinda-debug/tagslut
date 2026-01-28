@@ -43,7 +43,7 @@ The scanner automatically determines the status (**zone**) for each file based o
 
 ```bash
 # Scan any path (Zones are auto-assigned)
-python tools/integrity/scan.py /Volumes/SAD/MU \
+dedupe scan /Volumes/SAD/MU \
   --library MU \
   --db "$DB_PATH" \
   --library MU \
@@ -73,7 +73,7 @@ SELECT 'Corrupt files', COUNT(*) FROM files WHERE flac_ok = 0;
 **Goal:** Generate deduplication decisions based on zone priority.
 
 ```bash
-python tools/review/plan_removals.py \
+dedupe quarantine plan \
   --db "$DB_PATH" \
   --output removal_plan.csv
 ```
@@ -99,7 +99,7 @@ grep "TIER1,DROP" removal_plan.csv | head -20
 
 ### Dry Run First
 ```bash
-python tools/review/apply_removals.py \
+dedupe quarantine apply \
   --db "$DB_PATH" \
   --plan removal_plan.csv \
   --quarantine-root /Volumes/SAD/QU \
@@ -109,7 +109,7 @@ python tools/review/apply_removals.py \
 ### Execute Quarantine (COPY ONLY)
 This command will only perform copies. Your originals will not be touched.
 ```bash
-python tools/review/apply_removals.py \
+dedupe quarantine apply \
   --db "$DB_PATH" \
   --plan removal_plan.csv \
   --quarantine-root /Volumes/SAD/QU \
@@ -121,7 +121,7 @@ python tools/review/apply_removals.py \
 
 ```bash
 # Copy corrupt files to the suspect folder (preserving structure)
-python tools/review/isolate_suspects.py \
+dedupe quarantine suspects \
   --db "$DB_PATH" \
   --dest /Volumes/SAD/SU \
   --execute
@@ -143,12 +143,12 @@ The promotion tool organizes your files into Artist/Album/Track structure. It wi
 
 ```bash
 # 1. Dry Run (Simulates the organization by tags)
-python tools/review/promote_by_tags.py \
+dedupe promote \
   --source-root '/Volumes/SAD/Music Hi-Res'\
   --dest-root /Volumes/SAD/M 
 
 # 2. Execute (Organizes and creates new copies)
-python tools/review/promote_by_tags.py \
+dedupe promote \
   --source-root /Users/georgeskhawam/Music/INCOMING \
   --dest-root /Volumes/SAD/MU \
   --execute
@@ -157,7 +157,7 @@ python tools/review/promote_by_tags.py \
 ### Stage 7: Final Audit
 Run a final incremental scan of your main library to ensure everything is perfectly indexed and integrity-checked.
 ```bash
-python tools/integrity/scan.py /Volumes/COMMUNE/M/Library_CANONICAL \
+dedupe scan /Volumes/COMMUNE/M/Library_CANONICAL \
   --db "$DB_PATH" \
   --library COMMUNE \
   --check-integrity \
@@ -258,4 +258,4 @@ You can query the SQLite database directly for custom reports:
 *   `file_scan_runs`: Detailed per-file outcome of the last scan.
 
 ### Promotion
-Use `python3 tools/review/promote_by_tags.py` to identify unique files in `staging` or `suspect` zones that should be "promoted" to your main library.
+Use `dedupe promote` to identify unique files in `staging` or `suspect` zones that should be "promoted" to your main library.

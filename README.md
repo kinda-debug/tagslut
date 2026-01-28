@@ -5,7 +5,7 @@ This repository is a recovery-first, evidence-preserving toolkit for scanning, a
 ## 🛠️ Project Structure
 
 *   **`dedupe/`** — **The Engine**: Core library containing the unified CLI, hashing tiers, metadata extraction, and storage logic.
-*   **`tools/`** — **The Workbench**: Categorized operational scripts for scanning, decision review, database maintenance, and specialized recovery tasks.
+*   **`legacy/tools/`** — **Archived Workbench**: Legacy operational scripts kept for reference.
 *   **`docs/`** — **The Library**: Technical manuals, system architecture, and archived history.
 
 ---

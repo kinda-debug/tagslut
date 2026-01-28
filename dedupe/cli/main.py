@@ -21,7 +21,7 @@ def cli():
 @click.argument('args', nargs=-1, type=click.UNPROCESSED)
 def scan(args):
     """Scan a library volume (legacy wrapper)"""
-    from tools.integrity.scan import scan as scan_cmd
+    from legacy.tools.integrity.scan import scan as scan_cmd
     # If -h or --help is in args, we want to let the underlying command handle it
     # but Click might intercept it before we get here.
     # That's why we use help_option_names=[]
@@ -33,7 +33,7 @@ def scan(args):
 @click.argument('args', nargs=-1, type=click.UNPROCESSED)
 def recommend(args):
     """Generate deduplication recommendations (legacy wrapper)"""
-    from tools.decide.recommend import recommend as recommend_cmd
+    from legacy.tools.decide.recommend import recommend as recommend_cmd
     sys.argv = ['dedupe recommend'] + list(args)
     recommend_cmd()
 
@@ -42,10 +42,202 @@ def recommend(args):
 @click.argument('args', nargs=-1, type=click.UNPROCESSED)
 def apply(args):
     """Execute deduplication plan (legacy wrapper)"""
-    from tools.decide.apply import apply as apply_cmd
+    from legacy.tools.decide.apply import apply as apply_cmd
     sys.argv = ['dedupe apply'] + list(args)
     apply_cmd()
 
+
+@cli.command("show-zone")
+@click.argument("path", type=click.Path())
+@click.option("--zones-config", type=click.Path(exists=True), help="Path to zones YAML config")
+@click.option("--config", "-c", type=click.Path(exists=True), help="Path to config.toml")
+def show_zone(path, zones_config, config):
+    """Show how a path is classified by ZoneManager."""
+    from dedupe.utils.config import get_config
+    from dedupe.utils.zones import load_zone_manager
+
+    cfg = get_config(Path(config)) if config else get_config()
+    zone_manager = load_zone_manager(
+        config=getattr(cfg, "_data", None),
+        config_path=Path(zones_config) if zones_config else None,
+    )
+    match = zone_manager.get_zone_for_path(Path(path))
+
+    click.echo(f"Path: {path}")
+    click.echo(f"Zone: {match.zone.value}")
+    click.echo(f"Zone priority: {match.zone_priority}")
+    click.echo(f"Path priority: {match.path_priority}")
+    click.echo(f"Matched root: {match.matched_path or '(none)'}")
+    click.echo(f"Config source: {match.source}")
+
+
+@cli.command("explain-keeper")
+@click.option("--db", type=click.Path(), required=True, help="Database path")
+@click.option("--group-id", required=True, help="Duplicate group id (checksum)")
+@click.option("--zones-config", type=click.Path(exists=True), help="Path to zones YAML config")
+@click.option("--config", "-c", type=click.Path(exists=True), help="Path to config.toml")
+@click.option("--priority", "-p", multiple=True, help="Zone priority override order")
+@click.option("--metadata-tiebreaker", is_flag=True, help="Enable metadata tiebreaker")
+@click.option("--metadata-fields", default="artist,album,title", help="Comma-separated metadata fields")
+def explain_keeper(db, group_id, zones_config, config, priority, metadata_tiebreaker, metadata_fields):
+    """Explain keeper selection for a single duplicate group."""
+    from dedupe.storage.schema import get_connection
+    from dedupe.storage.queries import get_files_by_checksum
+    from dedupe.storage.models import DuplicateGroup
+    from dedupe.core.keeper_selection import select_keeper_for_group
+    from dedupe.utils.zones import load_zone_manager
+    from dedupe.utils.config import get_config
+
+    cfg = get_config(Path(config)) if config else get_config()
+    zone_manager = load_zone_manager(
+        config=getattr(cfg, "_data", None),
+        config_path=Path(zones_config) if zones_config else None,
+    )
+    if priority:
+        zone_manager = zone_manager.override_priorities(list(priority))
+
+    fields = [f.strip() for f in metadata_fields.split(",") if f.strip()]
+    conn = get_connection(db, purpose="read")
+    try:
+        files = get_files_by_checksum(conn, group_id)
+    finally:
+        conn.close()
+
+    if not files:
+        raise click.ClickException(f"No files found for group id {group_id}")
+
+    group = DuplicateGroup(group_id=group_id, files=files, similarity=1.0, source="checksum")
+    selection = select_keeper_for_group(
+        group,
+        zone_manager=zone_manager,
+        use_metadata_tiebreaker=metadata_tiebreaker,
+        metadata_fields=tuple(fields),
+    )
+
+    click.echo(f"Group: {group_id}")
+    click.echo(f"Keeper: {selection.keeper.path}")
+    click.echo("-" * 60)
+    for line in selection.explanations:
+        click.echo(line)
+
+
+@cli.command("enrich-file")
+@click.option("--db", type=click.Path(), required=True, help="Database path")
+@click.option("--file", "file_path", type=click.Path(), required=True, help="Exact file path in DB")
+@click.option("--providers", default="beatport,spotify,tidal,qobuz,itunes", help="Comma-separated providers")
+@click.option("--force", is_flag=True, help="Re-process even if already enriched")
+@click.option("--retry-no-match", is_flag=True, help="Retry files previously with no match")
+@click.option("--execute", is_flag=True, help="Write updates to DB (default: dry-run)")
+@click.option("--recovery", is_flag=True, help="Recovery mode (duration health validation)")
+@click.option("--hoarding", is_flag=True, help="Hoarding mode (full metadata)")
+def enrich_file(db, file_path, providers, force, retry_no_match, execute, recovery, hoarding):
+    """Enrich a single file by exact path."""
+    from dedupe.metadata.enricher import Enricher
+    from dedupe.metadata.auth import TokenManager
+    from dedupe.storage.schema import init_db
+    import sqlite3
+
+    # Determine mode (default to recovery)
+    if not recovery and not hoarding:
+        recovery = True
+    if recovery and hoarding:
+        mode = "both"
+    elif recovery:
+        mode = "recovery"
+    else:
+        mode = "hoarding"
+
+    # Ensure schema exists
+    conn = sqlite3.connect(db)
+    init_db(conn)
+    conn.close()
+
+    provider_list = [p.strip() for p in providers.split(",") if p.strip()]
+    token_manager = TokenManager()
+
+    click.echo(f"DB: {db}")
+    click.echo(f"File: {file_path}")
+    click.echo(f"Providers: {', '.join(provider_list)}")
+    click.echo(f"Mode: {mode}")
+    if not execute:
+        click.echo("DRY-RUN: no DB updates will be written")
+
+    with Enricher(
+        db_path=Path(db),
+        token_manager=token_manager,
+        providers=provider_list,
+        dry_run=not execute,
+        mode=mode,
+    ) as enricher:
+        result, status = enricher.enrich_file(
+            str(file_path),
+            force=force,
+            retry_no_match=retry_no_match,
+        )
+
+    if status == "not_found":
+        raise click.ClickException("File not found in database")
+    if status == "not_flac_ok":
+        click.echo("Skipped: file failed integrity checks (use --force to override)")
+        return
+    if status == "not_eligible":
+        click.echo("Skipped: already enriched (use --force or --retry-no-match)")
+        return
+    if status == "no_match":
+        click.echo("No provider match found")
+        return
+    if status == "failed":
+        click.echo("Enrichment failed to write to database")
+        return
+
+    if result and result.matches:
+        best = max(result.matches, key=lambda m: m.match_confidence.value if m.match_confidence else 0)
+        click.echo(f"Matched: {best.artist} - {best.title} ({best.service})")
+        if result.canonical_isrc:
+            click.echo(f"ISRC: {result.canonical_isrc}")
+    click.echo("Done.")
+
+
+@cli.command(context_settings=dict(ignore_unknown_options=True, help_option_names=[]))
+@click.argument('args', nargs=-1, type=click.UNPROCESSED)
+def promote(args):
+    """Promote files into canonical library layout (legacy wrapper)."""
+    from legacy.tools.review.promote_by_tags import main as promote_cmd
+    sys.argv = ['dedupe promote'] + list(args)
+    promote_cmd()
+
+
+@cli.group()
+def quarantine():
+    """Quarantine planning and apply commands."""
+    pass
+
+
+@quarantine.command(context_settings=dict(ignore_unknown_options=True, help_option_names=[]))
+@click.argument('args', nargs=-1, type=click.UNPROCESSED)
+def plan(args):
+    """Plan quarantine actions (legacy wrapper)."""
+    from legacy.tools.review.plan_removals import main as plan_cmd
+    sys.argv = ['dedupe quarantine plan'] + list(args)
+    plan_cmd()
+
+
+@quarantine.command("apply", context_settings=dict(ignore_unknown_options=True, help_option_names=[]))
+@click.argument('args', nargs=-1, type=click.UNPROCESSED)
+def apply_quarantine(args):
+    """Apply quarantine plan (legacy wrapper)."""
+    from legacy.tools.review.apply_removals import main as apply_cmd
+    sys.argv = ['dedupe quarantine apply'] + list(args)
+    apply_cmd()
+
+
+@quarantine.command(name="suspects", context_settings=dict(ignore_unknown_options=True, help_option_names=[]))
+@click.argument('args', nargs=-1, type=click.UNPROCESSED)
+def quarantine_suspects(args):
+    """Copy suspect/corrupt files to suspect zone (legacy wrapper)."""
+    from legacy.tools.review.isolate_suspects import main as isolate_cmd
+    sys.argv = ['dedupe quarantine suspects'] + list(args)
+    isolate_cmd()
 
 def _interactive_init() -> dict:
     """
@@ -368,6 +560,7 @@ def metadata():
 @metadata.command()
 @click.option('--db', type=click.Path(), required=True, help='Database path')
 @click.option('--path', type=str, help='Filter files by path pattern (SQL LIKE)')
+@click.option('--zones', type=str, help='Comma-separated zones to include (e.g. accepted,staging)')
 @click.option('--providers', default='beatport,spotify,tidal,qobuz,itunes', help='Comma-separated list of providers (order = priority)')
 @click.option('--limit', type=int, help='Maximum files to process')
 @click.option('--force', is_flag=True, help='Re-process ALL already-processed files')
@@ -376,7 +569,7 @@ def metadata():
 @click.option('--recovery', is_flag=True, help='Recovery mode: focus on duration health validation')
 @click.option('--hoarding', is_flag=True, help='Hoarding mode: collect full metadata (BPM, key, genre, etc.)')
 @click.option('-v', '--verbose', is_flag=True, help='Verbose output')
-def enrich(db, path, providers, limit, force, retry_no_match, execute, recovery, hoarding, verbose):
+def enrich(db, path, zones, providers, limit, force, retry_no_match, execute, recovery, hoarding, verbose):
     """
     Fetch metadata from external providers.
 
@@ -497,6 +690,8 @@ def enrich(db, path, providers, limit, force, retry_no_match, execute, recovery,
     click.echo(f"  Providers:  {' → '.join(provider_list)}")
     if path:
         click.echo(f"  Path:       {path}")
+    if zones:
+        click.echo(f"  Zones:      {zones}")
     if limit:
         click.echo(f"  Limit:      {limit}")
     if force:
@@ -537,11 +732,13 @@ def enrich(db, path, providers, limit, force, retry_no_match, execute, recovery,
         dry_run=not execute,
         mode=mode,
     ) as enricher:
+        zone_list = [z.strip() for z in zones.split(",")] if zones else None
         stats = enricher.enrich_all(
             path_pattern=path,
             limit=limit,
             force=force,
             retry_no_match=retry_no_match,
+            zones=zone_list,
             progress_callback=progress,
         )
 

@@ -140,6 +140,7 @@ class Enricher:
         limit: Optional[int] = None,
         force: bool = False,
         retry_no_match: bool = False,
+        zones: Optional[List[str]] = None,
     ) -> Iterator[LocalFileInfo]:
         """
         Query database for files eligible for enrichment.
@@ -162,7 +163,7 @@ class Enricher:
             query = """
                 SELECT
                     path, duration, metadata_json,
-                    enriched_at, canonical_isrc
+                    enriched_at, canonical_isrc, zone
                 FROM files
                 WHERE flac_ok = 1
             """
@@ -182,6 +183,11 @@ class Enricher:
                 query += " AND path LIKE ?"
                 params.append(path_pattern)
 
+            if zones:
+                placeholders = ",".join(["?"] * len(zones))
+                query += f" AND zone IN ({placeholders})"
+                params.extend([str(z).lower() for z in zones])
+
             query += " ORDER BY path"
 
             if limit:
@@ -193,6 +199,22 @@ class Enricher:
             for row in cursor:
                 yield self._row_to_local_file_info(row)
 
+        finally:
+            conn.close()
+
+    def get_file_info(self, path: str) -> Optional[LocalFileInfo]:
+        """Fetch a single file by path."""
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            row = conn.execute(
+                "SELECT path, duration, metadata_json, enriched_at, canonical_isrc, flac_ok, metadata_health_reason "
+                "FROM files WHERE path = ?",
+                (path,),
+            ).fetchone()
+            if not row:
+                return None
+            return self._row_to_local_file_info(row)
         finally:
             conn.close()
 
@@ -691,6 +713,7 @@ class Enricher:
         limit: Optional[int] = None,
         force: bool = False,
         retry_no_match: bool = False,
+        zones: Optional[List[str]] = None,
         progress_callback=None,
         checkpoint_interval: int = 50,
     ) -> EnrichmentStats:
@@ -714,7 +737,7 @@ class Enricher:
         stats = EnrichmentStats()
 
         # Get all eligible files
-        files = list(self.get_eligible_files(path_pattern, limit, force, retry_no_match))
+        files = list(self.get_eligible_files(path_pattern, limit, force, retry_no_match, zones))
         stats.total = len(files)
 
         if stats.total == 0:
@@ -782,6 +805,58 @@ class Enricher:
         )
 
         return stats
+
+    def enrich_file(
+        self,
+        path: str,
+        *,
+        force: bool = False,
+        retry_no_match: bool = False,
+    ) -> tuple[Optional[EnrichmentResult], str]:
+        """
+        Enrich a single file by exact path.
+
+        Returns (result, status) where status is one of:
+        - enriched, no_match, failed, not_found, not_eligible, not_flac_ok
+        """
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            row = conn.execute(
+                "SELECT path, duration, metadata_json, enriched_at, canonical_isrc, flac_ok, metadata_health_reason "
+                "FROM files WHERE path = ?",
+                (path,),
+            ).fetchone()
+        finally:
+            conn.close()
+
+        if not row:
+            return None, "not_found"
+
+        flac_ok = row["flac_ok"]
+        if flac_ok is not None and int(flac_ok) != 1 and not force:
+            return None, "not_flac_ok"
+
+        if not force:
+            already = row["enriched_at"] is not None
+            if retry_no_match:
+                if already and row["metadata_health_reason"] != "no_provider_match":
+                    return None, "not_eligible"
+            else:
+                if already:
+                    return None, "not_eligible"
+
+        file_info = self._row_to_local_file_info(row)
+        result = self.resolve_file(file_info)
+
+        if not result.matches:
+            self._mark_no_match(file_info.path)
+            return result, "no_match"
+
+        if self.update_database(result):
+            return result, "enriched"
+
+        return result, "failed"
 
     def _mark_no_match(self, path: str) -> None:
         """Mark a file as processed but with no provider match."""

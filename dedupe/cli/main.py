@@ -1,6 +1,7 @@
 import click
 import logging
 import sys
+import time
 from pathlib import Path
 
 # Add project root to path so we can import tools as modules if needed
@@ -367,47 +368,92 @@ def metadata():
 @metadata.command()
 @click.option('--db', type=click.Path(), required=True, help='Database path')
 @click.option('--path', type=str, help='Filter files by path pattern (SQL LIKE)')
-@click.option('--providers', default='spotify', help='Comma-separated list of providers')
+@click.option('--providers', default='beatport,spotify,tidal,qobuz,itunes', help='Comma-separated list of providers (order = priority)')
 @click.option('--limit', type=int, help='Maximum files to process')
-@click.option('--force', is_flag=True, help='Re-enrich already-enriched files')
+@click.option('--force', is_flag=True, help='Re-process ALL already-processed files')
+@click.option('--retry-no-match', is_flag=True, help='Retry files that had no provider match')
 @click.option('--execute', is_flag=True, help='Actually update database (default: dry-run)')
+@click.option('--recovery', is_flag=True, help='Recovery mode: focus on duration health validation')
+@click.option('--hoarding', is_flag=True, help='Hoarding mode: collect full metadata (BPM, key, genre, etc.)')
 @click.option('-v', '--verbose', is_flag=True, help='Verbose output')
-def enrich(db, path, providers, limit, force, execute, verbose):
+def enrich(db, path, providers, limit, force, retry_no_match, execute, recovery, hoarding, verbose):
     """
-    Enrich healthy files with metadata from external providers.
+    Fetch metadata from external providers.
 
-    Fetches BPM, key, genre, and other metadata from services like
-    Spotify, Beatport, Qobuz, and Tidal. Uses ISRC and text search
-    to identify tracks, then applies cascade rules to select the
-    best values.
+    Two modes available:
+
+    \b
+    --recovery  Health validation mode. Compares local file durations against
+                provider durations to detect truncated or stitched files.
+                Accepts lower-confidence matches. Sets metadata_health field.
+
+    \b
+    --hoarding  Full metadata mode. Fetches BPM, key, genre, label, artwork.
+                Requires higher-confidence matches (ISRC or strong text match).
+                Stores canonical values and raw provider data.
+
+    If neither flag is specified, defaults to --recovery mode.
 
     \b
     Examples:
-        # Dry-run on all eligible files
-        dedupe metadata enrich --db music.db
+        # Recovery mode: validate health of recovered files
+        dedupe metadata enrich --db music.db --recovery --execute
 
-        # Enrich files in a specific folder
-        dedupe metadata enrich --db music.db --path "/Volumes/Music/DJ/%" --execute
+        # Hoarding mode: collect full metadata for DJ library
+        dedupe metadata enrich --db music.db --hoarding --providers beatport,spotify --execute
 
-        # Force re-enrich with multiple providers
-        dedupe metadata enrich --db music.db --providers spotify,beatport --force --execute
+        # Both modes: health check + full metadata
+        dedupe metadata enrich --db music.db --recovery --hoarding --execute
 
-        # Limit to 100 files for testing
-        dedupe metadata enrich --db music.db --limit 100 --execute
+        # Filter by path pattern
+        dedupe metadata enrich --db music.db --recovery --path "/Volumes/Music/DJ/%" --execute
     """
     from dedupe.metadata.enricher import Enricher
     from dedupe.metadata.auth import TokenManager
     from dedupe.storage.schema import init_db
     import sqlite3
+    from datetime import datetime
 
-    # Configure logging
-    log_level = logging.DEBUG if verbose else logging.INFO
-    logging.basicConfig(
-        level=log_level,
-        format='%(asctime)s - %(levelname)s - %(message)s'
-    )
-
+    # Set up logging to both file and console
     db_path = Path(db)
+    log_dir = db_path.parent
+    log_file = log_dir / f"enrich_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+
+    # Clear any existing handlers
+    root_logger = logging.getLogger()
+    root_logger.handlers = []
+
+    # File handler - detailed logs (but not httpcore noise)
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+    root_logger.addHandler(file_handler)
+
+    # Console handler - minimal (only warnings/errors unless verbose)
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.DEBUG if verbose else logging.WARNING)
+    console_handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
+    root_logger.addHandler(console_handler)
+
+    root_logger.setLevel(logging.DEBUG)
+
+    # Silence noisy loggers
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+
+    # Determine mode - default to recovery if neither specified
+    if not recovery and not hoarding:
+        recovery = True
+
+    # Build mode string for enricher
+    if recovery and hoarding:
+        mode = "both"
+    elif recovery:
+        mode = "recovery"
+    else:
+        mode = "hoarding"
+
     if not db_path.exists():
         raise click.ClickException(f"Database not found: {db_path}")
 
@@ -432,58 +478,106 @@ def enrich(db, path, providers, limit, force, execute, verbose):
             elif pstatus.get('expired'):
                 click.echo(f"Warning: {provider} token expired, will attempt refresh")
 
-    click.echo(f"\n{'='*50}")
-    click.echo("METADATA ENRICHMENT")
-    click.echo(f"{'='*50}")
+    click.echo("")
+    click.echo("┌" + "─" * 50 + "┐")
+    if mode == "recovery":
+        click.echo("│  METADATA ENRICHMENT - Recovery Mode              │")
+    elif mode == "hoarding":
+        click.echo("│  METADATA ENRICHMENT - Hoarding Mode              │")
+    else:
+        click.echo("│  METADATA ENRICHMENT - Recovery + Hoarding        │")
+    click.echo("└" + "─" * 50 + "┘")
 
     if not execute:
-        click.echo("[DRY-RUN MODE - use --execute to update database]")
+        click.echo("")
+        click.echo("  ⚠  DRY-RUN MODE - use --execute to update database")
 
-    click.echo(f"Database: {db_path}")
-    click.echo(f"Providers: {', '.join(provider_list)}")
+    click.echo("")
+    click.echo(f"  Database:   {db_path}")
+    click.echo(f"  Providers:  {' → '.join(provider_list)}")
     if path:
-        click.echo(f"Path filter: {path}")
+        click.echo(f"  Path:       {path}")
     if limit:
-        click.echo(f"Limit: {limit}")
+        click.echo(f"  Limit:      {limit}")
     if force:
-        click.echo("Force: re-enriching already-enriched files")
+        click.echo(f"  Mode:       Force (re-process ALL)")
+    elif retry_no_match:
+        click.echo(f"  Mode:       Retry (files with no previous match)")
+
+    click.echo(f"  Log file:   {log_file}")
+    click.echo("")
+    click.echo("Resumable: Ctrl+C to pause, run again to continue")
+    click.echo("")
+
+    import shutil
+    term_width = shutil.get_terminal_size().columns
 
     def progress(current, total, filepath):
-        if verbose:
-            click.echo(f"[{current}/{total}] {filepath}")
-        elif current % 10 == 0 or current == total:
-            click.echo(f"Progress: {current}/{total}")
+        remaining = total - current
+        pct = (current / total) * 100 if total > 0 else 0
+
+        # Truncate filepath to fit terminal
+        max_path_len = term_width - 45
+        display_path = filepath
+        if len(filepath) > max_path_len:
+            display_path = "..." + filepath[-(max_path_len - 3):]
+
+        # Simple progress line that updates in place
+        status_line = f"\r[{current:>5}/{total}] {remaining:>5} left ({pct:5.1f}%) | {display_path}"
+        click.echo(status_line.ljust(term_width)[:term_width], nl=False)
+
+        # Print newline at end
+        if current == total:
+            click.echo("")
 
     with Enricher(
         db_path=db_path,
         token_manager=token_manager,
         providers=provider_list,
         dry_run=not execute,
+        mode=mode,
     ) as enricher:
         stats = enricher.enrich_all(
             path_pattern=path,
             limit=limit,
             force=force,
-            progress_callback=progress if not verbose else progress,
+            retry_no_match=retry_no_match,
+            progress_callback=progress,
         )
 
-    click.echo(f"\n{'='*50}")
+    click.echo("")
+    click.echo(f"{'='*50}")
     click.echo("RESULTS")
     click.echo(f"{'='*50}")
-    click.echo(f"Total files:     {stats.total}")
-    click.echo(f"Enriched:        {stats.enriched}")
-    click.echo(f"No match:        {stats.no_match}")
-    click.echo(f"Failed:          {stats.failed}")
+    click.echo(f"  Total:      {stats.total:>6}")
+    click.echo(f"  Enriched:   {stats.enriched:>6}  ✓")
+    click.echo(f"  No match:   {stats.no_match:>6}")
+    click.echo(f"  Failed:     {stats.failed:>6}  {'⚠' if stats.failed > 0 else ''}")
+
+    # Show sample of no-match files
+    if stats.no_match_files:
+        click.echo("")
+        click.echo("NO MATCH (sample):")
+        for path in stats.no_match_files[:10]:
+            # Show just the filename
+            click.echo(f"  • {Path(path).name}")
+        if len(stats.no_match_files) > 10:
+            click.echo(f"  ... and {len(stats.no_match_files) - 10} more")
+
+    click.echo("")
+    click.echo(f"Full log: {log_file}")
 
 
 @metadata.command()
 @click.option('--tokens-path', type=click.Path(), help='Path to tokens.json')
-def auth_status(tokens_path):
+@click.option('--no-refresh', is_flag=True, help='Skip auto-refresh of tokens')
+def auth_status(tokens_path, no_refresh):
     """
     Show authentication status for all providers.
 
     Displays which providers are configured and whether their tokens
-    are valid or expired.
+    are valid or expired. Automatically refreshes tokens for providers
+    that support it.
     """
     from dedupe.metadata.auth import TokenManager, DEFAULT_TOKENS_PATH
 
@@ -491,26 +585,64 @@ def auth_status(tokens_path):
     token_manager = TokenManager(path)
 
     click.echo(f"\nTokens file: {path}")
-    click.echo(f"{'='*50}")
+    click.echo("=" * 60)
+
+    # Auto-refresh tokens for providers that support it
+    if not no_refresh:
+        # Spotify - client credentials
+        if token_manager.is_configured("spotify"):
+            token = token_manager.get_token("spotify")
+            if token is None or token.is_expired:
+                click.echo("Refreshing Spotify token...")
+                token_manager.refresh_spotify_token()
+
+        # Beatport - client credentials
+        if token_manager.is_configured("beatport"):
+            token = token_manager.get_token("beatport")
+            if token is None or token.is_expired:
+                click.echo("Refreshing Beatport token...")
+                token_manager.refresh_beatport_token()
+
+        # Tidal - refresh token (only if already authenticated)
+        if token_manager.is_configured("tidal"):
+            token = token_manager.get_token("tidal")
+            if token is None or token.is_expired:
+                click.echo("Refreshing Tidal token...")
+                token_manager.refresh_tidal_token()
 
     status = token_manager.status()
-    if not status:
-        click.echo("No providers configured.")
-        click.echo(f"\nRun 'dedupe metadata auth-init' to create a template.")
-        return
 
     for provider, info in status.items():
         configured = "✓" if info.get('configured') else "✗"
         has_token = "✓" if info.get('has_token') else "✗"
+        auth_type = info.get('auth_type', '')
 
-        if info.get('expired') is True:
+        if provider == "itunes":
+            token_status = "ready (no auth needed)"
+        elif info.get('expired') is True:
             token_status = "EXPIRED"
         elif info.get('has_token'):
             token_status = "valid"
         else:
-            token_status = "missing"
+            token_status = "not authenticated"
 
-        click.echo(f"{provider:12} | configured: {configured} | token: {has_token} ({token_status})")
+        click.echo(f"{provider:12} | {configured} configured | {has_token} token ({token_status})")
+
+    # Show help for unconfigured providers
+    click.echo("")
+    unconfigured = [p for p, info in status.items() if not info.get('configured') and p != 'itunes']
+    if unconfigured:
+        click.echo("To configure providers:")
+        if 'spotify' in unconfigured:
+            click.echo("  spotify:  Add client_id/client_secret to tokens.json")
+            click.echo("            (get from https://developer.spotify.com/dashboard)")
+        if 'beatport' in unconfigured:
+            click.echo("  beatport: Run 'dedupe metadata auth-login beatport'")
+            click.echo("            (paste token from dj.beatport.com DevTools)")
+        if 'tidal' in unconfigured:
+            click.echo("  tidal:    Run 'dedupe metadata auth-login tidal'")
+        if 'qobuz' in unconfigured:
+            click.echo("  qobuz:    Run 'dedupe metadata auth-login qobuz'")
 
 
 @metadata.command()
@@ -529,11 +661,11 @@ def auth_init(tokens_path):
     token_manager.init_template()
 
     click.echo(f"Created tokens template at: {path}")
-    click.echo("\nEdit this file to add your API credentials:")
-    click.echo("  - Spotify: client_id and client_secret")
-    click.echo("  - Beatport: access_token")
-    click.echo("  - Qobuz: app_id and user_auth_token")
-    click.echo("  - Tidal: access_token")
+    click.echo("\nNext steps:")
+    click.echo("  1. Spotify/Beatport: Edit tokens.json to add client_id and client_secret")
+    click.echo("  2. Tidal: Run 'dedupe metadata auth-login tidal'")
+    click.echo("  3. Qobuz: Run 'dedupe metadata auth-login qobuz'")
+    click.echo("  4. iTunes: No setup needed (public API)")
 
 
 @metadata.command()
@@ -543,10 +675,10 @@ def auth_refresh(provider, tokens_path):
     """
     Refresh access token for a provider.
 
-    Currently supports automatic refresh for:
-    - spotify (using client credentials flow)
-
-    Other providers require manual token refresh.
+    Supports automatic refresh for:
+    - spotify (client credentials)
+    - beatport (client credentials)
+    - tidal (refresh token, requires prior auth-login)
     """
     from dedupe.metadata.auth import TokenManager, DEFAULT_TOKENS_PATH
 
@@ -557,12 +689,175 @@ def auth_refresh(provider, tokens_path):
         click.echo("Refreshing Spotify token...")
         token = token_manager.refresh_spotify_token()
         if token:
-            click.echo(f"Success! Token valid until: {token.expires_at}")
+            click.echo(f"Success! Token expires at: {time.ctime(token.expires_at)}")
         else:
-            click.echo("Failed to refresh token. Check client_id and client_secret.")
+            click.echo("Failed. Check client_id and client_secret in tokens.json")
+
+    elif provider == 'beatport':
+        token = token_manager.refresh_beatport_token()
+        if token and not token.is_expired:
+            click.echo(f"Beatport token valid until: {time.ctime(token.expires_at)}")
+        else:
+            click.echo("Beatport token expired or missing.")
+            click.echo("Run 'dedupe metadata auth-login beatport' to set a new token.")
+
+    elif provider == 'tidal':
+        click.echo("Refreshing Tidal token...")
+        token = token_manager.refresh_tidal_token()
+        if token:
+            click.echo(f"Success! Token expires at: {time.ctime(token.expires_at)}")
+        else:
+            click.echo("Failed. Run 'dedupe metadata auth-login tidal' first.")
+
+    elif provider == 'qobuz':
+        click.echo("Qobuz tokens don't expire. Run 'dedupe metadata auth-login qobuz' to re-authenticate.")
+
     else:
-        click.echo(f"Automatic refresh not implemented for {provider}.")
-        click.echo("Please update the token manually in tokens.json.")
+        click.echo(f"Unknown provider: {provider}")
+
+
+@metadata.command()
+@click.argument('provider')
+@click.option('--tokens-path', type=click.Path(), help='Path to tokens.json')
+def auth_login(provider, tokens_path):
+    """
+    Authenticate with a provider interactively.
+
+    Supported providers:
+    - tidal: Device authorization (opens browser)
+    - qobuz: Email/password login
+    - beatport: Manual token from browser DevTools
+    """
+    from dedupe.metadata.auth import TokenManager, DEFAULT_TOKENS_PATH
+
+    path = Path(tokens_path) if tokens_path else DEFAULT_TOKENS_PATH
+    token_manager = TokenManager(path)
+
+    if provider == 'tidal':
+        _tidal_device_login(token_manager)
+
+    elif provider == 'qobuz':
+        _qobuz_login(token_manager)
+
+    elif provider == 'beatport':
+        _beatport_token_input(token_manager)
+
+    else:
+        click.echo(f"Interactive login not supported for {provider}.")
+        click.echo("For Spotify, add client_id and client_secret to tokens.json")
+
+
+def _tidal_device_login(token_manager):
+    """Handle Tidal device authorization flow."""
+    click.echo("Starting Tidal device authorization...")
+
+    device_auth = token_manager.start_tidal_device_auth()
+    if not device_auth:
+        click.echo("Failed to start device authorization.")
+        return
+
+    user_code = device_auth.get("userCode")
+    verification_uri = device_auth.get("verificationUriComplete") or device_auth.get("verificationUri")
+    device_code = device_auth.get("deviceCode")
+    expires_in = device_auth.get("expiresIn", 300)
+    interval = device_auth.get("interval", 5)
+
+    click.echo(f"\n1. Go to: {verification_uri}")
+    if user_code:
+        click.echo(f"2. Enter code: {user_code}")
+    click.echo(f"\nWaiting for authorization (expires in {expires_in}s)...")
+
+    # Poll for completion
+    start_time = time.time()
+    while time.time() - start_time < expires_in:
+        time.sleep(interval)
+
+        token = token_manager.complete_tidal_device_auth(device_code)
+        if token:
+            click.echo("\nTidal authentication successful!")
+            click.echo(f"Token expires at: {time.ctime(token.expires_at)}")
+            return
+
+        # Show progress
+        elapsed = int(time.time() - start_time)
+        click.echo(f"  Waiting... ({elapsed}s)", nl=False)
+        click.echo("\r", nl=False)
+
+    click.echo("\nAuthorization timed out. Please try again.")
+
+
+def _qobuz_login(token_manager):
+    """Handle Qobuz email/password login."""
+    click.echo("Qobuz Login")
+    click.echo("-" * 40)
+
+    email = click.prompt("Email")
+    password = click.prompt("Password", hide_input=True)
+
+    click.echo("\nLogging in...")
+    token = token_manager.login_qobuz(email, password)
+
+    if token:
+        click.echo("Qobuz authentication successful!")
+    else:
+        click.echo("Login failed. Check your email and password.")
+
+
+def _beatport_token_input(token_manager):
+    """Handle manual Beatport token input."""
+    click.echo("Beatport Token Setup")
+    click.echo("-" * 40)
+    click.echo("Beatport requires manual token extraction from the browser.")
+    click.echo("")
+    click.echo("Steps:")
+    click.echo("  1. Go to https://dj.beatport.com in your browser")
+    click.echo("  2. Open DevTools (F12) -> Network tab")
+    click.echo("  3. Look for any request to api.beatport.com")
+    click.echo("  4. Find the 'Authorization: Bearer ...' header")
+    click.echo("  5. Copy the token (everything after 'Bearer ')")
+    click.echo("")
+    click.echo("Note: These tokens expire every ~10 minutes.")
+    click.echo("")
+
+    token = click.prompt("Paste Bearer token (or 'skip' to cancel)")
+
+    if token.lower() == 'skip':
+        click.echo("Skipped.")
+        return
+
+    # Clean up token if user included "Bearer " prefix
+    if token.lower().startswith("bearer "):
+        token = token[7:]
+
+    # Try to decode JWT to get expiration
+    expires_at = None
+    try:
+        import base64
+        import json
+        # JWT is header.payload.signature
+        parts = token.split('.')
+        if len(parts) == 3:
+            # Decode payload (add padding if needed)
+            payload = parts[1]
+            padding = 4 - len(payload) % 4
+            if padding != 4:
+                payload += '=' * padding
+            decoded = base64.urlsafe_b64decode(payload)
+            data = json.loads(decoded)
+            expires_at = data.get('exp')
+    except Exception:
+        pass
+
+    token_manager.set_token(
+        "beatport",
+        access_token=token,
+        expires_at=expires_at,
+    )
+
+    if expires_at:
+        click.echo(f"Beatport token saved! Expires at: {time.ctime(expires_at)}")
+    else:
+        click.echo("Beatport token saved! (couldn't determine expiration)")
 
 
 if __name__ == "__main__":

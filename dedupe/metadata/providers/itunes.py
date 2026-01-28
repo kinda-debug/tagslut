@@ -30,9 +30,9 @@ class iTunesProvider(AbstractProvider):
     supports_isrc_search = False
 
     rate_limit_config = RateLimitConfig(
-        min_delay=0.2,  # Public API, more lenient
-        max_retries=3,
-        base_backoff=2.0,
+        min_delay=0.5,  # iTunes API: reduced for faster enrichment
+        max_retries=5,
+        base_backoff=10.0,
     )
 
     BASE_URL = "https://itunes.apple.com"

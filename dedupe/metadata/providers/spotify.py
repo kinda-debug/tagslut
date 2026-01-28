@@ -242,18 +242,22 @@ class SpotifyProvider(AbstractProvider):
             title=data.get("name"),
             artist=artist_name,
             album=album_name,
+            album_id=album_data.get("id"),
             duration_ms=data.get("duration_ms"),
             isrc=isrc,
-            bpm=None,  # Spotify doesn't provide BPM in track endpoint
-            key=None,  # Spotify doesn't provide key in track endpoint
+            bpm=None,  # Requires separate audio-features call
+            key=None,  # Requires separate audio-features call
             genre=None,  # Genre is on artist, not track
             label=label,
             year=year,
+            release_date=release_date,
             album_art_url=album_art_url,
             url=track_url,
+            preview_url=data.get("preview_url"),
             track_number=data.get("track_number"),
             disc_number=data.get("disc_number"),
             explicit=data.get("explicit"),
+            popularity=data.get("popularity"),
             match_confidence=MatchConfidence.NONE,  # Set by caller
             raw=data,
         )
@@ -284,7 +288,7 @@ class SpotifyProvider(AbstractProvider):
 
     def enrich_with_audio_features(self, track: ProviderTrack) -> ProviderTrack:
         """
-        Enrich a track with audio features (BPM, key).
+        Enrich a track with audio features (BPM, key, energy, etc.).
 
         Modifies the track in place and returns it.
         """
@@ -293,13 +297,26 @@ class SpotifyProvider(AbstractProvider):
 
         features = self.get_audio_features(track.service_track_id)
         if features:
+            # Core DJ features
             track.bpm = features.get("tempo")
+            track.time_signature = features.get("time_signature")
+            track.mode = features.get("mode")
 
             # Convert key from pitch class to musical notation
             key_num = features.get("key")
             mode = features.get("mode")
             if key_num is not None and mode is not None:
                 track.key = self._pitch_class_to_key(key_num, mode)
+
+            # Audio analysis features (0.0 - 1.0 scale)
+            track.energy = features.get("energy")
+            track.danceability = features.get("danceability")
+            track.valence = features.get("valence")
+            track.acousticness = features.get("acousticness")
+            track.instrumentalness = features.get("instrumentalness")
+            track.liveness = features.get("liveness")
+            track.speechiness = features.get("speechiness")
+            track.loudness = features.get("loudness")  # dB
 
         return track
 

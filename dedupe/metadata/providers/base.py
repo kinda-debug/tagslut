@@ -96,6 +96,9 @@ class AbstractProvider(ABC):
         self.token_manager = token_manager
         self.rate_limiter = RateLimiter(self.rate_limit_config)
         self._client: Optional[httpx.Client] = None
+        # Track if auth has permanently failed (e.g., 403 forbidden with bad credentials)
+        self._auth_permanently_failed: bool = False
+        self._auth_failure_reason: Optional[str] = None
 
     @property
     def client(self) -> httpx.Client:
@@ -118,6 +121,8 @@ class AbstractProvider(ABC):
 
     def _get_token(self) -> Optional[TokenInfo]:
         """Get valid token for this provider."""
+        if self.token_manager is None:
+            return None
         return self.token_manager.ensure_valid_token(self.name)
 
     def _make_request(
@@ -131,8 +136,17 @@ class AbstractProvider(ABC):
         """
         Make an HTTP request with rate limiting and retry.
 
-        Returns None if all retries fail.
+        Returns None if all retries fail or if auth has permanently failed.
         """
+        # If auth has permanently failed for this provider, skip immediately
+        if self._auth_permanently_failed:
+            logger.debug(
+                "%s: Skipping request (auth permanently failed: %s)",
+                self.name,
+                self._auth_failure_reason,
+            )
+            return None
+
         all_headers = self._get_default_headers()
         if headers:
             all_headers.update(headers)
@@ -163,18 +177,37 @@ class AbstractProvider(ABC):
                         continue
                     return None
 
-                # Handle auth errors
-                if response.status_code in (401, 403):
+                # Handle auth errors - distinguish 401 (expired) vs 403 (forbidden)
+                if response.status_code == 401:
+                    # 401 Unauthorized - token expired or invalid, try refresh
                     logger.warning(
-                        "%s: Auth error (%d), attempting token refresh",
+                        "%s: Token expired or invalid (401), attempting refresh",
                         self.name,
-                        response.status_code,
                     )
-                    if self._refresh_token_and_retry():
+                    if self._refresh_token_and_retry(response):
                         all_headers = self._get_default_headers()
                         if headers:
                             all_headers.update(headers)
                         continue
+                    return None
+
+                if response.status_code == 403:
+                    # 403 Forbidden - credentials rejected, likely bad client_id/secret
+                    # Log the response body for debugging and mark as permanent failure
+                    response_body = ""
+                    try:
+                        response_body = response.text[:500]  # Limit to 500 chars
+                    except Exception:
+                        pass
+                    
+                    logger.error(
+                        "%s: Access forbidden (403) - credentials may be invalid or lack required scope. "
+                        "Response: %s. Skipping all further requests for this provider.",
+                        self.name,
+                        response_body or "(empty)",
+                    )
+                    self._auth_permanently_failed = True
+                    self._auth_failure_reason = f"403 Forbidden: {response_body[:100] if response_body else 'no details'}"
                     return None
 
                 # Handle server errors with retry
@@ -199,10 +232,34 @@ class AbstractProvider(ABC):
                     continue
                 return None
 
-    def _refresh_token_and_retry(self) -> bool:
-        """Attempt to refresh token. Returns True if successful."""
+    def _refresh_token_and_retry(self, failed_response: Optional[httpx.Response] = None) -> bool:
+        """
+        Attempt to refresh token. Returns True if successful.
+        
+        If refresh fails, marks auth as permanently failed to prevent retry loops.
+        """
         token = self.token_manager.ensure_valid_token(self.name)
-        return token is not None and token.access_token
+        
+        if token is None or not token.access_token:
+            # Token refresh failed - mark as permanent failure
+            response_hint = ""
+            if failed_response:
+                try:
+                    response_hint = f" API response: {failed_response.text[:200]}"
+                except Exception:
+                    pass
+            
+            logger.error(
+                "%s: Token refresh failed - check credentials in tokens.json.%s "
+                "Skipping all further requests for this provider.",
+                self.name,
+                response_hint,
+            )
+            self._auth_permanently_failed = True
+            self._auth_failure_reason = "Token refresh failed"
+            return False
+        
+        return True
 
     @abstractmethod
     def _get_default_headers(self) -> Dict[str, str]:

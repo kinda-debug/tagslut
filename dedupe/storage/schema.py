@@ -147,15 +147,41 @@ def init_db(
             "pcm_md5": "TEXT",
             "silence_events": "INTEGER",
             "verified_at": "TEXT",
-            # Enrichment columns
+            # Enrichment columns - core
+            "canonical_title": "TEXT",
+            "canonical_artist": "TEXT",
+            "canonical_album": "TEXT",
+            "canonical_isrc": "TEXT",
+            "canonical_duration": "REAL",
+            "canonical_duration_source": "TEXT",
+            "canonical_year": "INTEGER",
+            "canonical_release_date": "TEXT",
+            # Enrichment columns - DJ metadata
             "canonical_bpm": "REAL",
             "canonical_key": "TEXT",
             "canonical_genre": "TEXT",
-            "canonical_isrc": "TEXT",
+            "canonical_sub_genre": "TEXT",
+            # Enrichment columns - release info
             "canonical_label": "TEXT",
-            "canonical_year": "INTEGER",
-            "canonical_duration": "REAL",
-            "canonical_duration_source": "TEXT",
+            "canonical_catalog_number": "TEXT",
+            "canonical_mix_name": "TEXT",
+            "canonical_explicit": "INTEGER",
+            # Enrichment columns - Spotify audio features
+            "canonical_energy": "REAL",
+            "canonical_danceability": "REAL",
+            "canonical_valence": "REAL",
+            "canonical_acousticness": "REAL",
+            "canonical_instrumentalness": "REAL",
+            "canonical_loudness": "REAL",
+            # Enrichment columns - artwork
+            "canonical_album_art_url": "TEXT",
+            # Enrichment columns - provider IDs
+            "spotify_id": "TEXT",
+            "beatport_id": "TEXT",
+            "tidal_id": "TEXT",
+            "qobuz_id": "TEXT",
+            "itunes_id": "TEXT",
+            # Enrichment columns - status
             "enriched_at": "TEXT",
             "enrichment_providers": "TEXT",
             "enrichment_confidence": "TEXT",

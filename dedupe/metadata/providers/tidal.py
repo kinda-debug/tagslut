@@ -8,6 +8,7 @@ API Reference: https://developer.tidal.com/apireference/
 """
 
 import logging
+import os
 from typing import Optional, List, Dict, Any
 
 from dedupe.metadata.models import ProviderTrack, MatchConfidence
@@ -36,7 +37,9 @@ class TidalProvider(AbstractProvider):
     )
 
     BASE_URL = "https://openapi.tidal.com/v2"
-    COUNTRY_CODE = "US"  # Should be configurable
+    # Country code for Tidal API requests - configurable via environment variable
+    # Default: "US". Override with TIDAL_COUNTRY_CODE env var.
+    COUNTRY_CODE = os.environ.get("TIDAL_COUNTRY_CODE", "US")
 
     def _get_default_headers(self) -> Dict[str, str]:
         """Get headers with Bearer token."""
@@ -80,6 +83,9 @@ class TidalProvider(AbstractProvider):
             data = response.json()
             track_data = data.get("data", {}).get("attributes", {})
             track = self._normalize_track(track_data)
+            if track is None:
+                logger.warning("Tidal track %s returned unusable data", track_id)
+                return None
             track.match_confidence = MatchConfidence.EXACT
             return track
         except Exception as e:
@@ -113,12 +119,18 @@ class TidalProvider(AbstractProvider):
             data = response.json()
             tracks = data.get("data", [])
             # In search, results are items with resource.attributes
-            return [self._normalize_track(t.get("resource", {}).get("attributes", {})) for t in tracks]
+            # Filter out None results from unusable items
+            results = []
+            for t in tracks:
+                normalized = self._normalize_track(t.get("resource", {}).get("attributes", {}))
+                if normalized is not None:
+                    results.append(normalized)
+            return results
         except Exception as e:
             logger.error("Failed to parse Tidal search response: %s", e)
             return []
 
-    def _normalize_track(self, attributes: Dict[str, Any]) -> ProviderTrack:
+    def _normalize_track(self, attributes: Dict[str, Any]) -> Optional[ProviderTrack]:
         """
         Normalize Tidal track object (from attributes) to ProviderTrack.
 
@@ -132,9 +144,20 @@ class TidalProvider(AbstractProvider):
             "releaseDate": "YYYY-MM-DD",
             ...
         }
+        
+        Returns:
+            ProviderTrack if attributes contain usable data, None otherwise.
+            This avoids returning stub objects that lack meaningful content.
         """
+        # Return None for empty/unusable data instead of stub ProviderTrack
         if not attributes:
-            return ProviderTrack(service="tidal")
+            logger.debug("Empty attributes received, returning None")
+            return None
+        
+        # Require at least a title or ID to be considered usable
+        if not attributes.get("title") and not attributes.get("id"):
+            logger.debug("Track missing both title and id, returning None")
+            return None
 
         artists = attributes.get("artists", [])
         artist_name = ", ".join(a.get("name", "") for a in artists) if artists else None

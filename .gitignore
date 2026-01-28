@@ -371,3 +371,6 @@ EPOCH_2026-01-27/.dedupe_write_test_82381
 poetry.lock
 .claude/settings.local.json
 poetry.lock
+poetry.lock
+.claude/settings.local.json
+poetry.lock

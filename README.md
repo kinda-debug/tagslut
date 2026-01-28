@@ -23,6 +23,7 @@ This repository is a recovery-first, evidence-preserving toolkit for scanning, a
 
 For detailed technical information, please refer to:
 *   **[GUIDE.md](GUIDE.md)** — **Operator Guide**: Tiered hashing, keeper selection logic, and full workflow details.
+*   **[docs/METADATA_WORKFLOW.md](docs/METADATA_WORKFLOW.md)** — **Metadata Workflow**: End-to-end enrichment flow, modes, providers, and CLI usage.
 *   **[docs/V2_ARCHITECTURE.md](docs/V2_ARCHITECTURE.md)** — **System Design**: How the unified package and CLI are structured.
 *   **[docs/RESTORATION_PLAN.md](docs/RESTORATION_PLAN.md)** — **Data Recovery**: Detailed procedures for restoring files and resolving path conflicts.
 *   **[docs/ROON_INTEGRATION.md](docs/ROON_INTEGRATION.md)** — **Roon Guide**: Managing your canonical library for Roon compatibility.

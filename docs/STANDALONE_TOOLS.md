@@ -42,6 +42,24 @@ Dry-run (default):
 dedupe enrich-file --db /path/to/music.db --file /path/to/file.flac
 ```
 
+Standalone (no DB):
+
+```
+dedupe enrich-file --standalone --file /path/to/file.flac --providers itunes,tidal
+```
+
+## Enrich Without a DB
+
+```
+dedupe metadata enrich --standalone --path /path/to/flacs --providers beatport,spotify
+```
+
+## Scan Without a DB
+
+```
+dedupe scan --standalone /path/to/flacs
+```
+
 ## Workflow-Compatible Commands
 
 These are thin wrappers around existing tools, kept for compatibility:

@@ -9,6 +9,68 @@ sys.path.insert(0, str(Path(__file__).parents[2]))
 
 logger = logging.getLogger("dedupe")
 
+def _collect_flac_paths(input_path: str) -> list[Path]:
+    path = Path(input_path).expanduser().resolve()
+    if path.is_dir():
+        from dedupe.utils.paths import list_files
+        files = list(list_files(path, {".flac"}))
+        return sorted(files, key=lambda p: str(p))
+    if path.is_file():
+        return [path]
+    raise click.ClickException(f"Path not found: {input_path}")
+
+
+def _local_file_info_from_path(file_path: Path):
+    from dedupe.core.metadata import extract_metadata
+    from dedupe.metadata.models import LocalFileInfo
+
+    audio = extract_metadata(file_path, scan_integrity=False, scan_hash=False)
+    tags = audio.metadata or {}
+
+    def get_tag(key: str):
+        val = tags.get(key)
+        if isinstance(val, list) and val:
+            return str(val[0])
+        if val is not None:
+            return str(val)
+        return None
+
+    def get_int_tag(key: str) -> int | None:
+        val = get_tag(key)
+        if val:
+            try:
+                return int(val)
+            except ValueError:
+                pass
+        return None
+
+    return LocalFileInfo(
+        path=str(audio.path),
+        measured_duration_s=audio.duration or None,
+        tag_artist=get_tag("artist") or get_tag("albumartist"),
+        tag_title=get_tag("title"),
+        tag_album=get_tag("album"),
+        tag_isrc=get_tag("isrc"),
+        tag_label=get_tag("label") or get_tag("organization"),
+        tag_year=get_int_tag("date") or get_int_tag("year"),
+    )
+
+
+def _print_enrichment_result(result) -> None:
+    if not result or not result.matches:
+        click.echo("No provider match found")
+        return
+    best = max(result.matches, key=lambda m: m.match_confidence.value if m.match_confidence else 0)
+    click.echo(f"Matched: {best.artist} - {best.title} ({best.service})")
+    if result.canonical_isrc:
+        click.echo(f"ISRC: {result.canonical_isrc}")
+    if result.canonical_bpm:
+        click.echo(f"BPM: {result.canonical_bpm}")
+    if result.canonical_key:
+        click.echo(f"Key: {result.canonical_key}")
+    if result.canonical_genre:
+        click.echo(f"Genre: {result.canonical_genre}")
+
 
 @click.group()
 @click.version_option(version="2.0.0")
@@ -122,15 +184,16 @@ def explain_keeper(db, group_id, zones_config, config, priority, metadata_tiebre
 
 
 @cli.command("enrich-file")
-@click.option("--db", type=click.Path(), required=True, help="Database path")
-@click.option("--file", "file_path", type=click.Path(), required=True, help="Exact file path in DB")
+@click.option("--db", type=click.Path(), required=False, help="Database path")
+@click.option("--file", "file_path", type=click.Path(), required=True, help="Exact file path in DB (or on disk in --standalone mode)")
 @click.option("--providers", default="beatport,spotify,tidal,qobuz,itunes", help="Comma-separated providers")
 @click.option("--force", is_flag=True, help="Re-process even if already enriched")
 @click.option("--retry-no-match", is_flag=True, help="Retry files previously with no match")
 @click.option("--execute", is_flag=True, help="Write updates to DB (default: dry-run)")
 @click.option("--recovery", is_flag=True, help="Recovery mode (duration health validation)")
 @click.option("--hoarding", is_flag=True, help="Hoarding mode (full metadata)")
-def enrich_file(db, file_path, providers, force, retry_no_match, execute, recovery, hoarding):
+@click.option("--standalone", is_flag=True, help="Run without a database (read tags directly)")
+def enrich_file(db, file_path, providers, force, retry_no_match, execute, recovery, hoarding, standalone):
     """Enrich a single file by exact path."""
     from dedupe.metadata.enricher import Enricher
     from dedupe.metadata.auth import TokenManager
@@ -147,13 +210,43 @@ def enrich_file(db, file_path, providers, force, retry_no_match, execute, recove
     else:
         mode = "hoarding"
 
+    provider_list = [p.strip() for p in providers.split(",") if p.strip()]
+    token_manager = TokenManager()
+
+    if standalone:
+        if db:
+            raise click.ClickException("--standalone cannot be used with --db")
+        file_path_obj = Path(file_path).expanduser().resolve()
+        if not file_path_obj.exists():
+            raise click.ClickException(f"File not found: {file_path}")
+        if execute:
+            click.echo("Note: --execute is ignored in standalone mode (no DB writes).")
+        click.echo(f"File: {file_path_obj}")
+        click.echo(f"Providers: {', '.join(provider_list)}")
+        click.echo(f"Mode: {mode}")
+        with Enricher(
+            db_path=Path("__standalone__"),
+            token_manager=token_manager,
+            providers=provider_list,
+            dry_run=True,
+            mode=mode,
+        ) as enricher:
+            try:
+                file_info = _local_file_info_from_path(file_path_obj)
+            except Exception as e:
+                raise click.ClickException(str(e)) from e
+            result = enricher.resolve_file(file_info)
+        _print_enrichment_result(result)
+        click.echo("Done.")
+        return
+
+    if not db:
+        raise click.ClickException("--db is required (or use --standalone)")
+
     # Ensure schema exists
     conn = sqlite3.connect(db)
     init_db(conn)
     conn.close()
-
-    provider_list = [p.strip() for p in providers.split(",") if p.strip()]
-    token_manager = TokenManager()
 
     click.echo(f"DB: {db}")
     click.echo(f"File: {file_path}")
@@ -190,11 +283,7 @@ def enrich_file(db, file_path, providers, force, retry_no_match, execute, recove
         click.echo("Enrichment failed to write to database")
         return
 
-    if result and result.matches:
-        best = max(result.matches, key=lambda m: m.match_confidence.value if m.match_confidence else 0)
-        click.echo(f"Matched: {best.artist} - {best.title} ({best.service})")
-        if result.canonical_isrc:
-            click.echo(f"ISRC: {result.canonical_isrc}")
+    _print_enrichment_result(result)
     click.echo("Done.")
 
 
@@ -558,8 +647,8 @@ def metadata():
 
 
 @metadata.command()
-@click.option('--db', type=click.Path(), required=True, help='Database path')
-@click.option('--path', type=str, help='Filter files by path pattern (SQL LIKE)')
+@click.option('--db', type=click.Path(), required=False, help='Database path')
+@click.option('--path', type=str, help='Filter files by path pattern (SQL LIKE) or file/dir in --standalone mode')
 @click.option('--zones', type=str, help='Comma-separated zones to include (e.g. accepted,staging)')
 @click.option('--providers', default='beatport,spotify,tidal,qobuz,itunes', help='Comma-separated list of providers (order = priority)')
 @click.option('--limit', type=int, help='Maximum files to process')
@@ -569,7 +658,8 @@ def metadata():
 @click.option('--recovery', is_flag=True, help='Recovery mode: focus on duration health validation')
 @click.option('--hoarding', is_flag=True, help='Hoarding mode: collect full metadata (BPM, key, genre, etc.)')
 @click.option('-v', '--verbose', is_flag=True, help='Verbose output')
-def enrich(db, path, zones, providers, limit, force, retry_no_match, execute, recovery, hoarding, verbose):
+@click.option('--standalone', is_flag=True, help='Run without a database (read tags directly)')
+def enrich(db, path, zones, providers, limit, force, retry_no_match, execute, recovery, hoarding, verbose, standalone):
     """
     Fetch metadata from external providers.
 
@@ -607,6 +697,99 @@ def enrich(db, path, zones, providers, limit, force, retry_no_match, execute, re
     import sqlite3
     from datetime import datetime
 
+    if not db and not standalone:
+        raise click.ClickException("--db is required (or use --standalone)")
+    if db and standalone:
+        raise click.ClickException("--standalone cannot be used with --db")
+
+    # Silence noisy loggers
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+
+    # Determine mode - default to recovery if neither specified
+    if not recovery and not hoarding:
+        recovery = True
+
+    # Build mode string for enricher
+    if recovery and hoarding:
+        mode = "both"
+    elif recovery:
+        mode = "recovery"
+    else:
+        mode = "hoarding"
+
+    if standalone:
+        if not path:
+            raise click.ClickException("--path is required in --standalone mode (file or directory)")
+        if zones:
+            click.echo("Warning: --zones filter is ignored in standalone mode")
+        if execute:
+            click.echo("Note: --execute is ignored in standalone mode (no DB writes).")
+        file_paths = _collect_flac_paths(path)
+        if limit:
+            file_paths = file_paths[:limit]
+        if not file_paths:
+            click.echo("No FLAC files found to enrich.")
+            return
+
+        # Minimal console logging for standalone runs
+        logging.basicConfig(
+            level=logging.DEBUG if verbose else logging.INFO,
+            format='%(asctime)s - %(levelname)s - %(message)s'
+        )
+
+        provider_list = [p.strip() for p in providers.split(',') if p.strip()]
+        token_manager = TokenManager()
+
+        click.echo("")
+        click.echo("┌" + "─" * 50 + "┐")
+        if mode == "recovery":
+            click.echo("│  METADATA ENRICHMENT - Recovery Mode              │")
+        elif mode == "hoarding":
+            click.echo("│  METADATA ENRICHMENT - Hoarding Mode              │")
+        else:
+            click.echo("│  METADATA ENRICHMENT - Recovery + Hoarding        │")
+        click.echo("└" + "─" * 50 + "┘")
+        click.echo("")
+        click.echo(f"  Files:      {len(file_paths)}")
+        click.echo(f"  Providers:  {' → '.join(provider_list)}")
+        click.echo("")
+
+        stats = {"total": 0, "enriched": 0, "no_match": 0, "failed": 0}
+
+        with Enricher(
+            db_path=Path("__standalone__"),
+            token_manager=token_manager,
+            providers=provider_list,
+            dry_run=True,
+            mode=mode,
+        ) as enricher:
+            for i, file_path in enumerate(file_paths, start=1):
+                click.echo(f"[{i}/{len(file_paths)}] {file_path}")
+                try:
+                    file_info = _local_file_info_from_path(file_path)
+                    result = enricher.resolve_file(file_info)
+                    if result.matches:
+                        stats["enriched"] += 1
+                    else:
+                        stats["no_match"] += 1
+                    _print_enrichment_result(result)
+                except Exception as e:
+                    stats["failed"] += 1
+                    click.echo(f"Error: {e}")
+                stats["total"] += 1
+                click.echo("")
+
+        click.echo(f"{'='*50}")
+        click.echo("RESULTS")
+        click.echo(f"{'='*50}")
+        click.echo(f"  Total:      {stats['total']:>6}")
+        click.echo(f"  Enriched:   {stats['enriched']:>6}  ✓")
+        click.echo(f"  No match:   {stats['no_match']:>6}")
+        click.echo(f"  Failed:     {stats['failed']:>6}")
+        return
+
     # Set up logging to both file and console
     db_path = Path(db)
     log_dir = db_path.parent
@@ -629,23 +812,6 @@ def enrich(db, path, zones, providers, limit, force, retry_no_match, execute, re
     root_logger.addHandler(console_handler)
 
     root_logger.setLevel(logging.DEBUG)
-
-    # Silence noisy loggers
-    logging.getLogger("httpcore").setLevel(logging.WARNING)
-    logging.getLogger("httpx").setLevel(logging.WARNING)
-    logging.getLogger("urllib3").setLevel(logging.WARNING)
-
-    # Determine mode - default to recovery if neither specified
-    if not recovery and not hoarding:
-        recovery = True
-
-    # Build mode string for enricher
-    if recovery and hoarding:
-        mode = "both"
-    elif recovery:
-        mode = "recovery"
-    else:
-        mode = "hoarding"
 
     if not db_path.exists():
         raise click.ClickException(f"Database not found: {db_path}")

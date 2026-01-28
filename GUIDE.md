@@ -6,6 +6,8 @@ This is the authoritative documentation for the Dedupe system—a high-performan
 **ABSOLUTELY NO CODE in this repository is allowed to remove any file.**
 Every tool follows a strict **"Copy then Validate"** pattern. Your original source files remain untouched. Any deduplication or organization results in new copies in the designated work zones, leaving you in full control of when and how to manually clear space.
 
+For metadata enrichment details (providers, modes, DB fields), see `docs/METADATA_WORKFLOW.md`.
+
 ---
 
 ## 🏁 The Definitive Workflow (5 Stages)
@@ -139,7 +141,7 @@ All automatic retention logic has been removed. You must manually review and del
 ### Stage 6: PROMOTE UNIQUE FILES (Optional)
 **Goal:** Organize unique files into your primary music directory (COPY ONLY).
 
-The promotion tool organizes your files into Artist/Album/Track structure. It will **not** move the source files; it will create new, organized copies at the destination.
+The promotion tool organizes your files into Artist/Album/Track structure. By default it creates new, organized copies at the destination, but you can opt into moving with `--move`.
 
 ```bash
 # 1. Dry Run (Simulates the organization by tags)

@@ -198,6 +198,8 @@ def main():
                         help="Destination root directory")
     parser.add_argument("--execute", action="store_true",
                         help="Actually perform copies (default is dry-run)")
+    parser.add_argument("--move", action="store_true",
+                        help="Move files instead of copying (destructive)")
     args = parser.parse_args()
 
     ui = ConsoleUI()
@@ -216,6 +218,15 @@ def main():
     if total == 0:
         ui.warning("No FLAC files found to process")
         return
+
+    if args.move and args.execute:
+        confirmed = gates.confirm_destructive_operation(
+            "file moves",
+            "I understand this is a move operation.",
+        )
+        if not confirmed:
+            ui.warning("Move operation cancelled by user.")
+            return
 
     mode = "EXECUTE" if args.execute else "DRY-RUN"
     ui.print(f"\n[{mode}] Processing {total} files → {args.dest}\n")
@@ -238,7 +249,15 @@ def main():
 
             # Compact output: show progress and key info
             ui.print(f"[{i:4d}/{total}] {artist[:25]:<25} │ {album[:30]:<30} │ {title[:30]}")
-            ops.safe_copy(src, dest)
+            if args.move:
+                ops.safe_move(
+                    src,
+                    dest,
+                    confirmation_phrase="I understand this is a move operation.",
+                    skip_confirmation=True,
+                )
+            else:
+                ops.safe_copy(src, dest)
             success_count += 1
 
         except Exception as e:

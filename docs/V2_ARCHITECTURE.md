@@ -180,7 +180,7 @@ dedupe apply --plan plan.json --interactive
 dedupe promote staging library
 
 # Custom paths
-dedupe promote /path/from /path/to --mode move
+dedupe promote /path/from /path/to --move
 ```
 
 #### 5. Quarantine

@@ -83,7 +83,7 @@ def cli():
 @click.argument('args', nargs=-1, type=click.UNPROCESSED)
 def scan(args):
     """Scan a library volume (legacy wrapper)"""
-    from legacy.tools.integrity.scan import scan as scan_cmd
+    from legacy.tools.integrity.scan import main as scan_cmd
     # If -h or --help is in args, we want to let the underlying command handle it
     # but Click might intercept it before we get here.
     # That's why we use help_option_names=[]

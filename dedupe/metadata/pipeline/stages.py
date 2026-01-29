@@ -56,6 +56,66 @@ def resolve_file(
         result.log.append(msg)
         logger.debug("[%s] %s", file_info.path, msg)
 
+    def normalize_title(value: str) -> str:
+        cleaned = value.lower().strip()
+        for suffix in ("(original mix)", "(main mix)"):
+            cleaned = cleaned.replace(suffix, "").strip()
+        return " ".join(cleaned.split())
+
+    # Stage 0: Beatport track ID (from MP3Tag tags) if available
+    beatport_id = None
+    if file_info.beatport_id:
+        beatport_id = file_info.beatport_id.strip()
+    elif file_info.beatport_track_url:
+        # Extract numeric ID from Beatport track URL
+        # Examples: https://www.beatport.com/track/around-the-world/35743543
+        url = file_info.beatport_track_url.strip()
+        if url:
+            parts = url.rstrip("/").split("/")
+            if parts:
+                candidate = parts[-1]
+                if candidate.isdigit():
+                    beatport_id = candidate
+
+    if beatport_id:
+        provider = provider_getter("beatport")
+        if provider and "beatport" in provider_names:
+            log(f"Trying Beatport track ID: {beatport_id}")
+            track = provider.fetch_by_id(beatport_id)
+            if track:
+                track.match_confidence = MatchConfidence.EXACT
+                matches.append(track)
+                log(f"  beatport: ID match -> {track.title} by {track.artist}")
+
+    # Stage 0b: Beatport release ID/URL (from MP3Tag tags) if available
+    if not matches:
+        release_id = None
+        release_slug = None
+        if file_info.beatport_release_id:
+            release_id = file_info.beatport_release_id.strip()
+        elif file_info.beatport_release_url:
+            url = file_info.beatport_release_url.strip()
+            if url:
+                parts = url.rstrip("/").split("/")
+                if len(parts) >= 2:
+                    candidate = parts[-1]
+                    if candidate.isdigit():
+                        release_id = candidate
+                        release_slug = parts[-2]
+        if release_id:
+            provider = provider_getter("beatport")
+            if provider and "beatport" in provider_names:
+                log(f"Trying Beatport release ID: {release_id}")
+                release_tracks = provider.fetch_release_tracks(release_id, slug=release_slug)
+                if release_tracks and file_info.tag_title:
+                    wanted = normalize_title(file_info.tag_title)
+                    for t in release_tracks:
+                        if t.title and normalize_title(t.title) == wanted:
+                            t.match_confidence = MatchConfidence.EXACT
+                            matches.append(t)
+                            log(f"  beatport: release match -> {t.title} by {t.artist}")
+                            break
+
     # Stage 1: Try ISRC if available
     if file_info.tag_isrc:
         log(f"Trying ISRC: {file_info.tag_isrc}")

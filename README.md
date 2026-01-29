@@ -13,6 +13,9 @@ This repository is a recovery-first, evidence-preserving toolkit for scanning, a
 ## 🚀 Quickstart (V2)
 
 1.  **Configure**: Copy `.env.example` to `.env` and update your volume paths and database location.
+    ```bash
+    source .env
+    ```
 2.  **Scan**: `python3 -m dedupe scan /path/to/music` (Builds your library index).
 3.  **Recommend**: `python3 -m dedupe recommend --output plan.json` (Finds duplicates).
 4.  **Apply**: `python3 -m dedupe apply plan.json --confirm` (Quarantines duplicates).

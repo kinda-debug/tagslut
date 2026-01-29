@@ -15,6 +15,7 @@ API Reference: https://api.beatport.com/v4/docs/
 import logging
 import re
 from typing import Optional, List, Dict, Any
+import httpx
 from urllib.parse import quote
 
 from dedupe.metadata.models.types import ProviderTrack, MatchConfidence
@@ -83,6 +84,63 @@ class BeatportProvider(AbstractProvider):
             "x-nextjs-data": "1",
         }
 
+    def _make_request_no_auth(
+        self,
+        method: str,
+        url: str,
+        headers: Optional[Dict[str, str]] = None,
+        params: Optional[Dict[str, Any]] = None,
+        **kwargs,
+    ) -> Optional[httpx.Response]:
+        """
+        Make a request without Authorization headers or token refresh.
+        This mirrors the public Beatport API behavior used by MP3Tag.
+        """
+        all_headers = {"Accept": "application/json"}
+        if headers:
+            all_headers.update(headers)
+
+        while True:
+            self.rate_limiter.wait()
+            try:
+                response = self.client.request(
+                    method,
+                    url,
+                    headers=all_headers,
+                    params=params,
+                    **kwargs,
+                )
+
+                if response.status_code == 429:
+                    retry_after = int(response.headers.get("Retry-After", "60"))
+                    logger.warning("%s: Rate limited, waiting %ds", self.name, retry_after)
+                    time.sleep(retry_after)
+                    self.rate_limiter.record_error()
+                    if self.rate_limiter.should_retry:
+                        continue
+                    return None
+
+                if response.status_code >= 500:
+                    self.rate_limiter.record_error()
+                    if self.rate_limiter.should_retry:
+                        logger.warning(
+                            "%s: Server error (%d), retrying...",
+                            self.name,
+                            response.status_code,
+                        )
+                        continue
+                    return None
+
+                self.rate_limiter.record_success()
+                return response
+
+            except httpx.HTTPError as e:
+                logger.warning("%s: Request failed: %s", self.name, e)
+                self.rate_limiter.record_error()
+                if self.rate_limiter.should_retry:
+                    continue
+                return None
+
     def _get_build_id(self) -> Optional[str]:
         """Get current Next.js build ID from Beatport website."""
         if self._build_id:
@@ -114,6 +172,108 @@ class BeatportProvider(AbstractProvider):
 
         return None
 
+    def _fetch_nextjs_release(self, release_id: int, slug: str) -> Optional[Dict]:
+        """Fetch release data via Next.js data endpoint (no auth needed)."""
+        build_id = self._get_build_id()
+        if not build_id:
+            logger.debug("No buildId available for Next.js release fetch")
+            return None
+
+        url = f"{self.WEB_URL}/_next/data/{build_id}/en/release/{slug}/{release_id}.json"
+        params = {"description": slug, "id": str(release_id)}
+        response = self._make_request("GET", url, params=params, headers=self._get_web_headers())
+        if response and response.status_code == 200:
+            try:
+                return response.json()
+            except Exception as e:
+                logger.debug("Failed to parse Next.js release response: %s", e)
+        return None
+
+    def _fetch_release_web(self, release_id: int, slug: str) -> Optional[Dict]:
+        """Fetch release HTML and parse __NEXT_DATA__ JSON (no auth needed)."""
+        url = f"{self.WEB_URL}/release/{slug}/{release_id}"
+        response = self._make_request(
+            "GET",
+            url,
+            headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15"},
+        )
+        if not response or response.status_code != 200:
+            return None
+        try:
+            import json
+            match = re.search(r'<script id="__NEXT_DATA__"[^>]*>([^<]+)</script>', response.text)
+            if not match:
+                return None
+            return json.loads(match.group(1))
+        except Exception as e:
+            logger.debug("Failed to parse Beatport release page: %s", e)
+            return None
+
+    def _extract_tracks_from_json(self, data: Any) -> List[Dict[str, Any]]:
+        """Traverse a JSON object and extract track-like dictionaries."""
+        tracks: List[Dict[str, Any]] = []
+        stack: List[Any] = [data]
+        while stack:
+            node = stack.pop()
+            if isinstance(node, dict):
+                if "tracks" in node and isinstance(node["tracks"], list):
+                    for item in node["tracks"]:
+                        if isinstance(item, dict) and (
+                            "track_id" in item or "id" in item or "track_name" in item or "name" in item
+                        ):
+                            tracks.append(item)
+                for value in node.values():
+                    stack.append(value)
+            elif isinstance(node, list):
+                stack.extend(node)
+        # Deduplicate by track_id/id if present
+        seen: set[str] = set()
+        unique: List[Dict[str, Any]] = []
+        for t in tracks:
+            track_id = t.get("track_id") or t.get("id")
+            key = str(track_id) if track_id is not None else None
+            if key and key in seen:
+                continue
+            if key:
+                seen.add(key)
+            unique.append(t)
+        return unique
+
+    def fetch_release_tracks(self, release_id: str, slug: Optional[str] = None) -> List[ProviderTrack]:
+        """
+        Fetch tracks for a Beatport release by ID/slug.
+
+        Tries Next.js data, then HTML __NEXT_DATA__ parsing, then API (if auth).
+        """
+        slug = slug or "release"
+        tracks: List[ProviderTrack] = []
+
+        data = self._fetch_nextjs_release(int(release_id), slug)
+        if data:
+            track_objs = self._extract_tracks_from_json(data)
+            if track_objs:
+                return [self._normalize_track(t) for t in track_objs]
+
+        data = self._fetch_release_web(int(release_id), slug)
+        if data:
+            track_objs = self._extract_tracks_from_json(data)
+            if track_objs:
+                return [self._normalize_track(t) for t in track_objs]
+
+        if self._has_auth():
+            url = f"{self.BASE_URL}/tracks/"
+            params = {"release_id": release_id, "per_page": 100}
+            response = self._make_request("GET", url, params=params)
+            if response and response.status_code == 200:
+                try:
+                    payload = response.json()
+                    results = payload.get("results", [])
+                    if results:
+                        return [self._normalize_track(t) for t in results]
+                except Exception as e:
+                    logger.debug("Failed to parse Beatport API release tracks: %s", e)
+
+        return tracks
     def _fetch_nextjs_track(self, track_id: int, slug: str = "track") -> Optional[Dict]:
         """Fetch track data via Next.js data endpoint (no auth needed)."""
         build_id = self._get_build_id()
@@ -293,15 +453,30 @@ class BeatportProvider(AbstractProvider):
         Returns:
             List of ProviderTrack with match_confidence=EXACT
         """
-        if not self._has_auth():
-            logger.debug("Beatport ISRC search requires authentication")
-            return []
-
         url = f"{self.BASE_URL}/tracks/"
         params = {
             "isrc": isrc,
-            "per_page": 5,  # ISRC can map to multiple versions
+            "per_page": 5,
         }
+
+        # First try public (no-auth) API behavior (matches MP3Tag usage)
+        response = self._make_request_no_auth("GET", url, params=params)
+        if response and response.status_code == 200:
+            try:
+                data = response.json()
+                results = data.get("results", [])
+                tracks = []
+                for item in results:
+                    track = self._normalize_track(item)
+                    track.match_confidence = MatchConfidence.EXACT
+                    tracks.append(track)
+                return tracks
+            except Exception as e:
+                logger.error("Failed to parse Beatport ISRC response (no-auth): %s", e)
+
+        # Fall back to auth (if configured) for any cases where public endpoint fails
+        if not self._has_auth():
+            return []
 
         response = self._make_request("GET", url, params=params)
         if response and response.status_code == 200:

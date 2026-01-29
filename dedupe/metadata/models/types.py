@@ -196,6 +196,9 @@ class LocalFileInfo:
     qobuz_id: Optional[str] = None
     tidal_id: Optional[str] = None
     beatport_id: Optional[str] = None
+    beatport_track_url: Optional[str] = None
+    beatport_release_id: Optional[str] = None
+    beatport_release_url: Optional[str] = None
     apple_id: Optional[str] = None
 
     # Fingerprint info

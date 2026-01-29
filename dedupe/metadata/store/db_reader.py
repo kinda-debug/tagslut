@@ -45,6 +45,10 @@ def row_to_local_file_info(row: sqlite3.Row) -> LocalFileInfo:
         tag_isrc=get_tag("isrc"),
         tag_label=get_tag("label") or get_tag("organization"),
         tag_year=get_int_tag("date") or get_int_tag("year"),
+        beatport_id=get_tag("beatport_track_id"),
+        beatport_track_url=get_tag("beatport_track_url"),
+        beatport_release_id=get_tag("beatport_release_id"),
+        beatport_release_url=get_tag("beatport_release_url"),
     )
 
 

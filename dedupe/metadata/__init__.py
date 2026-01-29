@@ -8,7 +8,7 @@ This package provides functionality to:
 - Evaluate file health by comparing durations
 """
 
-from dedupe.metadata.models import ProviderTrack, EnrichmentResult
+from dedupe.metadata.models.types import ProviderTrack, EnrichmentResult
 from dedupe.metadata.auth import TokenManager
 
 __all__ = [

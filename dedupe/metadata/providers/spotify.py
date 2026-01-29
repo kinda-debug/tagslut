@@ -10,7 +10,7 @@ API Reference: https://developer.spotify.com/documentation/web-api
 import logging
 from typing import Optional, List, Dict, Any
 
-from dedupe.metadata.models import ProviderTrack, MatchConfidence
+from dedupe.metadata.models.types import ProviderTrack, MatchConfidence
 from dedupe.metadata.providers.base import AbstractProvider, RateLimitConfig
 
 logger = logging.getLogger("dedupe.metadata.providers.spotify")

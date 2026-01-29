@@ -1,8 +1,4 @@
-"""
-Data models for metadata enrichment.
-
-Compatibility wrapper for legacy imports.
-"""
+"""Models for metadata enrichment."""
 
 from dedupe.metadata.models.types import (
     MatchConfidence,

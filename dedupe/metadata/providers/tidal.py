@@ -11,7 +11,7 @@ import logging
 import os
 from typing import Optional, List, Dict, Any
 
-from dedupe.metadata.models import ProviderTrack, MatchConfidence
+from dedupe.metadata.models.types import ProviderTrack, MatchConfidence
 from dedupe.metadata.providers.base import AbstractProvider, RateLimitConfig
 
 logger = logging.getLogger("dedupe.metadata.providers.tidal")

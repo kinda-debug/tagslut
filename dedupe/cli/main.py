@@ -22,7 +22,7 @@ def _collect_flac_paths(input_path: str) -> list[Path]:
 
 def _local_file_info_from_path(file_path: Path):
     from dedupe.core.metadata import extract_metadata
-    from dedupe.metadata.models import LocalFileInfo
+    from dedupe.metadata.models.types import LocalFileInfo
 
     audio = extract_metadata(file_path, scan_integrity=False, scan_hash=False)
     tags = audio.metadata or {}

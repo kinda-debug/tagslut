@@ -17,7 +17,7 @@ import re
 from typing import Optional, List, Dict, Any
 from urllib.parse import quote
 
-from dedupe.metadata.models import ProviderTrack, MatchConfidence
+from dedupe.metadata.models.types import ProviderTrack, MatchConfidence
 from dedupe.metadata.providers.base import AbstractProvider, RateLimitConfig
 
 logger = logging.getLogger("dedupe.metadata.providers.beatport")

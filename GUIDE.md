@@ -9,6 +9,8 @@ If you want a **single clean start-over workflow**, use:
 **ABSOLUTELY NO CODE in this repository is allowed to remove any file.**
 Every tool follows a strict **"Copy then Validate"** pattern. Your original source files remain untouched. Any deduplication or organization results in new copies in the designated work zones, leaving you in full control of when and how to manually clear space.
 
+For metadata enrichment details (providers, modes, DB fields), see `docs/METADATA_WORKFLOW.md`.
+
 ---
 
 ## 🏁 The Definitive Workflow (5 Stages)
@@ -46,7 +48,7 @@ The scanner automatically determines the status (**zone**) for each file based o
 
 ```bash
 # Scan any path (Zones are auto-assigned)
-python tools/integrity/scan.py /Volumes/SAD/MU \
+dedupe scan /Volumes/SAD/MU \
   --library MU \
   --db "$DB_PATH" \
   --library MU \
@@ -76,7 +78,7 @@ SELECT 'Corrupt files', COUNT(*) FROM files WHERE flac_ok = 0;
 **Goal:** Generate deduplication decisions based on zone priority.
 
 ```bash
-python tools/review/plan_removals.py \
+dedupe quarantine plan \
   --db "$DB_PATH" \
   --output removal_plan.csv
 ```
@@ -102,7 +104,7 @@ grep "TIER1,DROP" removal_plan.csv | head -20
 
 ### Dry Run First
 ```bash
-python tools/review/apply_removals.py \
+dedupe quarantine apply \
   --db "$DB_PATH" \
   --plan removal_plan.csv \
   --quarantine-root /Volumes/SAD/QU \
@@ -112,7 +114,7 @@ python tools/review/apply_removals.py \
 ### Execute Quarantine (COPY ONLY)
 This command will only perform copies. Your originals will not be touched.
 ```bash
-python tools/review/apply_removals.py \
+dedupe quarantine apply \
   --db "$DB_PATH" \
   --plan removal_plan.csv \
   --quarantine-root /Volumes/SAD/QU \
@@ -124,7 +126,7 @@ python tools/review/apply_removals.py \
 
 ```bash
 # Copy corrupt files to the suspect folder (preserving structure)
-python tools/review/isolate_suspects.py \
+dedupe quarantine suspects \
   --db "$DB_PATH" \
   --dest /Volumes/SAD/SU \
   --execute
@@ -142,7 +144,7 @@ All automatic retention logic has been removed. You must manually review and del
 ### Stage 6: PROMOTE UNIQUE FILES (Optional)
 **Goal:** Organize unique files into your primary music directory (COPY ONLY).
 
-The promotion tool builds a strict Artist/Album/Track structure **from tags** and keeps a consistent naming convention for large libraries. It **copies** files by default and applies the canonical tag rules from `tools/rules/library_canon.json` unless you opt out.
+The promotion tool builds a strict Artist/Album/Track structure **from tags** and keeps a consistent naming convention for large libraries. It **copies** files by default and applies the canonical tag rules from `tools/rules/library_canon.json` unless you opt out. Use `--move` if you explicitly want moves instead of copies.
 
 ```bash
 # 1) Dry run (preview only; no files written)
@@ -177,7 +179,7 @@ python tools/review/canonize_tags.py /path/to/folder --execute
 ### Stage 7: Final Audit
 Run a final incremental scan of your main library to ensure everything is perfectly indexed and integrity-checked.
 ```bash
-python tools/integrity/scan.py /Volumes/COMMUNE/M/Library_CANONICAL \
+dedupe scan /Volumes/COMMUNE/M/Library_CANONICAL \
   --db "$DB_PATH" \
   --library COMMUNE \
   --check-integrity \
@@ -278,4 +280,4 @@ You can query the SQLite database directly for custom reports:
 *   `file_scan_runs`: Detailed per-file outcome of the last scan.
 
 ### Promotion
-Use `python3 tools/review/promote_by_tags.py` to identify unique files in `staging` or `suspect` zones that should be "promoted" to your main library.
+Use `dedupe promote` to identify unique files in `staging` or `suspect` zones that should be "promoted" to your main library.

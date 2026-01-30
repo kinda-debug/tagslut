@@ -62,13 +62,13 @@ Add MusicBrainz track IDs to your 93 files missing them:
 
 ```bash
 # Dry-run (see what would change)
-python tools/integrity/import_roon.py \
+python legacy/tools/integrity/import_roon.py \
   --roon-export roon.xlsx \
   --update-musicbrainz \
   -v
 
 # Execute updates
-python tools/integrity/import_roon.py \
+python legacy/tools/integrity/import_roon.py \
   --roon-export roon.xlsx \
   --update-musicbrainz \
   --execute \
@@ -91,17 +91,17 @@ Create tool to:
 **Example workflow:**
 ```bash
 # Step 1: Import MusicBrainz IDs from Roon
-python tools/integrity/import_roon.py \
+python legacy/tools/integrity/import_roon.py \
   --roon-export roon.xlsx \
   --update-musicbrainz \
   --execute
 
 # Step 2: Query MusicBrainz API for durations (NEW TOOL)
-python tools/integrity/fetch_musicbrainz_durations.py \
+python legacy/tools/integrity/fetch_musicbrainz_durations.py \
   --update-tags
 
 # Step 3: Validate durations
-python tools/integrity/validate_durations.py \
+python legacy/tools/integrity/validate_durations.py \
   --zone suspect \
   -o stitched_report.json
 ```
@@ -133,7 +133,7 @@ Files in Roon but not in database (1 file):
 - Can generate "re-acquire" list
 
 ```bash
-python tools/integrity/import_roon.py \
+python legacy/tools/integrity/import_roon.py \
   --roon-export roon.xlsx \
   --db music.db \
   -o roon_analysis.json
@@ -166,7 +166,7 @@ for roon_track in roon_tracks:
 cp music.db music.db.backup
 
 # 2. Import MusicBrainz IDs
-python tools/integrity/import_roon.py \
+python legacy/tools/integrity/import_roon.py \
   --roon-export roon.xlsx \
   --db music.db \
   --update-musicbrainz \
@@ -185,7 +185,7 @@ Create new tool to:
 
 ```bash
 # NEW TOOL (to be created)
-python tools/integrity/fetch_musicbrainz_durations.py \
+python legacy/tools/integrity/fetch_musicbrainz_durations.py \
   --db music.db \
   --limit 1000 \
   -v
@@ -195,7 +195,7 @@ python tools/integrity/fetch_musicbrainz_durations.py \
 
 ```bash
 # Run duration validator with MusicBrainz data
-python tools/integrity/validate_durations.py \
+python legacy/tools/integrity/validate_durations.py \
   --db music.db \
   --zone suspect \
   --strict \
@@ -257,7 +257,7 @@ Roon allows periodic exports:
 
 ## Files Created
 
-1. **`tools/integrity/import_roon.py`** - Roon import and reconciliation tool
+1. **`legacy/tools/integrity/import_roon.py`** - Roon import and reconciliation tool
 2. **`examine_roon.py`** - Quick spreadsheet examiner (can be deleted)
 
 ## Next Steps
@@ -266,7 +266,7 @@ Roon allows periodic exports:
 
 ```bash
 # Import MusicBrainz IDs from Roon
-python tools/integrity/import_roon.py \
+python legacy/tools/integrity/import_roon.py \
   --roon-export roon.xlsx \
   --db /Users/georgeskhawam/Projects/dedupe_db/EPOCH_20260119/music.db \
   --update-musicbrainz \
@@ -275,17 +275,17 @@ python tools/integrity/import_roon.py \
 
 ### Future Tools to Create
 
-1. **`tools/integrity/fetch_musicbrainz_durations.py`**
+1. **`legacy/tools/integrity/fetch_musicbrainz_durations.py`**
    - Query MusicBrainz API for track lengths
    - Add `musicbrainz_track_length` to metadata
    - Rate-limited (1 req/sec)
 
-2. **`tools/integrity/compare_roon_duplicates.py`**
+2. **`legacy/tools/integrity/compare_roon_duplicates.py`**
    - Cross-check our duplicates with Roon's library
    - Find false positives
    - Generate reconciliation report
 
-3. **`tools/integrity/sync_roon_tags.py`**
+3. **`legacy/tools/integrity/sync_roon_tags.py`**
    - Update FLAC tags with Roon's normalized metadata
    - Composer, album artist, etc.
    - Batch tagging with progress bar

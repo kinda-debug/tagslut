@@ -4,7 +4,7 @@ from unittest.mock import patch, MagicMock
 from pathlib import Path
 import os
 import tempfile
-from tools.review import apply_removals
+from legacy.tools.review import apply_removals
 
 from dedupe.utils.safety_gates import SafetyGates
 from dedupe.utils.console_ui import ConsoleUI

@@ -19,7 +19,7 @@ rejected = "90_REJECTED"
 yate_db = "_yate_db"
 
 [integrity]
-# Defaults for tools/integrity/scan.py
+# Defaults for legacy/tools/integrity/scan.py (legacy scanner)
 verbose = true
 progress = true
 progress_interval = 1

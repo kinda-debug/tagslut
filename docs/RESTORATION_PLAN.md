@@ -16,7 +16,7 @@ To restore a file manually, move it from its location in the quarantine folder b
 ### Bulk Restoration (Safety First)
 If you need to undo a large deduplication action:
 1.  Identify the scan session ID from the quarantine folder name.
-2.  Use the `tools/recovery/restore_from_quarantine.py` script (if available) or a standard `shutil.move` loop.
+2.  Use the `legacy/tools/recovery/restore_from_quarantine.py` script (if available) or a standard `shutil.move` loop.
 
 ---
 
@@ -28,7 +28,7 @@ If your database shows files that are missing from your canonical library (e.g.,
 Compare the missing list against recovered/extra volumes.
 ```bash
 # Analyze recovery status
-python3 tools/recovery/audit_readiness.py --missing-manifest artifacts/missing_files.txt
+python3 legacy/tools/recovery/audit_readiness.py --missing-manifest artifacts/missing_files.txt
 ```
 
 ### Step 2: Step-by-Step Restoration
@@ -48,7 +48,7 @@ Use the `restore_library.py` tool to move identified matches back to their canon
 If the scanner reports thousands of missing files on a recovery drive, ensure the drive is mounted with the correct volume name. The system identifies files by **absolute path** in the database.
 
 ### Path Conflicts
-If two files have the same path but different hashes, the scanner will update the record with the latest `mtime` and `size`. Use `python3 tools/analysis/path_conflicts.py` to identify these rare edge cases.
+If two files have the same path but different hashes, the scanner will update the record with the latest `mtime` and `size`. Use `python3 legacy/tools/analysis/path_conflicts.py` to identify these rare edge cases.
 
 ### Integrity Failures
 Files that fail the `flac -t` check are marked in the database. You can find them with:

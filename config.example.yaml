@@ -1,0 +1,115 @@
+# Dedupe Zone Configuration (YAML)
+#
+# This file contains three scenarios. Pick ONE scenario and copy it into
+# your real zones config (e.g. ~/.config/dedupe/zones.yaml), then point
+# DEDUPE_ZONES_CONFIG at it.
+#
+# YAML loader uses the top-level keys: defaults, roots, zones, path_priorities.
+# Scenario blocks below are examples and are not meant to be loaded as-is.
+
+# -----------------------------------------------------------------------------
+# Scenario A: Single main library (canonical accepted zone)
+# -----------------------------------------------------------------------------
+scenario_a:
+  defaults:
+    zone: suspect
+  roots:
+    base: /Volumes/Library
+  zones:
+    accepted:
+      priority: 10
+      description: Canonical main library
+      paths:
+        - /Volumes/Library/Music_Library
+    archive:
+      priority: 20
+      description: Long-term archival library
+      paths:
+        - /Volumes/Library/Archive
+    staging:
+      priority: 30
+      description: Incoming files to review/promote
+      paths:
+        - /Volumes/Library/_work/staging
+    suspect:
+      priority: 40
+      description: Corrupt or duplicate candidates
+      paths:
+        - /Volumes/Library/_work/suspect
+    quarantine:
+      priority: 50
+      description: Quarantined duplicates (copy-only)
+      paths:
+        - /Volumes/Library/_work/quarantine
+  path_priorities:
+    # Nudge specific subtrees inside accepted
+    /Volumes/Library/Music_Library/Library_CANONICAL: 1
+    /Volumes/Library/Music_Library/Library_CANONICAL/HiRes: 2
+
+# -----------------------------------------------------------------------------
+# Scenario B: Multiple peer libraries (no single main)
+# -----------------------------------------------------------------------------
+scenario_b:
+  defaults:
+    zone: suspect
+  zones:
+    accepted:
+      priority: 10
+      description: Peer library roots (equal base priority)
+      paths:
+        - /Volumes/Library_A/Music
+        - /Volumes/Library_B/Music
+        - /Volumes/Library_C/Music
+    staging:
+      priority: 30
+      description: Incoming files
+      paths:
+        - /Volumes/Library_A/_work/staging
+        - /Volumes/Library_B/_work/staging
+    suspect:
+      priority: 40
+      description: Suspect files across peers
+      paths:
+        - /Volumes/Library_A/_work/suspect
+        - /Volumes/Library_B/_work/suspect
+    quarantine:
+      priority: 50
+      description: Shared quarantine
+      paths:
+        - /Volumes/Library_A/_work/quarantine
+        - /Volumes/Library_B/_work/quarantine
+  path_priorities:
+    # Use path priorities to break ties between peers
+    /Volumes/Library_A/Music: 1
+    /Volumes/Library_B/Music: 2
+    /Volumes/Library_C/Music: 3
+
+# -----------------------------------------------------------------------------
+# Scenario C: No main library (only staging/suspect/archive)
+# -----------------------------------------------------------------------------
+scenario_c:
+  defaults:
+    zone: suspect
+  zones:
+    staging:
+      priority: 30
+      description: Working area
+      paths:
+        - /Volumes/Incoming/_work/staging
+    archive:
+      priority: 20
+      description: Long-term storage (not necessarily canonical)
+      paths:
+        - /Volumes/Incoming/Archive
+    suspect:
+      priority: 40
+      description: Suspect inputs and known-bad
+      paths:
+        - /Volumes/Incoming/_work/suspect
+    quarantine:
+      priority: 50
+      description: Quarantined duplicates
+      paths:
+        - /Volumes/Incoming/_work/quarantine
+  path_priorities:
+    /Volumes/Incoming/Archive/Verified: 1

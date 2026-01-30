@@ -19,8 +19,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
 
+from dedupe.utils.zones import coerce_zone, zone_priority, DEFAULT_PATH_PRIORITY
+
 # Priority lists (lower index = higher priority)
-ZONE_PRIORITY = ["accepted", "staging", "suspect", "quarantine"]
 INTEGRITY_PRIORITY = ["valid", "recoverable", None, "corrupt"]
 
 
@@ -54,11 +55,8 @@ class RankedFile:
 
         Order: zone_priority, integrity_priority, flac_ok, path_length
         """
-        zone_score = (
-            ZONE_PRIORITY.index(self.zone)
-            if self.zone in ZONE_PRIORITY
-            else len(ZONE_PRIORITY)
-        )
+        zone_value = coerce_zone(self.zone)
+        zone_score = zone_priority(zone_value) if zone_value else DEFAULT_PATH_PRIORITY
         integrity_score = (
             INTEGRITY_PRIORITY.index(self.integrity_state)
             if self.integrity_state in INTEGRITY_PRIORITY

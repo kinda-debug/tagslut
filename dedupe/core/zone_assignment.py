@@ -1,27 +1,14 @@
-"""Auto-assign zones based on scan results and file location.
+"""Zone assignment logic based on scan results and configured paths."""
 
-Zones are determined after scanning, not before:
-- integrity_ok=False → suspect (FLAC integrity check failed OR duration mismatch)
-- is_duplicate=True → suspect (SHA256/AcoustID/etc duplicate)
-- Clean file in library_root → accepted (canonical location)
-- Clean file in staging_root → staging (ready for review/promotion)
-- Otherwise → suspect (unknown location or unverified)
+from __future__ import annotations
 
-Integrity checks include:
-- FLAC structure validation (flac -t)
-- Duration validation (actual vs expected from MusicBrainz)
-- Files with suspicious durations (stitched/truncated) are treated as integrity failures
-
-This inverts the previous design where zones were manually assigned before scanning.
-Now zones are a consequence of scan results.
-"""
 import logging
 from pathlib import Path
-from typing import Optional, Literal
+from typing import Optional
+
+from dedupe.utils.zones import Zone, ZoneManager, get_default_zone_manager, is_quarantine_zone
 
 logger = logging.getLogger("dedupe")
-
-ZoneType = Literal["accepted", "staging", "suspect", "quarantine"]
 
 
 def determine_zone(
@@ -29,53 +16,41 @@ def determine_zone(
     integrity_ok: bool,
     is_duplicate: bool,
     file_path: Path,
-    library_root: Optional[Path] = None,
-    staging_root: Optional[Path] = None,
-) -> ZoneType:
+    zone_manager: Optional[ZoneManager] = None,
+    default_zone: Zone | None = None,
+) -> Zone:
     """
-    Auto-assign zone based on scan results.
+    Assign a zone based on scan results and path classification.
 
-    Logic:
-    1. If integrity fails → suspect
-    2. If duplicate detected → suspect
-    3. Otherwise → accepted (valid and unique)
-
-    Args:
-        integrity_ok: True if file passed integrity check (flac -t)
-        is_duplicate: True if SHA256 hash matches another file
-        file_path: Path to the file being evaluated
-        library_root: (Unused) Kept for API compatibility
-        staging_root: (Unused) Kept for API compatibility
-
-    Returns:
-        Zone assignment: accepted or suspect
+    Priority:
+    1. If the path is explicitly in a quarantine zone, keep it quarantine.
+    2. Integrity failures or duplicates are forced to SUSPECT.
+    3. Otherwise, use the zone derived from the path mapping.
+    4. Fall back to default_zone or SUSPECT.
     """
+    zm = zone_manager or get_default_zone_manager()
+    match = zm.get_zone_for_path(file_path)
 
-    # Integrity failures always go to suspect
+    if is_quarantine_zone(match.zone):
+        logger.debug("Zone=quarantine (path match): %s", file_path)
+        return Zone.QUARANTINE
+
     if not integrity_ok:
-        logger.debug(f"Zone=suspect (integrity failed): {file_path}")
-        return "suspect"
+        logger.debug("Zone=suspect (integrity failed): %s", file_path)
+        return Zone.SUSPECT
 
-    # Duplicates always go to suspect for review
     if is_duplicate:
-        logger.debug(f"Zone=suspect (duplicate detected): {file_path}")
-        return "suspect"
+        logger.debug("Zone=suspect (duplicate detected): %s", file_path)
+        return Zone.SUSPECT
 
-    # Everything else is accepted
-    logger.debug(f"Zone=accepted: {file_path}")
-    return "accepted"
+    if match.zone:
+        logger.debug("Zone=%s (path match): %s", match.zone, file_path)
+        return match.zone
 
-
-def _is_under_path(file_path: Path, root: Path) -> bool:
-    """Check if file_path is under root directory."""
-    try:
-        file_path.resolve().relative_to(root.resolve())
-        return True
-    except (ValueError, RuntimeError):
-        return False
+    return default_zone or Zone.SUSPECT
 
 
-def update_zone_after_decision(current_zone: ZoneType, decision: str) -> ZoneType:
+def update_zone_after_decision(current_zone: Zone, decision: str) -> Zone:
     """
     Update zone after manual review decision.
 
@@ -86,9 +61,9 @@ def update_zone_after_decision(current_zone: ZoneType, decision: str) -> ZoneTyp
     Returns:
         Updated zone
     """
+    decision = decision.upper()
     if decision == "DROP":
-        return "quarantine"
-    elif decision == "KEEP":
-        return "staging"
-    else:
-        return current_zone
+        return Zone.QUARANTINE
+    if decision == "KEEP":
+        return Zone.STAGING
+    return current_zone

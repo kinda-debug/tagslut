@@ -67,7 +67,7 @@ venv/
 Thumbs.db
 .vscode/
 .idea/
-
+.claude/settings.local.json
 # Logs / runtime
 *.log
 *.out
@@ -372,6 +372,7 @@ poetry.lock
 .claude/settings.local.json
 poetry.lock
 /Users/georgeskhawam/Projects/dedupe/tools/review/promote_by_tags_versions
+/Users/georgeskhawam/Projects/dedupe/mp3tag_sources
 tools/rules/library_canon.picard.pms
 .gitignore
 tools/review/promote_by_tags_versions/v3-supercharged/2026-01-12__680c986__promote_by_tags.py

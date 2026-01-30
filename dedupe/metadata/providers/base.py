@@ -9,7 +9,7 @@ from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
 import httpx
 
-from dedupe.metadata.models import ProviderTrack, MatchConfidence
+from dedupe.metadata.models.types import ProviderTrack, MatchConfidence
 from dedupe.metadata.auth import TokenManager, TokenInfo
 
 logger = logging.getLogger("dedupe.metadata.providers")

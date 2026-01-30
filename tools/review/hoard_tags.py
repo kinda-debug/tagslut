@@ -40,6 +40,10 @@ DEFAULT_EXTS = {
 }
 
 
+SKIP_BASENAMES = {".DS_Store", "Thumbs.db"}
+SKIP_PREFIXES = ("._",)
+
+
 def _safe_str(x: Any, max_len: int) -> str:
     if x is None:
         return ""
@@ -88,6 +92,8 @@ def iter_files(roots: List[Path], exts: set[str]) -> Iterable[Path]:
             continue
         for dirpath, _, filenames in os.walk(root):
             for name in filenames:
+                if name in SKIP_BASENAMES or name.startswith(SKIP_PREFIXES):
+                    continue
                 p = Path(dirpath) / name
                 if p.suffix.lower() in exts:
                     yield p
@@ -169,6 +175,8 @@ def main() -> int:
                     help="Concurrent workers (default: ~2x CPU, capped at 32).")
     ap.add_argument("--max-value-len", type=int, default=300,
                     help="Truncate tag values to this length (default: 300).")
+    ap.add_argument("--min-size", type=int, default=4096,
+                    help="Skip files smaller than this byte size (default: 4096).")
     ap.add_argument("--dump-files", action="store_true",
                     help="Also write files_tags.jsonl containing per-file tag dumps (can be large).")
     ap.add_argument("--follow-symlinks", action="store_true",
@@ -195,7 +203,15 @@ def main() -> int:
             exts |= {e.lower() if e.startswith(".") else f".{e.lower()}" for e in args.ext}
 
     files: List[Path] = []
+    skipped: List[Tuple[str, str]] = []
     for p in iter_files(roots, exts):
+        try:
+            if args.min_size and p.stat().st_size < args.min_size:
+                skipped.append((str(p), f"too_small<{args.min_size}"))
+                continue
+        except OSError as e:
+            skipped.append((str(p), f"stat_error:{e}"))
+            continue
         files.append(p)
         if args.max_files and len(files) >= args.max_files:
             break
@@ -245,6 +261,13 @@ def main() -> int:
 
     if jsonl_fp:
         jsonl_fp.close()
+
+    if skipped:
+        skipped_csv = out_dir / "tags_skipped.csv"
+        with skipped_csv.open("w", newline="", encoding="utf-8") as fp:
+            w = csv.writer(fp)
+            w.writerow(["path", "reason"])
+            w.writerows(skipped)
 
     summary = {
         "scanned_files": len(files),
@@ -381,6 +404,8 @@ def main() -> int:
     print(f"OK: wrote {out_dir / 'tags_summary.json'}")
     print(f"OK: wrote {out_dir / 'tags_values.csv'}")
     print(f"OK: wrote {out_dir / 'tags_keys.txt'}")
+    if skipped:
+        print(f"OK: wrote {out_dir / 'tags_skipped.csv'}")
     if args.dump_files:
         print(f"OK: wrote {out_dir / 'files_tags.jsonl'}")
     if db_path:

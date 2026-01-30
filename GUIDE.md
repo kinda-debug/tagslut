@@ -139,19 +139,36 @@ All automatic retention logic has been removed. You must manually review and del
 ### Stage 6: PROMOTE UNIQUE FILES (Optional)
 **Goal:** Organize unique files into your primary music directory (COPY ONLY).
 
-The promotion tool organizes your files into Artist/Album/Track structure. It will **not** move the source files; it will create new, organized copies at the destination.
+The promotion tool builds a strict Artist/Album/Track structure **from tags** and keeps a consistent naming convention for large libraries. It **copies** files by default and applies the canonical tag rules from `tools/rules/library_canon.json` unless you opt out.
 
 ```bash
-# 1. Dry Run (Simulates the organization by tags)
+# 1) Dry run (preview only; no files written)
 python tools/review/promote_by_tags.py \
-  --source-root '/Volumes/SAD/Music Hi-Res'\
-  --dest-root /Volumes/SAD/M 
+  /Volumes/SAD/Music\ Hi-Res \
+  --dest /Volumes/SAD/M
 
-# 2. Execute (Organizes and creates new copies)
+# 2) Execute (copy + rename into canonical layout)
 python tools/review/promote_by_tags.py \
-  --source-root /Users/georgeskhawam/Music/INCOMING \
-  --dest-root /Volumes/SAD/MU \
+  /Users/georgeskhawam/Music/INCOMING \
+  --dest /Volumes/SAD/MU \
   --execute
+
+# 3) Disable canon rules if needed
+python tools/review/promote_by_tags.py \
+  /Users/georgeskhawam/Music/INCOMING \
+  --dest /Volumes/SAD/MU \
+  --no-canon \
+  --execute
+```
+
+Standalone canonizer (useful before promote or when you want tag cleanup only):
+
+```bash
+# One-file diff (no write)
+python tools/review/canonize_tags.py /path/to/file.flac --canon-dry-run
+
+# Apply canon rules to a folder
+python tools/review/canonize_tags.py /path/to/folder --execute
 ```
 
 ### Stage 7: Final Audit

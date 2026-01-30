@@ -371,3 +371,17 @@ EPOCH_2026-01-27/.dedupe_write_test_82381
 poetry.lock
 .claude/settings.local.json
 poetry.lock
+/Users/georgeskhawam/Projects/dedupe/tools/review/promote_by_tags_versions
+tools/rules/library_canon.picard.pms
+.gitignore
+tools/review/promote_by_tags_versions/v3-supercharged/2026-01-12__680c986__promote_by_tags.py
+tools/review/promote_by_tags_versions/v3-supercharged/2026-01-13__a8e53c2__promote_by_tags.py
+tools/review/promote_by_tags_versions/v3-supercharged/2026-01-14__92fb9bf__promote_by_tags.py
+tools/review/promote_by_tags_versions/v3-supercharged/2026-01-19__5bcece6__promote_by_tags.py
+tools/review/promote_by_tags_versions/v3-supercharged/2026-01-20__b929f2a__promote_by_tags.py
+tools/review/promote_by_tags_versions/v3-supercharged/2026-01-21__bceeb03__promote_by_tags.py
+tools/review/promote_by_tags_versions/v3-supercharged/2026-01-21__edbb7e7__promote_by_tags.py
+tools/review/promote_by_tags_versions/v3-supercharged/2026-01-22__6c64701__promote_by_tags.py
+tools/review/promote_by_tags_versions/v3-supercharged/2026-01-23__20563d9__promote_by_tags.py
+tools/review/promote_by_tags_versions/v3-supercharged/2026-01-24__8ff7315__promote_by_tags.py
+tools/review/promote_by_tags_versions/v3-supercharged/2026-01-27__a56d990__promote_by_tags.py

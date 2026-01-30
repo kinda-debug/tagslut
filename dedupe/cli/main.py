@@ -17,6 +17,19 @@ def cli():
     pass
 
 
+def _default_canon_rules_path() -> Path:
+    return Path(__file__).parents[2] / "tools" / "rules" / "library_canon.json"
+
+
+def _collect_flac_paths(input_path: Path) -> list[Path]:
+    if input_path.is_dir():
+        from dedupe.utils.paths import list_files
+        return list(list_files(input_path, {".flac"}))
+    if input_path.is_file():
+        return [input_path]
+    raise click.ClickException(f"Path not found: {input_path}")
+
+
 @cli.command(context_settings=dict(ignore_unknown_options=True, help_option_names=[]))
 @click.argument('args', nargs=-1, type=click.UNPROCESSED)
 def scan(args):
@@ -45,6 +58,56 @@ def apply(args):
     from tools.decide.apply import apply as apply_cmd
     sys.argv = ['dedupe apply'] + list(args)
     apply_cmd()
+
+
+@cli.command("canonize")
+@click.argument("path", type=click.Path(exists=True))
+@click.option("--canon/--no-canon", default=True, help="Enable canonical tag rules")
+@click.option("--canon-rules", type=click.Path(exists=True), help="Path to canon rules JSON")
+@click.option("--canon-dry-run", is_flag=True, help="Print before/after diff for one file and exit")
+@click.option("--execute", is_flag=True, help="Write tags to files (default: dry-run)")
+@click.option("--limit", type=int, help="Maximum files to process")
+def canonize(path, canon, canon_rules, canon_dry_run, execute, limit):
+    """Apply canonical tag rules to FLAC tags using library_canon.json."""
+    from mutagen.flac import FLAC
+    from dedupe.metadata.canon import load_canon_rules, apply_canon, canon_diff
+
+    rules_path = Path(canon_rules) if canon_rules else _default_canon_rules_path()
+    rules = load_canon_rules(rules_path)
+
+    file_paths = _collect_flac_paths(Path(path).expanduser().resolve())
+    if limit:
+        file_paths = file_paths[:limit]
+    if not file_paths:
+        click.echo("No FLAC files found.")
+        return
+
+    if canon_dry_run:
+        target = file_paths[0]
+        audio = FLAC(target)
+        before = {k: list(v) if isinstance(v, list) else v for k, v in audio.tags.items()}
+        after = apply_canon(before, rules) if canon else before
+        diff = canon_diff(before, after)
+        click.echo(diff or "(no changes)")
+        return
+
+    if not execute:
+        click.echo("DRY-RUN: use --execute to write tags")
+
+    for idx, file_path in enumerate(file_paths, start=1):
+        audio = FLAC(file_path)
+        before = {k: list(v) if isinstance(v, list) else v for k, v in audio.tags.items()}
+        after = apply_canon(before, rules) if canon else before
+        if execute:
+            audio.clear()
+            for key, value in after.items():
+                if isinstance(value, (list, tuple)):
+                    audio[key] = [str(v) for v in value]
+                else:
+                    audio[key] = str(value)
+            audio.save()
+        if idx % 250 == 0 or idx == len(file_paths):
+            click.echo(f"Processed {idx}/{len(file_paths)}")
 
 
 def _interactive_init() -> dict:

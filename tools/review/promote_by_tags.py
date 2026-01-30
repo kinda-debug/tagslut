@@ -28,6 +28,7 @@ from dedupe.utils.console_ui import ConsoleUI
 from dedupe.utils.file_operations import FileOperations
 from dedupe.utils.safety_gates import SafetyGates
 from dedupe.utils.db import open_db, resolve_db_path
+from dedupe.metadata.canon import load_canon_rules, apply_canon
 
 TRUTHY = {"1", "true", "yes", "y", "t"}
 
@@ -40,14 +41,21 @@ def tag_values(tags, keys):
     out = []
     for k in keys:
         if k in tags:
-            out.extend(tags[k])
+            val = tags[k]
+            if isinstance(val, (list, tuple)):
+                out.extend(val)
+            else:
+                out.append(val)
     return out
 
 
 def first_tag(tags, keys):
     for k in keys:
         if k in tags and tags[k]:
-            return tags[k][0].strip()
+            val = tags[k]
+            if isinstance(val, (list, tuple)):
+                return str(val[0]).strip()
+            return str(val).strip()
     return ""
 
 
@@ -73,6 +81,15 @@ def sanitize_component(value, fallback):
 def limit_filename(name, limit=240):
     return name[:limit]
 
+def normalize_tags_for_promote(tags):
+    """Ensure tag values are lists (mutagen-style) for downstream helpers."""
+    out = {}
+    for k, v in tags.items():
+        if isinstance(v, (list, tuple)):
+            out[k] = list(v)
+        else:
+            out[k] = [str(v)]
+    return out
 
 # ---------------------------
 # FIXED RELEASE TYPE LOGIC
@@ -196,6 +213,13 @@ def main():
                         help="FLAC files or directories to process")
     parser.add_argument("--dest", required=True, type=Path,
                         help="Destination root directory")
+    parser.add_argument("--canon", dest="canon", action="store_true",
+                        help="Apply canonical tag rules (default)")
+    parser.add_argument("--no-canon", dest="canon", action="store_false",
+                        help="Skip canonical tag rules")
+    parser.set_defaults(canon=True)
+    parser.add_argument("--canon-rules", type=Path,
+                        help="Path to canon rules JSON (default: tools/rules/library_canon.json)")
     parser.add_argument("--execute", action="store_true",
                         help="Actually perform copies (default is dry-run)")
     args = parser.parse_args()
@@ -226,19 +250,40 @@ def main():
     error_count = 0
     errors = []
 
+    canon_rules = None
+    if args.canon:
+        rules_path = args.canon_rules or (Path(__file__).parents[2] / "tools" / "rules" / "library_canon.json")
+        canon_rules = load_canon_rules(rules_path)
+
     for i, src in enumerate(files_to_process, 1):
         try:
             audio = FLAC(src)
-            dest = build_destination(audio.tags, args.dest)
+            raw_tags = {k: list(v) if isinstance(v, list) else v for k, v in audio.tags.items()}
+            if canon_rules:
+                canon_tags = apply_canon(raw_tags, canon_rules)
+            else:
+                canon_tags = raw_tags
+            promo_tags = normalize_tags_for_promote(canon_tags)
+
+            dest = build_destination(promo_tags, args.dest)
 
             # Extract artist/album for display
-            artist = first_tag(audio.tags, ["albumartist", "album artist", "artist"]) or "Unknown"
-            album = first_tag(audio.tags, ["album"]) or "Unknown"
-            title = first_tag(audio.tags, ["title"]) or src.name
+            artist = first_tag(promo_tags, ["albumartist", "album artist", "artist"]) or "Unknown"
+            album = first_tag(promo_tags, ["album"]) or "Unknown"
+            title = first_tag(promo_tags, ["title"]) or src.name
 
             # Compact output: show progress and key info
             ui.print(f"[{i:4d}/{total}] {artist[:25]:<25} │ {album[:30]:<30} │ {title[:30]}")
             ops.safe_copy(src, dest)
+            if args.execute and canon_rules:
+                dest_audio = FLAC(dest)
+                dest_audio.clear()
+                for key, value in canon_tags.items():
+                    if isinstance(value, (list, tuple)):
+                        dest_audio[key] = [str(v) for v in value]
+                    else:
+                        dest_audio[key] = str(value)
+                dest_audio.save()
             success_count += 1
 
         except Exception as e:

@@ -187,6 +187,8 @@ def init_db(
             "enrichment_confidence": "TEXT",
             "metadata_health": "TEXT",
             "metadata_health_reason": "TEXT",
+            # Track-hub link (library_tracks/library_track_sources)
+            "library_track_key": "TEXT",
         }
 
         for col_name, col_type in required_columns.items():
@@ -206,6 +208,7 @@ def init_db(
         connection.execute("CREATE INDEX IF NOT EXISTS idx_integrity_state ON files(integrity_state);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_enriched_at ON files(enriched_at);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_canonical_isrc ON files(canonical_isrc);")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_library_track_key ON files(library_track_key);")
 
         connection.execute(
             f"""
@@ -343,6 +346,13 @@ def init_db(
         connection.execute(
             "CREATE INDEX IF NOT EXISTS idx_library_track_sources_isrc "
             "ON library_track_sources(isrc);"
+        )
+
+        # Helpful for deduping repeated upserts without requiring a unique constraint.
+        # (We delete-then-insert in code to avoid index creation failures on existing DBs.)
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_library_track_sources_triplet "
+            "ON library_track_sources(library_track_key, service, service_track_id);"
         )
 
         _ensure_scan_tracking_tables(connection)

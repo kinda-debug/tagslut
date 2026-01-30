@@ -2,6 +2,9 @@
 
 This is the authoritative documentation for the Dedupe system—a high-performance, **COPY-ONLY**, evidence-preserving toolkit for managing large FLAC libraries.
 
+If you want a **single clean start-over workflow**, use:
+- `docs/WORKFLOW_METADATA.md`
+
 ### 🛑 CRITICAL SAFETY RULE: NO DELETION
 **ABSOLUTELY NO CODE in this repository is allowed to remove any file.**
 Every tool follows a strict **"Copy then Validate"** pattern. Your original source files remain untouched. Any deduplication or organization results in new copies in the designated work zones, leaving you in full control of when and how to manually clear space.

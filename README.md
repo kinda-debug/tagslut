@@ -17,6 +17,9 @@ This repository is a recovery-first, evidence-preserving toolkit for scanning, a
 3.  **Recommend**: `python3 -m dedupe recommend --output plan.json` (Finds duplicates).
 4.  **Apply**: `python3 -m dedupe apply plan.json --confirm` (Quarantines duplicates).
 
+If you want the **clean, start-over workflow** (trust-based scan, metadata recovery, canonized promotion), follow:
+- `docs/WORKFLOW_METADATA.md`
+
 ---
 
 ## 📘 Essential Documentation

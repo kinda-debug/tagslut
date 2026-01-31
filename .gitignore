@@ -398,3 +398,7 @@ trackhub.patch
 docs/metadata_system_report.md
 /Users/georgeskhawam/Projects/dedupe/beatportdl
 beatportdl/vendor/gopkg.in/yaml.v2/yamlprivateh.go
+~/Music/btdl/01. Vlad Caia, Cristi Cons, SIT - Magnetized (Original Mix).flac
+~/Music/btdl/02. Vlad Caia, Cristi Cons, SIT - Roundandround (Original Mix).flac
+.gitignore
+~/Music/btdl/03. Vlad Caia, Cristi Cons, SIT - There Is Love (Original Mix).flac

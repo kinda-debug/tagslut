@@ -25,6 +25,72 @@ logger = logging.getLogger("dedupe.metadata.providers.beatport")
 
 
 class BeatportProvider(AbstractProvider):
+            def export_playlist_m3u(self, playlist_data: Dict[str, Any], out_path: str) -> None:
+                """
+                Export a Beatport playlist (from get_my_playlists or similar) to an M3U file.
+
+                Args:
+                    playlist_data: The playlist JSON as returned by get_my_playlists (or a single playlist object)
+                    out_path: Path to write the M3U file
+                """
+                # Try to handle both a list of playlists or a single playlist object
+                tracks = []
+                if isinstance(playlist_data, dict) and "tracks" in playlist_data:
+                    tracks = playlist_data["tracks"]
+                elif isinstance(playlist_data, dict) and "results" in playlist_data:
+                    # If this is a paginated playlist list, export all tracks from all playlists
+                    for pl in playlist_data["results"]:
+                        if "tracks" in pl:
+                            tracks.extend(pl["tracks"])
+                elif isinstance(playlist_data, list):
+                    tracks = playlist_data
+
+                with open(out_path, "w", encoding="utf-8") as f:
+                    f.write("#EXTM3U\n")
+                    for t in tracks:
+                        # Try to get a file path or URL for the track
+                        path = t.get("path") or t.get("url") or t.get("stream_url") or t.get("preview_url")
+                        if path:
+                            f.write(f"{path}\n")
+                logger.info(f"Wrote M3U playlist: {out_path} ({len(tracks)} tracks)")
+        def get_my_playlists(self, page: int = 1, per_page: int = 10) -> Optional[Dict[str, Any]]:
+            """
+            Fetch the authenticated user's playlists from Beatport.
+            Requires a valid Bearer token.
+
+            Args:
+                page: Page number (default 1)
+                per_page: Number of playlists per page (default 10)
+
+            Returns:
+                Parsed JSON response with playlists, or None on error.
+            """
+            if not self._has_auth():
+                logger.warning("BeatportProvider: Auth required for get_my_playlists.")
+                return None
+            url = "https://api.beatport.com/v4/my/playlists/"
+            params = {"page": page, "per_page": per_page}
+            headers = self._get_default_headers()
+            # Add extra headers if needed for this endpoint
+            headers.update({
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "Referer": "https://api.beatport.com/v4/docs/v4/my/playlists/",
+                "Sec-Fetch-Dest": "empty",
+                "Sec-Fetch-Mode": "cors",
+                "Sec-Fetch-Site": "same-origin",
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.2 Safari/605.1.15",
+                "X-CSRFTOKEN": "",
+                "host": "api.beatport.com",
+            })
+            try:
+                response = self._make_request("GET", url, params=params, headers=headers)
+                if response and response.status_code == 200:
+                    return response.json()
+                logger.warning(f"BeatportProvider: Failed to fetch playlists: {response.status_code if response else 'no response'}")
+            except Exception as e:
+                logger.error(f"BeatportProvider: Exception in get_my_playlists: {e}")
+            return None
     """
     Beatport provider using multiple data sources.
 

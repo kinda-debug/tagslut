@@ -47,7 +47,8 @@ logs/
 **/*.tsv
 **/*.jsonl
 **/*.pid
-
+**/*.go
+]
 # Python
 __pycache__/
 *.py[cod]
@@ -94,7 +95,7 @@ runs/
 
 # Keep structure placeholders and docs
 !artifacts/
-!artifacts/README.md
+!artifacts/README.mdßß
 !artifacts/db/
 !artifacts/db/.gitkeep
 !artifacts/logs/
@@ -107,8 +108,8 @@ runs/
 !artifacts/reports/.gitkeep
 
 # Archived run outputs (keep out of git)
-archive/ops_artifacts/**
-
+archive/ops_artifacts
+/Users/georgeskhawam/Projects/dedupe/beatportdl
 # Large legacy volumes and exports
 Volumes/
 
@@ -395,3 +396,5 @@ postman/chat/chat 7.md
 postman/chat/last.md
 trackhub.patch
 docs/metadata_system_report.md
+/Users/georgeskhawam/Projects/dedupe/beatportdl
+beatportdl/vendor/gopkg.in/yaml.v2/yamlprivateh.go

@@ -2,11 +2,10 @@
 Recovery Repairer Module
 
 Attempts to salvage corrupted FLAC files using FFmpeg.
-Creates backups before any modifications.
+Move-only policy: no backups are created; temporary outputs are removed after success.
 """
 
 import logging
-import shutil
 import subprocess
 import sqlite3
 from datetime import datetime
@@ -27,43 +26,34 @@ class Repairer:
 
     Process:
     1. Query database for files with recovery_status='queued'
-    2. Create backup in backup_dir
-    3. Attempt FFmpeg salvage with error tolerance
-    4. Validate output with flac -t
-    5. Replace original if successful
-    6. Update database state
+    2. Attempt FFmpeg salvage with error tolerance
+    3. Validate output with flac -t
+    4. Replace original if successful
+    5. Update database state
     """
 
     def __init__(
         self,
         db_path: Path,
-        backup_dir: Optional[Path] = None,
         compression_level: int = DEFAULT_COMPRESSION,
         timeout: int = DEFAULT_TIMEOUT,
         dry_run: bool = True,
-        move_mode: bool = False,
     ):
         """
         Initialize the repairer.
 
         Args:
             db_path: Path to SQLite database
-            backup_dir: Directory for backups (required unless move_mode=True)
             compression_level: FLAC compression level (0-8)
             timeout: Timeout for FFmpeg operations in seconds
             dry_run: If True, don't actually modify files
-            move_mode: If True, delete backups after successful verification
-                       (saves space but removes safety net)
         """
         self.db_path = Path(db_path)
-        self.backup_dir = Path(backup_dir) if backup_dir else None
         self.compression_level = compression_level
         self.timeout = timeout
         self.dry_run = dry_run
-        self.move_mode = move_mode
-
-        if self.backup_dir and not dry_run:
-            self.backup_dir.mkdir(parents=True, exist_ok=True)
+        if not dry_run:
+            logger.info("Move-only mode: backups are not created (use external backups).")
 
     def repair_all(self) -> dict:
         """
@@ -121,13 +111,6 @@ class Repairer:
             logger.info(f"[DRY-RUN] Would repair: {file_path}")
             return "skipped"
 
-        # Create backup
-        backup_path = self._create_backup(file_path)
-        if not backup_path:
-            logger.error(f"Failed to create backup for {file_path}")
-            self._update_status(file_path, "failed", error="backup_failed")
-            return "failed"
-
         # Attempt FFmpeg salvage
         temp_path = file_path.with_suffix(".ffmpeg_tmp.flac")
         try:
@@ -138,13 +121,12 @@ class Repairer:
                 new_state, _ = classify_flac_integrity(temp_path)
                 if new_state == "valid":
                     # Replace original with repaired version
-                    shutil.move(str(temp_path), str(file_path))
+                    temp_path.replace(file_path)
                     logger.info(f"Salvaged: {file_path}")
                     self._update_status(
                         file_path,
                         "salvaged",
                         method="ffmpeg",
-                        backup_path=backup_path,
                     )
                     return "salvaged"
                 else:
@@ -178,31 +160,6 @@ class Repairer:
             return [row[0] for row in cursor.fetchall()]
         finally:
             conn.close()
-
-    def _create_backup(self, file_path: Path) -> Optional[Path]:
-        """Create backup of original file."""
-        if not self.backup_dir:
-            logger.warning("No backup directory configured, skipping backup")
-            return None
-
-        try:
-            # Preserve directory structure in backup
-            relative = file_path.name
-            backup_path = self.backup_dir / f"{relative}.orig"
-
-            # Handle name collisions
-            counter = 1
-            while backup_path.exists():
-                backup_path = self.backup_dir / f"{relative}.orig.{counter}"
-                counter += 1
-
-            shutil.copy2(file_path, backup_path)
-            logger.debug(f"Backed up {file_path} to {backup_path}")
-            return backup_path
-
-        except Exception as e:
-            logger.error(f"Backup failed for {file_path}: {e}")
-            return None
 
     def _ffmpeg_salvage(self, input_path: Path, output_path: Path) -> bool:
         """
@@ -300,59 +257,11 @@ class Repairer:
 
     def cleanup_backups(self, verified_only: bool = True) -> dict:
         """
-        Delete backup files after successful verification.
-
-        Only call this in move_mode after verification is complete.
-
-        Args:
-            verified_only: Only delete backups for verified files
-
-        Returns:
-            Dict with cleanup statistics
+        Backups are not created in move-only mode.
+        This method is retained for compatibility and always no-ops.
         """
         if self.dry_run:
-            logger.info("[DRY-RUN] Would clean up backups")
-            return {"deleted": 0, "failed": 0, "skipped": 0}
-
-        conn = sqlite3.connect(self.db_path)
-        stats = {"deleted": 0, "failed": 0, "skipped": 0}
-
-        try:
-            where_clause = "WHERE backup_path IS NOT NULL"
-            if verified_only:
-                where_clause += " AND verified_at IS NOT NULL"
-
-            cursor = conn.execute(
-                f"""
-                SELECT path, backup_path FROM files
-                {where_clause}
-                """
-            )
-
-            for row in cursor:
-                file_path, backup_path = row
-                if not backup_path:
-                    continue
-
-                backup = Path(backup_path)
-                if backup.exists():
-                    try:
-                        backup.unlink()
-                        logger.info(f"Deleted backup: {backup}")
-                        # Clear backup_path in database
-                        conn.execute(
-                            "UPDATE files SET backup_path = NULL WHERE path = ?",
-                            (file_path,),
-                        )
-                        stats["deleted"] += 1
-                    except Exception as e:
-                        logger.error(f"Failed to delete backup {backup}: {e}")
-                        stats["failed"] += 1
-                else:
-                    stats["skipped"] += 1
-
-            conn.commit()
-            return stats
-
-        finally:
-            conn.close()
+            logger.info("[DRY-RUN] No backups to clean up (move-only mode)")
+        else:
+            logger.info("No backups to clean up (move-only mode)")
+        return {"deleted": 0, "failed": 0, "skipped": 0}

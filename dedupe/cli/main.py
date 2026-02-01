@@ -415,19 +415,11 @@ def _interactive_init() -> dict:
     config["db"] = Path(db).expanduser().resolve()
     click.echo(f"   -> {config['db']}")
 
-    # Backup directory
-    click.echo("\n3. BACKUP DIRECTORY")
-    click.echo("   Where to store original files before repair (for safety).")
-    click.echo("   Leave empty to skip backups (not recommended).")
-    backup = click.prompt("   Enter backup directory path", default="", type=str)
-    if backup:
-        backup_path = Path(backup).expanduser().resolve()
-        backup_path.mkdir(parents=True, exist_ok=True)
-        config["backup_dir"] = backup_path
-        click.echo(f"   -> {backup_path}")
-    else:
-        config["backup_dir"] = None
-        click.echo("   -> (no backups)")
+    # Backups (external)
+    click.echo("\n3. BACKUPS")
+    click.echo("   Backups are handled externally (Time Machine/NAS).")
+    click.echo("   This tool does not create or retain backups.")
+    config["backup_dir"] = None
 
     # Output report
     click.echo("\n4. OUTPUT REPORT")
@@ -437,17 +429,8 @@ def _interactive_init() -> dict:
     config["output"] = Path(output).expanduser().resolve()
     click.echo(f"   -> {config['output']}")
 
-    # Move mode
-    click.echo("\n5. OPERATION MODE")
-    click.echo("   Copy mode: Keep backups after successful recovery (safer)")
-    click.echo("   Move mode: Delete backups after verification (saves space)")
-    move = click.confirm("   Use move mode (delete backups after verification)?", default=False)
-    config["move"] = move
-    mode_msg = "Move mode (backups will be deleted)" if move else "Copy mode (backups preserved)"
-    click.echo(f"   -> {mode_msg}")
-
     # Workers
-    click.echo("\n6. PARALLEL WORKERS")
+    click.echo("\n5. PARALLEL WORKERS")
     workers = click.prompt("   Number of parallel scan workers", default=4, type=int)
     config["workers"] = workers
     click.echo(f"   -> {workers} workers")
@@ -458,9 +441,8 @@ def _interactive_init() -> dict:
     click.echo("=" * 60)
     click.echo(f"  Source:     {config['source']}")
     click.echo(f"  Database:   {config['db']}")
-    click.echo(f"  Backup dir: {config['backup_dir'] or '(none)'}")
+    click.echo("  Backups:    external-only (no local backups)")
     click.echo(f"  Output:     {config['output']}")
-    click.echo(f"  Mode:       {'Move' if config['move'] else 'Copy'}")
     click.echo(f"  Workers:    {config['workers']}")
     click.echo("=" * 60)
 
@@ -479,18 +461,16 @@ def _interactive_init() -> dict:
     default='all',
     help='Pipeline phase to run (default: all)'
 )
-@click.option('--backup-dir', type=click.Path(), help='Directory for original file backups')
 @click.option('--output', type=click.Path(), help='Report output path (CSV or JSON)')
 @click.option('--workers', default=4, help='Parallel workers for scan phase')
 @click.option('--execute', is_flag=True, help='Actually perform repairs (default: dry-run)')
-@click.option('--move', is_flag=True, help='Delete backups after successful verification')
 @click.option('--include-valid', is_flag=True, help='Include valid files in reports')
 @click.option('--init', 'interactive', is_flag=True, help='Interactive session initialization')
 @click.option('--enrich', is_flag=True, help='Enrich salvaged files with metadata after verification')
 @click.option('-v', '--verbose', is_flag=True, help='Verbose output')
 def recover(
-    path, db, phase, backup_dir, output, workers,
-    execute, move, include_valid, interactive, enrich, verbose
+    path, db, phase, output, workers,
+    execute, include_valid, interactive, enrich, verbose
 ):
     """
     Recover corrupted FLAC files.
@@ -509,11 +489,8 @@ def recover(
         # Scan only
         dedupe recover /path/to/flacs --db recovery.db --phase scan
 
-        # Repair with backups (copy mode - keeps backups)
-        dedupe recover --db recovery.db --phase repair --backup-dir /backups --execute
-
-        # Repair with move mode (deletes backups after verification)
-        dedupe recover --db recovery.db --phase repair --backup-dir /backups --execute --move
+        # Repair (move-only, no local backups)
+        dedupe recover --db recovery.db --phase repair --execute
 
         # Generate report
         dedupe recover --db recovery.db --phase report --output report.csv
@@ -534,9 +511,7 @@ def recover(
         config = _interactive_init()
         path = str(config["source"])
         db = str(config["db"])
-        backup_dir = str(config["backup_dir"]) if config["backup_dir"] else None
         output = str(config["output"])
-        move = config["move"]
         workers = config["workers"]
         execute = True  # Interactive mode implies execution
         phase = 'all'
@@ -546,16 +521,6 @@ def recover(
         raise click.ClickException("--db is required (or use --init for interactive setup)")
 
     db_path = Path(db)
-
-    # Warn about move mode
-    if move and execute:
-        click.echo("\n" + "!" * 60)
-        click.echo("WARNING: Move mode enabled!")
-        click.echo("Backups will be DELETED after successful verification.")
-        click.echo("This cannot be undone.")
-        click.echo("!" * 60)
-        if not click.confirm("Continue with move mode?", default=False):
-            raise click.Abort()
 
     # Initialize database if needed
     if not db_path.exists():
@@ -596,12 +561,9 @@ def recover(
         if not execute:
             click.echo("[DRY-RUN MODE - use --execute to perform repairs]")
 
-        backup_path = Path(backup_dir) if backup_dir else None
         repairer = Repairer(
             db_path,
-            backup_dir=backup_path,
             dry_run=not execute,
-            move_mode=move,
         )
         stats = repairer.repair_all()
 
@@ -625,15 +587,7 @@ def recover(
         click.echo(f"  Degraded: {stats['degraded']}")
         click.echo(f"  Failed: {stats['failed']}")
 
-        # Cleanup backups in move mode
-        if move and execute and repairer:
-            click.echo(f"\n{'='*50}")
-            click.echo("CLEANUP: Deleting backups (move mode)")
-            click.echo(f"{'='*50}")
-            cleanup_stats = repairer.cleanup_backups(verified_only=True)
-            click.echo(f"  Deleted: {cleanup_stats['deleted']}")
-            click.echo(f"  Failed: {cleanup_stats['failed']}")
-            click.echo(f"  Skipped: {cleanup_stats['skipped']}")
+        # No backup cleanup in move-only mode
 
     if enrich and phase in ('verify', 'all'):
         click.echo(f"\n{'='*50}")

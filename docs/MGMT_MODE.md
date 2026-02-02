@@ -323,7 +323,7 @@ bpdl should be configured to:
 2. Use `sort_by_context: true` for organized directory output
 3. Set appropriate `*_directory_template` values for releases, playlists, charts, labels, artists
 
-See `postman/bpdl/README.md` for full BeatportDL configuration reference.
+See `tools/beatportdl/bpdl/README.md` for full BeatportDL configuration reference.
 
 Example wrapper script:
 ```bash

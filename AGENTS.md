@@ -82,7 +82,7 @@ Agents working on this repo should prioritize the following:
 - Use `dedupe mgmt --check` before downloading to avoid duplicates
 - Use `dedupe recovery --no-move` (dry-run) before any actual moves
 - Generate M3U playlists via `dedupe mgmt --m3u` (NOT via BeatportDL)
-- Refer to `postman/bpdl/README.md` for BeatportDL directory settings (`sort_by_context`, `*_directory_template`)
+- Refer to `tools/beatportdl/bpdl/README.md` for BeatportDL directory settings (`sort_by_context`, `*_directory_template`)
 
 ### ❌ DON'T:
 - Copy music files or leave duplicates behind
@@ -156,7 +156,7 @@ Recovery mode handles file operations with strict move-only semantics.
 - **[REPORT.md](./REPORT.md)** — High-level strategy and rationale
 - **[docs/MGMT_MODE.md](./docs/MGMT_MODE.md)** — Full mgmt/recovery mode specification
 - **[docs/ZONES.md](./docs/ZONES.md)** — Zone system documentation
-- **[postman/bpdl/README.md](./postman/bpdl/README.md)** — BeatportDL configuration reference
+- **[tools/beatportdl/bpdl/README.md](./tools/beatportdl/bpdl/README.md)** — BeatportDL configuration reference
 
 ---
 
@@ -178,4 +178,17 @@ BeatportDL directory layout is controlled by these settings in `beatportdl-confi
 
 **BeatportDL does NOT generate M3U playlists.** Use `dedupe mgmt --m3u` or `tools/review/promote_by_tags.py` instead.
 
-See `postman/bpdl/README.md` for full documentation.
+See `tools/beatportdl/bpdl/README.md` for full documentation.
+
+---
+
+## BeatportDL Vendoring
+
+BeatportDL is **vendored** in this repository at `tools/beatportdl/bpdl/`. Key points:
+
+- **Not a Git submodule** — the source is copied directly into this repo
+- **Treated as a tool within the project** — bpdl is one component of the dedupe workflow, not the project itself
+- **Run via**: `tools/beatportdl/bpdl/bpdl` (or a wrapper script if one exists)
+- **Configuration**: `beatportdl-config.yml` in the working directory or alongside the binary
+
+When updating BeatportDL, copy the new source into `tools/beatportdl/bpdl/` and rebuild if necessary.

@@ -46,4 +46,4 @@ For detailed technical information, please refer to:
 
 **BeatportDL does NOT generate M3U playlists.** M3U generation is handled by `dedupe mgmt` or `tools/review/promote_by_tags.py` after downloads are registered to the inventory.
 
-See [postman/bpdl/README.md](postman/bpdl/README.md) for BeatportDL configuration details.
+See [tools/beatportdl/bpdl/README.md](tools/beatportdl/bpdl/README.md) for BeatportDL configuration details.

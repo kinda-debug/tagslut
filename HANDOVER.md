@@ -100,5 +100,5 @@ mgmt_status TEXT          -- new → checked → verified → moved
 
 - **BeatportDL does NOT have a `--m3u` flag.** M3U generation is a `dedupe mgmt` responsibility.
 - BeatportDL directory layout is controlled by `sort_by_context` and `*_directory_template` settings in `beatportdl-config.yml`.
-- See `postman/bpdl/README.md` for full BeatportDL configuration reference.
+- See `tools/beatportdl/bpdl/README.md` for full BeatportDL configuration reference.
 - See `docs/MGMT_MODE.md` for current mgmt/recovery semantics.

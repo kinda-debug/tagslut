@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# tiddl — Wrapper script for system-installed TIDDL (Tidal Downloader)
+#
+# This wrapper calls the system-installed tiddl binary by default.
+# Override the binary path by setting TIDDL_BIN environment variable.
+#
+# Usage:
+#   tools/tiddl <url>                    # Uses /opt/homebrew/bin/tiddl
+#   TIDDL_BIN=/custom/path/tiddl tools/tiddl <url>  # Uses custom binary
+#
+# After downloading, register to inventory and generate M3U:
+#   dedupe mgmt --source tidal --register ~/Downloads/tiddl/
+#   dedupe mgmt --m3u ~/Downloads/tiddl/
+
+set -euo pipefail
+
+TIDDL_BIN="${TIDDL_BIN:-/opt/homebrew/bin/tiddl}"
+
+if [[ ! -x "$TIDDL_BIN" ]]; then
+    echo "Error: tiddl binary not found or not executable at: $TIDDL_BIN" >&2
+    echo "Set TIDDL_BIN to override the default path." >&2
+    exit 1
+fi
+
+exec "$TIDDL_BIN" "$@"

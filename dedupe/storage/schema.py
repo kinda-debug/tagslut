@@ -189,6 +189,13 @@ def init_db(
             "metadata_health_reason": "TEXT",
             # Track-hub link (library_tracks/library_track_sources)
             "library_track_key": "TEXT",
+            # Management & Inventory fields (dedupe mgmt)
+            "download_source": "TEXT",  # bpdl, qobuz, tidal, legacy
+            "download_date": "TEXT",  # ISO timestamp
+            "original_path": "TEXT",  # Source location before canonical move
+            "mgmt_status": "TEXT",  # new → checked → verified → moved
+            "fingerprint": "TEXT",  # chromaprint for fuzzy matching
+            "m3u_exported": "TEXT",  # Last M3U export timestamp
         }
 
         for col_name, col_type in required_columns.items():
@@ -208,6 +215,11 @@ def init_db(
         connection.execute("CREATE INDEX IF NOT EXISTS idx_integrity_state ON files(integrity_state);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_enriched_at ON files(enriched_at);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_canonical_isrc ON files(canonical_isrc);")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_download_source ON files(download_source);")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_mgmt_status ON files(mgmt_status);")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_fingerprint ON files(fingerprint);")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_original_path ON files(original_path);")
+
         connection.execute("CREATE INDEX IF NOT EXISTS idx_library_track_key ON files(library_track_key);")
 
         connection.execute(

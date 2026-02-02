@@ -4,7 +4,7 @@ This document explains the metadata subsystem end-to-end: what it does, how it d
 
 ## 1) Overview
 
-The metadata subsystem enriches FLAC files with canonical metadata sourced from multiple providers (Spotify, Beatport, Qobuz, Tidal, iTunes). It is used for two primary goals:
+Tudehe metadata subsystem enriches FLAC files with canonical metadata sourced from multiple providers (Spotify, Beatport, Qobuz, Tidal, Apple Music, iTunes). It is used for two primary goals:
 
 - **Recovery mode**: validate file health by comparing local duration to provider duration.
 - **Hoarding mode**: collect rich DJ metadata (BPM, key, genre, label, artwork, etc.).
@@ -66,14 +66,16 @@ Each provider returns tracks that are scored using duration and string matching.
 
 ## 5) Canonical Selection (Cascade Rules)
 
-When multiple providers return data, canonical values are selected using precedence lists. Example precedence (from `metadata/models.py`):
+When multiple providers return data, canonical values are selected using precedence lists. Example precedence (from `metadata/models/precedence.py`):
 
-- Duration: `beatport → qobuz → tidal → spotify → itunes`
+- Duration: `beatport → qobuz → tidal → apple_music → spotify → itunes`
 - BPM/Key: `beatport → spotify`
-- Title/Artist/Album: `qobuz → tidal → beatport → spotify → itunes`
-- Artwork: `qobuz → tidal → spotify → beatport → itunes`
+- Title/Artist/Album: `qobuz → tidal → apple_music → beatport → spotify → itunes`
+- Artwork: `qobuz → tidal → apple_music → spotify → beatport → itunes`
+- Composer: `apple_music → qobuz → tidal → spotify`
+- ISRC: `beatport → apple_music → qobuz → tidal → spotify`
 
-These rules are centralized in `dedupe/metadata/models.py` so changes are deterministic and traceable.
+These rules are centralized in `dedupe/metadata/models/precedence.py` so changes are deterministic and traceable.
 
 ## 6) Database Fields Written
 
@@ -121,10 +123,11 @@ Standalone mode reads tags directly from disk and **never writes to a DB**.
 Tokens are stored in `~/.config/dedupe/tokens.json` by default. Supported flows:
 
 - **Spotify**: client credentials
-- **Beatport**: client credentials (public client ID)
+- **Beatport**: client credentials (public client ID) or web scraping fallback
 - **Tidal**: device authorization (refresh token)
 - **Qobuz**: email/password
-- **iTunes**: no auth
+- **Apple Music**: no configuration required (bearer token extracted dynamically from web app)
+- **iTunes**: no auth (public API)
 
 Initialize or check tokens:
 
@@ -133,6 +136,17 @@ dedupe metadata auth-init
 
 dedupe metadata auth-status
 ```
+
+### Apple Music Provider
+
+The Apple Music provider extracts a bearer token dynamically from the Apple Music web application. No manual configuration is required. It provides rich metadata including:
+
+- ISRC, UPC, copyright
+- Composer and credits
+- Genre, label, release date
+- High-resolution artwork
+- Classical metadata (work, movement)
+- Lyrics (TTML format)
 
 ## 9) Supporting Scripts
 

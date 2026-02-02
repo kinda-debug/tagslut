@@ -411,3 +411,14 @@ postman/chat/20263001/chat 7.md
 postman/chat/20263001/last.md
 postman/chat/29260102/last.md
 ~/Music/btdl/44. Global Underground - Global Underground Afterhours #9 (Continuous Mix 2).flac
+mp3tag_sources/Apple Music Web Source 4/localhost.key
+.gitignore
+mp3tag_sources/Apple Music Web Source 4/localhost.sh
+mp3tag_sources/localhost/localhost.key
+mp3tag_sources/localhost/localhost.sh
+.gitignore
+mp3tag_sources/localhost/localhost.pem
+mp3tag_sources/Apple Music Web Source 4/localhost.pem
+poetry.lock
+tools/flacs_inventory_20260202_191907.xlsx
+poetry.lock

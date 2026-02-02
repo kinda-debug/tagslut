@@ -146,7 +146,9 @@ Recovery mode handles file operations with strict move-only semantics.
 | **dedupe CLI** | Scanning, hashing, DB, deduplication | Bulk library operations |
 | **dedupe mgmt** | Inventory, duplicate check, M3U generation | Before/after downloads |
 | **dedupe recovery** | File moves, renames, logging | Building canonical library |
+| **tools/get** | Unified download entrypoint | Preferred way to fetch from any URL |
 | **bpdl** | Beatport download + metadata | DJ-critical tracks, catalog rebuilds |
+| **tiddl** | Tidal download + metadata | Hi-res tracks, Tidal exclusives |
 | **Yate** | Manual precision tagging | Edge cases, high-value albums, anomalies |
 
 ---
@@ -192,3 +194,90 @@ BeatportDL is **vendored** in this repository at `tools/beatportdl/bpdl/`. Key p
 - **Configuration**: `beatportdl-config.yml` in the working directory or alongside the binary
 
 When updating BeatportDL, copy the new source into `tools/beatportdl/bpdl/` and rebuild if necessary.
+
+---
+
+## TIDDL (Tidal Downloader)
+
+TIDDL is a **system-installed** Tidal downloader used for hi-res tracks and Tidal exclusives. Unlike BeatportDL, it is NOT vendored—only a wrapper script is included.
+
+### Wrapper Script
+
+- **Wrapper path**: `tools/tiddl`
+- **Default system binary**: `/opt/homebrew/bin/tiddl`
+- **Override**: Set `TIDDL_BIN` environment variable to use a different binary
+
+### Usage
+
+```bash
+# Download using default system binary
+tools/tiddl <tidal-url>
+
+# Override binary path
+TIDDL_BIN=/custom/path/tiddl tools/tiddl <tidal-url>
+
+# After downloading, register to inventory and generate M3U
+dedupe mgmt --source tidal --register ~/Downloads/tiddl/
+dedupe mgmt --m3u ~/Downloads/tiddl/
+```
+
+### Key Points
+
+- **No system binaries in repo** — only the wrapper script at `tools/tiddl`
+- **M3U generation** is handled by `dedupe mgmt --m3u`, NOT by TIDDL
+- **Inventory registration** should follow downloads: `dedupe mgmt --source tidal --register <path>`
+- **Duplicate checking** before downloads: `dedupe mgmt --check --source tidal <path>`
+
+---
+
+## Unified Download Entrypoint: `tools/get`
+
+The **preferred way** to download from Tidal or Beatport is via the unified `tools/get` script. It automatically routes URLs to the correct downloader based on domain.
+
+### Usage
+
+```bash
+# Tidal URLs → routed to tools/tiddl
+tools/get https://tidal.com/browse/playlist/12345
+tools/get https://listen.tidal.com/album/67890
+
+# Beatport URLs → routed to tools/beatportdl/bpdl/bpdl
+tools/get https://www.beatport.com/release/some-release/12345
+tools/get https://www.beatport.com/track/some-track/67890
+
+# Extra arguments are passed through to the underlying tool
+tools/get https://tidal.com/browse/album/12345 --quality high
+```
+
+### How It Works
+
+- URLs containing `tidal.com` → invokes `tools/tiddl`
+- URLs containing `beatport.com` → invokes `tools/beatportdl/bpdl/bpdl`
+- All extra arguments are passed through unchanged
+- Fails clearly if the underlying tool is missing or not executable
+
+### Direct Tool Access
+
+You can still call the underlying tools directly if needed:
+
+```bash
+# Direct TIDDL access
+tools/tiddl <tidal-url>
+
+# Direct BeatportDL access
+tools/beatportdl/bpdl/bpdl <beatport-url>
+```
+
+### Post-Download Workflow
+
+After downloading via `tools/get`, register to inventory and generate M3U:
+
+```bash
+# For Tidal downloads
+dedupe mgmt --source tidal --register ~/Downloads/tiddl/
+dedupe mgmt --m3u ~/Downloads/tiddl/
+
+# For Beatport downloads
+dedupe mgmt --source bpdl --register ~/Downloads/bpdl/
+dedupe mgmt --m3u ~/Downloads/bpdl/
+```

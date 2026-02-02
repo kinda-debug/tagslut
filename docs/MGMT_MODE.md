@@ -335,7 +335,7 @@ dedupe mgmt --source bpdl --register ~/Downloads/bpdl/
 dedupe mgmt --m3u ~/Downloads/bpdl/
 ```
 
-### qobuz-dl / tidal-dl Integration
+### qobuz-dl Integration
 
 Similar pattern:
 ```bash
@@ -344,6 +344,33 @@ Similar pattern:
 qobuz-dl "$@"
 dedupe mgmt --source qobuz --m3u --check ~/Downloads/qobuz/
 ```
+
+### TIDDL (Tidal Downloader) Integration
+
+TIDDL is a **system-installed** Tidal downloader. A wrapper script is provided at `tools/tiddl`.
+
+**Wrapper details:**
+- **Path**: `tools/tiddl`
+- **Default binary**: `/opt/homebrew/bin/tiddl`
+- **Override**: Set `TIDDL_BIN` environment variable
+
+**Usage:**
+```bash
+# Download from Tidal (uses system-installed tiddl)
+tools/tiddl <tidal-url>
+
+# Override binary path if needed
+TIDDL_BIN=/custom/path/tiddl tools/tiddl <tidal-url>
+
+# Register to inventory and generate M3U
+dedupe mgmt --source tidal --register ~/Downloads/tiddl/
+dedupe mgmt --m3u ~/Downloads/tiddl/
+```
+
+**Key points:**
+- No system binaries in repo — only the wrapper script
+- M3U generation is handled by `dedupe mgmt --m3u`, NOT by TIDDL
+- Use `--source tidal` when registering downloads
 
 ---
 
@@ -357,25 +384,122 @@ dedupe mgmt --source qobuz --m3u --check ~/Downloads/qobuz/
 
 ---
 
-## Typical Workflow: Building a Sanitized Library
+## Unified Download Entrypoint: `tools/get`
+
+The **preferred way** to download from Tidal or Beatport is via the unified `tools/get` script. It automatically routes URLs to the correct downloader based on domain.
 
 ```bash
-# 1. Download from Beatport (directory layout controlled by sort_by_context and *_directory_template)
-bpdl <urls>
+# Tidal URLs → routed to tools/tiddl
+tools/get https://tidal.com/browse/playlist/12345
+tools/get https://listen.tidal.com/album/67890
 
-# 2. Register to inventory, check for dupes
-dedupe mgmt --source bpdl --check ~/Downloads/bpdl/
+# Beatport URLs → routed to tools/beatportdl/bpdl/bpdl
+tools/get https://www.beatport.com/release/some-release/12345
+tools/get https://www.beatport.com/track/some-track/67890
 
-# 3. Generate M3U playlist (this is a dedupe mgmt feature, NOT bpdl)
-dedupe mgmt --m3u ~/Downloads/bpdl/
-
-# 4. Review M3U in Roon, verify tracks sound good
-
-# 5. Move verified tracks to canonical library
-dedupe recovery --move --zone accepted --source bpdl --since today
-
-# 6. Repeat with other sources (qobuz, tidal)
+# Extra arguments are passed through to the underlying tool
+tools/get https://tidal.com/browse/album/12345 --quality high
 ```
+
+**Direct tool access** is still available if needed:
+
+```bash
+tools/tiddl <tidal-url>                    # Direct TIDDL access
+tools/beatportdl/bpdl/bpdl <beatport-url>  # Direct BeatportDL access
+```
+
+---
+
+## Standalone Workflow (No Database)
+
+`tools/get` works completely independently—just grab tracks without any DB interaction:
+
+```bash
+# Just download, no tracking
+tools/get https://www.beatport.com/release/some-release/12345
+tools/get https://tidal.com/browse/album/67890
+
+# Files land in the downloader's configured output directory
+# (e.g., ~/Downloads/bpdl/ or ~/Downloads/tiddl/)
+```
+
+Use this when:
+- Quick one-off downloads
+- Testing/previewing before committing to library
+- Downloads you don't need to track
+
+---
+
+## Integrated Workflow: Building a Sanitized Library
+
+For full deduplication tracking and library management:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  1. PRE-CHECK (optional, avoids re-downloading)                 │
+│  dedupe mgmt --check --source tidal <url-or-path>               │
+│  → "You already have this track from bpdl (2026-01-15)"         │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│  2. DOWNLOAD                                                    │
+│  tools/get <url>                                                │
+│  → files land in downloader's configured output dir             │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│  3. REGISTER (adds to inventory DB)                             │
+│  dedupe mgmt --source tidal --register ~/Downloads/tiddl/       │
+│  → hashes files, records provenance, flags duplicates           │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│  4. M3U GENERATION (for Roon import)                            │
+│  dedupe mgmt --m3u ~/Downloads/tiddl/                           │
+│  → creates playlist for immediate listening/review              │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│  5. PROMOTE TO LIBRARY (move-only)                              │
+│  dedupe recovery --move --zone accepted --source tidal          │
+│  → moves verified files to canonical structure                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Step-by-Step Commands
+
+```bash
+# 1. (Optional) Check if you already have these tracks
+dedupe mgmt --check --source bpdl ~/queue.txt
+
+# 2. Download from Beatport or Tidal
+tools/get https://www.beatport.com/release/some-release/12345
+tools/get https://tidal.com/browse/album/67890
+
+# 3. Register to inventory, check for dupes
+dedupe mgmt --source bpdl --register ~/Downloads/bpdl/
+dedupe mgmt --source tidal --register ~/Downloads/tiddl/
+
+# 4. Generate M3U playlist (this is a dedupe mgmt feature, NOT the downloaders)
+dedupe mgmt --m3u ~/Downloads/bpdl/
+dedupe mgmt --m3u ~/Downloads/tiddl/
+
+# 5. Review M3U in Roon, verify tracks sound good
+
+# 6. Move verified tracks to canonical library
+dedupe recovery --move --zone accepted --source bpdl --since today
+dedupe recovery --move --zone accepted --source tidal --since today
+```
+
+### Integration Points
+
+| Step | Tool | DB Interaction |
+|------|------|----------------|
+| Pre-check | `dedupe mgmt --check` | Queries DB to avoid re-downloading |
+| Download | `tools/get` | **None** — just a URL router |
+| Register | `dedupe mgmt --register` | Adds files with source/date/hash |
+| M3U | `dedupe mgmt --m3u` | Uses DB metadata for rich playlists |
+| Promote | `dedupe recovery --move` | Uses DB to track verified files |
 
 **Note:** BeatportDL does NOT have a `--m3u` flag. M3U generation is always done via `dedupe mgmt --m3u` or `tools/review/promote_by_tags.py`.
 

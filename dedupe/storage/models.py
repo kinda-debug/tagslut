@@ -32,14 +32,28 @@ class AudioFile:
     streaminfo_checked_at: Optional[str] = None
     sha256_checked_at: Optional[str] = None
     checksum_type: Optional[str] = None
+    # Management/Inventory fields
+    download_source: Optional[str] = None
+    download_date: Optional[str] = None
+    original_path: Optional[Path] = None
+    mgmt_status: Optional[str] = None
+    fingerprint: Optional[str] = None
+    m3u_exported: Optional[str] = None
 
     def __post_init__(self) -> None:
         # Ensure path is always a Path object
         if isinstance(self.path, str):
             self.path = Path(self.path)
+        # Ensure original_path is a Path object if provided
+        if isinstance(self.original_path, str):
+            self.original_path = Path(self.original_path)
         # Normalize tuple/list values for scalar fields
         self.acoustid = self._normalize_scalar(self.acoustid)
         self.integrity_state = self._normalize_integrity_state(self.integrity_state)
+        self.download_source = self._normalize_scalar(self.download_source)
+        self.mgmt_status = self._normalize_scalar(self.mgmt_status)
+        self.fingerprint = self._normalize_scalar(self.fingerprint)
+        self.m3u_exported = self._normalize_scalar(self.m3u_exported)
         if self.zone is not None:
             self.zone = coerce_zone(self.zone)  # type: ignore[assignment]
 

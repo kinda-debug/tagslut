@@ -11,6 +11,7 @@ from dedupe.metadata.providers.beatport import BeatportProvider
 from dedupe.metadata.providers.qobuz import QobuzProvider
 from dedupe.metadata.providers.tidal import TidalProvider
 from dedupe.metadata.providers.itunes import iTunesProvider
+from dedupe.metadata.providers.apple_music import AppleMusicProvider
 
 __all__ = [
     "AbstractProvider",
@@ -20,4 +21,5 @@ __all__ = [
     "QobuzProvider",
     "TidalProvider",
     "iTunesProvider",
+    "AppleMusicProvider",
 ]

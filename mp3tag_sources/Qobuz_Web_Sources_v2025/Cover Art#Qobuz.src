@@ -1,0 +1,212 @@
+# Qobuz Tag Source for Cover Art for Mp3tag
+#
+# Initial release by GMK.
+
+[BasedOn]=qobuz.com
+[AlbumUrl]=https://www.qobuz.com
+[WordSeparator]=%20
+#[SearchBy]=$if($eql(%albumartist%,'Various Artists'),$regexp(%album%,'\s+\[.+\]$',,1),$regexp(%albumartist%,'\s+\[.+\]$',,1))
+[SearchBy]=%albumartist% %album%
+[Encoding]=url-utf-8
+[IndexFormat]=%type%|%_url%|%Album%|%Artist%|%Date%
+[Version]=25.10.10
+
+[ParserScriptIndex]=...
+# ###################################################################
+#					I  N  D  E  X
+# ###################################################################
+
+DebugWriteInput "C:\Users\Greg\Desktop\Logs\MP3Tag-debug_Qobuz_INDEX_input.log"
+Debug "on" "C:\Users\Greg\Desktop\Logs\MP3Tag-debug_Qobuz_INDEX.log"
+
+FindLine "<ul class=\"product__wrapper\">"
+FindLine "<li>"
+
+Do
+	JoinUntil "</li>"
+	Unspace
+	RegexpReplace "(\s)+" "$1"
+	RegexpReplace "(>)\s+" "$1"
+	RegexpReplace "\s+(<)" "$1"
+
+	# Type
+	Say "Album|"
+
+	# URL
+	FindInLine "<a class=\"ReleaseCardInfosTitle\" href=\""
+	SayUntil "\""
+	Say "|"
+	JoinUntil "</a>"
+	Unspace
+	RegexpReplace "(\s)+" "$1"
+	RegexpReplace "(>)\s+" "$1"
+	RegexpReplace "\s+(<)" "$1"
+
+	# Album
+	FindInLine "data-title=\""
+	SayUntil "\""
+	Say "|"
+	KillTag "a"
+	KillTag "/a"
+
+	# Artist
+	FindInLine "<p class=\"ReleaseCardInfosSubtitle\">"
+	SayUntil "<"
+	Say "|"
+
+	# Date
+	FindInLine "<p class=\"ReleaseCardInfosData\">"
+	
+	# Dutch
+	RegexpReplace "(\d{1,2}) januari (\d{4})" "$2-01-$1"
+	RegexpReplace "(\d{1,2}) februari (\d{4})" "$2-02-$1"
+	RegexpReplace "(\d{1,2}) maart (\d{4})" "$2-03-$1"
+	RegexpReplace "(\d{1,2}) april (\d{4})" "$2-04-$1"
+	RegexpReplace "(\d{1,2}) mei (\d{4})" "$2-05-$1"
+	RegexpReplace "(\d{1,2}) juni (\d{4})" "$2-06-$1"
+	RegexpReplace "(\d{1,2}) juli (\d{4})" "$2-07-$1"
+	RegexpReplace "(\d{1,2}) augustus (\d{4})" "$2-08-$1"
+	RegexpReplace "(\d{1,2}) september (\d{4})" "$2-09-$1"
+	RegexpReplace "(\d{1,2}) oktober (\d{4})" "$2-10-$1"
+	RegexpReplace "(\d{1,2}) november (\d{4})" "$2-11-$1"
+	RegexpReplace "(\d{1,2}) december (\d{4})" "$2-12-$1"
+
+	# English (US)
+	RegexpReplace "January (\d{1,2}), (\d{4})" "$2-01-$1"
+	RegexpReplace "February (\d{1,2}), (\d{4})" "$2-02-$1"
+	RegexpReplace "March (\d{1,2}), (\d{4})" "$2-03-$1"
+	RegexpReplace "April (\d{1,2}), (\d{4})" "$2-04-$1"
+	RegexpReplace "May (\d{1,2}), (\d{4})" "$2-05-$1"
+	RegexpReplace "June (\d{1,2}), (\d{4})" "$2-06-$1"
+	RegexpReplace "July (\d{1,2}), (\d{4})" "$2-07-$1"
+	RegexpReplace "August (\d{1,2}), (\d{4})" "$2-08-$1"
+	RegexpReplace "September (\d{1,2}), (\d{4})" "$2-09-$1"
+	RegexpReplace "October (\d{1,2}), (\d{4})" "$2-10-$1"
+	RegexpReplace "November (\d{1,2}), (\d{4})" "$2-11-$1"
+	RegexpReplace "December (\d{1,2}), (\d{4})" "$2-12-$1"
+
+	# English (Australia)
+	RegexpReplace "(\d{1,2}) January (\d{4})" "$2-01-$1"
+	RegexpReplace "(\d{1,2}) February (\d{4})" "$2-02-$1"
+	RegexpReplace "(\d{1,2}) March (\d{4})" "$2-03-$1"
+	RegexpReplace "(\d{1,2}) April (\d{4})" "$2-04-$1"
+	RegexpReplace "(\d{1,2}) May (\d{4})" "$2-05-$1"
+	RegexpReplace "(\d{1,2}) June (\d{4})" "$2-06-$1"
+	RegexpReplace "(\d{1,2}) July (\d{4})" "$2-07-$1"
+	RegexpReplace "(\d{1,2}) August (\d{4})" "$2-08-$1"
+	RegexpReplace "(\d{1,2}) September (\d{4})" "$2-09-$1"
+	RegexpReplace "(\d{1,2}) October (\d{4})" "$2-10-$1"
+	RegexpReplace "(\d{1,2}) November (\d{4})" "$2-11-$1"
+	RegexpReplace "(\d{1,2}) December (\d{4})" "$2-12-$1"
+
+	# French
+	RegexpReplace "(\d+) janvier (\d+)" "$2-01-$1"
+	RegexpReplace "(\d+) février (\d+)" "$2-02-$1"
+	RegexpReplace "(\d+) mars (\d+)" "$2-03-$1"
+	RegexpReplace "(\d+) avril (\d+)" "$2-04-$1"
+	RegexpReplace "(\d+) mai (\d+)" "$2-05-$1"
+	RegexpReplace "(\d+) juin (\d+)" "$2-06-$1"
+	RegexpReplace "(\d+) juillet (\d+)" "$2-07-$1"
+	RegexpReplace "(\d+) août (\d+)" "$2-08-$1"
+	RegexpReplace "(\d+) septembre (\d+)" "$2-09-$1"
+	RegexpReplace "(\d+) octobre (\d+)" "$2-10-$1"
+	RegexpReplace "(\d+) novembre (\d+)" "$2-11-$1"
+	RegexpReplace "(\d+) décembre (\d+)" "$2-12-$1"
+
+	# German
+	RegexpReplace "(\d+)\. Jänner (\d+)" "$2-01-$1"
+	RegexpReplace "(\d+)\. Januar (\d+)" "$2-01-$1"
+	RegexpReplace "(\d+)\. Februar (\d+)" "$2-02-$1"
+	RegexpReplace "(\d+)\. März (\d+)" "$2-03-$1"
+	RegexpReplace "(\d+)\. April (\d+)" "$2-04-$1"
+	RegexpReplace "(\d+)\. Mai (\d+)" "$2-05-$1"
+	RegexpReplace "(\d+)\. Juni (\d+)" "$2-06-$1"
+	RegexpReplace "(\d+)\. Juli (\d+)" "$2-07-$1"
+	RegexpReplace "(\d+)\. August (\d+)" "$2-08-$1"
+	RegexpReplace "(\d+)\. September (\d+)" "$2-09-$1"
+	RegexpReplace "(\d+)\. Oktober (\d+)" "$2-10-$1"
+	RegexpReplace "(\d+)\. November (\d+)" "$2-11-$1"
+	RegexpReplace "(\d+)\. Dezember (\d+)" "$2-12-$1"
+
+	# Italian
+	RegexpReplace "(\d+) gennaio (\d+)" "$2-01-$1"
+	RegexpReplace "(\d+) febbraio (\d+)" "$2-02-$1"
+	RegexpReplace "(\d+) marzo (\d+)" "$2-03-$1"
+	RegexpReplace "(\d+) aprile (\d+)" "$2-04-$1"
+	RegexpReplace "(\d+) maggio (\d+)" "$2-05-$1"
+	RegexpReplace "(\d+) giugno (\d+)" "$2-06-$1"
+	RegexpReplace "(\d+) luglio (\d+)" "$2-07-$1"
+	RegexpReplace "(\d+) agosto (\d+)" "$2-08-$1"
+	RegexpReplace "(\d+) settembre (\d+)" "$2-09-$1"
+	RegexpReplace "(\d+) ottobre (\d+)" "$2-10-$1"
+	RegexpReplace "(\d+) novembre (\d+)" "$2-11-$1"
+	RegexpReplace "(\d+) dicembre (\d+)" "$2-12-$1"
+
+	# Portuguese
+	RegexpReplace "(\d+) de janeiro de (\d+)" "$2-01-$1"
+	RegexpReplace "(\d+) de fevereiro de (\d+)" "$2-02-$1"
+	RegexpReplace "(\d+) de março de (\d+)" "$2-03-$1"
+	RegexpReplace "(\d+) de abril de (\d+)" "$2-04-$1"
+	RegexpReplace "(\d+) de maio de (\d+)" "$2-05-$1"
+	RegexpReplace "(\d+) de junho de (\d+)" "$2-06-$1"
+	RegexpReplace "(\d+) de julho de (\d+)" "$2-07-$1"
+	RegexpReplace "(\d+) de agosto de (\d+)" "$2-08-$1"
+	RegexpReplace "(\d+) de setembro de (\d+)" "$2-09-$1"
+	RegexpReplace "(\d+) de outubro de (\d+)" "$2-10-$1"
+	RegexpReplace "(\d+) de novembro de (\d+)" "$2-11-$1"
+	RegexpReplace "(\d+) de dezembro de (\d+)" "$2-12-$1"
+
+	# Spanish
+	RegexpReplace "(\d+) de enero de (\d+)" "$2-01-$1"
+	RegexpReplace "(\d+) de febrero de (\d+)" "$2-02-$1"
+	RegexpReplace "(\d+) de marzo de (\d+)" "$2-03-$1"
+	RegexpReplace "(\d+) de abril de (\d+)" "$2-04-$1"
+	RegexpReplace "(\d+) de mayo de (\d+)" "$2-05-$1"
+	RegexpReplace "(\d+) de junio de (\d+)" "$2-06-$1"
+	RegexpReplace "(\d+) de julio de (\d+)" "$2-07-$1"
+	RegexpReplace "(\d+) de agosto de (\d+)" "$2-08-$1"
+	RegexpReplace "(\d+) de septiembre de (\d+)" "$2-09-$1"
+	RegexpReplace "(\d+) de octubre de (\d+)" "$2-10-$1"
+	RegexpReplace "(\d+) de noviembre de (\d+)" "$2-11-$1"
+	RegexpReplace "(\d+) de diciembre de (\d+)" "$2-12-$1"
+
+	RegexpReplace "(\d{4})-(\d{2})-(\d{0,1})\s" "$1-$2-0$3 "
+	FindInLine "• "
+	SayUntil " •"
+
+	SayNewLine
+	MoveLine 1
+
+	# Loop
+	FindLine "<li>" 1 1
+	Unspace
+While "<li>" 200
+
+
+[ParserScriptAlbum]=...
+# ###################################################################
+#					A  L  B  U  M
+# ###################################################################
+
+DebugWriteInput "C:\Users\Greg\Desktop\Logs\MP3Tag-debug_Qobuz_ALBUM_input.log"
+Debug "on" "C:\Users\Greg\Desktop\Logs\MP3Tag-debug_Qobuz_ALBUM.log"
+
+# QOBUZ_URL
+OutputTo "QOBUZ_URL"
+SayOutput "currentURL"
+
+FindLine "<script type=\"application/ld+json\">"
+JoinUntil "</script>"
+KillTag "script"
+KillTag "/script"
+Replace "\\/" "/"
+Unspace
+
+json "on" "current"
+
+# Cover Art
+OutputTo "COVERURL"
+json_select_array "image" 3
+SayRest
+
+json "off"

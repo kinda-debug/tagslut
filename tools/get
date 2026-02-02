@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# get — Unified download entrypoint for Tidal and Beatport URLs
+#
+# Routes download URLs to the appropriate downloader based on domain:
+#   - tidal.com   → tools/tiddl (TIDDL wrapper)
+#   - beatport.com → tools/beatportdl/bpdl/bpdl (vendored BeatportDL)
+#
+# Usage:
+#   tools/get <url> [extra-args...]
+#
+# Examples:
+#   tools/get https://tidal.com/browse/playlist/12345
+#   tools/get https://www.beatport.com/release/some-release/12345
+#   tools/get https://listen.tidal.com/album/12345 --quality high
+#
+# After downloading, register to inventory and generate M3U:
+#   dedupe mgmt --source <tidal|bpdl> --register <download-path>
+#   dedupe mgmt --m3u <download-path>
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TIDDL_WRAPPER="$SCRIPT_DIR/tiddl"
+BPDL_BIN="$SCRIPT_DIR/beatportdl/bpdl/bpdl"
+
+usage() {
+    echo "Usage: tools/get <url> [extra-args...]"
+    echo ""
+    echo "Routes download URLs to the appropriate downloader:"
+    echo "  - tidal.com    → TIDDL"
+    echo "  - beatport.com → BeatportDL"
+    echo ""
+    echo "Examples:"
+    echo "  tools/get https://tidal.com/browse/playlist/12345"
+    echo "  tools/get https://www.beatport.com/release/some-release/12345"
+    exit 1
+}
+
+if [[ $# -lt 1 ]]; then
+    usage
+fi
+
+URL="$1"
+shift
+
+# Route based on domain
+if [[ "$URL" == *"tidal.com"* ]]; then
+    if [[ ! -x "$TIDDL_WRAPPER" ]]; then
+        echo "Error: TIDDL wrapper not found or not executable at: $TIDDL_WRAPPER" >&2
+        exit 1
+    fi
+    exec "$TIDDL_WRAPPER" "$URL" "$@"
+
+elif [[ "$URL" == *"beatport.com"* ]]; then
+    if [[ ! -x "$BPDL_BIN" ]]; then
+        echo "Error: BeatportDL binary not found or not executable at: $BPDL_BIN" >&2
+        exit 1
+    fi
+    exec "$BPDL_BIN" "$URL" "$@"
+
+else
+    echo "Error: Unrecognized URL domain: $URL" >&2
+    echo "Supported domains: tidal.com, beatport.com" >&2
+    exit 1
+fi

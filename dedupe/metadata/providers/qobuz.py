@@ -131,10 +131,13 @@ class QobuzProvider(AbstractProvider):
             "id": 12345,
             "title": "...",
             "performer": {"name": "..."},
-            "album": {"title": "..."},
+            "composer": {"name": "..."},
+            "album": {"title": "...", "genre": {"name": "..."}, "label": {"name": "..."}},
             "duration": 123,
             "isrc": "...",
             "release_date_original": "YYYY-MM-DD",
+            "maximum_bit_depth": 24,
+            "maximum_sampling_rate": 96000,
         }
         """
         performer = data.get("performer", {})
@@ -150,9 +153,38 @@ class QobuzProvider(AbstractProvider):
                 year = int(str(release_date)[:4])
             except (ValueError, IndexError):
                 pass
-        
+
         duration_s = data.get("duration")
         duration_ms = duration_s * 1000 if duration_s else None
+
+        # Extract genre from album or track level
+        genre_data = album.get("genre", {}) or data.get("genre", {})
+        genre = genre_data.get("name") if isinstance(genre_data, dict) else None
+
+        # Extract label
+        label_data = album.get("label", {}) or data.get("label", {})
+        label = label_data.get("name") if isinstance(label_data, dict) else None
+
+        # Extract copyright
+        copyright_text = album.get("copyright")
+
+        # Extract composer
+        composer_data = data.get("composer", {})
+        composer = composer_data.get("name") if isinstance(composer_data, dict) else None
+
+        # Extract audio quality info
+        bit_depth = data.get("maximum_bit_depth")
+        sample_rate = data.get("maximum_sampling_rate")
+
+        # Derive audio quality description
+        audio_quality = None
+        if bit_depth and sample_rate:
+            if bit_depth >= 24 and sample_rate >= 96000:
+                audio_quality = "HI_RES_96"
+            elif bit_depth >= 24:
+                audio_quality = "HI_RES"
+            elif bit_depth == 16 and sample_rate == 44100:
+                audio_quality = "CD_QUALITY"
 
         return ProviderTrack(
             service="qobuz",
@@ -162,6 +194,13 @@ class QobuzProvider(AbstractProvider):
             album=album_name,
             duration_ms=duration_ms,
             isrc=data.get("isrc"),
+            genre=genre,
+            label=label,
+            copyright=copyright_text,
+            composer=composer,
+            bit_depth=bit_depth,
+            sample_rate=sample_rate,
+            audio_quality=audio_quality,
             year=year,
             album_art_url=album.get("image", {}).get("large"),
             url=f"https://www.qobuz.com/us-en/album/a/{album.get('id')}",

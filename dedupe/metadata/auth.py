@@ -602,6 +602,9 @@ class TokenManager:
             elif provider == "itunes":
                 # iTunes doesn't need auth
                 return TokenInfo(access_token="")
+            elif provider == "apple_music":
+                # Apple Music extracts token dynamically in the provider
+                return TokenInfo(access_token="")
             else:
                 logger.debug("No refresh logic for provider: %s", provider)
                 return token
@@ -610,7 +613,7 @@ class TokenManager:
 
     def status(self) -> Dict[str, Dict[str, Any]]:
         """Get status of all configured providers."""
-        all_providers = ["spotify", "beatport", "tidal", "qobuz", "itunes"]
+        all_providers = ["spotify", "beatport", "tidal", "qobuz", "itunes", "apple_music"]
         result = {}
 
         for provider in all_providers:
@@ -625,6 +628,16 @@ class TokenManager:
                     "expired": False,
                     "expires_at": None,
                     "auth_type": "none (public API)",
+                }
+                continue
+
+            if provider == "apple_music":
+                result[provider] = {
+                    "configured": True,
+                    "has_token": True,
+                    "expired": False,
+                    "expires_at": None,
+                    "auth_type": "dynamic bearer (extracted from web)",
                 }
                 continue
 
@@ -699,6 +712,9 @@ class TokenManager:
             "itunes": {
                 "_comment": "No authentication required - iTunes Search API is public",
             },
+            "apple_music": {
+                "_comment": "No configuration required - bearer token is extracted dynamically from Apple Music web app",
+            },
         }
 
         if self.tokens_path.exists():
@@ -713,6 +729,9 @@ class TokenManager:
         """Check if a provider is properly configured for use."""
         if provider == "itunes":
             return True  # Always configured (public API)
+
+        if provider == "apple_music":
+            return True  # Always configured (token extracted dynamically from web)
 
         if provider == "beatport":
             # Beatport now works via web scraping without authentication

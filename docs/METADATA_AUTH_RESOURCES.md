@@ -6,12 +6,26 @@ This reference collects every CLI/API task related to provider credentials, toke
 - `dedupe/metadata/auth.py` → `TokenManager` reads/writes `~/.config/dedupe/tokens.json`, refreshes Spotify/Beatport/Tidal, and exposes `get_token(provider)` for the enrichment workflow.
 - Always edit tokens via CLI helpers or by manually editing the JSON (only the config values, not the access tokens).
 
+## Supported Providers
+
+| Provider | Auth Type | Configuration |
+|----------|-----------|---------------|
+| Spotify | Client credentials | `client_id` + `client_secret` in tokens.json |
+| Beatport | Bearer token or web scraping | Optional `access_token` from dj.beatport.com |
+| Tidal | Device authorization | Run `auth-login tidal`, stores `refresh_token` |
+| Qobuz | Email/password | Run `auth-login qobuz`, stores `user_auth_token` |
+| Apple Music | Dynamic (auto-extracted) | **No configuration required** |
+| iTunes | None (public API) | **No configuration required** |
+
 ## CLI commands
-- `dedupe metadata auth-init` → creates `~/.config/dedupe/tokens.json` with placeholders for every provider (Spotify, Beatport, Tidal, Qobuz). Run once per machine.
+- `dedupe metadata auth-init` → creates `~/.config/dedupe/tokens.json` with placeholders for every provider. Run once per machine.
 - `dedupe metadata auth-status` → shows which tokens are present/configured, triggers refresh for Spotify/Beatport/Tidal, and prints guidance for missing providers.
 - `dedupe metadata auth-login tidal` → starts the device authorization flow (opens browser, polls `TokenManager` until token arrives).
-- `dedupe metadata auth-login qobuz` → prompts for email/password and stores `user_auth_token`.  
+- `dedupe metadata auth-login qobuz` → prompts for email/password and stores `user_auth_token`.
 - `dedupe metadata auth-refresh spotify|beatport|tidal` → explicitly refresh a single provider/token claim.
+
+### Apple Music (No Setup Required)
+The Apple Music provider automatically extracts a bearer token from the Apple Music web application at runtime. No manual configuration is needed. It provides rich metadata including ISRC, composer, credits, lyrics, and classical metadata.
 
 ## Utility scripts (optional helpers)
 - `dedupe/metadata/spotify_partner_tokens.py` → helper for partner-only Spotify credentials (for rare partner tokens).

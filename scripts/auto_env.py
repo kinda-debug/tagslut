@@ -2,7 +2,9 @@
 """Populate `.env` by mirroring `.env.example` with dynamic overrides."""
 from __future__ import annotations
 
+import os
 import re
+import yaml
 from datetime import datetime
 from pathlib import Path
 
@@ -40,13 +42,50 @@ def find_latest_epoch(base_dir: Path) -> Path | None:
     return max(epochs, key=lambda pair: pair[0])[1]
 
 
+def extract_volumes_from_zones(zones_config_path: Path) -> dict[str, str]:
+    """Extract volume paths from zones.yaml configuration."""
+    if not zones_config_path.exists():
+        return {}
+
+    try:
+        with open(zones_config_path) as f:
+            config = yaml.safe_load(f)
+    except Exception as e:
+        print(f"Warning: Could not parse zones config: {e}")
+        return {}
+
+    if not config or "zones" not in config:
+        return {}
+
+    volumes: dict[str, str] = {}
+    zones = config.get("zones", {})
+
+    # Extract paths from each zone and create VOLUME_* variables
+    for zone_name, zone_data in zones.items():
+        if not isinstance(zone_data, dict) or "paths" not in zone_data:
+            continue
+        paths = zone_data.get("paths", [])
+        if paths and isinstance(paths, list):
+            # Use the first path for this zone as the main volume
+            volume_name = f"VOLUME_{zone_name.upper()}"
+            volumes[volume_name] = paths[0]
+
+    return volumes
+
+
 def build_updates(root: Path, lines: list[str]) -> dict[str, str]:
     updates: dict[str, str] = {}
     sample_db_path: Path | None = None
     for line in lines:
         stripped = line.strip()
         if stripped.startswith("DEDUPE_DB="):
-            sample_db_path = Path(stripped.split("=", 1)[1].strip())
+            db_value = stripped.split("=", 1)[1].strip()
+            # Handle both old hardcoded paths and new EPOCH_PLACEHOLDER
+            if "EPOCH_PLACEHOLDER" in db_value:
+                # Extract the template: /path/to/EPOCH_PLACEHOLDER/music.db
+                sample_db_path = Path(db_value.replace("EPOCH_PLACEHOLDER", "EPOCH_TEMP"))
+            else:
+                sample_db_path = Path(db_value)
             break
 
     if sample_db_path:
@@ -65,6 +104,18 @@ def build_updates(root: Path, lines: list[str]) -> dict[str, str]:
     else:
         print("Warning: DEDUPE_DB definition missing in .env.example")
 
+    # Extract volumes from zones.yaml if available
+    zones_config = os.environ.get("DEDUPE_ZONES_CONFIG")
+    if not zones_config:
+        zones_config = Path.home() / ".config" / "dedupe" / "zones.yaml"
+    else:
+        zones_config = Path(zones_config).expanduser()
+
+    zone_volumes = extract_volumes_from_zones(zones_config)
+    updates.update(zone_volumes)
+    if zone_volumes:
+        print(f"Extracted {len(zone_volumes)} volume(s) from zones config")
+
     artifacts_dir = root / "artifacts"
     updates.setdefault("DEDUPE_ARTIFACTS", str(artifacts_dir))
     reports_dir = artifacts_dir / "M" / "03_reports"
@@ -81,7 +132,7 @@ def materialize_env(env_example: Path, env_file: Path, updates: dict[str, str]) 
             continue
         key, value = line.split("=", 1)
         key = key.strip()
-        new_value = updates.get(key)
+        new_value = updates.get(key) if updates else None
         rendered_value = new_value if new_value is not None else value.strip()
         content.append(f"{key}={rendered_value}")
     env_file.write_text("\n".join(content) + "\n")

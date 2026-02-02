@@ -2,6 +2,7 @@ import click
 import logging
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 # Add project root to path so we can import tools as modules if needed
@@ -452,6 +453,443 @@ def _interactive_init() -> dict:
     return config
 
 
+@cli.command("init")
+@click.option('--output-format', type=click.Choice(['env', 'toml', 'both']), default='env', help='Configuration output format')
+@click.option('--output-path', type=click.Path(), help='Custom path for config file')
+@click.option('--setup-tokens', is_flag=True, help='Also initialize tokens.json for metadata providers')
+def init(output_format, output_path, setup_tokens):
+    """
+    Interactive initialization wizard for dedupe configuration.
+
+    Prompts for all necessary paths, settings, and credentials needed
+    for scanning and managing your music library.
+
+    Generates configuration in .env or config.toml format.
+    """
+    from dedupe.metadata.auth import TokenManager, DEFAULT_TOKENS_PATH
+    import os
+
+    click.echo("")
+    click.echo("╔" + "═" * 58 + "╗")
+    click.echo("║" + "  DEDUPE INITIALIZATION WIZARD".center(58) + "║")
+    click.echo("╚" + "═" * 58 + "╝")
+    click.echo("")
+    click.echo("This wizard will help you configure dedupe for your music library.")
+    click.echo("You can skip optional settings by pressing Enter.")
+    click.echo("")
+
+    config = {}
+
+    # ========================================================================
+    # SECTION 1: DATABASE
+    # ========================================================================
+    click.echo("─" * 60)
+    click.echo("1. DATABASE CONFIGURATION")
+    click.echo("─" * 60)
+    click.echo("The database stores scan results, integrity checks, and metadata.")
+    click.echo("")
+
+    default_db = str(Path.home() / "dedupe" / "music.db")
+    db_path = click.prompt("Database path", default=default_db, type=str)
+    config["DEDUPE_DB"] = Path(db_path).expanduser().resolve()
+
+    # Create parent directory if needed
+    if click.confirm(f"Create database directory if it doesn't exist?", default=True):
+        config["DEDUPE_DB"].parent.mkdir(parents=True, exist_ok=True)
+        click.echo(f"  ✓ Ensured directory exists: {config['DEDUPE_DB'].parent}")
+
+    click.echo("")
+
+    # ========================================================================
+    # SECTION 2: VOLUME PATHS
+    # ========================================================================
+    click.echo("─" * 60)
+    click.echo("2. VOLUME PATHS")
+    click.echo("─" * 60)
+    click.echo("Volumes are physical directories where your music files are stored.")
+    click.echo("Zones are logical categories (e.g., accepted, staging, quarantine).")
+    click.echo("")
+
+    # Required: Library volume
+    click.echo("PRIMARY LIBRARY (required)")
+    click.echo("  Main collection of accepted/canonical music files")
+    while True:
+        library = click.prompt("  Library path", type=str)
+        library_path = Path(library).expanduser().resolve()
+        if library_path.is_dir():
+            config["VOLUME_LIBRARY"] = library_path
+            click.echo(f"  ✓ {library_path}")
+            break
+        click.echo(f"  ✗ Directory not found: {library}. Try again.")
+    click.echo("")
+
+    # Optional volumes
+    optional_volumes = {
+        "VOLUME_STAGING": ("Staging area", "Files being processed/reviewed"),
+        "VOLUME_ARCHIVE": ("Archive", "Historical backups or older versions"),
+        "VOLUME_INBOX": ("Inbox", "New/incoming files to be processed"),
+        "VOLUME_SUSPECT": ("Suspect", "Files with integrity issues"),
+        "VOLUME_REJECTED": ("Rejected", "Rejected/unwanted files"),
+        "VOLUME_QUARANTINE": ("Quarantine", "Files marked for deletion"),
+        "VOLUME_RECOVERY": ("Recovery", "Recovery target for salvaged files"),
+        "VOLUME_VAULT": ("Vault", "External backup/vault location"),
+    }
+
+    for var_name, (short_name, description) in optional_volumes.items():
+        click.echo(f"{short_name.upper()} (optional)")
+        click.echo(f"  {description}")
+        volume = click.prompt(f"  {short_name} path (press Enter to skip)", default="", type=str)
+        if volume:
+            volume_path = Path(volume).expanduser().resolve()
+            if volume_path.is_dir():
+                config[var_name] = volume_path
+                click.echo(f"  ✓ {volume_path}")
+            else:
+                click.echo(f"  ⚠ Directory not found: {volume} (skipped)")
+        click.echo("")
+
+    # ========================================================================
+    # SECTION 3: OUTPUT DIRECTORIES
+    # ========================================================================
+    click.echo("─" * 60)
+    click.echo("3. OUTPUT DIRECTORIES")
+    click.echo("─" * 60)
+    click.echo("Where to save reports, logs, and artifacts.")
+    click.echo("")
+
+    default_artifacts = str(Path.cwd() / "artifacts")
+    artifacts = click.prompt("Artifacts directory", default=default_artifacts, type=str)
+    config["DEDUPE_ARTIFACTS"] = Path(artifacts).expanduser().resolve()
+
+    default_reports = str(config["DEDUPE_ARTIFACTS"] / "reports")
+    reports = click.prompt("Reports directory", default=default_reports, type=str)
+    config["DEDUPE_REPORTS"] = Path(reports).expanduser().resolve()
+
+    # Create directories
+    if click.confirm("Create output directories if they don't exist?", default=True):
+        config["DEDUPE_ARTIFACTS"].mkdir(parents=True, exist_ok=True)
+        config["DEDUPE_REPORTS"].mkdir(parents=True, exist_ok=True)
+        click.echo(f"  ✓ Created: {config['DEDUPE_ARTIFACTS']}")
+        click.echo(f"  ✓ Created: {config['DEDUPE_REPORTS']}")
+
+    click.echo("")
+
+    # ========================================================================
+    # SECTION 4: SCAN SETTINGS
+    # ========================================================================
+    click.echo("─" * 60)
+    click.echo("4. SCAN SETTINGS")
+    click.echo("─" * 60)
+    click.echo("Performance and validation options for scanning.")
+    click.echo("")
+
+    import os
+    cpu_count = os.cpu_count() or 4
+    recommended_workers = max(4, cpu_count - 2)
+
+    workers = click.prompt(
+        f"Parallel workers (CPU cores: {cpu_count}, recommended: {recommended_workers})",
+        default=recommended_workers,
+        type=int
+    )
+    config["SCAN_WORKERS"] = workers
+
+    check_integrity = click.confirm(
+        "Run FLAC integrity checks (flac -t)? Slower but thorough",
+        default=True
+    )
+    config["SCAN_CHECK_INTEGRITY"] = check_integrity
+
+    check_hash = click.confirm(
+        "Calculate SHA256 hashes? Slower but enables deduplication",
+        default=True
+    )
+    config["SCAN_CHECK_HASH"] = check_hash
+
+    incremental = click.confirm(
+        "Use incremental scanning? (Skip already-scanned files)",
+        default=True
+    )
+    config["SCAN_INCREMENTAL"] = incremental
+
+    progress_interval = click.prompt(
+        "Progress report interval (files)",
+        default=100,
+        type=int
+    )
+    config["SCAN_PROGRESS_INTERVAL"] = progress_interval
+
+    click.echo("")
+
+    # ========================================================================
+    # SECTION 5: DECISION SETTINGS
+    # ========================================================================
+    click.echo("─" * 60)
+    click.echo("5. DECISION SETTINGS")
+    click.echo("─" * 60)
+    click.echo("Preferences for duplicate resolution and quality.")
+    click.echo("")
+
+    auto_approve = click.prompt(
+        "Auto-approve threshold (0.0-1.0, higher = more conservative)",
+        default=0.95,
+        type=float
+    )
+    config["AUTO_APPROVE_THRESHOLD"] = auto_approve
+
+    quarantine_days = click.prompt(
+        "Quarantine retention days (before eligible for deletion)",
+        default=30,
+        type=int
+    )
+    config["QUARANTINE_RETENTION_DAYS"] = quarantine_days
+
+    config["PREFER_HIGH_BITRATE"] = click.confirm(
+        "Prefer high bitrate when deduplicating?",
+        default=True
+    )
+
+    config["PREFER_HIGH_SAMPLE_RATE"] = click.confirm(
+        "Prefer high sample rate when deduplicating?",
+        default=True
+    )
+
+    config["PREFER_VALID_INTEGRITY"] = click.confirm(
+        "Prefer files with valid integrity?",
+        default=True
+    )
+
+    click.echo("")
+
+    # ========================================================================
+    # SECTION 6: METADATA PROVIDERS (OPTIONAL)
+    # ========================================================================
+    if setup_tokens or click.confirm("Configure metadata providers for enrichment?", default=False):
+        click.echo("")
+        click.echo("─" * 60)
+        click.echo("6. METADATA PROVIDER AUTHENTICATION")
+        click.echo("─" * 60)
+        click.echo("External services for fetching BPM, key, genre, ISRC, etc.")
+        click.echo("")
+
+        token_manager = TokenManager()
+
+        # Initialize tokens file if needed
+        if not DEFAULT_TOKENS_PATH.exists():
+            token_manager.init_template()
+            click.echo(f"✓ Created tokens template: {DEFAULT_TOKENS_PATH}")
+
+        click.echo("Available providers:")
+        click.echo("  • Spotify    - Client credentials (get from developer.spotify.com)")
+        click.echo("  • Beatport   - Manual token extraction (requires DJ account)")
+        click.echo("  • Tidal      - Device authorization (requires subscription)")
+        click.echo("  • Qobuz      - Email/password login (requires account)")
+        click.echo("  • iTunes     - No authentication needed (public API)")
+        click.echo("")
+
+        if click.confirm("Set up Spotify?", default=False):
+            click.echo("Get credentials from: https://developer.spotify.com/dashboard")
+            client_id = click.prompt("  Spotify Client ID", type=str)
+            client_secret = click.prompt("  Spotify Client Secret", type=str, hide_input=True)
+            # Update Spotify credentials in tokens
+            if "spotify" not in token_manager._tokens:
+                token_manager._tokens["spotify"] = {}
+            token_manager._tokens["spotify"]["client_id"] = client_id
+            token_manager._tokens["spotify"]["client_secret"] = client_secret
+            token_manager._save_tokens()
+            click.echo("  ✓ Spotify configured")
+            click.echo("")
+
+        if click.confirm("Set up Tidal?", default=False):
+            _tidal_device_login(token_manager)
+            click.echo("")
+
+        if click.confirm("Set up Qobuz?", default=False):
+            _qobuz_login(token_manager)
+            click.echo("")
+
+        if click.confirm("Set up Beatport?", default=False):
+            _beatport_token_input(token_manager)
+            click.echo("")
+
+        click.echo(f"✓ Token configuration saved to: {DEFAULT_TOKENS_PATH}")
+        click.echo("")
+
+    # ========================================================================
+    # SUMMARY & CONFIRMATION
+    # ========================================================================
+    click.echo("═" * 60)
+    click.echo("CONFIGURATION SUMMARY")
+    click.echo("═" * 60)
+    click.echo("")
+    click.echo("DATABASE:")
+    click.echo(f"  {config['DEDUPE_DB']}")
+    click.echo("")
+    click.echo("VOLUMES:")
+    for key, value in config.items():
+        if key.startswith("VOLUME_"):
+            zone_name = key.replace("VOLUME_", "").lower().title()
+            click.echo(f"  {zone_name:12} → {value}")
+    click.echo("")
+    click.echo("OUTPUT:")
+    click.echo(f"  Artifacts    → {config['DEDUPE_ARTIFACTS']}")
+    click.echo(f"  Reports      → {config['DEDUPE_REPORTS']}")
+    click.echo("")
+    click.echo("SCAN SETTINGS:")
+    click.echo(f"  Workers:     {config['SCAN_WORKERS']}")
+    click.echo(f"  Integrity:   {config['SCAN_CHECK_INTEGRITY']}")
+    click.echo(f"  Hash:        {config['SCAN_CHECK_HASH']}")
+    click.echo(f"  Incremental: {config['SCAN_INCREMENTAL']}")
+    click.echo("")
+    click.echo("DECISION SETTINGS:")
+    click.echo(f"  Auto-approve:    {config['AUTO_APPROVE_THRESHOLD']}")
+    click.echo(f"  Quarantine days: {config['QUARANTINE_RETENTION_DAYS']}")
+    click.echo(f"  Prefer hi-res:   {config['PREFER_HIGH_BITRATE']} / {config['PREFER_HIGH_SAMPLE_RATE']}")
+    click.echo("")
+    click.echo("═" * 60)
+
+    if not click.confirm("Save this configuration?", default=True):
+        click.echo("Aborted.")
+        raise click.Abort()
+
+    # ========================================================================
+    # WRITE CONFIGURATION
+    # ========================================================================
+    click.echo("")
+
+    if output_format in ('env', 'both'):
+        env_path = Path(output_path) if output_path and output_format == 'env' else Path.cwd() / ".env"
+        _write_env_file(config, env_path)
+        click.echo(f"✓ Saved environment config: {env_path}")
+        click.echo("")
+        click.echo("To use this configuration:")
+        click.echo(f"  export $(cat {env_path} | xargs)")
+        click.echo("  OR add to your ~/.bashrc or ~/.zshrc:")
+        click.echo(f"  source {env_path}")
+        click.echo("")
+
+    if output_format in ('toml', 'both'):
+        toml_path = Path(output_path) if output_path and output_format == 'toml' else Path.cwd() / "config.toml"
+        _write_toml_file(config, toml_path)
+        click.echo(f"✓ Saved TOML config: {toml_path}")
+        click.echo("")
+        click.echo("To use this configuration:")
+        click.echo(f"  export DEDUPE_CONFIG={toml_path}")
+        click.echo("")
+
+    click.echo("═" * 60)
+    click.echo("INITIALIZATION COMPLETE!")
+    click.echo("═" * 60)
+    click.echo("")
+    click.echo("Next steps:")
+    click.echo("  1. Review your configuration file")
+    click.echo("  2. Run your first scan:")
+    click.echo(f"     dedupe scan {config['VOLUME_LIBRARY']}")
+    click.echo("  3. Generate deduplication recommendations:")
+    click.echo("     dedupe recommend")
+    click.echo("")
+
+
+def _write_env_file(config: dict, path: Path) -> None:
+    """Write configuration as .env file."""
+    lines = [
+        "# Dedupe Configuration",
+        "# Generated by: dedupe init",
+        f"# Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        "",
+        "# ============================================================================",
+        "# DATABASE",
+        "# ============================================================================",
+        f"DEDUPE_DB={config['DEDUPE_DB']}",
+        "",
+        "# ============================================================================",
+        "# VOLUMES",
+        "# ============================================================================",
+    ]
+
+    for key, value in sorted(config.items()):
+        if key.startswith("VOLUME_"):
+            lines.append(f"{key}={value}")
+
+    lines.extend([
+        "",
+        "# ============================================================================",
+        "# OUTPUT DIRECTORIES",
+        "# ============================================================================",
+        f"DEDUPE_ARTIFACTS={config['DEDUPE_ARTIFACTS']}",
+        f"DEDUPE_REPORTS={config['DEDUPE_REPORTS']}",
+        "",
+        "# ============================================================================",
+        "# SCAN SETTINGS",
+        "# ============================================================================",
+        f"SCAN_WORKERS={config['SCAN_WORKERS']}",
+        f"SCAN_PROGRESS_INTERVAL={config['SCAN_PROGRESS_INTERVAL']}",
+        f"SCAN_CHECK_INTEGRITY={str(config['SCAN_CHECK_INTEGRITY']).lower()}",
+        f"SCAN_CHECK_HASH={str(config['SCAN_CHECK_HASH']).lower()}",
+        f"SCAN_INCREMENTAL={str(config['SCAN_INCREMENTAL']).lower()}",
+        "",
+        "# ============================================================================",
+        "# DECISION SETTINGS",
+        "# ============================================================================",
+        f"AUTO_APPROVE_THRESHOLD={config['AUTO_APPROVE_THRESHOLD']}",
+        f"QUARANTINE_RETENTION_DAYS={config['QUARANTINE_RETENTION_DAYS']}",
+        f"PREFER_HIGH_BITRATE={str(config['PREFER_HIGH_BITRATE']).lower()}",
+        f"PREFER_HIGH_SAMPLE_RATE={str(config['PREFER_HIGH_SAMPLE_RATE']).lower()}",
+        f"PREFER_VALID_INTEGRITY={str(config['PREFER_VALID_INTEGRITY']).lower()}",
+        "",
+    ])
+
+    path.write_text("\n".join(lines))
+
+
+def _write_toml_file(config: dict, path: Path) -> None:
+    """Write configuration as config.toml file."""
+    lines = [
+        "# Dedupe Configuration",
+        f"# Generated by: dedupe init",
+        f"# Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        "",
+        "[db]",
+        f'path = "{config["DEDUPE_DB"]}"',
+        "min_disk_space_mb = 50",
+        "write_sanity_check = true",
+        "",
+        "[library]",
+        f'root = "{config["VOLUME_LIBRARY"]}"',
+        "",
+        "[volumes]",
+    ]
+
+    for key, value in sorted(config.items()):
+        if key.startswith("VOLUME_"):
+            zone = key.replace("VOLUME_", "").lower()
+            lines.append(f'{zone} = "{value}"')
+
+    lines.extend([
+        "",
+        "[output]",
+        f'artifacts = "{config["DEDUPE_ARTIFACTS"]}"',
+        f'reports = "{config["DEDUPE_REPORTS"]}"',
+        "",
+        "[scan]",
+        f'workers = {config["SCAN_WORKERS"]}',
+        f'progress_interval = {config["SCAN_PROGRESS_INTERVAL"]}',
+        f'check_integrity = {str(config["SCAN_CHECK_INTEGRITY"]).lower()}',
+        f'check_hash = {str(config["SCAN_CHECK_HASH"]).lower()}',
+        f'incremental = {str(config["SCAN_INCREMENTAL"]).lower()}',
+        "",
+        "[decisions]",
+        f'auto_approve_threshold = {config["AUTO_APPROVE_THRESHOLD"]}',
+        f'quarantine_retention_days = {config["QUARANTINE_RETENTION_DAYS"]}',
+        f'prefer_high_bitrate = {str(config["PREFER_HIGH_BITRATE"]).lower()}',
+        f'prefer_high_sample_rate = {str(config["PREFER_HIGH_SAMPLE_RATE"]).lower()}',
+        f'prefer_valid_integrity = {str(config["PREFER_VALID_INTEGRITY"]).lower()}',
+        "",
+    ])
+
+    path.write_text("\n".join(lines))
+
+
 @cli.command()
 @click.argument('path', required=False, type=click.Path(exists=True))
 @click.option('--db', type=click.Path(), help='Recovery database path')
@@ -616,8 +1054,8 @@ def recover(
             # This is a bit of a hack; the enricher expects a LIKE pattern,
             # but we can use a subquery to get the exact paths.
             # A better solution would be a dedicated method in the enricher.
-            
-            # The enricher's get_eligible_files needs a LIKE pattern. 
+
+            # The enricher's get_eligible_files needs a LIKE pattern.
             # This is a work-around and might be inefficient, but works for this scope.
             conn = sqlite3.connect(db_path)
             salvaged_paths = [row[0] for row in conn.execute("SELECT path FROM files WHERE recovery_status = 'salvaged' AND verified_at IS NOT NULL")]
@@ -1228,6 +1666,284 @@ def _beatport_token_input(token_manager):
         click.echo(f"Beatport token saved! Expires at: {time.ctime(expires_at)}")
     else:
         click.echo("Beatport token saved! (couldn't determine expiration)")
+
+
+@cli.group()
+def mgmt():
+    """Management mode: inventory tracking and duplicate checking."""
+    pass
+
+
+@mgmt.command()
+@click.argument('path', type=click.Path(exists=True))
+@click.option('--source', required=True, help='Download source (bpdl, tidal, qobuz, legacy, etc.)')
+@click.option('--db', type=click.Path(), help='Database path (auto-detect from env if not provided)')
+@click.option('--execute', is_flag=True, help='Actually register files (default: dry-run)')
+@click.option('-v', '--verbose', is_flag=True, help='Verbose output')
+def register(path, source, db, execute, verbose):
+    """
+    Register files in inventory.
+
+    Scans directory for FLAC files, computes checksums, and registers
+    them in the database with source tracking. Used after downloading
+    from Beatport, Tidal, Qobuz, etc.
+
+    \b
+    Examples:
+        # Dry-run: see what would be registered
+        dedupe mgmt register ~/Downloads/bpdl --source bpdl
+
+        # Actually register
+        dedupe mgmt register ~/Downloads/bpdl --source bpdl --execute
+
+        # Verbose output
+        dedupe mgmt register ~/Downloads/bpdl --source bpdl --execute -v
+    """
+    from dedupe.storage.schema import get_connection
+    from dedupe.storage.queries import get_file
+    from dedupe.core.hashing import calculate_file_hash
+    from dedupe.utils.db import resolve_db_path
+    from mutagen.flac import FLAC
+    from datetime import datetime, timezone
+    import sqlite3
+
+    # Resolve database path
+    db_path = Path(db) if db else resolve_db_path()
+    if not db_path.exists():
+        raise click.ClickException(f"Database not found: {db_path}")
+
+    path_obj = Path(path).expanduser().resolve()
+    if not path_obj.exists():
+        raise click.ClickException(f"Path not found: {path}")
+
+    # Collect FLAC files
+    flac_files = list(path_obj.rglob("*.flac"))
+    if not flac_files:
+        click.echo(f"No FLAC files found in {path}")
+        return
+
+    click.echo(f"Found {len(flac_files)} FLAC files")
+    click.echo(f"Source: {source}")
+    if not execute:
+        click.echo("[DRY-RUN MODE - use --execute to save]")
+    click.echo("")
+
+    conn = get_connection(str(db_path), purpose="write")
+    try:
+        registered = 0
+        skipped = 0
+        errors = 0
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        for i, file_path in enumerate(flac_files, start=1):
+            try:
+                # Check if already registered
+                existing = get_file(conn, file_path)
+                if existing:
+                    if verbose:
+                        click.echo(f"  [{i}/{len(flac_files)}] SKIP (already registered) {file_path.name}")
+                    skipped += 1
+                    continue
+
+                # Compute checksum
+                sha256 = calculate_file_hash(file_path)
+
+                # Get FLAC metadata
+                try:
+                    audio = FLAC(file_path)
+                    duration = int(audio.info.length) if audio.info.length else 0
+                except Exception as e:
+                    duration = 0
+                    if verbose:
+                        click.echo(f"  Warning: Could not read duration for {file_path.name}: {e}")
+
+                # Register in database
+                if execute:
+                    conn.execute(
+                        """
+                        INSERT OR IGNORE INTO files (
+                            path, sha256, library, zone, duration,
+                            download_source, download_date, original_path, mgmt_status
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            str(file_path),
+                            sha256,
+                            "default",  # TODO: infer from path
+                            "staging",  # TODO: infer from path
+                            duration,
+                            source,
+                            now_iso,
+                            str(file_path),  # original_path = current path (no move yet)
+                            "new",  # mgmt_status: new → checked → verified → moved
+                        ),
+                    )
+
+                if verbose or i % 50 == 0 or i == len(flac_files):
+                    click.echo(f"  [{i}/{len(flac_files)}] {file_path.name}")
+
+                registered += 1
+
+            except Exception as e:
+                errors += 1
+                click.echo(f"  ERROR: {file_path.name}: {e}")
+
+        if execute:
+            conn.commit()
+
+    finally:
+        conn.close()
+
+    click.echo("")
+    click.echo(f"{'='*50}")
+    click.echo("RESULTS")
+    click.echo(f"{'='*50}")
+    click.echo(f"  Total:       {len(flac_files):>6}")
+    click.echo(f"  Registered:  {registered:>6}  {'✓' if registered > 0 else '(none)'}")
+    click.echo(f"  Skipped:     {skipped:>6}  (already registered)")
+    click.echo(f"  Errors:      {errors:>6}  {'⚠' if errors > 0 else ''}")
+
+
+@mgmt.command()
+@click.argument('path', type=click.Path(exists=True), required=False)
+@click.option('--source', help='Filter by download source')
+@click.option('--db', type=click.Path(), help='Database path (auto-detect from env if not provided)')
+@click.option('--strict', is_flag=True, help='Strict mode: any match is a conflict')
+@click.option('-v', '--verbose', is_flag=True, help='Verbose output')
+def check(path, source, db, strict, verbose):
+    """
+    Check for duplicate files before downloading.
+
+    Scans a directory (or stdin) and checks if any files already
+    exist in the database. Useful to avoid re-downloading known files.
+
+    If no path is provided, reads file paths from stdin (one per line).
+
+    \b
+    Examples:
+        # Check a directory
+        dedupe mgmt check ~/Downloads/bpdl --source bpdl
+
+        # Check with pipe
+        find ~/incoming -name "*.flac" | dedupe mgmt check --source tidal
+
+        # Strict mode: reject if SAME file exists anywhere
+        dedupe mgmt check ~/Downloads --strict
+    """
+    from dedupe.storage.schema import get_connection
+    from dedupe.core.hashing import calculate_file_hash
+    from dedupe.utils.db import resolve_db_path
+    import sys
+
+    # Resolve database path
+    db_path = Path(db) if db else resolve_db_path()
+    if not db_path.exists():
+        raise click.ClickException(f"Database not found: {db_path}")
+
+    # Collect file paths from argument or stdin
+    file_paths = []
+    if path:
+        path_obj = Path(path).expanduser().resolve()
+        if path_obj.is_file():
+            file_paths = [path_obj]
+        elif path_obj.is_dir():
+            file_paths = list(path_obj.rglob("*.flac"))
+        else:
+            raise click.ClickException(f"Path not found: {path}")
+    else:
+        # Read from stdin
+        for line in sys.stdin:
+            file_path = Path(line.strip()).expanduser().resolve()
+            if file_path.exists() and file_path.suffix.lower() == ".flac":
+                file_paths.append(file_path)
+
+    if not file_paths:
+        click.echo("No FLAC files provided")
+        return
+
+    click.echo(f"Checking {len(file_paths)} files against database...")
+    if source:
+        click.echo(f"Filter: source={source}")
+    if strict:
+        click.echo("Mode: STRICT (any match is a conflict)")
+    click.echo("")
+
+    conn = get_connection(str(db_path), purpose="read")
+    try:
+        duplicates = []
+        unique = []
+        errors = 0
+
+        for i, file_path in enumerate(file_paths, start=1):
+            try:
+                # Compute checksum
+                sha256 = calculate_file_hash(file_path)
+
+                # Query database directly to check for existing file with same sha256
+                if strict:
+                    # Any match is a conflict
+                    cursor = conn.execute(
+                        "SELECT path, download_source FROM files WHERE sha256 = ?",
+                        (sha256,)
+                    )
+                else:
+                    # Only match if same source
+                    if source:
+                        cursor = conn.execute(
+                            "SELECT path, download_source FROM files WHERE sha256 = ? AND download_source = ?",
+                            (sha256, source)
+                        )
+                    else:
+                        cursor = conn.execute(
+                            "SELECT path, download_source FROM files WHERE sha256 = ?",
+                            (sha256,)
+                        )
+
+                existing = cursor.fetchall()
+
+                if existing:
+                    duplicates.append((file_path, existing))
+                    if verbose:
+                        click.echo(f"  CONFLICT: {file_path.name}")
+                        for match in existing:
+                            src = match[1] if match[1] else "unknown"
+                            click.echo(f"    → {src}: {Path(match[0]).name}")
+                else:
+                    unique.append(file_path)
+                    if verbose:
+                        click.echo(f"  OK: {file_path.name}")
+
+                if i % 50 == 0 or i == len(file_paths):
+                    click.echo(f"  [{i}/{len(file_paths)}]...")
+
+            except Exception as e:
+                errors += 1
+                click.echo(f"  ERROR: {file_path.name}: {e}")
+
+    finally:
+        conn.close()
+
+    click.echo("")
+    click.echo(f"{'='*50}")
+    click.echo("RESULTS")
+    click.echo(f"{'='*50}")
+    click.echo(f"  Total:        {len(file_paths):>6}")
+    click.echo(f"  Unique:       {len(unique):>6}  ✓ (safe to download)")
+    click.echo(f"  Duplicates:   {len(duplicates):>6}  ⚠ (already exists)")
+    click.echo(f"  Errors:       {errors:>6}  {'⚠' if errors > 0 else ''}")
+
+    if duplicates:
+        click.echo("")
+        click.echo("Conflicts (files that already exist):")
+        for file_path, matches in duplicates[:10]:
+            click.echo(f"  • {file_path.name}")
+            for match in matches[:2]:
+                src = match[1] if match[1] else "unknown"
+                click.echo(f"    → {src}: {Path(match[0]).name}")
+            if len(matches) > 2:
+                click.echo(f"    ... and {len(matches) - 2} more")
+        if len(duplicates) > 10:
+            click.echo(f"  ... and {len(duplicates) - 10} more conflicts")
 
 
 if __name__ == "__main__":

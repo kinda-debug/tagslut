@@ -81,6 +81,9 @@ class Enricher:
             elif name == "itunes":
                 from dedupe.metadata.providers.itunes import iTunesProvider
                 self._providers[name] = iTunesProvider()
+            elif name == "apple_music":
+                from dedupe.metadata.providers.apple_music import AppleMusicProvider
+                self._providers[name] = AppleMusicProvider(self.token_manager)
             else:
                 logger.warning("Unknown provider: %s", name)
                 return None

@@ -180,6 +180,7 @@ def find_streaminfo_duplicates(conn):
         WHERE streaminfo_md5 IS NOT NULL
           AND streaminfo_md5 != ''
           AND streaminfo_md5 != 'NOT_SCANNED'
+          AND streaminfo_md5 != '00000000000000000000000000000000'
         GROUP BY streaminfo_md5
         HAVING cnt > 1
     """

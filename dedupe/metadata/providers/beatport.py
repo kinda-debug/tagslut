@@ -147,7 +147,7 @@ class BeatportProvider(AbstractProvider):
             return self._build_id
 
         try:
-            response = self._make_request(
+            response = self._make_request_no_auth(
                 "GET",
                 self.WEB_URL,
                 headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15"}
@@ -181,7 +181,7 @@ class BeatportProvider(AbstractProvider):
 
         url = f"{self.WEB_URL}/_next/data/{build_id}/en/release/{slug}/{release_id}.json"
         params = {"description": slug, "id": str(release_id)}
-        response = self._make_request("GET", url, params=params, headers=self._get_web_headers())
+        response = self._make_request_no_auth("GET", url, params=params, headers=self._get_web_headers())
         if response and response.status_code == 200:
             try:
                 return response.json()
@@ -192,7 +192,7 @@ class BeatportProvider(AbstractProvider):
     def _fetch_release_web(self, release_id: int, slug: str) -> Optional[Dict]:
         """Fetch release HTML and parse __NEXT_DATA__ JSON (no auth needed)."""
         url = f"{self.WEB_URL}/release/{slug}/{release_id}"
-        response = self._make_request(
+        response = self._make_request_no_auth(
             "GET",
             url,
             headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15"},
@@ -284,7 +284,7 @@ class BeatportProvider(AbstractProvider):
         url = f"{self.WEB_URL}/_next/data/{build_id}/en/track/{slug}/{track_id}.json"
         params = {"description": slug, "id": str(track_id)}
 
-        response = self._make_request("GET", url, params=params, headers=self._get_web_headers())
+        response = self._make_request_no_auth("GET", url, params=params, headers=self._get_web_headers())
         if response and response.status_code == 200:
             try:
                 data = response.json()
@@ -299,7 +299,7 @@ class BeatportProvider(AbstractProvider):
         encoded_query = quote(query)
         url = f"{self.WEB_URL}/search?q={encoded_query}"
 
-        response = self._make_request(
+        response = self._make_request_no_auth(
             "GET", url,
             headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15"}
         )
@@ -349,7 +349,7 @@ class BeatportProvider(AbstractProvider):
         """
         url = f"{self.MIGRATOR_URL}/track/{bs_track_id}"
 
-        response = self._make_request("GET", url, headers={"Accept": "application/json"})
+        response = self._make_request_no_auth("GET", url, headers={"Accept": "application/json"})
         if response is None:
             return None
 
@@ -386,7 +386,7 @@ class BeatportProvider(AbstractProvider):
         ids_csv = ",".join(str(i) for i in bs_track_ids)
         url = f"{self.MIGRATOR_URL}/track/bulk"
 
-        response = self._make_request("GET", url, params={"id": ids_csv}, headers={"Accept": "application/json"})
+        response = self._make_request_no_auth("GET", url, params={"id": ids_csv}, headers={"Accept": "application/json"})
         if response is None or response.status_code != 200:
             logger.warning("Bulk Beatsource mapping failed")
             return {i: None for i in bs_track_ids}

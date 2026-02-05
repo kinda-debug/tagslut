@@ -22,6 +22,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TIDDL_WRAPPER="$SCRIPT_DIR/tiddl"
 BPDL_BIN="$SCRIPT_DIR/beatportdl/bpdl/bpdl"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 usage() {
     echo "Usage: tools/get <url> [extra-args...]"
@@ -49,6 +50,7 @@ if [[ "$URL" == *"tidal.com"* ]]; then
         echo "Error: TIDDL wrapper not found or not executable at: $TIDDL_WRAPPER" >&2
         exit 1
     fi
+    cd "$REPO_ROOT"
     exec "$TIDDL_WRAPPER" "$URL" "$@"
 
 elif [[ "$URL" == *"beatport.com"* ]]; then
@@ -56,6 +58,10 @@ elif [[ "$URL" == *"beatport.com"* ]]; then
         echo "Error: BeatportDL binary not found or not executable at: $BPDL_BIN" >&2
         exit 1
     fi
+    cd "$REPO_ROOT"
+    echo "📥 Downloading to: /Volumes/DJSSD/beatport"
+    echo "📋 Config: $REPO_ROOT/beatportdl-config.yml"
+    echo ""
     exec "$BPDL_BIN" "$URL" "$@"
 
 else

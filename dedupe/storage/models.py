@@ -39,6 +39,17 @@ class AudioFile:
     mgmt_status: Optional[str] = None
     fingerprint: Optional[str] = None
     m3u_exported: Optional[str] = None
+    m3u_path: Optional[str] = None
+    is_dj_material: Optional[int] = None
+    duration_ref_ms: Optional[int] = None
+    duration_ref_source: Optional[str] = None
+    duration_ref_track_id: Optional[str] = None
+    duration_ref_updated_at: Optional[str] = None
+    duration_measured_ms: Optional[int] = None
+    duration_measured_at: Optional[str] = None
+    duration_delta_ms: Optional[int] = None
+    duration_status: Optional[str] = None
+    duration_check_version: Optional[str] = None
 
     def __post_init__(self) -> None:
         # Ensure path is always a Path object
@@ -54,6 +65,13 @@ class AudioFile:
         self.mgmt_status = self._normalize_scalar(self.mgmt_status)
         self.fingerprint = self._normalize_scalar(self.fingerprint)
         self.m3u_exported = self._normalize_scalar(self.m3u_exported)
+        self.m3u_path = self._normalize_scalar(self.m3u_path)
+        self.duration_ref_source = self._normalize_scalar(self.duration_ref_source)
+        self.duration_ref_track_id = self._normalize_scalar(self.duration_ref_track_id)
+        self.duration_ref_updated_at = self._normalize_scalar(self.duration_ref_updated_at)
+        self.duration_measured_at = self._normalize_scalar(self.duration_measured_at)
+        self.duration_status = self._normalize_scalar(self.duration_status)
+        self.duration_check_version = self._normalize_scalar(self.duration_check_version)
         if self.zone is not None:
             self.zone = coerce_zone(self.zone)  # type: ignore[assignment]
 

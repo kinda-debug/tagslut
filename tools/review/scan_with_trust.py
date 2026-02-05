@@ -13,11 +13,14 @@ from __future__ import annotations
 
 import argparse
 import sqlite3
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from tools.integrity.scan import scan_library
+sys.path.insert(0, str(Path(__file__).parents[2]))
+
+from dedupe.integrity_scanner import scan_library
 from dedupe.utils.db import resolve_db_path
 from dedupe.utils.config import get_config
 from dedupe.utils.cli_helper import configure_execution
@@ -104,6 +107,8 @@ def main() -> int:
                     help="Allow trust=3 to map to accepted (default maps to staging).")
     ap.add_argument("--trust", type=int, choices=[0, 1, 2, 3],
                     help="Trust score (0-3). If omitted, prompt.")
+    ap.add_argument("--trust-post", type=int, choices=[0, 1, 2, 3],
+                    help="Post-scan trust score (0-3). If omitted, prompt.")
     ap.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging.")
     ap.add_argument("--config", help="Path to a TOML config file.")
     args = ap.parse_args()
@@ -143,7 +148,7 @@ def main() -> int:
 
     apply_trust_zones(db_path, root, trust_pre, args.allow_accepted)
 
-    trust_post = prompt_trust("Post-scan")
+    trust_post = args.trust_post if args.trust_post is not None else prompt_trust("Post-scan")
     apply_trust_zones(db_path, root, trust_post, args.allow_accepted)
 
     conn = sqlite3.connect(db_path)

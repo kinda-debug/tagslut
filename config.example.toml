@@ -82,6 +82,10 @@ timeout = 300
 zone_priority = ["accepted", "staging"]
 metadata_tiebreaker = true
 
+[mgmt.duration]
+ok_max_delta_ms = 2000
+warn_max_delta_ms = 8000
+
 [dedupe]
 # Enable verbose output
 verbose = true

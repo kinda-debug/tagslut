@@ -58,6 +58,7 @@ This repository is a response to three converging realities:
    For DJ use:
    - **Tolerance for error is effectively zero.**
    - Bad BPM, wrong keys, mismatched versions, broken files, or wrong mixes are unacceptable.
+   - **Duration must match a trusted reference** before promotion; size/format never override a duration mismatch.
    - DJ tracks and favorite albums may be **redownloaded** and **re-promoted** from Beatport (or other reliable sources) when needed.
 
    For non-DJ / background listening:

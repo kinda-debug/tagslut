@@ -51,7 +51,7 @@ def get_download_dir(source: str, override: Path = None) -> Path:
 
     # Default download directories by source
     if source == "bpdl":
-        return Path.home() / "Downloads" / "bpdl"
+        return Path("/Volumes/DJSSD/beatport")
     elif source == "tidal":
         return Path.home() / "Downloads" / "tiddl"
     else:
@@ -67,59 +67,104 @@ def identify_source(url: str) -> str:
         raise ValueError(f"Unsupported URL: {url}")
 
 def get_beatport_tracklist(url: str) -> list:
-    """Extract tracklist from Beatport playlist using bpdl."""
-    print(f"\n[1/5] 🔍 Querying Beatport tracklist...")
-
-    result = subprocess.run(
-        ["tools/beatportdl/bpdl/bpdl", "--info-only", url],
-        capture_output=True,
-        text=True,
-        cwd=Path(__file__).parent.parent
-    )
-
-    if result.returncode != 0:
-        print(f"    ⚠ Could not extract tracklist: {result.stderr}")
+    """
+    Extract tracklist from Beatport playlist/chart URL via web scraping.
+    Uses __NEXT_DATA__ JSON embedded in HTML - NO AUTH REQUIRED.
+    """
+    import re
+    try:
+        import httpx
+    except ImportError:
+        print(f"\n[1/5] ⚠️  httpx not available, skipping tracklist extraction...")
         return []
 
-    # Try to parse JSON from output
-    try:
-        for line in result.stdout.split('\n'):
-            if line.strip().startswith('['):
-                tracks = json.loads(line)
-                print(f"    ✓ Found {len(tracks)} tracks in playlist")
-                return tracks
-    except json.JSONDecodeError:
-        pass
+    print(f"\n[1/5] 🔍 Extracting tracklist from Beatport...")
+    print(f"    URL: {url}")
 
-    print(f"    ⚠ Could not parse tracklist from response")
-    return []
+    try:
+        # Fetch HTML page (allow redirects to get proper URL with slug)
+        response = httpx.get(
+            url,
+            headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15"},
+            follow_redirects=True,
+            timeout=30.0
+        )
+
+        print(f"    Status: {response.status_code}")
+
+        if response.status_code == 404:
+            print(f"    ⚠️  Playlist not found (404)")
+            print(f"    💡 Beatport playlists need a slug in URL:")
+            print(f"       https://www.beatport.com/playlist/NAME/ID")
+            return []
+
+        if response.status_code != 200:
+            print(f"    ⚠️  HTTP {response.status_code}, skipping tracklist extraction")
+            return []
+
+        # Extract __NEXT_DATA__ JSON
+        match = re.search(r'<script id="__NEXT_DATA__"[^>]*>([^<]+)</script>', response.text)
+        if not match:
+            print(f"    ⚠️  No __NEXT_DATA__ found in page")
+            return []
+
+        data = json.loads(match.group(1))
+
+        # Navigate to tracks (try different structures)
+        page_props = data.get("props", {}).get("pageProps", {})
+
+        # Debug: show what keys are available
+        available_keys = list(page_props.keys())
+        print(f"    Found page data: {', '.join(available_keys)}")
+
+        tracks = []
+        # Try playlist structure
+        if "playlist" in page_props:
+            playlist_info = page_props["playlist"]
+            tracks = playlist_info.get("tracks", [])
+            playlist_name = playlist_info.get("name", "Unknown")
+            print(f"    Playlist: {playlist_name}")
+        # Try chart structure
+        elif "chart" in page_props:
+            chart_info = page_props["chart"]
+            tracks = chart_info.get("tracks", [])
+            chart_name = chart_info.get("name", "Unknown")
+            print(f"    Chart: {chart_name}")
+        # Try release structure
+        elif "release" in page_props:
+            release_info = page_props["release"]
+            tracks = release_info.get("tracks", [])
+            release_name = release_info.get("name", "Unknown")
+            print(f"    Release: {release_name}")
+
+        if tracks:
+            print(f"    ✓ Found {len(tracks)} tracks")
+
+            # Show first few tracks for verification
+            for i, track in enumerate(tracks[:3], 1):
+                name = track.get("name") or track.get("track_name", "Unknown")
+                artists = track.get("artists", [])
+                artist_names = ", ".join(a.get("name", "") for a in artists) if artists else "Unknown"
+                print(f"      [{i}] {artist_names} - {name}")
+
+            if len(tracks) > 3:
+                print(f"      ... and {len(tracks) - 3} more")
+
+            return tracks
+        else:
+            print(f"    ⚠️  No tracks found in page data")
+            return []
+
+    except Exception as e:
+        print(f"    ⚠️  Failed to extract tracklist: {e}")
+        return []
 
 def get_tidal_tracklist(url: str) -> list:
-    """Extract tracklist from Tidal playlist using tiddl."""
-    print(f"\n[1/5] 🔍 Querying Tidal tracklist...")
-
-    result = subprocess.run(
-        ["tools/tiddl", "--info-only", url],
-        capture_output=True,
-        text=True,
-        cwd=Path(__file__).parent.parent
-    )
-
-    if result.returncode != 0:
-        print(f"    ⚠ Could not extract tracklist: {result.stderr}")
-        return []
-
-    # Try to parse JSON from output
-    try:
-        for line in result.stdout.split('\n'):
-            if line.strip().startswith('['):
-                tracks = json.loads(line)
-                print(f"    ✓ Found {len(tracks)} tracks in playlist")
-                return tracks
-    except json.JSONDecodeError:
-        pass
-
-    print(f"    ⚠ Could not parse tracklist from response")
+    """
+    TIDDL doesn't support metadata-only extraction.
+    We'll skip this and rely on SHA256 duplicate detection during download/register.
+    """
+    print(f"\n[1/4] 📋 Preparing download (tracklist validation during download)...")
     return []
 
 def get_existing_tracks(db_path: Path) -> dict:
@@ -377,30 +422,28 @@ def main():
     print(f"📂 Download dir:  {download_dir}")
     print(f"🎵 URL:           {url}")
 
-    # Step 1: Get tracklist BEFORE downloading
+    # Step 1: Prepare for download
     if source == "bpdl":
-        tracklist = get_beatport_tracklist(url)
+        get_beatport_tracklist(url)
     else:
-        tracklist = get_tidal_tracklist(url)
+        get_tidal_tracklist(url)
 
-    if not tracklist:
-        print(f"❌ Could not extract tracklist from URL")
-        sys.exit(1)
+    # Step 2: Download playlist (VERBOSE - show live output)
+    print(f"\n[2/5] 📥 Downloading playlist...")
+    print(f"    Command: tools/get {url}")
+    print(f"    " + "="*60)
 
-    # Step 2: Cross-check against database
-    cross_check = cross_check_tracklist(tracklist, get_existing_tracks(db_path))
-
-    # Step 3: Download ONLY missing tracks
-    print(f"\n[3/5] 📥 Downloading missing tracks only...")
+    # Run with live output (no capture) so user sees progress
     result = subprocess.run(
         ["tools/get", url],
         cwd=Path(__file__).parent.parent,
-        capture_output=True,
-        text=True
+        # NO capture_output - let it stream to terminal
     )
 
+    print(f"    " + "="*60)
+
     if result.returncode != 0:
-        print(f"    ❌ Download failed: {result.stderr}")
+        print(f"    ❌ Download failed with exit code {result.returncode}")
         sys.exit(1)
 
     print(f"    ✓ Download complete")
@@ -410,8 +453,8 @@ def main():
         print(f"    Make sure tools/get completed successfully")
         sys.exit(1)
 
-    # Step 4: Scan downloaded files
-    print(f"\n[4/5] 🔎 Scanning {download_dir}...")
+    # Step 3: Scan downloaded files
+    print(f"\n[3/5] 🔎 Scanning {download_dir}...")
     all_files = scan_downloaded_files(download_dir)
 
     if not all_files:
@@ -423,7 +466,7 @@ def main():
 
     # Step 5: Match downloaded files to database
     if all_files:
-        new_files, existing_with_paths, _ = match_downloaded_to_tracklist(all_files, tracklist, db_path)
+        new_files, existing_with_paths, _ = match_downloaded_to_tracklist(all_files, [], db_path)
     else:
         new_files = []
         existing_with_paths = []
@@ -438,7 +481,7 @@ def main():
     # Step 7: Generate M3U with ALL files
     if output_file is None:
         timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
-        output_file = Path.cwd() / f"playlist-{source}-{timestamp}.m3u"
+        output_file = download_dir / f"playlist-{source}-{timestamp}.m3u"
 
     # Combine new + existing files for M3U
     all_m3u_files = new_files + [f[0] for f in existing_with_paths]

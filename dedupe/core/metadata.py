@@ -112,9 +112,13 @@ def extract_metadata(
                     streaminfo_md5 = f"{streaminfo_md5:032x}"
                 else:
                     streaminfo_md5 = str(streaminfo_md5)
-                checksum = f"streaminfo:{streaminfo_md5}"
-                checksum_type = "STREAMINFO_MD5"
-                streaminfo_checked_at = now_iso
+                # Some encoders omit the MD5 signature and write all zeros. Treat as missing.
+                if streaminfo_md5 == "0" * 32:
+                    streaminfo_md5 = None
+                else:
+                    checksum = f"streaminfo:{streaminfo_md5}"
+                    checksum_type = "STREAMINFO_MD5"
+                    streaminfo_checked_at = now_iso
 
             if scan_hash:
                 sha256 = calculate_file_hash(path_obj)

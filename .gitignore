@@ -422,3 +422,5 @@ mp3tag_sources/Apple Music Web Source 4/localhost.pem
 poetry.lock
 tools/flacs_inventory_20260202_191907.xlsx
 poetry.lock
+dedupe/storage/migrations/2026_02_03_add_duration_safety.sql
+DJ.xlsx

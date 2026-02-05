@@ -83,6 +83,8 @@ Agents working on this repo should prioritize the following:
 - Use `dedupe recovery --no-move` (dry-run) before any actual moves
 - Generate M3U playlists via `dedupe mgmt --m3u` (NOT via BeatportDL)
 - Refer to `tools/beatportdl/bpdl/README.md` for BeatportDL directory settings (`sort_by_context`, `*_directory_template`)
+- Run duration checks for DJ material: `dedupe mgmt register --dj-only --check-duration <path>`
+- Block DJ promotion unless `duration_status=ok` (duration is a hard gate)
 
 ### ❌ DON'T:
 - Copy music files or leave duplicates behind
@@ -95,6 +97,7 @@ Agents working on this repo should prioritize the following:
 - Skip the inventory check—always register downloads to the DB
 - Bypass the M3U generation step when building the new library
 - Assume BeatportDL has M3U generation (it does NOT—use `dedupe mgmt --m3u`)
+- Promote DJ tracks based on size/format without duration verification
 
 ---
 
@@ -115,7 +118,7 @@ Management mode maintains the central inventory and prevents duplicate downloads
 
 **When prompted about similar files:**
 - **Skip** if the existing file is from a trusted source (bpdl) and recent
-- **Download anyway** if the new version has better quality (e.g., hi-res)
+- **Download anyway** only if duration matches trusted reference and quality is better (e.g., hi-res)
 - **Replace** only if the existing file is from legacy/unknown source
 
 ### Using `dedupe recovery` (Recovery Mode)

@@ -93,7 +93,14 @@ def build_updates(root: Path, lines: list[str]) -> dict[str, str]:
             base_dir = sample_db_path.parents[1]
             latest_epoch = find_latest_epoch(base_dir)
             if latest_epoch:
-                new_db = latest_epoch / "music.db"
+                today = datetime.now().date()
+                latest_date = epoch_date_from_name(latest_epoch.name)
+                # If today's epoch doesn't exist yet, prefer creating it.
+                if latest_date and latest_date.date() < today:
+                    today_dir = base_dir / f"EPOCH_{today:%Y-%m-%d}"
+                    new_db = today_dir / "music.db"
+                else:
+                    new_db = latest_epoch / "music.db"
                 new_db.parent.mkdir(parents=True, exist_ok=True)
                 updates["DEDUPE_DB"] = str(new_db)
                 print(f"Set DEDUPE_DB → {new_db}")

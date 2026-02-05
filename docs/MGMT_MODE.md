@@ -20,8 +20,10 @@ The goal is to **build a small, super-sanitized library from new downloads** rat
 ## Commands Overview
 
 ```
-dedupe mgmt [options]       # -m shorthand — download management & inventory
-dedupe recovery [options]   # -r shorthand — file operations & library building
+dedupe mgmt [options]       # management & inventory
+dedupe m [options]          # shorthand alias for mgmt
+dedupe -m [options]         # shorthand flag for mgmt
+dedupe recovery [options]   # file operations & library building
 ```
 
 ---
@@ -45,22 +47,26 @@ dedupe mgmt [OPTIONS] [PATHS...]
 Options:
   --db PATH              Path to inventory database (default: from config)
   --source NAME          Download source identifier (bpdl, qobuz, tidal, etc.)
-  
+
   # Duplicate checking
   --check / --no-check   Enable/disable similarity check (default: --check)
   --threshold FLOAT      Similarity threshold 0.0-1.0 (default: 0.85)
   --prompt / --no-prompt Interactive prompt on similar match (default: --prompt)
-  
+
   # M3U generation
   --m3u                  Generate Roon-compatible M3U playlist(s)
   --merge                Merge all items into single M3U (default: one per item)
   --m3u-dir PATH         Output directory for M3U files (default: same as downloads)
-  
+
   # Inventory operations
   --register             Register files to inventory without moving
   --scan                 Scan and update inventory from paths
   --status               Show inventory statistics
-  
+  --check-duration       Measure duration and set duration_status
+  --audit-duration        Report duration_status anomalies
+  --dj-only              Treat files as DJ material
+  --set-duration-ref     Manually set a trusted duration reference
+
   -v, --verbose          Verbose output
   --dry-run              Show what would happen without changes
 ```
@@ -73,33 +79,58 @@ When `--check` is enabled (default), before any download:
    - Artist + Title (fuzzy match)
    - ISRC (exact match)
    - Audio fingerprint (if available)
-   
+
 2. If match found with confidence ≥ threshold:
    - Display diagnosis:
      ```
      ⚠️  Similar track found in inventory:
-     
+
      EXISTING: /path/to/Artist - Track.flac
        Source: bpdl (2026-01-15)
        Quality: FLAC 44.1kHz/16bit, 4:32
        Tags: complete (ISRC, BPM, key)
-     
+
      NEW:      Artist - Track (from qobuz)
        Quality: FLAC 96kHz/24bit, 4:32
-       
+
      [S]kip  [D]ownload anyway  [R]eplace  [Q]uit
      ```
-   
+
 3. If `--no-prompt`, log and skip by default
 
 #TODO: Implement interactive prompt when similar files exist (skip/download/replace)
 #TODO: Log every decision (checks, waivers, skips) to JSON audit log
 
+### Duration Safety (DJ Material)
+
+For DJ material, duration must be validated against a trusted reference before promotion.
+Size/format never override a duration mismatch.
+
+New mgmt commands:
+```bash
+# Register + duration checks
+dedupe mgmt register --source bpdl --dj-only --check-duration /path/to/downloads
+
+# Re-check durations
+dedupe mgmt check-duration /path/to/files --dj-only --execute
+
+# Audit anomalies
+dedupe mgmt audit-duration --dj-only --status warn,fail,unknown
+
+# Manually set a trusted duration reference
+dedupe mgmt set-duration-ref /path/to/file --dj-only --confirm --execute
+```
+
+Defaults (configurable):
+- `ok` if |delta| ≤ 2000 ms
+- `warn` if 2000 < |delta| ≤ 8000 ms
+- `fail` if |delta| > 8000 ms
+
 ### M3U Generation
 
 **Note:** M3U generation is handled by `dedupe mgmt`, NOT by BeatportDL. BeatportDL does not have a `--m3u` flag.
 
-#TODO: Implement M3U generation in `dedupe mgmt --m3u`
+✅ `dedupe mgmt --m3u` is implemented.
 
 The `--m3u` flag generates Roon-compatible M3U playlists:
 
@@ -156,25 +187,30 @@ dedupe recovery [OPTIONS] [PATHS...]
 
 Options:
   --db PATH              Path to inventory database (default: from config)
-  
+
   # File operations
   --move                 Actually move files (default: dry-run/no-move)
   --no-move              Dry-run mode, log only (default)
   --rename-only          Rename in place, no relocation
-  
+
   # Targets
   --dest PATH            Destination root for moves
   --zone ZONE            Target zone (accepted, staging, etc.)
-  
+
+  # Duration safety (DJ)
+  --require-duration-ok  Block promotion unless duration_status is ok
+  --allow-duration-warn  Allow warn status for manual override (never fail)
+  --dj-only              Treat all targets as DJ material
+
   # Filtering
   --source NAME          Filter by download source
   --since DATE           Filter by registration date
   --status STATUS        Filter by file status (new, verified, etc.)
-  
+
   # Logging
   --log PATH             Operation log file (default: recovery-YYYY-MM-DD.log)
   --log-format FMT       Log format: json, tsv, plain (default: json)
-  
+
   -v, --verbose          Verbose output
   --dry-run              Alias for --no-move
 ```
@@ -235,7 +271,7 @@ ALTER TABLE files ADD COLUMN download_date TEXT;        -- ISO timestamp
 ALTER TABLE files ADD COLUMN original_path TEXT;        -- path at registration
 ALTER TABLE files ADD COLUMN canonical_path TEXT;       -- final destination (if moved)
 
--- Similarity/dedup fields  
+-- Similarity/dedup fields
 ALTER TABLE files ADD COLUMN isrc TEXT;
 ALTER TABLE files ADD COLUMN fingerprint TEXT;          -- chromaprint or similar
 ALTER TABLE files ADD COLUMN fingerprint_version TEXT;
@@ -247,6 +283,27 @@ ALTER TABLE files ADD COLUMN m3u_path TEXT;             -- path to M3U containin
 -- Status tracking
 ALTER TABLE files ADD COLUMN mgmt_status TEXT;          -- new, checked, verified, moved
 ALTER TABLE files ADD COLUMN mgmt_notes TEXT;           -- human-readable notes
+
+-- Duration safety (DJ gating)
+ALTER TABLE files ADD COLUMN is_dj_material INTEGER;     -- 1 for DJ material
+ALTER TABLE files ADD COLUMN duration_ref_ms INTEGER;    -- trusted reference duration
+ALTER TABLE files ADD COLUMN duration_ref_source TEXT;   -- beatport|manual|derived|unknown
+ALTER TABLE files ADD COLUMN duration_ref_track_id TEXT; -- beatport_track_id or isrc
+ALTER TABLE files ADD COLUMN duration_ref_updated_at TEXT;
+ALTER TABLE files ADD COLUMN duration_measured_ms INTEGER;
+ALTER TABLE files ADD COLUMN duration_measured_at TEXT;
+ALTER TABLE files ADD COLUMN duration_delta_ms INTEGER;
+ALTER TABLE files ADD COLUMN duration_status TEXT;       -- ok|warn|fail|unknown
+ALTER TABLE files ADD COLUMN duration_check_version TEXT;
+
+-- Reference duration cache
+CREATE TABLE IF NOT EXISTS track_duration_refs (
+  ref_id TEXT PRIMARY KEY,
+  ref_type TEXT NOT NULL,          -- beatport|isrc|manual
+  duration_ref_ms INTEGER NOT NULL,
+  ref_source TEXT NOT NULL,        -- beatport|manual
+  ref_updated_at TEXT
+);
 ```
 
 ---
@@ -265,6 +322,49 @@ All operations are logged in JSON format by default:
   "file_hash": "abc123...",
   "download_source": "bpdl",
   "verified": true
+}
+```
+
+Duration-related events (JSONL):
+```json
+{
+  "event": "duration_check",
+  "timestamp": "2026-02-02T16:00:00Z",
+  "path": "/staging/beatport/incoming/...",
+  "source": "bpdl",
+  "track_id": "beatport:1234567",
+  "is_dj_material": true,
+  "duration_ref_ms": 432000,
+  "duration_measured_ms": 433500,
+  "duration_delta_ms": 1500,
+  "duration_status": "ok",
+  "thresholds_ms": {"ok": 2000, "warn": 8000},
+  "check_version": "duration_v1_ok2_warn8"
+}
+```
+```json
+{
+  "event": "duration_anomaly",
+  "timestamp": "2026-02-02T16:02:00Z",
+  "path": "/staging/beatport/incoming/...",
+  "track_id": "beatport:1234567",
+  "is_dj_material": true,
+  "duration_status": "fail",
+  "duration_ref_ms": 420000,
+  "duration_measured_ms": 452000,
+  "duration_delta_ms": 32000,
+  "action": "blocked_promotion"
+}
+```
+```json
+{
+  "event": "promotion_decision",
+  "timestamp": "2026-02-02T16:10:00Z",
+  "duplicate_group_id": "dupgrp_1234",
+  "is_dj_material": true,
+  "chosen_track_path": "/accepted/DJ/Artist/...",
+  "reason": "duration_ok_and_highest_trust_score",
+  "alternatives": []
 }
 ```
 
@@ -381,6 +481,7 @@ dedupe mgmt --m3u ~/Downloads/tiddl/
 3. **Full logging**: Every operation recorded
 4. **Dry-run default**: `--move` must be explicit
 5. **Reversible**: Logs enable manual rollback if needed
+6. **DJ duration gate**: DJ material is blocked from promotion if duration is not `ok`
 
 ---
 
@@ -508,3 +609,33 @@ This workflow ensures:
 - Every file tracked in inventory
 - Roon-ready playlists for immediate listening
 - Clean, move-only path to canonical library
+
+---
+
+## DJ-Safe Beatport Playlist Promotion (Duration-First, Not Size-First)
+
+1) Download (Beatport → staging):
+```bash
+bpdl --config ... "https://www.beatport.com/playlist/..."
+```
+
+2) Register + duration check (DJ-only):
+```bash
+dedupe mgmt register --source bpdl --dj-only --check-duration /staging/beatport/incoming
+```
+
+3) Audit duration anomalies:
+```bash
+dedupe mgmt audit-duration --dj-only --status warn,fail,unknown
+```
+
+4) Promote only duration-clean DJ tracks:
+```bash
+dedupe recovery --no-move --zone accepted --require-duration-ok --dj-only /staging/beatport/incoming
+dedupe recovery --move    --zone accepted --require-duration-ok --dj-only /staging/beatport/incoming
+```
+
+Safety guarantees:
+- No DJ track is promoted if its duration differs from the trusted reference by more than the configured threshold.
+- Size/format never override a duration mismatch; they only break ties among duration-clean candidates.
+- All duration checks and promotion decisions are logged in JSONL for audit.

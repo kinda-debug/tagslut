@@ -29,6 +29,9 @@ from typing import Iterator, Set, Union
 
 logger = logging.getLogger("dedupe")
 
+SKIP_BASENAMES = {".DS_Store", "Thumbs.db"}
+SKIP_PREFIXES = ("._",)
+
 def list_files(root: Union[str, Path], extensions: Set[str], recursive: bool = True) -> Iterator[Path]:
     """
     Yields paths to files within root matching the given extensions (case-insensitive).
@@ -47,13 +50,20 @@ def list_files(root: Union[str, Path], extensions: Set[str], recursive: bool = T
             for dirpath, dirnames, filenames in os.walk(root_path):
                 if "_yate_db" in Path(dirpath).parts:
                     continue
-                dirnames[:] = [d for d in dirnames if d != "_yate_db"]
+                dirnames[:] = [
+                    d for d in dirnames
+                    if d != "_yate_db" and not d.startswith(SKIP_PREFIXES)
+                ]
                 for f in filenames:
+                    if f in SKIP_BASENAMES or f.startswith(SKIP_PREFIXES):
+                        continue
                     if Path(f).suffix.lower() in valid_exts:
                         yield Path(dirpath) / f
         else:
             for item in root_path.iterdir():
                 if "_yate_db" in item.parts:
+                    continue
+                if item.name in SKIP_BASENAMES or item.name.startswith(SKIP_PREFIXES):
                     continue
                 if item.is_file() and item.suffix.lower() in valid_exts:
                     yield item

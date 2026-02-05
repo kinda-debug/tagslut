@@ -56,7 +56,7 @@ def is_truthy(value):
 
 
 def extract_year(date, originaldate):
-    for v in (date, originaldate):
+    for v in (originaldate, date):
         if v:
             m = re.match(r"(\d{4})", v)
             if m:
@@ -66,7 +66,8 @@ def extract_year(date, originaldate):
 
 def sanitize_component(value, fallback):
     value = (value or "").strip()
-    value = re.sub(r"[\\/]", "-", value)
+    value = re.sub(r"[\\/]", " - ", value)
+    value = re.sub(r"[:*?\"<>|]", "", value)
     return value if value else fallback
 
 
@@ -143,45 +144,57 @@ def parse_release_types(tags):
 # DESTINATION BUILDER (FIXED)
 # ---------------------------
 
-def build_destination(tags, dest_root):
+def _looks_like_artist_list(value: str, min_commas: int = 3) -> bool:
+    return value.count(",") >= min_commas
+
+
+def _looks_like_artist_list(value: str, min_commas: int = 3) -> bool:
+    return value.count(",") >= min_commas
+
+
+def build_destination(tags, dest_root, is_dj=False):
     types, primary = parse_release_types(tags)
 
     compilation = is_truthy(first_tag(tags, ["compilation", "itunescompilation"])) or "compilation" in types
 
     albumartist = first_tag(tags, ["albumartist", "album artist"])
     artist = first_tag(tags, ["artist"])
+    label = first_tag(tags, ["label", "publisher", "organization", "recordlabel"])
     album = first_tag(tags, ["album"])
     title = first_tag(tags, ["title"])
     date = first_tag(tags, ["date"])
     originaldate = first_tag(tags, ["originaldate"])
+    disc = first_tag(tags, ["discnumber", "disc"])
 
-    top = albumartist or artist or "Unknown Artist"
-    if compilation:
-        top = "Various Artists"
+    # Treat huge artist lists as compilations for DJ material.
+    if is_dj and label and _looks_like_artist_list(albumartist):
+        compilation = True
 
+    # Picard-style: compilation uses label (or Various Artists), otherwise albumartist.
+    top = (label or "Various Artists") if compilation else (albumartist or artist or "Unknown Artist")
     top = sanitize_component(top, "Unknown Artist")
 
     year = extract_year(date, originaldate)
-
-    suffix = {
-        "single": " [Single]",
-        "ep": " [EP]",
-        "album": "",
-        "compilation": " [Compilation]",
-    }.get(primary, "")
-
-    album_folder = sanitize_component(f"({year}) {album}{suffix}", "Unknown Album")
-
-    # SAFETY: never allow single/ep to land in bare album folder
-    if primary in {"single", "ep"} and suffix == "":
-        album_folder = sanitize_component(f"({year}) {album} [{primary.upper()}]", "Unknown Album")
-
-    track = first_tag(tags, ["tracknumber", "track"]) or "1"
-    track = track.split("/")[0].zfill(2)
-
+    album = sanitize_component(album or "Unknown Album", "Unknown Album")
     title = sanitize_component(title or "Unknown Title", "Unknown Title")
 
-    filename = limit_filename(f"{track}. {title}.flac")
+    # Release-type suffixes.
+    type_suffix = {
+        "single": " [Single]",
+        "ep": " [EP]",
+        "compilation": " [Compilation]",
+        "album": "",
+    }.get(primary, "")
+
+    if compilation and type_suffix != " [Compilation]":
+        type_suffix = " [Compilation]"
+
+    album_folder = sanitize_component(f"({year}) {album}{type_suffix}", "Unknown Album")
+
+    track = (first_tag(tags, ["tracknumber", "track"]) or "1").split("/")[0].zfill(2)
+    disc = (disc.split("/")[0].zfill(1)) if disc else "1"
+
+    filename = limit_filename(f"{disc}-{track}. {artist} - {title}.flac")
 
     return dest_root / top / album_folder / filename
 
@@ -205,6 +218,8 @@ def main():
     parser.set_defaults(canon=True)
     parser.add_argument("--canon-rules", type=Path,
                         help="Path to canon rules JSON (default: tools/rules/library_canon.json)")
+    parser.add_argument("--dj-only", action="store_true",
+                        help="Treat sources as DJ material (use label for compilations)")
     parser.add_argument("--execute", action="store_true",
                         help="Actually perform moves (default is dry-run)")
     args = parser.parse_args()
@@ -250,7 +265,8 @@ def main():
                 canon_tags = raw_tags
             promo_tags = normalize_tags_for_promote(canon_tags)
 
-            dest = build_destination(promo_tags, args.dest)
+            is_dj = args.dj_only or is_truthy(first_tag(promo_tags, ["dedupe_dj", "dj"]))
+            dest = build_destination(promo_tags, args.dest, is_dj=is_dj)
 
             # Extract artist/album for display
             artist = first_tag(promo_tags, ["albumartist", "album artist", "artist"]) or "Unknown"

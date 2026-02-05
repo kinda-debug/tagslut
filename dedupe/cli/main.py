@@ -10,6 +10,10 @@ sys.path.insert(0, str(Path(__file__).parents[2]))
 
 logger = logging.getLogger("dedupe")
 
+# Support shorthand: `dedupe -m ...` -> `dedupe mgmt ...`
+if len(sys.argv) > 1 and sys.argv[1] == "-m":
+    sys.argv[1:2] = ["mgmt"]
+
 def _collect_flac_paths(input_path: str) -> list[Path]:
     path = Path(input_path).expanduser().resolve()
     if path.is_dir():
@@ -1668,10 +1672,294 @@ def _beatport_token_input(token_manager):
         click.echo("Beatport token saved! (couldn't determine expiration)")
 
 
-@cli.group()
-def mgmt():
+@cli.group(invoke_without_command=True)
+@click.option("--m3u", "m3u_mode", is_flag=True, help="Generate Roon-compatible M3U playlist(s)")
+@click.option("--merge", is_flag=True, help="Merge all items into a single M3U")
+@click.option("--m3u-dir", type=click.Path(), help="Output directory for M3U files")
+@click.option("--db", type=click.Path(), help="Database path (auto-detect from env if not provided)")
+@click.option("--source", help="Source label for playlist naming (bpdl, tidal, etc.)")
+@click.option("--path", "paths", multiple=True, type=click.Path(), help="Input path(s) for --m3u")
+@click.pass_context
+def mgmt(ctx, m3u_mode, merge, m3u_dir, db, source, paths):
     """Management mode: inventory tracking and duplicate checking."""
-    pass
+    if ctx.invoked_subcommand is None:
+        if not m3u_mode:
+            click.echo(ctx.get_help())
+            return
+        if not paths:
+            raise click.ClickException("Provide at least one PATH when using --m3u")
+
+        from dedupe.storage.schema import get_connection, init_db
+        from dedupe.utils.db import resolve_db_path
+        from dedupe.utils.config import get_config
+        from datetime import datetime, timezone
+
+        config = get_config()
+        default_m3u_dir = config.get("mgmt.m3u_dir") if config else None
+        output_dir = Path(m3u_dir) if m3u_dir else (Path(default_m3u_dir).expanduser() if default_m3u_dir else None)
+
+        input_paths = [Path(p).expanduser().resolve() for p in paths]
+        flac_files = _collect_flac_inputs(tuple(paths))
+        if not flac_files:
+            raise click.ClickException("No FLAC files found in provided PATHS")
+
+        if output_dir is None:
+            if len(input_paths) == 1 and input_paths[0].is_dir():
+                output_dir = input_paths[0]
+            else:
+                output_dir = Path.cwd()
+
+        groups: dict[str, list[Path]] = {}
+        if merge:
+            groups["merged"] = sorted(flac_files, key=lambda p: str(p))
+        else:
+            base_paths = [p for p in input_paths if p.exists()]
+            for file_path in flac_files:
+                group = _resolve_group_name(file_path, base_paths)
+                groups.setdefault(group, []).append(file_path)
+            for group_name in list(groups.keys()):
+                groups[group_name] = sorted(groups[group_name], key=lambda p: str(p))
+
+        resolution = resolve_db_path(db, purpose="write")
+        conn = get_connection(str(resolution.path), purpose="write")
+        init_db(conn)
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(files)")}
+        has_m3u_path = "m3u_path" in columns
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        playlist_outputs: list[Path] = []
+        try:
+            for group_name, files in groups.items():
+                playlist_name = _safe_playlist_name(group_name)
+                if merge:
+                    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+                    label = source or "dedupe"
+                    playlist_name = f"{label}-{stamp}"
+
+                output_path = _write_m3u(
+                    playlist_name=playlist_name,
+                    files=files,
+                    output_dir=output_dir,
+                )
+                playlist_outputs.append(output_path)
+
+                for file_path in files:
+                    if has_m3u_path:
+                        conn.execute(
+                            "UPDATE files SET m3u_exported = ?, m3u_path = ? WHERE path = ?",
+                            (now_iso, str(output_path), str(file_path)),
+                        )
+                    else:
+                        conn.execute(
+                            "UPDATE files SET m3u_exported = ? WHERE path = ?",
+                            (now_iso, str(file_path)),
+                        )
+            conn.commit()
+        finally:
+            conn.close()
+
+        click.echo(f"Generated {len(playlist_outputs)} M3U file(s):")
+        for item in playlist_outputs:
+            click.echo(f"  {item}")
+
+
+# Shorthand alias: dedupe m ... == dedupe mgmt ...
+cli.add_command(mgmt, "m")
+
+
+def _duration_thresholds_from_config() -> tuple[int, int]:
+    from dedupe.utils.config import get_config
+
+    config = get_config()
+    ok_max = int(config.get("mgmt.duration.ok_max_delta_ms", 2000) or 2000)
+    warn_max = int(config.get("mgmt.duration.warn_max_delta_ms", 8000) or 8000)
+    return ok_max, warn_max
+
+
+def _duration_check_version(ok_max_ms: int, warn_max_ms: int) -> str:
+    return f"duration_v1_ok{ok_max_ms//1000}_warn{warn_max_ms//1000}"
+
+
+def _duration_status(delta_ms: int | None, ok_max_ms: int, warn_max_ms: int) -> str:
+    if delta_ms is None:
+        return "unknown"
+    abs_delta = abs(delta_ms)
+    if abs_delta <= ok_max_ms:
+        return "ok"
+    if abs_delta <= warn_max_ms:
+        return "warn"
+    return "fail"
+
+
+def _collect_flac_inputs(paths: tuple[str, ...]) -> list[Path]:
+    files: list[Path] = []
+    for input_path in paths:
+        files.extend(_collect_flac_paths(input_path))
+    return files
+
+
+def _resolve_group_name(file_path: Path, base_paths: list[Path]) -> str:
+    best_base: Path | None = None
+    best_parts = -1
+    for base in base_paths:
+        try:
+            rel = file_path.relative_to(base)
+        except ValueError:
+            continue
+        if len(rel.parts) > best_parts:
+            best_parts = len(rel.parts)
+            best_base = base
+
+    if best_base is None:
+        return file_path.parent.name or "playlist"
+
+    rel = file_path.relative_to(best_base)
+    if len(rel.parts) > 1:
+        return rel.parts[0]
+    return best_base.name or file_path.parent.name or "playlist"
+
+
+def _safe_playlist_name(name: str) -> str:
+    cleaned = name.strip().replace("/", "-").replace("\\", "-")
+    return cleaned or "playlist"
+
+
+def _format_extinf(file_path: Path) -> tuple[int, str]:
+    try:
+        from mutagen.flac import FLAC
+        audio = FLAC(file_path)
+        duration = int(audio.info.length) if audio.info.length else -1
+        tags = audio.tags or {}
+        artist = _extract_tag_value(tags, ["artist", "albumartist"]) or "Unknown"
+        title = _extract_tag_value(tags, ["title"]) or file_path.stem
+        return duration, f"{artist} - {title}"
+    except Exception:
+        return -1, file_path.stem
+
+
+def _write_m3u(
+    *,
+    playlist_name: str,
+    files: list[Path],
+    output_dir: Path,
+) -> Path:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    safe_name = _safe_playlist_name(playlist_name)
+    output_path = output_dir / f"{safe_name}.m3u"
+
+    lines = ["#EXTM3U", "#EXTENC: UTF-8", f"#PLAYLIST:{playlist_name}"]
+    for file_path in files:
+        duration, label = _format_extinf(file_path)
+        lines.append(f"#EXTINF:{duration},{label}")
+        lines.append(str(file_path.resolve()))
+
+    output_path.write_text("\n".join(lines), encoding="utf-8")
+    return output_path
+
+
+def _prompt_duplicate_action(
+    *,
+    file_path: Path,
+    matches: list[tuple[str, str | None]],
+    prompt_enabled: bool,
+) -> str:
+    if not prompt_enabled or not sys.stdin.isatty():
+        return "skip"
+
+    click.echo("\n⚠️  Similar track found in inventory:")
+    click.echo(f"\nEXISTING for {file_path.name}:")
+    for match_path, match_source in matches[:5]:
+        src = match_source or "unknown"
+        click.echo(f"  → {src}: {match_path}")
+    if len(matches) > 5:
+        click.echo(f"  ... and {len(matches) - 5} more")
+
+    click.echo("\nActions: [S]kip  [D]ownload anyway  [R]eplace  [Q]uit")
+    choice = click.prompt("Choose action", default="S", show_default=True)
+    choice = choice.strip().lower()
+    if choice in {"s", "skip"}:
+        return "skip"
+    if choice in {"d", "download", "download anyway", "download_anyway"}:
+        return "download"
+    if choice in {"r", "replace"}:
+        return "replace"
+    if choice in {"q", "quit"}:
+        return "quit"
+    return "skip"
+
+
+def _measure_duration_ms(file_path: Path) -> int | None:
+    try:
+        from mutagen import File as MutagenFile
+        audio = MutagenFile(str(file_path), easy=False)
+        if audio is None or not hasattr(audio, "info") or audio.info is None:
+            return None
+        length = getattr(audio.info, "length", None)
+        if length is None:
+            return None
+        return int(round(float(length) * 1000))
+    except Exception:
+        return None
+
+
+def _extract_tag_value(tags: dict, keys: list[str]) -> str | None:
+    if not tags:
+        return None
+    lowered = {str(k).lower(): v for k, v in tags.items()}
+    for key in keys:
+        raw = lowered.get(key.lower())
+        if raw is None:
+            continue
+        if isinstance(raw, (list, tuple)):
+            if not raw:
+                continue
+            return str(raw[0]).strip() or None
+        return str(raw).strip() or None
+    return None
+
+
+def _lookup_duration_ref_ms(
+    conn,
+    beatport_id: str | None,
+    isrc: str | None,
+) -> tuple[int | None, str | None, str | None]:
+    if beatport_id:
+        row = conn.execute(
+            "SELECT duration_ref_ms, ref_source FROM track_duration_refs WHERE ref_id = ?",
+            (beatport_id,),
+        ).fetchone()
+        if row:
+            return int(row[0]), row[1], beatport_id
+        row = conn.execute(
+            """
+            SELECT canonical_duration, canonical_duration_source
+            FROM files
+            WHERE beatport_id = ? AND canonical_duration IS NOT NULL
+            LIMIT 1
+            """,
+            (beatport_id,),
+        ).fetchone()
+        if row and row[0] is not None:
+            return int(round(float(row[0]) * 1000)), row[1], beatport_id
+    if isrc:
+        row = conn.execute(
+            "SELECT duration_ref_ms, ref_source FROM track_duration_refs WHERE ref_id = ?",
+            (isrc,),
+        ).fetchone()
+        if row:
+            return int(row[0]), row[1], isrc
+        row = conn.execute(
+            """
+            SELECT canonical_duration, canonical_duration_source
+            FROM files
+            WHERE canonical_isrc = ? AND canonical_duration IS NOT NULL
+            LIMIT 1
+            """,
+            (isrc,),
+        ).fetchone()
+        if row and row[0] is not None:
+            return int(round(float(row[0]) * 1000)), row[1], isrc
+    return None, None, None
 
 
 @mgmt.command()
@@ -1679,8 +1967,11 @@ def mgmt():
 @click.option('--source', required=True, help='Download source (bpdl, tidal, qobuz, legacy, etc.)')
 @click.option('--db', type=click.Path(), help='Database path (auto-detect from env if not provided)')
 @click.option('--execute', is_flag=True, help='Actually register files (default: dry-run)')
+@click.option('--dj-only', is_flag=True, help='Mark all registered files as DJ material')
+@click.option('--check-duration', is_flag=True, help='Measure duration and compute duration status')
+@click.option('--prompt/--no-prompt', default=True, help='Prompt when similar files exist')
 @click.option('-v', '--verbose', is_flag=True, help='Verbose output')
-def register(path, source, db, execute, verbose):
+def register(path, source, db, execute, dj_only, check_duration, prompt, verbose):
     """
     Register files in inventory.
 
@@ -1698,14 +1989,18 @@ def register(path, source, db, execute, verbose):
 
         # Verbose output
         dedupe mgmt register ~/Downloads/bpdl --source bpdl --execute -v
+
+        # Register with duration checks for DJ material
+        dedupe mgmt register ~/Downloads/bpdl --source bpdl --dj-only --check-duration --execute
     """
-    from dedupe.storage.schema import get_connection
+    from dedupe.storage.schema import get_connection, init_db
     from dedupe.storage.queries import get_file
     from dedupe.core.hashing import calculate_file_hash
     from dedupe.utils.db import resolve_db_path
     from mutagen.flac import FLAC
     from datetime import datetime, timezone
-    import sqlite3
+    from dedupe.utils.audit_log import append_jsonl, resolve_log_path
+    from dedupe.utils.config import get_config
 
     # Resolve database path
     db_path = Path(db) if db else resolve_db_path()
@@ -1728,12 +2023,22 @@ def register(path, source, db, execute, verbose):
         click.echo("[DRY-RUN MODE - use --execute to save]")
     click.echo("")
 
+    config = get_config()
+    log_dir = None
+    if config:
+        configured_dir = config.get("mgmt.audit_log_dir")
+        if configured_dir:
+            log_dir = Path(configured_dir).expanduser()
+
     conn = get_connection(str(db_path), purpose="write")
+    init_db(conn)
     try:
         registered = 0
         skipped = 0
         errors = 0
         now_iso = datetime.now(timezone.utc).isoformat()
+        ok_max_ms, warn_max_ms = _duration_thresholds_from_config()
+        duration_version = _duration_check_version(ok_max_ms, warn_max_ms)
 
         for i, file_path in enumerate(flac_files, start=1):
             try:
@@ -1748,7 +2053,46 @@ def register(path, source, db, execute, verbose):
                 # Compute checksum
                 sha256 = calculate_file_hash(file_path)
 
+                # Check for existing file with same sha256
+                existing_matches = conn.execute(
+                    "SELECT path, download_source FROM files WHERE sha256 = ?",
+                    (sha256,)
+                ).fetchall()
+                if existing_matches:
+                    action = _prompt_duplicate_action(
+                        file_path=file_path,
+                        matches=existing_matches,
+                        prompt_enabled=prompt,
+                    )
+                    append_jsonl(
+                        resolve_log_path("mgmt_decisions", default_dir=log_dir),
+                        {
+                            "event": "duplicate_decision",
+                            "timestamp": now_iso,
+                            "path": str(file_path),
+                            "sha256": sha256,
+                            "source": source,
+                            "action": action,
+                            "matches": [
+                                {"path": match[0], "source": match[1]}
+                                for match in existing_matches[:10]
+                            ],
+                        },
+                    )
+                    if action == "quit":
+                        raise click.ClickException("User aborted")
+                    if action == "skip":
+                        if verbose:
+                            click.echo(f"  [{i}/{len(flac_files)}] SKIP (duplicate) {file_path.name}")
+                        skipped += 1
+                        continue
+                    if action == "replace":
+                        if verbose:
+                            click.echo(f"  [{i}/{len(flac_files)}] REPLACE (marked) {file_path.name}")
+                        mgmt_status_override = "needs_review"
+
                 # Get FLAC metadata
+                audio = None
                 try:
                     audio = FLAC(file_path)
                     duration = int(audio.info.length) if audio.info.length else 0
@@ -1757,14 +2101,75 @@ def register(path, source, db, execute, verbose):
                     if verbose:
                         click.echo(f"  Warning: Could not read duration for {file_path.name}: {e}")
 
+                duration_measured_ms = None
+                duration_ref_ms = None
+                duration_ref_source = None
+                duration_ref_track_id = None
+                duration_delta_ms = None
+                duration_status = None
+                duration_measured_at = None
+                duration_ref_updated_at = None
+                mgmt_status_override = None
+
+                if check_duration:
+                    duration_measured_ms = _measure_duration_ms(file_path)
+                    duration_measured_at = now_iso
+
+                    tags = audio.tags or {} if audio is not None else {}
+                    beatport_id = _extract_tag_value(tags, ["BEATPORT_TRACK_ID", "BP_TRACK_ID", "beatport_track_id"])
+                    isrc = _extract_tag_value(tags, ["ISRC", "TSRC"])
+
+                    duration_ref_ms, duration_ref_source, duration_ref_track_id = _lookup_duration_ref_ms(
+                        conn, beatport_id, isrc
+                    )
+                    if duration_ref_ms is not None:
+                        duration_ref_updated_at = now_iso
+                    if duration_measured_ms is not None and duration_ref_ms is not None:
+                        duration_delta_ms = duration_measured_ms - duration_ref_ms
+                    duration_status = _duration_status(duration_delta_ms, ok_max_ms, warn_max_ms)
+
+                    log_payload = {
+                        "event": "duration_check",
+                        "timestamp": now_iso,
+                        "path": str(file_path),
+                        "source": source,
+                        "track_id": f"beatport:{beatport_id}" if beatport_id else (f"isrc:{isrc}" if isrc else None),
+                        "is_dj_material": bool(dj_only),
+                        "duration_ref_ms": duration_ref_ms,
+                        "duration_measured_ms": duration_measured_ms,
+                        "duration_delta_ms": duration_delta_ms,
+                        "duration_status": duration_status,
+                        "thresholds_ms": {"ok": ok_max_ms, "warn": warn_max_ms},
+                        "check_version": duration_version,
+                    }
+                    append_jsonl(resolve_log_path("mgmt_duration"), log_payload)
+
+                    if dj_only and duration_status in ("warn", "fail", "unknown"):
+                        anomaly_payload = {
+                            "event": "duration_anomaly",
+                            "timestamp": now_iso,
+                            "path": str(file_path),
+                            "track_id": log_payload["track_id"],
+                            "is_dj_material": True,
+                            "duration_status": duration_status,
+                            "duration_ref_ms": duration_ref_ms,
+                            "duration_measured_ms": duration_measured_ms,
+                            "duration_delta_ms": duration_delta_ms,
+                            "action": "blocked_promotion",
+                        }
+                        append_jsonl(resolve_log_path("mgmt_duration"), anomaly_payload)
+
                 # Register in database
                 if execute:
                     conn.execute(
                         """
                         INSERT OR IGNORE INTO files (
                             path, sha256, library, zone, duration,
-                            download_source, download_date, original_path, mgmt_status
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            download_source, download_date, original_path, mgmt_status,
+                            is_dj_material, duration_ref_ms, duration_ref_source, duration_ref_track_id,
+                            duration_ref_updated_at, duration_measured_ms, duration_measured_at,
+                            duration_delta_ms, duration_status, duration_check_version
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             str(file_path),
@@ -1775,7 +2180,22 @@ def register(path, source, db, execute, verbose):
                             source,
                             now_iso,
                             str(file_path),  # original_path = current path (no move yet)
-                            "new",  # mgmt_status: new → checked → verified → moved
+                            mgmt_status_override
+                            or (
+                                "needs_review"
+                                if dj_only and duration_status in ("warn", "fail", "unknown")
+                                else "new"
+                            ),
+                            1 if dj_only else 0,
+                            duration_ref_ms,
+                            duration_ref_source,
+                            duration_ref_track_id,
+                            duration_ref_updated_at,
+                            duration_measured_ms,
+                            duration_measured_at,
+                            duration_delta_ms,
+                            duration_status,
+                            duration_version if check_duration else None,
                         ),
                     )
 
@@ -1809,8 +2229,9 @@ def register(path, source, db, execute, verbose):
 @click.option('--source', help='Filter by download source')
 @click.option('--db', type=click.Path(), help='Database path (auto-detect from env if not provided)')
 @click.option('--strict', is_flag=True, help='Strict mode: any match is a conflict')
+@click.option('--prompt/--no-prompt', default=True, help='Prompt when similar files exist')
 @click.option('-v', '--verbose', is_flag=True, help='Verbose output')
-def check(path, source, db, strict, verbose):
+def check(path, source, db, strict, prompt, verbose):
     """
     Check for duplicate files before downloading.
 
@@ -1833,6 +2254,9 @@ def check(path, source, db, strict, verbose):
     from dedupe.storage.schema import get_connection
     from dedupe.core.hashing import calculate_file_hash
     from dedupe.utils.db import resolve_db_path
+    from dedupe.utils.audit_log import append_jsonl, resolve_log_path
+    from dedupe.utils.config import get_config
+    from datetime import datetime, timezone
     import sys
 
     # Resolve database path
@@ -1868,10 +2292,19 @@ def check(path, source, db, strict, verbose):
         click.echo("Mode: STRICT (any match is a conflict)")
     click.echo("")
 
+    config = get_config()
+    log_dir = None
+    if config:
+        configured_dir = config.get("mgmt.audit_log_dir")
+        if configured_dir:
+            log_dir = Path(configured_dir).expanduser()
+
     conn = get_connection(str(db_path), purpose="read")
     try:
         duplicates = []
         unique = []
+        allowed = []
+        replacements = []
         errors = 0
 
         for i, file_path in enumerate(file_paths, start=1):
@@ -1902,12 +2335,44 @@ def check(path, source, db, strict, verbose):
                 existing = cursor.fetchall()
 
                 if existing:
-                    duplicates.append((file_path, existing))
-                    if verbose:
-                        click.echo(f"  CONFLICT: {file_path.name}")
-                        for match in existing:
-                            src = match[1] if match[1] else "unknown"
-                            click.echo(f"    → {src}: {Path(match[0]).name}")
+                    action = _prompt_duplicate_action(
+                        file_path=file_path,
+                        matches=existing,
+                        prompt_enabled=prompt,
+                    )
+                    append_jsonl(
+                        resolve_log_path("mgmt_checks", default_dir=log_dir),
+                        {
+                            "event": "duplicate_check",
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "path": str(file_path),
+                            "sha256": sha256,
+                            "source_filter": source,
+                            "strict": bool(strict),
+                            "action": action,
+                            "matches": [
+                                {"path": match[0], "source": match[1]}
+                                for match in existing[:10]
+                            ],
+                        },
+                    )
+                    if action == "quit":
+                        raise click.ClickException("User aborted")
+                    if action == "download":
+                        allowed.append(file_path)
+                        if verbose:
+                            click.echo(f"  ALLOW: {file_path.name}")
+                    elif action == "replace":
+                        replacements.append((file_path, existing))
+                        if verbose:
+                            click.echo(f"  REPLACE: {file_path.name}")
+                    else:
+                        duplicates.append((file_path, existing))
+                        if verbose:
+                            click.echo(f"  CONFLICT: {file_path.name}")
+                            for match in existing:
+                                src = match[1] if match[1] else "unknown"
+                                click.echo(f"    → {src}: {Path(match[0]).name}")
                 else:
                     unique.append(file_path)
                     if verbose:
@@ -1929,6 +2394,8 @@ def check(path, source, db, strict, verbose):
     click.echo(f"{'='*50}")
     click.echo(f"  Total:        {len(file_paths):>6}")
     click.echo(f"  Unique:       {len(unique):>6}  ✓ (safe to download)")
+    click.echo(f"  Allowed:      {len(allowed):>6}  ✓ (download anyway)")
+    click.echo(f"  Replace:      {len(replacements):>6}  ⚠ (mark for replace)")
     click.echo(f"  Duplicates:   {len(duplicates):>6}  ⚠ (already exists)")
     click.echo(f"  Errors:       {errors:>6}  {'⚠' if errors > 0 else ''}")
 
@@ -1944,6 +2411,379 @@ def check(path, source, db, strict, verbose):
                 click.echo(f"    ... and {len(matches) - 2} more")
         if len(duplicates) > 10:
             click.echo(f"  ... and {len(duplicates) - 10} more conflicts")
+
+    if replacements:
+        click.echo("")
+        click.echo("Replace candidates:")
+        for file_path, matches in replacements[:10]:
+            click.echo(f"  • {file_path.name}")
+            for match in matches[:2]:
+                src = match[1] if match[1] else "unknown"
+                click.echo(f"    → {src}: {Path(match[0]).name}")
+            if len(matches) > 2:
+                click.echo(f"    ... and {len(matches) - 2} more")
+        if len(replacements) > 10:
+            click.echo(f"  ... and {len(replacements) - 10} more replacements")
+
+
+@mgmt.command("check-duration")
+@click.argument("path", type=click.Path(exists=True))
+@click.option("--db", type=click.Path(), help="Database path (auto-detect from env if not provided)")
+@click.option("--execute", is_flag=True, help="Write duration updates to the database")
+@click.option("--dj-only", is_flag=True, help="Mark checked files as DJ material")
+@click.option("--source", help="Override source label for logging")
+@click.option("-v", "--verbose", is_flag=True, help="Verbose output")
+def check_duration(path, db, execute, dj_only, source, verbose):
+    """
+    Measure durations and update duration status in the DB.
+    """
+    from dedupe.storage.schema import get_connection, init_db
+    from dedupe.utils.db import resolve_db_path
+    from dedupe.utils.audit_log import append_jsonl, resolve_log_path
+    from mutagen.flac import FLAC
+    from datetime import datetime, timezone
+
+    db_path = Path(db) if db else resolve_db_path()
+    if not db_path.exists():
+        raise click.ClickException(f"Database not found: {db_path}")
+
+    path_obj = Path(path).expanduser().resolve()
+    if not path_obj.exists():
+        raise click.ClickException(f"Path not found: {path}")
+
+    if path_obj.is_file():
+        file_paths = [path_obj]
+    else:
+        file_paths = list(path_obj.rglob("*.flac"))
+
+    if not file_paths:
+        click.echo("No FLAC files found to check")
+        return
+
+    ok_max_ms, warn_max_ms = _duration_thresholds_from_config()
+    duration_version = _duration_check_version(ok_max_ms, warn_max_ms)
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    conn = get_connection(str(db_path), purpose="write" if execute else "read")
+    init_db(conn)
+    try:
+        updated = 0
+        missing = 0
+        errors = 0
+
+        for i, file_path in enumerate(file_paths, start=1):
+            try:
+                row = conn.execute("SELECT path FROM files WHERE path = ?", (str(file_path),)).fetchone()
+                if not row:
+                    missing += 1
+                    if verbose:
+                        click.echo(f"  [{i}/{len(file_paths)}] SKIP (not in DB) {file_path.name}")
+                    continue
+
+                audio = None
+                try:
+                    audio = FLAC(file_path)
+                except Exception:
+                    audio = None
+
+                tags = audio.tags or {} if audio is not None else {}
+                beatport_id = _extract_tag_value(tags, ["BEATPORT_TRACK_ID", "BP_TRACK_ID", "beatport_track_id"])
+                isrc = _extract_tag_value(tags, ["ISRC", "TSRC"])
+
+                duration_ref_ms, duration_ref_source, duration_ref_track_id = _lookup_duration_ref_ms(
+                    conn, beatport_id, isrc
+                )
+                duration_measured_ms = _measure_duration_ms(file_path)
+                duration_delta_ms = None
+                if duration_measured_ms is not None and duration_ref_ms is not None:
+                    duration_delta_ms = duration_measured_ms - duration_ref_ms
+                duration_status = _duration_status(duration_delta_ms, ok_max_ms, warn_max_ms)
+
+                log_payload = {
+                    "event": "duration_check",
+                    "timestamp": now_iso,
+                    "path": str(file_path),
+                    "source": source,
+                    "track_id": f"beatport:{beatport_id}" if beatport_id else (f"isrc:{isrc}" if isrc else None),
+                    "is_dj_material": bool(dj_only),
+                    "duration_ref_ms": duration_ref_ms,
+                    "duration_measured_ms": duration_measured_ms,
+                    "duration_delta_ms": duration_delta_ms,
+                    "duration_status": duration_status,
+                    "thresholds_ms": {"ok": ok_max_ms, "warn": warn_max_ms},
+                    "check_version": duration_version,
+                }
+                append_jsonl(resolve_log_path("mgmt_duration"), log_payload)
+
+                if dj_only and duration_status in ("warn", "fail", "unknown"):
+                    anomaly_payload = {
+                        "event": "duration_anomaly",
+                        "timestamp": now_iso,
+                        "path": str(file_path),
+                        "track_id": log_payload["track_id"],
+                        "is_dj_material": True,
+                        "duration_status": duration_status,
+                        "duration_ref_ms": duration_ref_ms,
+                        "duration_measured_ms": duration_measured_ms,
+                        "duration_delta_ms": duration_delta_ms,
+                        "action": "blocked_promotion",
+                    }
+                    append_jsonl(resolve_log_path("mgmt_duration"), anomaly_payload)
+
+                if execute:
+                    conn.execute(
+                        """
+                        UPDATE files SET
+                            is_dj_material = CASE WHEN ? THEN 1 ELSE is_dj_material END,
+                            duration_ref_ms = ?,
+                            duration_ref_source = ?,
+                            duration_ref_track_id = ?,
+                            duration_ref_updated_at = ?,
+                            duration_measured_ms = ?,
+                            duration_measured_at = ?,
+                            duration_delta_ms = ?,
+                            duration_status = ?,
+                            duration_check_version = ?,
+                            mgmt_status = CASE
+                                WHEN ? AND ? IN ('warn','fail','unknown') THEN 'needs_review'
+                                ELSE mgmt_status
+                            END
+                        WHERE path = ?
+                        """,
+                        (
+                            1 if dj_only else 0,
+                            duration_ref_ms,
+                            duration_ref_source,
+                            duration_ref_track_id,
+                            now_iso if duration_ref_ms is not None else None,
+                            duration_measured_ms,
+                            now_iso if duration_measured_ms is not None else None,
+                            duration_delta_ms,
+                            duration_status,
+                            duration_version,
+                            1 if dj_only else 0,
+                            duration_status,
+                            str(file_path),
+                        ),
+                    )
+
+                if verbose or i % 50 == 0 or i == len(file_paths):
+                    click.echo(f"  [{i}/{len(file_paths)}] {file_path.name}")
+                updated += 1
+
+            except Exception as e:
+                errors += 1
+                click.echo(f"  ERROR: {file_path.name}: {e}")
+
+        if execute:
+            conn.commit()
+
+    finally:
+        conn.close()
+
+    click.echo("")
+    click.echo(f"{'='*50}")
+    click.echo("DURATION CHECK RESULTS")
+    click.echo(f"{'='*50}")
+    click.echo(f"  Total:        {len(file_paths):>6}")
+    click.echo(f"  Updated:      {updated:>6}")
+    click.echo(f"  Missing DB:   {missing:>6}")
+    click.echo(f"  Errors:       {errors:>6}  {'⚠' if errors > 0 else ''}")
+
+
+@mgmt.command("audit-duration")
+@click.option("--db", type=click.Path(), help="Database path (auto-detect from env if not provided)")
+@click.option("--dj-only", is_flag=True, help="Only DJ material")
+@click.option("--status", "status_filter", help="Comma-separated statuses (warn,fail,unknown)")
+@click.option("--source", help="Filter by download source")
+@click.option("--since", help="Filter by download_date >= YYYY-MM-DD")
+def audit_duration(db, dj_only, status_filter, source, since):
+    """
+    Report files with duration_status != ok (or filtered statuses).
+    """
+    from dedupe.storage.schema import get_connection, init_db
+    from dedupe.utils.db import resolve_db_path
+
+    db_path = Path(db) if db else resolve_db_path()
+    if not db_path.exists():
+        raise click.ClickException(f"Database not found: {db_path}")
+
+    statuses = None
+    if status_filter:
+        statuses = [s.strip() for s in status_filter.split(",") if s.strip()]
+
+    conn = get_connection(str(db_path), purpose="read")
+    init_db(conn)
+    try:
+        where = ["1=1"]
+        params = []
+        if dj_only:
+            where.append("is_dj_material = 1")
+        if source:
+            where.append("download_source = ?")
+            params.append(source)
+        if since:
+            where.append("download_date >= ?")
+            params.append(since)
+        if statuses:
+            where.append(f"duration_status IN ({','.join(['?'] * len(statuses))})")
+            params.extend(statuses)
+        else:
+            where.append("(duration_status IS NULL OR duration_status != 'ok')")
+
+        query = (
+            "SELECT path, duration_status, duration_ref_ms, duration_measured_ms, "
+            "duration_delta_ms, download_source FROM files WHERE "
+            + " AND ".join(where)
+            + " ORDER BY download_source, path"
+        )
+
+        rows = conn.execute(query, tuple(params)).fetchall()
+        click.echo(f"Found {len(rows)} file(s) with duration issues.")
+        for row in rows:
+            click.echo(
+                f"  {row[0]} | status={row[1]} | delta_ms={row[4]} | source={row[5]}"
+            )
+    finally:
+        conn.close()
+
+
+@mgmt.command("set-duration-ref")
+@click.argument("path", type=click.Path(exists=True))
+@click.option("--db", type=click.Path(), help="Database path (auto-detect from env if not provided)")
+@click.option("--dj-only", is_flag=True, help="Mark file as DJ material")
+@click.option("--confirm", is_flag=True, help="Confirm manual duration reference override")
+@click.option("--execute", is_flag=True, help="Write updates to the database")
+def set_duration_ref(path, db, dj_only, confirm, execute):
+    """
+    Manually set a duration reference from a known-good file.
+    """
+    from dedupe.storage.schema import get_connection, init_db
+    from dedupe.utils.db import resolve_db_path
+    from dedupe.core.hashing import calculate_file_hash
+    from dedupe.utils.audit_log import append_jsonl, resolve_log_path
+    from datetime import datetime, timezone
+
+    if execute and not confirm:
+        raise click.ClickException("--confirm is required with --execute")
+
+    db_path = Path(db) if db else resolve_db_path()
+    if not db_path.exists():
+        raise click.ClickException(f"Database not found: {db_path}")
+
+    file_path = Path(path).expanduser().resolve()
+    if not file_path.exists():
+        raise click.ClickException(f"Path not found: {path}")
+
+    duration_measured_ms = _measure_duration_ms(file_path)
+    if duration_measured_ms is None:
+        raise click.ClickException("Could not measure duration from file")
+
+    sha256 = calculate_file_hash(file_path)
+    manual_id = f"manual:{sha256}"
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    ok_max_ms, warn_max_ms = _duration_thresholds_from_config()
+    duration_version = _duration_check_version(ok_max_ms, warn_max_ms)
+
+    conn = get_connection(str(db_path), purpose="write" if execute else "read")
+    init_db(conn)
+    try:
+        if execute:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO track_duration_refs
+                    (ref_id, ref_type, duration_ref_ms, ref_source, ref_updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (manual_id, "manual", duration_measured_ms, "manual", now_iso),
+            )
+
+            conn.execute(
+                """
+                UPDATE files SET
+                    is_dj_material = CASE WHEN ? THEN 1 ELSE is_dj_material END,
+                    duration_ref_ms = ?,
+                    duration_ref_source = ?,
+                    duration_ref_track_id = ?,
+                    duration_ref_updated_at = ?,
+                    duration_measured_ms = ?,
+                    duration_measured_at = ?,
+                    duration_delta_ms = 0,
+                    duration_status = 'ok',
+                    duration_check_version = ?
+                WHERE path = ?
+                """,
+                (
+                    1 if dj_only else 0,
+                    duration_measured_ms,
+                    "manual",
+                    manual_id,
+                    now_iso,
+                    duration_measured_ms,
+                    now_iso,
+                    duration_version,
+                    str(file_path),
+                ),
+            )
+            conn.commit()
+
+        log_payload = {
+            "event": "duration_check",
+            "timestamp": now_iso,
+            "path": str(file_path),
+            "source": "manual",
+            "track_id": manual_id,
+            "is_dj_material": bool(dj_only),
+            "duration_ref_ms": duration_measured_ms,
+            "duration_measured_ms": duration_measured_ms,
+            "duration_delta_ms": 0,
+            "duration_status": "ok",
+            "thresholds_ms": {"ok": ok_max_ms, "warn": warn_max_ms},
+            "check_version": duration_version,
+        }
+        append_jsonl(resolve_log_path("mgmt_duration"), log_payload)
+    finally:
+        conn.close()
+
+    click.echo(f"Duration reference set: {manual_id} ({duration_measured_ms} ms)")
+
+
+@cli.command()
+@click.argument("paths", nargs=-1, type=click.Path(exists=True))
+@click.option("--db", type=click.Path(), help="Database path (auto-detect from env if not provided)")
+@click.option("--zone", help="Target zone (accepted, staging, etc.)")
+@click.option("--move/--no-move", default=False, help="Move files (default: dry-run)")
+@click.option("--require-duration-ok", is_flag=True, help="Block promotion unless duration_status is ok")
+@click.option("--allow-duration-warn", is_flag=True, help="Allow warn status for manual override")
+@click.option("--dj-only", is_flag=True, help="Treat all paths as DJ material")
+@click.option("--log", type=click.Path(), help="Log file path (JSONL)")
+def recovery(paths, db, zone, move, require_duration_ok, allow_duration_warn, dj_only, log):
+    """
+    Stub for DJ-safe promotion (duration-aware recovery mode).
+    """
+    from dedupe.utils.audit_log import append_jsonl, resolve_log_path, now_iso
+
+    log_path = Path(log) if log else resolve_log_path("recovery_decisions")
+    append_jsonl(
+        log_path,
+        {
+            "event": "promotion_decision",
+            "timestamp": now_iso(),
+            "duplicate_group_id": None,
+            "is_dj_material": bool(dj_only),
+            "chosen_track_path": None,
+            "reason": "stub_not_implemented",
+            "alternatives": [],
+        },
+    )
+
+    click.echo("dedupe recovery is a stub (promotion logic not implemented yet).")
+    click.echo(f"  Paths: {len(paths)} | zone={zone} | move={move}")
+    if require_duration_ok:
+        click.echo("  Duration gate: require duration_status=ok")
+    if allow_duration_warn:
+        click.echo("  Override: allow duration_status=warn (manual)")
 
 
 if __name__ == "__main__":

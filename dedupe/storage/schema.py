@@ -196,6 +196,18 @@ def init_db(
             "mgmt_status": "TEXT",  # new → checked → verified → moved
             "fingerprint": "TEXT",  # chromaprint for fuzzy matching
             "m3u_exported": "TEXT",  # Last M3U export timestamp
+            "m3u_path": "TEXT",  # Path to latest M3U containing this file
+            # Duration safety fields (DJ-safe promotion)
+            "is_dj_material": "INTEGER DEFAULT 0",
+            "duration_ref_ms": "INTEGER",
+            "duration_ref_source": "TEXT",
+            "duration_ref_track_id": "TEXT",
+            "duration_ref_updated_at": "TEXT",
+            "duration_measured_ms": "INTEGER",
+            "duration_measured_at": "TEXT",
+            "duration_delta_ms": "INTEGER",
+            "duration_status": "TEXT",
+            "duration_check_version": "TEXT",
         }
 
         for col_name, col_type in required_columns.items():
@@ -219,6 +231,9 @@ def init_db(
         connection.execute("CREATE INDEX IF NOT EXISTS idx_mgmt_status ON files(mgmt_status);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_fingerprint ON files(fingerprint);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_original_path ON files(original_path);")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_is_dj_material ON files(is_dj_material);")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_duration_status ON files(duration_status);")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_duration_ref_track_id ON files(duration_ref_track_id);")
 
         connection.execute("CREATE INDEX IF NOT EXISTS idx_library_track_key ON files(library_track_key);")
 
@@ -257,6 +272,22 @@ def init_db(
         connection.execute(
             f"CREATE INDEX IF NOT EXISTS idx_{FILE_QUARANTINE_TABLE}_quarantined_at "
             f"ON {FILE_QUARANTINE_TABLE}(quarantined_at);"
+        )
+
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS track_duration_refs (
+                ref_id TEXT PRIMARY KEY,
+                ref_type TEXT NOT NULL,
+                duration_ref_ms INTEGER NOT NULL,
+                ref_source TEXT NOT NULL,
+                ref_updated_at TEXT
+            );
+            """
+        )
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_track_duration_refs_type "
+            "ON track_duration_refs(ref_type);"
         )
         connection.execute(
             f"CREATE INDEX IF NOT EXISTS idx_{FILE_QUARANTINE_TABLE}_deleted_at "

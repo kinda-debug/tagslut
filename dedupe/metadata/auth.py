@@ -498,7 +498,8 @@ class TokenManager:
                     logger.debug("Using existing Beatport access token")
                 return token
 
-        logger.warning("No Beatport token. Get one from dj.beatport.com DevTools.")
+        # Beatport has unauthenticated fallbacks; missing token is not fatal.
+        logger.debug("No Beatport token configured; falling back to public endpoints.")
         return None
 
     def login_qobuz(self, email: str, password: str, app_id: Optional[str] = None) -> Optional[TokenInfo]:

@@ -15,6 +15,7 @@ __all__ = [
     "models",
     "schema",
     "queries",
+    "v3",
     "LIBRARY_TABLE",
     "PICARD_MOVES_TABLE",
     "initialise_library_schema",
@@ -23,7 +24,7 @@ __all__ = [
 
 
 def __getattr__(name: str) -> Any:
-    if name in {"models", "schema", "queries"}:
+    if name in {"models", "schema", "queries", "v3"}:
         return importlib.import_module(f"{__name__}.{name}")
     if name in {
         "LIBRARY_TABLE",

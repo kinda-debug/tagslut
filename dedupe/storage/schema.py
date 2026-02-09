@@ -24,8 +24,15 @@ SCAN_SESSIONS_TABLE = "scan_sessions"
 FILE_SCAN_RUNS_TABLE = "file_scan_runs"
 FILE_QUARANTINE_TABLE = "file_quarantine"
 SCHEMA_MIGRATIONS_TABLE = "schema_migrations"
+V3_ASSET_FILE_TABLE = "asset_file"
+V3_TRACK_IDENTITY_TABLE = "track_identity"
+V3_ASSET_LINK_TABLE = "asset_link"
+V3_PROVENANCE_EVENT_TABLE = "provenance_event"
+V3_MOVE_PLAN_TABLE = "move_plan"
+V3_MOVE_EXECUTION_TABLE = "move_execution"
 INTEGRITY_SCHEMA_VERSION = 1
 LIBRARY_SCHEMA_VERSION = 1
+V3_SCHEMA_VERSION = 1
 
 def get_connection(
     db_path: Path | str,
@@ -399,7 +406,9 @@ def init_db(
         )
 
         _ensure_scan_tracking_tables(connection)
+        _ensure_v3_schema(connection)
         _record_schema_version(connection, schema_name="integrity", version=INTEGRITY_SCHEMA_VERSION)
+        _record_schema_version(connection, schema_name="v3", version=V3_SCHEMA_VERSION)
 
         # Migrate the 'files' table as well
         try:
@@ -825,6 +834,264 @@ def _ensure_scan_tracking_tables(conn: sqlite3.Connection) -> None:
         "checked_streaminfo": "INTEGER",
     }
     _add_missing_columns(conn, FILE_SCAN_RUNS_TABLE, file_scan_columns)
+
+
+def _ensure_v3_schema(conn: sqlite3.Connection) -> None:
+    """Create/upgrade v3 migration tables used for dual-write."""
+
+    conn.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS {V3_ASSET_FILE_TABLE} (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            path TEXT NOT NULL UNIQUE,
+            content_sha256 TEXT,
+            streaminfo_md5 TEXT,
+            checksum TEXT,
+            size_bytes INTEGER,
+            mtime REAL,
+            duration_s REAL,
+            sample_rate INTEGER,
+            bit_depth INTEGER,
+            bitrate INTEGER,
+            library TEXT,
+            zone TEXT,
+            download_source TEXT,
+            download_date TEXT,
+            mgmt_status TEXT,
+            first_seen_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            last_seen_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    _add_missing_columns(
+        conn,
+        V3_ASSET_FILE_TABLE,
+        {
+            "content_sha256": "TEXT",
+            "streaminfo_md5": "TEXT",
+            "checksum": "TEXT",
+            "size_bytes": "INTEGER",
+            "mtime": "REAL",
+            "duration_s": "REAL",
+            "sample_rate": "INTEGER",
+            "bit_depth": "INTEGER",
+            "bitrate": "INTEGER",
+            "library": "TEXT",
+            "zone": "TEXT",
+            "download_source": "TEXT",
+            "download_date": "TEXT",
+            "mgmt_status": "TEXT",
+            "first_seen_at": "TEXT DEFAULT CURRENT_TIMESTAMP",
+            "last_seen_at": "TEXT DEFAULT CURRENT_TIMESTAMP",
+        },
+    )
+    conn.execute(
+        f"CREATE INDEX IF NOT EXISTS idx_{V3_ASSET_FILE_TABLE}_sha256 "
+        f"ON {V3_ASSET_FILE_TABLE}(content_sha256)"
+    )
+    conn.execute(
+        f"CREATE INDEX IF NOT EXISTS idx_{V3_ASSET_FILE_TABLE}_streaminfo "
+        f"ON {V3_ASSET_FILE_TABLE}(streaminfo_md5)"
+    )
+
+    conn.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS {V3_TRACK_IDENTITY_TABLE} (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            identity_key TEXT NOT NULL UNIQUE,
+            isrc TEXT,
+            beatport_id TEXT,
+            artist_norm TEXT,
+            title_norm TEXT,
+            duration_ref_ms INTEGER,
+            ref_source TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    _add_missing_columns(
+        conn,
+        V3_TRACK_IDENTITY_TABLE,
+        {
+            "isrc": "TEXT",
+            "beatport_id": "TEXT",
+            "artist_norm": "TEXT",
+            "title_norm": "TEXT",
+            "duration_ref_ms": "INTEGER",
+            "ref_source": "TEXT",
+            "created_at": "TEXT DEFAULT CURRENT_TIMESTAMP",
+            "updated_at": "TEXT DEFAULT CURRENT_TIMESTAMP",
+        },
+    )
+    conn.execute(
+        f"CREATE INDEX IF NOT EXISTS idx_{V3_TRACK_IDENTITY_TABLE}_isrc "
+        f"ON {V3_TRACK_IDENTITY_TABLE}(isrc)"
+    )
+    conn.execute(
+        f"CREATE INDEX IF NOT EXISTS idx_{V3_TRACK_IDENTITY_TABLE}_beatport "
+        f"ON {V3_TRACK_IDENTITY_TABLE}(beatport_id)"
+    )
+
+    conn.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS {V3_ASSET_LINK_TABLE} (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            asset_id INTEGER NOT NULL,
+            identity_id INTEGER NOT NULL,
+            confidence REAL,
+            link_source TEXT,
+            active INTEGER DEFAULT 1,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(asset_id, identity_id),
+            FOREIGN KEY(asset_id) REFERENCES {V3_ASSET_FILE_TABLE}(id),
+            FOREIGN KEY(identity_id) REFERENCES {V3_TRACK_IDENTITY_TABLE}(id)
+        )
+        """
+    )
+    _add_missing_columns(
+        conn,
+        V3_ASSET_LINK_TABLE,
+        {
+            "confidence": "REAL",
+            "link_source": "TEXT",
+            "active": "INTEGER DEFAULT 1",
+            "created_at": "TEXT DEFAULT CURRENT_TIMESTAMP",
+            "updated_at": "TEXT DEFAULT CURRENT_TIMESTAMP",
+        },
+    )
+    conn.execute(
+        f"CREATE INDEX IF NOT EXISTS idx_{V3_ASSET_LINK_TABLE}_asset "
+        f"ON {V3_ASSET_LINK_TABLE}(asset_id)"
+    )
+    conn.execute(
+        f"CREATE INDEX IF NOT EXISTS idx_{V3_ASSET_LINK_TABLE}_identity "
+        f"ON {V3_ASSET_LINK_TABLE}(identity_id)"
+    )
+
+    conn.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS {V3_MOVE_PLAN_TABLE} (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            plan_key TEXT NOT NULL UNIQUE,
+            plan_type TEXT,
+            plan_path TEXT,
+            policy_version TEXT,
+            context_json TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    _add_missing_columns(
+        conn,
+        V3_MOVE_PLAN_TABLE,
+        {
+            "plan_type": "TEXT",
+            "plan_path": "TEXT",
+            "policy_version": "TEXT",
+            "context_json": "TEXT",
+            "created_at": "TEXT DEFAULT CURRENT_TIMESTAMP",
+        },
+    )
+
+    conn.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS {V3_MOVE_EXECUTION_TABLE} (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            plan_id INTEGER,
+            asset_id INTEGER,
+            source_path TEXT,
+            dest_path TEXT,
+            action TEXT,
+            status TEXT,
+            verification TEXT,
+            error TEXT,
+            details_json TEXT,
+            executed_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(plan_id) REFERENCES {V3_MOVE_PLAN_TABLE}(id),
+            FOREIGN KEY(asset_id) REFERENCES {V3_ASSET_FILE_TABLE}(id)
+        )
+        """
+    )
+    _add_missing_columns(
+        conn,
+        V3_MOVE_EXECUTION_TABLE,
+        {
+            "plan_id": "INTEGER",
+            "asset_id": "INTEGER",
+            "source_path": "TEXT",
+            "dest_path": "TEXT",
+            "action": "TEXT",
+            "status": "TEXT",
+            "verification": "TEXT",
+            "error": "TEXT",
+            "details_json": "TEXT",
+            "executed_at": "TEXT DEFAULT CURRENT_TIMESTAMP",
+        },
+    )
+    conn.execute(
+        f"CREATE INDEX IF NOT EXISTS idx_{V3_MOVE_EXECUTION_TABLE}_plan "
+        f"ON {V3_MOVE_EXECUTION_TABLE}(plan_id)"
+    )
+    conn.execute(
+        f"CREATE INDEX IF NOT EXISTS idx_{V3_MOVE_EXECUTION_TABLE}_status "
+        f"ON {V3_MOVE_EXECUTION_TABLE}(status)"
+    )
+    conn.execute(
+        f"CREATE INDEX IF NOT EXISTS idx_{V3_MOVE_EXECUTION_TABLE}_dest "
+        f"ON {V3_MOVE_EXECUTION_TABLE}(dest_path)"
+    )
+
+    conn.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS {V3_PROVENANCE_EVENT_TABLE} (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_type TEXT NOT NULL,
+            event_time TEXT DEFAULT CURRENT_TIMESTAMP,
+            asset_id INTEGER,
+            identity_id INTEGER,
+            move_plan_id INTEGER,
+            move_execution_id INTEGER,
+            source_path TEXT,
+            dest_path TEXT,
+            status TEXT,
+            details_json TEXT,
+            FOREIGN KEY(asset_id) REFERENCES {V3_ASSET_FILE_TABLE}(id),
+            FOREIGN KEY(identity_id) REFERENCES {V3_TRACK_IDENTITY_TABLE}(id),
+            FOREIGN KEY(move_plan_id) REFERENCES {V3_MOVE_PLAN_TABLE}(id),
+            FOREIGN KEY(move_execution_id) REFERENCES {V3_MOVE_EXECUTION_TABLE}(id)
+        )
+        """
+    )
+    _add_missing_columns(
+        conn,
+        V3_PROVENANCE_EVENT_TABLE,
+        {
+            "event_type": "TEXT",
+            "event_time": "TEXT DEFAULT CURRENT_TIMESTAMP",
+            "asset_id": "INTEGER",
+            "identity_id": "INTEGER",
+            "move_plan_id": "INTEGER",
+            "move_execution_id": "INTEGER",
+            "source_path": "TEXT",
+            "dest_path": "TEXT",
+            "status": "TEXT",
+            "details_json": "TEXT",
+        },
+    )
+    conn.execute(
+        f"CREATE INDEX IF NOT EXISTS idx_{V3_PROVENANCE_EVENT_TABLE}_event "
+        f"ON {V3_PROVENANCE_EVENT_TABLE}(event_type)"
+    )
+    conn.execute(
+        f"CREATE INDEX IF NOT EXISTS idx_{V3_PROVENANCE_EVENT_TABLE}_asset "
+        f"ON {V3_PROVENANCE_EVENT_TABLE}(asset_id)"
+    )
+    conn.execute(
+        f"CREATE INDEX IF NOT EXISTS idx_{V3_PROVENANCE_EVENT_TABLE}_move_exec "
+        f"ON {V3_PROVENANCE_EVENT_TABLE}(move_execution_id)"
+    )
 
 
 def _record_schema_version(

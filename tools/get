@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# get — Unified download entrypoint for Tidal and Beatport URLs
+# get — Unified intake/download entrypoint for Tidal and Beatport URLs
 #
-# Routes download URLs to the appropriate downloader based on domain:
+# Routes URLs to the appropriate workflow based on domain:
 #   - tidal.com   → tools/tiddl (TIDDL wrapper)
-#   - beatport.com → tools/beatportdl/bpdl/bpdl (vendored BeatportDL)
+#   - beatport.com → tools/get-sync (prefilter + download missing + m3u)
 #
 # Usage:
 #   tools/get <url> [extra-args...]
@@ -14,26 +14,33 @@
 #   tools/get https://listen.tidal.com/album/12345 --quality high
 #
 # After downloading, register to inventory and generate M3U:
-#   dedupe mgmt --source <tidal|bpdl> --register <download-path>
-#   dedupe mgmt --m3u <download-path>
+#   tagslut index register <download-path> --source <tidal|bpdl>
+#   tagslut report m3u <download-path>
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TIDDL_WRAPPER="$SCRIPT_DIR/tiddl"
 BPDL_BIN="$SCRIPT_DIR/beatportdl/bpdl/bpdl"
+GET_INTAKE="$SCRIPT_DIR/get-intake"
+GET_SYNC="$SCRIPT_DIR/get-sync"
+GET_REPORT="$SCRIPT_DIR/get-report"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 usage() {
     echo "Usage: tools/get <url> [extra-args...]"
     echo ""
-    echo "Routes download URLs to the appropriate downloader:"
+    echo "Routes URLs to the appropriate workflow:"
     echo "  - tidal.com    → TIDDL"
-    echo "  - beatport.com → BeatportDL"
+    echo "  - beatport.com → get-sync (download missing + M3U)"
     echo ""
     echo "Examples:"
     echo "  tools/get https://tidal.com/browse/playlist/12345"
     echo "  tools/get https://www.beatport.com/release/some-release/12345"
+    echo ""
+    echo "Beatport helpers:"
+    echo "  tools/get-sync  <beatport-url>   # download missing + create M3U"
+    echo "  tools/get-report <beatport-url>  # report-only M3U pass (no download)"
     exit 1
 }
 
@@ -54,15 +61,35 @@ if [[ "$URL" == *"tidal.com"* ]]; then
     exec "$TIDDL_WRAPPER" "$URL" "$@"
 
 elif [[ "$URL" == *"beatport.com"* ]]; then
-    if [[ ! -x "$BPDL_BIN" ]]; then
-        echo "Error: BeatportDL binary not found or not executable at: $BPDL_BIN" >&2
+    if [[ ! -x "$GET_SYNC" ]]; then
+        echo "Error: get-sync not found or not executable at: $GET_SYNC" >&2
         exit 1
     fi
     cd "$REPO_ROOT"
-    echo "📥 Downloading to: /Volumes/DJSSD/beatport"
-    echo "📋 Config: $REPO_ROOT/beatportdl-config.yml"
-    echo ""
-    exec "$BPDL_BIN" "$URL" "$@"
+    if [[ $# -eq 0 ]]; then
+        exec "$GET_SYNC" "$URL"
+    fi
+
+    if [[ "$1" == "--report" ]]; then
+        shift
+        if [[ ! -x "$GET_REPORT" ]]; then
+            echo "Error: get-report not found or not executable at: $GET_REPORT" >&2
+            exit 1
+        fi
+        exec "$GET_REPORT" "$URL" "$@"
+    fi
+
+    if [[ "$1" == "--raw-bpdl" ]]; then
+        shift
+        if [[ ! -x "$BPDL_BIN" ]]; then
+            echo "Error: BeatportDL binary not found or not executable at: $BPDL_BIN" >&2
+            exit 1
+        fi
+        exec "$BPDL_BIN" "$URL" "$@"
+    fi
+
+    echo "Info: extra args detected; using get-sync compatibility mode." >&2
+    exec "$GET_SYNC" "$URL" "$@"
 
 else
     echo "Error: Unrecognized URL domain: $URL" >&2

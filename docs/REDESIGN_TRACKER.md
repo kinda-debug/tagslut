@@ -38,7 +38,7 @@ This tracker is the working control plane for milestones, ownership, acceptance 
 
 1. Canonical command docs and warning banners
 - [x] Add deprecation banner text to transitional commands (`scan`, `recommend`, `apply`, `promote`, `quarantine`)
-- [x] Ensure `docs/MGMT_MODE.md` distinguishes current behavior vs historical notes
+- [x] Ensure legacy mgmt/recovery workflow docs were archived out of active surface
 - [x] Ensure `README.md` only advertises canonical operator flow
 - [x] Add CLI/docs consistency checks in CI (`scripts/check_cli_docs_consistency.py`)
 - Definition of done: docs and command help are consistent in CI checks
@@ -258,6 +258,9 @@ Targets (Phase 4/5):
 | 2026-02-09 | Updated script-surface policy/docs and added Phase 4 verification checks/reports | Close Step 4 with explicit command/help/docs alignment evidence before opening Phase 5 work | `codex` |
 | 2026-02-09 | Opened Phase 5 ticket board (`P5-LEG-*`, `P5-COMP-*`) for wrapper decommission and compatibility retirement | Convert decommission intent into explicit, trackable execution items | `codex` |
 | 2026-02-09 | Published compatibility wrapper archival criteria and dated Phase 5 timeline | Make `mgmt/metadata/recover` removal objective and auditable before cutover | `codex` |
+| 2026-02-09 | Archived inactive docs/assets from active `docs/` and repo root; rewired AGENTS/GUIDE/Makefile to canonical CLI only | Remove workflow drift and keep active surface strictly aligned to `intake/index/decide/execute/verify/report/auth` | `codex` |
+| 2026-02-09 | Formalized Beatport wrapper split: `tools/get` (sync default), `tools/get-sync`, `tools/get-report`; documented m3u-only auto mode and slug-based naming | Keep Beatport intake behavior simple and predictable while preserving report-only path | `codex` |
+| 2026-02-09 | Rebrand initiated: package metadata + CLI aliases (`tagslut`, `taglslut`) with `dedupe` compatibility retained; added rebrand runbook | Move operator-facing brand to tagslut without destabilizing existing automation | `codex` |
 | 2026-02-09 | Removed `scan/recommend/apply/promote/quarantine` from top-level CLI and updated canonical surface docs/checks | Execute `P5-LEG-001..005` in one batch while preserving `mgmt/metadata/recover` compatibility window | `codex` |
 | 2026-02-09 | Removed `mgmt/metadata/recover` from top-level CLI, rewired canonical groups to hidden internal commands, and published Phase 5 verification report | Complete `P5-COMP-001..003` and close the CLI decommission phase with executable validation evidence | `codex` |
 

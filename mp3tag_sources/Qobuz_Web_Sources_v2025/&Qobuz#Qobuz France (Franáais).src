@@ -1,7 +1,0 @@
-# Qobuz France Tag Source for MP3Tag
-#
-# Initial release by GMK.
-
-[Name]=Qobuz France
-[IndexUrl]=https://www.qobuz.com/fr-fr/search/albums/%s
-[Include]=Qobuz.inc

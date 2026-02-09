@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# get-sync — Beatport URL -> download missing + generate playlist in library
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+GET_INTAKE="$SCRIPT_DIR/get-intake"
+
+usage() {
+  echo "Usage: tools/get-sync <beatport-url> [extra get-intake args...]"
+  exit 1
+}
+
+if [[ $# -lt 1 ]]; then
+  usage
+fi
+
+URL="$1"
+shift
+
+if [[ "$URL" != *"beatport.com"* ]]; then
+  echo "Error: tools/get-sync only supports beatport.com URLs" >&2
+  exit 2
+fi
+
+exec "$GET_INTAKE" "$URL" --missing-policy download "$@"

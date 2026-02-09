@@ -34,8 +34,8 @@ REPORT_REQUIRED_COMMANDS = {"m3u", "duration", "recovery", "plan-summary"}
 AUTH_REQUIRED_COMMANDS = {"status", "init", "refresh", "login"}
 
 
-def run_help(*args: str) -> str:
-    cmd = [sys.executable, "-m", "dedupe", *args, "--help"]
+def run_help(module_name: str, *args: str) -> str:
+    cmd = [sys.executable, "-m", module_name, *args, "--help"]
     proc = subprocess.run(
         cmd,
         cwd=PROJECT_ROOT,
@@ -111,14 +111,15 @@ def ensure_regex(text: str, pattern: str, errors: list[str], context: str) -> No
 def main() -> int:
     errors: list[str] = []
 
-    top_help = run_help()
-    intake_help = run_help("intake")
-    index_help = run_help("index")
-    decide_help = run_help("decide")
-    execute_help = run_help("execute")
-    verify_help = run_help("verify")
-    report_help = run_help("report")
-    auth_help = run_help("auth")
+    top_help = run_help("tagslut")
+    intake_help = run_help("tagslut", "intake")
+    index_help = run_help("tagslut", "index")
+    decide_help = run_help("tagslut", "decide")
+    execute_help = run_help("tagslut", "execute")
+    verify_help = run_help("tagslut", "verify")
+    report_help = run_help("tagslut", "report")
+    auth_help = run_help("tagslut", "auth")
+    dedupe_alias_help = run_help("dedupe")
 
     top_commands = parse_help_commands(top_help)
     intake_commands = parse_help_commands(intake_help)
@@ -136,6 +137,21 @@ def main() -> int:
     if stale_top:
         errors.append(
             "Removed top-level commands still present: " + ", ".join(stale_top)
+        )
+    dedupe_alias_commands = parse_help_commands(dedupe_alias_help)
+    missing_dedupe_alias = sorted(TOP_CANONICAL_COMMANDS - dedupe_alias_commands)
+    if missing_dedupe_alias:
+        errors.append(
+            "dedupe alias missing expected top-level commands: "
+            + ", ".join(missing_dedupe_alias)
+        )
+    stale_dedupe_alias = sorted(
+        dedupe_alias_commands & (REMOVED_LEGACY_COMMANDS | REMOVED_COMPAT_COMMANDS)
+    )
+    if stale_dedupe_alias:
+        errors.append(
+            "dedupe alias exposes removed top-level commands: "
+            + ", ".join(stale_dedupe_alias)
         )
 
     missing_intake = sorted(INTAKE_REQUIRED_COMMANDS - intake_commands)
@@ -198,10 +214,13 @@ def main() -> int:
     for canonical in sorted(TOP_CANONICAL_COMMANDS):
         ensure_contains(
             script_surface,
-            f"poetry run dedupe {canonical} ...",
+            f"poetry run tagslut {canonical} ...",
             errors,
             "docs/SCRIPT_SURFACE.md",
         )
+    ensure_contains(script_surface, "Compatibility aliases:", errors, "docs/SCRIPT_SURFACE.md")
+    ensure_contains(script_surface, "`dedupe`", errors, "docs/SCRIPT_SURFACE.md")
+    ensure_contains(script_surface, "`taglslut`", errors, "docs/SCRIPT_SURFACE.md")
     ensure_contains(
         script_surface, "docs/PHASE1_V3_DUAL_WRITE.md", errors, "docs/SCRIPT_SURFACE.md"
     )
@@ -387,12 +406,12 @@ def main() -> int:
 
     # README canonical flow checks
     required_readme_phrases = [
-        "poetry run dedupe index register",
-        "poetry run dedupe index check",
-        "poetry run dedupe intake run",
-        "poetry run dedupe report m3u",
-        "poetry run dedupe auth status",
-        "poetry run dedupe index enrich",
+        "poetry run tagslut index register",
+        "poetry run tagslut index check",
+        "poetry run tagslut intake run",
+        "poetry run tagslut report m3u",
+        "poetry run tagslut auth status",
+        "poetry run tagslut index enrich",
         "tools/get-intake",
     ]
     for phrase in required_readme_phrases:

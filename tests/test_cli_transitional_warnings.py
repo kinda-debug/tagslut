@@ -7,7 +7,7 @@ def test_transitional_warning_includes_replacement_for_known_command() -> None:
     msg = _format_transitional_warning("dedupe _mgmt")
     assert "dedupe _mgmt" in msg
     assert "transitional legacy wrapper" in msg
-    assert "dedupe index" in msg
+    assert "tagslut index" in msg
 
 
 def test_transitional_warning_for_unknown_command_is_generic() -> None:

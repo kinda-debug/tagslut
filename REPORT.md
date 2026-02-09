@@ -2,7 +2,10 @@
 
 ## Project Summary / Introduction
 
-### Project Name: dedupe (Music Library Deduplication and Rebuild)
+### Project Name: tagslut (Music Library Deduplication and Rebuild)
+
+Note: the implementation package remains `dedupe/` during migration. CLI aliases:
+`tagslut` (preferred), `dedupe` (compatibility), and `taglslut` (typo-tolerant).
 
 This repository manages a comprehensive effort to **deduplicate, rebuild, and maintain** a large electronic music library after significant data loss. The project uses multiple tools—including **bpdl (Beatport Downloader)** for sourcing DJ-critical material, **Yate** for manual precision tagging, and custom scanning/hashing infrastructure—to create a clean, well-organized, metadata-rich library.
 
@@ -115,7 +118,7 @@ The configuration's goal is to **extract and persist every metadata field bpdl s
 - **Rekordbox** (for DJ prep),
 - **Audi media system** (for consistent in-car display and navigation).
 
-**Important:** BeatportDL does NOT generate M3U playlists. M3U generation is handled by `dedupe mgmt --m3u` or `tools/review/promote_by_tags.py` after downloads are registered to the inventory.
+**Important:** BeatportDL does NOT generate M3U playlists. M3U generation is handled by `tagslut report m3u` or `tools/review/promote_by_tags.py` after downloads are registered to the inventory.
 
 **Future feature: Album/artist-level fetches**  
 The ability for bpdl (or companion tooling) to fetch not only by track/release URL but also **by album or even by artist**, enabling:
@@ -267,80 +270,60 @@ A radical redesign proposal (architecture, data model v3, policy engine, CLI con
 
 ---
 
-## Management & Recovery Modes (New)
+## Active CLI Workflow
 
-The dedupe CLI now supports two primary operational modes for building a clean, sanitized library from fresh downloads:
+The active operator surface is now canonical-only:
+- `tagslut intake`
+- `tagslut index`
+- `tagslut decide`
+- `tagslut execute`
+- `tagslut verify`
+- `tagslut report`
+- `tagslut auth`
 
-### `dedupe mgmt` — Management Mode
+Wrapper commands (`scan/recommend/apply/promote/quarantine/mgmt/metadata/recover`) were retired in Phase 5.
 
-Management mode maintains a **central inventory database** of all audio files from multiple download sources (bpdl, qobuz-dl, tidal-dl, etc.) and provides:
+### Inventory and Metadata Flow
 
-- **Pre-download duplicate checking**: Before downloading, query the inventory for similar tracks by artist/title, ISRC, or fingerprint. Prevents accidentally re-downloading tracks from yesterday.
-- **Interactive diagnosis**: When a similar file is found, display specs (quality, source, date) and prompt: Skip / Download anyway / Replace.
-- **M3U playlist generation**: The `--m3u` flag generates Roon-compatible playlists for downloaded content. Use `--merge` for a single combined playlist or one-per-item by default. (Note: This is a `dedupe mgmt` feature, NOT a BeatportDL feature.)
-- **Source tracking**: Every file is tagged with its download source and date for provenance.
-
-#TODO: Implement M3U generation in `dedupe mgmt --m3u`
-#TODO: Log every decision (checks, waivers, moves) to JSON audit log
-#TODO: Implement interactive prompt when similar files exist (skip/download/replace)
-
-Example:
+1. Register incoming material:
 ```bash
-# Register downloads and check for duplicates
-dedupe mgmt --source bpdl --check ~/Downloads/bpdl/
-# Generate M3U playlist (separate step - M3U is a dedupe mgmt feature, not bpdl)
-dedupe mgmt --m3u ~/Downloads/bpdl/
+tagslut index register <path> --source <bpdl|tidal|qobuz|legacy>
+```
+2. Check duplicates before download:
+```bash
+tagslut index check <path> --source <source>
+```
+3. Enrich metadata and auth:
+```bash
+tagslut auth status
+tagslut index enrich --db <db-path> --recovery --execute
 ```
 
-### `dedupe recovery` — Recovery Mode
+### Plan, Execute, Verify, Report
 
-Recovery mode handles actual file operations with strict move-only semantics:
-
-- **`--move` / `--no-move`**: Explicit flag required to actually move files (default: dry-run).
-- **`--rename-only`**: Rename files in place without relocating—useful for normalization passes.
-- **Full logging**: Every operation logged in JSON/TSV for auditability and potential rollback.
-- **Zone-aware**: Move files to specific zones (accepted, staging, etc.).
-
-Example:
+1. Build deterministic plans:
 ```bash
-# Preview moves
-dedupe recovery --no-move --zone accepted /staging/
-
-# Execute moves
-dedupe recovery --move --zone accepted --source bpdl /staging/
-
-# Rename-only pass
-dedupe recovery --rename-only --move /accepted/
+tagslut decide plan --policy library_balanced --input <candidates.json> --output <plan.json>
+```
+2. Execute move workflows:
+```bash
+tagslut execute move-plan <plan.csv> ...
+tagslut execute quarantine-plan <plan.csv> ...
+tagslut execute promote-tags ...
+```
+3. Verify outcomes:
+```bash
+tagslut verify duration ...
+tagslut verify parity ...
+tagslut verify receipts --db <db>
+```
+4. Generate playlists/reports:
+```bash
+tagslut report m3u <path>
+tagslut report plan-summary ...
 ```
 
-### Central Inventory Database
-
-The inventory DB extends the existing `files` table with:
-- `download_source`: bpdl, qobuz, tidal, legacy
-- `download_date`: When the file was registered
-- `original_path` / `canonical_path`: Track file movement
-- `isrc`, `fingerprint`: For similarity matching
-- `m3u_exported`, `m3u_path`: M3U tracking
-- `mgmt_status`: new → checked → verified → moved
-
-This database is the **single source of truth** for what exists, where it came from, and where it should go.
-
-### Workflow: Building a Sanitized Library
-
-The new workflow for building a clean library from fresh downloads:
-
-1. **Download** from Beatport using bpdl (directory layout controlled by `sort_by_context` and `*_directory_template`)
-2. **Register** to inventory with `dedupe mgmt --source bpdl --check <path>`
-3. **Generate M3U** with `dedupe mgmt --m3u <path>` (or use `tools/review/promote_by_tags.py`)
-4. **Review** M3U in Roon, verify tracks
-5. **Move** verified tracks with `dedupe recovery --move --zone accepted`
-6. **Repeat** — inventory prevents re-downloads
-
-**Note:** BeatportDL does NOT have a `--m3u` flag. M3U generation is a `dedupe mgmt` responsibility.
-
-This replaces the old "rescue everything" approach with a controlled, inventory-driven build of a small, super-sanitized core library.
-
-See [docs/MGMT_MODE.md](./docs/MGMT_MODE.md) for full specification.
+This keeps the project move-only and inventory-driven without exposing legacy wrapper surfaces.
 
 ---
 
@@ -354,8 +337,7 @@ This project is:
   - A **new core library** seeded from the 1–2k post-loss downloads,
   - A fast, database-backed scan + hash + normalization tier,
   - Yate for manual precision tagging of edge cases and high-value material.
-  - **Management mode** for inventory-driven download tracking, duplicate prevention, and M3U generation.
-  - **Recovery mode** for controlled, logged file operations with move-only semantics.
+  - Canonical CLI groups for intake/index/decide/execute/verify/report/auth.
 - A **long-term framework** for deduplicating, normalizing, and promoting tracks into a clean, tool-friendly, DJ-safe library—without ever going back to ad-hoc, manual chaos.
 
-**bpdl is a tool (for downloading). dedupe mgmt handles M3U generation and inventory. The project is dedupe.**
+**bpdl is a tool (for downloading). dedupe handles inventory/M3U/verification through canonical commands. The project is dedupe.**

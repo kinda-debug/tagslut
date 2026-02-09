@@ -7,30 +7,68 @@ Policy and deprecation rules are defined in:
 
 ## Canonical Entry Points
 
-1. `poetry run dedupe intake ...`
+1. `poetry run tagslut intake ...`
 Role: Download/intake orchestration and prefilter operations.
 
-2. `poetry run dedupe index ...`
+2. `poetry run tagslut index ...`
 Role: Inventory registration, duplicate checks, duration checks, and metadata enrichment for indexed files.
 
-3. `poetry run dedupe decide ...`
+3. `poetry run tagslut decide ...`
 Role: Policy-profile listing and deterministic plan generation.
 
-4. `poetry run dedupe execute ...`
+4. `poetry run tagslut execute ...`
 Role: Execute move/quarantine/promote workflows from plans.
 
-5. `poetry run dedupe verify ...`
+5. `poetry run tagslut verify ...`
 Role: Validate duration/recovery/parity and move receipt consistency.
 
-6. `poetry run dedupe report ...`
+6. `poetry run tagslut report ...`
 Role: M3U and operational reports (duration, recovery, plan summaries).
 
-7. `poetry run dedupe auth ...`
+7. `poetry run tagslut auth ...`
 Role: Provider authentication and token lifecycle flows.
+
+## Rebrand Invocation
+
+The preferred command brand is now `tagslut`.
+
+Equivalent invocations:
+- `poetry run tagslut intake ...` == `poetry run dedupe intake ...`
+- `poetry run tagslut index ...` == `poetry run dedupe index ...`
+- `poetry run tagslut decide ...` == `poetry run dedupe decide ...`
+- `poetry run tagslut execute ...` == `poetry run dedupe execute ...`
+- `poetry run tagslut verify ...` == `poetry run dedupe verify ...`
+- `poetry run tagslut report ...` == `poetry run dedupe report ...`
+- `poetry run tagslut auth ...` == `poetry run dedupe auth ...`
+
+Compatibility aliases:
+- `dedupe` (fully supported during migration)
+- `taglslut` (typo-tolerant alias)
+
+## Operational Wrappers (Active)
+
+These wrappers are active convenience entrypoints around canonical intake/report flows:
+
+1. `tools/get <url>`
+Role: Unified URL router.
+- `tidal.com` -> `tools/tiddl`
+- `beatport.com` -> `tools/get-sync`
+
+2. `tools/get-sync <beatport-url>`
+Role: Beatport sync mode (download missing + build merged M3U).
+
+3. `tools/get-report <beatport-url>`
+Role: Beatport report-only mode (no download).
+
+4. `tools/tagslut [args...]`
+Role: Local wrapper for `python -m tagslut`.
+
+5. `tools/taglslut [args...]`
+Role: Typo-tolerant local wrapper for `python -m tagslut`.
 
 ## Transitional Wrapper Status
 
-No transitional wrappers remain on the top-level `dedupe` CLI surface.
+No transitional wrappers remain on the top-level `tagslut` CLI surface.
 
 Retired in Phase 5:
 - dedupe scan
@@ -45,7 +83,7 @@ Retired in Phase 5:
 Canonical groups now call internal hidden commands (`_mgmt`, `_metadata`, `_recover`)
 to preserve implementation reuse without exposing transitional operator entrypoints.
 
-Use `dedupe intake/index/decide/execute/verify/report/auth` for new work.
+Use `tagslut intake/index/decide/execute/verify/report/auth` for new work.
 
 ## Recovery Command Status
 
@@ -75,8 +113,8 @@ Use `dedupe intake/index/decide/execute/verify/report/auth` for new work.
 1. New operational logic should go in `dedupe/` or `tools/review/`, not `legacy/`.
 2. If a script is superseded, move it to an archive location and add a note in `legacy/tools/README.md`.
 3. Keep docs aligned with real command help:
-   - `poetry run dedupe --help`
-   - `poetry run dedupe index --help`
-   - `poetry run dedupe execute --help`
-   - `poetry run dedupe auth --help`
+   - `poetry run tagslut --help`
+   - `poetry run tagslut index --help`
+   - `poetry run tagslut execute --help`
+   - `poetry run tagslut auth --help`
 4. Keep generated runtime outputs under `artifacts/` (`artifacts/logs`, `artifacts/tmp`, `artifacts/db`) instead of repo root.

@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+
+echo "tools/get <beatport-url> downloads missing tracks and builds a playlist."
+echo "tools/get-sync <beatport-url> does the same sync flow explicitly."
+echo "tools/get-report <beatport-url> reports matches only and does not download."

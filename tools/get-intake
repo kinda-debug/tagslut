@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# get-intake — download + fast dedupe intake for EDM-friendly workflows
+# get-intake — download + fast tagslut intake for EDM-friendly workflows
 #
 # Pipeline:
 #  1) Download via tools/get (optional)
-#  2) Quick duplicate check via dedupe mgmt check (strict, non-interactive)
+#  2) Quick duplicate check via tagslut index check (strict, non-interactive)
 #  3) Fast trust scan + integrity registration
 #  4) Cross-root fingerprint audit against final library
 #  5) Build promote/stash/quarantine plans
@@ -23,17 +23,21 @@ PLAN_SCRIPT="$SCRIPT_DIR/review/plan_fpcalc_promote_unique_to_final_library.py"
 MOVE_SCRIPT="$SCRIPT_DIR/review/move_from_plan.py"
 BEATPORT_PREFILTER_SCRIPT="$SCRIPT_DIR/review/beatport_prefilter.py"
 BPDL_BIN="$SCRIPT_DIR/beatportdl/bpdl/bpdl"
+BPDL_CONFIG="$SCRIPT_DIR/beatportdl/bpdl/beatportdl-config.yml"
 
 usage() {
   cat <<'EOF'
 Usage:
   tools/get-intake [options] <url> [-- downloader-args...]
   tools/get-intake --no-download --batch-root <path> [options]
+  tools/get-intake --m3u-only (--url <beatport-url> | --playlist-file <file>) [options]
+  tools/get-intake <beatport-url>   # auto: m3u-only with defaults when --batch-root omitted
 
 Options:
   --batch-root PATH    Download batch root to process (required)
   --source TEXT        Source label (bpdl|tidal). Auto-inferred from URL if omitted.
-  --db PATH            SQLite DB path (default: $DEDUPE_DB)
+  --url URL            Source URL (alternative to positional URL)
+  --db PATH            SQLite DB path (default: $DEDUPE_DB or auto-detected latest dedupe_db EPOCH)
   --library-root PATH  Final library root (default: /Volumes/MUSIC/LIBRARY)
   --fix-root PATH      FIX root (default: /Volumes/MUSIC/FIX)
   --out-dir PATH       Output directory for plans (default: artifacts/compare)
@@ -42,8 +46,14 @@ Options:
   --trust-post N       Post-scan trust score 0..3 (default: 3)
   --library-tag TEXT   Library tag used in scan_with_trust (default: INTAKE)
   --execute            Execute move plans (default: dry-run planning only)
+  --m3u                Generate Roon-friendly merged M3U from promoted files
+  --m3u-dir PATH       M3U output dir (default: library root when --m3u)
+  --m3u-only           Only generate merged M3U (skip download/scan/move stages)
+  --playlist-file PATH Build M3U from playlist file (.m3u/.m3u8/.txt/.csv/.json)
+  --missing-policy MODE
+                       Missing handling for --m3u-only: ask|report|skip|download (default: report)
   --no-download        Skip downloader step; process existing batch root
-  --skip-mgmt-check    Skip quick dedupe mgmt check stage
+  --skip-mgmt-check    Skip quick duplicate check stage (legacy flag name)
   --skip-beatport-prefilter
                        Skip fast metadata prefilter before Beatport download
   --prefilter-margin-ms N
@@ -51,10 +61,14 @@ Options:
   -h, --help           Show this help
 
 Examples:
+  tools/get-intake "https://www.beatport.com/chart/.../12345"
+
   tools/get-intake --batch-root /Volumes/DJSSD/beatport \
     "https://www.beatport.com/release/.../12345"
 
   tools/get-intake --no-download --batch-root /Volumes/MUSIC/CLEAN --execute
+
+  tools/get-intake --m3u-only --m3u --url "https://www.beatport.com/chart/.../12345"
 EOF
 }
 
@@ -78,6 +92,178 @@ run_cmd() {
   "$@"
 }
 
+safe_m3u_name() {
+  local value="${1:-}"
+  value="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9._-]+/-/g; s/^-+//; s/-+$//; s/-{2,}/-/g')"
+  [[ -n "$value" ]] || value="playlist"
+  echo "$value"
+}
+
+playlist_label_from_url() {
+  local clean="${1%%\?*}"
+  clean="${clean%/}"
+  local last="${clean##*/}"
+  local parent="${clean%/*}"
+  local slug="${parent##*/}"
+
+  case "$slug" in
+    chart|release|releases|playlist|playlists|track|tracks|library|"")
+      slug=""
+      ;;
+  esac
+
+  if [[ -z "$slug" ]]; then
+    slug="beatport-${last:-playlist}"
+  fi
+  safe_m3u_name "$slug"
+}
+
+rename_latest_m3u_from_marker() {
+  local m3u_dir="$1"
+  local marker_file="$2"
+  local base_name="$3"
+
+  [[ -d "$m3u_dir" ]] || return 0
+  [[ -f "$marker_file" ]] || return 0
+  [[ -n "$base_name" ]] || return 0
+
+  local latest_new_m3u
+  latest_new_m3u="$(find "$m3u_dir" -maxdepth 1 -type f -name '*.m3u' -newer "$marker_file" -print | sort | tail -n1 || true)"
+  [[ -n "$latest_new_m3u" ]] || return 0
+
+  local target="$m3u_dir/$base_name.m3u"
+  if [[ "$latest_new_m3u" != "$target" ]]; then
+    if [[ -f "$latest_new_m3u" ]]; then
+      mv -f "$latest_new_m3u" "$target" || true
+      if [[ -f "$target" ]]; then
+        echo "Named playlist: $target"
+      fi
+    fi
+  fi
+}
+
+bpdl_downloads_dir_from_config() {
+  if [[ ! -f "$BPDL_CONFIG" ]]; then
+    echo ""
+    return 0
+  fi
+  local raw
+  raw="$(sed -n 's/^downloads_directory:[[:space:]]*//p' "$BPDL_CONFIG" | head -n1)"
+  raw="${raw%\"}"
+  raw="${raw#\"}"
+  raw="${raw%\'}"
+  raw="${raw#\'}"
+  echo "$raw"
+}
+
+autodetect_db_path() {
+  local candidates=()
+  local latest=""
+
+  if [[ -d "$REPO_ROOT/../dedupe_db" ]]; then
+    while IFS= read -r file; do
+      [[ -n "$file" ]] && candidates+=("$file")
+    done < <(find "$REPO_ROOT/../dedupe_db" -type f -name music.db 2>/dev/null || true)
+  fi
+
+  if [[ -d "$HOME/Projects/dedupe_db" ]]; then
+    while IFS= read -r file; do
+      [[ -n "$file" ]] && candidates+=("$file")
+    done < <(find "$HOME/Projects/dedupe_db" -type f -name music.db 2>/dev/null || true)
+  fi
+
+  if [[ ${#candidates[@]} -eq 0 ]]; then
+    echo ""
+    return 0
+  fi
+
+  latest="$(printf '%s\n' "${candidates[@]}" | while IFS= read -r db; do
+    [[ -n "$db" ]] || continue
+    if [[ "$db" == *"/EPOCH_"*"/music.db" ]]; then
+      echo "$db"
+    fi
+  done | while IFS= read -r epoch_db; do
+    [[ -n "$epoch_db" ]] || continue
+    printf '%s\t%s\n' "$(stat -f '%m' "$epoch_db" 2>/dev/null || echo 0)" "$epoch_db"
+  done | sort -nr | head -n1 | cut -f2-)"
+
+  if [[ -z "$latest" ]]; then
+    latest="$(printf '%s\n' "${candidates[@]}" | while IFS= read -r db; do
+      [[ -n "$db" ]] || continue
+      printf '%s\t%s\n' "$(stat -f '%m' "$db" 2>/dev/null || echo 0)" "$db"
+    done | sort -nr | head -n1 | cut -f2-)"
+  fi
+
+  echo "$latest"
+}
+
+ensure_bpdl_download_target() {
+  local target
+  target="$(bpdl_downloads_dir_from_config)"
+  if [[ -z "$target" ]]; then
+    return 0
+  fi
+
+  local parent
+  parent="$(dirname "$target")"
+  if [[ ! -d "$parent" ]]; then
+    err "Beatport downloads_directory parent is missing: $parent (from $BPDL_CONFIG). Mount the volume or update downloads_directory."
+  fi
+
+  mkdir -p "$target" || err "Cannot create Beatport downloads_directory: $target"
+  [[ -d "$target" ]] || err "Beatport downloads_directory is not accessible: $target"
+}
+
+run_bpdl_batch() {
+  local url_list="$1"
+  local log_file="$2"
+  shift 2
+  local extra_args=("$@")
+
+  ensure_bpdl_download_target
+
+  local supports_quit=0
+  if "$BPDL_BIN" -h 2>&1 | grep -q -- "-q"; then
+    supports_quit=1
+  fi
+
+  if [[ "$supports_quit" -eq 1 ]]; then
+    if [[ ${#extra_args[@]} -gt 0 ]]; then
+      run_cmd "$BPDL_BIN" -q "${extra_args[@]}" "$url_list"
+    else
+      run_cmd "$BPDL_BIN" -q "$url_list"
+    fi
+    return 0
+  fi
+
+  echo "bpdl '-q' not supported by this binary; using compatibility mode."
+  set +e
+  if [[ ${#extra_args[@]} -gt 0 ]]; then
+    printf '→ '
+    printf '%q ' "$BPDL_BIN" "${extra_args[@]}" "$url_list"
+    printf '\n'
+    "$BPDL_BIN" "${extra_args[@]}" "$url_list" < /dev/null 2>&1 | tee "$log_file"
+  else
+    printf '→ '
+    printf '%q ' "$BPDL_BIN" "$url_list"
+    printf '\n'
+    "$BPDL_BIN" "$url_list" < /dev/null 2>&1 | tee "$log_file"
+  fi
+  local bpdl_code=${PIPESTATUS[0]}
+  set -e
+
+  if [[ "$bpdl_code" -ne 0 ]]; then
+    if grep -q "Error reading input string: EOF" "$log_file"; then
+      echo "bpdl exited after EOF prompt in non-interactive mode; continuing."
+      return 0
+    fi
+    echo "bpdl failed (exit=$bpdl_code). See log: $log_file" >&2
+    return "$bpdl_code"
+  fi
+
+  return 0
+}
+
 infer_source() {
   local url="$1"
   case "$url" in
@@ -91,6 +277,8 @@ DOWNLOAD=1
 EXECUTE=0
 SKIP_MGMT_CHECK=0
 SKIP_BEATPORT_PREFILTER=0
+M3U_MODE=0
+M3U_ONLY=0
 
 URL=""
 BATCH_ROOT=""
@@ -104,6 +292,9 @@ TRUST=3
 TRUST_POST=3
 LIBRARY_TAG="INTAKE"
 PREFILTER_MARGIN_MS=4000
+M3U_DIR=""
+PLAYLIST_FILE=""
+MISSING_POLICY="report"
 
 DOWNLOADER_ARGS=()
 
@@ -117,6 +308,11 @@ while [[ $# -gt 0 ]]; do
     --source)
       [[ $# -ge 2 ]] || err "--source requires a value"
       SOURCE="$2"
+      shift 2
+      ;;
+    --url)
+      [[ $# -ge 2 ]] || err "--url requires a value"
+      URL="$2"
       shift 2
       ;;
     --db)
@@ -163,6 +359,30 @@ while [[ $# -gt 0 ]]; do
       EXECUTE=1
       shift
       ;;
+    --m3u)
+      M3U_MODE=1
+      shift
+      ;;
+    --m3u-only)
+      M3U_ONLY=1
+      M3U_MODE=1
+      shift
+      ;;
+    --m3u-dir)
+      [[ $# -ge 2 ]] || err "--m3u-dir requires a value"
+      M3U_DIR="$2"
+      shift 2
+      ;;
+    --playlist-file)
+      [[ $# -ge 2 ]] || err "--playlist-file requires a value"
+      PLAYLIST_FILE="$2"
+      shift 2
+      ;;
+    --missing-policy)
+      [[ $# -ge 2 ]] || err "--missing-policy requires a value"
+      MISSING_POLICY="$2"
+      shift 2
+      ;;
     --no-download)
       DOWNLOAD=0
       shift
@@ -203,15 +423,35 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ -n "$BATCH_ROOT" ]] || err "--batch-root is required"
+if [[ "$M3U_ONLY" -eq 0 && -n "$URL" && -z "$BATCH_ROOT" ]]; then
+  M3U_ONLY=1
+  M3U_MODE=1
+  DOWNLOAD=0
+  echo "Auto mode: no --batch-root provided; running in --m3u-only mode."
+fi
+
+if [[ -z "$DB_PATH" ]]; then
+  DB_PATH="$(autodetect_db_path)"
+fi
 [[ -n "$DB_PATH" ]] || err "Missing DB path. Set --db or DEDUPE_DB."
 [[ "$TRUST" =~ ^[0-3]$ ]] || err "--trust must be 0,1,2,3"
 [[ "$TRUST_POST" =~ ^[0-3]$ ]] || err "--trust-post must be 0,1,2,3"
 [[ "$WORKERS" =~ ^[0-9]+$ ]] || err "--workers must be an integer"
 [[ "$PREFILTER_MARGIN_MS" =~ ^[0-9]+$ ]] || err "--prefilter-margin-ms must be an integer"
+case "$MISSING_POLICY" in
+  ask|report|skip|download) ;;
+  *) err "--missing-policy must be one of: ask, report, skip, download" ;;
+esac
 
-if [[ "$DOWNLOAD" -eq 1 && -z "$URL" ]]; then
-  err "URL is required unless --no-download is used"
+if [[ "$M3U_ONLY" -eq 1 ]]; then
+  if [[ -z "$URL" && -z "$PLAYLIST_FILE" ]]; then
+    err "--m3u-only requires either URL or --playlist-file"
+  fi
+else
+  [[ -n "$BATCH_ROOT" ]] || err "--batch-root is required"
+  if [[ "$DOWNLOAD" -eq 1 && -z "$URL" ]]; then
+    err "URL is required unless --no-download is used"
+  fi
 fi
 
 if [[ -z "$SOURCE" && -n "$URL" ]]; then
@@ -230,16 +470,27 @@ fi
 command -v poetry >/dev/null 2>&1 || err "poetry is required in PATH"
 command -v python >/dev/null 2>&1 || err "python is required in PATH"
 
-if [[ "$DOWNLOAD" -eq 1 ]]; then
-  mkdir -p "$BATCH_ROOT"
+if [[ "$M3U_ONLY" -eq 0 ]]; then
+  if [[ "$DOWNLOAD" -eq 1 ]]; then
+    mkdir -p "$BATCH_ROOT"
+  else
+    [[ -d "$BATCH_ROOT" ]] || err "--batch-root does not exist: $BATCH_ROOT"
+  fi
+  BATCH_ROOT="$(cd "$BATCH_ROOT" && pwd -P)"
 else
-  [[ -d "$BATCH_ROOT" ]] || err "--batch-root does not exist: $BATCH_ROOT"
+  BATCH_ROOT=""
 fi
 
-BATCH_ROOT="$(cd "$BATCH_ROOT" && pwd -P)"
 LIBRARY_ROOT="$(cd "$LIBRARY_ROOT" && pwd -P)"
 FIX_ROOT="$(cd "$FIX_ROOT" && pwd -P)"
 DB_PATH="$(cd "$(dirname "$DB_PATH")" && pwd -P)/$(basename "$DB_PATH")"
+if [[ "$M3U_MODE" -eq 1 ]]; then
+  if [[ -z "$M3U_DIR" ]]; then
+    M3U_DIR="$LIBRARY_ROOT"
+  fi
+  mkdir -p "$M3U_DIR"
+  M3U_DIR="$(cd "$M3U_DIR" && pwd -P)"
+fi
 mkdir -p "$OUT_DIR"
 OUT_DIR="$(cd "$OUT_DIR" && pwd -P)"
 
@@ -251,6 +502,452 @@ echo "FIX root:     $FIX_ROOT"
 echo "Output dir:   $OUT_DIR"
 echo "Execute:      $EXECUTE"
 echo "Prefilter:    $((1 - SKIP_BEATPORT_PREFILTER))"
+if [[ "$M3U_MODE" -eq 1 ]]; then
+  echo "M3U:          1 (dir=$M3U_DIR)"
+else
+  echo "M3U:          0"
+fi
+if [[ "$M3U_ONLY" -eq 1 ]]; then
+  echo "M3U only:     1"
+  echo "Missing mode: $MISSING_POLICY"
+fi
+
+if [[ "$M3U_ONLY" -eq 1 ]]; then
+  STEP=1
+  TOTAL_STEPS=3
+  M3U_NAME_HINT=""
+
+  M3U_EXISTING_FILE="$OUT_DIR/m3u_existing_paths_$(date +%Y%m%d_%H%M%S).txt"
+  M3U_MISSING_URLS_FILE="$OUT_DIR/m3u_missing_urls_$(date +%Y%m%d_%H%M%S).txt"
+  M3U_MISSING_ITEMS_FILE="$OUT_DIR/m3u_missing_items_$(date +%Y%m%d_%H%M%S).txt"
+
+  if [[ -n "$URL" ]]; then
+    M3U_NAME_HINT="$(playlist_label_from_url "$URL")"
+    step "$STEP" "$TOTAL_STEPS" "Resolve M3U candidates from URL"
+    if [[ "$URL" != *"beatport.com"* ]]; then
+      err "--m3u-only URL mode currently supports Beatport URLs. Use --playlist-file for other sources."
+    fi
+
+    run_cmd python "$BEATPORT_PREFILTER_SCRIPT" \
+      --db "$DB_PATH" \
+      --url "$URL" \
+      --library-root "$LIBRARY_ROOT" \
+      --credentials "$SCRIPT_DIR/beatportdl/bpdl/beatportdl-credentials.json" \
+      --duration-margin-ms "$PREFILTER_MARGIN_MS" \
+      --out-dir "$OUT_DIR"
+
+    PREFILTER_SUMMARY_JSON="$(ls -1t "$OUT_DIR"/beatport_prefilter_summary_*.json 2>/dev/null | head -n1 || true)"
+    [[ -n "$PREFILTER_SUMMARY_JSON" ]] || err "Could not find Beatport prefilter summary in $OUT_DIR"
+
+    PREFILTER_DECISIONS_CSV="$(python - "$PREFILTER_SUMMARY_JSON" <<'PY'
+import json
+import sys
+with open(sys.argv[1], encoding="utf-8") as handle:
+    payload = json.load(handle)
+print(payload.get("outputs", {}).get("decisions_csv", ""))
+PY
+)"
+    [[ -n "$PREFILTER_DECISIONS_CSV" ]] || err "Missing decisions_csv in prefilter summary: $PREFILTER_SUMMARY_JSON"
+
+    FALLBACK_LOCAL_ROOTS=()
+    BPDL_DOWNLOAD_ROOT="$(bpdl_downloads_dir_from_config)"
+    if [[ -n "$BPDL_DOWNLOAD_ROOT" && -d "$BPDL_DOWNLOAD_ROOT" ]]; then
+      FALLBACK_LOCAL_ROOTS+=("$BPDL_DOWNLOAD_ROOT")
+    fi
+
+    python - "$PREFILTER_DECISIONS_CSV" "$M3U_EXISTING_FILE" "$M3U_MISSING_URLS_FILE" "$M3U_MISSING_ITEMS_FILE" "${FALLBACK_LOCAL_ROOTS[@]}" <<'PY'
+import csv
+import re
+import sys
+from pathlib import Path
+
+decisions_csv = Path(sys.argv[1])
+existing_file = Path(sys.argv[2])
+missing_urls_file = Path(sys.argv[3])
+missing_items_file = Path(sys.argv[4])
+fallback_roots = [Path(value).expanduser().resolve() for value in sys.argv[5:] if value.strip()]
+
+existing = []
+missing_urls = []
+missing_items = []
+seen_existing = set()
+seen_urls = set()
+seen_missing = set()
+unresolved = []
+
+
+def norm_text(value: str) -> str:
+    text = (value or "").strip().lower()
+    if not text:
+        return ""
+    text = re.sub(r"[^a-z0-9]+", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def token_set(value: str) -> set[str]:
+    return {token for token in norm_text(value).split() if len(token) >= 3}
+
+
+def build_candidates(roots: list[Path]) -> list[tuple[str, set[str], str]]:
+    candidates = []
+    seen_paths = set()
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for file_path in root.rglob("*.flac"):
+            if file_path.name.startswith("._"):
+                continue
+            resolved = str(file_path.resolve())
+            if resolved in seen_paths:
+                continue
+            seen_paths.add(resolved)
+            name_norm = norm_text(file_path.stem)
+            candidates.append((name_norm, set(name_norm.split()), resolved))
+    return candidates
+
+
+def match_unresolved(row: dict[str, str], candidates: list[tuple[str, set[str], str]]) -> str:
+    title = (row.get("title") or "").strip()
+    mix_name = (row.get("mix_name") or "").strip()
+    artist = (row.get("artist") or "").strip()
+
+    title_norm = norm_text(title)
+    mix_norm = norm_text(mix_name)
+    artist_tokens = token_set(artist)
+    title_tokens = token_set(title)
+    mix_is_generic = mix_norm in {"", "original", "original mix", "extended", "extended mix"}
+
+    for file_norm, file_tokens, file_path in candidates:
+        if title_norm:
+            if title_norm not in file_norm and not title_tokens.issubset(file_tokens):
+                continue
+        if mix_norm and not mix_is_generic and mix_norm not in file_norm:
+            continue
+        if artist_tokens and not (artist_tokens & file_tokens):
+            continue
+        return file_path
+    return ""
+
+with decisions_csv.open(newline="", encoding="utf-8") as handle:
+    reader = csv.DictReader(handle)
+    for row in reader:
+        action = (row.get("action") or "").strip().lower()
+        matched_path = (row.get("matched_path") or "").strip()
+        candidate_url = (row.get("url") or "").strip()
+        artist = (row.get("artist") or "").strip()
+        title = (row.get("title") or "").strip()
+
+        if matched_path:
+            path_obj = Path(matched_path).expanduser()
+            if path_obj.exists() and path_obj.suffix.lower() == ".flac":
+                resolved = str(path_obj.resolve())
+                if resolved not in seen_existing:
+                    seen_existing.add(resolved)
+                    existing.append(resolved)
+                continue
+
+        if action == "keep" and candidate_url:
+            unresolved.append(
+                {
+                    "url": candidate_url,
+                    "artist": artist,
+                    "title": title,
+                    "mix_name": (row.get("mix_name") or "").strip(),
+                }
+            )
+
+if fallback_roots and unresolved:
+    candidates = build_candidates(fallback_roots)
+    still_unresolved = []
+    for row in unresolved:
+        matched = match_unresolved(row, candidates)
+        if matched:
+            if matched not in seen_existing:
+                seen_existing.add(matched)
+                existing.append(matched)
+            continue
+        still_unresolved.append(row)
+    unresolved = still_unresolved
+
+for row in unresolved:
+    candidate_url = row["url"]
+    artist = row["artist"]
+    title = row["title"]
+    if candidate_url not in seen_urls:
+        seen_urls.add(candidate_url)
+        missing_urls.append(candidate_url)
+    label = f"{artist} - {title}".strip(" -")
+    if label and label not in seen_missing:
+        seen_missing.add(label)
+        missing_items.append(label)
+
+for path in (existing_file, missing_urls_file, missing_items_file):
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+existing_file.write_text("\n".join(existing) + ("\n" if existing else ""), encoding="utf-8")
+missing_urls_file.write_text("\n".join(missing_urls) + ("\n" if missing_urls else ""), encoding="utf-8")
+missing_items_file.write_text("\n".join(missing_items) + ("\n" if missing_items else ""), encoding="utf-8")
+PY
+  else
+    step "$STEP" "$TOTAL_STEPS" "Resolve M3U candidates from playlist file"
+    [[ -f "$PLAYLIST_FILE" ]] || err "--playlist-file does not exist: $PLAYLIST_FILE"
+    M3U_NAME_HINT="$(safe_m3u_name "$(basename "${PLAYLIST_FILE%.*}")")"
+
+    python - "$PLAYLIST_FILE" "$M3U_EXISTING_FILE" "$M3U_MISSING_URLS_FILE" "$M3U_MISSING_ITEMS_FILE" <<'PY'
+import csv
+import json
+import sys
+from pathlib import Path
+
+source_file = Path(sys.argv[1]).expanduser()
+existing_file = Path(sys.argv[2])
+missing_urls_file = Path(sys.argv[3])
+missing_items_file = Path(sys.argv[4])
+
+existing = []
+missing_urls = []
+missing_items = []
+seen_existing = set()
+seen_urls = set()
+seen_missing = set()
+
+def add_existing(path_value: str) -> None:
+    path_obj = Path(path_value).expanduser()
+    if path_obj.is_dir():
+        for child in sorted(path_obj.rglob("*.flac")):
+            resolved = str(child.resolve())
+            if resolved not in seen_existing:
+                seen_existing.add(resolved)
+                existing.append(resolved)
+        return
+    if path_obj.exists() and path_obj.suffix.lower() == ".flac":
+        resolved = str(path_obj.resolve())
+        if resolved not in seen_existing:
+            seen_existing.add(resolved)
+            existing.append(resolved)
+        return
+    missing = str(path_obj)
+    if missing not in seen_missing:
+        seen_missing.add(missing)
+        missing_items.append(missing)
+
+def add_url(url: str) -> None:
+    if url not in seen_urls:
+        seen_urls.add(url)
+        missing_urls.append(url)
+
+def consume_item(value: str) -> None:
+    item = (value or "").strip()
+    if not item:
+        return
+    if item.startswith("#"):
+        return
+    if item.startswith("http://") or item.startswith("https://"):
+        add_url(item)
+    else:
+        add_existing(item)
+
+suffix = source_file.suffix.lower()
+if suffix in {".m3u", ".m3u8", ".txt"}:
+    for line in source_file.read_text(encoding="utf-8", errors="replace").splitlines():
+        consume_item(line)
+elif suffix == ".csv":
+    with source_file.open(newline="", encoding="utf-8", errors="replace") as handle:
+        reader = csv.DictReader(handle)
+        if reader.fieldnames:
+            for row in reader:
+                consumed = False
+                for key in ("path", "file", "filepath", "location", "url", "uri"):
+                    if key in row and (row.get(key) or "").strip():
+                        consume_item(row.get(key) or "")
+                        consumed = True
+                if not consumed and row:
+                    first_value = next(iter(row.values()), "")
+                    consume_item(first_value or "")
+        else:
+            handle.seek(0)
+            for row in csv.reader(handle):
+                if row:
+                    consume_item(row[0])
+elif suffix == ".json":
+    payload = json.loads(source_file.read_text(encoding="utf-8", errors="replace"))
+    queue = [payload]
+    while queue:
+        current = queue.pop(0)
+        if isinstance(current, str):
+            consume_item(current)
+        elif isinstance(current, list):
+            queue.extend(current)
+        elif isinstance(current, dict):
+            for key in ("path", "file", "filepath", "location", "url", "uri"):
+                if key in current:
+                    queue.append(current[key])
+            for value in current.values():
+                if isinstance(value, (list, dict)):
+                    queue.append(value)
+else:
+    consume_item(str(source_file))
+
+for path in (existing_file, missing_urls_file, missing_items_file):
+    path.parent.mkdir(parents=True, exist_ok=True)
+existing_file.write_text("\n".join(existing) + ("\n" if existing else ""), encoding="utf-8")
+missing_urls_file.write_text("\n".join(missing_urls) + ("\n" if missing_urls else ""), encoding="utf-8")
+missing_items_file.write_text("\n".join(missing_items) + ("\n" if missing_items else ""), encoding="utf-8")
+PY
+  fi
+  STEP=$((STEP + 1))
+
+  step "$STEP" "$TOTAL_STEPS" "Generate Roon M3U"
+  M3U_INPUT_COUNT="$(wc -l < "$M3U_EXISTING_FILE" | tr -d ' ')"
+  if [[ "$M3U_INPUT_COUNT" -eq 0 ]]; then
+    echo "No existing FLAC paths resolved; skipping M3U generation."
+  else
+    M3U_MARKER_FILE="$OUT_DIR/m3u_name_marker_$(date +%Y%m%d_%H%M%S)"
+    : > "$M3U_MARKER_FILE"
+
+    M3U_PATH_ARGS=()
+    while IFS= read -r m3u_path; do
+      [[ -n "$m3u_path" ]] || continue
+      M3U_PATH_ARGS+=("$m3u_path")
+    done < "$M3U_EXISTING_FILE"
+
+    M3U_SOURCE_LABEL="$SOURCE"
+    if [[ -n "$M3U_NAME_HINT" ]]; then
+      M3U_SOURCE_LABEL="$M3U_NAME_HINT"
+    fi
+
+    run_cmd poetry run python -m tagslut report m3u \
+      --merge \
+      --m3u-dir "$M3U_DIR" \
+      --db "$DB_PATH" \
+      --source "$M3U_SOURCE_LABEL" \
+      "${M3U_PATH_ARGS[@]}"
+
+    if [[ -n "$M3U_NAME_HINT" ]]; then
+      rename_latest_m3u_from_marker "$M3U_DIR" "$M3U_MARKER_FILE" "$M3U_NAME_HINT"
+    fi
+    rm -f "$M3U_MARKER_FILE"
+  fi
+  STEP=$((STEP + 1))
+
+  step "$STEP" "$TOTAL_STEPS" "Handle missing candidates"
+  MISSING_URL_COUNT="$(wc -l < "$M3U_MISSING_URLS_FILE" | tr -d ' ')"
+  MISSING_ITEM_COUNT="$(wc -l < "$M3U_MISSING_ITEMS_FILE" | tr -d ' ')"
+  echo "Missing URLs:  $MISSING_URL_COUNT ($M3U_MISSING_URLS_FILE)"
+  echo "Missing items: $MISSING_ITEM_COUNT ($M3U_MISSING_ITEMS_FILE)"
+
+  maybe_download=0
+  BPDL_DOWNLOAD_ROOT="$(bpdl_downloads_dir_from_config)"
+  case "$MISSING_POLICY" in
+    skip)
+      echo "Missing policy=skip; not downloading missing tracks."
+      ;;
+    report)
+      echo "Missing policy=report; review missing files/URLs above."
+      ;;
+    ask)
+      if [[ "$MISSING_URL_COUNT" -gt 0 ]]; then
+        if [[ -t 0 ]]; then
+          read -r -p "Download missing URL tracks now and then rebuild merged M3U from downloaded files? [y/N] " ans
+          case "${ans:-}" in
+            y|Y|yes|YES) maybe_download=1 ;;
+            *) maybe_download=0 ;;
+          esac
+        else
+          echo "Non-interactive shell; treating missing-policy=ask as report."
+        fi
+      fi
+      ;;
+    download)
+      if [[ "$MISSING_URL_COUNT" -gt 0 ]]; then
+        maybe_download=1
+      fi
+      ;;
+  esac
+
+  if [[ "$maybe_download" -eq 1 ]]; then
+    DOWNLOAD_MARKER_FILE="$OUT_DIR/m3u_download_marker_$(date +%Y%m%d_%H%M%S)"
+    : > "$DOWNLOAD_MARKER_FILE"
+
+    BPDL_ONLY_URLS_FILE="$OUT_DIR/m3u_missing_bpdl_urls_$(date +%Y%m%d_%H%M%S).txt"
+    OTHER_URLS_FILE="$OUT_DIR/m3u_missing_other_urls_$(date +%Y%m%d_%H%M%S).txt"
+    grep 'beatport.com' "$M3U_MISSING_URLS_FILE" > "$BPDL_ONLY_URLS_FILE" || true
+    grep -v 'beatport.com' "$M3U_MISSING_URLS_FILE" > "$OTHER_URLS_FILE" || true
+
+    BPDL_ONLY_COUNT="$(wc -l < "$BPDL_ONLY_URLS_FILE" | tr -d ' ')"
+    OTHER_URLS_COUNT="$(wc -l < "$OTHER_URLS_FILE" | tr -d ' ')"
+
+    if [[ "$BPDL_ONLY_COUNT" -gt 0 ]]; then
+      if [[ -z "$BATCH_ROOT" && -n "$BPDL_DOWNLOAD_ROOT" ]]; then
+        BATCH_ROOT="$BPDL_DOWNLOAD_ROOT"
+      fi
+      [[ -n "$BATCH_ROOT" ]] || BATCH_ROOT="/Volumes/MUSIC/beatport"
+      mkdir -p "$BATCH_ROOT"
+      BPDL_LOG="$OUT_DIR/bpdl_m3u_missing_download_$(date +%Y%m%d_%H%M%S).log"
+      run_bpdl_batch "$BPDL_ONLY_URLS_FILE" "$BPDL_LOG"
+    fi
+
+    if [[ "$OTHER_URLS_COUNT" -gt 0 ]]; then
+      while IFS= read -r missing_url; do
+        [[ -n "$missing_url" ]] || continue
+        run_cmd "$GET_BIN" "$missing_url"
+      done < "$OTHER_URLS_FILE"
+    fi
+
+    DOWNLOAD_SCAN_ROOTS=()
+    if [[ -n "${BATCH_ROOT:-}" && -d "$BATCH_ROOT" ]]; then
+      DOWNLOAD_SCAN_ROOTS+=("$BATCH_ROOT")
+    fi
+    if [[ -n "$BPDL_DOWNLOAD_ROOT" && -d "$BPDL_DOWNLOAD_ROOT" ]]; then
+      duplicate_root=0
+      if [[ ${#DOWNLOAD_SCAN_ROOTS[@]} -gt 0 ]]; then
+        for existing_root in "${DOWNLOAD_SCAN_ROOTS[@]}"; do
+          if [[ "$existing_root" == "$BPDL_DOWNLOAD_ROOT" ]]; then
+            duplicate_root=1
+            break
+          fi
+        done
+      fi
+      if [[ "$duplicate_root" -eq 0 ]]; then
+        DOWNLOAD_SCAN_ROOTS+=("$BPDL_DOWNLOAD_ROOT")
+      fi
+    fi
+
+    if [[ ${#DOWNLOAD_SCAN_ROOTS[@]} -gt 0 ]]; then
+      DOWNLOADED_FLACS_FILE="$OUT_DIR/m3u_downloaded_flacs_$(date +%Y%m%d_%H%M%S).txt"
+      : > "$DOWNLOADED_FLACS_FILE"
+      for scan_root in "${DOWNLOAD_SCAN_ROOTS[@]}"; do
+        find "$scan_root" -type f -name '*.flac' ! -name '._*' -newer "$DOWNLOAD_MARKER_FILE" >> "$DOWNLOADED_FLACS_FILE"
+      done
+      sort -u "$DOWNLOADED_FLACS_FILE" -o "$DOWNLOADED_FLACS_FILE"
+      DOWNLOADED_FLACS_COUNT="$(wc -l < "$DOWNLOADED_FLACS_FILE" | tr -d ' ')"
+
+      if [[ "$DOWNLOADED_FLACS_COUNT" -gt 0 ]]; then
+        echo "Rebuilding merged M3U from downloaded files ($DOWNLOADED_FLACS_COUNT)."
+        M3U_DOWNLOADED_PATH_ARGS=()
+        while IFS= read -r dl_path; do
+          [[ -n "$dl_path" ]] || continue
+          M3U_DOWNLOADED_PATH_ARGS+=("$dl_path")
+        done < "$DOWNLOADED_FLACS_FILE"
+
+        run_cmd poetry run python -m tagslut report m3u \
+          --merge \
+          --m3u-dir "$M3U_DIR" \
+          --db "$DB_PATH" \
+          --source "$SOURCE" \
+          "${M3U_DOWNLOADED_PATH_ARGS[@]}"
+      else
+        echo "No newly downloaded FLAC files detected under: ${DOWNLOAD_SCAN_ROOTS[*]}"
+      fi
+    fi
+
+    rm -f "$DOWNLOAD_MARKER_FILE"
+  fi
+
+  echo
+  echo "Done: m3u-only workflow completed."
+  exit 0
+fi
 
 USE_BEATPORT_PREFILTER=0
 if [[ "$DOWNLOAD" -eq 1 && "$SKIP_BEATPORT_PREFILTER" -eq 0 && "$SOURCE" == "bpdl" && "$URL" == *"beatport.com"* ]]; then
@@ -265,6 +962,9 @@ if [[ "$DOWNLOAD" -eq 1 ]]; then
   TOTAL_STEPS=$((TOTAL_STEPS + 1))
 fi
 if [[ "$USE_BEATPORT_PREFILTER" -eq 1 ]]; then
+  TOTAL_STEPS=$((TOTAL_STEPS + 1))
+fi
+if [[ "$M3U_MODE" -eq 1 ]]; then
   TOTAL_STEPS=$((TOTAL_STEPS + 1))
 fi
 STEP=1
@@ -314,12 +1014,12 @@ PY
       echo "No new candidates to process; intake pipeline finished."
       exit 0
     else
-      DL_CMD=("$BPDL_BIN" "-q")
+      BPDL_LOG="$OUT_DIR/bpdl_prefilter_download_$(date +%Y%m%d_%H%M%S).log"
       if [[ ${#DOWNLOADER_ARGS[@]} -gt 0 ]]; then
-        DL_CMD+=("${DOWNLOADER_ARGS[@]}")
+        run_bpdl_batch "$KEEP_URLS_TXT" "$BPDL_LOG" "${DOWNLOADER_ARGS[@]}"
+      else
+        run_bpdl_batch "$KEEP_URLS_TXT" "$BPDL_LOG"
       fi
-      DL_CMD+=("$KEEP_URLS_TXT")
-      run_cmd "${DL_CMD[@]}"
     fi
   else
     if [[ ${#DOWNLOADER_ARGS[@]} -gt 0 ]]; then
@@ -332,12 +1032,12 @@ PY
 fi
 
 if [[ "$SKIP_MGMT_CHECK" -eq 0 ]]; then
-  step "$STEP" "$TOTAL_STEPS" "Quick duplicate check (mgmt check, strict)"
+  step "$STEP" "$TOTAL_STEPS" "Quick duplicate check (index check, strict)"
   set +e
-  run_cmd poetry run dedupe mgmt check "$BATCH_ROOT" --db "$DB_PATH" --source "$SOURCE" --strict --no-prompt
-  MGMT_CHECK_CODE=$?
+  run_cmd poetry run python -m tagslut index check "$BATCH_ROOT" --db "$DB_PATH" --source "$SOURCE" --strict --no-prompt
+  INDEX_CHECK_CODE=$?
   set -e
-  echo "mgmt check exit code: $MGMT_CHECK_CODE (continuing)"
+  echo "index check exit code: $INDEX_CHECK_CODE (continuing)"
   STEP=$((STEP + 1))
 fi
 
@@ -481,8 +1181,6 @@ if [[ "$EXECUTE" -eq 1 ]]; then
       --mgmt-status moved_to_fix \
       --execute
   fi
-  echo
-  echo "Done: download+intake executed."
 else
   echo
   echo "Dry-run mode complete. Execute with:"
@@ -493,4 +1191,68 @@ else
   if [[ "$QUARANTINE_MOVE" -gt 0 ]]; then
     echo "  python \"$MOVE_SCRIPT\" \"$QUARANTINE_PLAN\" --source-root \"$BATCH_ROOT\" --dest-root \"$FIX_ROOT\" --db \"$DB_PATH\" --zone suspect --mgmt-status moved_to_fix --execute"
   fi
+fi
+
+if [[ "$M3U_MODE" -eq 1 ]]; then
+  STEP=$((STEP + 1))
+  step "$STEP" "$TOTAL_STEPS" "Generate Roon M3U"
+
+  M3U_INPUTS_FILE="$OUT_DIR/m3u_inputs_$(date +%Y%m%d_%H%M%S).txt"
+  python - "$PROMOTE_PLAN" "$M3U_INPUTS_FILE" <<'PY'
+import csv
+import sys
+from pathlib import Path
+
+plan_csv = Path(sys.argv[1])
+out_file = Path(sys.argv[2])
+selected = []
+seen = set()
+
+with plan_csv.open(newline="", encoding="utf-8") as handle:
+    reader = csv.DictReader(handle)
+    for row in reader:
+        dest = Path((row.get("dest_path") or "").strip())
+        src = Path((row.get("path") or "").strip())
+        candidate = None
+        if str(dest) and dest.exists():
+            candidate = dest
+        elif str(src) and src.exists():
+            candidate = src
+        if candidate is None:
+            continue
+        if candidate.suffix.lower() != ".flac":
+            continue
+        key = str(candidate.resolve())
+        if key in seen:
+            continue
+        seen.add(key)
+        selected.append(key)
+
+with out_file.open("w", encoding="utf-8") as handle:
+    for item in selected:
+        handle.write(f"{item}\n")
+PY
+
+  M3U_INPUT_COUNT="$(wc -l < "$M3U_INPUTS_FILE" | tr -d ' ')"
+  if [[ "$M3U_INPUT_COUNT" -eq 0 ]]; then
+    echo "No promoted files found on disk for M3U generation; skipping."
+  else
+    M3U_PATH_ARGS=()
+    while IFS= read -r m3u_path; do
+      [[ -n "$m3u_path" ]] || continue
+      M3U_PATH_ARGS+=("$m3u_path")
+    done < "$M3U_INPUTS_FILE"
+
+    run_cmd poetry run python -m tagslut report m3u \
+      --merge \
+      --m3u-dir "$M3U_DIR" \
+      --db "$DB_PATH" \
+      --source "$SOURCE" \
+      "${M3U_PATH_ARGS[@]}"
+  fi
+fi
+
+if [[ "$EXECUTE" -eq 1 ]]; then
+  echo
+  echo "Done: download+intake executed."
 fi

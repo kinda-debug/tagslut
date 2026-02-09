@@ -1,7 +1,0 @@
-# Qobuz United States Tag Source for MP3Tag
-#
-# Initial release by GMK.
-
-[Name]=Qobuz United States
-[IndexUrl]=https://www.qobuz.com/us-en/search/albums/%s
-[Include]=Qobuz.inc

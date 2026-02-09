@@ -41,7 +41,8 @@ def test_forbidden_root_files_absent() -> None:
         # Exclude allowed system files from matches
         matches = [m for m in matches if m.name not in allowed_system_files]
         # Only fail if matches remain after filtering
-        assert not matches, f"Found forbidden pattern {pattern}: {[str(m) for m in matches if m.name not in allowed_system_files]}"
+        filtered = [str(m) for m in matches if m.name not in allowed_system_files]
+        assert not matches, f"Found forbidden pattern {pattern}: {filtered}"
 
     checkpoints = PROJECT_ROOT / ".ipynb_checkpoints"
     assert not checkpoints.exists(), "Jupyter checkpoints directory should not be present in root"
@@ -64,10 +65,14 @@ def test_pyproject_toml_parses() -> None:
         "dedupe.core.decisions",
         "dedupe.core.matching",
         "dedupe.core.metadata",
+        "dedupe.exec",
         "dedupe.integrity_scanner",
+        "dedupe.policy",
+        "dedupe.decide",
         "dedupe.storage",
         "dedupe.storage.schema",
         "dedupe.utils",
+        "tagslut",
     ],
 )
 def test_modules_import_cleanly(module_path: str) -> None:

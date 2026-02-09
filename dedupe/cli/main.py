@@ -3,7 +3,7 @@ import logging
 import os
 import sys
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 # Add project root to path so we can import tools as modules if needed
@@ -13,11 +13,12 @@ _PROJECT_ROOT = Path(__file__).parents[2]
 logger = logging.getLogger("dedupe")
 
 _TRANSITIONAL_COMMAND_REPLACEMENTS: dict[str, str] = {
-    "dedupe _mgmt": "dedupe index ... / dedupe report m3u ...",
-    "dedupe _metadata": "dedupe auth ... / dedupe index enrich ...",
-    "dedupe _recover": "dedupe verify recovery ... / dedupe report recovery ...",
+    "dedupe _mgmt": "tagslut index ... / tagslut report m3u ...",
+    "dedupe _metadata": "tagslut auth ... / tagslut index enrich ...",
+    "dedupe _recover": "tagslut verify recovery ... / tagslut report recovery ...",
 }
 _INTERNAL_CLI_ENV = "DEDUPE_CLI_INTERNAL_CALL"
+_DEDUPE_ALIAS_RETIRE_AFTER = datetime(2026, 7, 31).date()
 
 
 def _format_transitional_warning(command: str) -> str:
@@ -37,6 +38,35 @@ def _warn_transitional_command(command: str) -> None:
 
 def _is_internal_cli_call() -> bool:
     return os.getenv(_INTERNAL_CLI_ENV) == "1"
+
+
+def _format_dedupe_alias_warning(argv0: str | None = None) -> str | None:
+    invoked = (argv0 or Path(sys.argv[0]).name).strip().lower()
+    if invoked != "dedupe":
+        return None
+
+    today = datetime.now(UTC).date()
+    retirement = _DEDUPE_ALIAS_RETIRE_AFTER.strftime("%B %d, %Y")
+    if today <= _DEDUPE_ALIAS_RETIRE_AFTER:
+        return (
+            "ALIAS DEPRECATION: 'dedupe' is a compatibility alias and is scheduled "
+            f"for retirement after {retirement}. Use 'tagslut' for all new commands."
+        )
+    return (
+        "ALIAS DEPRECATION: 'dedupe' is past its planned retirement window "
+        f"({retirement}). Switch to 'tagslut' immediately."
+    )
+
+
+class _TagslutGroup(click.Group):
+    """CLI group that can emit alias warnings before help handling."""
+
+    def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
+        if not _is_internal_cli_call():
+            warning = _format_dedupe_alias_warning(ctx.info_name)
+            if warning:
+                click.secho(warning, fg="yellow", err=True)
+        return super().parse_args(ctx, args)
 
 
 def _run_subprocess(cmd: list[str], *, internal: bool = False) -> None:
@@ -127,11 +157,10 @@ def _print_enrichment_result(result) -> None:
         click.echo(f"Genre: {result.canonical_genre}")
 
 
-@click.group()
+@click.group(cls=_TagslutGroup)
 @click.version_option(version="2.0.0")
 def cli():
-    """Dedupe Library Management CLI"""
-    pass
+    """Tagslut CLI (dedupe compatibility alias preserved)."""
 
 
 def _default_canon_rules_path() -> Path:
@@ -768,9 +797,9 @@ def init(output_format, output_path, setup_tokens):
     click.echo("Next steps:")
     click.echo("  1. Review your configuration file")
     click.echo("  2. Register/index your library:")
-    click.echo(f"     dedupe index register {config['VOLUME_LIBRARY']} --source legacy")
+    click.echo(f"     tagslut index register {config['VOLUME_LIBRARY']} --source legacy")
     click.echo("  3. Build a deterministic plan:")
-    click.echo("     dedupe decide plan --policy library_balanced --input candidates.json")
+    click.echo("     tagslut decide plan --policy library_balanced --input candidates.json")
     click.echo("")
 
 
@@ -900,22 +929,7 @@ def recover(
     Scans for integrity issues, attempts FFmpeg-based salvage,
     verifies repairs, and generates reports.
 
-    \b
-    Examples:
-        # Interactive session setup
-        dedupe recover --init
-
-        # Full pipeline (scan + repair + verify + report)
-        dedupe recover /path/to/flacs --db recovery.db --execute
-
-        # Scan only
-        dedupe recover /path/to/flacs --db recovery.db --phase scan
-
-        # Repair (move-only, no local backups)
-        dedupe recover --db recovery.db --phase repair --execute
-
-        # Generate report
-        dedupe recover --db recovery.db --phase report --output report.csv
+    Internal command used by canonical verify/report wrappers.
     """
     from dedupe.recovery import RecoveryScanner, Repairer, Verifier, Reporter
     from dedupe.storage.schema import init_db
@@ -1108,16 +1122,16 @@ def enrich(db, path, zones, providers, limit, force, retry_no_match, execute, re
     \b
     Examples:
         # Recovery mode: validate health of recovered files
-        dedupe metadata enrich --db music.db --recovery --execute
+        tagslut index enrich --db music.db --recovery --execute
 
         # Hoarding mode: collect full metadata for DJ library
-        dedupe metadata enrich --db music.db --hoarding --providers beatport,spotify --execute
+        tagslut index enrich --db music.db --hoarding --providers beatport,spotify --execute
 
         # Both modes: health check + full metadata
-        dedupe metadata enrich --db music.db --recovery --hoarding --execute
+        tagslut index enrich --db music.db --recovery --hoarding --execute
 
         # Filter by path pattern
-        dedupe metadata enrich --db music.db --recovery --path "/Volumes/Music/DJ/%" --execute
+        tagslut index enrich --db music.db --recovery --path "/Volumes/Music/DJ/%" --execute
     """
     from dedupe.metadata.enricher import Enricher
     from dedupe.metadata.auth import TokenManager
@@ -1428,12 +1442,12 @@ def auth_status(tokens_path, no_refresh):
             click.echo("  spotify:  Add client_id/client_secret to tokens.json")
             click.echo("            (get from https://developer.spotify.com/dashboard)")
         if 'beatport' in unconfigured:
-            click.echo("  beatport: Run 'dedupe metadata auth-login beatport'")
+            click.echo("  beatport: Run 'tagslut auth login beatport'")
             click.echo("            (paste token from dj.beatport.com DevTools)")
         if 'tidal' in unconfigured:
-            click.echo("  tidal:    Run 'dedupe metadata auth-login tidal'")
+            click.echo("  tidal:    Run 'tagslut auth login tidal'")
         if 'qobuz' in unconfigured:
-            click.echo("  qobuz:    Run 'dedupe metadata auth-login qobuz'")
+            click.echo("  qobuz:    Run 'tagslut auth login qobuz'")
 
 
 @metadata.command()
@@ -1454,8 +1468,8 @@ def auth_init(tokens_path):
     click.echo(f"Created tokens template at: {path}")
     click.echo("\nNext steps:")
     click.echo("  1. Spotify/Beatport: Edit tokens.json to add client_id and client_secret")
-    click.echo("  2. Tidal: Run 'dedupe metadata auth-login tidal'")
-    click.echo("  3. Qobuz: Run 'dedupe metadata auth-login qobuz'")
+    click.echo("  2. Tidal: Run 'tagslut auth login tidal'")
+    click.echo("  3. Qobuz: Run 'tagslut auth login qobuz'")
     click.echo("  4. iTunes: No setup needed (public API)")
 
 
@@ -1490,7 +1504,7 @@ def auth_refresh(provider, tokens_path):
             click.echo(f"Beatport token valid until: {time.ctime(token.expires_at)}")
         else:
             click.echo("Beatport token expired or missing.")
-            click.echo("Run 'dedupe metadata auth-login beatport' to set a new token.")
+            click.echo("Run 'tagslut auth login beatport' to set a new token.")
 
     elif provider == 'tidal':
         click.echo("Refreshing Tidal token...")
@@ -1498,10 +1512,10 @@ def auth_refresh(provider, tokens_path):
         if token:
             click.echo(f"Success! Token expires at: {time.ctime(token.expires_at)}")
         else:
-            click.echo("Failed. Run 'dedupe metadata auth-login tidal' first.")
+            click.echo("Failed. Run 'tagslut auth login tidal' first.")
 
     elif provider == 'qobuz':
-        click.echo("Qobuz tokens don't expire. Run 'dedupe metadata auth-login qobuz' to re-authenticate.")
+        click.echo("Qobuz tokens don't expire. Run 'tagslut auth login qobuz' to re-authenticate.")
 
     else:
         click.echo(f"Unknown provider: {provider}")
@@ -1962,16 +1976,16 @@ def register(path, source, db, execute, full_hash, limit, dj_only, check_duratio
     \b
     Examples:
         # Dry-run: see what would be registered
-        dedupe mgmt register ~/Downloads/bpdl --source bpdl
+        tagslut index register ~/Downloads/bpdl --source bpdl
 
         # Actually register
-        dedupe mgmt register ~/Downloads/bpdl --source bpdl --execute
+        tagslut index register ~/Downloads/bpdl --source bpdl --execute
 
         # Verbose output
-        dedupe mgmt register ~/Downloads/bpdl --source bpdl --execute -v
+        tagslut index register ~/Downloads/bpdl --source bpdl --execute -v
 
         # Register with duration checks for DJ material
-        dedupe mgmt register ~/Downloads/bpdl --source bpdl --dj-only --check-duration --execute
+        tagslut index register ~/Downloads/bpdl --source bpdl --dj-only --check-duration --execute
     """
     from dedupe.storage.schema import get_connection, init_db
     from dedupe.storage.queries import get_file
@@ -2307,13 +2321,13 @@ def check(path, source, db, strict, prompt, verbose):
     \b
     Examples:
         # Check a directory
-        dedupe mgmt check ~/Downloads/bpdl --source bpdl
+        tagslut index check ~/Downloads/bpdl --source bpdl
 
         # Check with pipe
-        find ~/incoming -name "*.flac" | dedupe mgmt check --source tidal
+        find ~/incoming -name "*.flac" | tagslut index check --source tidal
 
         # Strict mode: reject if SAME file exists anywhere
-        dedupe mgmt check ~/Downloads --strict
+        tagslut index check ~/Downloads --strict
     """
     from dedupe.storage.schema import get_connection
     from dedupe.core.hashing import calculate_file_hash

@@ -120,7 +120,7 @@ class TokenManager:
     section in tokens.json. No code changes are required.
     
     For Tidal specifically:
-    1. Run 'dedupe metadata auth-login tidal' to authenticate a new account, OR
+    1. Run 'tagslut auth login tidal' to authenticate a new account, OR
     2. Manually update the 'tidal' section in tokens.json with:
        - refresh_token: Required. Copy from another authenticated session.
        - user_id: Optional. The Tidal user ID.
@@ -322,12 +322,12 @@ class TokenManager:
         Tidal uses device authorization flow for initial auth, then refresh tokens.
         """
         if "tidal" not in self._tokens:
-            logger.error("Tidal not configured. Run 'dedupe metadata auth-login tidal' first.")
+            logger.error("Tidal not configured. Run 'tagslut auth login tidal' first.")
             return None
 
         refresh_token = self._tokens["tidal"].get("refresh_token")
         if not refresh_token:
-            logger.error("No Tidal refresh_token. Run 'dedupe metadata auth-login tidal' to authenticate.")
+            logger.error("No Tidal refresh_token. Run 'tagslut auth login tidal' to authenticate.")
             return None
 
         try:
@@ -574,8 +574,8 @@ class TokenManager:
         - beatport (client credentials) - needs client_id + client_secret
 
         Manual login required for:
-        - qobuz (email/password) - run 'dedupe metadata auth-login qobuz'
-        - tidal (first time) - run 'dedupe metadata auth-login tidal'
+        - qobuz (email/password) - run 'tagslut auth login qobuz'
+        - tidal (first time) - run 'tagslut auth login tidal'
 
         No auth needed for:
         - itunes (public API)
@@ -590,7 +590,7 @@ class TokenManager:
                 if self._tokens.get("tidal", {}).get("refresh_token"):
                     return self.refresh_tidal_token()
                 else:
-                    logger.warning("Tidal not authenticated. Run 'dedupe metadata auth-login tidal'")
+                    logger.warning("Tidal not authenticated. Run 'tagslut auth login tidal'")
                     return None
             elif provider == "beatport":
                 return self.refresh_beatport_token()
@@ -598,7 +598,7 @@ class TokenManager:
                 # Qobuz tokens are long-lived, just check if we have one
                 if self._tokens.get("qobuz", {}).get("user_auth_token"):
                     return TokenInfo(access_token=self._tokens["qobuz"]["user_auth_token"])
-                logger.warning("Qobuz not authenticated. Run 'dedupe metadata auth-login qobuz'")
+                logger.warning("Qobuz not authenticated. Run 'tagslut auth login qobuz'")
                 return None
             elif provider == "itunes":
                 # iTunes doesn't need auth
@@ -685,7 +685,7 @@ class TokenManager:
         - To switch Tidal accounts, update the 'tidal' section with new credentials
         - Required fields: refresh_token (from device auth flow)
         - Optional fields: user_id, country_code, access_token, expires_at
-        - Run 'dedupe metadata auth-login tidal' to authenticate a new account
+        - Run 'tagslut auth login tidal' to authenticate a new account
         - Or manually copy refresh_token from another authenticated session
         """
         template = {
@@ -700,10 +700,10 @@ class TokenManager:
                 "client_secret": "",
             },
             "qobuz": {
-                "_comment": "Run 'dedupe metadata auth-login qobuz' with your email/password",
+                "_comment": "Run 'tagslut auth login qobuz' with your email/password",
             },
             "tidal": {
-                "_comment": "Run 'dedupe metadata auth-login tidal' to authenticate via browser. "
+                "_comment": "Run 'tagslut auth login tidal' to authenticate via browser. "
                            "To switch accounts: update refresh_token (and optionally user_id, country_code) "
                            "in this section, then re-run the CLI. No code changes needed.",
                 "refresh_token": "",

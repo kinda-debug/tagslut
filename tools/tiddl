@@ -9,8 +9,8 @@
 #   TIDDL_BIN=/custom/path/tiddl tools/tiddl <url>  # Uses custom binary
 #
 # After downloading, register to inventory and generate M3U:
-#   dedupe mgmt --source tidal --register ~/Downloads/tiddl/
-#   dedupe mgmt --m3u ~/Downloads/tiddl/
+#   tagslut index register ~/Downloads/tiddl/ --source tidal
+#   tagslut report m3u ~/Downloads/tiddl/
 
 set -euo pipefail
 

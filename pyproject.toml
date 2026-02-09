@@ -1,15 +1,15 @@
 [tool.poetry]
-name = "flac-dedupe"
+name = "tagslut"
 version = "2.0.0"
-description = "FLAC music library deduplication and integrity management system with provenance tracking."
+description = "Tagslut: recovery-first music library deduplication and metadata orchestration toolkit."
 authors = ["Georges Khawam <georgeskhawam@users.noreply.github.com>"]
 readme = "README.md"
-packages = [{include = "dedupe"}]
+packages = [{include = "dedupe"}, {include = "tagslut"}]
 
 [project]
-name = "flac-dedupe"
+name = "tagslut"
 version = "2.0.0"
-description = "FLAC music library deduplication and integrity management system with provenance tracking."
+description = "Tagslut: recovery-first music library deduplication and metadata orchestration toolkit."
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [
@@ -30,9 +30,13 @@ dependencies = [
 ]
 
 [project.scripts]
+tagslut = "dedupe.cli.main:cli"
+taglslut = "dedupe.cli.main:cli"
 dedupe = "dedupe.cli.main:cli"
 
 [tool.poetry.scripts]
+tagslut = "dedupe.cli.main:cli"
+taglslut = "dedupe.cli.main:cli"
 dedupe = "dedupe.cli.main:cli"
 
 [tool.poetry.dependencies]

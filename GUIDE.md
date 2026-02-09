@@ -1,283 +1,123 @@
-# Dedupe Library Management: Complete Operator Guide (V2)
+# Dedupe Operator Guide (Canonical V3 Surface)
 
-This is the authoritative documentation for the Dedupe system—a high-performance, **COPY-ONLY**, evidence-preserving toolkit for managing large FLAC libraries.
+This is the operator guide for the active tagslut workflow.
 
-If you want a **single clean start-over workflow**, use:
-- `docs/WORKFLOW_METADATA.md`
+For full surface policy and phase runbooks:
+- `docs/SCRIPT_SURFACE.md`
+- `docs/SURFACE_POLICY.md`
+- `docs/REDESIGN_TRACKER.md`
 
-### 🛑 CRITICAL SAFETY RULE: NO DELETION
-**ABSOLUTELY NO CODE in this repository is allowed to remove any file.**
-Every tool follows a strict **"Copy then Validate"** pattern. Your original source files remain untouched. Any deduplication or organization results in new copies in the designated work zones, leaving you in full control of when and how to manually clear space.
+## Safety Invariants
 
-For metadata enrichment details (providers, modes, DB fields), see `docs/METADATA_WORKFLOW.md`.
+1. Move-only semantics for relocation workflows.
+2. Always preview/plan before bulk execution.
+3. Inventory must be updated (`index register`) before downstream decisions.
+4. DJ promotion must respect duration gates.
+5. Keep all operational artifacts under `artifacts/`.
 
----
+## Canonical Commands
 
-## 🏁 The Definitive Workflow (5 Stages)
+- `tagslut intake`
+- `tagslut index`
+- `tagslut decide`
+- `tagslut execute`
+- `tagslut verify`
+- `tagslut report`
+- `tagslut auth`
 
-Follow these steps in order to safely audit and deduplicate your entire library.
+Compatibility aliases:
+- `dedupe ...`
+- `taglslut ...`
 
-### Stage 0: Environment Setup
-Before running any tools, ensure your environment is configured.
+Retired wrappers (`mgmt`, `metadata`, `recover`, `scan`, `recommend`, `apply`, `promote`, `quarantine`) are not part of the active workflow.
 
-1.  **Mount Volumes**: Ensure all relevant disks (`COMMUNE`, `Untitled`, etc.) are mounted.
-2.  **Initialize Directory Structure**:
-    Create a dedicated "Work Zone" on your volume to handle the results of the scan.
-    ```bash
-    # Run this on your primary volume (e.g., /Volumes/COMMUNE/M/)
-    mkdir -p _work/staging _work/quarantine _work/suspect
-    mkdir -p Music_Library
-    ```
-3.  **Configure `.env`**:
-    Set `VOLUME_QUARANTINE` to your newly created `_work/quarantine` folder.
-4.  **Initialize Database Directory**:
-    Create a new epoch directory for your database to maintain an audit trail.
-    ```bash
-    mkdir -p /Users/georgeskhawam/Projects/dedupe_db/EPOCH_$(date +%Y-%m-%d)
-    export DB_PATH="/Users/georgeskhawam/Projects/dedupe_db/EPOCH_$(date +%Y-%m-%d)/music.db"
-    ```
+## End-to-End Workflow
 
----
-
-## Stage 1: SCAN
-**Goal:** Index all FLAC files and auto-assign status based on quality and uniqueness.
-
-The scanner automatically determines the status (**zone**) for each file based on the scan results:
-*   **`accepted`**: All unique files that pass the integrity check (`flac -t`).
-*   **`suspect`**: Files that are identified as redundant copies or are corrupt/truncated.
+### 1. Intake
 
 ```bash
-# Scan any path (Zones are auto-assigned)
-dedupe scan /Volumes/SAD/MU \
-  --library MU \
-  --db "$DB_PATH" \
-  --library MU \
-  --check-integrity \
-  --check-hash \
-  --create-db \
-  --progress \
-  --verbose
+poetry run tagslut intake run --batch-root /Volumes/DJSSD/beatport <url>
 ```
 
-### Verify Scan Completeness
-Run this SQL to ensure all files are hashed and checked.
-```bash
-sqlite3 "$DB_PATH" "
-SELECT
-  'Total files' as metric, COUNT(*) as value FROM files
-UNION ALL
-SELECT 'With SHA256', COUNT(*) FROM files WHERE sha256 IS NOT NULL
-UNION ALL
-SELECT 'Corrupt files', COUNT(*) FROM files WHERE flac_ok = 0;
-"
-```
-
----
-
-## Stage 2: PLAN
-**Goal:** Generate deduplication decisions based on zone priority.
+### 2. Index and duplicate prevention
 
 ```bash
-dedupe quarantine plan \
-  --db "$DB_PATH" \
-  --output removal_plan.csv
+poetry run tagslut index check <path> --source bpdl
+poetry run tagslut index register <path> --source bpdl
 ```
 
----
-
-## Stage 3: REVIEW
-**Goal:** Human approval before any files are moved.
-
-### Summary Statistics
-```bash
-# Count by action (KEEP vs DROP)
-cut -d',' -f3 removal_plan.csv | sort | uniq -c
-
-# Sample TIER1 (safe) removals
-grep "TIER1,DROP" removal_plan.csv | head -20
-```
-
----
-
-## Stage 4: QUARANTINE
-**Goal:** Copy duplicates to quarantine folder for safe keeping.
-
-### Dry Run First
-```bash
-dedupe quarantine apply \
-  --db "$DB_PATH" \
-  --plan removal_plan.csv \
-  --quarantine-root /Volumes/SAD/QU \
-  --dry-run
-```
-
-### Execute Quarantine (COPY ONLY)
-This command will only perform copies. Your originals will not be touched.
-```bash
-dedupe quarantine apply \
-  --db "$DB_PATH" \
-  --plan removal_plan.csv \
-  --quarantine-root /Volumes/SAD/QU \
-  --execute
-```
-
-### Stage 4.5: Isolate Corrupt Files (COPY ONLY)
-**Goal:** Copy files that failed integrity checks to a separate folder.
+### 3. Duration safety for DJ lane
 
 ```bash
-# Copy corrupt files to the suspect folder (preserving structure)
-dedupe quarantine suspects \
-  --db "$DB_PATH" \
-  --dest /Volumes/SAD/SU \
-  --execute
+poetry run tagslut index duration-check <path> --dj-only
+poetry run tagslut index duration-audit --db <db>
 ```
 
----
-
-## Stage 5: DELETE (DISABLED)
-**Goal:** NO DELETION IS PERMITTED BY CODE.
-
-All automatic retention logic has been removed. You must manually review and delete files if you wish to reclaim disk space.
-
----
-
-### Stage 6: PROMOTE UNIQUE FILES (Optional)
-**Goal:** Organize unique files into your primary music directory (COPY ONLY).
-
-The promotion tool builds a strict Artist/Album/Track structure **from tags** and keeps a consistent naming convention for large libraries. It **copies** files by default and applies the canonical tag rules from `tools/rules/library_canon.json` unless you opt out. Use `--move` if you explicitly want moves instead of copies.
+### 4. Decide deterministic plans
 
 ```bash
-# 1) Dry run (preview only; no files written)
-python tools/review/promote_by_tags.py \
-  /Volumes/SAD/Music\ Hi-Res \
-  --dest /Volumes/SAD/M
-
-# 2) Execute (copy + rename into canonical layout)
-python tools/review/promote_by_tags.py \
-  /Users/georgeskhawam/Music/INCOMING \
-  --dest /Volumes/SAD/MU \
-  --execute
-
-# 3) Disable canon rules if needed
-python tools/review/promote_by_tags.py \
-  /Users/georgeskhawam/Music/INCOMING \
-  --dest /Volumes/SAD/MU \
-  --no-canon \
-  --execute
+poetry run tagslut decide profiles
+poetry run tagslut decide plan --policy library_balanced --input <input.json> --output <plan.json>
 ```
 
-Standalone canonizer (useful before promote or when you want tag cleanup only):
+### 5. Execute move workflows
 
 ```bash
-# One-file diff (no write)
-python tools/review/canonize_tags.py /path/to/file.flac --canon-dry-run
-
-# Apply canon rules to a folder
-python tools/review/canonize_tags.py /path/to/folder --execute
+poetry run tagslut execute move-plan <plan.csv>
+poetry run tagslut execute quarantine-plan <plan.csv>
+poetry run tagslut execute promote-tags --source-root <src> --dest-root <dest>
 ```
 
-### Stage 7: Final Audit
-Run a final incremental scan of your main library to ensure everything is perfectly indexed and integrity-checked.
+### 6. Verify outcomes
+
 ```bash
-dedupe scan /Volumes/COMMUNE/M/Library_CANONICAL \
-  --db "$DB_PATH" \
-  --library COMMUNE \
-  --check-integrity \
-  --progress \
-  --verbose
+poetry run tagslut verify receipts --db <db>
+poetry run tagslut verify parity --db <db>
+poetry run tagslut verify recovery --db <db>
 ```
 
----
+### 7. Reporting
 
-## 🚨 Critical Rules
-1. **NO DELETION** — No code in this repository will remove your source files.
-2. **ALWAYS scan with `--check-hash`** — without SHA256, deduplication cannot work.
-3. **NEVER skip the review stage** — always verify the plan before copying.
-4. **One database per epoch** — don't reuse databases across major changes.
-
----
-
-## 🛠️ Troubleshooting
-*   **"Missing SHA256"**: Re-scan with `--check-hash --recheck`.
-*   **"Database is locked"**: Close other terminals using the same DB.
-*   **"No module named 'dedupe'"**: Run `pip install -e .` in your venv.
-
----
-
-## 1. Core Concepts
-
-### 🛡️ Recovery-First Philosophy
-Every action in Dedupe is non-destructive by default. Instead of deleting files, the system **quarantines** them to a safe location while preserving their original folder structure. This ensures you can restore any deduplication decision instantly.
-
-### ⚡ Tiered Hashing
-To handle libraries with 100k+ files efficiently, Dedupe uses a two-tier hashing system:
-*   **Tier 1 (Pre-hash)**: A fast checksum of the file size + the first 4MB. Used for rapid triage and initial duplicate grouping.
-*   **Tier 2 (Full-hash)**: A complete SHA-256 checksum of the entire file. Used for absolute, bit-exact verification before any move or deletion.
-
-### ⚖️ Keeper Selection Logic
-When multiple identical files are found, the system picks the "Keeper" using a deterministic 4-stage tie-breaker:
-1.  **Zone Priority**: Prefer `accepted` (Library) > `staging` > `suspect` > `quarantine`.
-2.  **Audio Quality**: Prefer higher sample rates and bit depths.
-3.  **Integrity Status**: Prefer files that have passed a full `flac -t` check.
-4.  **Path Hygiene**: Prefer shorter, cleaner paths (e.g., in `Library_CANONICAL`).
-
----
-
-## 2. Configuration & Environment
-
-The system is configured via a `.env` file in the project root.
-
-| Variable | Description | Example |
-| :--- | :--- | :--- |
-| `DEDUPE_DB` | Path to the SQLite database. | `~/dedupe_db/EPOCH_20260119/music.db` |
-| `VOLUME_LIBRARY` | Your canonical library root. | `/Volumes/COMMUNE/M/Library` |
-| `VOLUME_QUARANTINE`| Root for moved redundant files. | `/Volumes/COMMUNE/M/_quarantine` |
-| `SCAN_WORKERS` | Number of parallel threads for hashing. | `8` |
-| `SCAN_CHECK_HASH` | Enable full SHA256 hashing by default. | `true` |
-
----
-
-## 3. Operations Workflow
-
-### Step 1: Scanning (`scan`)
-Indexes your files and extracts technical metadata.
 ```bash
-# Basic scan (Fast: T1 hashing only)
-python3 -m dedupe scan /Volumes/Untitled/Recovered_FLACs
-
-# Full Integrity Scan (Slow: bit-exact hash + flac -t check)
-python3 -m dedupe scan /Volumes/Untitled/Recovered_FLACs --check-integrity --check-hash
+poetry run tagslut report m3u <path>
+poetry run tagslut report plan-summary <plan.json>
+poetry run tagslut report duration --db <db>
 ```
 
-### Step 2: Recommendations (`recommend`)
-Identifies duplicate groups and generates a JSON removal plan.
+### 8. Auth + metadata enrichment
+
 ```bash
-# Generate plan favoring 'accepted' zone
-python3 -m dedupe recommend --priority accepted --output artifacts/removal_plan.json
+poetry run tagslut auth status
+poetry run tagslut auth login tidal
+poetry run tagslut index enrich --db <db> --recovery --execute
 ```
 
-### Step 3: Execution (`apply`)
-Executes the moves based on the reviewed plan.
+## Download Tooling
+
+Use the unified entrypoint when possible:
+
 ```bash
-# Dry run (Always do this first!)
-python3 -m dedupe apply artifacts/removal_plan.json
-
-# Execute (Moves files to quarantine)
-python3 -m dedupe apply artifacts/removal_plan.json --confirm
+tools/get <beatport-or-tidal-url>
 ```
 
----
+Routing:
+- `tidal.com` -> `tools/tiddl`
+- `beatport.com` -> `tools/beatportdl/bpdl/bpdl`
 
-## 4. Advanced Maintenance
+BeatportDL does not generate M3U playlists.
+Use `tagslut report m3u` (or `tools/review/promote_by_tags.py` where appropriate).
 
-### Incremental Scanning
-By default, the scanner is incremental. It will skip files that haven't changed (based on `mtime` and `size`) unless you use `--force-all`.
+## Operational Checks
 
-### Database Auditing
-You can query the SQLite database directly for custom reports:
-*   `files`: Primary metadata and hash storage.
-*   `scan_sessions`: History of every scan run.
-*   `file_scan_runs`: Detailed per-file outcome of the last scan.
+```bash
+poetry run python scripts/audit_repo_layout.py
+poetry run python scripts/check_cli_docs_consistency.py
+poetry run pytest -q tests/test_phase4_cli_surface.py tests/test_cli_transitional_warnings.py
+```
 
-### Promotion
-Use `dedupe promote` to identify unique files in `staging` or `suspect` zones that should be "promoted" to your main library.
+## Legacy Material
+
+Historical docs and superseded workflow notes are archived under:
+- `docs/archive/`
+
+They are reference-only and not part of the active operator path.

@@ -5,6 +5,7 @@ import argparse
 import csv
 import json
 import re
+import ssl
 import sqlite3
 import sys
 import time
@@ -20,6 +21,17 @@ from urllib.request import Request, urlopen
 API_BASE = "https://api.beatport.com/v4"
 BEATPORT_WEB_BASE = "https://www.beatport.com"
 CLIENT_ID = "ryZ8LuyQVPqbK2mBX2Hwt4qSMtnWuTYSqBPO92yQ"
+
+
+def _build_ssl_context() -> ssl.SSLContext:
+    try:
+        import certifi  # type: ignore
+        return ssl.create_default_context(cafile=certifi.where())
+    except Exception:
+        return ssl.create_default_context()
+
+
+SSL_CONTEXT = _build_ssl_context()
 
 
 def _norm_text(value: Any) -> str:
@@ -108,7 +120,7 @@ def _http_json(
 
     req = Request(url=url, data=data, method=method.upper(), headers=headers)
     try:
-        with urlopen(req, timeout=timeout) as response:
+        with urlopen(req, timeout=timeout, context=SSL_CONTEXT) as response:
             payload = response.read().decode("utf-8", errors="replace")
             return response.status, json.loads(payload)
     except HTTPError as error:
@@ -127,6 +139,18 @@ class BeatportLink:
     url: str
     link_type: str
     link_id: int
+
+
+def _parse_link_id(raw_segment: str) -> tuple[int, str | None]:
+    segment = raw_segment.strip()
+    try:
+        return int(segment), None
+    except ValueError:
+        # Be forgiving for copy/paste typos such as "878433x".
+        match = re.match(r"^(\d+)", segment)
+        if match:
+            return int(match.group(1)), f"Sanitized Beatport ID '{segment}' -> '{match.group(1)}'"
+        raise ValueError(f"Invalid Beatport entity ID: {raw_segment}")
 
 
 def parse_beatport_url(url: str) -> BeatportLink:
@@ -174,10 +198,9 @@ def parse_beatport_url(url: str) -> BeatportLink:
     if len(segments) <= id_idx:
         raise ValueError("Missing Beatport entity ID in URL")
 
-    try:
-        link_id = int(segments[id_idx])
-    except ValueError as error:
-        raise ValueError(f"Invalid Beatport entity ID: {segments[id_idx]}") from error
+    link_id, warning = _parse_link_id(segments[id_idx])
+    if warning:
+        print(f"WARNING: {warning}", file=sys.stderr)
 
     return BeatportLink(url=url, link_type=link_type, link_id=link_id)
 
@@ -469,10 +492,13 @@ def main() -> int:
         print(f"ERROR: Beatport credentials not found: {credentials}", file=sys.stderr)
         return 2
 
-    link = parse_beatport_url(args.url)
-    client = BeatportClient(credentials)
-
-    tracks = fetch_tracks(client, link)
+    try:
+        link = parse_beatport_url(args.url)
+        client = BeatportClient(credentials)
+        tracks = fetch_tracks(client, link)
+    except Exception as error:
+        print(f"ERROR: {error}", file=sys.stderr)
+        return 2
     beatport_index, isrc_index, title_index = load_db_indexes(db_path, library_root)
 
     timestamp = time.strftime("%Y%m%d_%H%M%S")

@@ -1,0 +1,22 @@
+name: bulk_recovery
+version: 2026-02-09.bulk_recovery.v1
+description: Aggressive recovery policy for large backlog sweeps.
+lane: bulk
+rules:
+  match:
+    allow_match_by:
+      - beatport_id
+      - isrc
+      - artist_title_duration
+    duplicate_action: review
+    unmatched_action: promote
+    duration_margin_ms: 5000
+  duration:
+    require_ok_for_dj_promotion: false
+    ok_statuses:
+      - ok
+      - warn
+      - unknown
+    non_ok_action: keep
+  execution:
+    collision_policy: abort

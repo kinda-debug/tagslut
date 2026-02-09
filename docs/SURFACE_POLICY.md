@@ -1,4 +1,4 @@
-# Surface Policy - dedupe (2026-02-09)
+# Surface Policy - tagslut/dedupe (2026-02-09)
 
 ## Purpose
 
@@ -6,16 +6,21 @@ Define the supported command/script surface during v3 migration so operators and
 
 ## Canonical Surface (Use For New Work)
 
-1. `poetry run dedupe intake ...`
-2. `poetry run dedupe index ...`
-3. `poetry run dedupe decide ...`
-4. `poetry run dedupe execute ...`
-5. `poetry run dedupe verify ...`
-6. `poetry run dedupe report ...`
-7. `poetry run dedupe auth ...`
+1. `poetry run tagslut intake ...`
+2. `poetry run tagslut index ...`
+3. `poetry run tagslut decide ...`
+4. `poetry run tagslut execute ...`
+5. `poetry run tagslut verify ...`
+6. `poetry run tagslut report ...`
+7. `poetry run tagslut auth ...`
 
 Reference map:
 - `docs/SCRIPT_SURFACE.md`
+
+Branding note:
+- `tagslut` is the preferred CLI brand.
+- `dedupe` remains a compatibility alias during migration.
+- `taglslut` is retained as a typo-tolerant alias.
 
 ## Transitional Surface
 
@@ -64,18 +69,19 @@ Compatibility wrappers were removed after satisfying these gates:
 
 1. `poetry run python scripts/audit_repo_layout.py`
 2. `poetry run python scripts/check_cli_docs_consistency.py`
-3. `poetry run dedupe --help`
-4. `poetry run dedupe intake --help`
-5. `poetry run dedupe index --help`
-6. `poetry run dedupe decide --help`
-7. `poetry run dedupe execute --help`
-8. `poetry run dedupe verify --help`
-9. `poetry run dedupe report --help`
-10. `poetry run dedupe auth --help`
-6. Move executor contract doc: `docs/MOVE_EXECUTOR_COMPAT.md`
-7. V3 parity validator: `python scripts/validate_v3_dual_write_parity.py --db <db> --strict`
-8. Policy profile lint: `python scripts/lint_policy_profiles.py`
-9. Phase 3 executor tests: `pytest -q tests/test_exec_engine_phase3.py tests/test_exec_receipts_phase3.py`
+3. `poetry run tagslut --help`
+4. `poetry run tagslut intake --help`
+5. `poetry run tagslut index --help`
+6. `poetry run tagslut decide --help`
+7. `poetry run tagslut execute --help`
+8. `poetry run tagslut verify --help`
+9. `poetry run tagslut report --help`
+10. `poetry run tagslut auth --help`
+11. `poetry run dedupe --help` (compatibility alias)
+12. Move executor contract doc: `docs/MOVE_EXECUTOR_COMPAT.md`
+13. V3 parity validator: `python scripts/validate_v3_dual_write_parity.py --db <db> --strict`
+14. Policy profile lint: `python scripts/lint_policy_profiles.py`
+15. Phase 3 executor tests: `pytest -q tests/test_exec_engine_phase3.py tests/test_exec_receipts_phase3.py`
 
 CI integration:
 - `.github/workflows/test.yml` runs `scripts/audit_repo_layout.py` on push/PR.

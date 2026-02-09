@@ -144,7 +144,13 @@ def main() -> int:
         if not expected.is_dir():
             errors.append(f"Missing artifacts subdirectory: {expected}")
 
-    for doc_name in ("SCRIPT_SURFACE.md", "SURFACE_POLICY.md", "MOVE_EXECUTOR_COMPAT.md"):
+    for doc_name in (
+        "SCRIPT_SURFACE.md",
+        "SURFACE_POLICY.md",
+        "MOVE_EXECUTOR_COMPAT.md",
+        "README.md",
+        "REBRAND_TAGSLUT_2026-02-09.md",
+    ):
         doc_path = PROJECT_ROOT / "docs" / doc_name
         if not doc_path.is_file():
             errors.append(f"Missing required surface policy doc: {doc_path}")
@@ -164,6 +170,47 @@ def main() -> int:
     phase5_doc = PROJECT_ROOT / "docs" / "PHASE5_LEGACY_DECOMMISSION.md"
     if not phase5_doc.is_file():
         errors.append(f"Missing Phase 5 runbook doc: {phase5_doc}")
+    retired_docs_in_docs_root = (
+        "MGMT_MODE.md",
+        "METADATA_WORKFLOW.md",
+        "METADATA_AUTH_RESOURCES.md",
+        "PLAYLIST_SYNC.md",
+        "STANDALONE_TOOLS.md",
+        "V2_ARCHITECTURE.md",
+        "WORKFLOW_MASTER.md",
+        "WORKFLOW_METADATA.md",
+        "WORKFLOW_PERSONAL.md",
+        "REPO_AUDIT_2026-02-08.md",
+        "HANDOVER_2026-02-08_INTAKE_PREFILTER.md",
+        "PICARD_FINAL_LIBRARY_SCRIPTS.md",
+        "RESTORATION_PLAN.md",
+        "ROON_INTEGRATION.md",
+        "SAFETY_CHECKLIST.md",
+    )
+    for retired_doc in retired_docs_in_docs_root:
+        retired_path = PROJECT_ROOT / "docs" / retired_doc
+        if retired_path.exists():
+            errors.append(
+                f"Retired workflow doc must be archived (not kept in docs/ root): {retired_path}"
+            )
+
+    retired_files_in_repo_root = (
+        " DJ Library Management Guide.md",
+        "Beatport Genres and Sub-Genres.md",
+        "ACTION_PLAN.md",
+        "HANDOVER.md",
+        "MGMT_QUICK_REFERENCE.md",
+        "PHASE1_COMPLETE.md",
+        "PHASE1_STATUS.md",
+        "STATUS_REPORT.md",
+        "api.beatport+search+openapi.json.txt",
+    )
+    for retired_file in retired_files_in_repo_root:
+        retired_path = PROJECT_ROOT / retired_file
+        if retired_path.exists():
+            errors.append(
+                f"Retired root doc/asset must be archived (not kept in repo root): {retired_path}"
+            )
     for profile in ("dj_strict.yaml", "library_balanced.yaml", "bulk_recovery.yaml"):
         profile_path = PROJECT_ROOT / "config" / "policies" / profile
         if not profile_path.is_file():
@@ -193,24 +240,6 @@ def main() -> int:
             "Duplicate script basenames across active/legacy surfaces: "
             + " | ".join(lines)
         )
-
-    mgmt_doc = PROJECT_ROOT / "docs" / "MGMT_MODE.md"
-    if mgmt_doc.exists():
-        text = mgmt_doc.read_text(encoding="utf-8", errors="replace")
-        stale_markers = [
-            "--check / --no-check   Enable/disable similarity check (default: --check)",
-            "--threshold FLOAT      Similarity threshold 0.0-1.0 (default: 0.85)",
-            "--register             Register files to inventory without moving",
-            "--scan                 Scan and update inventory from paths",
-            "--status               Show inventory statistics",
-        ]
-        seen = [marker for marker in stale_markers if marker in text]
-        if seen:
-            warnings.append(
-                "MGMT_MODE.md contains historical flag descriptions "
-                "that do not match current CLI group options: "
-                + ", ".join(seen)
-            )
 
     # Guardrail: prevent adding new legacy CLI wrappers without explicit review.
     cli_legacy_imports = find_legacy_wrapper_imports(

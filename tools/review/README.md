@@ -19,7 +19,7 @@ Active operational scripts for dedupe planning, analysis, and move execution.
 3. Execute move-only actions:
 - `move_from_plan.py`
 - `quarantine_from_plan.py`
-- `promote_by_tags.py` (direct promotion path)
+- `promote_by_tags.py` (direct promotion path; use `--move-log` for JSONL move audit output)
 
 4. Sync DB after moves:
 - `apply_moves_log_to_db.py`

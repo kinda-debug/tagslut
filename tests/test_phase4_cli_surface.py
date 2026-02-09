@@ -88,9 +88,9 @@ def test_phase5_removed_top_level_commands_absent() -> None:
 
 
 def test_internal_replacement_map_targets_canonical_flows() -> None:
-    assert _TRANSITIONAL_COMMAND_REPLACEMENTS["dedupe _mgmt"].startswith("dedupe index")
-    assert _TRANSITIONAL_COMMAND_REPLACEMENTS["dedupe _metadata"].startswith("dedupe auth")
-    assert _TRANSITIONAL_COMMAND_REPLACEMENTS["dedupe _recover"].startswith("dedupe verify")
+    assert _TRANSITIONAL_COMMAND_REPLACEMENTS["dedupe _mgmt"].startswith("tagslut index")
+    assert _TRANSITIONAL_COMMAND_REPLACEMENTS["dedupe _metadata"].startswith("tagslut auth")
+    assert _TRANSITIONAL_COMMAND_REPLACEMENTS["dedupe _recover"].startswith("tagslut verify")
     assert "dedupe scan" not in _TRANSITIONAL_COMMAND_REPLACEMENTS
     assert "dedupe mgmt" not in _TRANSITIONAL_COMMAND_REPLACEMENTS
 

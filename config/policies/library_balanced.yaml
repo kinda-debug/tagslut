@@ -1,0 +1,22 @@
+name: library_balanced
+version: 2026-02-09.library_balanced.v1
+description: Balanced default policy for non-DJ library operations.
+lane: library
+rules:
+  match:
+    allow_match_by:
+      - beatport_id
+      - isrc
+      - artist_title_duration
+    duplicate_action: skip
+    unmatched_action: keep
+    duration_margin_ms: 4000
+  duration:
+    require_ok_for_dj_promotion: false
+    ok_statuses:
+      - ok
+      - warn
+      - unknown
+    non_ok_action: keep
+  execution:
+    collision_policy: skip

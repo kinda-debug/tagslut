@@ -3,7 +3,9 @@
 This package handles metadata enrichment and provider resolution for FLAC files.
 
 Start here:
-- `docs/METADATA_WORKFLOW.md` — full workflow, modes, DB fields, and CLI usage.
+- `poetry run tagslut index enrich --help` — active enrichment command help.
+- `docs/SCRIPT_SURFACE.md` — canonical command surface and workflow ownership.
+- `docs/archive/legacy-workflows-2026-02-09/METADATA_WORKFLOW.md` — archived legacy metadata workflow notes.
 
 ## Supported Providers
 

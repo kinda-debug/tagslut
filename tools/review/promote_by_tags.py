@@ -16,12 +16,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parents[2]))
 
-from mutagen.flac import FLAC
-from dedupe.utils.console_ui import ConsoleUI
-from dedupe.utils.file_operations import FileOperations
-from dedupe.utils.safety_gates import SafetyGates
-from dedupe.metadata.canon import load_canon_rules, apply_canon
-from dedupe.utils.final_library_layout import FinalLibraryLayoutError, build_final_library_destination
+from mutagen.flac import FLAC  # noqa: E402
+from dedupe.utils.console_ui import ConsoleUI  # noqa: E402
+from dedupe.utils.file_operations import FileOperations  # noqa: E402
+from dedupe.utils.safety_gates import SafetyGates  # noqa: E402
+from dedupe.metadata.canon import load_canon_rules, apply_canon  # noqa: E402
+from dedupe.utils.final_library_layout import (  # noqa: E402
+    FinalLibraryLayoutError,
+    build_final_library_destination,
+)
 
 TRUTHY = {"1", "true", "yes", "y", "t"}
 
@@ -152,7 +155,10 @@ def _looks_like_artist_list(value: str, min_commas: int = 3) -> bool:
 def build_destination(tags, dest_root, is_dj=False):
     types, primary = parse_release_types(tags)
 
-    compilation = is_truthy(first_tag(tags, ["compilation", "itunescompilation"])) or "compilation" in types
+    compilation = (
+        is_truthy(first_tag(tags, ["compilation", "itunescompilation"]))
+        or "compilation" in types
+    )
 
     albumartist = first_tag(tags, ["albumartist", "album artist"])
     artist = first_tag(tags, ["artist"])
@@ -168,7 +174,11 @@ def build_destination(tags, dest_root, is_dj=False):
         compilation = True
 
     # Picard-style: compilation uses label (or Various Artists), otherwise albumartist.
-    top = (label or "Various Artists") if compilation else (albumartist or artist or "Unknown Artist")
+    top = (
+        (label or "Various Artists")
+        if compilation
+        else (albumartist or artist or "Unknown Artist")
+    )
     top = sanitize_component(top, "Unknown Artist")
 
     year = extract_year(date, originaldate)
@@ -211,7 +221,10 @@ def main():
     parser.add_argument(
         "--final-library",
         action="store_true",
-        help="Use strict FINAL_LIBRARY naming convention (albumartist/(year) album/artist – (year) album – discTrack title.flac)",
+        help=(
+            "Use strict FINAL_LIBRARY naming convention "
+            "(albumartist/(year) album/artist – (year) album – discTrack title.flac)"
+        ),
     )
     parser.add_argument("--canon", dest="canon", action="store_true",
                         help="Apply canonical tag rules (default)")
@@ -224,11 +237,22 @@ def main():
                         help="Treat sources as DJ material (use label for compilations)")
     parser.add_argument("--execute", action="store_true",
                         help="Actually perform moves (default is dry-run)")
+    parser.add_argument(
+        "--move-log",
+        type=Path,
+        help="JSONL move audit log path (default: artifacts/logs/file_move.jsonl)",
+    )
     args = parser.parse_args()
 
     ui = ConsoleUI()
     gates = SafetyGates(ui=ui)
-    ops = FileOperations(ui=ui, gates=gates, dry_run=not args.execute, quiet=True)
+    ops = FileOperations(
+        ui=ui,
+        gates=gates,
+        dry_run=not args.execute,
+        quiet=True,
+        audit_log_path=args.move_log,
+    )
 
     # Expand directories to individual FLAC files
     files_to_process = []
@@ -254,7 +278,9 @@ def main():
 
     canon_rules = None
     if args.canon:
-        rules_path = args.canon_rules or (Path(__file__).parents[2] / "tools" / "rules" / "library_canon.json")
+        rules_path = args.canon_rules or (
+            Path(__file__).parents[2] / "tools" / "rules" / "library_canon.json"
+        )
         canon_rules = load_canon_rules(rules_path)
 
     for i, src in enumerate(files_to_process, 1):

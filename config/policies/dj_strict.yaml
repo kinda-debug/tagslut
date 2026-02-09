@@ -1,0 +1,20 @@
+name: dj_strict
+version: 2026-02-09.dj_strict.v1
+description: Strict DJ lane policy with hard duration gate.
+lane: dj
+rules:
+  match:
+    allow_match_by:
+      - beatport_id
+      - isrc
+      - artist_title_duration
+    duplicate_action: skip
+    unmatched_action: keep
+    duration_margin_ms: 4000
+  duration:
+    require_ok_for_dj_promotion: true
+    ok_statuses:
+      - ok
+    non_ok_action: review
+  execution:
+    collision_policy: skip

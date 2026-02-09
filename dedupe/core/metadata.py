@@ -103,15 +103,16 @@ def extract_metadata(
             # Extract STREAMINFO MD5 (fast, embedded in FLAC metadata block)
             # This is NOT the file hash - it's the hash of the decoded audio
             # Perfect for fast duplicate detection without full-file hashing
-            streaminfo_md5 = getattr(audio.info, "md5_signature", None)
-            if streaminfo_md5:
+            raw_streaminfo_md5 = getattr(audio.info, "md5_signature", None)
+            if raw_streaminfo_md5:
                 # Normalize mutagen return types (bytes/int) to a hex string
-                if isinstance(streaminfo_md5, (bytes, bytearray)):
-                    streaminfo_md5 = streaminfo_md5.hex()
-                elif isinstance(streaminfo_md5, int):
-                    streaminfo_md5 = f"{streaminfo_md5:032x}"
+                if isinstance(raw_streaminfo_md5, (bytes, bytearray)):
+                    streaminfo_md5 = raw_streaminfo_md5.hex()
+                elif isinstance(raw_streaminfo_md5, int):
+                    streaminfo_md5 = f"{raw_streaminfo_md5:032x}"
                 else:
-                    streaminfo_md5 = str(streaminfo_md5)
+                    streaminfo_md5 = str(raw_streaminfo_md5)
+
                 # Some encoders omit the MD5 signature and write all zeros. Treat as missing.
                 if streaminfo_md5 == "0" * 32:
                     streaminfo_md5 = None
@@ -130,6 +131,14 @@ def extract_metadata(
                     # If we have both, SHA256 is the authoritative evidence for the AudioFile.checksum
                     checksum = sha256
                     checksum_type = "SHA256_FULL"
+            elif not streaminfo_md5:
+                # Fallback: some FLACs have no usable STREAMINFO MD5 signature (or it's all zeros).
+                # In that case, we'd otherwise end up with checksum=NOT_SCANNED which breaks
+                # duplicate detection and can wipe previously computed sha256 values on re-scan.
+                sha256 = calculate_file_hash(path_obj)
+                sha256_checked_at = now_iso
+                checksum = sha256
+                checksum_type = "SHA256_FULL"
 
         # Tag extraction
         tags_holder = audio.tags
@@ -184,7 +193,8 @@ def extract_metadata(
     # Duration suspicious files are treated like integrity failures
     zone_manager = zone_manager or get_default_zone_manager()
     zone = determine_zone(
-        integrity_ok=bool(flac_ok) and not duration_suspicious,
+        # If we didn't run `flac -t`, flac_ok will be None; treat as "not known-bad"
+        integrity_ok=(flac_ok is not False) and not duration_suspicious,
         is_duplicate=False,  # Will be determined later during duplicate detection
         file_path=path_obj,
         zone_manager=zone_manager,

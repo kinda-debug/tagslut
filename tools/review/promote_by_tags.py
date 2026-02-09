@@ -21,6 +21,7 @@ from dedupe.utils.console_ui import ConsoleUI
 from dedupe.utils.file_operations import FileOperations
 from dedupe.utils.safety_gates import SafetyGates
 from dedupe.metadata.canon import load_canon_rules, apply_canon
+from dedupe.utils.final_library_layout import FinalLibraryLayoutError, build_final_library_destination
 
 TRUTHY = {"1", "true", "yes", "y", "t"}
 
@@ -148,10 +149,6 @@ def _looks_like_artist_list(value: str, min_commas: int = 3) -> bool:
     return value.count(",") >= min_commas
 
 
-def _looks_like_artist_list(value: str, min_commas: int = 3) -> bool:
-    return value.count(",") >= min_commas
-
-
 def build_destination(tags, dest_root, is_dj=False):
     types, primary = parse_release_types(tags)
 
@@ -211,6 +208,11 @@ def main():
                         help="FLAC files or directories to process")
     parser.add_argument("--dest", required=True, type=Path,
                         help="Destination root directory (e.g., .../dj or .../archive)")
+    parser.add_argument(
+        "--final-library",
+        action="store_true",
+        help="Use strict FINAL_LIBRARY naming convention (albumartist/(year) album/artist – (year) album – discTrack title.flac)",
+    )
     parser.add_argument("--canon", dest="canon", action="store_true",
                         help="Apply canonical tag rules (default)")
     parser.add_argument("--no-canon", dest="canon", action="store_false",
@@ -266,7 +268,13 @@ def main():
             promo_tags = normalize_tags_for_promote(canon_tags)
 
             is_dj = args.dj_only or is_truthy(first_tag(promo_tags, ["dedupe_dj", "dj"]))
-            dest = build_destination(promo_tags, args.dest, is_dj=is_dj)
+            if args.final_library:
+                if args.dj_only:
+                    ui.warning("--dj-only is ignored with --final-library")
+                layout = build_final_library_destination(canon_tags, args.dest)
+                dest = layout.dest_path
+            else:
+                dest = build_destination(promo_tags, args.dest, is_dj=is_dj)
 
             # Extract artist/album for display
             artist = first_tag(promo_tags, ["albumartist", "album artist", "artist"]) or "Unknown"
@@ -295,6 +303,8 @@ def main():
             error_msg = str(e)
             if "not a valid FLAC" in error_msg:
                 error_msg = "Invalid FLAC file"
+            if isinstance(e, FinalLibraryLayoutError):
+                error_msg = f"Final layout error: {error_msg}"
             errors.append((src.name, error_msg))
             ui.print(f"[{i:4d}/{total}] SKIP: {src.name[:50]} ({error_msg})")
 

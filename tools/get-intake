@@ -1,0 +1,496 @@
+#!/usr/bin/env bash
+# get-intake — download + fast dedupe intake for EDM-friendly workflows
+#
+# Pipeline:
+#  1) Download via tools/get (optional)
+#  2) Quick duplicate check via dedupe mgmt check (strict, non-interactive)
+#  3) Fast trust scan + integrity registration
+#  4) Cross-root fingerprint audit against final library
+#  5) Build promote/stash/quarantine plans
+#  6) Optionally execute move plans (move-only semantics)
+#
+# Default behavior is safe: plans only (no moves) unless --execute is passed.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+GET_BIN="$SCRIPT_DIR/get"
+SCAN_SCRIPT="$SCRIPT_DIR/review/scan_with_trust.py"
+AUDIT_SCRIPT="$SCRIPT_DIR/review/audio_dupe_audit.py"
+PLAN_SCRIPT="$SCRIPT_DIR/review/plan_fpcalc_promote_unique_to_final_library.py"
+MOVE_SCRIPT="$SCRIPT_DIR/review/move_from_plan.py"
+BEATPORT_PREFILTER_SCRIPT="$SCRIPT_DIR/review/beatport_prefilter.py"
+BPDL_BIN="$SCRIPT_DIR/beatportdl/bpdl/bpdl"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  tools/get-intake [options] <url> [-- downloader-args...]
+  tools/get-intake --no-download --batch-root <path> [options]
+
+Options:
+  --batch-root PATH    Download batch root to process (required)
+  --source TEXT        Source label (bpdl|tidal). Auto-inferred from URL if omitted.
+  --db PATH            SQLite DB path (default: $DEDUPE_DB)
+  --library-root PATH  Final library root (default: /Volumes/MUSIC/LIBRARY)
+  --fix-root PATH      FIX root (default: /Volumes/MUSIC/FIX)
+  --out-dir PATH       Output directory for plans (default: artifacts/compare)
+  --workers N          Fingerprint workers (default: 7)
+  --trust N            Pre-scan trust score 0..3 (default: 3)
+  --trust-post N       Post-scan trust score 0..3 (default: 3)
+  --library-tag TEXT   Library tag used in scan_with_trust (default: INTAKE)
+  --execute            Execute move plans (default: dry-run planning only)
+  --no-download        Skip downloader step; process existing batch root
+  --skip-mgmt-check    Skip quick dedupe mgmt check stage
+  --skip-beatport-prefilter
+                       Skip fast metadata prefilter before Beatport download
+  --prefilter-margin-ms N
+                       Duration tolerance for prefilter (default: 4000)
+  -h, --help           Show this help
+
+Examples:
+  tools/get-intake --batch-root /Volumes/DJSSD/beatport \
+    "https://www.beatport.com/release/.../12345"
+
+  tools/get-intake --no-download --batch-root /Volumes/MUSIC/CLEAN --execute
+EOF
+}
+
+err() {
+  echo "ERROR: $*" >&2
+  exit 2
+}
+
+step() {
+  local idx="$1"
+  local total="$2"
+  local label="$3"
+  echo
+  echo "[$idx/$total] $label"
+}
+
+run_cmd() {
+  printf '→ '
+  printf '%q ' "$@"
+  printf '\n'
+  "$@"
+}
+
+infer_source() {
+  local url="$1"
+  case "$url" in
+    *beatport.com*) echo "bpdl" ;;
+    *tidal.com*) echo "tidal" ;;
+    *) echo "" ;;
+  esac
+}
+
+DOWNLOAD=1
+EXECUTE=0
+SKIP_MGMT_CHECK=0
+SKIP_BEATPORT_PREFILTER=0
+
+URL=""
+BATCH_ROOT=""
+SOURCE=""
+DB_PATH="${DEDUPE_DB:-}"
+LIBRARY_ROOT="/Volumes/MUSIC/LIBRARY"
+FIX_ROOT="/Volumes/MUSIC/FIX"
+OUT_DIR="$REPO_ROOT/artifacts/compare"
+WORKERS=7
+TRUST=3
+TRUST_POST=3
+LIBRARY_TAG="INTAKE"
+PREFILTER_MARGIN_MS=4000
+
+DOWNLOADER_ARGS=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --batch-root)
+      [[ $# -ge 2 ]] || err "--batch-root requires a value"
+      BATCH_ROOT="$2"
+      shift 2
+      ;;
+    --source)
+      [[ $# -ge 2 ]] || err "--source requires a value"
+      SOURCE="$2"
+      shift 2
+      ;;
+    --db)
+      [[ $# -ge 2 ]] || err "--db requires a value"
+      DB_PATH="$2"
+      shift 2
+      ;;
+    --library-root)
+      [[ $# -ge 2 ]] || err "--library-root requires a value"
+      LIBRARY_ROOT="$2"
+      shift 2
+      ;;
+    --fix-root)
+      [[ $# -ge 2 ]] || err "--fix-root requires a value"
+      FIX_ROOT="$2"
+      shift 2
+      ;;
+    --out-dir)
+      [[ $# -ge 2 ]] || err "--out-dir requires a value"
+      OUT_DIR="$2"
+      shift 2
+      ;;
+    --workers)
+      [[ $# -ge 2 ]] || err "--workers requires a value"
+      WORKERS="$2"
+      shift 2
+      ;;
+    --trust)
+      [[ $# -ge 2 ]] || err "--trust requires a value"
+      TRUST="$2"
+      shift 2
+      ;;
+    --trust-post)
+      [[ $# -ge 2 ]] || err "--trust-post requires a value"
+      TRUST_POST="$2"
+      shift 2
+      ;;
+    --library-tag)
+      [[ $# -ge 2 ]] || err "--library-tag requires a value"
+      LIBRARY_TAG="$2"
+      shift 2
+      ;;
+    --execute)
+      EXECUTE=1
+      shift
+      ;;
+    --no-download)
+      DOWNLOAD=0
+      shift
+      ;;
+    --skip-mgmt-check)
+      SKIP_MGMT_CHECK=1
+      shift
+      ;;
+    --skip-beatport-prefilter)
+      SKIP_BEATPORT_PREFILTER=1
+      shift
+      ;;
+    --prefilter-margin-ms)
+      [[ $# -ge 2 ]] || err "--prefilter-margin-ms requires a value"
+      PREFILTER_MARGIN_MS="$2"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --)
+      shift
+      DOWNLOADER_ARGS+=("$@")
+      break
+      ;;
+    -*)
+      err "Unknown option: $1"
+      ;;
+    *)
+      if [[ -z "$URL" ]]; then
+        URL="$1"
+      else
+        DOWNLOADER_ARGS+=("$1")
+      fi
+      shift
+      ;;
+  esac
+done
+
+[[ -n "$BATCH_ROOT" ]] || err "--batch-root is required"
+[[ -n "$DB_PATH" ]] || err "Missing DB path. Set --db or DEDUPE_DB."
+[[ "$TRUST" =~ ^[0-3]$ ]] || err "--trust must be 0,1,2,3"
+[[ "$TRUST_POST" =~ ^[0-3]$ ]] || err "--trust-post must be 0,1,2,3"
+[[ "$WORKERS" =~ ^[0-9]+$ ]] || err "--workers must be an integer"
+[[ "$PREFILTER_MARGIN_MS" =~ ^[0-9]+$ ]] || err "--prefilter-margin-ms must be an integer"
+
+if [[ "$DOWNLOAD" -eq 1 && -z "$URL" ]]; then
+  err "URL is required unless --no-download is used"
+fi
+
+if [[ -z "$SOURCE" && -n "$URL" ]]; then
+  SOURCE="$(infer_source "$URL")"
+fi
+[[ -n "$SOURCE" ]] || SOURCE="ingest"
+
+[[ -x "$GET_BIN" ]] || err "Missing executable: $GET_BIN"
+[[ -x "$BPDL_BIN" ]] || err "Missing executable: $BPDL_BIN"
+[[ -f "$SCAN_SCRIPT" ]] || err "Missing script: $SCAN_SCRIPT"
+[[ -f "$AUDIT_SCRIPT" ]] || err "Missing script: $AUDIT_SCRIPT"
+[[ -f "$PLAN_SCRIPT" ]] || err "Missing script: $PLAN_SCRIPT"
+[[ -f "$MOVE_SCRIPT" ]] || err "Missing script: $MOVE_SCRIPT"
+[[ -f "$BEATPORT_PREFILTER_SCRIPT" ]] || err "Missing script: $BEATPORT_PREFILTER_SCRIPT"
+
+command -v poetry >/dev/null 2>&1 || err "poetry is required in PATH"
+command -v python >/dev/null 2>&1 || err "python is required in PATH"
+
+if [[ "$DOWNLOAD" -eq 1 ]]; then
+  mkdir -p "$BATCH_ROOT"
+else
+  [[ -d "$BATCH_ROOT" ]] || err "--batch-root does not exist: $BATCH_ROOT"
+fi
+
+BATCH_ROOT="$(cd "$BATCH_ROOT" && pwd -P)"
+LIBRARY_ROOT="$(cd "$LIBRARY_ROOT" && pwd -P)"
+FIX_ROOT="$(cd "$FIX_ROOT" && pwd -P)"
+DB_PATH="$(cd "$(dirname "$DB_PATH")" && pwd -P)/$(basename "$DB_PATH")"
+mkdir -p "$OUT_DIR"
+OUT_DIR="$(cd "$OUT_DIR" && pwd -P)"
+
+echo "Batch root:   $BATCH_ROOT"
+echo "Source:       $SOURCE"
+echo "DB:           $DB_PATH"
+echo "Library root: $LIBRARY_ROOT"
+echo "FIX root:     $FIX_ROOT"
+echo "Output dir:   $OUT_DIR"
+echo "Execute:      $EXECUTE"
+echo "Prefilter:    $((1 - SKIP_BEATPORT_PREFILTER))"
+
+USE_BEATPORT_PREFILTER=0
+if [[ "$DOWNLOAD" -eq 1 && "$SKIP_BEATPORT_PREFILTER" -eq 0 && "$SOURCE" == "bpdl" && "$URL" == *"beatport.com"* ]]; then
+  USE_BEATPORT_PREFILTER=1
+fi
+
+TOTAL_STEPS=4
+if [[ "$SKIP_MGMT_CHECK" -eq 0 ]]; then
+  TOTAL_STEPS=$((TOTAL_STEPS + 1))
+fi
+if [[ "$DOWNLOAD" -eq 1 ]]; then
+  TOTAL_STEPS=$((TOTAL_STEPS + 1))
+fi
+if [[ "$USE_BEATPORT_PREFILTER" -eq 1 ]]; then
+  TOTAL_STEPS=$((TOTAL_STEPS + 1))
+fi
+STEP=1
+
+if [[ "$DOWNLOAD" -eq 1 ]]; then
+  KEEP_URLS_TXT=""
+  if [[ "$USE_BEATPORT_PREFILTER" -eq 1 ]]; then
+    step "$STEP" "$TOTAL_STEPS" "Beatport fast pre-download filter"
+    run_cmd python "$BEATPORT_PREFILTER_SCRIPT" \
+      --db "$DB_PATH" \
+      --url "$URL" \
+      --library-root "$LIBRARY_ROOT" \
+      --credentials "$SCRIPT_DIR/beatportdl/bpdl/beatportdl-credentials.json" \
+      --duration-margin-ms "$PREFILTER_MARGIN_MS" \
+      --out-dir "$OUT_DIR"
+
+    PREFILTER_SUMMARY_JSON="$(ls -1t "$OUT_DIR"/beatport_prefilter_summary_*.json 2>/dev/null | head -n1 || true)"
+    [[ -n "$PREFILTER_SUMMARY_JSON" ]] || err "Could not find Beatport prefilter summary in $OUT_DIR"
+
+    eval "$(python - "$PREFILTER_SUMMARY_JSON" <<'PY'
+import json
+import shlex
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    payload = json.load(handle)
+
+def emit(key, value):
+    print(f"{key}={shlex.quote(str(value))}")
+
+emit("PREFILTER_KEEP", payload.get("keep_count", 0))
+emit("PREFILTER_TOTAL", payload.get("total_candidates", 0))
+emit("PREFILTER_SKIP", payload.get("skip_count", 0))
+emit("KEEP_URLS_TXT", payload.get("outputs", {}).get("keep_urls_txt", ""))
+PY
+)"
+
+    [[ -n "$KEEP_URLS_TXT" ]] || err "Missing keep_urls_txt in prefilter summary: $PREFILTER_SUMMARY_JSON"
+    echo "Prefilter summary: keep=$PREFILTER_KEEP skip=$PREFILTER_SKIP total=$PREFILTER_TOTAL"
+    STEP=$((STEP + 1))
+  fi
+
+  step "$STEP" "$TOTAL_STEPS" "Download via tools/get"
+  if [[ "$USE_BEATPORT_PREFILTER" -eq 1 ]]; then
+    if [[ "${PREFILTER_KEEP:-0}" -eq 0 ]]; then
+      echo "All Beatport candidates already matched in library; skipping download."
+      echo "No new candidates to process; intake pipeline finished."
+      exit 0
+    else
+      DL_CMD=("$BPDL_BIN" "-q")
+      if [[ ${#DOWNLOADER_ARGS[@]} -gt 0 ]]; then
+        DL_CMD+=("${DOWNLOADER_ARGS[@]}")
+      fi
+      DL_CMD+=("$KEEP_URLS_TXT")
+      run_cmd "${DL_CMD[@]}"
+    fi
+  else
+    if [[ ${#DOWNLOADER_ARGS[@]} -gt 0 ]]; then
+      run_cmd "$GET_BIN" "$URL" "${DOWNLOADER_ARGS[@]}"
+    else
+      run_cmd "$GET_BIN" "$URL"
+    fi
+  fi
+  STEP=$((STEP + 1))
+fi
+
+if [[ "$SKIP_MGMT_CHECK" -eq 0 ]]; then
+  step "$STEP" "$TOTAL_STEPS" "Quick duplicate check (mgmt check, strict)"
+  set +e
+  run_cmd poetry run dedupe mgmt check "$BATCH_ROOT" --db "$DB_PATH" --source "$SOURCE" --strict --no-prompt
+  MGMT_CHECK_CODE=$?
+  set -e
+  echo "mgmt check exit code: $MGMT_CHECK_CODE (continuing)"
+  STEP=$((STEP + 1))
+fi
+
+step "$STEP" "$TOTAL_STEPS" "Trust scan + integrity registration"
+run_cmd python "$SCAN_SCRIPT" \
+  "$BATCH_ROOT" \
+  --db "$DB_PATH" \
+  --library "$LIBRARY_TAG" \
+  --check-integrity \
+  --progress \
+  --allow-accepted \
+  --trust "$TRUST" \
+  --trust-post "$TRUST_POST"
+STEP=$((STEP + 1))
+
+step "$STEP" "$TOTAL_STEPS" "Cross-root fingerprint audit"
+run_cmd python "$AUDIT_SCRIPT" \
+  --db "$DB_PATH" \
+  --root "$LIBRARY_ROOT" \
+  --root "$BATCH_ROOT" \
+  --execute \
+  --progress \
+  --workers "$WORKERS"
+STEP=$((STEP + 1))
+
+step "$STEP" "$TOTAL_STEPS" "Plan promote/stash/quarantine"
+run_cmd python "$PLAN_SCRIPT" \
+  --db "$DB_PATH" \
+  --source-root "$BATCH_ROOT" \
+  --final-root "$LIBRARY_ROOT" \
+  --dest-root "$LIBRARY_ROOT" \
+  --prefer-root "$BATCH_ROOT" \
+  --stash-folder-name "../FIX" \
+  --quarantine-root "$FIX_ROOT" \
+  --quarantine-missing-fp \
+  --out-dir "$OUT_DIR"
+STEP=$((STEP + 1))
+
+SUMMARY_JSON="$(ls -1t "$OUT_DIR"/plan_fpcalc_unique_final_summary_*.json 2>/dev/null | head -n1 || true)"
+[[ -n "$SUMMARY_JSON" ]] || err "Could not find generated summary in $OUT_DIR"
+
+eval "$(python - "$SUMMARY_JSON" <<'PY'
+import json
+import shlex
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    payload = json.load(handle)
+
+planned = payload.get("planned", {})
+outputs = payload.get("outputs", {})
+
+def emit(key, value):
+    print(f"{key}={shlex.quote(str(value))}")
+
+emit("PROMOTE_MOVE", planned.get("promote_move", 0))
+emit("STASH_MOVE", planned.get("stash_move", 0))
+emit("QUARANTINE_MOVE", planned.get("quarantine_move", 0))
+emit("PROMOTE_PLAN", outputs.get("promote_plan_csv", ""))
+emit("STASH_PLAN_RAW", outputs.get("stash_plan_csv", ""))
+emit("QUARANTINE_PLAN", outputs.get("quarantine_plan_csv", ""))
+emit("SUMMARY_JSON", sys.argv[1])
+PY
+)"
+
+[[ -n "$PROMOTE_PLAN" ]] || err "Missing promote plan path in summary: $SUMMARY_JSON"
+[[ -n "$STASH_PLAN_RAW" ]] || err "Missing stash plan path in summary: $SUMMARY_JSON"
+[[ -n "$QUARANTINE_PLAN" ]] || err "Missing quarantine plan path in summary: $SUMMARY_JSON"
+
+STASH_PLAN_NORMALIZED="$OUT_DIR/$(basename "${STASH_PLAN_RAW%.csv}")_normalized.csv"
+python - "$STASH_PLAN_RAW" "$STASH_PLAN_NORMALIZED" "$BATCH_ROOT" "$FIX_ROOT" <<'PY'
+import csv
+import sys
+from pathlib import Path
+
+src_csv = Path(sys.argv[1])
+dst_csv = Path(sys.argv[2])
+batch_root = Path(sys.argv[3]).resolve()
+fix_root = Path(sys.argv[4]).resolve()
+
+with src_csv.open(newline="", encoding="utf-8") as handle:
+    reader = csv.DictReader(handle)
+    rows = list(reader)
+    fieldnames = reader.fieldnames or ["action", "path", "dest_path", "reason"]
+
+for row in rows:
+    src = Path((row.get("path") or "").strip())
+    if not str(src):
+        continue
+    try:
+        rel = src.resolve().relative_to(batch_root)
+        dest = fix_root / rel
+    except Exception:
+        dest = fix_root / src.name
+    row["dest_path"] = str(dest.resolve())
+
+with dst_csv.open("w", newline="", encoding="utf-8") as handle:
+    writer = csv.DictWriter(handle, fieldnames=fieldnames)
+    writer.writeheader()
+    writer.writerows(rows)
+PY
+
+echo
+echo "Plan summary: $SUMMARY_JSON"
+echo "  promote:    $PROMOTE_MOVE"
+echo "  stash:      $STASH_MOVE"
+echo "  quarantine: $QUARANTINE_MOVE"
+echo "  promote csv:    $PROMOTE_PLAN"
+echo "  stash csv:      $STASH_PLAN_NORMALIZED (normalized to FIX root)"
+echo "  quarantine csv: $QUARANTINE_PLAN"
+
+step "$STEP" "$TOTAL_STEPS" "Apply plans"
+if [[ "$EXECUTE" -eq 1 ]]; then
+  run_cmd python "$MOVE_SCRIPT" \
+    "$PROMOTE_PLAN" \
+    --source-root "$BATCH_ROOT" \
+    --dest-root "$LIBRARY_ROOT" \
+    --db "$DB_PATH" \
+    --zone accepted \
+    --mgmt-status promoted_to_final_library \
+    --execute
+
+  if [[ "$STASH_MOVE" -gt 0 ]]; then
+    run_cmd python "$MOVE_SCRIPT" \
+      "$STASH_PLAN_NORMALIZED" \
+      --source-root "$BATCH_ROOT" \
+      --dest-root "$FIX_ROOT" \
+      --db "$DB_PATH" \
+      --zone suspect \
+      --mgmt-status moved_to_fix \
+      --execute
+  fi
+
+  if [[ "$QUARANTINE_MOVE" -gt 0 ]]; then
+    run_cmd python "$MOVE_SCRIPT" \
+      "$QUARANTINE_PLAN" \
+      --source-root "$BATCH_ROOT" \
+      --dest-root "$FIX_ROOT" \
+      --db "$DB_PATH" \
+      --zone suspect \
+      --mgmt-status moved_to_fix \
+      --execute
+  fi
+  echo
+  echo "Done: download+intake executed."
+else
+  echo
+  echo "Dry-run mode complete. Execute with:"
+  echo "  python \"$MOVE_SCRIPT\" \"$PROMOTE_PLAN\" --source-root \"$BATCH_ROOT\" --dest-root \"$LIBRARY_ROOT\" --db \"$DB_PATH\" --zone accepted --mgmt-status promoted_to_final_library --execute"
+  if [[ "$STASH_MOVE" -gt 0 ]]; then
+    echo "  python \"$MOVE_SCRIPT\" \"$STASH_PLAN_NORMALIZED\" --source-root \"$BATCH_ROOT\" --dest-root \"$FIX_ROOT\" --db \"$DB_PATH\" --zone suspect --mgmt-status moved_to_fix --execute"
+  fi
+  if [[ "$QUARANTINE_MOVE" -gt 0 ]]; then
+    echo "  python \"$MOVE_SCRIPT\" \"$QUARANTINE_PLAN\" --source-root \"$BATCH_ROOT\" --dest-root \"$FIX_ROOT\" --db \"$DB_PATH\" --zone suspect --mgmt-status moved_to_fix --execute"
+  fi
+fi

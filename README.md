@@ -10,18 +10,24 @@ This repository is a recovery-first, evidence-preserving toolkit for scanning, a
 
 ---
 
-## 🚀 Quickstart (V2)
+## 🚀 Quickstart (Current)
 
-1.  **Configure**: Copy `.env.example` to `.env` and update your volume paths and database location.
-    ```bash
-    source .env
-    ```
-2.  **Scan**: `python3 -m dedupe scan /path/to/music` (Builds your library index).
-3.  **Recommend**: `python3 -m dedupe recommend --output plan.json` (Finds duplicates).
-4.  **Apply**: `python3 -m dedupe apply plan.json --confirm` (Quarantines duplicates).
+1. **Configure**: copy `.env.example` to `.env`, then `source .env`.
+2. **Register new downloads**:
+   - `poetry run dedupe mgmt register <path> --source <bpdl|tidal|qobuz|legacy>`
+3. **Pre-check duplicates before new ingest**:
+   - `poetry run dedupe mgmt check <path> --source <source>`
+4. **One-command download + fast intake planning**:
+   - `tools/get-intake --batch-root /Volumes/DJSSD/beatport <beatport-or-tidal-url>`
+   - For Beatport URLs, this now runs a fast metadata prefilter against `/Volumes/MUSIC/LIBRARY` before downloading (skip with `--skip-beatport-prefilter`).
+   - Add `--execute` to apply promote/stash/quarantine moves after planning.
+5. **Generate M3U playlists (Roon)**:
+   - `poetry run dedupe mgmt --m3u <path>`
+6. **Run metadata enrichment**:
+   - `poetry run dedupe metadata enrich --db <db-path> --recovery --execute`
 
-If you want the **clean, start-over workflow** (trust-based scan, metadata recovery, canonized promotion), follow:
-- `docs/WORKFLOW_METADATA.md`
+For a script-by-script map (canonical vs legacy), see:
+- `docs/SCRIPT_SURFACE.md`
 
 ---
 
@@ -32,6 +38,7 @@ For detailed technical information, please refer to:
 *   **[docs/MGMT_MODE.md](docs/MGMT_MODE.md)** — **Management & Recovery Modes**: Inventory tracking, duplicate checking, M3U generation, and file operations.
 *   **[docs/METADATA_WORKFLOW.md](docs/METADATA_WORKFLOW.md)** — **Metadata Workflow**: End-to-end enrichment flow, modes, providers, and CLI usage.
 *   **[docs/V2_ARCHITECTURE.md](docs/V2_ARCHITECTURE.md)** — **System Design**: How the unified package and CLI are structured.
+*   **[docs/SCRIPT_SURFACE.md](docs/SCRIPT_SURFACE.md)** — **Current Script Surface**: Canonical commands, legacy wrappers, and archive policy.
 *   **[docs/RESTORATION_PLAN.md](docs/RESTORATION_PLAN.md)** — **Data Recovery**: Detailed procedures for restoring files and resolving path conflicts.
 *   **[docs/ROON_INTEGRATION.md](docs/ROON_INTEGRATION.md)** — **Roon Guide**: Managing your canonical library for Roon compatibility.
 

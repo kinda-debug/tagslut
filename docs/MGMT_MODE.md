@@ -1,5 +1,8 @@
 # Management & Recovery Modes — dedupe CLI
 
+> Status note (2026-02-08): This document contains both current behavior and historical design notes.
+> For the authoritative command surface, run `poetry run dedupe mgmt --help` and see `docs/SCRIPT_SURFACE.md`.
+
 This document specifies the **`mgmt`** and **`recovery`** commands for the dedupe CLI, designed to support a controlled, inventory-driven workflow for building a clean, sanitized music library from fresh downloads.
 
 **Important:** M3U playlist generation is a `dedupe mgmt` responsibility, NOT a BeatportDL feature. BeatportDL handles downloading and directory organization only.

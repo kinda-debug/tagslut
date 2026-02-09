@@ -1720,8 +1720,8 @@ def mgmt(ctx, m3u_mode, merge, m3u_dir, db, source, paths):
             for group_name in list(groups.keys()):
                 groups[group_name] = sorted(groups[group_name], key=lambda p: str(p))
 
-        resolution = resolve_db_path(db, purpose="write")
-        conn = get_connection(str(resolution.path), purpose="write")
+        resolution = resolve_db_path(db, purpose="write", allow_create=True)
+        conn = get_connection(str(resolution.path), purpose="write", allow_create=True)
         init_db(conn)
         columns = {row[1] for row in conn.execute("PRAGMA table_info(files)")}
         has_m3u_path = "m3u_path" in columns
@@ -1967,11 +1967,17 @@ def _lookup_duration_ref_ms(
 @click.option('--source', required=True, help='Download source (bpdl, tidal, qobuz, legacy, etc.)')
 @click.option('--db', type=click.Path(), help='Database path (auto-detect from env if not provided)')
 @click.option('--execute', is_flag=True, help='Actually register files (default: dry-run)')
+@click.option(
+    '--full-hash',
+    is_flag=True,
+    help='Compute full-file SHA256 for every file (slow; default uses FLAC STREAMINFO MD5 when available)',
+)
+@click.option('--limit', type=int, help='Only process first N files (useful for smoke tests)')
 @click.option('--dj-only', is_flag=True, help='Mark all registered files as DJ material')
 @click.option('--check-duration', is_flag=True, help='Measure duration and compute duration status')
 @click.option('--prompt/--no-prompt', default=True, help='Prompt when similar files exist')
 @click.option('-v', '--verbose', is_flag=True, help='Verbose output')
-def register(path, source, db, execute, dj_only, check_duration, prompt, verbose):
+def register(path, source, db, execute, full_hash, limit, dj_only, check_duration, prompt, verbose):
     """
     Register files in inventory.
 
@@ -1996,29 +2002,37 @@ def register(path, source, db, execute, dj_only, check_duration, prompt, verbose
     from dedupe.storage.schema import get_connection, init_db
     from dedupe.storage.queries import get_file
     from dedupe.core.hashing import calculate_file_hash
+    from dedupe.core.metadata import extract_metadata
     from dedupe.utils.db import resolve_db_path
-    from mutagen.flac import FLAC
     from datetime import datetime, timezone
     from dedupe.utils.audit_log import append_jsonl, resolve_log_path
     from dedupe.utils.config import get_config
+    from dedupe.utils.paths import list_files
+    from dedupe.utils.zones import get_default_zone_manager
+    import json
+    import itertools
 
-    # Resolve database path
-    db_path = Path(db) if db else resolve_db_path()
-    if not db_path.exists():
-        raise click.ClickException(f"Database not found: {db_path}")
+    resolution = resolve_db_path(
+        db,
+        purpose="write" if execute else "read",
+        allow_create=bool(execute),
+    )
+    db_path = resolution.path
 
     path_obj = Path(path).expanduser().resolve()
     if not path_obj.exists():
         raise click.ClickException(f"Path not found: {path}")
 
-    # Collect FLAC files
-    flac_files = list(path_obj.rglob("*.flac"))
-    if not flac_files:
-        click.echo(f"No FLAC files found in {path}")
-        return
+    # Collect FLAC files (streaming; avoids huge in-memory lists for big libraries).
+    flac_iter = list_files(path_obj, {".flac"})
+    if limit:
+        flac_iter = itertools.islice(flac_iter, int(limit))
 
-    click.echo(f"Found {len(flac_files)} FLAC files")
+    click.echo(f"Scanning: {path_obj}")
     click.echo(f"Source: {source}")
+    click.echo(f"Hashing: {'full sha256' if full_hash else 'streaminfo md5 (sha256 fallback)'}")
+    if limit:
+        click.echo(f"Limit: {limit}")
     if not execute:
         click.echo("[DRY-RUN MODE - use --execute to save]")
     click.echo("")
@@ -2030,8 +2044,9 @@ def register(path, source, db, execute, dj_only, check_duration, prompt, verbose
         if configured_dir:
             log_dir = Path(configured_dir).expanduser()
 
-    conn = get_connection(str(db_path), purpose="write")
-    init_db(conn)
+    conn = get_connection(str(db_path), purpose="write" if execute else "read", allow_create=bool(execute))
+    if execute:
+        init_db(conn)
     try:
         registered = 0
         skipped = 0
@@ -2039,25 +2054,62 @@ def register(path, source, db, execute, dj_only, check_duration, prompt, verbose
         now_iso = datetime.now(timezone.utc).isoformat()
         ok_max_ms, warn_max_ms = _duration_thresholds_from_config()
         duration_version = _duration_check_version(ok_max_ms, warn_max_ms)
+        zone_manager = get_default_zone_manager()
 
-        for i, file_path in enumerate(flac_files, start=1):
+        total = 0
+        for i, file_path in enumerate(flac_iter, start=1):
+            total = i
             try:
+                mgmt_status_override = None
+
                 # Check if already registered
                 existing = get_file(conn, file_path)
                 if existing:
                     if verbose:
-                        click.echo(f"  [{i}/{len(flac_files)}] SKIP (already registered) {file_path.name}")
+                        click.echo(f"  [{i}] SKIP (already registered) {file_path.name}")
                     skipped += 1
                     continue
 
-                # Compute checksum
-                sha256 = calculate_file_hash(file_path)
+                # Extract STREAMINFO MD5 + tags/tech. Full hash is optional for speed.
+                audio = extract_metadata(
+                    file_path,
+                    scan_integrity=False,
+                    scan_hash=bool(full_hash),
+                    library="default",
+                    zone_manager=zone_manager,
+                )
 
-                # Check for existing file with same sha256
-                existing_matches = conn.execute(
-                    "SELECT path, download_source FROM files WHERE sha256 = ?",
-                    (sha256,)
-                ).fetchall()
+                checksum = audio.checksum
+                sha256 = audio.sha256
+                streaminfo_md5 = audio.streaminfo_md5
+                if (not streaminfo_md5) and (not sha256):
+                    sha256 = calculate_file_hash(file_path)
+                    checksum = sha256
+
+                zone_value = audio.zone.value if audio.zone else "suspect"
+                metadata_json = json.dumps(audio.metadata or {}, ensure_ascii=False, sort_keys=True)
+
+                # Check for existing file with same content fingerprint
+                if sha256:
+                    existing_matches = conn.execute(
+                        "SELECT path, download_source FROM files WHERE sha256 = ? OR checksum = ?",
+                        (sha256, sha256),
+                    ).fetchall()
+                    content_id_for_log = sha256
+                    content_id_type = "sha256"
+                elif streaminfo_md5:
+                    stream_checksum = f"streaminfo:{streaminfo_md5}"
+                    existing_matches = conn.execute(
+                        "SELECT path, download_source FROM files WHERE streaminfo_md5 = ? OR checksum = ?",
+                        (streaminfo_md5, stream_checksum),
+                    ).fetchall()
+                    content_id_for_log = streaminfo_md5
+                    content_id_type = "streaminfo_md5"
+                else:
+                    existing_matches = []
+                    content_id_for_log = None
+                    content_id_type = "none"
+
                 if existing_matches:
                     action = _prompt_duplicate_action(
                         file_path=file_path,
@@ -2070,7 +2122,8 @@ def register(path, source, db, execute, dj_only, check_duration, prompt, verbose
                             "event": "duplicate_decision",
                             "timestamp": now_iso,
                             "path": str(file_path),
-                            "sha256": sha256,
+                            "content_id": content_id_for_log,
+                            "content_id_type": content_id_type,
                             "source": source,
                             "action": action,
                             "matches": [
@@ -2083,23 +2136,13 @@ def register(path, source, db, execute, dj_only, check_duration, prompt, verbose
                         raise click.ClickException("User aborted")
                     if action == "skip":
                         if verbose:
-                            click.echo(f"  [{i}/{len(flac_files)}] SKIP (duplicate) {file_path.name}")
+                            click.echo(f"  [{i}] SKIP (duplicate) {file_path.name}")
                         skipped += 1
                         continue
                     if action == "replace":
                         if verbose:
-                            click.echo(f"  [{i}/{len(flac_files)}] REPLACE (marked) {file_path.name}")
+                            click.echo(f"  [{i}] REPLACE (marked) {file_path.name}")
                         mgmt_status_override = "needs_review"
-
-                # Get FLAC metadata
-                audio = None
-                try:
-                    audio = FLAC(file_path)
-                    duration = int(audio.info.length) if audio.info.length else 0
-                except Exception as e:
-                    duration = 0
-                    if verbose:
-                        click.echo(f"  Warning: Could not read duration for {file_path.name}: {e}")
 
                 duration_measured_ms = None
                 duration_ref_ms = None
@@ -2109,15 +2152,13 @@ def register(path, source, db, execute, dj_only, check_duration, prompt, verbose
                 duration_status = None
                 duration_measured_at = None
                 duration_ref_updated_at = None
-                mgmt_status_override = None
 
                 if check_duration:
                     duration_measured_ms = _measure_duration_ms(file_path)
                     duration_measured_at = now_iso
 
-                    tags = audio.tags or {} if audio is not None else {}
-                    beatport_id = _extract_tag_value(tags, ["BEATPORT_TRACK_ID", "BP_TRACK_ID", "beatport_track_id"])
-                    isrc = _extract_tag_value(tags, ["ISRC", "TSRC"])
+                    beatport_id = _extract_tag_value(audio.metadata, ["BEATPORT_TRACK_ID", "BP_TRACK_ID", "beatport_track_id"])
+                    isrc = _extract_tag_value(audio.metadata, ["ISRC", "TSRC"])
 
                     duration_ref_ms, duration_ref_source, duration_ref_track_id = _lookup_duration_ref_ms(
                         conn, beatport_id, isrc
@@ -2158,25 +2199,38 @@ def register(path, source, db, execute, dj_only, check_duration, prompt, verbose
                             "action": "blocked_promotion",
                         }
                         append_jsonl(resolve_log_path("mgmt_duration"), anomaly_payload)
+                        mgmt_status_override = mgmt_status_override or "needs_review"
 
                 # Register in database
                 if execute:
+                    flac_ok_value = None if audio.flac_ok is None else int(bool(audio.flac_ok))
                     conn.execute(
                         """
                         INSERT OR IGNORE INTO files (
-                            path, sha256, library, zone, duration,
+                            path, checksum, streaminfo_md5, sha256, library, zone, mtime, size,
+                            duration, bit_depth, sample_rate, bitrate, metadata_json, flac_ok, integrity_state,
                             download_source, download_date, original_path, mgmt_status,
                             is_dj_material, duration_ref_ms, duration_ref_source, duration_ref_track_id,
                             duration_ref_updated_at, duration_measured_ms, duration_measured_at,
                             duration_delta_ms, duration_status, duration_check_version
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             str(file_path),
+                            checksum,
+                            streaminfo_md5,
                             sha256,
-                            "default",  # TODO: infer from path
-                            "staging",  # TODO: infer from path
-                            duration,
+                            "default",
+                            zone_value,
+                            audio.mtime,
+                            audio.size,
+                            float(audio.duration or 0.0),
+                            int(audio.bit_depth or 0),
+                            int(audio.sample_rate or 0),
+                            int(audio.bitrate or 0),
+                            metadata_json,
+                            flac_ok_value,
+                            audio.integrity_state,
                             source,
                             now_iso,
                             str(file_path),  # original_path = current path (no move yet)
@@ -2199,14 +2253,18 @@ def register(path, source, db, execute, dj_only, check_duration, prompt, verbose
                         ),
                     )
 
-                if verbose or i % 50 == 0 or i == len(flac_files):
-                    click.echo(f"  [{i}/{len(flac_files)}] {file_path.name}")
+                if verbose or i % 50 == 0:
+                    click.echo(f"  [{i}] {file_path.name}")
 
                 registered += 1
 
             except Exception as e:
                 errors += 1
                 click.echo(f"  ERROR: {file_path.name}: {e}")
+
+        if total == 0:
+            click.echo(f"No FLAC files found in {path}")
+            return
 
         if execute:
             conn.commit()
@@ -2218,7 +2276,7 @@ def register(path, source, db, execute, dj_only, check_duration, prompt, verbose
     click.echo(f"{'='*50}")
     click.echo("RESULTS")
     click.echo(f"{'='*50}")
-    click.echo(f"  Total:       {len(flac_files):>6}")
+    click.echo(f"  Total:       {total:>6}")
     click.echo(f"  Registered:  {registered:>6}  {'✓' if registered > 0 else '(none)'}")
     click.echo(f"  Skipped:     {skipped:>6}  (already registered)")
     click.echo(f"  Errors:      {errors:>6}  {'⚠' if errors > 0 else ''}")
@@ -2259,10 +2317,9 @@ def check(path, source, db, strict, prompt, verbose):
     from datetime import datetime, timezone
     import sys
 
-    # Resolve database path
-    db_path = Path(db) if db else resolve_db_path()
-    if not db_path.exists():
-        raise click.ClickException(f"Database not found: {db_path}")
+    # Resolve database path (auto-detect from CLI/env/config)
+    resolution = resolve_db_path(db, purpose="read")
+    db_path = resolution.path
 
     # Collect file paths from argument or stdin
     file_paths = []
@@ -2443,9 +2500,12 @@ def check_duration(path, db, execute, dj_only, source, verbose):
     from mutagen.flac import FLAC
     from datetime import datetime, timezone
 
-    db_path = Path(db) if db else resolve_db_path()
-    if not db_path.exists():
-        raise click.ClickException(f"Database not found: {db_path}")
+    resolution = resolve_db_path(
+        db,
+        purpose="write" if execute else "read",
+        allow_create=bool(execute),
+    )
+    db_path = resolution.path
 
     path_obj = Path(path).expanduser().resolve()
     if not path_obj.exists():
@@ -2464,8 +2524,9 @@ def check_duration(path, db, execute, dj_only, source, verbose):
     duration_version = _duration_check_version(ok_max_ms, warn_max_ms)
     now_iso = datetime.now(timezone.utc).isoformat()
 
-    conn = get_connection(str(db_path), purpose="write" if execute else "read")
-    init_db(conn)
+    conn = get_connection(str(db_path), purpose="write" if execute else "read", allow_create=bool(execute))
+    if execute:
+        init_db(conn)
     try:
         updated = 0
         missing = 0
@@ -2601,19 +2662,17 @@ def audit_duration(db, dj_only, status_filter, source, since):
     """
     Report files with duration_status != ok (or filtered statuses).
     """
-    from dedupe.storage.schema import get_connection, init_db
+    from dedupe.storage.schema import get_connection
     from dedupe.utils.db import resolve_db_path
 
-    db_path = Path(db) if db else resolve_db_path()
-    if not db_path.exists():
-        raise click.ClickException(f"Database not found: {db_path}")
+    resolution = resolve_db_path(db, purpose="read")
+    db_path = resolution.path
 
     statuses = None
     if status_filter:
         statuses = [s.strip() for s in status_filter.split(",") if s.strip()]
 
     conn = get_connection(str(db_path), purpose="read")
-    init_db(conn)
     try:
         where = ["1=1"]
         params = []
@@ -2667,9 +2726,12 @@ def set_duration_ref(path, db, dj_only, confirm, execute):
     if execute and not confirm:
         raise click.ClickException("--confirm is required with --execute")
 
-    db_path = Path(db) if db else resolve_db_path()
-    if not db_path.exists():
-        raise click.ClickException(f"Database not found: {db_path}")
+    resolution = resolve_db_path(
+        db,
+        purpose="write" if execute else "read",
+        allow_create=bool(execute),
+    )
+    db_path = resolution.path
 
     file_path = Path(path).expanduser().resolve()
     if not file_path.exists():
@@ -2686,8 +2748,9 @@ def set_duration_ref(path, db, dj_only, confirm, execute):
     ok_max_ms, warn_max_ms = _duration_thresholds_from_config()
     duration_version = _duration_check_version(ok_max_ms, warn_max_ms)
 
-    conn = get_connection(str(db_path), purpose="write" if execute else "read")
-    init_db(conn)
+    conn = get_connection(str(db_path), purpose="write" if execute else "read", allow_create=bool(execute))
+    if execute:
+        init_db(conn)
     try:
         if execute:
             conn.execute(

@@ -1,5 +1,8 @@
 # Dedupe V2: Synthesized Architecture
 
+> Status note (2026-02-08): This is a synthesized/historical architecture snapshot.
+> For the current operational script surface, use `docs/SCRIPT_SURFACE.md` and live CLI help output.
+
 This document describes the current production architecture of the Dedupe system, synthesized from the "Unified" package structure.
 
 ---

@@ -74,6 +74,23 @@ This repository is a response to three converging realities:
 
    The philosophy is that structure, not manual heroics, is what will keep the library sane in the long run.
 
+### Canonical Library Naming (FINAL_LIBRARY)
+
+The canonical library uses a **single, strict layout** derived deterministically from tags:
+
+```
+FINAL_LIBRARY/
+  <Album Artist>/
+    (<Release Year>) <Album Title>/
+      <Artist or Album Artist> – (<Release Year>) <Album Title> – <Disc><Track> <Track Title>.flac
+```
+
+- **Album Artist is authoritative** for folders and filenames, except **Various Artists** albums where the filename uses **Track Artist** (also treats pathological comma-list albumartist values as Various Artists).
+- Promotion is **move-only** and automated:
+  - Plan: `tools/review/plan_promote_to_final_library.py`
+  - Execute moves: `tools/review/move_from_plan.py` (using the generated plan CSV)
+  - Direct mover (dry-run by default): `tools/review/promote_by_tags.py --final-library`
+
 ---
 
 ## Tools and Their Roles

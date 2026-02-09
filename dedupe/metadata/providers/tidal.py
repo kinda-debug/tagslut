@@ -1,10 +1,8 @@
 """
-Tidal OpenAPI v2 provider.
+Tidal API provider.
 
-Tidal uses a JSON:API format, so responses are structured with `data` and `attributes`.
+Uses Tidal's v1 API endpoints for search and track lookup.
 Authentication is via Bearer token.
-
-API Reference: https://developer.tidal.com/apireference/
 """
 
 import logging
@@ -19,11 +17,11 @@ logger = logging.getLogger("dedupe.metadata.providers.tidal")
 
 class TidalProvider(AbstractProvider):
     """
-    Tidal OpenAPI v2 provider.
+    Tidal provider.
 
     Supports:
-    - Track by ID: GET /v2/tracks/{id}
-    - Text search: GET /v2/search?types=tracks&query={query}
+    - Track by ID: GET /v1/tracks/{id}
+    - Text search: GET /v1/search?types=TRACKS&query={query}
     - ISRC search: Client-side filtering on text search results.
     """
 
@@ -36,7 +34,7 @@ class TidalProvider(AbstractProvider):
         base_backoff=2.0,
     )
 
-    BASE_URL = "https://openapi.tidal.com/v2"
+    BASE_URL = "https://api.tidal.com/v1"
     # Country code for Tidal API requests - configurable via environment variable
     # Default: "US". Override with TIDAL_COUNTRY_CODE env var.
     COUNTRY_CODE = os.environ.get("TIDAL_COUNTRY_CODE", "US")
@@ -45,8 +43,8 @@ class TidalProvider(AbstractProvider):
         """Get headers with Bearer token."""
         token = self._get_token()
         headers = {
-            "Accept": "application/vnd.tidal.v2+json",
-            "Content-Type": "application/vnd.tidal.v2+json",
+            "Accept": "application/json",
+            "Content-Type": "application/json",
         }
         if token and token.access_token:
             headers["Authorization"] = f"Bearer {token.access_token}"
@@ -72,17 +70,14 @@ class TidalProvider(AbstractProvider):
             ProviderTrack with match_confidence=EXACT, or None
         """
         url = f"{self.BASE_URL}/tracks/{track_id}"
-        params = {"include": "lyrics"}
 
-        response = self._make_request("GET", url, params=params)
+        response = self._make_request("GET", url)
         if response is None or response.status_code != 200:
             logger.warning("Failed to fetch Tidal track %s", track_id)
             return None
 
         try:
-            data = response.json()
-            track_data = data.get("data", {}).get("attributes", {})
-            track = self._normalize_track(track_data)
+            track = self._normalize_track(response.json())
             if track is None:
                 logger.warning("Tidal track %s returned unusable data", track_id)
                 return None
@@ -106,7 +101,7 @@ class TidalProvider(AbstractProvider):
         url = f"{self.BASE_URL}/search"
         params = {
             "query": query,
-            "types": "tracks",
+            "types": "TRACKS",
             "limit": min(limit, 50),
         }
 
@@ -117,12 +112,10 @@ class TidalProvider(AbstractProvider):
 
         try:
             data = response.json()
-            tracks = data.get("data", [])
-            # In search, results are items with resource.attributes
-            # Filter out None results from unusable items
+            tracks = data.get("tracks", {}).get("items", [])
             results = []
             for t in tracks:
-                normalized = self._normalize_track(t.get("resource", {}).get("attributes", {}))
+                normalized = self._normalize_track(t)
                 if normalized is not None:
                     results.append(normalized)
             return results
@@ -130,66 +123,99 @@ class TidalProvider(AbstractProvider):
             logger.error("Failed to parse Tidal search response: %s", e)
             return []
 
+    @staticmethod
+    def _cover_to_url(cover_id: Optional[str], size: int = 640) -> Optional[str]:
+        """Convert Tidal cover UUID to resources image URL."""
+        if not cover_id:
+            return None
+        return f"https://resources.tidal.com/images/{cover_id.replace('-', '/')}/{size}x{size}.jpg"
+
     def _normalize_track(self, attributes: Dict[str, Any]) -> Optional[ProviderTrack]:
         """
-        Normalize Tidal track object (from attributes) to ProviderTrack.
+        Normalize Tidal track object to ProviderTrack.
 
-        Tidal track attributes structure:
-        {
-            "title": "...",
-            "artists": [{"name": "..."}],
-            "album": {"title": "..."},
-            "duration": 123,
-            "isrc": "...",
-            "releaseDate": "YYYY-MM-DD",
-            ...
-        }
-        
         Returns:
-            ProviderTrack if attributes contain usable data, None otherwise.
+            ProviderTrack if data contains usable fields, None otherwise.
             This avoids returning stub objects that lack meaningful content.
         """
         # Return None for empty/unusable data instead of stub ProviderTrack
         if not attributes:
             logger.debug("Empty attributes received, returning None")
             return None
-        
-        # Require at least a title or ID to be considered usable
-        if not attributes.get("title") and not attributes.get("id"):
+
+        # Support both v1 object shape and JSON:API resource wrapper fallback
+        if "resource" in attributes and isinstance(attributes.get("resource"), dict):
+            attributes = attributes.get("resource", {}).get("attributes", {})
+
+        track_id = attributes.get("id")
+        title = attributes.get("title")
+        if not title and not track_id:
             logger.debug("Track missing both title and id, returning None")
             return None
 
         artists = attributes.get("artists", [])
-        artist_name = ", ".join(a.get("name", "") for a in artists) if artists else None
+        artist_name = ", ".join(a.get("name", "") for a in artists if a.get("name")) if artists else None
 
         album = attributes.get("album", {})
-        album_name = album.get("title")
+        album_name = album.get("title") if isinstance(album, dict) else None
 
-        release_date = attributes.get("releaseDate")
+        release_date = None
+        if isinstance(album, dict):
+            release_date = album.get("releaseDate")
+        if not release_date:
+            release_date = attributes.get("releaseDate") or attributes.get("streamStartDate")
         year = None
         if release_date:
             try:
                 year = int(release_date[:4])
             except (ValueError, IndexError):
                 pass
-        
+
         duration_s = attributes.get("duration")
         duration_ms = duration_s * 1000 if duration_s else None
 
+        key_value = attributes.get("key")
+        key_scale = attributes.get("keyScale")
+        canonical_key = None
+        if key_value and key_scale:
+            scale = str(key_scale).upper()
+            if scale.startswith("MAJ"):
+                canonical_key = f"{key_value} major"
+            elif scale.startswith("MIN"):
+                canonical_key = f"{key_value} minor"
+            else:
+                canonical_key = f"{key_value} {str(key_scale).lower()}"
+        elif key_value:
+            canonical_key = str(key_value)
+
+        explicit = attributes.get("explicit")
+        if explicit is None:
+            explicit = "EXPLICIT" in (attributes.get("parentalWarningType") or "")
+
+        album_art_url = self._cover_to_url(album.get("cover")) if isinstance(album, dict) else None
+        track_url = attributes.get("url")
+        if not track_url and track_id is not None:
+            track_url = f"https://tidal.com/browse/track/{track_id}"
+
         return ProviderTrack(
             service="tidal",
-            service_track_id=str(attributes.get("id")),
-            title=attributes.get("title"),
+            service_track_id=str(track_id),
+            title=title,
             artist=artist_name,
             album=album_name,
             duration_ms=duration_ms,
             isrc=attributes.get("isrc"),
             year=year,
-            album_art_url=album.get("image", {}).get("url"),
-            url=album.get("tidalUrl"),
+            release_date=release_date,
+            album_art_url=album_art_url,
+            url=track_url,
             track_number=attributes.get("trackNumber"),
             disc_number=attributes.get("volumeNumber"),
-            explicit="EXPLICIT" in (attributes.get("parentalWarningType") or ""),
+            explicit=bool(explicit),
+            bpm=attributes.get("bpm"),
+            key=canonical_key,
+            audio_quality=attributes.get("audioQuality"),
+            copyright=attributes.get("copyright"),
             match_confidence=MatchConfidence.NONE,
             raw=attributes,
         )

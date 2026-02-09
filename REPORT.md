@@ -229,6 +229,40 @@ All decisions, constraints, and patterns must be documented so that:
 
 This is why both `REPORT.md` (high-level state and strategy) and `AGENTS.md` (operational dos/don'ts) are critical.
 
+### Redesign Proposal (2026-02-09)
+
+A radical redesign proposal (architecture, data model v3, policy engine, CLI convergence, and migration phases) is documented at:
+
+- `docs/PROPOSAL_RADICAL_REDESIGN_2026-02-09.md`
+- Execution tracker: `docs/REDESIGN_TRACKER.md`
+- Move executor compatibility contract (Phase 0 baseline):
+  - `docs/MOVE_EXECUTOR_COMPAT.md`
+  - Adapter module: `dedupe/exec/compat.py`
+  - Current adapter consumers:
+    - `tools/review/move_from_plan.py`
+    - `tools/review/quarantine_from_plan.py`
+  - Additional active move path with structured audit logging:
+    - `tools/review/promote_by_tags.py` (via `dedupe/utils/file_operations.py`, `--move-log`)
+- Phase 1 runbook:
+  - `docs/PHASE1_V3_DUAL_WRITE.md`
+- Phase 1 verification report:
+  - `docs/PHASE1_VERIFICATION_2026-02-09.md`
+- Phase 2 runbook:
+  - `docs/PHASE2_POLICY_DECIDE.md`
+- Phase 2 verification report:
+  - `docs/PHASE2_VERIFICATION_2026-02-09.md`
+- Phase 3 runbook:
+  - `docs/PHASE3_EXECUTOR.md`
+- Phase 3 verification report:
+  - `docs/PHASE3_VERIFICATION_2026-02-09.md`
+- Phase 4 runbook:
+  - `docs/PHASE4_CLI_CONVERGENCE.md`
+- Phase 4 verification report:
+  - `docs/PHASE4_VERIFICATION_2026-02-09.md`
+- Phase 5 decommission plan:
+  - `docs/PHASE5_LEGACY_DECOMMISSION.md`
+  - Legacy wrapper decommission (`scan/recommend/apply/promote/quarantine`) executed on February 9, 2026; compatibility wrappers (`mgmt/metadata/recover`) remain during burn-in.
+
 ---
 
 ## Management & Recovery Modes (New)

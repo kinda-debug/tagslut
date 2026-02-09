@@ -1,5 +1,6 @@
 import click
 import logging
+import os
 import sys
 import time
 from datetime import datetime
@@ -7,12 +8,65 @@ from pathlib import Path
 
 # Add project root to path so we can import tools as modules if needed
 sys.path.insert(0, str(Path(__file__).parents[2]))
+_PROJECT_ROOT = Path(__file__).parents[2]
 
 logger = logging.getLogger("dedupe")
 
 # Support shorthand: `dedupe -m ...` -> `dedupe mgmt ...`
 if len(sys.argv) > 1 and sys.argv[1] == "-m":
     sys.argv[1:2] = ["mgmt"]
+
+_TRANSITIONAL_COMMAND_REPLACEMENTS: dict[str, str] = {
+    "dedupe mgmt": "dedupe index ... / dedupe report m3u ...",
+    "dedupe metadata": "dedupe auth ... / dedupe index enrich ...",
+    "dedupe recover": "dedupe verify recovery ... / dedupe report recovery ...",
+}
+_INTERNAL_CLI_ENV = "DEDUPE_CLI_INTERNAL_CALL"
+
+
+def _format_transitional_warning(command: str) -> str:
+    replacement = _TRANSITIONAL_COMMAND_REPLACEMENTS.get(command)
+    message = (
+        f"DEPRECATION NOTICE: '{command}' is a transitional legacy wrapper. "
+        "Use canonical entrypoints from docs/SCRIPT_SURFACE.md."
+    )
+    if replacement:
+        message += f" Recommended now: `{replacement}`."
+    return message
+
+
+def _warn_transitional_command(command: str) -> None:
+    click.secho(_format_transitional_warning(command), fg="yellow", err=True)
+
+
+def _is_internal_cli_call() -> bool:
+    return os.getenv(_INTERNAL_CLI_ENV) == "1"
+
+
+def _run_subprocess(cmd: list[str], *, internal: bool = False) -> None:
+    import subprocess
+
+    env = os.environ.copy()
+    if internal:
+        env[_INTERNAL_CLI_ENV] = "1"
+    proc = subprocess.run(cmd, cwd=_PROJECT_ROOT, env=env, check=False)
+    if proc.returncode != 0:
+        raise SystemExit(proc.returncode)
+
+
+def _run_dedupe_wrapper(args: list[str]) -> None:
+    _run_subprocess([sys.executable, "-m", "dedupe", *args], internal=True)
+
+
+def _run_python_script(script_rel_path: str, args: tuple[str, ...]) -> None:
+    script_path = (_PROJECT_ROOT / script_rel_path).resolve()
+    _run_subprocess([sys.executable, str(script_path), *list(args)], internal=True)
+
+
+def _run_executable(script_rel_path: str, args: tuple[str, ...]) -> None:
+    script_path = (_PROJECT_ROOT / script_rel_path).resolve()
+    _run_subprocess([str(script_path), *list(args)], internal=True)
+
 
 def _collect_flac_paths(input_path: str) -> list[Path]:
     path = Path(input_path).expanduser().resolve()
@@ -88,36 +142,6 @@ def _default_canon_rules_path() -> Path:
     return Path(__file__).parents[2] / "tools" / "rules" / "library_canon.json"
 
 
-@cli.command(context_settings=dict(ignore_unknown_options=True, help_option_names=[]))
-@click.argument('args', nargs=-1, type=click.UNPROCESSED)
-def scan(args):
-    """Scan a library volume (legacy wrapper)"""
-    from legacy.tools.integrity.scan import main as scan_cmd
-    # If -h or --help is in args, we want to let the underlying command handle it
-    # but Click might intercept it before we get here.
-    # That's why we use help_option_names=[]
-    sys.argv = ['dedupe scan'] + list(args)
-    scan_cmd()
-
-
-@cli.command(context_settings=dict(ignore_unknown_options=True, help_option_names=[]))
-@click.argument('args', nargs=-1, type=click.UNPROCESSED)
-def recommend(args):
-    """Generate deduplication recommendations (legacy wrapper)"""
-    from legacy.tools.decide.recommend import recommend as recommend_cmd
-    sys.argv = ['dedupe recommend'] + list(args)
-    recommend_cmd()
-
-
-@cli.command(context_settings=dict(ignore_unknown_options=True, help_option_names=[]))
-@click.argument('args', nargs=-1, type=click.UNPROCESSED)
-def apply(args):
-    """Execute deduplication plan (legacy wrapper)"""
-    from legacy.tools.decide.apply import apply as apply_cmd
-    sys.argv = ['dedupe apply'] + list(args)
-    apply_cmd()
-
-
 @cli.command("canonize")
 @click.argument("path", type=click.Path(exists=True))
 @click.option("--canon/--no-canon", default=True, help="Enable canonical tag rules")
@@ -166,6 +190,7 @@ def canonize(path, canon, canon_rules, canon_dry_run, execute, limit):
             audio.save()
         if idx % 250 == 0 or idx == len(file_paths):
             click.echo(f"Processed {idx}/{len(file_paths)}")
+
 
 @cli.command("show-zone")
 @click.argument("path", type=click.Path())
@@ -344,47 +369,6 @@ def enrich_file(db, file_path, providers, force, retry_no_match, execute, recove
     _print_enrichment_result(result)
     click.echo("Done.")
 
-
-@cli.command(context_settings=dict(ignore_unknown_options=True, help_option_names=[]))
-@click.argument('args', nargs=-1, type=click.UNPROCESSED)
-def promote(args):
-    """Promote files into canonical library layout (legacy wrapper)."""
-    from legacy.tools.review.promote_by_tags import main as promote_cmd
-    sys.argv = ['dedupe promote'] + list(args)
-    promote_cmd()
-
-
-@cli.group()
-def quarantine():
-    """Quarantine planning and apply commands."""
-    pass
-
-
-@quarantine.command(context_settings=dict(ignore_unknown_options=True, help_option_names=[]))
-@click.argument('args', nargs=-1, type=click.UNPROCESSED)
-def plan(args):
-    """Plan quarantine actions (legacy wrapper)."""
-    from legacy.tools.review.plan_removals import main as plan_cmd
-    sys.argv = ['dedupe quarantine plan'] + list(args)
-    plan_cmd()
-
-
-@quarantine.command("apply", context_settings=dict(ignore_unknown_options=True, help_option_names=[]))
-@click.argument('args', nargs=-1, type=click.UNPROCESSED)
-def apply_quarantine(args):
-    """Apply quarantine plan (legacy wrapper)."""
-    from legacy.tools.review.apply_removals import main as apply_cmd
-    sys.argv = ['dedupe quarantine apply'] + list(args)
-    apply_cmd()
-
-
-@quarantine.command(name="suspects", context_settings=dict(ignore_unknown_options=True, help_option_names=[]))
-@click.argument('args', nargs=-1, type=click.UNPROCESSED)
-def quarantine_suspects(args):
-    """Copy suspect/corrupt files to suspect zone (legacy wrapper)."""
-    from legacy.tools.review.isolate_suspects import main as isolate_cmd
-    sys.argv = ['dedupe quarantine suspects'] + list(args)
-    isolate_cmd()
 
 def _interactive_init() -> dict:
     """
@@ -787,10 +771,10 @@ def init(output_format, output_path, setup_tokens):
     click.echo("")
     click.echo("Next steps:")
     click.echo("  1. Review your configuration file")
-    click.echo("  2. Run your first scan:")
-    click.echo(f"     dedupe scan {config['VOLUME_LIBRARY']}")
-    click.echo("  3. Generate deduplication recommendations:")
-    click.echo("     dedupe recommend")
+    click.echo("  2. Register/index your library:")
+    click.echo(f"     dedupe index register {config['VOLUME_LIBRARY']} --source legacy")
+    click.echo("  3. Build a deterministic plan:")
+    click.echo("     dedupe decide plan --policy library_balanced --input candidates.json")
     click.echo("")
 
 
@@ -937,6 +921,9 @@ def recover(
         # Generate report
         dedupe recover --db recovery.db --phase report --output report.csv
     """
+    if not _is_internal_cli_call():
+        _warn_transitional_command("dedupe recover")
+
     from dedupe.recovery import RecoveryScanner, Repairer, Verifier, Reporter
     from dedupe.storage.schema import init_db
     import sqlite3
@@ -1092,7 +1079,8 @@ def recover(
 @cli.group()
 def metadata():
     """Metadata enrichment commands."""
-    pass
+    if not _is_internal_cli_call():
+        _warn_transitional_command("dedupe metadata")
 
 
 @metadata.command()
@@ -1682,6 +1670,8 @@ def _beatport_token_input(token_manager):
 @click.pass_context
 def mgmt(ctx, m3u_mode, merge, m3u_dir, db, source, paths):
     """Management mode: inventory tracking and duplicate checking."""
+    if not _is_internal_cli_call():
+        _warn_transitional_command("dedupe mgmt")
     if ctx.invoked_subcommand is None:
         if not m3u_mode:
             click.echo(ctx.get_help())
@@ -2001,6 +1991,7 @@ def register(path, source, db, execute, full_hash, limit, dj_only, check_duratio
     """
     from dedupe.storage.schema import get_connection, init_db
     from dedupe.storage.queries import get_file
+    from dedupe.storage.v3 import dual_write_enabled, dual_write_registered_file
     from dedupe.core.hashing import calculate_file_hash
     from dedupe.core.metadata import extract_metadata
     from dedupe.utils.db import resolve_db_path
@@ -2048,6 +2039,9 @@ def register(path, source, db, execute, full_hash, limit, dj_only, check_duratio
     if execute:
         init_db(conn)
     try:
+        dual_write_v3 = bool(execute and dual_write_enabled())
+        if dual_write_v3:
+            click.echo("V3 dual-write: enabled")
         registered = 0
         skipped = 0
         errors = 0
@@ -2252,6 +2246,34 @@ def register(path, source, db, execute, full_hash, limit, dj_only, check_duratio
                             duration_version if check_duration else None,
                         ),
                     )
+                    if dual_write_v3:
+                        dual_write_registered_file(
+                            conn,
+                            path=str(file_path),
+                            content_sha256=sha256,
+                            streaminfo_md5=streaminfo_md5,
+                            checksum=checksum,
+                            size_bytes=audio.size,
+                            mtime=audio.mtime,
+                            duration_s=float(audio.duration or 0.0),
+                            sample_rate=int(audio.sample_rate or 0),
+                            bit_depth=int(audio.bit_depth or 0),
+                            bitrate=int(audio.bitrate or 0),
+                            library="default",
+                            zone=zone_value,
+                            download_source=source,
+                            download_date=now_iso,
+                            mgmt_status=mgmt_status_override
+                            or (
+                                "needs_review"
+                                if dj_only and duration_status in ("warn", "fail", "unknown")
+                                else "new"
+                            ),
+                            metadata=audio.metadata or {},
+                            duration_ref_ms=duration_ref_ms,
+                            duration_ref_source=duration_ref_source,
+                            event_time=now_iso,
+                        )
 
                 if verbose or i % 50 == 0:
                     click.echo(f"  [{i}] {file_path.name}")
@@ -2810,6 +2832,331 @@ def set_duration_ref(path, db, dj_only, confirm, execute):
         conn.close()
 
     click.echo(f"Duration reference set: {manual_id} ({duration_measured_ms} ms)")
+
+
+_WRAPPER_CONTEXT = dict(ignore_unknown_options=True, help_option_names=[])
+
+
+@cli.group()
+def intake():
+    """Canonical intake commands."""
+
+
+@intake.command("run", context_settings=_WRAPPER_CONTEXT)
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def intake_run(args):
+    """Run unified download + intake orchestration."""
+    _run_executable("tools/get-intake", args)
+
+
+@intake.command("prefilter", context_settings=_WRAPPER_CONTEXT)
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def intake_prefilter(args):
+    """Run Beatport prefilter against inventory DB."""
+    _run_python_script("tools/review/beatport_prefilter.py", args)
+
+
+@cli.group()
+def index():
+    """Canonical indexing and metadata registration commands."""
+
+
+@index.command("register", context_settings=_WRAPPER_CONTEXT)
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def index_register(args):
+    """Register files in inventory."""
+    _run_dedupe_wrapper(["mgmt", "register", *list(args)])
+
+
+@index.command("check", context_settings=_WRAPPER_CONTEXT)
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def index_check(args):
+    """Check for duplicates before downloading."""
+    _run_dedupe_wrapper(["mgmt", "check", *list(args)])
+
+
+@index.command("duration-check", context_settings=_WRAPPER_CONTEXT)
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def index_duration_check(args):
+    """Measure durations and compute duration status."""
+    _run_dedupe_wrapper(["mgmt", "check-duration", *list(args)])
+
+
+@index.command("duration-audit", context_settings=_WRAPPER_CONTEXT)
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def index_duration_audit(args):
+    """Audit duration anomalies from inventory."""
+    _run_dedupe_wrapper(["mgmt", "audit-duration", *list(args)])
+
+
+@index.command("set-duration-ref", context_settings=_WRAPPER_CONTEXT)
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def index_set_duration_ref(args):
+    """Set manual duration reference from a known-good file."""
+    _run_dedupe_wrapper(["mgmt", "set-duration-ref", *list(args)])
+
+
+@index.command("enrich", context_settings=_WRAPPER_CONTEXT)
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def index_enrich(args):
+    """Run metadata enrichment for indexed files."""
+    _run_dedupe_wrapper(["metadata", "enrich", *list(args)])
+
+
+@cli.group()
+def decide():
+    """Canonical deterministic planning commands."""
+
+
+@decide.command("profiles")
+def decide_profiles():
+    """List available policy profiles."""
+    from dedupe.policy import list_policy_profiles, load_policy_profile
+
+    names = list_policy_profiles()
+    if not names:
+        click.echo("No policy profiles found.")
+        return
+    click.echo("Policy profiles:")
+    for name in names:
+        profile = load_policy_profile(name)
+        click.echo(f"  - {profile.name} ({profile.version}) lane={profile.lane}")
+
+
+@decide.command("plan")
+@click.option("--policy", default="library_balanced", show_default=True, help="Policy profile name")
+@click.option("--input", "input_path", type=click.Path(exists=True), required=True, help="Input JSON candidates file")
+@click.option("--output", "output_path", type=click.Path(), help="Output JSON plan path")
+@click.option("--run-label", default="decide", show_default=True, help="Run label prefix")
+def decide_plan(policy, input_path, output_path, run_label):
+    """Build deterministic policy-stamped plan from candidate JSON."""
+    import json
+
+    from dedupe.decide import PlanCandidate, build_deterministic_plan
+    from dedupe.policy import load_policy_profile
+
+    payload = json.loads(Path(input_path).read_text(encoding="utf-8"))
+    if isinstance(payload, dict):
+        raw_candidates = payload.get("candidates", [])
+    elif isinstance(payload, list):
+        raw_candidates = payload
+    else:
+        raise click.ClickException("Input JSON must be a list or {'candidates': [...]} object")
+
+    if not isinstance(raw_candidates, list):
+        raise click.ClickException("Input candidates must be a JSON list")
+
+    candidates: list[PlanCandidate] = []
+    for idx, item in enumerate(raw_candidates, start=1):
+        if not isinstance(item, dict):
+            raise click.ClickException(f"Candidate #{idx} must be a JSON object")
+        path = str(item.get("path", "")).strip()
+        if not path:
+            raise click.ClickException(f"Candidate #{idx} missing required 'path'")
+        match_reasons = item.get("match_reasons", ())
+        if isinstance(match_reasons, str):
+            match_reasons = [match_reasons]
+        if not isinstance(match_reasons, list):
+            match_reasons = []
+        candidates.append(
+            PlanCandidate(
+                path=path,
+                proposed_action=item.get("proposed_action"),
+                proposed_reason=item.get("proposed_reason"),
+                match_reasons=tuple(str(v) for v in match_reasons),
+                is_dj_material=bool(item.get("is_dj_material", False)),
+                duration_status=item.get("duration_status"),
+                context=item.get("context", {}) if isinstance(item.get("context"), dict) else {},
+            )
+        )
+
+    policy_profile = load_policy_profile(policy)
+    plan = build_deterministic_plan(candidates, policy_profile, run_label=run_label)
+    serialized = plan.to_json(indent=2)
+    if output_path:
+        output_file = Path(output_path).expanduser().resolve()
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        output_file.write_text(serialized, encoding="utf-8")
+        click.echo(f"Wrote plan: {output_file}")
+    else:
+        click.echo(serialized.rstrip())
+    click.echo(f"Plan hash: {plan.plan_hash}")
+    click.echo(f"Run id: {plan.run_id}")
+
+
+@cli.group(name="execute")
+def execute_group():
+    """Canonical execution commands."""
+
+
+@execute_group.command("move-plan", context_settings=_WRAPPER_CONTEXT)
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def execute_move_plan(args):
+    """Execute move actions from a plan CSV."""
+    _run_python_script("tools/review/move_from_plan.py", args)
+
+
+@execute_group.command("quarantine-plan", context_settings=_WRAPPER_CONTEXT)
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def execute_quarantine_plan(args):
+    """Execute quarantine move actions from a plan CSV."""
+    _run_python_script("tools/review/quarantine_from_plan.py", args)
+
+
+@execute_group.command("promote-tags", context_settings=_WRAPPER_CONTEXT)
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def execute_promote_tags(args):
+    """Execute promote-by-tags move workflow."""
+    _run_python_script("tools/review/promote_by_tags.py", args)
+
+
+@cli.group()
+def verify():
+    """Canonical verification commands."""
+
+
+@verify.command("duration", context_settings=_WRAPPER_CONTEXT)
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def verify_duration(args):
+    """Verify duration health status from inventory."""
+    _run_dedupe_wrapper(["mgmt", "audit-duration", *list(args)])
+
+
+@verify.command("recovery", context_settings=_WRAPPER_CONTEXT)
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def verify_recovery(args):
+    """Run recovery verification phase."""
+    _run_dedupe_wrapper(["recover", "--phase", "verify", *list(args)])
+
+
+@verify.command("parity", context_settings=_WRAPPER_CONTEXT)
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def verify_parity(args):
+    """Run legacy-v3 parity validation checks."""
+    _run_python_script("scripts/validate_v3_dual_write_parity.py", args)
+
+
+@verify.command("receipts")
+@click.option("--db", type=click.Path(), required=True, help="SQLite DB path")
+@click.option("--strict", is_flag=True, help="Return non-zero when warnings are detected")
+def verify_receipts(db, strict):
+    """Validate move execution receipt consistency in v3 tables."""
+    import sqlite3
+
+    from dedupe.storage.schema import init_db
+
+    db_path = Path(db).expanduser().resolve()
+    if not db_path.exists():
+        raise click.ClickException(f"DB not found: {db_path}")
+
+    conn = sqlite3.connect(str(db_path))
+    init_db(conn)
+    try:
+        totals = {
+            "total": conn.execute("SELECT COUNT(*) FROM move_execution").fetchone()[0],
+            "moved": conn.execute("SELECT COUNT(*) FROM move_execution WHERE status = 'moved'").fetchone()[0],
+            "errors": conn.execute("SELECT COUNT(*) FROM move_execution WHERE status = 'error'").fetchone()[0],
+            "missing_dest": conn.execute(
+                "SELECT COUNT(*) FROM move_execution WHERE status = 'moved' AND (dest_path IS NULL OR TRIM(dest_path) = '')"
+            ).fetchone()[0],
+            "missing_plan": conn.execute(
+                "SELECT COUNT(*) FROM move_execution WHERE plan_id IS NULL"
+            ).fetchone()[0],
+        }
+    finally:
+        conn.close()
+
+    click.echo("Move receipt verification summary:")
+    click.echo(f"  total:        {totals['total']}")
+    click.echo(f"  moved:        {totals['moved']}")
+    click.echo(f"  errors:       {totals['errors']}")
+    click.echo(f"  missing_dest: {totals['missing_dest']}")
+    click.echo(f"  missing_plan: {totals['missing_plan']}")
+
+    warnings = totals["errors"] + totals["missing_dest"]
+    if strict and warnings > 0:
+        raise SystemExit(2)
+
+
+@cli.group()
+def report():
+    """Canonical reporting and export commands."""
+
+
+@report.command("m3u")
+@click.argument("paths", nargs=-1, type=click.Path(exists=True), required=True)
+@click.option("--db", type=click.Path(), help="Database path")
+@click.option("--source", help="Source label for playlist naming")
+@click.option("--m3u-dir", type=click.Path(), help="Output directory")
+@click.option("--merge", is_flag=True, help="Merge all paths into one playlist")
+def report_m3u(paths, db, source, m3u_dir, merge):
+    """Generate M3U playlists from paths."""
+    args: list[str] = ["mgmt", "--m3u"]
+    if merge:
+        args.append("--merge")
+    if m3u_dir:
+        args.extend(["--m3u-dir", str(m3u_dir)])
+    if db:
+        args.extend(["--db", str(db)])
+    if source:
+        args.extend(["--source", str(source)])
+    for path in paths:
+        args.extend(["--path", str(path)])
+    _run_dedupe_wrapper(args)
+
+
+@report.command("duration", context_settings=_WRAPPER_CONTEXT)
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def report_duration(args):
+    """Report duration status issues."""
+    _run_dedupe_wrapper(["mgmt", "audit-duration", *list(args)])
+
+
+@report.command("recovery", context_settings=_WRAPPER_CONTEXT)
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def report_recovery(args):
+    """Run recovery report phase."""
+    _run_dedupe_wrapper(["recover", "--phase", "report", *list(args)])
+
+
+@report.command("plan-summary", context_settings=_WRAPPER_CONTEXT)
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def report_plan_summary(args):
+    """Summarize decide plan JSON into table/csv/json views."""
+    _run_python_script("tools/review/plan_summary.py", args)
+
+
+@cli.group()
+def auth():
+    """Canonical provider authentication commands."""
+
+
+@auth.command("status", context_settings=_WRAPPER_CONTEXT)
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def auth_status_wrapper(args):
+    """Show provider auth/token status."""
+    _run_dedupe_wrapper(["metadata", "auth-status", *list(args)])
+
+
+@auth.command("init", context_settings=_WRAPPER_CONTEXT)
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def auth_init_wrapper(args):
+    """Initialize provider token template file."""
+    _run_dedupe_wrapper(["metadata", "auth-init", *list(args)])
+
+
+@auth.command("refresh", context_settings=_WRAPPER_CONTEXT)
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def auth_refresh_wrapper(args):
+    """Refresh provider access tokens."""
+    _run_dedupe_wrapper(["metadata", "auth-refresh", *list(args)])
+
+
+@auth.command("login", context_settings=_WRAPPER_CONTEXT)
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def auth_login_wrapper(args):
+    """Run interactive provider login flows."""
+    _run_dedupe_wrapper(["metadata", "auth-login", *list(args)])
 
 
 @cli.command()

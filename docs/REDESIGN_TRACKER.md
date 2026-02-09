@@ -10,8 +10,8 @@ This tracker is the working control plane for milestones, ownership, acceptance 
 ## Program Status
 
 - Start date: February 9, 2026
-- Current phase: Phase 5 (Legacy Decommission) - in progress
-- Program status: phase_5_in_progress
+- Current phase: Phase 5 (Legacy Decommission) - completed
+- Program status: phase_5_complete
 - Target cutover window: June 2026
 
 ## Owners
@@ -32,7 +32,7 @@ This tracker is the working control plane for milestones, ownership, acceptance 
 | Phase 2 - Policy + Decide Engine | Mar 16, 2026 - Apr 10, 2026 | Completed | Implement policy evaluator and deterministic planning | Policy loader live; plan generation policy-stamped; golden test plans stable |
 | Phase 3 - Central Move Executor | Apr 13, 2026 - May 1, 2026 | Completed | Route moves through one execution contract | All plan executions use central executor; receipt verification enabled; DB mutation contract enforced |
 | Phase 4 - CLI Convergence | May 4, 2026 - May 22, 2026 | Completed | Ship new stable command surface | `intake/index/decide/execute/verify/report/auth` available; wrappers mapped; docs switched |
-| Phase 5 - Legacy Decommission | Jun 1, 2026 - Jul 3, 2026 | In progress | Remove transitional dependencies | Legacy wrappers archived; deprecation windows honored; v3 surface declared stable |
+| Phase 5 - Legacy Decommission | Jun 1, 2026 - Jul 3, 2026 | Completed | Remove transitional dependencies | Legacy wrappers archived; deprecation windows honored; v3 surface declared stable |
 
 ## Phase 0 Backlog (Active)
 
@@ -134,12 +134,12 @@ This tracker is the working control plane for milestones, ownership, acceptance 
 2. Compatibility wrapper retirement criteria
 - [x] Define archival/removal criteria for `mgmt/metadata/recover`
 - [x] Define dated timeline and gate model in `docs/PHASE5_LEGACY_DECOMMISSION.md`
-- [ ] Execute burn-in closeout and remove wrappers (`P5-COMP-001` to `P5-COMP-003`)
+- [x] Execute burn-in closeout and remove wrappers (`P5-COMP-001` to `P5-COMP-003`)
 
 3. Phase 5 verification and handover
-- [ ] Add Phase 5 verification report with gate evidence
+- [x] Add Phase 5 verification report with gate evidence
 - [x] Update canonical docs to remove transitional wrapper references
-- [ ] Declare v3 CLI surface stable
+- [x] Declare v3 CLI surface stable
 
 ## Deliverables By Phase
 
@@ -181,6 +181,7 @@ This tracker is the working control plane for milestones, ownership, acceptance 
 - stable v3 runbooks and handover docs
 - post-cutover review report
 - `docs/PHASE5_LEGACY_DECOMMISSION.md` decommission runbook
+- `docs/PHASE5_VERIFICATION_2026-02-09.md` verification report
 
 ## Quality Gates
 
@@ -258,10 +259,11 @@ Targets (Phase 4/5):
 | 2026-02-09 | Opened Phase 5 ticket board (`P5-LEG-*`, `P5-COMP-*`) for wrapper decommission and compatibility retirement | Convert decommission intent into explicit, trackable execution items | `codex` |
 | 2026-02-09 | Published compatibility wrapper archival criteria and dated Phase 5 timeline | Make `mgmt/metadata/recover` removal objective and auditable before cutover | `codex` |
 | 2026-02-09 | Removed `scan/recommend/apply/promote/quarantine` from top-level CLI and updated canonical surface docs/checks | Execute `P5-LEG-001..005` in one batch while preserving `mgmt/metadata/recover` compatibility window | `codex` |
+| 2026-02-09 | Removed `mgmt/metadata/recover` from top-level CLI, rewired canonical groups to hidden internal commands, and published Phase 5 verification report | Complete `P5-COMP-001..003` and close the CLI decommission phase with executable validation evidence | `codex` |
 
 ## Immediate Next Actions
 
 1. Assign owners for all lead roles.
 2. Record KPI baselines from last 30 days of available logs/artifacts.
-3. Assign owners for `P5-COMP-001..003`.
-4. Start compatibility wrapper burn-in closeout for `mgmt/metadata/recover`.
+3. Publish post-cutover review report.
+4. Track any operator regressions on canonical v3 command surface for two-week soak.

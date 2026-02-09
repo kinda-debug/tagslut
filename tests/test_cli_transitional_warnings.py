@@ -4,8 +4,8 @@ from dedupe.cli.main import _format_transitional_warning
 
 
 def test_transitional_warning_includes_replacement_for_known_command() -> None:
-    msg = _format_transitional_warning("dedupe mgmt")
-    assert "dedupe mgmt" in msg
+    msg = _format_transitional_warning("dedupe _mgmt")
+    assert "dedupe _mgmt" in msg
     assert "transitional legacy wrapper" in msg
     assert "dedupe index" in msg
 

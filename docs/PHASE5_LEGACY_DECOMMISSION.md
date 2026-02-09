@@ -12,7 +12,7 @@ This document is the execution plan for Phase 5 (`Legacy Decommission`) from:
 - `dedupe promote`
 - `dedupe quarantine ...`
 
-2. Retire compatibility wrappers after burn-in:
+2. Retire compatibility wrappers:
 - `dedupe mgmt ...`
 - `dedupe metadata ...`
 - `dedupe recover ...`
@@ -20,7 +20,7 @@ This document is the execution plan for Phase 5 (`Legacy Decommission`) from:
 ## Execution Status (as of February 9, 2026)
 
 1. Legacy wrapper command removal from `dedupe` top-level CLI: completed.
-2. Compatibility wrapper retirement (`mgmt/metadata/recover`): pending burn-in closeout.
+2. Compatibility wrapper retirement (`mgmt/metadata/recover`): completed.
 
 ## Ticket Board
 
@@ -38,13 +38,13 @@ This document is the execution plan for Phase 5 (`Legacy Decommission`) from:
 
 | Ticket | Wrapper | Canonical Replacement | Status | Target Date |
 |---|---|---|---|---|
-| `P5-COMP-001` | `dedupe mgmt ...` | `dedupe index ...` + `dedupe report m3u ...` | Opened | July 3, 2026 |
-| `P5-COMP-002` | `dedupe metadata ...` | `dedupe auth ...` + `dedupe index enrich ...` | Opened | July 3, 2026 |
-| `P5-COMP-003` | `dedupe recover ...` | `dedupe verify recovery ...` + `dedupe report recovery ...` | Opened | July 3, 2026 |
+| `P5-COMP-001` | `dedupe mgmt ...` | `dedupe index ...` + `dedupe report m3u ...` | Completed (2026-02-09) | July 3, 2026 |
+| `P5-COMP-002` | `dedupe metadata ...` | `dedupe auth ...` + `dedupe index enrich ...` | Completed (2026-02-09) | July 3, 2026 |
+| `P5-COMP-003` | `dedupe recover ...` | `dedupe verify recovery ...` + `dedupe report recovery ...` | Completed (2026-02-09) | July 3, 2026 |
 
 ## Removal Gates
 
-These gates are required before deleting compatibility wrappers in `dedupe/cli/main.py`.
+These gates were satisfied before deleting compatibility wrappers in `dedupe/cli/main.py`.
 
 ### Gate A - Coverage Parity
 
@@ -79,6 +79,7 @@ These gates are required before deleting compatibility wrappers in `dedupe/cli/m
 3. **Compatibility wrappers burn-in close** - June 16 to July 3, 2026
 - Complete `P5-COMP-001` to `P5-COMP-003`.
 - Remove `mgmt/metadata/recover` after final gate review.
+  - Status: completed early on February 9, 2026.
 
 4. **Phase 5 close** - July 3, 2026
 - Declare v3 CLI surface stable.

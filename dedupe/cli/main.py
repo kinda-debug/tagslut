@@ -12,14 +12,10 @@ _PROJECT_ROOT = Path(__file__).parents[2]
 
 logger = logging.getLogger("dedupe")
 
-# Support shorthand: `dedupe -m ...` -> `dedupe mgmt ...`
-if len(sys.argv) > 1 and sys.argv[1] == "-m":
-    sys.argv[1:2] = ["mgmt"]
-
 _TRANSITIONAL_COMMAND_REPLACEMENTS: dict[str, str] = {
-    "dedupe mgmt": "dedupe index ... / dedupe report m3u ...",
-    "dedupe metadata": "dedupe auth ... / dedupe index enrich ...",
-    "dedupe recover": "dedupe verify recovery ... / dedupe report recovery ...",
+    "dedupe _mgmt": "dedupe index ... / dedupe report m3u ...",
+    "dedupe _metadata": "dedupe auth ... / dedupe index enrich ...",
+    "dedupe _recover": "dedupe verify recovery ... / dedupe report recovery ...",
 }
 _INTERNAL_CLI_ENV = "DEDUPE_CLI_INTERNAL_CALL"
 
@@ -878,7 +874,7 @@ def _write_toml_file(config: dict, path: Path) -> None:
     path.write_text("\n".join(lines))
 
 
-@cli.command()
+@cli.command(name="_recover", hidden=True)
 @click.argument('path', required=False, type=click.Path(exists=True))
 @click.option('--db', type=click.Path(), help='Recovery database path')
 @click.option(
@@ -921,9 +917,6 @@ def recover(
         # Generate report
         dedupe recover --db recovery.db --phase report --output report.csv
     """
-    if not _is_internal_cli_call():
-        _warn_transitional_command("dedupe recover")
-
     from dedupe.recovery import RecoveryScanner, Repairer, Verifier, Reporter
     from dedupe.storage.schema import init_db
     import sqlite3
@@ -1076,11 +1069,9 @@ def recover(
             click.echo(f"Exported {rows} records to {output_path}")
 
 
-@cli.group()
+@cli.group(name="_metadata", hidden=True)
 def metadata():
-    """Metadata enrichment commands."""
-    if not _is_internal_cli_call():
-        _warn_transitional_command("dedupe metadata")
+    """Internal metadata enrichment commands."""
 
 
 @metadata.command()
@@ -1660,7 +1651,7 @@ def _beatport_token_input(token_manager):
         click.echo("Beatport token saved! (couldn't determine expiration)")
 
 
-@cli.group(invoke_without_command=True)
+@cli.group(name="_mgmt", invoke_without_command=True, hidden=True)
 @click.option("--m3u", "m3u_mode", is_flag=True, help="Generate Roon-compatible M3U playlist(s)")
 @click.option("--merge", is_flag=True, help="Merge all items into a single M3U")
 @click.option("--m3u-dir", type=click.Path(), help="Output directory for M3U files")
@@ -1669,9 +1660,7 @@ def _beatport_token_input(token_manager):
 @click.option("--path", "paths", multiple=True, type=click.Path(), help="Input path(s) for --m3u")
 @click.pass_context
 def mgmt(ctx, m3u_mode, merge, m3u_dir, db, source, paths):
-    """Management mode: inventory tracking and duplicate checking."""
-    if not _is_internal_cli_call():
-        _warn_transitional_command("dedupe mgmt")
+    """Internal management mode: inventory tracking and duplicate checking."""
     if ctx.invoked_subcommand is None:
         if not m3u_mode:
             click.echo(ctx.get_help())
@@ -1751,11 +1740,6 @@ def mgmt(ctx, m3u_mode, merge, m3u_dir, db, source, paths):
         click.echo(f"Generated {len(playlist_outputs)} M3U file(s):")
         for item in playlist_outputs:
             click.echo(f"  {item}")
-
-
-# Shorthand alias: dedupe m ... == dedupe mgmt ...
-cli.add_command(mgmt, "m")
-
 
 def _duration_thresholds_from_config() -> tuple[int, int]:
     from dedupe.utils.config import get_config
@@ -2865,42 +2849,42 @@ def index():
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
 def index_register(args):
     """Register files in inventory."""
-    _run_dedupe_wrapper(["mgmt", "register", *list(args)])
+    _run_dedupe_wrapper(["_mgmt", "register", *list(args)])
 
 
 @index.command("check", context_settings=_WRAPPER_CONTEXT)
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
 def index_check(args):
     """Check for duplicates before downloading."""
-    _run_dedupe_wrapper(["mgmt", "check", *list(args)])
+    _run_dedupe_wrapper(["_mgmt", "check", *list(args)])
 
 
 @index.command("duration-check", context_settings=_WRAPPER_CONTEXT)
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
 def index_duration_check(args):
     """Measure durations and compute duration status."""
-    _run_dedupe_wrapper(["mgmt", "check-duration", *list(args)])
+    _run_dedupe_wrapper(["_mgmt", "check-duration", *list(args)])
 
 
 @index.command("duration-audit", context_settings=_WRAPPER_CONTEXT)
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
 def index_duration_audit(args):
     """Audit duration anomalies from inventory."""
-    _run_dedupe_wrapper(["mgmt", "audit-duration", *list(args)])
+    _run_dedupe_wrapper(["_mgmt", "audit-duration", *list(args)])
 
 
 @index.command("set-duration-ref", context_settings=_WRAPPER_CONTEXT)
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
 def index_set_duration_ref(args):
     """Set manual duration reference from a known-good file."""
-    _run_dedupe_wrapper(["mgmt", "set-duration-ref", *list(args)])
+    _run_dedupe_wrapper(["_mgmt", "set-duration-ref", *list(args)])
 
 
 @index.command("enrich", context_settings=_WRAPPER_CONTEXT)
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
 def index_enrich(args):
     """Run metadata enrichment for indexed files."""
-    _run_dedupe_wrapper(["metadata", "enrich", *list(args)])
+    _run_dedupe_wrapper(["_metadata", "enrich", *list(args)])
 
 
 @cli.group()
@@ -3019,14 +3003,14 @@ def verify():
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
 def verify_duration(args):
     """Verify duration health status from inventory."""
-    _run_dedupe_wrapper(["mgmt", "audit-duration", *list(args)])
+    _run_dedupe_wrapper(["_mgmt", "audit-duration", *list(args)])
 
 
 @verify.command("recovery", context_settings=_WRAPPER_CONTEXT)
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
 def verify_recovery(args):
     """Run recovery verification phase."""
-    _run_dedupe_wrapper(["recover", "--phase", "verify", *list(args)])
+    _run_dedupe_wrapper(["_recover", "--phase", "verify", *list(args)])
 
 
 @verify.command("parity", context_settings=_WRAPPER_CONTEXT)
@@ -3091,7 +3075,7 @@ def report():
 @click.option("--merge", is_flag=True, help="Merge all paths into one playlist")
 def report_m3u(paths, db, source, m3u_dir, merge):
     """Generate M3U playlists from paths."""
-    args: list[str] = ["mgmt", "--m3u"]
+    args: list[str] = ["_mgmt", "--m3u"]
     if merge:
         args.append("--merge")
     if m3u_dir:
@@ -3109,14 +3093,14 @@ def report_m3u(paths, db, source, m3u_dir, merge):
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
 def report_duration(args):
     """Report duration status issues."""
-    _run_dedupe_wrapper(["mgmt", "audit-duration", *list(args)])
+    _run_dedupe_wrapper(["_mgmt", "audit-duration", *list(args)])
 
 
 @report.command("recovery", context_settings=_WRAPPER_CONTEXT)
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
 def report_recovery(args):
     """Run recovery report phase."""
-    _run_dedupe_wrapper(["recover", "--phase", "report", *list(args)])
+    _run_dedupe_wrapper(["_recover", "--phase", "report", *list(args)])
 
 
 @report.command("plan-summary", context_settings=_WRAPPER_CONTEXT)
@@ -3135,28 +3119,28 @@ def auth():
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
 def auth_status_wrapper(args):
     """Show provider auth/token status."""
-    _run_dedupe_wrapper(["metadata", "auth-status", *list(args)])
+    _run_dedupe_wrapper(["_metadata", "auth-status", *list(args)])
 
 
 @auth.command("init", context_settings=_WRAPPER_CONTEXT)
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
 def auth_init_wrapper(args):
     """Initialize provider token template file."""
-    _run_dedupe_wrapper(["metadata", "auth-init", *list(args)])
+    _run_dedupe_wrapper(["_metadata", "auth-init", *list(args)])
 
 
 @auth.command("refresh", context_settings=_WRAPPER_CONTEXT)
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
 def auth_refresh_wrapper(args):
     """Refresh provider access tokens."""
-    _run_dedupe_wrapper(["metadata", "auth-refresh", *list(args)])
+    _run_dedupe_wrapper(["_metadata", "auth-refresh", *list(args)])
 
 
 @auth.command("login", context_settings=_WRAPPER_CONTEXT)
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
 def auth_login_wrapper(args):
     """Run interactive provider login flows."""
-    _run_dedupe_wrapper(["metadata", "auth-login", *list(args)])
+    _run_dedupe_wrapper(["_metadata", "auth-login", *list(args)])
 
 
 @cli.command()

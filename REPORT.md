@@ -261,7 +261,9 @@ A radical redesign proposal (architecture, data model v3, policy engine, CLI con
   - `docs/PHASE4_VERIFICATION_2026-02-09.md`
 - Phase 5 decommission plan:
   - `docs/PHASE5_LEGACY_DECOMMISSION.md`
-  - Legacy wrapper decommission (`scan/recommend/apply/promote/quarantine`) executed on February 9, 2026; compatibility wrappers (`mgmt/metadata/recover`) remain during burn-in.
+  - Legacy and compatibility wrapper decommission (`scan/recommend/apply/promote/quarantine/mgmt/metadata/recover`) executed on February 9, 2026.
+- Phase 5 verification report:
+  - `docs/PHASE5_VERIFICATION_2026-02-09.md`
 
 ---
 

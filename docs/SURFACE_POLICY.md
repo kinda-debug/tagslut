@@ -17,25 +17,19 @@ Define the supported command/script surface during v3 migration so operators and
 Reference map:
 - `docs/SCRIPT_SURFACE.md`
 
-## Transitional Surface (Deprecated)
+## Transitional Surface
 
-These wrappers remain temporarily for compatibility and now emit deprecation warnings:
+Transitional wrappers have been retired from top-level CLI exposure.
 
-1. `dedupe mgmt ...`
-Recommended now: `dedupe index ...` and `dedupe report ...`
-
-2. `dedupe metadata ...`
-Recommended now: `dedupe auth ...` and `dedupe index enrich ...`
-
-3. `dedupe recover ...`
-Recommended now: `dedupe verify recovery ...` and `dedupe report recovery ...`
-
-Retired in Phase 5 (`P5-LEG-001..005`):
-- `dedupe scan`
-- `dedupe recommend`
-- `dedupe apply`
-- `dedupe promote`
-- `dedupe quarantine ...`
+Retired in Phase 5:
+1. `dedupe scan`
+2. `dedupe recommend`
+3. `dedupe apply`
+4. `dedupe promote`
+5. `dedupe quarantine ...`
+6. `dedupe mgmt ...`
+7. `dedupe metadata ...`
+8. `dedupe recover ...`
 
 ## Removal Horizon
 
@@ -45,7 +39,7 @@ Retired in Phase 5 (`P5-LEG-001..005`):
 
 ## Phase 5 Decommission Gates
 
-`mgmt/metadata/recover` wrappers can be removed only after:
+Compatibility wrappers were removed after satisfying these gates:
 
 1. Coverage parity gate:
 - Canonical replacement command is documented and tested.

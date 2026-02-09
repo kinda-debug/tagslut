@@ -14,17 +14,25 @@ This repository is a recovery-first, evidence-preserving toolkit for scanning, a
 
 1. **Configure**: copy `.env.example` to `.env`, then `source .env`.
 2. **Register new downloads**:
-   - `poetry run dedupe mgmt register <path> --source <bpdl|tidal|qobuz|legacy>`
+   - `poetry run dedupe index register <path> --source <bpdl|tidal|qobuz|legacy>`
 3. **Pre-check duplicates before new ingest**:
-   - `poetry run dedupe mgmt check <path> --source <source>`
+   - `poetry run dedupe index check <path> --source <source>`
 4. **One-command download + fast intake planning**:
-   - `tools/get-intake --batch-root /Volumes/DJSSD/beatport <beatport-or-tidal-url>`
+   - `poetry run dedupe intake run --batch-root /Volumes/DJSSD/beatport <beatport-or-tidal-url>`
+   - Underlying orchestrator: `tools/get-intake`
    - For Beatport URLs, this now runs a fast metadata prefilter against `/Volumes/MUSIC/LIBRARY` before downloading (skip with `--skip-beatport-prefilter`).
+   - To generate a merged Roon M3U in the library after intake: add `--m3u --m3u-dir /Volumes/MUSIC/LIBRARY`.
    - Add `--execute` to apply promote/stash/quarantine moves after planning.
-5. **Generate M3U playlists (Roon)**:
-   - `poetry run dedupe mgmt --m3u <path>`
-6. **Run metadata enrichment**:
-   - `poetry run dedupe metadata enrich --db <db-path> --recovery --execute`
+5. **M3U-only modes (no intake pipeline)**:
+   - From Beatport URL: `poetry run dedupe intake run --m3u-only --url <beatport-url> --db <db> --m3u-dir /Volumes/MUSIC/LIBRARY`
+   - From playlist file: `poetry run dedupe intake run --m3u-only --playlist-file <file> --db <db> --m3u-dir /Volumes/MUSIC/LIBRARY`
+   - Missing handling: `--missing-policy ask|report|skip|download`
+6. **Generate M3U playlists (Roon)**:
+   - `poetry run dedupe report m3u <path>`
+7. **Run metadata enrichment**:
+   - `poetry run dedupe index enrich --db <db-path> --recovery --execute`
+8. **Check auth/provider status**:
+   - `poetry run dedupe auth status`
 
 For a script-by-script map (canonical vs legacy), see:
 - `docs/SCRIPT_SURFACE.md`
@@ -51,6 +59,6 @@ For detailed technical information, please refer to:
 - Directory organization via `sort_by_context` and `*_directory_template` settings
 - Filename formatting via `track_file_template`
 
-**BeatportDL does NOT generate M3U playlists.** M3U generation is handled by `dedupe mgmt` or `tools/review/promote_by_tags.py` after downloads are registered to the inventory.
+**BeatportDL does NOT generate M3U playlists.** M3U generation is handled by `dedupe report m3u` or `tools/review/promote_by_tags.py` after downloads are registered to the inventory.
 
 See [tools/beatportdl/bpdl/README.md](tools/beatportdl/bpdl/README.md) for BeatportDL configuration details.

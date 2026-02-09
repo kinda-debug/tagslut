@@ -7,7 +7,6 @@ import re
 from click.testing import CliRunner
 
 from dedupe.cli.main import (
-    _INTERNAL_CLI_ENV,
     _TRANSITIONAL_COMMAND_REPLACEMENTS,
     cli,
 )
@@ -67,37 +66,37 @@ def test_phase4_group_subcommands_present() -> None:
         assert expected.issubset(commands), f"{group} missing: {sorted(expected - commands)}"
 
 
-def test_phase5_compat_commands_present_and_legacy_removed() -> None:
+def test_phase5_removed_top_level_commands_absent() -> None:
     runner = CliRunner()
     result = runner.invoke(cli, ["--help"])
 
     assert result.exit_code == 0, result.output
     commands = _parse_commands(result.output)
 
-    for command in ["mgmt", "metadata", "recover"]:
-        assert command in commands
-    for removed in ["scan", "recommend", "apply", "promote", "quarantine"]:
+    for removed in [
+        "scan",
+        "recommend",
+        "apply",
+        "promote",
+        "quarantine",
+        "mgmt",
+        "metadata",
+        "recover",
+        "m",
+    ]:
         assert removed not in commands
 
 
-def test_phase4_transitional_replacements_include_phase4_mappings() -> None:
-    assert _TRANSITIONAL_COMMAND_REPLACEMENTS["dedupe mgmt"].startswith("dedupe index")
-    assert _TRANSITIONAL_COMMAND_REPLACEMENTS["dedupe metadata"].startswith("dedupe auth")
-    assert _TRANSITIONAL_COMMAND_REPLACEMENTS["dedupe recover"].startswith("dedupe verify")
+def test_internal_replacement_map_targets_canonical_flows() -> None:
+    assert _TRANSITIONAL_COMMAND_REPLACEMENTS["dedupe _mgmt"].startswith("dedupe index")
+    assert _TRANSITIONAL_COMMAND_REPLACEMENTS["dedupe _metadata"].startswith("dedupe auth")
+    assert _TRANSITIONAL_COMMAND_REPLACEMENTS["dedupe _recover"].startswith("dedupe verify")
     assert "dedupe scan" not in _TRANSITIONAL_COMMAND_REPLACEMENTS
+    assert "dedupe mgmt" not in _TRANSITIONAL_COMMAND_REPLACEMENTS
 
 
-def test_mgmt_warning_suppressed_for_internal_calls() -> None:
-    runner = CliRunner()
-    result = runner.invoke(cli, ["mgmt"], env={_INTERNAL_CLI_ENV: "1"})
-
-    assert result.exit_code == 0, result.output
-    assert "DEPRECATION NOTICE" not in result.output
-
-
-def test_mgmt_warning_shown_for_external_calls() -> None:
+def test_removed_compat_command_returns_no_such_command() -> None:
     runner = CliRunner()
     result = runner.invoke(cli, ["mgmt"])
-
-    assert result.exit_code == 0, result.output
-    assert "DEPRECATION NOTICE" in result.output
+    assert result.exit_code != 0
+    assert "No such command 'mgmt'" in result.output

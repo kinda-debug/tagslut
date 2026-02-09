@@ -16,8 +16,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DOCS_DIR = PROJECT_ROOT / "docs"
 
 TOP_CANONICAL_COMMANDS = {"intake", "index", "decide", "execute", "verify", "report", "auth"}
-TOP_COMPAT_COMMANDS = {"mgmt", "metadata", "recover"}
 REMOVED_LEGACY_COMMANDS = {"scan", "recommend", "apply", "promote", "quarantine"}
+REMOVED_COMPAT_COMMANDS = {"mgmt", "metadata", "recover", "m"}
 INTAKE_REQUIRED_COMMANDS = {"run", "prefilter"}
 INDEX_REQUIRED_COMMANDS = {
     "register",
@@ -32,14 +32,6 @@ EXECUTE_REQUIRED_COMMANDS = {"move-plan", "quarantine-plan", "promote-tags"}
 VERIFY_REQUIRED_COMMANDS = {"duration", "recovery", "parity", "receipts"}
 REPORT_REQUIRED_COMMANDS = {"m3u", "duration", "recovery", "plan-summary"}
 AUTH_REQUIRED_COMMANDS = {"status", "init", "refresh", "login"}
-MGMT_REQUIRED_COMMANDS = {
-    "register",
-    "check",
-    "check-duration",
-    "audit-duration",
-    "set-duration-ref",
-}
-MGMT_REQUIRED_OPTIONS = {"--db", "--source", "--m3u", "--merge", "--m3u-dir", "--path"}
 
 
 def run_help(*args: str) -> str:
@@ -127,7 +119,6 @@ def main() -> int:
     verify_help = run_help("verify")
     report_help = run_help("report")
     auth_help = run_help("auth")
-    mgmt_help = run_help("mgmt")
 
     top_commands = parse_help_commands(top_help)
     intake_commands = parse_help_commands(intake_help)
@@ -137,22 +128,14 @@ def main() -> int:
     verify_commands = parse_help_commands(verify_help)
     report_commands = parse_help_commands(report_help)
     auth_commands = parse_help_commands(auth_help)
-    mgmt_commands = parse_help_commands(mgmt_help)
-    mgmt_options = parse_help_options(mgmt_help)
 
-    missing_top = sorted(
-        (
-            TOP_CANONICAL_COMMANDS
-            | TOP_COMPAT_COMMANDS
-        )
-        - top_commands
-    )
+    missing_top = sorted(TOP_CANONICAL_COMMANDS - top_commands)
     if missing_top:
         errors.append("Missing expected top-level commands: " + ", ".join(missing_top))
-    stale_top = sorted(top_commands & REMOVED_LEGACY_COMMANDS)
+    stale_top = sorted(top_commands & (REMOVED_LEGACY_COMMANDS | REMOVED_COMPAT_COMMANDS))
     if stale_top:
         errors.append(
-            "Removed legacy top-level commands still present: " + ", ".join(stale_top)
+            "Removed top-level commands still present: " + ", ".join(stale_top)
         )
 
     missing_intake = sorted(INTAKE_REQUIRED_COMMANDS - intake_commands)
@@ -183,14 +166,6 @@ def main() -> int:
     if missing_auth:
         errors.append("Missing expected auth subcommands: " + ", ".join(missing_auth))
 
-    missing_mgmt_cmds = sorted(MGMT_REQUIRED_COMMANDS - mgmt_commands)
-    if missing_mgmt_cmds:
-        errors.append("Missing expected mgmt subcommands: " + ", ".join(missing_mgmt_cmds))
-
-    missing_mgmt_opts = sorted(MGMT_REQUIRED_OPTIONS - mgmt_options)
-    if missing_mgmt_opts:
-        errors.append("Missing expected mgmt options: " + ", ".join(missing_mgmt_opts))
-
     script_surface = (DOCS_DIR / "SCRIPT_SURFACE.md").read_text(encoding="utf-8", errors="replace")
     surface_policy = (DOCS_DIR / "SURFACE_POLICY.md").read_text(encoding="utf-8", errors="replace")
     phase1_doc = (DOCS_DIR / "PHASE1_V3_DUAL_WRITE.md").read_text(
@@ -213,7 +188,10 @@ def main() -> int:
         encoding="utf-8",
         errors="replace",
     )
-    mgmt_mode = (DOCS_DIR / "MGMT_MODE.md").read_text(encoding="utf-8", errors="replace")
+    phase5_verify_doc = (DOCS_DIR / "PHASE5_VERIFICATION_2026-02-09.md").read_text(
+        encoding="utf-8",
+        errors="replace",
+    )
     readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8", errors="replace")
 
     # SCRIPT_SURFACE requirements
@@ -240,11 +218,7 @@ def main() -> int:
         script_surface, "docs/PHASE5_LEGACY_DECOMMISSION.md", errors, "docs/SCRIPT_SURFACE.md"
     )
 
-    for transitional in sorted(TOP_COMPAT_COMMANDS):
-        ensure_contains(
-            script_surface, f"dedupe {transitional}", errors, "docs/SCRIPT_SURFACE.md"
-        )
-    for removed in sorted(REMOVED_LEGACY_COMMANDS):
+    for removed in sorted(REMOVED_LEGACY_COMMANDS | REMOVED_COMPAT_COMMANDS):
         ensure_not_contains(
             script_surface, f"`dedupe {removed}`", errors, "docs/SCRIPT_SURFACE.md"
         )
@@ -258,12 +232,9 @@ def main() -> int:
     )
     ensure_contains(
         surface_policy,
-        "## Transitional Surface (Deprecated)",
+        "## Transitional Surface",
         errors,
         "docs/SURFACE_POLICY.md",
-    )
-    ensure_contains(
-        surface_policy, "emit deprecation warnings", errors, "docs/SURFACE_POLICY.md"
     )
     ensure_contains(
         surface_policy,
@@ -298,6 +269,12 @@ def main() -> int:
     ensure_contains(
         surface_policy,
         "docs/PHASE5_LEGACY_DECOMMISSION.md",
+        errors,
+        "docs/SURFACE_POLICY.md",
+    )
+    ensure_contains(
+        surface_policy,
+        "Retired in Phase 5",
         errors,
         "docs/SURFACE_POLICY.md",
     )
@@ -401,38 +378,12 @@ def main() -> int:
         errors,
         "docs/PHASE5_LEGACY_DECOMMISSION.md",
     )
-
-    # MGMT_MODE must match current command model (group + commands)
-    ensure_contains(mgmt_mode, "### Command Surface (Current)", errors, "docs/MGMT_MODE.md")
     ensure_contains(
-        mgmt_mode,
-        "dedupe mgmt [GROUP OPTIONS] COMMAND [ARGS...]",
+        phase5_verify_doc,
+        "Phase 5 decommission is complete",
         errors,
-        "docs/MGMT_MODE.md",
+        "docs/PHASE5_VERIFICATION_2026-02-09.md",
     )
-    ensure_regex(
-        mgmt_mode,
-        r"^\s*register\s+Register files in inventory",
-        errors,
-        "docs/MGMT_MODE.md",
-    )
-    ensure_regex(
-        mgmt_mode,
-        r"^\s*check\s+Check for duplicate files before downloading",
-        errors,
-        "docs/MGMT_MODE.md",
-    )
-
-    stale_markers = [
-        "--check / --no-check   Enable/disable similarity check (default: --check)",
-        "--threshold FLOAT      Similarity threshold 0.0-1.0 (default: 0.85)",
-        "--register             Register files to inventory without moving",
-        "--scan                 Scan and update inventory from paths",
-        "--status               Show inventory statistics",
-    ]
-    for marker in stale_markers:
-        if marker in mgmt_mode:
-            errors.append(f"Stale mgmt option marker still present in docs/MGMT_MODE.md: {marker}")
 
     # README canonical flow checks
     required_readme_phrases = [

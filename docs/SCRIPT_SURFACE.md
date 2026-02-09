@@ -28,16 +28,22 @@ Role: M3U and operational reports (duration, recovery, plan summaries).
 7. `poetry run dedupe auth ...`
 Role: Provider authentication and token lifecycle flows.
 
-## Transitional / Compatibility CLI Wrappers
+## Transitional Wrapper Status
 
-These still exist for backward compatibility:
+No transitional wrappers remain on the top-level `dedupe` CLI surface.
 
-- `dedupe mgmt ...`
-- `dedupe metadata ...`
-- `dedupe recover ...`
+Retired in Phase 5:
+- dedupe scan
+- dedupe recommend
+- dedupe apply
+- dedupe promote
+- dedupe quarantine ...
+- dedupe mgmt ...
+- dedupe metadata ...
+- dedupe recover ...
 
-Legacy wrappers retired in Phase 5 (`P5-LEG-001..005`):
-- legacy scan/recommend/apply/promote/quarantine CLI wrappers removed from top-level `dedupe` help surface
+Canonical groups now call internal hidden commands (`_mgmt`, `_metadata`, `_recover`)
+to preserve implementation reuse without exposing transitional operator entrypoints.
 
 Use `dedupe intake/index/decide/execute/verify/report/auth` for new work.
 

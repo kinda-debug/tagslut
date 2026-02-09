@@ -27,6 +27,8 @@ dependencies = [
     "roonapi (>=0.1.6,<0.2.0)",
     "httpx>=0.27",
     "PyYAML>=6.0",
+    "flask (>=3.1.2,<4.0.0)",
+    "python-dotenv (>=1.2.1,<2.0.0)",
 ]
 
 [project.scripts]

@@ -208,6 +208,10 @@ def main() -> int:
         encoding="utf-8",
         errors="replace",
     )
+    workflow_3_doc = (DOCS_DIR / "WORKFLOW_3_COMMANDS.md").read_text(
+        encoding="utf-8",
+        errors="replace",
+    )
     readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8", errors="replace")
 
     # SCRIPT_SURFACE requirements
@@ -404,18 +408,26 @@ def main() -> int:
         "docs/PHASE5_VERIFICATION_2026-02-09.md",
     )
 
-    # README canonical flow checks
+    # README minimal workflow checks
     required_readme_phrases = [
-        "poetry run tagslut index register",
-        "poetry run tagslut index check",
-        "poetry run tagslut intake run",
-        "poetry run tagslut report m3u",
-        "poetry run tagslut auth status",
-        "poetry run tagslut index enrich",
-        "tools/get-intake",
+        "docs/WORKFLOW_3_COMMANDS.md",
+        "tools/get <beatport-url>",
+        "tools/get-sync <beatport-url>",
+        "tools/get-report <beatport-url>",
+        "tagslut",
+        "dedupe",
     ]
     for phrase in required_readme_phrases:
         ensure_contains(readme, phrase, errors, "README.md")
+
+    # 3-command workflow doc checks
+    required_workflow_phrases = [
+        "tools/get <beatport-url>",
+        "tools/get-sync <beatport-url>",
+        "tools/get-report <beatport-url>",
+    ]
+    for phrase in required_workflow_phrases:
+        ensure_contains(workflow_3_doc, phrase, errors, "docs/WORKFLOW_3_COMMANDS.md")
 
     if errors:
         print("ERRORS:")

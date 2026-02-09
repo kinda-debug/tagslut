@@ -28,19 +28,13 @@ GET_REPORT="$SCRIPT_DIR/get-report"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 usage() {
-    echo "Usage: tools/get <url> [extra-args...]"
+    echo "3-command Beatport workflow:"
+    echo "  tools/get <beatport-url>         download missing + build playlist"
+    echo "  tools/get-sync <beatport-url>    same flow (explicit sync)"
+    echo "  tools/get-report <beatport-url>  report only, no download"
     echo ""
-    echo "Routes URLs to the appropriate workflow:"
-    echo "  - tidal.com    → TIDDL"
-    echo "  - beatport.com → get-sync (download missing + M3U)"
-    echo ""
-    echo "Examples:"
-    echo "  tools/get https://tidal.com/browse/playlist/12345"
-    echo "  tools/get https://www.beatport.com/release/some-release/12345"
-    echo ""
-    echo "Beatport helpers:"
-    echo "  tools/get-sync  <beatport-url>   # download missing + create M3U"
-    echo "  tools/get-report <beatport-url>  # report-only M3U pass (no download)"
+    echo "General usage: tools/get <url> [extra-args...]"
+    echo "Use tools/get-help for the tiny version of this help."
     exit 1
 }
 

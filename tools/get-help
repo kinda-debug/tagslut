@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 
-echo "tools/get <beatport-url> downloads missing tracks and builds a playlist."
-echo "tools/get-sync <beatport-url> does the same sync flow explicitly."
-echo "tools/get-report <beatport-url> reports matches only and does not download."
+echo "Use one of these 3 commands:"
+echo "1) tools/get <beatport-url> - download missing + build playlist"
+echo "2) tools/get-sync <beatport-url> - same flow, explicit sync"
+echo "3) tools/get-report <beatport-url> - report only, no download"

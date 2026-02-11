@@ -87,7 +87,7 @@ Thumbs.db
 
 # Local config
 /config.toml
-
+/Users/georgeskhawam/Projects/dedupe/legacy
 # Working directories / run outputs
 artifacts/**
 out/

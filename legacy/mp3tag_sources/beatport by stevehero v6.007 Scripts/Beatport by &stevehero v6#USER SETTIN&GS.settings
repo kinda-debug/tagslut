@@ -1,0 +1,361 @@
+﻿{
+  "key": "SettingBeatport",
+  "title": "Beatport User Settings by stevehero",
+  "settings": [
+
+    {
+      "type": "bool",
+      "key": "SettingInitialkeyAddPadding",
+      "title": "Add Padding to INITIALKEY",
+      "description": "8A => 08A, 7B => 07B, etc. [Default: True]",
+      "default": true
+    },
+    {
+      "type": "bool",
+      "key": "SettingTotaltracksAddPadding",
+      "title": "Add Padding to TOTALTRACKS",
+      "description": "Adds a leading zero to TOTALTRACKS. [Default: True]",
+      "default": true
+    },
+    {
+      "type": "bool",
+      "key": "SettingTrackAddPadding",
+      "title": "Add Padding to TRACK",
+      "description": "Adds a leading zero to TRACK. [Default: True]",
+      "default": true
+    },
+    {
+      "type": "bool",
+      "key": "SettingCatIDNoAlbumAppend",
+      "title": "Append CATALOG # to ALBUM / Append TRACK ID to ALBUM",
+      "description": "Album Title Goes Here [MAU5CD015] [Default: True]",
+      "default": true
+    },
+    {
+      "type": "bool",
+      "key": "SettingTrackTotaltracksAppend",
+      "title": "Append TOTALTRACKS to TRACK",
+      "description": "1/10, 2/10, 3/10 etc. [Default: True]",
+      "default": true
+    },
+    {
+      "type": "string",
+      "key": "SettingDateFormat",
+      "title": "DATE Format",
+      "description": "The format used for the DATE field. [Default: YYYY-MM-DD]",
+      "choices": [
+        "YYYY-MM-DD",
+        "MMDD",
+        "DDMM"
+      ],
+      "default": "YYYY-MM-DD"
+    },
+
+    {
+      "type": "bool",
+      "key": "SettingFeaturingRemoveBrackets",
+      "title": "feat. Artist Brackets",
+      "description": "Title (feat. artist) => Title feat. artist [Default: True]",
+      "default": true
+    },
+
+    {
+      "type": "string",
+      "key": "SettingFeaturingString",
+      "title": "Featuring String",
+      "description": "Choose how you want feat. string. [Default: feat.]",
+      "choices": [
+        "ft.",
+        "feat.",
+        "featuring"
+      ],
+      "default": "feat."
+    },
+
+    {
+      "type": "string",
+      "key": "SettingInitialkeyFormat",
+      "title": "INITIALKEY Format",
+      "description": "The format used for the INITIALKEY field. [Default: Camelot]",
+      "choices": [
+        "Camelot",
+        "Musical"
+      ],
+      "default": "Camelot"
+    },
+
+    {
+      "type": "bool",
+      "key": "SettingOriginalMixRemove",
+      "title": "Remove Original Mix from Title",
+      "description": "Title (Original Mix) => Title [Default: True]",
+      "default": true
+    },
+
+    {
+      "type": "bool",
+      "key": "SettingGenreRename",
+      "title": "Rename Genres",
+      "description": "'Progressive House' => 'House Progressive', 'Electro House' => 'House Electro', etc. [Default: True]",
+      "default": true
+    },
+
+    {
+      "type": "string",
+      "key": "SettingYearFormat",
+      "title": "YEAR Format",
+      "description": "The format used for the YEAR field. [Default: YYYY-MM-DD]",
+      "choices": [
+        "YYYY-MM-DD",
+        "DD-MM-YYYY",
+        "YYYY"
+      ],
+      "default": "YYYY-MM-DD"
+    },
+
+    {
+      "type": "heading",
+      "title": "Remove Fields"
+    },
+
+    {
+      "type": "bool",
+      "key": "SettingSet_LENGTH",
+      "title": "_LENGTH",
+      "description": "Removes the _LENGTH tag from being output",
+      "default": false
+    },
+    {
+      "type": "bool",
+      "key": "SettingSet_TIME_CHECK",
+      "title": "_TIME_CHECK",
+      "description": "Removes the _TIME_CHECK tag from being output",
+      "default": false
+    },
+    {
+      "type": "bool",
+      "key": "SettingSetALBUM",
+      "title": "ALBUM",
+      "description": "Removes the ALBUM tag from being output",
+      "default": false
+    },
+    {
+      "type": "bool",
+      "key": "SettingSetALBUM ARTIST",
+      "title": "ALBUM ARTIST",
+      "description": "Removes the ALBUM ARTIST tag from being output.\nALBUM ARTIST is used in VLC, foobar 2000 and others please check your music player first",
+      "default": true
+    },
+    {
+      "type": "bool",
+      "key": "SettingSetALBUMARTIST",
+      "title": "ALBUMARTIST",
+      "description": "Removes the ALBUMARTIST tag from being output",
+      "default": false
+    },
+    {
+      "type": "bool",
+      "key": "SettingSetARTIST",
+      "title": "ARTIST",
+      "description": "Removes the ARTIST tag from being output",
+      "default": false
+    },
+    {
+      "type": "bool",
+      "key": "SettingSetBEATPORT_ARTIST_URL",
+      "title": "BEATPORT_ARTIST_URL",
+      "description": "Removes the BEATPORT_ARTIST_URL tag from being output",
+      "default": false
+    },
+    {
+      "type": "bool",
+      "key": "SettingSetBEATPORT_LABEL_URL",
+      "title": "BEATPORT_LABEL_URL",
+      "description": "Removes the BEATPORT_LABEL_URL tag from being output",
+      "default": false
+    },
+    {
+      "type": "bool",
+      "key": "SettingSetBEATPORT_RELEASE_ID",
+      "title": "BEATPORT_RELEASE_ID",
+      "description": "Removes the BEATPORT_RELEASE_ID tag from being output",
+      "default": false
+    },
+    {
+      "type": "bool",
+      "key": "SettingSetBEATPORT_TRACK_ID",
+      "title": "BEATPORT_TRACK_ID",
+      "description": "Removes the BEATPORT_TRACK_ID tag from being output",
+      "default": false
+    },
+    {
+      "type": "bool",
+      "key": "SettingSetBEATPORT_TRACK_URL",
+      "title": "BEATPORT_TRACK_URL",
+      "description": "Removes the BEATPORT_TRACK_URL tag from being output",
+      "default": false
+    },
+    {
+      "type": "bool",
+      "key": "SettingSetBPM",
+      "title": "BPM",
+      "description": "Removes the BPM tag from being output",
+      "default": false
+    },
+    {
+      "type": "bool",
+      "key": "SettingSetCATALOG#",
+      "title": "CATALOG #",
+      "description": "Removes the CATALOG # tag from being output",
+      "default": false
+    },
+    {
+      "type": "bool",
+      "key": "SettingSetCOMMENT",
+      "title": "COMMENT",
+      "description": "Removes the COMMENT tag from being output",
+      "default": true
+    },
+    {
+      "type": "bool",
+      "key": "SettingSetCOMPILATION",
+      "title": "COMPILATION",
+      "description": "Removes the COMPILATION tag from being output",
+      "default": false
+    },
+    {
+      "type": "bool",
+      "key": "SettingSetCOVERURL",
+      "title": "COVERURL",
+      "description": "Removes the COVERURL tag from being output",
+      "default": false
+    },
+    {
+      "type": "bool",
+      "key": "SettingSetDATE",
+      "title": "DATE",
+      "description": "Removes the DATE tag from being output",
+      "default": true
+    },
+    {
+      "type": "bool",
+      "key": "SettingSetDISCNUMBER",
+      "title": "DISCNUMBER",
+      "description": "Removes the DISCNUMBER tag from being output",
+      "default": false
+    },
+    {
+      "type": "bool",
+      "key": "SettingSetDISCTOTAL",
+      "title": "DISCTOTAL",
+      "description": "Removes the DISCTOTAL tag from being output",
+      "default": false
+    },
+    {
+      "type": "bool",
+      "key": "SettingSetGENRE",
+      "title": "GENRE",
+      "description": "Removes the GENRE tag from being output",
+      "default": false
+    },
+    {
+      "type": "bool",
+      "key": "SettingSetINITIALKEY",
+      "title": "INITIALKEY",
+      "description": "Removes the INITIALKEY tag from being output",
+      "default": false
+    },
+    {
+      "type": "bool",
+      "key": "SettingSetISRC",
+      "title": "ISRC",
+      "description": "Removes the ISRC tag from being output",
+      "default": false
+    },
+    {
+      "type": "bool",
+      "key": "SettingSetMEDIATYPE",
+      "title": "MEDIATYPE",
+      "description": "Removes the MEDIATYPE tag from being output",
+      "default": false
+    },
+    {
+      "type": "bool",
+      "key": "SettingSetMEDIATYPE_ORIGINAL",
+      "title": "MEDIATYPE_ORIGINAL",
+      "description": "Removes the MEDIATYPE_ORIGINAL tag from being output",
+      "default": false
+    },
+    {
+      "type": "bool",
+      "key": "SettingSetMIXARTIST",
+      "title": "MIXARTIST",
+      "description": "Removes the MIXARTIST tag from being output",
+      "default": false
+    },
+    {
+      "type": "bool",
+      "key": "SettingSetPUBLISHER",
+      "title": "PUBLISHER",
+      "description": "Removes the PUBLISHER tag from being output",
+      "default": false
+    },
+    {
+      "type": "bool",
+      "key": "SettingSetRELEASETIME",
+      "title": "RELEASETIME",
+      "description": "Removes the RELEASETIME tag from being output",
+      "default": true
+    },
+    {
+      "type": "bool",
+      "key": "SettingSetSTYLE",
+      "title": "STYLE",
+      "description": "Removes the STYLE tag from being output",
+      "default": false
+    },
+    {
+      "type": "bool",
+      "key": "SettingSetTITLE",
+      "title": "TITLE",
+      "description": "Removes the TITLE tag from being output",
+      "default": false
+    },
+    {
+      "type": "bool",
+      "key": "SettingSetTOTALTRACKS",
+      "title": "TOTALTRACKS",
+      "description": "Removes the TOTALTRACKS tag from being output",
+      "default": false
+    },
+    {
+      "type": "bool",
+      "key": "SettingSetUNSYNCEDLYRICS",
+      "title": "UNSYNCEDLYRICS",
+      "description": "Removes the UNSYNCEDLYRICS tag from being output",
+      "default": false
+    },
+    {
+      "type": "bool",
+      "key": "SettingSetUPC",
+      "title": "UPC",
+      "description": "Removes the UPC tag from being output",
+      "default": false
+    },
+    {
+      "type": "bool",
+      "key": "SettingSetWWW",
+      "title": "WWW",
+      "description": "Removes the WWW tag from being output",
+      "default": false
+    },
+    {
+      "type": "bool",
+      "key": "SettingSetYEAR",
+      "title": "YEAR",
+      "description": "Removes the YEAR tag from being output",
+      "default": false
+    }
+
+  ]
+}

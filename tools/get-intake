@@ -555,7 +555,17 @@ PY
       FALLBACK_LOCAL_ROOTS+=("$BPDL_DOWNLOAD_ROOT")
     fi
 
-    python - "$PREFILTER_DECISIONS_CSV" "$M3U_EXISTING_FILE" "$M3U_MISSING_URLS_FILE" "$M3U_MISSING_ITEMS_FILE" "${FALLBACK_LOCAL_ROOTS[@]}" <<'PY'
+    PREFILTER_RESOLVE_ARGS=(
+      "$PREFILTER_DECISIONS_CSV"
+      "$M3U_EXISTING_FILE"
+      "$M3U_MISSING_URLS_FILE"
+      "$M3U_MISSING_ITEMS_FILE"
+    )
+    if [[ ${#FALLBACK_LOCAL_ROOTS[@]} -gt 0 ]]; then
+      PREFILTER_RESOLVE_ARGS+=("${FALLBACK_LOCAL_ROOTS[@]}")
+    fi
+
+    python - "${PREFILTER_RESOLVE_ARGS[@]}" <<'PY'
 import csv
 import re
 import sys
@@ -881,7 +891,7 @@ PY
       if [[ -z "$BATCH_ROOT" && -n "$BPDL_DOWNLOAD_ROOT" ]]; then
         BATCH_ROOT="$BPDL_DOWNLOAD_ROOT"
       fi
-      [[ -n "$BATCH_ROOT" ]] || BATCH_ROOT="/Volumes/MUSIC/beatport"
+      [[ -n "$BATCH_ROOT" ]] || BATCH_ROOT="/Volumes/MUSIC/CLEAN"
       mkdir -p "$BATCH_ROOT"
       BPDL_LOG="$OUT_DIR/bpdl_m3u_missing_download_$(date +%Y%m%d_%H%M%S).log"
       run_bpdl_batch "$BPDL_ONLY_URLS_FILE" "$BPDL_LOG"

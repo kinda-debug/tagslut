@@ -1,0 +1,671 @@
+# iTunes Web Source Script > International Edition
+#
+# script version: 3.71_stable
+# release date: 2025/05/11
+#
+# Localization:
+# Country:	[US]
+# Language:	[English-US]
+#
+# Made with ❤️ by rboss
+#########
+#
+# DO NOT CHANGE ANYTHING BELOW THIS LINE, UNLESS YOU REALLY WANT TO, AND YOU KNOW WHAT YOU ARE DOING
+#
+#########
+# // INPUT FIELDS
+#########
+
+[MinAppVersionWin]=3.25a
+[MinAppVersionMac]=1.9.5
+[Settings]=iTunes WS#370#settings.settings
+[Name]=Apple Media Tag Source
+[BasedOn]=https://itunes.apple.com/
+[IndexUrl]=https://itunes.apple.com/search?media=music&entity=album%s
+[AlbumUrl]=
+[WordSeparator]=%20
+[IndexFormat]=%_preview%|%_url%|%_coverurl%|%Catalog ID%|%Artist%|%Album%|%Total Tracks%|%Advisory%|%Year%|%Genre%|%Country%|%Source%
+[Encoding]=url-utf-8
+[SearchBy]=Country||US||&country=%s||Language||en_us||&lang=%s||Query||[$if2(%albumartist%,%artist%)[ %album%]]||&term=%s||Limit||50||&limit=%s
+
+################################################################################
+#				QUERY RESULTS DIALOG			       #
+################################################################################
+[ParserScriptIndex]=...
+
+#		DebugWriteInput "_index_input.txt"
+#		Debug "on" "_index_out.txt"
+
+json "ON"
+json_select "resultCount"
+IfGreater 0
+
+	json_select_array "results" 1
+
+		json_select "collectionViewUrl"
+
+		#\\ _COUNTRY_CODE
+		OutputTo "_COUNTRY_CODE"
+		SayRegexp "(?<=music\.apple\.com/).*?(?=/)"
+
+		#\\ _LANGUAGE_CODE
+		Replace "?l=en&uo=4" "?l=##&lang=en_us"
+		Replace "?l=ja&uo=4" "?l=##&lang=ja_jp"
+		OutputTo "_LANGUAGE_CODE"
+		SayRegexp "(?<=\?l=##).+"
+
+		#\\ _SOURCE
+		json_select "collectionViewUrl"
+		RegexpReplace "(?:http.*/\d+)(.*)(?:.uo=4)" "iTunes API$1"
+		Replace "?l=" " ￨ "
+		OutputTo "_SOURCE"
+		SayRest	
+
+	json_unselect_object
+
+	json_foreach "results"
+
+		OutputTo "_str0"
+
+		#\\ _PREVIEW
+		json_select "collectionViewUrl"
+		SayRegexp ".+(?=.uo=4)"
+
+		#\\ _URL +_COUNTRY_CODE +_LANGUAGE_CODE
+		RegexpReplace "^.*\/(\d+)(?:.*)" "|https://itunes.apple.com/lookup?media=music&entity=song&limit=300&country=%_COUNTRY_CODE%%_LANGUAGE_CODE%&id=$1|"
+		SayRest
+
+		#\\ THUMBNAIL
+		IfVar "queryThumb" "Small  (100x100px)"
+			json_select "artworkUrl100"
+			SayRest
+		EndIf
+		IfVar "queryThumb" "Medium  (250x250px)"
+			json_select "artworkUrl100"
+			Replace "100x100" "250x250"
+			SayRest
+		EndIf
+		IfVar "queryThumb" "Large  (600x600px)"
+			json_select "artworkUrl100"
+			Replace "100x100" "600x600"
+			SayRest
+		EndIf
+
+		#\\ ITUNESALBUMID
+		json_select "collectionId"
+		RegexpReplace "^.*" "|$0|"
+		SayRest
+
+		#\\ ARTIST
+		json_select "artistName"
+		SayRest
+
+		#\\ ALBUM
+		IfVar "explicitValue" "Censored"
+			json_select "collectionCensoredName"
+			If ""
+				json_select "collectionName"
+			EndIf
+		Else
+			json_select "collectionName"
+		EndIf
+		RegexpReplace "^.*" "|$0|"
+		SayRest
+
+		#\\ TOTAL_TRACKS
+		json_select "trackCount"
+		SayNextNumber
+
+		#\\ ADVISORY
+		json_select "contentAdvisoryRating"
+		RegexpReplace "^.*" "|$0|"
+		SayRest
+
+		#\\ YEAR
+		json_select "releaseDate"
+		SayNextNumber
+
+		#\\ GENRE
+		json_select "primaryGenreName"
+		RegexpReplace "^.*" "|$0|"
+		SayRest
+
+		#\\ COUNTRY
+		json_select "country"
+		SayRest
+
+		#\\ SOURCE
+		Say "|%_SOURCE%"
+
+		RegexpReplace "^.*" "%_str0%"
+		RegexpReplace "(^.*?\|)(.*?\|)(.*?)(\|iTunes API)" "$1$1$3|Apple Music Web"
+
+		OutputTo "Output"
+
+		IfVar "dataSource" "Apple Music Web"
+			SayRest
+		EndIf
+		IfVar "dataSource" "iTunes API"
+			Say "%_str0%"
+		EndIf
+		IfVar "dataSource" " < multiple >"
+			RegexpReplace "(^.*?\|.*?\|)(?:.*?\|)(.*$)" "%_str0%\n$1|$2"
+			SayRest
+		EndIf
+		Set "_str0" ""
+		SayNewline
+
+	json_foreach_end
+
+EndIf
+
+################################################################################
+#                        ADJUST TAG INFORMATION DIALOG                         #
+################################################################################
+[ParserScriptAlbum]=...
+
+#		DebugWriteInput "_album_input.txt"
+#		Debug "on" "_album_out.txt"
+
+########################################
+	########-COVER SETTINGS-########
+########################################
+
+IfVar "originalCover" "false"
+
+	IfVar "coverSize0" "Small  (100x100px)"
+		Set "_coverDim" "100"
+	EndIf
+	IfVar "coverSize0" "Medium  (600x600px)"
+		Set "_coverDim" "600"
+	EndIf
+	IfVar "coverSize0" "Large  (1200x1200px)"
+		Set "_coverDim" "1200"
+	EndIf
+	IfVar "coverSize0" "Very large  (2000x2000px)"
+		Set "_coverDim" "2000"
+	EndIf
+	IfVar "coverSize0" "  < user-defined >"
+		RegexpReplace "^.*" ",0,1,2,3,4,5,6,7,8,9"
+		OutputTo "_int0"
+		Do
+			MoveChar 1
+			SayUntil ","
+			IfVar "coverSize1" "%_int0%"
+				Set "_int1" "%_int0%"
+			EndIf
+			IfVar "coverSize2" "%_int0%"
+				Set "_int2" "%_int0%"
+			EndIf
+			IfVar "coverSize3" "%_int0%"
+				Set "_int3" "%_int0%"
+			EndIf
+			IfVar "coverSize4" "%_int0%"
+				Set "_int4" "%_int0%"
+			EndIf
+			Set "_int0" ""
+		While ","
+
+		RegexpReplace "^.*" "%_int1%%_int2%%_int3%%_int4%"
+		OutputTo "_coverDim"
+		SayRegexp "(?!0\d).+"
+
+		Set "_int1" ""
+		Set "_int2" ""
+		Set "_int3" ""
+		Set "_int4" ""
+	EndIf
+
+	IfVar "coverFormat" ".jpg"
+		Set "_coverExt" "jpg"
+	EndIf
+	IfVar "coverFormat" ".png"
+		Set "_coverExt" "png"
+	EndIf
+	IfVar "coverFormat" ".webp"
+		Set "_coverExt" "webp"
+	EndIf
+
+	IfVar "coverQuality0" "  < default >"
+		Set "_coverQua" ""
+	EndIf
+	IfVar "coverQuality0" "20%"
+		Set "_coverQua" "-20"
+	EndIf
+	IfVar "coverQuality0" "40%"
+		Set "_coverQua" "-40"
+	EndIf
+	IfVar "coverQuality0" "60%"
+		Set "_coverQua" "-60"
+	EndIf
+	IfVar "coverQuality0" "80%"
+		Set "_coverQua" "-80"
+	EndIf
+	IfVar "coverQuality0" "100%"
+		Set "_coverQua" "-100"
+	EndIf
+	IfVar "coverQuality0" "  < user-defined >"
+		RegexpReplace "^.*" ",0,1,2,3,4,5,6,7,8,9"
+		OutputTo "_int0"
+		Do
+			MoveChar 1
+			SayUntil ","
+			IfVar "coverQuality1" "%_int0%"
+				Set "_int1" "%_int0%"
+			EndIf
+			IfVar "coverQuality2" "%_int0%"
+				Set "_int2" "%_int0%"
+			EndIf
+			Set "_int0" ""
+		While ","
+
+		RegexpReplace "^.*" "%_int1%%_int2%"
+		OutputTo "_coverQua"
+		Say "-"
+		SayRegexp "(?!0\d).+"
+
+		Set "_int1" ""
+		Set "_int2" ""
+	EndIf
+
+EndIf
+
+########################################
+	####-APPLE MUSIC WEB SOURCE-####
+########################################
+
+RegexpReplace "^.*" "%CurrentUrl%"
+FindInLine "music.apple.com" 1 1
+IfNot ""
+
+	IfVar "sourceTag" "true"
+		RegexpReplace "^.*" "%CurrentPreview%"
+		RegexpReplace "http.*/\d+" "Apple Web Source"
+		Replace "?l=" " ￨ "
+		OutputTo "#_SOURCE"
+		SayRest
+	EndIf
+
+	FindLine "{\"@context\"" 1 1
+
+	json "ON" "current"
+
+	json_select_array "genre" -1 ", "
+	OutputTo "GENRE"
+	SayRest
+
+	json_select "datePublished"
+	OutputTo "YEAR"
+	SayRest
+
+	FindLine "<script type=\"application/json\" id=\"serialized-server-data\">"
+	RegexpReplace ".*<script type=\"application/json\" id=\"serialized-server-data\">\[(.*?)\]<\/script>.*" "$1"
+
+	json "ON" "current"
+
+	json_select_object "intent"
+		json_select_object "contentDescriptor"
+			json_select_object "identifiers"
+				json_select "storeAdamID"
+				OutputTo "ITUNESALBUMID"
+				SayRest
+			json_unselect_object
+
+			json_select_object "locale"
+				json_select "storefront"
+				OutputTo "TOTALDISCS"
+				SayRest
+				RegexpReplace "^.*" "aAbBcCdDeEfFgGhHiIjJkKlLmMnNoOpPqQrRsStTuUvVwWxXyYzZaAbBcCdDeEfFgGhHiIjJkKlLmMnNoOpPqQrRsStTuUvVwWxXyYzZ##"
+				RegexpReplace ".*?[%TOTALDISCS%](.).*?[%TOTALDISCS%](.).*?[%TOTALDISCS%#](.).*" "$1$2$3"
+				OutputTo "COUNTRY"
+				SayRegexp "(?i)%TOTALDISCS%"
+				Set "TOTALDISCS" ""
+			json_unselect_object
+		json_unselect_object
+	json_unselect_object
+
+	json_select_object "data"
+		json_select_array "sections" 1
+			json_select_array "items" 1
+				json_select "title"
+				OutputTo "ALBUM"
+				SayRest
+
+				json_select_many "subtitleLinks" "title" ", " "" -1 1
+				OutputTo "ALBUMARTIST"
+				SayRest
+
+				OutputTo "_ALBUMARTISTID"
+				json_foreach "subtitleLinks"
+					json_select_object "segue"
+					IfNot ""
+						json_select_object "destination"
+							json_select_object "contentDescriptor"
+								json_select_object "identifiers"
+									json_select "storeAdamID"
+									SayRest
+									Say ","
+								json_unselect_object
+							json_unselect_object
+						json_unselect_object
+					json_unselect_object
+					Endif
+				json_foreach_end
+
+				json_select_object "artwork"
+					json_select_object "dictionary"
+						json_select "url"
+						IfNotVar "originalCover" "true"
+							RegexpReplace "(.*)/.*" "$1/%_coverDim%x%_coverDim%bb%_coverQua%.%_coverExt%"
+						Else
+							RegexpReplace "^.*/thumb(.*)/.*" "https://a5.mzstatic.com/us/r1000/0$1"
+						EndIf
+						OutputTo "COVERURL"
+						SayRest
+					json_unselect_object
+				json_unselect_object
+
+				IfVar "totalTracks" "true"
+					json_select "trackCount"
+					OutputTo "TOTALCOLLECTIONTRACKS"
+					SayRest
+				EndIf
+
+				json_select "showExplicitBadge"
+				If "1"
+					Set "#_COLLECTIONADVISORY" "Explicit"
+				EndIf
+			json_unselect_object
+		json_unselect_object
+
+		json_foreach "sections"
+			json_select "id"
+			If "track-list - %ITUNESALBUMID%"
+				json_select_many_count 	"items" "" 1
+				OutputTo "TOTALDISCS"
+				SayRest
+				OutputTo "TOTALTRACKS"
+				Say "%TOTALDISCS%|"
+				json_select_many "items" "" "|" "" -1 1
+				Replace "|" "%TOTALDISCS%|"
+				SayRest
+				Set "TOTALDISCS" ""
+
+				json_select_many "items" "trackNumber" "|" "" -1 1
+				OutputTo "TRACK"
+				SayRest
+				Say "|"
+
+				json_select_many "items" "title" "|" "" -1 1
+				OutputTo "TRACKS"
+				SayRest
+				Say "|"
+
+				json_select_many "items" "artistName" "|" "" -1 1
+				OutputTo "ARTIST"
+				SayRest
+				Say "|"
+
+				json_select_many "items" "duration" "|" "" -1 1
+				OutputTo "_LENGTH"
+				SayRest
+				Say "|"
+
+				json_select_many "items" "discNumber" "|" "" -1 1
+				OutputTo "DISCNUMBER"
+				SayRest
+				Say "|"
+
+				json_select_many "items" "composer" "|" "" -1 1
+				OutputTo "COMPOSER"
+				SayRest
+				Say "|"
+
+				json_foreach "items"
+					json_select_object "contentDescriptor"
+						json_select "kind"
+						OutputTo "ITUNESMEDIATYPE"
+						SayRest
+						Say "|"
+						json_select_object "identifiers"
+							json_select "storeAdamID"
+							OutputTo "ITUNESCATALOGID"
+							SayRest
+							Say "|"
+						json_unselect_object
+					json_unselect_object
+
+					OutputTo "ITUNESARTISTID"
+					json_foreach "subtitleLinks"
+						json_select_object "segue"
+						IfNot ""
+							json_select_object "destination"
+								json_select_object "contentDescriptor"
+									json_select_object "identifiers"
+										json_select "storeAdamID"
+										SayRest
+										Say ","
+									json_unselect_object
+								json_unselect_object
+							json_unselect_object
+						json_unselect_object
+						Else
+							SayOutput "_ALBUMARTISTID"
+						Endif
+					json_foreach_end
+					Say "|"
+				json_foreach_end
+			Endif
+
+			If "track-list-section - %ITUNESALBUMID%"
+				json_select_array "items" 1
+					json_select "description"
+					OutputTo "COPYRIGHT"
+					SayRegexp "(?!.*\n).+"
+
+					json_select_object "linkSection"
+					IfNot ""
+						json_select_object "link"
+							json_select "title"
+							OutputTo "LABEL"
+							SayRest
+						json_unselect_object
+					json_unselect_object
+					Endif
+				json_unselect_object
+			Endif
+		json_foreach_end
+	json_unselect_object
+	Set "_ALBUMARTISTID" ""
+
+	RegexpReplace "^.*" "%ITUNESMEDIATYPE%"
+	Set "ITUNESMEDIATYPE" ""
+	Replace "musicVideo" "Music Video"
+	Replace "song" "Normal"
+	OutputTo "ITUNESMEDIATYPE"
+	SayRest
+
+	RegexpReplace "^.*" "%DISCNUMBER%"
+	OutputTo "TOTALDISCS"
+	SayRegexp "\d+(?=\|$)"
+
+	RegexpReplace "^.*" "%ITUNESARTISTID%"
+	Set "ITUNESARTISTID" ""
+	Replace ",|" "|"
+	OutputTo "ITUNESARTISTID"
+	SayRest
+
+Endif
+
+########################################
+	#######-ITUNES API SOURCE-######
+########################################
+
+RegexpReplace "^.*" "%CurrentUrl%"
+FindInLine "itunes.apple.com" 1 1
+IfNot ""
+
+	IfVar "sourceTag" "true"
+		RegexpReplace "^.*" "%CurrentPreview%"
+		RegexpReplace "http.*/\d+" "iTunes API"
+		Replace "?l=" " ￨ "
+		OutputTo "#_SOURCE"
+		SayRest
+	EndIf
+
+	json "ON"
+
+	json_select "resultCount"
+	IfGreater 0
+		json_select_array "results" 2
+			IfVar "explicitValue" "Censored"
+				json_select "collectionCensoredName"
+				If ""
+					json_select "collectionName"
+				EndIf
+			Else
+				json_select "collectionName"
+			EndIf
+			OutputTo "ALBUM"
+			SayRest
+
+			json_select "discCount"
+			OutputTo "TOTALDISCS"
+			SayRest
+		json_unselect_object
+
+		json_select_array "results" 1
+			json_select "collectionId"
+			OutputTo "ITUNESALBUMID"
+			SayNextNumber
+
+			json_select "copyright"
+			OutputTo "COPYRIGHT"
+			SayRest
+
+			json_select "country"
+			OutputTo "COUNTRY"
+			SayRest
+
+			json_select "artworkUrl100"
+			IfNotVar "originalCover" "true"
+				RegexpReplace "(.*)/.*" "$1/%_coverDim%x%_coverDim%bb%_coverQua%.%_coverExt%"
+			Else
+				RegexpReplace "^.*/thumb(.*)/.*" "https://a5.mzstatic.com/us/r1000/0$1"
+			EndIf
+			OutputTo "COVERURL"
+			SayRest
+
+			json_select "primaryGenreName"
+			OutputTo "GENRE"
+			SayRest
+
+			json_select "contentAdvisoryRating"
+			OutputTo "#_COLLECTIONADVISORY"
+			SayRest
+
+			json_select "releaseDate"
+			OutputTo "YEAR"
+		#	SayNextNumber
+		#	SayUntil "T"
+		#	SayUntil "Z"
+			SayRest
+		json_unselect_object
+
+		json_select_many "results" "artistName" "|"
+		OutputTo "ALBUMARTIST"
+		SayUntil "|"
+		OutputTo "ARTIST"
+		SayRegexp "(?<=\|).+"
+		Say "|"
+
+		json_select_many "results" "artistId" "|"
+		OutputTo "ITUNESARTISTID"
+		SayRegexp "(?<=\|).+"
+		Say "|"
+
+		json_select_many "results" "discNumber" "|"
+		OutputTo "DISCNUMBER"
+		SayRest
+		Say "|"
+
+		json_select_many "results" "trackExplicitness" "|"
+		Replace "cleaned" "2"
+		Replace "explicit" "1"
+		Replace "notExplicit" "0"
+		OutputTo "ITUNESADVISORY"
+		SayRest
+		Say "|"
+
+		json_select_many "results" "kind" "|"
+		Replace "music-video" "Music Video"
+		Replace "song" "Normal"
+		OutputTo "ITUNESMEDIATYPE"
+		SayRest
+		Say "|"
+
+		json_select_many "results" "trackTimeMillis" "|"
+		OutputTo "_LENGTH"
+		SayRest
+		Say "|"
+
+		json_select_many "results" "trackCount" "|"
+		IfVar "totalTracks" "true"
+			OutputTo "TOTALCOLLECTIONTRACKS"
+			SayNextNumber
+		EndIf
+		OutputTo "TOTALTRACKS"
+		SayRegexp "(?<=\|).+"
+		Say "|"
+
+		json_select_many "results" "trackId" "|"
+		OutputTo "ITUNESCATALOGID"
+		SayRest
+		Say "|"
+
+		json_select_many "results" "trackNumber" "|"
+		OutputTo "TRACK"
+		SayRest
+		Say "|"
+
+		OutputTo "TRACKS"
+		IfVar "explicitValue" "Censored"
+			json_select_many "results" "trackCensoredName" "|" "" -1 1
+			FindInLine "||" 1 1
+			MoveChar -1
+			If "|"
+				json_foreach "results"
+					json_select "trackCensoredName"
+					If ""
+						json_select "trackName"
+					Endif
+					SayRest
+					Say "|"
+				json_foreach_end
+				RegexpReplace "^.*" "%TRACKS%"
+				Set "TRACKS" ""
+			Else
+				GotoChar 1
+			EndIf
+		Else
+			json_select_many "results" "trackName" "|" "" -1 1
+		EndIf
+		SayRegexp "(?<=\|).+"
+		Say "|"
+	EndIf
+
+EndIf
+
+########################################
+		########-COMMON-########
+########################################
+
+IfVar "coverUrl" "true"
+	Set "#_COVERURL" "%COVERURL%"
+EndIf
+
+Set "_coverDim" ""
+Set "_coverExt" ""
+Set "_coverQua" ""
+
+##### END OF SCRIPT #####

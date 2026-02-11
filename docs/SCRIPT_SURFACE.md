@@ -66,6 +66,15 @@ Role: Local wrapper for `python -m tagslut`.
 5. `tools/taglslut [args...]`
 Role: Typo-tolerant local wrapper for `python -m tagslut`.
 
+6. `tools/tag-build [options]`
+Role: Build M3U from DB for library FLAC files missing ISRC.
+
+7. `tools/tag-run --m3u <path> [options]`
+Role: Run `onetagger-cli` on a symlink batch from M3U and emit summary artifacts.
+
+8. `tools/tag [options]`
+Role: Combined build + run OneTagger workflow with defaults.
+
 ## Transitional Wrapper Status
 
 No transitional wrappers remain on the top-level `tagslut` CLI surface.

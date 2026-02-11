@@ -263,6 +263,8 @@ Targets (Phase 4/5):
 | 2026-02-09 | Rebrand initiated: package metadata + CLI aliases (`tagslut`, `taglslut`) with `dedupe` compatibility retained; added rebrand runbook | Move operator-facing brand to tagslut without destabilizing existing automation | `codex` |
 | 2026-02-09 | Removed `scan/recommend/apply/promote/quarantine` from top-level CLI and updated canonical surface docs/checks | Execute `P5-LEG-001..005` in one batch while preserving `mgmt/metadata/recover` compatibility window | `codex` |
 | 2026-02-09 | Removed `mgmt/metadata/recover` from top-level CLI, rewired canonical groups to hidden internal commands, and published Phase 5 verification report | Complete `P5-COMP-001..003` and close the CLI decommission phase with executable validation evidence | `codex` |
+| 2026-02-09 | Added OneTagger operational wrappers (`tools/tag-build`, `tools/tag-run`, `tools/tag`) with DB-driven missing-ISRC batching and run summaries | Reduce metadata enrichment friction to one-command defaults while preserving deterministic artifacts and auditability | `codex` |
+| 2026-02-09 | Switched OneTagger flow to ISRC-only writes with iterative unresolved retries (`--max-passes`) | Optimize for aggressive ISRC completion first while deferring non-ISRC metadata enrichment | `codex` |
 
 ## Immediate Next Actions
 

@@ -1,0 +1,28 @@
+﻿#    _                   _                        _
+#   | |                 | |                      | |
+#   | |__    ___   __ _ | |_  _ __    ___   _ __ | |_     ___  ___   _ __ ___
+#   | '_ \  / _ \ / _` || __|| '_ \  / _ \ | '__|| __|   / __|/ _ \ | '_ ` _ \
+#   | |_) ||  __/| (_| || |_ | |_) || (_) || |   | |_  _| (__| (_) || | | | | |
+#   |_.__/  \___| \__,_| \__|| .__/  \___/ |_|    \__|(_)\___|\___/ |_| |_| |_|      _
+#                    (_)     | | |        | |                 | |                   | |
+#    ___   ___  _ __  _  _ __|_| |_  ___  | |__   _   _   ___ | |_  ___ __   __ ___ | |__    ___  _ __  ___ TM
+#   / __| / __|| '__|| || '_ \ | __|/ __| | '_ \ | | | | / __|| __|/ _ \\ \ / // _ \| '_ \  / _ \| '__|/ _ \
+#   \__ \| (__ | |   | || |_) || |_ \__ \ | |_) || |_| | \__ \| |_|  __/ \ V /|  __/| | | ||  __/| |  | (_) |
+#   |___/ \___||_|   |_|| .__/  \__||___/ |_.__/  \__, | |___/ \__|\___|  \_/  \___||_| |_| \___||_|   \___/
+#                       | |                        __/ |
+#                       |_|                       |___/
+#:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::#
+#                             .::  [v6.007 by stevehero™] [2024.10.08] ::.                                #
+#  https://community.mp3tag.de/t/ws-beatport-com-by-stevehero-release-single-track-artwork-tagging/12568  #
+#                          .:: Please read the 'Version History + Readme' file ::.                        #
+#                    .:: DO NOT COPY/MODIFY OR REDISTRIBUTE THIS WITHOUT PERMISSION ::.                   #
+#                .:: This file should be stored in your tag sources, sources directory ::.                #
+#                                      %APPDATA%\Mp3tag\data\sources                                      #
+#                          and requires Mp3tag v3.26 [Win] / 1.8.4 [Mac] or above                         #
+#:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::#
+#               .:: You can buy me a 🍺, 🍔 or an EP on beatport with the link below ::.                 #
+#                                    https://revolut.me/stephen147                                        #
+#:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::#
+
+[SearchBy]=RELEASE Search by Album Artist||$trim($replace($regexp($regexp($regexp($regexp($regexp($if2(%albumartist%,$if2(%albumartist%,$if2(%album artist%,$if2(%band%,$if2(%albumartist%,$if2(%artist%,$if2(%artist%,%discogs_artist_name%))))))),(?i)\b(various artists|v\.?a\.?)\b,various),(?i)\bthe\b,),(?i)''s( |$),$1),'(?i)[^\w]+(featuring|feat|ft|presents|pres|\band\b|\bvs\b|w/|\+|/|&|www[^\s]+|[^\w\s])\.*', ),'\s+', ),',',))||+%s
+[Include]=Beatport by &stevehero v6_Release Search.inc

@@ -429,3 +429,6 @@ output/spreadsheet/ALL_audio_health_report_precheck.xlsx
 output/spreadsheet/ALL_missing_db_fuzzy_matches_EPOCH_2026-02-08.xlsx
 output/spreadsheet/DJ_NEW_audio_health_report_postcheck.xlsx
 output/spreadsheet/DJ_NEW_audio_health_report_precheck.xlsx
+output/spreadsheet/ALL_audio_health_report_corrected.xlsx
+output/spreadsheet/ALL_missing_db_checksum_matches.xlsx
+output/spreadsheet/ALL_missing_db_unicode_matches.xlsx

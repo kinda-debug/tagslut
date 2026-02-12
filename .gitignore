@@ -424,3 +424,8 @@ tools/flacs_inventory_20260202_191907.xlsx
 poetry.lock
 dedupe/storage/migrations/2026_02_03_add_duration_safety.sql
 DJ.xlsx
+output/spreadsheet/ALL_audio_health_report_postcheck.xlsx
+output/spreadsheet/ALL_audio_health_report_precheck.xlsx
+output/spreadsheet/ALL_missing_db_fuzzy_matches_EPOCH_2026-02-08.xlsx
+output/spreadsheet/DJ_NEW_audio_health_report_postcheck.xlsx
+output/spreadsheet/DJ_NEW_audio_health_report_precheck.xlsx

@@ -1,0 +1,320 @@
+# Workflows
+
+Complete step-by-step workflows for common operations.
+
+## Workflow 1: Pre-Download Check + Beatport Download
+
+**Goal:** Check a list of Beatport links against your library, then download only missing tracks.
+
+### Step 1: Create Links File
+
+```bash
+cat > ~/beatport_links.txt << 'EOF'
+https://www.beatport.com/release/example-release/12345
+https://www.beatport.com/chart/my-chart/67890
+https://www.beatport.com/track/some-track/11111
+EOF
+```
+
+### Step 2: Run Pre-Download Check
+
+```bash
+cd ~/Projects/dedupe
+source .venv/bin/activate
+
+python tools/review/pre_download_check.py \
+  --input ~/beatport_links.txt \
+  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db \
+  --out-dir output/precheck
+```
+
+### Step 3: Review Results
+
+```bash
+# Check decisions
+cat output/precheck/precheck_decisions_*.csv | head -20
+
+# Check summary
+cat output/precheck/precheck_summary_*.csv
+
+# Count keep vs skip
+grep -c ",keep," output/precheck/precheck_decisions_*.csv
+grep -c ",skip," output/precheck/precheck_decisions_*.csv
+```
+
+### Step 4: Download Missing Tracks
+
+```bash
+# Get the keep URLs file
+KEEP_FILE=$(ls -t output/precheck/precheck_keep_track_urls_*.txt | head -1)
+
+# Download each track
+while read -r url; do
+  ~/Projects/beatportdl/beatportdl-darwin-arm64 "$url"
+done < "$KEEP_FILE"
+```
+
+### Step 5: Register Downloaded Files
+
+```bash
+tagslut index register \
+  --zone staging \
+  --recursive \
+  /path/to/downloaded/files
+```
+
+---
+
+## Workflow 2: Pre-Download Check + Tidal Download
+
+**Goal:** Check Tidal links against your library, then download only missing tracks.
+
+### Step 1: Ensure Tidal Token is Valid
+
+```bash
+tagslut auth status
+# If expired:
+tagslut auth refresh
+```
+
+### Step 2: Create Links File
+
+```bash
+cat > ~/tidal_links.txt << 'EOF'
+https://tidal.com/browse/album/123456789
+https://tidal.com/browse/playlist/abc-def-123
+EOF
+```
+
+### Step 3: Run Pre-Download Check
+
+```bash
+python tools/review/pre_download_check.py \
+  --input ~/tidal_links.txt \
+  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db \
+  --out-dir output/precheck
+```
+
+### Step 4: Download Missing Tracks
+
+```bash
+KEEP_FILE=$(ls -t output/precheck/precheck_keep_track_urls_*.txt | head -1)
+
+while read -r url; do
+  tools/tiddl "$url"
+done < "$KEEP_FILE"
+```
+
+---
+
+## Workflow 3: Complete Intake Pipeline
+
+**Goal:** Full pipeline from download to final library.
+
+```
+intake → index → decide → execute → verify → report
+```
+
+### Step 1: Download (intake)
+
+```bash
+# Beatport
+tools/get-sync "https://www.beatport.com/release/example/12345"
+
+# Or Tidal
+tools/get "https://tidal.com/browse/album/67890"
+```
+
+### Step 2: Register (index)
+
+```bash
+tagslut index register \
+  --zone staging \
+  --recursive \
+  /path/to/downloads
+```
+
+### Step 3: Check for Issues (index)
+
+```bash
+# Duplicate check
+tagslut index check \
+  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db
+
+# Duration check (DJ safety)
+tagslut index duration-check \
+  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db
+```
+
+### Step 4: Generate Plan (decide)
+
+```bash
+tagslut decide plan \
+  --profile default \
+  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db \
+  --output output/move_plan.json
+```
+
+### Step 5: Review Plan
+
+```bash
+tagslut report plan-summary \
+  --plan output/move_plan.json
+```
+
+### Step 6: Execute Plan (execute)
+
+```bash
+tagslut execute move-plan \
+  --plan output/move_plan.json
+```
+
+### Step 7: Verify (verify)
+
+```bash
+tagslut verify receipts \
+  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db
+
+tagslut verify duration \
+  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db
+```
+
+### Step 8: Generate Report (report)
+
+```bash
+tagslut report duration \
+  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db \
+  --output artifacts/duration_report.md
+```
+
+---
+
+## Workflow 4: OneTagger ISRC Enrichment
+
+**Goal:** Add ISRC tags to FLAC files missing them.
+
+### Step 1: Build M3U of Files Missing ISRC
+
+```bash
+tools/tag-build \
+  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db \
+  --output output/onetagger_batch.m3u
+```
+
+### Step 2: Run OneTagger
+
+```bash
+tools/tag-run \
+  --m3u output/onetagger_batch.m3u
+```
+
+### Step 3: Update Database with New Tags
+
+```bash
+tagslut index enrich \
+  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db
+```
+
+---
+
+## Workflow 5: Direct Promotion by Tags
+
+**Goal:** Move files from staging to library using tag-based destination rules.
+
+```bash
+python tools/review/promote_by_tags.py \
+  --source /path/to/staging \
+  --dest /path/to/library \
+  --move-log artifacts/moves_$(date +%Y%m%d_%H%M%S).jsonl \
+  --dry-run  # Remove for actual execution
+```
+
+**Important:** Always run with `--dry-run` first to preview moves.
+
+---
+
+## Workflow 6: Quarantine Problematic Files
+
+**Goal:** Move problematic files to quarantine for manual review.
+
+### Step 1: Generate Quarantine Plan
+
+```bash
+tagslut decide plan \
+  --profile quarantine \
+  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db \
+  --output output/quarantine_plan.json
+```
+
+### Step 2: Review Plan
+
+```bash
+tagslut report plan-summary \
+  --plan output/quarantine_plan.json
+```
+
+### Step 3: Execute Quarantine
+
+```bash
+tagslut execute quarantine-plan \
+  --plan output/quarantine_plan.json
+```
+
+---
+
+## Workflow 7: Duration Reference Update
+
+**Goal:** Update reference durations for DJ safety checks.
+
+### Step 1: Set Reference Durations
+
+```bash
+tagslut index set-duration-ref \
+  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db \
+  --source beatport  # or tidal
+```
+
+### Step 2: Verify Duration Consistency
+
+```bash
+tagslut index duration-audit \
+  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db
+```
+
+---
+
+## Workflow 8: Recovery and Repair
+
+**Goal:** Recover from interrupted operations or repair issues.
+
+### Step 1: Check Recovery Status
+
+```bash
+tagslut verify recovery \
+  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db
+```
+
+### Step 2: Generate Recovery Report
+
+```bash
+tagslut report recovery \
+  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db \
+  --output artifacts/recovery_report.md
+```
+
+### Step 3: Review and Act
+
+See `docs/PROVENANCE_AND_RECOVERY.md` for detailed recovery procedures.
+
+---
+
+## Match Strategy Reference
+
+The pre-download check tool uses this matching hierarchy:
+
+1. **ISRC** (highest confidence) - Exact ISRC match
+2. **Beatport Track ID** - Exact Beatport ID match (Beatport links only)
+3. **Title + Artist + Album** - Normalized exact match
+4. **Title + Artist** - Normalized exact match (fallback)
+
+Tracks that match any of these are marked `skip`. Tracks that don't match are marked `keep` and their URLs are written to the keep file for downloading.

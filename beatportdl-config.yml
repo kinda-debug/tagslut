@@ -1,7 +1,0 @@
-# BeatportDL configuration for dedupe
-# Ensures downloads never go to staging.
-
-downloads_directory: /Volumes/DJSSD/beatport
-sort_by_context: true
-force_release_directories: true
-track_exists: update

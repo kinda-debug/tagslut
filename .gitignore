@@ -59,6 +59,7 @@ dist/
 .venv/
 venv/
 .env
+beatportdl-config.yml
 .pytest_cache/
 .mypy_cache/
 .ipynb_checkpoints/

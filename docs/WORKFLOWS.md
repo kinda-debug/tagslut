@@ -107,6 +107,56 @@ done < "$KEEP_FILE"
 
 ---
 
+## Workflow 2a: Automatic Precheck + Download (Any Source)
+
+**Goal:** One-command flow to check DB and download only missing tracks.
+
+```bash
+# Single URL
+tools/get-auto "https://www.beatport.com/release/example/12345"
+
+# Multiple URLs
+tools/get-auto \
+  "https://www.beatport.com/release/a/1" \
+  "https://tidal.com/browse/album/2" \
+  "https://deezer.com/album/3"
+
+# From file
+tools/get-auto --links-file ~/links.txt
+```
+
+**What happens:**
+1. Runs `pre_download_check.py` against DB
+2. Generates keep/skip decisions
+3. Downloads only missing tracks via `tools/get`
+4. Deezer downloads auto-register; others need manual registration
+
+---
+
+## Workflow 2b: Download from Deezer
+
+**Goal:** Download from Deezer with auto-registration.
+
+```bash
+# Via unified router (recommended)
+tools/get "https://www.deezer.com/en/album/123456"
+
+# Or direct wrapper
+tools/deemix "https://www.deezer.com/en/track/789"
+```
+
+**Defaults:**
+- Path: `~/Music/mdl/deezer`
+- Bitrate: FLAC
+- Auto-registers to DB with `--source deezer`
+
+**Override path:**
+```bash
+tools/deemix --path /custom/path "https://www.deezer.com/album/123"
+```
+
+---
+
 ## Workflow 3: Complete Intake Pipeline
 
 **Goal:** Full pipeline from download to final library.
@@ -305,6 +355,30 @@ tagslut report recovery \
 ### Step 3: Review and Act
 
 See `docs/PROVENANCE_AND_RECOVERY.md` for detailed recovery procedures.
+
+---
+
+## Source Registration Matrix
+
+| Source | Wrapper | --source Flag | Auto-register | Default Path |
+|--------|---------|---------------|---------------|--------------|
+| Beatport | `tools/get`, `tools/get-sync` | `bpdl` | No | config-defined |
+| Tidal | `tools/get`, `tools/tiddl` | `tidal` | No | `~/Downloads/tiddl/` |
+| Deezer | `tools/get`, `tools/deemix` | `deezer` | **Yes** | `~/Music/mdl/deezer` |
+| Qobuz | N/A | N/A | N/A | **Not in active workflows** |
+
+### Manual Registration Commands
+
+```bash
+# Beatport downloads
+tagslut index register /path/to/bpdl/downloads --source bpdl --execute
+
+# Tidal downloads
+tagslut index register ~/Downloads/tiddl/ --source tidal --execute
+
+# Deezer (auto-registered, but if needed)
+tagslut index register ~/Music/mdl/deezer --source deezer --execute
+```
 
 ---
 

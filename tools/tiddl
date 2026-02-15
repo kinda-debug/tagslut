@@ -17,9 +17,25 @@ set -euo pipefail
 TIDDL_BIN="${TIDDL_BIN:-/opt/homebrew/bin/tiddl}"
 
 if [[ ! -x "$TIDDL_BIN" ]]; then
-    echo "Error: tiddl binary not found or not executable at: $TIDDL_BIN" >&2
-    echo "Set TIDDL_BIN to override the default path." >&2
-    exit 1
+    if command -v tiddl >/dev/null 2>&1; then
+        TIDDL_BIN="$(command -v tiddl)"
+    else
+        echo "Error: tiddl binary not found or not executable at: $TIDDL_BIN" >&2
+        echo "Set TIDDL_BIN or install tiddl in PATH." >&2
+        exit 1
+    fi
 fi
 
-exec "$TIDDL_BIN" "$@"
+if [[ $# -eq 0 ]]; then
+    exec "$TIDDL_BIN"
+fi
+
+case "$1" in
+    auth|download|--help|-h|--debug|--omit-cache)
+        exec "$TIDDL_BIN" "$@"
+        ;;
+    *)
+        # Newer tiddl CLI expects: tiddl download url <url>
+        exec "$TIDDL_BIN" download url "$@"
+        ;;
+esac

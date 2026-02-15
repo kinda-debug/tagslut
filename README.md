@@ -1,18 +1,40 @@
 # tagslut
 
-Use this first:
-- `docs/WORKFLOW_3_COMMANDS.md`
+Music library deduplication and metadata orchestration toolkit.
 
-Quick commands:
-1. `tools/get <beatport-url>` - download missing + build playlist
-2. `tools/get-sync <beatport-url>` - explicit sync mode
-3. `tools/get-report <beatport-url>` - report-only (no download)
+## Quick Start
 
-OneTagger enrichment:
-1. `tools/tag-build` - create M3U for library files missing ISRC
-2. `tools/tag-run --m3u <m3u-path>` - run `onetagger-cli` for that list
-3. `tools/tag` - build + run in one step (ISRC-only, multi-pass retries)
+```bash
+cd ~/Projects/dedupe
+source .venv/bin/activate
+tagslut --help
+```
 
-CLI naming:
-- `tagslut` is the preferred command name
-- `dedupe` is a compatibility alias
+## Documentation
+
+| Document | Purpose |
+|----------|---------|
+| `docs/README_OPERATIONS.md` | **Single source of truth** - all commands |
+| `docs/WORKFLOWS.md` | Step-by-step workflow guides |
+| `docs/TROUBLESHOOTING.md` | Common issues and fixes |
+
+## Common Commands
+
+```bash
+# Download from any source (Beatport/Tidal/Deezer)
+tools/get <url>
+
+# Pre-check + download only missing
+tools/get-auto <url>
+
+# Register downloads to DB
+tagslut index register <path> --source [bpdl|tidal|deezer]
+
+# Check for duplicates
+tagslut index check --db <db>
+```
+
+## CLI
+
+- `tagslut` - preferred command name
+- `dedupe` - compatibility alias (retiring June 2026)

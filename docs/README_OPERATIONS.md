@@ -85,7 +85,19 @@ tools/tiddl "https://tidal.com/browse/album/67890"
 
 **Note:** Requires valid Tidal token. Check with `tagslut auth status`.
 
-### 4. Register New Files
+### 4. Download from Deezer
+
+```bash
+# Via router (auto FLAC + auto-register source=deezer)
+tools/get "https://www.deezer.com/en/track/3451496391"
+
+# Or direct wrapper
+tools/deemix "https://www.deezer.com/en/track/3451496391"
+```
+
+**Defaults:** downloads to `~/Music/mdl/deezer`, bitrate `FLAC`, then runs `tagslut index register --source deezer --execute`.
+
+### 5. Register New Files
 
 ```bash
 tagslut index register \
@@ -94,14 +106,14 @@ tagslut index register \
   /path/to/new/files
 ```
 
-### 5. Check for Duplicates
+### 6. Check for Duplicates
 
 ```bash
 tagslut index check \
   --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db
 ```
 
-### 6. Duration Check (DJ Safety)
+### 7. Duration Check (DJ Safety)
 
 ```bash
 # Quick check
@@ -204,10 +216,11 @@ tagslut report duration --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.
 
 ### Downloads Files
 
-- `tools/get-sync`
-- `tools/get`
-- `tools/tiddl`
-- `beatportdl`
+- `tools/get` (unified router)
+- `tools/get-sync` (Beatport)
+- `tools/get-auto` (precheck + download missing)
+- `tools/tiddl` (Tidal)
+- `tools/deemix` (Deezer, auto-registers)
 
 ## DO NOT USE (Retired)
 
@@ -229,8 +242,9 @@ These commands were retired on Feb 9, 2026:
 ## Downloader Locations
 
 ```
-Beatport: ~/Projects/beatportdl/beatportdl-darwin-arm64
-Tidal: tiddl (via PATH or tools/tiddl)
+Beatport: tools/beatportdl/bpdl/bpdl (or ~/Projects/beatportdl/beatportdl-darwin-arm64)
+Tidal:    tiddl (via PATH or tools/tiddl)
+Deezer:   deemix (via PATH or tools/deemix)
 ```
 
 ## Environment Variables

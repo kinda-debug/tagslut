@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# get — Unified intake/download entrypoint for Tidal and Beatport URLs
+# get — Unified intake/download entrypoint for Tidal, Beatport, and Deezer URLs
 #
 # Routes URLs to the appropriate workflow based on domain:
-#   - tidal.com   → tools/tiddl (TIDDL wrapper)
+#   - tidal.com    → tools/tiddl (TIDDL wrapper)
 #   - beatport.com → tools/get-sync (prefilter + download missing + m3u)
+#   - deezer.com   → tools/deemix (Deezer wrapper + auto-register)
 #
 # Usage:
 #   tools/get <url> [extra-args...]
@@ -21,6 +22,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TIDDL_WRAPPER="$SCRIPT_DIR/tiddl"
+DEEMIX_WRAPPER="$SCRIPT_DIR/deemix"
 BPDL_BIN="$SCRIPT_DIR/beatportdl/bpdl/bpdl"
 GET_INTAKE="$SCRIPT_DIR/get-intake"
 GET_SYNC="$SCRIPT_DIR/get-sync"
@@ -85,8 +87,16 @@ elif [[ "$URL" == *"beatport.com"* ]]; then
     echo "Info: extra args detected; using get-sync compatibility mode." >&2
     exec "$GET_SYNC" "$URL" "$@"
 
+elif [[ "$URL" == *"deezer.com"* || "$URL" == *"dzr.page.link"* ]]; then
+    if [[ ! -x "$DEEMIX_WRAPPER" ]]; then
+        echo "Error: deemix wrapper not found or not executable at: $DEEMIX_WRAPPER" >&2
+        exit 1
+    fi
+    cd "$REPO_ROOT"
+    exec "$DEEMIX_WRAPPER" "$URL" "$@"
+
 else
     echo "Error: Unrecognized URL domain: $URL" >&2
-    echo "Supported domains: tidal.com, beatport.com" >&2
+    echo "Supported domains: tidal.com, beatport.com, deezer.com" >&2
     exit 1
 fi

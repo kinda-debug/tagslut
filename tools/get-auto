@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+# get-auto — precheck links against DB, then download only missing tracks
+#
+# Usage:
+#   tools/get-auto <url> [url...]
+#   tools/get-auto --links-file /path/to/links.txt
+#
+# Env:
+#   DEDUPE_DB   Path to music.db (optional if script can infer from env)
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PRECHECK_PY="$REPO_ROOT/tools/review/pre_download_check.py"
+GET_BIN="$REPO_ROOT/tools/get"
+OUT_DIR="$REPO_ROOT/output/precheck"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  tools/get-auto <url> [url...]
+  tools/get-auto --links-file /path/to/links.txt
+
+Optional:
+  --db /path/to/music.db
+  --out-dir /path/to/output/precheck
+EOF
+  exit 1
+}
+
+DB_ARG=()
+LINKS_FILE=""
+URLS=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --db)
+      [[ $# -ge 2 ]] || usage
+      DB_ARG=(--db "$2")
+      shift 2
+      ;;
+    --out-dir)
+      [[ $# -ge 2 ]] || usage
+      OUT_DIR="$2"
+      shift 2
+      ;;
+    --links-file)
+      [[ $# -ge 2 ]] || usage
+      LINKS_FILE="$2"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      ;;
+    *)
+      URLS+=("$1")
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "$LINKS_FILE" && ${#URLS[@]} -eq 0 ]]; then
+  usage
+fi
+
+if [[ ! -x "$GET_BIN" ]]; then
+  echo "Error: tools/get not executable: $GET_BIN" >&2
+  exit 2
+fi
+
+if [[ ! -f "$PRECHECK_PY" ]]; then
+  echo "Error: precheck script not found: $PRECHECK_PY" >&2
+  exit 2
+fi
+
+mkdir -p "$OUT_DIR"
+
+TMP_LINKS=""
+if [[ -n "$LINKS_FILE" ]]; then
+  TMP_LINKS="$LINKS_FILE"
+else
+  TMP_LINKS="$(mktemp /tmp/get-auto-links.XXXXXX.txt)"
+  trap '[[ -n "$TMP_LINKS" && -f "$TMP_LINKS" ]] && rm -f "$TMP_LINKS"' EXIT
+  printf '%s\n' "${URLS[@]}" > "$TMP_LINKS"
+fi
+
+echo "[1/2] Precheck against DB..."
+python3 "$PRECHECK_PY" --input "$TMP_LINKS" "${DB_ARG[@]}" --out-dir "$OUT_DIR"
+
+KEEP_FILE="$(ls -t "$OUT_DIR"/precheck_keep_track_urls_*.txt 2>/dev/null | head -n1 || true)"
+if [[ -z "$KEEP_FILE" || ! -f "$KEEP_FILE" ]]; then
+  echo "Error: keep URLs file not generated in $OUT_DIR" >&2
+  exit 3
+fi
+
+KEEP_COUNT="$(awk 'NF{c++} END{print c+0}' "$KEEP_FILE")"
+if [[ "$KEEP_COUNT" -eq 0 ]]; then
+  echo "No missing tracks to download."
+  exit 0
+fi
+
+echo "[2/2] Downloading only missing tracks ($KEEP_COUNT)..."
+DONE=0
+while IFS= read -r url; do
+  [[ -n "$url" ]] || continue
+  DONE=$((DONE + 1))
+  echo "[$DONE/$KEEP_COUNT] $url"
+  "$GET_BIN" "$url"
+done < "$KEEP_FILE"
+
+echo "Done. Downloaded missing tracks from: $KEEP_FILE"

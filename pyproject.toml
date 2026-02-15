@@ -4,7 +4,7 @@ version = "2.0.0"
 description = "Tagslut: recovery-first music library deduplication and metadata orchestration toolkit."
 authors = ["Georges Khawam <georgeskhawam@users.noreply.github.com>"]
 readme = "README.md"
-packages = [{include = "dedupe"}, {include = "tagslut"}]
+packages = [{include = "tagslut"}]
 
 [project]
 name = "tagslut"
@@ -35,14 +35,14 @@ dependencies = [
 ]
 
 [project.scripts]
-tagslut = "dedupe.cli.main:cli"
-taglslut = "dedupe.cli.main:cli"
-dedupe = "dedupe.cli.main:cli"
+tagslut = "tagslut.cli.main:cli"
+taglslut = "tagslut.cli.main:cli"
+dedupe = "tagslut.cli.main:cli"
 
 [tool.poetry.scripts]
-tagslut = "dedupe.cli.main:cli"
-taglslut = "dedupe.cli.main:cli"
-dedupe = "dedupe.cli.main:cli"
+tagslut = "tagslut.cli.main:cli"
+taglslut = "tagslut.cli.main:cli"
+dedupe = "tagslut.cli.main:cli"
 
 [tool.poetry.dependencies]
 python = "^3.11"

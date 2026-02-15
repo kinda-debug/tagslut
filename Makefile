@@ -1,4 +1,4 @@
-# Dedupe project Makefile
+# Tagslut project Makefile
 # Uses Poetry for dependency management.
 
 .PHONY: help install update lock test lint format type-check clean check \
@@ -23,13 +23,13 @@ test: ## Run tests
 	poetry run pytest
 
 lint: ## Run linting (flake8)
-	poetry run flake8 dedupe tools tests scripts
+	poetry run flake8 tagslut tools tests scripts
 
 format: ## Format code with black
-	poetry run black dedupe tools tests scripts
+	poetry run black tagslut tools tests scripts
 
 type-check: ## Run mypy type checking
-	poetry run mypy dedupe
+	poetry run mypy tagslut
 
 clean: ## Clean Python cache files
 	find . -type d -name __pycache__ -exec rm -rf {} +

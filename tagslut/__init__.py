@@ -1,9 +1,24 @@
-"""Tagslut compatibility package mapped to the dedupe implementation.
+"""Unified toolkit for scanning, matching, and recovering audio libraries.
 
-This package provides rebranded import/entrypoint surfaces while the core
-implementation remains under ``dedupe`` during migration.
+Keep package import lightweight: submodules are loaded lazily.
 """
 
-from dedupe.cli.main import cli
+from __future__ import annotations
 
-__all__ = ["cli"]
+import importlib
+from typing import Any
+
+__all__ = [
+    "decide",
+    "core",
+    "integrity_scanner",
+    "policy",
+    "storage",
+    "utils",
+]
+
+
+def __getattr__(name: str) -> Any:
+    if name in __all__:
+        return importlib.import_module(f"{__name__}.{name}")
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

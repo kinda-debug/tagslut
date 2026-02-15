@@ -37,7 +37,9 @@
       "Bash(done)",
       "Bash(gh pr list:*)",
       "Bash(gh auth:*)",
-      "Bash(git remote prune:*)"
+      "Bash(git remote prune:*)",
+      "Bash(git commit:*)",
+      "Bash(git mv:*)"
     ]
   }
 }

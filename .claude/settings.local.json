@@ -30,10 +30,10 @@
       "Bash(fi)",
       "Bash(git rm:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)",
-      "Bash(while IFS= read -r f)",
+      "Bash(git commit -m \"Automated update by Claude\")",
+      "Bash(while IFS= read -r file_path)",
       "Bash(do)",
-      "Bash(git mv:*)",
+      "Bash(git mv /Users/georgeskhawam/Projects/dedupe/* /Users/georgeskhawam/Projects/dedupe/*)",
       "Bash(done)"
     ]
   }

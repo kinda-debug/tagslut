@@ -48,7 +48,7 @@ def _expand_path(value: Optional[str]) -> Optional[Path]:
 
 def get_db_path() -> Optional[Path]:
     """Get database path from environment."""
-    path = _get_env("DEDUPE_DB", required=False)
+    path = _get_env("TAGSLUT_DB", required=False)
     return _expand_path(path)
 
 
@@ -103,14 +103,14 @@ def get_quarantine_volume() -> Optional[Path]:
 
 def get_artifacts_dir() -> Path:
     """Get artifacts directory"""
-    path = _get_env("DEDUPE_ARTIFACTS", default="./artifacts")
+    path = _get_env("TAGSLUT_ARTIFACTS", default="./artifacts")
     return _expand_path(path)
 
 
 def get_reports_dir() -> Path:
     """Get reports directory"""
     default = str(get_artifacts_dir() / "M" / "03_reports")
-    path = _get_env("DEDUPE_REPORTS", default=default)
+    path = _get_env("TAGSLUT_REPORTS", default=default)
     return _expand_path(path)
 
 

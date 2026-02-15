@@ -230,7 +230,7 @@ def load_zone_manager(
         return _zone_manager_from_mapping(data, source=str(config_path))
 
     # 2) Env var pointing to YAML
-    env_path = os.getenv("DEDUPE_ZONES_CONFIG")
+    env_path = os.getenv("TAGSLUT_ZONES_CONFIG")
     if env_path:
         data = _load_yaml(Path(env_path))
         return _zone_manager_from_mapping(data, source=str(env_path))

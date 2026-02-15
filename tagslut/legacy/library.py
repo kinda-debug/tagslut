@@ -11,7 +11,7 @@ from tagslut.utils.config import Config
 Zone = Literal["inbox", "staging", "accepted", "rejected", "suspect", "quarantine"]
 
 ZONE_ORDER: tuple[Zone, ...] = ("inbox", "staging", "accepted", "rejected", "suspect", "quarantine")
-DEDUPE_ZONES: tuple[Zone, ...] = ("staging", "accepted", "suspect", "quarantine")
+TAGSLUT_ZONES: tuple[Zone, ...] = ("staging", "accepted", "suspect", "quarantine")
 
 
 @dataclass(frozen=True)
@@ -81,7 +81,7 @@ def ensure_tagslut_zone(path: Path, zone_paths: ZonePaths) -> Zone:
     zone = identify_zone(path, zone_paths)
     if zone is None:
         raise ValueError(f"Unable to determine zone for path: {path}")
-    if zone not in DEDUPE_ZONES:
+    if zone not in TAGSLUT_ZONES:
         raise ValueError(
             f"Zone '{zone}' is out of scope for tagslut: {path}"
         )

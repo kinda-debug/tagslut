@@ -181,7 +181,7 @@ def resolve_db_path(
     if not resolved_value:
         if require:
             raise DbResolutionError(
-                "No database path provided. Use --db, set DEDUPE_DB, or configure db.path."
+                "No database path provided. Use --db, set TAGSLUT_DB, or configure db.path."
             )
         raise DbResolutionError("No database path provided.")
 

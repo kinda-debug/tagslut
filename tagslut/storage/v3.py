@@ -66,7 +66,7 @@ def _lookup_tag(metadata: dict[str, Any] | None, keys: list[str]) -> str | None:
 def dual_write_enabled() -> bool:
     """Return whether v3 dual-write is enabled."""
 
-    env_value = os.getenv("DEDUPE_V3_DUAL_WRITE")
+    env_value = os.getenv("TAGSLUT_V3_DUAL_WRITE")
     if env_value is not None:
         lowered = env_value.strip().lower()
         if lowered in _TRUTHY:

@@ -36,7 +36,7 @@ class Config:
         """Load configuration from the first found valid source."""
         loaded = False
 
-        env_path = os.getenv("DEDUPE_CONFIG")
+        env_path = os.getenv("TAGSLUT_CONFIG")
         candidate_paths = []
         if self._override_path:
             candidate_paths.append(self._override_path)
@@ -97,7 +97,7 @@ def get_config(config_path: Path | None = None) -> Config:
          # Always clear or force reload in tests to avoid singleton contamination
          if config_path is not None:
              _clear_config_instance()
-         elif os.getenv("DEDUPE_CONFIG"):
+         elif os.getenv("TAGSLUT_CONFIG"):
              # If env var changed, we need to reload
              _clear_config_instance()
 

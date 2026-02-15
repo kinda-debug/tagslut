@@ -509,7 +509,7 @@ def init(output_format, output_path, setup_tokens):
     # Create parent directory if needed
     if click.confirm(f"Create database directory if it doesn't exist?", default=True):
         config["TAGSLUT_DB"].parent.mkdir(parents=True, exist_ok=True)
-        click.echo(f"  ✓ Ensured directory exists: {config['DEDUPE_DB'].parent}")
+        click.echo(f"  ✓ Ensured directory exists: {config['TAGSLUT_DB'].parent}")
 
     click.echo("")
 
@@ -582,8 +582,8 @@ def init(output_format, output_path, setup_tokens):
     if click.confirm("Create output directories if they don't exist?", default=True):
         config["TAGSLUT_ARTIFACTS"].mkdir(parents=True, exist_ok=True)
         config["TAGSLUT_REPORTS"].mkdir(parents=True, exist_ok=True)
-        click.echo(f"  ✓ Created: {config['DEDUPE_ARTIFACTS']}")
-        click.echo(f"  ✓ Created: {config['DEDUPE_REPORTS']}")
+        click.echo(f"  ✓ Created: {config['TAGSLUT_ARTIFACTS']}")
+        click.echo(f"  ✓ Created: {config['TAGSLUT_REPORTS']}")
 
     click.echo("")
 
@@ -736,7 +736,7 @@ def init(output_format, output_path, setup_tokens):
     click.echo("═" * 60)
     click.echo("")
     click.echo("DATABASE:")
-    click.echo(f"  {config['DEDUPE_DB']}")
+    click.echo(f"  {config['TAGSLUT_DB']}")
     click.echo("")
     click.echo("VOLUMES:")
     for key, value in config.items():
@@ -745,8 +745,8 @@ def init(output_format, output_path, setup_tokens):
             click.echo(f"  {zone_name:12} → {value}")
     click.echo("")
     click.echo("OUTPUT:")
-    click.echo(f"  Artifacts    → {config['DEDUPE_ARTIFACTS']}")
-    click.echo(f"  Reports      → {config['DEDUPE_REPORTS']}")
+    click.echo(f"  Artifacts    → {config['TAGSLUT_ARTIFACTS']}")
+    click.echo(f"  Reports      → {config['TAGSLUT_REPORTS']}")
     click.echo("")
     click.echo("SCAN SETTINGS:")
     click.echo(f"  Workers:     {config['SCAN_WORKERS']}")
@@ -813,7 +813,7 @@ def _write_env_file(config: dict, path: Path) -> None:
         "# ============================================================================",
         "# DATABASE",
         "# ============================================================================",
-        f"TAGSLUT_DB={config['DEDUPE_DB']}",
+        f"TAGSLUT_DB={config['TAGSLUT_DB']}",
         "",
         "# ============================================================================",
         "# VOLUMES",
@@ -829,8 +829,8 @@ def _write_env_file(config: dict, path: Path) -> None:
         "# ============================================================================",
         "# OUTPUT DIRECTORIES",
         "# ============================================================================",
-        f"TAGSLUT_ARTIFACTS={config['DEDUPE_ARTIFACTS']}",
-        f"TAGSLUT_REPORTS={config['DEDUPE_REPORTS']}",
+        f"TAGSLUT_ARTIFACTS={config['TAGSLUT_ARTIFACTS']}",
+        f"TAGSLUT_REPORTS={config['TAGSLUT_REPORTS']}",
         "",
         "# ============================================================================",
         "# SCAN SETTINGS",

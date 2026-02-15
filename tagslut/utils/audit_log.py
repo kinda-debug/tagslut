@@ -17,7 +17,7 @@ def now_iso() -> str:
 
 def resolve_log_path(kind: str, default_dir: Path | None = None) -> Path:
     """Resolve a log path for a given event kind."""
-    base_dir = default_dir or Path(os.getenv("DEDUPE_LOG_DIR", DEFAULT_LOG_DIR))
+    base_dir = default_dir or Path(os.getenv("TAGSLUT_LOG_DIR", DEFAULT_LOG_DIR))
     base_dir = base_dir.expanduser()
     return base_dir / f"{kind}.jsonl"
 

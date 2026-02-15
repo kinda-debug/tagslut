@@ -298,7 +298,7 @@ def scan_library(
         if legacy:
             hint = (
                 " (this DB has 'library_files' so it looks like a legacy library DB; "
-                "use the canonical integrity DB resolved via --db/DEDUPE_DB/config)"
+                "use the canonical integrity DB resolved via --db/TAGSLUT_DB/config)"
             )
         raise RuntimeError(
             f"Integrity DB schema not initialized: missing 'files' table in {db_path}{hint}"

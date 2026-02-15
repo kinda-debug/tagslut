@@ -64,6 +64,19 @@ beatportdl-config.yml
 .mypy_cache/
 .ipynb_checkpoints/
 
+# Generated output (reports, audits, prechecks)
+output/
+
+# Security — never track keys/certs
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Backup / editor save files
+*.save
+*.bak.*
+
 # OS / editor
 .DS_Store
 Thumbs.db

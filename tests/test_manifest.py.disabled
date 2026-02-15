@@ -5,7 +5,7 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
-from dedupe import manifest, utils
+from tagslut import manifest, utils
 
 
 def test_rows_from_matches_normalises_paths(tmp_path: Path) -> None:

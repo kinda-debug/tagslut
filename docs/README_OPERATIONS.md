@@ -237,7 +237,7 @@ These commands were retired on Feb 9, 2026:
 | `tagslut metadata` | `tagslut auth ... + tagslut index enrich ...` |
 | `tagslut recover` | `tagslut verify recovery ... + tagslut report recovery ...` |
 
-**Note:** `tagslut` as an alias for `tagslut` still works, but use `tagslut` for new work.
+**Note:** `dedupe` as an alias for `tagslut` still works, but use `tagslut` for new work.
 
 ## Downloader Locations
 

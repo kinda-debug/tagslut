@@ -19,7 +19,7 @@ Reference map:
 
 Branding note:
 - `tagslut` is the preferred CLI brand.
-- `tagslut` remains a compatibility alias during migration.
+- `dedupe` remains a compatibility alias during migration (retiring June 2026).
 - `taglslut` is retained as a typo-tolerant alias.
 
 ## Transitional Surface
@@ -39,8 +39,8 @@ Retired in Phase 5:
 ## Removal Horizon
 
 - Warning period starts: February 9, 2026
-- Target archival/removal window: June-July 2026 (aligned to `docs/REDESIGN_TRACKER.md` Phase 5)
-- Dated decommission plan: `docs/PHASE5_LEGACY_DECOMMISSION.md`
+- Target archival/removal window: June-July 2026 (aligned to `docs/archive/REDESIGN_TRACKER.md` Phase 5)
+- Dated decommission plan: `docs/archive/phase-specs-2026-02-09/PHASE5_LEGACY_DECOMMISSION.md`
 
 ## Phase 5 Decommission Gates
 
@@ -92,9 +92,5 @@ Any change to canonical or transitional surface must update all of:
 - `docs/SCRIPT_SURFACE.md`
 - `docs/SURFACE_POLICY.md`
 - `docs/MOVE_EXECUTOR_COMPAT.md` (if move execution contract changes)
-- `docs/PHASE1_V3_DUAL_WRITE.md` (if dual-write contract changes)
-- `docs/PHASE2_POLICY_DECIDE.md` (if policy/planning contract changes)
-- `docs/PHASE3_EXECUTOR.md` (if execution receipt/DB mutation contract changes)
-- `docs/PHASE4_CLI_CONVERGENCE.md` (if canonical command convergence changes)
-- `docs/PHASE5_LEGACY_DECOMMISSION.md` (if decommission timeline/gates change)
-- `docs/REDESIGN_TRACKER.md` (if milestone impact)
+- `docs/archive/phase-specs-2026-02-09/` (if phase runbook or decommission contract changes)
+- `docs/archive/REDESIGN_TRACKER.md` (if milestone impact)

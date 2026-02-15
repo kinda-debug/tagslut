@@ -1,6 +1,6 @@
 [flake8]
 exclude =
-    dedupe/ARCHIVE,
+    tagslut/ARCHIVE,
     .venv,
     .git,
     __pycache__,

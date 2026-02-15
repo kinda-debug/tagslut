@@ -7,7 +7,7 @@ from typing import Iterator
 
 import pytest
 
-from dedupe import metadata
+from tagslut import metadata
 
 
 @pytest.fixture(autouse=True)

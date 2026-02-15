@@ -15,7 +15,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 DEEMIX_BIN="${DEEMIX_BIN:-/opt/homebrew/bin/deemix}"
 DEEMIX_PATH="${DEEMIX_PATH:-$HOME/Music/mdl/deezer}"
 AUTO_REGISTER="${DEEMIX_AUTO_REGISTER:-1}"
-DB_PATH="${DEDUPE_DB:-}"
+DB_PATH="${TAGSLUT_DB:-}"
 
 if [[ ! -x "$DEEMIX_BIN" ]]; then
     if command -v deemix >/dev/null 2>&1; then

@@ -6,7 +6,7 @@
 #   tools/get-auto --links-file /path/to/links.txt
 #
 # Env:
-#   DEDUPE_DB   Path to music.db (optional if script can infer from env)
+#   TAGSLUT_DB   Path to music.db (optional if script can infer from env)
 
 set -euo pipefail
 

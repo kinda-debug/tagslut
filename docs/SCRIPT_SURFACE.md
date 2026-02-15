@@ -32,17 +32,8 @@ Role: Provider authentication and token lifecycle flows.
 
 The preferred command brand is now `tagslut`.
 
-Equivalent invocations:
-- `poetry run tagslut intake ...` == `poetry run tagslut intake ...`
-- `poetry run tagslut index ...` == `poetry run tagslut index ...`
-- `poetry run tagslut decide ...` == `poetry run tagslut decide ...`
-- `poetry run tagslut execute ...` == `poetry run tagslut execute ...`
-- `poetry run tagslut verify ...` == `poetry run tagslut verify ...`
-- `poetry run tagslut report ...` == `poetry run tagslut report ...`
-- `poetry run tagslut auth ...` == `poetry run tagslut auth ...`
-
 Compatibility aliases:
-- `tagslut` (fully supported during migration)
+- `dedupe` (legacy alias, retiring June 2026)
 - `taglslut` (typo-tolerant alias)
 
 ## Operational Wrappers (Active)
@@ -104,11 +95,7 @@ Use `tagslut intake/index/decide/execute/verify/report/auth` for new work.
   - `tools/review/promote_by_tags.py` (`--move-log` for JSONL move audit output)
 - Compatibility contract for these executors:
   - `docs/MOVE_EXECUTOR_COMPAT.md`
-  - `docs/PHASE1_V3_DUAL_WRITE.md` (dual-write + parity/backfill runbook)
-  - `docs/PHASE2_POLICY_DECIDE.md` (policy profiles + deterministic planning contract)
-  - `docs/PHASE3_EXECUTOR.md` (central executor + receipt mutation contract)
-  - `docs/PHASE4_CLI_CONVERGENCE.md` (canonical command convergence and compatibility wrappers)
-  - `docs/PHASE5_LEGACY_DECOMMISSION.md` (wrapper retirement tickets, gates, and timeline)
+  - `docs/archive/phase-specs-2026-02-09/` (phase runbooks and verification reports)
 
 ## Directory Ownership
 

@@ -169,7 +169,7 @@ def get_repo_root() -> Path:
             break
         current = parent
     # Fallback to environment variable if set
-    env_root = os.environ.get("DEDUPE_ROOT")
+    env_root = os.environ.get("TAGSLUT_ROOT")
     if env_root:
         return Path(env_root).resolve()
     raise SystemExit("Could not find repository root (pyproject.toml)")

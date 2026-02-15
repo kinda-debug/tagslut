@@ -161,7 +161,7 @@
 
 - [ ] **2.3** BeatportDL wrapper integration
   - Post-download hook: `dedupe mgmt --source bpdl --register <path>`
-  - Config template: `tools/beatportdl/beatportdl-config.yml.example`
+  - Config template: `tools/beatportdl/bpdl/beatportdl-config.yml`
   - Goal: Seamless download → inventory → M3U pipeline
 
 ### Phase 3: Polish & Automation (Later)

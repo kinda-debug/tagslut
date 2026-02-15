@@ -27,7 +27,14 @@
       "Bash(xargs:*)",
       "Bash(if [ -f /Users/georgeskhawam/Projects/dedupe/tools/flacs_inventory_20260202_191907.xlsx ])",
       "Bash(then mv /Users/georgeskhawam/Projects/dedupe/tools/flacs_inventory_20260202_191907.xlsx /Users/georgeskhawam/Projects/dedupe/artifacts/)",
-      "Bash(fi)"
+      "Bash(fi)",
+      "Bash(git rm:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(while IFS= read -r f)",
+      "Bash(do)",
+      "Bash(git mv:*)",
+      "Bash(done)"
     ]
   }
 }

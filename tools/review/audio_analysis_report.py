@@ -15,7 +15,7 @@ from typing import Iterable
 
 
 def parse_args() -> argparse.Namespace:
-    ap = argparse.ArgumentParser(description="Audio analysis reports from dedupe DB")
+    ap = argparse.ArgumentParser(description="Audio analysis reports from tagslut DB")
     ap.add_argument("--db", required=True, help="SQLite DB path")
     ap.add_argument("--paths", nargs="*", help="Path prefixes to include")
     ap.add_argument("--out", default="artifacts/audio_analysis", help="Output directory")

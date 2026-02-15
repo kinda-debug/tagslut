@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from dedupe.metadata.canon import apply_canon, load_canon_rules
+from tagslut.metadata.canon import apply_canon, load_canon_rules
 
 
 RULES_PATH = Path(__file__).resolve().parents[1] / "tools" / "rules" / "library_canon.json"

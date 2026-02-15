@@ -7,7 +7,7 @@ Execute (move-only) quarantine actions from a plan CSV.
 This is intentionally simple + auditable:
 - Reads a CSV containing at least: action,path
 - For rows with action == MOVE (default), moves the file under a quarantine root
-- Optionally updates the dedupe SQLite DB to keep paths consistent
+- Optionally updates the tagslut SQLite DB to keep paths consistent
 - Always writes a JSONL log describing what would happen / what happened
 
 Designed for operational safety:
@@ -27,9 +27,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional
 
-from dedupe.exec import execute_move, record_move_receipt, update_legacy_path_with_receipt
-from dedupe.storage.schema import init_db
-from dedupe.storage.v3 import (
+from tagslut.exec import execute_move, record_move_receipt, update_legacy_path_with_receipt
+from tagslut.storage.schema import init_db
+from tagslut.storage.v3 import (
     ensure_move_plan,
 )
 

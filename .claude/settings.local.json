@@ -39,7 +39,8 @@
       "Bash(gh auth:*)",
       "Bash(git remote prune:*)",
       "Bash(git commit:*)",
-      "Bash(git mv:*)"
+      "Bash(git mv:*)",
+      "Bash(poetry run pytest:*)"
     ]
   }
 }

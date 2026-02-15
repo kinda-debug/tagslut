@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from pathlib import Path
 
-from dedupe.cli.main import _duration_thresholds_from_config, _duration_check_version, _duration_status
+from tagslut.cli.main import _duration_thresholds_from_config, _duration_check_version, _duration_status
 
 
 def norm(s: str | None) -> str:

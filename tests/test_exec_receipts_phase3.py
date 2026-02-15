@@ -6,8 +6,8 @@ import sqlite3
 
 import pytest
 
-from dedupe.exec import execute_move, record_move_receipt, update_legacy_path_with_receipt
-from dedupe.storage.schema import init_db
+from tagslut.exec import execute_move, record_move_receipt, update_legacy_path_with_receipt
+from tagslut.storage.schema import init_db
 
 
 def _write(path, payload: bytes) -> None:

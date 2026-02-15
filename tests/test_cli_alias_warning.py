@@ -1,16 +1,16 @@
-"""Tests for dedupe -> tagslut alias deprecation notices."""
+"""Tests for legacy dedupe -> tagslut alias deprecation notices."""
 
 from __future__ import annotations
 
 from click.testing import CliRunner
 
-from dedupe.cli.main import _format_dedupe_alias_warning, cli
+from tagslut.cli.main import _format_dedupe_alias_warning, cli
 
 
 def test_format_dedupe_alias_warning_for_dedupe() -> None:
     msg = _format_dedupe_alias_warning("dedupe")
     assert msg is not None
-    assert "compatibility alias" in msg
+    assert "legacy alias" in msg
     assert "July 31, 2026" in msg
     assert "tagslut" in msg
 

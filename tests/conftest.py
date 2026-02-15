@@ -1,4 +1,4 @@
-"""Pytest configuration and test fixtures for dedupe test suite.
+"""Pytest configuration and test fixtures for tagslut test suite.
 
 This module provides comprehensive test fixtures for:
 - FLAC file variations (healthy, corrupted, truncated, stitched)

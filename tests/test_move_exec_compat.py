@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dedupe.exec.compat import ADAPTER_CONTRACT_VERSION, execute_move_action
+from tagslut.exec.compat import ADAPTER_CONTRACT_VERSION, execute_move_action
 
 
 def _write(path, content: bytes) -> None:

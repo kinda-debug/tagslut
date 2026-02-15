@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from dedupe.storage.models import AudioFile
-from dedupe.storage.queries import upsert_file
-from dedupe.storage.schema import get_connection, init_db
+from tagslut.storage.models import AudioFile
+from tagslut.storage.queries import upsert_file
+from tagslut.storage.schema import get_connection, init_db
 
 
 def test_upsert_normalizes_tuple_fields(tmp_path: Path) -> None:

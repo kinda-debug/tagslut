@@ -109,7 +109,7 @@ def _http_json(
 ) -> tuple[int, dict[str, Any]]:
     headers = {
         "accept": "application/json",
-        "user-agent": "dedupe-beatport-prefilter/1.0",
+        "user-agent": "tagslut-beatport-prefilter/1.0",
     }
     data = None
     if token:
@@ -462,7 +462,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Fast Beatport pre-download filter against canonical library DB.",
     )
-    parser.add_argument("--db", required=True, help="Path to dedupe SQLite DB")
+    parser.add_argument("--db", required=True, help="Path to tagslut SQLite DB")
     parser.add_argument("--url", required=True, help="Beatport URL (chart/release/playlist/track)")
     parser.add_argument("--library-root", default="/Volumes/MUSIC/LIBRARY", help="Library root to compare against")
     parser.add_argument(

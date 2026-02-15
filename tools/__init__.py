@@ -1,2 +1,2 @@
 # tools package
-"""Top-level tools package for dedupe project utilities."""
+"""Top-level tools package for tagslut project utilities."""

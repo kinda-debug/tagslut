@@ -10,8 +10,8 @@ from pathlib import Path
 
 from mutagen.flac import FLAC
 
-from dedupe.metadata.canon import load_canon_rules, apply_canon, canon_diff
-from dedupe.utils.paths import list_files
+from tagslut.metadata.canon import load_canon_rules, apply_canon, canon_diff
+from tagslut.utils.paths import list_files
 
 
 def collect_flacs(path: Path) -> list[Path]:

@@ -23,10 +23,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
-from dedupe.metadata.auth import TokenManager
-from dedupe.metadata.providers.beatport import BeatportProvider
-from dedupe.metadata.providers.spotify import SpotifyProvider
-from dedupe.metadata.providers.tidal import TidalProvider
+from tagslut.metadata.auth import TokenManager
+from tagslut.metadata.providers.beatport import BeatportProvider
+from tagslut.metadata.providers.spotify import SpotifyProvider
+from tagslut.metadata.providers.tidal import TidalProvider
 
 
 ISRC_SPLIT_RE = re.compile(r"[;,/\\]|\s+")
@@ -79,7 +79,7 @@ def _normalize_isrc_tokens(value) -> list[str]:
             token = token.strip()
             if ISRC_RE.match(token):
                 out.append(token)
-    # stable dedupe
+    # stable dedup
     seen = set()
     unique = []
     for token in out:

@@ -20,10 +20,10 @@ from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).parents[2]))
 
-from dedupe.integrity_scanner import scan_library
-from dedupe.utils.db import resolve_db_path
-from dedupe.utils.config import get_config
-from dedupe.utils.cli_helper import configure_execution
+from tagslut.integrity_scanner import scan_library
+from tagslut.utils.db import resolve_db_path
+from tagslut.utils.config import get_config
+from tagslut.utils.cli_helper import configure_execution
 
 
 def prompt_trust(label: str) -> int:

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import sqlite3
 
-from dedupe.storage.schema import init_db
-from dedupe.storage.v3 import (
+from tagslut.storage.schema import init_db
+from tagslut.storage.v3 import (
     dual_write_enabled,
     dual_write_registered_file,
     ensure_move_plan,
@@ -37,9 +37,9 @@ def test_v3_tables_exist_after_init(tmp_path) -> None:
 
 
 def test_dual_write_enabled_from_env(monkeypatch) -> None:
-    monkeypatch.setenv("DEDUPE_V3_DUAL_WRITE", "1")
+    monkeypatch.setenv("TAGSLUT_V3_DUAL_WRITE", "1")
     assert dual_write_enabled() is True
-    monkeypatch.setenv("DEDUPE_V3_DUAL_WRITE", "0")
+    monkeypatch.setenv("TAGSLUT_V3_DUAL_WRITE", "0")
     assert dual_write_enabled() is False
 
 

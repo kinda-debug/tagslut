@@ -15,7 +15,7 @@ Match strategy (in priority order):
 Usage:
     python tools/review/pre_download_check.py \\
         --input ~/links.txt \\
-        --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db \\
+        --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \\
         --out-dir output/precheck
 
 Outputs:
@@ -178,7 +178,7 @@ def get_repo_root() -> Path:
 def main() -> int:
     repo_root = get_repo_root()
     default_extract_script = repo_root / "scripts" / "extract_tracklists_from_links.py"
-    default_db = os.environ.get("DEDUPE_DB", "")
+    default_db = os.environ.get("TAGSLUT_DB", "")
 
     ap = argparse.ArgumentParser(
         description="Check Beatport/Tidal links against DB before download",
@@ -200,7 +200,7 @@ Match Methods (in priority order):
         "--db",
         default=default_db,
         required=not default_db,
-        help="Path to music.db (or set DEDUPE_DB env var)",
+        help="Path to music.db (or set TAGSLUT_DB env var)",
     )
     ap.add_argument("--out-dir", default="output/precheck", help="Output directory (default: output/precheck)")
     ap.add_argument(

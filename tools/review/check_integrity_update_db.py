@@ -2,7 +2,7 @@
 """
 check_integrity_update_db.py
 
-Run `flac -t` integrity checks for files already registered in the dedupe DB,
+Run `flac -t` integrity checks for files already registered in the tagslut DB,
 and write results back to the DB.
 
 This is intentionally *DB-only* (no file moves) and does NOT overwrite hashes.
@@ -75,7 +75,7 @@ def _iter_db_paths(conn: sqlite3.Connection, roots: list[Path], recheck: bool) -
 def parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(description="Run flac -t for DB-registered files and write results back")
     ap.add_argument("roots", nargs="+", type=Path, help="Root directories to process (prefix match in DB)")
-    ap.add_argument("--db", type=Path, default=None, help="SQLite DB path (default: $DEDUPE_DB)")
+    ap.add_argument("--db", type=Path, default=None, help="SQLite DB path (default: $TAGSLUT_DB)")
     ap.add_argument("--workers", type=int, default=None, help="Parallel workers (default: CPU-1)")
     ap.add_argument("--progress", action="store_true", help="Log periodic progress")
     ap.add_argument("--progress-interval", type=int, default=250, help="Progress interval (files)")
@@ -88,9 +88,9 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    db_path = (args.db or Path(os.environ.get("DEDUPE_DB", ""))).expanduser().resolve()
+    db_path = (args.db or Path(os.environ.get("TAGSLUT_DB", ""))).expanduser().resolve()
     if not str(db_path):
-        raise SystemExit("ERROR: --db not provided and $DEDUPE_DB is not set")
+        raise SystemExit("ERROR: --db not provided and $TAGSLUT_DB is not set")
     if not db_path.exists():
         raise SystemExit(f"ERROR: DB not found: {db_path}")
 
@@ -115,7 +115,7 @@ def main() -> int:
 
     # Parallel check
     try:
-        from dedupe.utils.parallel import process_map
+        from tagslut.utils.parallel import process_map
     except Exception as e:
         raise SystemExit(f"ERROR: could not import process_map: {e}")
 

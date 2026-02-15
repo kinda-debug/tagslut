@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from dedupe.utils.final_library_layout import FinalLibraryLayoutError, build_final_library_destination
+from tagslut.utils.final_library_layout import FinalLibraryLayoutError, build_final_library_destination
 
 
 def test_final_layout_single_disc() -> None:

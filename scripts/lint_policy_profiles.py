@@ -6,11 +6,11 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from dedupe.policy import lint_policy_profile, list_policy_profiles, load_policy_profile
+from tagslut.policy import lint_policy_profile, list_policy_profiles, load_policy_profile
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Lint dedupe policy profiles")
+    parser = argparse.ArgumentParser(description="Lint tagslut policy profiles")
     parser.add_argument(
         "--policy-dir",
         type=Path,

@@ -16,7 +16,7 @@ from typing import Iterable
 
 import pandas as pd
 
-from dedupe.cli.main import _duration_thresholds_from_config, _duration_check_version, _duration_status
+from tagslut.cli.main import _duration_thresholds_from_config, _duration_check_version, _duration_status
 
 
 @dataclass
@@ -250,7 +250,7 @@ def main() -> int:
     conn_cur.close()
     conn_epoch.close()
 
-    outdir = Path('/Users/georgeskhawam/Projects/dedupe/output/spreadsheet')
+    outdir = Path('/Users/georgeskhawam/Projects/tagslut/output/spreadsheet')
     outdir.mkdir(parents=True, exist_ok=True)
     report = outdir / 'ALL_unknown_matched_to_EPOCH_2026-02-08.xlsx'
     df = pd.DataFrame(results)

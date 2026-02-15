@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 
-from dedupe.utils.console_ui import ConsoleUI
-from dedupe.utils.file_operations import FileOperations
-from dedupe.utils.safety_gates import SafetyGates
+from tagslut.utils.console_ui import ConsoleUI
+from tagslut.utils.file_operations import FileOperations
+from tagslut.utils.safety_gates import SafetyGates
 
 
 def _read_jsonl(path):

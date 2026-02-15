@@ -1,5 +1,5 @@
 from pathlib import Path
-from dedupe.core.metadata import extract_metadata
+from tagslut.core.metadata import extract_metadata
 
 def test_checksum_provenance_streaminfo(tmp_path: Path) -> None:
     # This requires a real FLAC file to test STREAMINFO.

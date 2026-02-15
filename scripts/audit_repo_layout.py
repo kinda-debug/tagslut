@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Repo layout sanity checks for dedupe.
+"""Repo layout sanity checks for tagslut.
 
 Usage:
   python scripts/audit_repo_layout.py
@@ -19,8 +19,8 @@ MOVE_EXECUTOR_SCRIPTS = (
     PROJECT_ROOT / "tools" / "review" / "quarantine_from_plan.py",
 )
 PROMOTE_SCRIPT = PROJECT_ROOT / "tools" / "review" / "promote_by_tags.py"
-FILE_OPS_MODULE = PROJECT_ROOT / "dedupe" / "utils" / "file_operations.py"
-COMPAT_MODULE = PROJECT_ROOT / "dedupe" / "exec" / "compat.py"
+FILE_OPS_MODULE = PROJECT_ROOT / "tagslut" / "utils" / "file_operations.py"
+COMPAT_MODULE = PROJECT_ROOT / "tagslut" / "exec" / "compat.py"
 
 
 def find_root_runtime_files(root: Path) -> list[Path]:
@@ -64,14 +64,14 @@ def check_move_executor_adapter_usage(script_path: Path) -> list[str]:
     rel = script_path.relative_to(PROJECT_ROOT)
 
     has_central_import = (
-        "from dedupe.exec import execute_move" in text
-        or "from dedupe.exec.engine import execute_move" in text
+        "from tagslut.exec import execute_move" in text
+        or "from tagslut.exec.engine import execute_move" in text
     )
     if not has_central_import:
-        issues.append(f"{rel} must import execute_move from dedupe.exec")
+        issues.append(f"{rel} must import execute_move from tagslut.exec")
 
     if "execute_move(" not in text:
-        issues.append(f"{rel} must route move calls through dedupe.exec.execute_move")
+        issues.append(f"{rel} must route move calls through tagslut.exec.execute_move")
 
     for disallowed in (r"\bshutil\.move\(", r"\bos\.replace\("):
         if re.search(disallowed, text):
@@ -120,7 +120,7 @@ def check_compat_adapter_mapping(compat_path: Path) -> list[str]:
         return issues
     text = compat_path.read_text(encoding="utf-8", errors="replace")
     rel = compat_path.relative_to(PROJECT_ROOT)
-    if "from dedupe.exec.engine import execute_move" not in text:
+    if "from tagslut.exec.engine import execute_move" not in text:
         issues.append(f"{rel} must map to central executor execute_move")
     if "def execute_move_action" not in text:
         issues.append(f"{rel} must expose execute_move_action compatibility API")
@@ -149,27 +149,10 @@ def main() -> int:
         "SURFACE_POLICY.md",
         "MOVE_EXECUTOR_COMPAT.md",
         "README.md",
-        "REBRAND_TAGSLUT_2026-02-09.md",
     ):
         doc_path = PROJECT_ROOT / "docs" / doc_name
         if not doc_path.is_file():
             errors.append(f"Missing required surface policy doc: {doc_path}")
-
-    phase1_doc = PROJECT_ROOT / "docs" / "PHASE1_V3_DUAL_WRITE.md"
-    if not phase1_doc.is_file():
-        errors.append(f"Missing Phase 1 runbook doc: {phase1_doc}")
-    phase2_doc = PROJECT_ROOT / "docs" / "PHASE2_POLICY_DECIDE.md"
-    if not phase2_doc.is_file():
-        errors.append(f"Missing Phase 2 runbook doc: {phase2_doc}")
-    phase3_doc = PROJECT_ROOT / "docs" / "PHASE3_EXECUTOR.md"
-    if not phase3_doc.is_file():
-        errors.append(f"Missing Phase 3 runbook doc: {phase3_doc}")
-    phase4_doc = PROJECT_ROOT / "docs" / "PHASE4_CLI_CONVERGENCE.md"
-    if not phase4_doc.is_file():
-        errors.append(f"Missing Phase 4 runbook doc: {phase4_doc}")
-    phase5_doc = PROJECT_ROOT / "docs" / "PHASE5_LEGACY_DECOMMISSION.md"
-    if not phase5_doc.is_file():
-        errors.append(f"Missing Phase 5 runbook doc: {phase5_doc}")
     retired_docs_in_docs_root = (
         "MGMT_MODE.md",
         "METADATA_WORKFLOW.md",
@@ -243,7 +226,7 @@ def main() -> int:
 
     # Guardrail: prevent adding new legacy CLI wrappers without explicit review.
     cli_legacy_imports = find_legacy_wrapper_imports(
-        PROJECT_ROOT / "dedupe" / "cli" / "main.py"
+        PROJECT_ROOT / "tagslut" / "cli" / "main.py"
     )
     if cli_legacy_imports:
         errors.append(

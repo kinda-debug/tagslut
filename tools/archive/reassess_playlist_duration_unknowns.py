@@ -23,10 +23,10 @@ from typing import Iterable
 
 from openpyxl import load_workbook
 
-from dedupe.metadata.auth import TokenManager
-from dedupe.metadata.providers.beatport import BeatportProvider
-from dedupe.metadata.providers.spotify import SpotifyProvider
-from dedupe.metadata.providers.tidal import TidalProvider
+from tagslut.metadata.auth import TokenManager
+from tagslut.metadata.providers.beatport import BeatportProvider
+from tagslut.metadata.providers.spotify import SpotifyProvider
+from tagslut.metadata.providers.tidal import TidalProvider
 
 
 ISRC_SPLIT_RE = re.compile(r"[;,/\\]|\s+")

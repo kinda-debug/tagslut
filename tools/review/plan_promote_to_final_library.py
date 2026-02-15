@@ -35,9 +35,9 @@ sys.path.insert(0, str(Path(__file__).parents[2]))
 from mutagen.flac import FLAC
 from mutagen import MutagenError
 
-from dedupe.metadata.canon import apply_canon, load_canon_rules
-from dedupe.utils.final_library_layout import FinalLibraryLayoutError, build_final_library_destination
-from dedupe.utils.paths import list_files
+from tagslut.metadata.canon import apply_canon, load_canon_rules
+from tagslut.utils.final_library_layout import FinalLibraryLayoutError, build_final_library_destination
+from tagslut.utils.paths import list_files
 
 
 @dataclass(frozen=True)
@@ -105,7 +105,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="FINAL_LIBRARY root (destination), e.g. /Volumes/SAD/_work/MUSIC/FINAL_LIBRARY",
     )
-    ap.add_argument("--db", type=Path, help="Optional dedupe SQLite DB (for fast tag reads via metadata_json)")
+    ap.add_argument("--db", type=Path, help="Optional tagslut SQLite DB (for fast tag reads via metadata_json)")
     ap.add_argument("--no-db", action="store_true", help="Ignore DB even if provided")
     ap.add_argument("--canon/--no-canon", dest="canon", default=True, help="Apply canonical tag rules (default: on)")
     ap.add_argument("--canon-rules", type=Path, help="Path to canon rules JSON")

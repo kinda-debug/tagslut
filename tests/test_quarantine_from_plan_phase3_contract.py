@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from dedupe.storage.schema import init_db
+from tagslut.storage.schema import init_db
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 

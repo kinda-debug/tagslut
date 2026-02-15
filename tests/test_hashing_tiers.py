@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from dedupe.core.hashing import calculate_prehash, calculate_tiered_hashes
+from tagslut.core.hashing import calculate_prehash, calculate_tiered_hashes
 
 
 def _write_file(path: Path, payload: bytes) -> None:

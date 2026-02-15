@@ -130,7 +130,7 @@ def _prefer_rank(path_str: str, prefer_prefixes: list[str]) -> int:
 
 def parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(description="Bulk plan to promote unique fpcalc audio and stash dupes")
-    ap.add_argument("--db", type=Path, default=None, help="SQLite DB path (default: $DEDUPE_DB)")
+    ap.add_argument("--db", type=Path, default=None, help="SQLite DB path (default: $TAGSLUT_DB)")
     ap.add_argument("--root", type=Path, action="append", required=True, help="Root prefix filter (repeatable)")
     ap.add_argument(
         "--prefer-root",
@@ -165,9 +165,9 @@ def main() -> int:
     args = parse_args()
     roots = [r.expanduser().resolve() for r in args.root]
 
-    db_path = (args.db or Path(os.environ.get("DEDUPE_DB", ""))).expanduser().resolve()
+    db_path = (args.db or Path(os.environ.get("TAGSLUT_DB", ""))).expanduser().resolve()
     if not str(db_path):
-        raise SystemExit("ERROR: --db not provided and $DEDUPE_DB is not set")
+        raise SystemExit("ERROR: --db not provided and $TAGSLUT_DB is not set")
     if not db_path.exists():
         raise SystemExit(f"ERROR: DB not found: {db_path}")
 

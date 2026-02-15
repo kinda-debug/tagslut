@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 import sqlite3
 
-from dedupe.utils.db import resolve_db_path
+from tagslut.utils.db import resolve_db_path
 
 REQUIRED_V3_TABLES = (
     "asset_file",

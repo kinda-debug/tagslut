@@ -23,8 +23,8 @@ from urllib.parse import parse_qs, urlparse
 
 import httpx
 
-from dedupe.metadata.auth import TokenManager
-from dedupe.metadata.providers.beatport import BeatportProvider
+from tagslut.metadata.auth import TokenManager
+from tagslut.metadata.providers.beatport import BeatportProvider
 
 NEXT_DATA_RE = re.compile(
     r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>',

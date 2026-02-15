@@ -31,8 +31,8 @@ from typing import Any, Iterable, Mapping, Optional
 
 sys.path.insert(0, str(Path(__file__).parents[2]))
 
-from dedupe.metadata.canon import apply_canon, load_canon_rules
-from dedupe.utils.final_library_layout import FinalLibraryLayoutError, build_final_library_destination
+from tagslut.metadata.canon import apply_canon, load_canon_rules
+from tagslut.utils.final_library_layout import FinalLibraryLayoutError, build_final_library_destination
 
 
 @dataclass(frozen=True)
@@ -143,7 +143,7 @@ def parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(
         description="Plan promote unique fpcalc audio into FINAL_LIBRARY, stash dupes, quarantine missing fingerprints",
     )
-    ap.add_argument("--db", type=Path, default=None, help="SQLite DB path (default: $DEDUPE_DB)")
+    ap.add_argument("--db", type=Path, default=None, help="SQLite DB path (default: $TAGSLUT_DB)")
     ap.add_argument("--source-root", type=Path, action="append", required=True, help="Source root prefix (repeatable)")
     ap.add_argument(
         "--final-root",
@@ -208,9 +208,9 @@ def main() -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     stamp = args.stamp or _now_stamp()
 
-    db_path = (args.db or Path(os.environ.get("DEDUPE_DB", ""))).expanduser().resolve()
+    db_path = (args.db or Path(os.environ.get("TAGSLUT_DB", ""))).expanduser().resolve()
     if not str(db_path):
-        raise SystemExit("ERROR: --db not provided and $DEDUPE_DB is not set")
+        raise SystemExit("ERROR: --db not provided and $TAGSLUT_DB is not set")
     if not db_path.exists():
         raise SystemExit(f"ERROR: DB not found: {db_path}")
 

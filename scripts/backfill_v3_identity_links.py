@@ -7,9 +7,9 @@ import argparse
 import json
 import sqlite3
 
-from dedupe.storage.schema import init_db
-from dedupe.storage.v3 import dual_write_registered_file
-from dedupe.utils.db import resolve_db_path
+from tagslut.storage.schema import init_db
+from tagslut.storage.v3 import dual_write_registered_file
+from tagslut.utils.db import resolve_db_path
 
 
 def _parse_metadata(raw: str | None) -> dict:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""OneTagger workflow helpers for tagslut/dedupe operations.
+"""OneTagger workflow helpers for tagslut operations.
 
 Modes:
   - build: create an M3U of library FLAC files missing canonical ISRC in DB
@@ -27,12 +27,12 @@ except Exception as exc:  # pragma: no cover
 
 
 DEFAULT_DB = os.environ.get(
-    "DEDUPE_DB",
-    "/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-02-08/music.db",
+    "TAGSLUT_DB",
+    "/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-08/music.db",
 )
 DEFAULT_LIBRARY_ROOT = Path("/Volumes/MUSIC/LIBRARY")
 DEFAULT_WORK_ROOT = Path("/Volumes/MUSIC/_work")
-DEFAULT_OUT_DIR = Path("/Users/georgeskhawam/Projects/dedupe/artifacts/compare")
+DEFAULT_OUT_DIR = Path("/Users/georgeskhawam/Projects/tagslut/artifacts/compare")
 DEFAULT_ONETAGGER_BIN = Path("/Users/georgeskhawam/Downloads/onetagger-cli")
 DEFAULT_CONFIG_PATH = Path("/Users/georgeskhawam/.config/onetagger/config.tagslut-missing-isrc.json")
 DEFAULT_BASE_CONFIG_PATH = Path("/Users/georgeskhawam/.config/onetagger/config.json")
@@ -579,7 +579,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     def add_common(parser_obj: argparse.ArgumentParser) -> None:
-        parser_obj.add_argument("--db", default=str(DEFAULT_DB), help="Path to tagslut/dedupe SQLite DB.")
+        parser_obj.add_argument("--db", default=str(DEFAULT_DB), help="Path to tagslut SQLite DB.")
         parser_obj.add_argument(
             "--library-root",
             default=str(DEFAULT_LIBRARY_ROOT),
@@ -594,7 +594,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     run_cmd = sub.add_parser("run", help="Run OneTagger for an existing M3U via symlink batch.")
     run_cmd.add_argument("--m3u", required=True, help="Input M3U path.")
-    run_cmd.add_argument("--db", default=str(DEFAULT_DB), help="Path to tagslut/dedupe SQLite DB.")
+    run_cmd.add_argument("--db", default=str(DEFAULT_DB), help="Path to tagslut SQLite DB.")
     run_cmd.add_argument("--onetagger-bin", default=str(DEFAULT_ONETAGGER_BIN), help="OneTagger CLI binary path.")
     run_cmd.add_argument("--config", default=str(DEFAULT_CONFIG_PATH), help="Generated OneTagger config path.")
     run_cmd.add_argument("--base-config", default=str(DEFAULT_BASE_CONFIG_PATH), help="Base OneTagger config path to copy/merge.")

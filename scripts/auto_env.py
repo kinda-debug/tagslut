@@ -78,7 +78,7 @@ def build_updates(root: Path, lines: list[str]) -> dict[str, str]:
     sample_db_path: Path | None = None
     for line in lines:
         stripped = line.strip()
-        if stripped.startswith("DEDUPE_DB="):
+        if stripped.startswith("TAGSLUT_DB="):
             db_value = stripped.split("=", 1)[1].strip()
             # Handle both old hardcoded paths and new EPOCH_PLACEHOLDER
             if "EPOCH_PLACEHOLDER" in db_value:
@@ -102,19 +102,19 @@ def build_updates(root: Path, lines: list[str]) -> dict[str, str]:
                 else:
                     new_db = latest_epoch / "music.db"
                 new_db.parent.mkdir(parents=True, exist_ok=True)
-                updates["DEDUPE_DB"] = str(new_db)
-                print(f"Set DEDUPE_DB → {new_db}")
+                updates["TAGSLUT_DB"] = str(new_db)
+                print(f"Set TAGSLUT_DB → {new_db}")
             else:
-                print("Warning: no EPOCH_* directories found for DEDUPE_DB")
+                print("Warning: no EPOCH_* directories found for TAGSLUT_DB")
         else:
-            print("Warning: DEDUPE_DB sample path does not have epoch parent")
+            print("Warning: TAGSLUT_DB sample path does not have epoch parent")
     else:
-        print("Warning: DEDUPE_DB definition missing in .env.example")
+        print("Warning: TAGSLUT_DB definition missing in .env.example")
 
     # Extract volumes from zones.yaml if available
-    zones_config = os.environ.get("DEDUPE_ZONES_CONFIG")
+    zones_config = os.environ.get("TAGSLUT_ZONES_CONFIG")
     if not zones_config:
-        zones_config = Path.home() / ".config" / "dedupe" / "zones.yaml"
+        zones_config = Path.home() / ".config" / "tagslut" / "zones.yaml"
     else:
         zones_config = Path(zones_config).expanduser()
 
@@ -124,9 +124,9 @@ def build_updates(root: Path, lines: list[str]) -> dict[str, str]:
         print(f"Extracted {len(zone_volumes)} volume(s) from zones config")
 
     artifacts_dir = root / "artifacts"
-    updates.setdefault("DEDUPE_ARTIFACTS", str(artifacts_dir))
+    updates.setdefault("TAGSLUT_ARTIFACTS", str(artifacts_dir))
     reports_dir = artifacts_dir / "M" / "03_reports"
-    updates.setdefault("DEDUPE_REPORTS", str(reports_dir))
+    updates.setdefault("TAGSLUT_REPORTS", str(reports_dir))
     return updates
 
 

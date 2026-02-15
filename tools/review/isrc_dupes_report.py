@@ -2,7 +2,7 @@
 """
 isrc_dupes_report.py
 
-Report duplicate groups by ISRC from the dedupe DB (metadata_json), with an
+Report duplicate groups by ISRC from the tagslut DB (metadata_json), with an
 optional Chromaprint fingerprint join.
 
 Why ISRC:
@@ -105,7 +105,7 @@ def _where_paths(prefixes: List[str]) -> Tuple[str, List[str]]:
 
 
 def parse_args() -> argparse.Namespace:
-    ap = argparse.ArgumentParser(description="Report ISRC duplicate groups from the dedupe DB")
+    ap = argparse.ArgumentParser(description="Report ISRC duplicate groups from the tagslut DB")
     ap.add_argument("--db", required=True, type=Path, help="SQLite DB path")
     ap.add_argument("--root", action="append", default=[], help="Path prefix filter (repeatable)")
     ap.add_argument("--fingerprints", type=Path, help="Optional fingerprint_report CSV to join")

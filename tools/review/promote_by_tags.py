@@ -17,11 +17,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parents[2]))
 
 from mutagen.flac import FLAC  # noqa: E402
-from dedupe.utils.console_ui import ConsoleUI  # noqa: E402
-from dedupe.utils.file_operations import FileOperations  # noqa: E402
-from dedupe.utils.safety_gates import SafetyGates  # noqa: E402
-from dedupe.metadata.canon import load_canon_rules, apply_canon  # noqa: E402
-from dedupe.utils.final_library_layout import (  # noqa: E402
+from tagslut.utils.console_ui import ConsoleUI  # noqa: E402
+from tagslut.utils.file_operations import FileOperations  # noqa: E402
+from tagslut.utils.safety_gates import SafetyGates  # noqa: E402
+from tagslut.metadata.canon import load_canon_rules, apply_canon  # noqa: E402
+from tagslut.utils.final_library_layout import (  # noqa: E402
     FinalLibraryLayoutError,
     build_final_library_destination,
 )

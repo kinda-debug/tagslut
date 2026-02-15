@@ -5,7 +5,7 @@ the track hub (library_tracks, library_track_sources, files).
 
 Usage:
     # Via environment variable:
-    DEDUPE_DB_PATH=/path/to/music.db python -m tools.inspect_api
+    TAGSLUT_DB_PATH=/path/to/music.db python -m tools.inspect_api
 
     # Via CLI argument (overrides env var):
     python -m tools.inspect_api --db /path/to/music.db
@@ -59,12 +59,12 @@ def _get_db_path() -> str:
         return db_path
 
     # Fallback to environment variable
-    env_path = os.environ.get("DEDUPE_DB_PATH")
+    env_path = os.environ.get("TAGSLUT_DB_PATH")
     if env_path:
         return env_path
 
     raise RuntimeError(
-        "Database path not configured. Set DEDUPE_DB_PATH environment variable "
+        "Database path not configured. Set TAGSLUT_DB_PATH environment variable "
         "or pass --db argument when running the server."
     )
 
@@ -275,7 +275,7 @@ def main() -> None:
 Examples:
     python -m tools.inspect_api --db ./music.db
     python -m tools.inspect_api --db ./music.db --host 0.0.0.0 --port 8080
-    DEDUPE_DB_PATH=./music.db python -m tools.inspect_api
+    TAGSLUT_DB_PATH=./music.db python -m tools.inspect_api
 
 Endpoints:
     GET /health                              - Health check
@@ -285,7 +285,7 @@ Endpoints:
     )
     parser.add_argument(
         "--db",
-        help="Path to the SQLite database file. Overrides DEDUPE_DB_PATH env var.",
+        help="Path to the SQLite database file. Overrides TAGSLUT_DB_PATH env var.",
     )
     parser.add_argument(
         "--host",
@@ -304,9 +304,9 @@ Endpoints:
     # Set the database path
     if args.db:
         _get_db_path._db_path = args.db  # type: ignore
-    elif not os.environ.get("DEDUPE_DB_PATH"):
+    elif not os.environ.get("TAGSLUT_DB_PATH"):
         print("Error: Database path required.", file=sys.stderr)
-        print("Set DEDUPE_DB_PATH environment variable or pass --db argument.", file=sys.stderr)
+        print("Set TAGSLUT_DB_PATH environment variable or pass --db argument.", file=sys.stderr)
         sys.exit(1)
 
     # Verify database exists before starting server

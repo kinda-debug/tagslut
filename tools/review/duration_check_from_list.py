@@ -11,10 +11,10 @@ from pathlib import Path
 
 from mutagen.flac import FLAC
 
-from dedupe.storage.schema import get_connection, init_db
-from dedupe.utils.db import resolve_db_path
-from dedupe.utils.audit_log import append_jsonl, resolve_log_path
-from dedupe.cli.main import (
+from tagslut.storage.schema import get_connection, init_db
+from tagslut.utils.db import resolve_db_path
+from tagslut.utils.audit_log import append_jsonl, resolve_log_path
+from tagslut.cli.main import (
     _duration_thresholds_from_config,
     _duration_check_version,
     _lookup_duration_ref_ms,

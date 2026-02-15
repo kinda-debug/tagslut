@@ -8,7 +8,7 @@ This is an operational helper similar to quarantine_from_plan.py but generalized
 - Reads a CSV containing at least: action,path
 - For rows with action == MOVE (default), moves each file under a destination root
 - Preserves the relative path under --source-root when possible (to avoid collisions)
-- Optionally updates the dedupe SQLite DB to keep paths/zones consistent
+- Optionally updates the tagslut SQLite DB to keep paths/zones consistent
 - Always writes a JSONL log describing what would happen / what happened
 
 Safety:
@@ -32,9 +32,9 @@ import hashlib
 import re
 import unicodedata
 
-from dedupe.exec import execute_move, record_move_receipt, update_legacy_path_with_receipt
-from dedupe.storage.schema import init_db
-from dedupe.storage.v3 import (
+from tagslut.exec import execute_move, record_move_receipt, update_legacy_path_with_receipt
+from tagslut.storage.schema import init_db
+from tagslut.storage.v3 import (
     ensure_move_plan,
 )
 

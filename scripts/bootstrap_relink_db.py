@@ -13,7 +13,7 @@ import argparse
 import sqlite3
 from pathlib import Path
 
-from dedupe.storage.schema import init_db
+from tagslut.storage.schema import init_db
 
 
 def parse_args() -> argparse.Namespace:

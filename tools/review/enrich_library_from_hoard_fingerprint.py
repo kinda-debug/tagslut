@@ -3,7 +3,7 @@
 enrich_library_from_hoard_fingerprint.py
 
 Enrich healthy target FLAC files with missing tags from donor files that have
-identical audio fingerprints in the dedupe DB.
+identical audio fingerprints in the tagslut DB.
 
 Safety defaults:
 - Dry-run by default (no file writes).
@@ -351,7 +351,7 @@ def _flac_tags_for_db(path: Path) -> dict[str, list[str]]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Enrich healthy library FLAC tags from hoarded donor metadata by fingerprint")
-    parser.add_argument("--db", type=Path, default=None, help="SQLite DB path (default: $DEDUPE_DB)")
+    parser.add_argument("--db", type=Path, default=None, help="SQLite DB path (default: $TAGSLUT_DB)")
     parser.add_argument("--donor-root", type=Path, action="append", required=True, help="Donor root (repeatable)")
     parser.add_argument("--target-root", type=Path, action="append", required=True, help="Target root (repeatable)")
     parser.add_argument("--hoard-jsonl", type=Path, required=True, help="files_tags.jsonl from hoard_tags.py --dump-files")
@@ -364,9 +364,9 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    db_path = (args.db or Path(os.environ.get("DEDUPE_DB", ""))).expanduser().resolve()
+    db_path = (args.db or Path(os.environ.get("TAGSLUT_DB", ""))).expanduser().resolve()
     if not str(db_path):
-        raise SystemExit("ERROR: --db not provided and $DEDUPE_DB is not set")
+        raise SystemExit("ERROR: --db not provided and $TAGSLUT_DB is not set")
     if not db_path.exists():
         raise SystemExit(f"ERROR: DB not found: {db_path}")
 

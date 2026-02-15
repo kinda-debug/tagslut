@@ -60,7 +60,7 @@ class FingerprintResult:
     error: str | None
 
 
-logger = logging.getLogger("dedupe")
+logger = logging.getLogger("tagslut")
 
 
 def _now_stamp() -> str:
@@ -186,7 +186,7 @@ def parse_args() -> argparse.Namespace:
         "--db",
         type=Path,
         default=None,
-        help="SQLite DB path (default: $DEDUPE_DB)",
+        help="SQLite DB path (default: $TAGSLUT_DB)",
     )
     ap.add_argument(
         "--root",
@@ -208,7 +208,7 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Enable verbose logging (implies --progress)",
     )
-    ap.add_argument("--progress", action="store_true", help="Emit periodic progress via dedupe logger")
+    ap.add_argument("--progress", action="store_true", help="Emit periodic progress via tagslut logger")
     ap.add_argument("--progress-interval", type=int, default=250, help="Progress interval (items)")
     return ap.parse_args()
 
@@ -244,9 +244,9 @@ def main() -> int:
         )
         logger.setLevel(logging.INFO)
 
-    db_path = (args.db or Path(os.environ.get("DEDUPE_DB", ""))).expanduser().resolve()
+    db_path = (args.db or Path(os.environ.get("TAGSLUT_DB", ""))).expanduser().resolve()
     if not str(db_path):
-        raise SystemExit("ERROR: --db not provided and $DEDUPE_DB is not set")
+        raise SystemExit("ERROR: --db not provided and $TAGSLUT_DB is not set")
     if not db_path.exists():
         raise SystemExit(f"ERROR: DB not found: {db_path}")
 
@@ -290,7 +290,7 @@ def main() -> int:
     fp_by_path: dict[str, FingerprintResult] = {}
     if pending_paths:
         try:
-            from dedupe.utils.parallel import process_map
+            from tagslut.utils.parallel import process_map
         except Exception as e:
             raise SystemExit(f"ERROR: could not import process_map: {e}")
 

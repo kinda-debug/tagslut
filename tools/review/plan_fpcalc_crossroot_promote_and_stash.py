@@ -7,7 +7,7 @@ Generate MOVE-only plans for fpcalc-identical audio dupes spanning multiple root
 - Stash all remaining healthy dupes on the SAME source volume in a special folder
 
 Inputs:
-- dedupe DB (files table) with `fingerprint` already populated (e.g. via audio_dupe_audit.py --execute)
+- tagslut DB (files table) with `fingerprint` already populated (e.g. via audio_dupe_audit.py --execute)
 - one or more --root prefixes (repeatable; require >=2)
 
 Outputs:
@@ -155,7 +155,7 @@ def _prefer_rank(path_str: str, prefer_prefixes: list[str]) -> int:
 
 def parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(description="Plan promote+stash for fpcalc-identical dupes spanning roots")
-    ap.add_argument("--db", type=Path, default=None, help="SQLite DB path (default: $DEDUPE_DB)")
+    ap.add_argument("--db", type=Path, default=None, help="SQLite DB path (default: $TAGSLUT_DB)")
     ap.add_argument("--root", type=Path, action="append", required=True, help="Root prefix filter (repeatable; >=2)")
     ap.add_argument(
         "--prefer-root",
@@ -186,9 +186,9 @@ def main() -> int:
     if len(roots) < 2:
         raise SystemExit("ERROR: provide at least 2 --root values")
 
-    db_path = (args.db or Path(os.environ.get("DEDUPE_DB", ""))).expanduser().resolve()
+    db_path = (args.db or Path(os.environ.get("TAGSLUT_DB", ""))).expanduser().resolve()
     if not str(db_path):
-        raise SystemExit("ERROR: --db not provided and $DEDUPE_DB is not set")
+        raise SystemExit("ERROR: --db not provided and $TAGSLUT_DB is not set")
     if not db_path.exists():
         raise SystemExit(f"ERROR: DB not found: {db_path}")
 

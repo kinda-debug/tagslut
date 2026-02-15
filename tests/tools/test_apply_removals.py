@@ -6,8 +6,8 @@ import os
 import tempfile
 from legacy.tools.review import apply_removals
 
-from dedupe.utils.safety_gates import SafetyGates
-from dedupe.utils.console_ui import ConsoleUI
+from tagslut.utils.safety_gates import SafetyGates
+from tagslut.utils.console_ui import ConsoleUI
 
 class TestApplyRemovals(unittest.TestCase):
 

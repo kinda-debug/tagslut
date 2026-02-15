@@ -2,10 +2,10 @@
 """
 recommend_plan_to_moves.py
 
-Convert `dedupe recommend` JSON output into an actionable MOVE plan CSV + path list.
+Convert `tagslut recommend` JSON output into an actionable MOVE plan CSV + path list.
 
 Typical use:
-  dedupe recommend --db "$DB" --mode checksum -o artifacts/plan_djssd_checksum.json
+  tagslut recommend --db "$DB" --mode checksum -o artifacts/plan_djssd_checksum.json
   python3 tools/review/recommend_plan_to_moves.py artifacts/plan_djssd_checksum.json \
     --out-csv artifacts/plan_djssd_checksum_moves.csv \
     --out-paths artifacts/plan_djssd_checksum_move_paths.txt
@@ -47,8 +47,8 @@ def _as_list(csv_value: Optional[str]) -> List[str]:
 
 
 def parse_args() -> argparse.Namespace:
-    ap = argparse.ArgumentParser(description="Convert dedupe recommend JSON plan into MOVE CSV + paths file")
-    ap.add_argument("plan_json", type=Path, help="Path to plan JSON produced by `dedupe recommend`")
+    ap = argparse.ArgumentParser(description="Convert tagslut recommend JSON plan into MOVE CSV + paths file")
+    ap.add_argument("plan_json", type=Path, help="Path to plan JSON produced by `tagslut recommend`")
     ap.add_argument("--out-csv", type=Path, default=Path("artifacts/recommend_moves.csv"), help="Output CSV path")
     ap.add_argument("--out-paths", type=Path, default=Path("artifacts/recommend_move_paths.txt"), help="Output paths file")
     ap.add_argument("--from-action", default="DROP", help="Decision action to convert into MOVE rows (default: DROP)")

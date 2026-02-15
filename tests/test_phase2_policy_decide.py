@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dedupe.decide import PlanCandidate, build_deterministic_plan
-from dedupe.policy import lint_policy_profile, list_policy_profiles, load_policy_profile
+from tagslut.decide import PlanCandidate, build_deterministic_plan
+from tagslut.policy import lint_policy_profile, list_policy_profiles, load_policy_profile
 
 
 def _sample_candidates() -> list[PlanCandidate]:

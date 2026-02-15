@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from dedupe.exec.engine import EXECUTOR_CONTRACT_VERSION, execute_move, verify_receipt
+from tagslut.exec.engine import EXECUTOR_CONTRACT_VERSION, execute_move, verify_receipt
 
 
 def _write(path, payload: bytes) -> None:

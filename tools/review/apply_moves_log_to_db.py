@@ -2,7 +2,7 @@
 """
 apply_moves_log_to_db.py
 
-Apply `move_from_plan.py` JSONL logs to the dedupe DB, updating `files.path` to
+Apply `move_from_plan.py` JSONL logs to the tagslut DB, updating `files.path` to
 match already-executed moves.
 
 Use this when a move log exists (execute=true, result=moved) but the DB was not
@@ -28,7 +28,7 @@ def _now_iso() -> str:
 def parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(description="Apply move_from_plan JSONL logs to update DB paths/zones")
     ap.add_argument("moves_log", type=Path, nargs="+", help="move_from_plan JSONL log file(s)")
-    ap.add_argument("--db", type=Path, default=None, help="SQLite DB path (default: $DEDUPE_DB)")
+    ap.add_argument("--db", type=Path, default=None, help="SQLite DB path (default: $TAGSLUT_DB)")
     ap.add_argument("--execute", action="store_true", help="Write updates to DB (default: dry-run)")
     ap.add_argument(
         "--require-dest-exists",
@@ -40,9 +40,9 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    db_path = (args.db or Path(os.environ.get("DEDUPE_DB", ""))).expanduser().resolve()
+    db_path = (args.db or Path(os.environ.get("TAGSLUT_DB", ""))).expanduser().resolve()
     if not str(db_path):
-        raise SystemExit("ERROR: --db not provided and $DEDUPE_DB is not set")
+        raise SystemExit("ERROR: --db not provided and $TAGSLUT_DB is not set")
     if not db_path.exists():
         raise SystemExit(f"ERROR: DB not found: {db_path}")
 

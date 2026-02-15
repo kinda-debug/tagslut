@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Integration tests for dedupe mgmt (management mode) workflow.
+Integration tests for tagslut mgmt (management mode) workflow.
 
 Tests:
 1. Register files from a directory
@@ -17,10 +17,10 @@ from pathlib import Path
 from datetime import datetime, timezone
 from click.testing import CliRunner
 
-from dedupe.cli.main import cli, mgmt
-from dedupe.storage.schema import get_connection, init_db
-from dedupe.storage.queries import get_file
-from dedupe.core.hashing import calculate_file_hash
+from tagslut.cli.main import cli, mgmt
+from tagslut.storage.schema import get_connection, init_db
+from tagslut.storage.queries import get_file
+from tagslut.core.hashing import calculate_file_hash
 
 
 @pytest.fixture
@@ -38,7 +38,7 @@ def temp_db():
 def temp_flac_files():
     """Create temporary FLAC test files."""
     # Use the same test file we created earlier
-    source = Path("/tmp/test_dedupe/test_track.flac")
+    source = Path("/tmp/test_tagslut/test_track.flac")
     if not source.exists():
         pytest.skip("Test FLAC file not found")
 

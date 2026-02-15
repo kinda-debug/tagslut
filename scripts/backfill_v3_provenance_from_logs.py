@@ -9,15 +9,15 @@ import sqlite3
 from pathlib import Path
 from typing import Iterator
 
-from dedupe.storage.schema import init_db
-from dedupe.storage.v3 import (
+from tagslut.storage.schema import init_db
+from tagslut.storage.v3 import (
     ensure_move_plan,
     insert_move_execution,
     move_asset_path,
     record_provenance_event,
     upsert_asset_file,
 )
-from dedupe.utils.db import resolve_db_path
+from tagslut.utils.db import resolve_db_path
 
 MOVE_EVENTS = {"move_from_plan", "quarantine_move", "file_move"}
 

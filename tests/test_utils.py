@@ -6,7 +6,7 @@ import hashlib
 import unicodedata
 from pathlib import Path
 
-from dedupe import utils
+from tagslut import utils
 
 
 def test_compute_md5(tmp_path: Path) -> None:

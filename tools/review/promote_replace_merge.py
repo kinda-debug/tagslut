@@ -7,11 +7,11 @@ from pathlib import Path
 
 from mutagen.flac import FLAC
 
-from dedupe.metadata.canon import apply_canon, load_canon_rules
-from dedupe.utils.console_ui import ConsoleUI
-from dedupe.utils.file_operations import FileOperations
-from dedupe.utils.final_library_layout import FinalLibraryLayoutError, build_final_library_destination
-from dedupe.utils.safety_gates import SafetyGates
+from tagslut.metadata.canon import apply_canon, load_canon_rules
+from tagslut.utils.console_ui import ConsoleUI
+from tagslut.utils.file_operations import FileOperations
+from tagslut.utils.final_library_layout import FinalLibraryLayoutError, build_final_library_destination
+from tagslut.utils.safety_gates import SafetyGates
 
 
 CORE_TAGS = {
@@ -134,8 +134,8 @@ def main() -> int:
     ap.add_argument("source", type=Path)
     ap.add_argument("--dest", type=Path, required=True)
     ap.add_argument("--db", type=Path, required=True)
-    ap.add_argument("--canon-rules", type=Path, default=Path("/Users/georgeskhawam/Projects/dedupe/tools/rules/library_canon.json"))
-    ap.add_argument("--move-log", type=Path, default=Path("/Users/georgeskhawam/Projects/dedupe/artifacts/logs/file_move_mdl_replace.jsonl"))
+    ap.add_argument("--canon-rules", type=Path, default=Path("/Users/georgeskhawam/Projects/tagslut/tools/rules/library_canon.json"))
+    ap.add_argument("--move-log", type=Path, default=Path("/Users/georgeskhawam/Projects/tagslut/artifacts/logs/file_move_mdl_replace.jsonl"))
     ap.add_argument("--execute", action="store_true")
     args = ap.parse_args()
 

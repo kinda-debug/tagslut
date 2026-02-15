@@ -6,7 +6,7 @@ import re
 
 from click.testing import CliRunner
 
-from dedupe.cli.main import (
+from tagslut.cli.main import (
     _TRANSITIONAL_COMMAND_REPLACEMENTS,
     cli,
 )
@@ -88,11 +88,11 @@ def test_phase5_removed_top_level_commands_absent() -> None:
 
 
 def test_internal_replacement_map_targets_canonical_flows() -> None:
-    assert _TRANSITIONAL_COMMAND_REPLACEMENTS["dedupe _mgmt"].startswith("tagslut index")
-    assert _TRANSITIONAL_COMMAND_REPLACEMENTS["dedupe _metadata"].startswith("tagslut auth")
-    assert _TRANSITIONAL_COMMAND_REPLACEMENTS["dedupe _recover"].startswith("tagslut verify")
-    assert "dedupe scan" not in _TRANSITIONAL_COMMAND_REPLACEMENTS
-    assert "dedupe mgmt" not in _TRANSITIONAL_COMMAND_REPLACEMENTS
+    assert _TRANSITIONAL_COMMAND_REPLACEMENTS["tagslut _mgmt"].startswith("tagslut index")
+    assert _TRANSITIONAL_COMMAND_REPLACEMENTS["tagslut _metadata"].startswith("tagslut auth")
+    assert _TRANSITIONAL_COMMAND_REPLACEMENTS["tagslut _recover"].startswith("tagslut verify")
+    assert "tagslut scan" not in _TRANSITIONAL_COMMAND_REPLACEMENTS
+    assert "tagslut mgmt" not in _TRANSITIONAL_COMMAND_REPLACEMENTS
 
 
 def test_removed_compat_command_returns_no_such_command() -> None:

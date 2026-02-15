@@ -14,7 +14,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 def test_required_directories_exist() -> None:
     """Verify required directories and placeholders are present."""
 
-    expected_dirs = ["dedupe", "tools", "artifacts", "tests"]
+    expected_dirs = ["tagslut", "tools", "artifacts", "tests"]
     for name in expected_dirs:
         candidate = PROJECT_ROOT / name
         assert candidate.is_dir(), f"Missing required directory: {name}"
@@ -60,18 +60,18 @@ def test_pyproject_toml_parses() -> None:
 @pytest.mark.parametrize(
     "module_path",
     [
-        "dedupe",
-        "dedupe.core",
-        "dedupe.core.decisions",
-        "dedupe.core.matching",
-        "dedupe.core.metadata",
-        "dedupe.exec",
-        "dedupe.integrity_scanner",
-        "dedupe.policy",
-        "dedupe.decide",
-        "dedupe.storage",
-        "dedupe.storage.schema",
-        "dedupe.utils",
+        "tagslut",
+        "tagslut.core",
+        "tagslut.core.decisions",
+        "tagslut.core.matching",
+        "tagslut.core.metadata",
+        "tagslut.exec",
+        "tagslut.integrity_scanner",
+        "tagslut.policy",
+        "tagslut.decide",
+        "tagslut.storage",
+        "tagslut.storage.schema",
+        "tagslut.utils",
         "tagslut",
     ],
 )

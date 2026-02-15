@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from dedupe.storage.schema import init_db
+from tagslut.storage.schema import init_db
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -32,7 +32,7 @@ def test_move_from_plan_dual_write_integration(tmp_path, monkeypatch) -> None:
     init_db(conn)
     conn.close()
 
-    monkeypatch.setenv("DEDUPE_V3_DUAL_WRITE", "1")
+    monkeypatch.setenv("TAGSLUT_V3_DUAL_WRITE", "1")
     proc = subprocess.run(
         [
             sys.executable,

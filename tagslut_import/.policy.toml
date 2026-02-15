@@ -1,0 +1,35 @@
+# TOML mirror of policy so CI/tests don't need PyYAML.
+# This file is the primary source that the guard reads.
+
+[formats]
+download_extensions_allowlist = [".flac"]
+
+[providers]
+download_priority = [
+  ["qobuz", 24, 192000],
+  ["tidal", 24, 192000],
+  ["qobuz", 24, 96000],
+  ["tidal", 24, 96000],
+  ["qobuz", 16, 44100],
+  ["tidal", 16, 44100],
+]
+lyrics_allowed   = ["qobuz", "tidal", "musicbrainz"]
+lyrics_forbidden = ["apple"]
+
+[enforcement]
+quality_ladder_file     = "src/tagslut/downloader/ladder.py"
+downloader_root         = "src/tagslut/downloader"
+lyrics_root             = "src/tagslut/metadata/lyrics"
+cascade_root            = "src/tagslut/metadata"
+provenance_required_call = "write_provenance_json"
+
+forbidden_endpoints = [
+  "amp-api.music.apple.com",
+  "api.music.apple.com/v1/.*/songs/.*/lyrics",
+  "music.apple.com/.*/lyrics",
+]
+
+allowed_metadata_endpoints = [
+  "itunes.apple.com/search",
+  "itunes.apple.com/lookup",
+]

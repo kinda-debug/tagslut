@@ -23,10 +23,10 @@ Zones are configured via YAML (preferred) or TOML (legacy). YAML allows explicit
 
 ### YAML (preferred)
 
-Set `DEDUPE_ZONES_CONFIG` to a YAML file:
+Set `TAGSLUT_ZONES_CONFIG` to a YAML file:
 
 ```
-export DEDUPE_ZONES_CONFIG=~/.config/dedupe/zones.yaml
+export TAGSLUT_ZONES_CONFIG=~/.config/tagslut/zones.yaml
 ```
 
 The YAML structure uses these top-level keys:
@@ -74,7 +74,7 @@ If **no accepted zone** exists, step 1 is skipped automatically.
 
 ## CLI Helpers
 
-- `dedupe show-zone --path /path/to/file`
-- `dedupe explain-keeper --db /path/to/music.db --group-id <checksum>`
+- `tagslut show-zone --path /path/to/file`
+- `tagslut explain-keeper --db /path/to/music.db --group-id <checksum>`
 
 Both commands are safe, read-only diagnostics.

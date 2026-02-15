@@ -8,16 +8,16 @@ It uses a **trust score before scanning**, lets **scan results override it**, th
 ## 0) Environment (always first)
 
 ```bash
-cd /Users/georgeskhawam/Projects/dedupe
+cd /Users/georgeskhawam/Projects/tagslut
 python3 scripts/auto_env.py   # refreshes .env with latest EPOCH_* DB
 source .env
-mkdir -p "$(dirname "$DEDUPE_DB")"
+mkdir -p "$(dirname "$TAGSLUT_DB")"
 ```
 
 Sanity check:
 ```bash
-echo "$DEDUPE_DB"
-echo "$DEDUPE_ZONES_CONFIG"
+echo "$TAGSLUT_DB"
+echo "$TAGSLUT_ZONES_CONFIG"
 ```
 
 ---
@@ -25,15 +25,15 @@ echo "$DEDUPE_ZONES_CONFIG"
 ## 1) Zones (required)
 
 ```bash
-mkdir -p ~/.config/dedupe
-cp config.example.yaml ~/.config/dedupe/zones.yaml
-$EDITOR ~/.config/dedupe/zones.yaml
-export DEDUPE_ZONES_CONFIG=~/.config/dedupe/zones.yaml
+mkdir -p ~/.config/tagslut
+cp config.example.yaml ~/.config/tagslut/zones.yaml
+$EDITOR ~/.config/tagslut/zones.yaml
+export TAGSLUT_ZONES_CONFIG=~/.config/tagslut/zones.yaml
 ```
 
 Verify:
 ```bash
-dedupe show-zone /Volumes/DJSSD/DRPBX --zones-config ~/.config/dedupe/zones.yaml
+tagslut show-zone /Volumes/DJSSD/DRPBX --zones-config ~/.config/tagslut/zones.yaml
 ```
 
 ---
@@ -45,7 +45,7 @@ After the scan, you re‑score and re‑apply zones.
 
 ```bash
 python tools/review/scan_with_trust.py /Volumes/DJSSD/DRPBX \
-  --db "$DEDUPE_DB" \
+  --db "$TAGSLUT_DB" \
   --create-db \
   --check-integrity \
   --check-hash \
@@ -70,7 +70,7 @@ Run a tag hoard to get a full inventory of embedded tags (useful before canonizi
 ```bash
 python3 tools/review/hoard_tags.py "/Volumes/DJSSD/DRPBX" \
   --out "/Volumes/DJSSD/_TAG_HOARD" \
-  --db "$DEDUPE_DB" \
+  --db "$TAGSLUT_DB" \
   --db-add
 ```
 
@@ -87,8 +87,8 @@ Outputs:
 For duration‑based health checks, use **Beatport + iTunes** (fast, broad):
 
 ```bash
-./.venv/bin/dedupe metadata enrich \
-  --db "$DEDUPE_DB" \
+./.venv/bin/tagslut metadata enrich \
+  --db "$TAGSLUT_DB" \
   --recovery \
   --providers beatport,itunes \
   --zones suspect \
@@ -98,7 +98,7 @@ For duration‑based health checks, use **Beatport + iTunes** (fast, broad):
 
 Afterwards, pull a mismatch report:
 ```bash
-sqlite3 -header -csv "$DEDUPE_DB" \
+sqlite3 -header -csv "$TAGSLUT_DB" \
 "SELECT path,
         duration AS measured_s,
         canonical_duration AS trusted_s,
@@ -109,7 +109,7 @@ sqlite3 -header -csv "$DEDUPE_DB" \
  FROM files
  WHERE canonical_duration IS NOT NULL
  ORDER BY delta_s DESC;" \
-> /Users/georgeskhawam/Projects/dedupe/duration_mismatches.csv
+> /Users/georgeskhawam/Projects/tagslut/duration_mismatches.csv
 ```
 
 ---
@@ -148,8 +148,8 @@ python tools/review/promote_by_tags.py \
 ## 7) Dedupe plan (after you have a stable library)
 
 ```bash
-dedupe recommend --db "$DEDUPE_DB" --output plan.json
-dedupe apply plan.json --confirm
+tagslut recommend --db "$TAGSLUT_DB" --output plan.json
+tagslut apply plan.json --confirm
 ```
 
 ---

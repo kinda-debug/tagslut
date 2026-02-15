@@ -5,7 +5,7 @@
 Final product name: **tagslut**.
 
 Compatibility aliases retained:
-- `dedupe` (legacy/operator compatibility)
+- `tagslut` (legacy/operator compatibility)
 - `taglslut` (typo-tolerant alias)
 
 ## Upstream Repo Review
@@ -21,7 +21,7 @@ What was reusable:
 
 What was intentionally not imported:
 1. Typer CLI stack and `src/tagslut` package layout (this repo is already Click-based and operationally mature).
-2. Bot/integration modules (outside dedupe scope).
+2. Bot/integration modules (outside tagslut scope).
 3. Any docs with unresolved conflict markers (found in upstream `docs/operations/scripts.md`).
 
 ## Implemented In This Repo
@@ -30,7 +30,7 @@ What was intentionally not imported:
 2. New CLI entrypoints:
    - `tagslut`
    - `taglslut`
-   - existing `dedupe` preserved
+   - existing `tagslut` preserved
 3. New runtime package alias:
    - `tagslut/__init__.py`
    - `tagslut/__main__.py` (supports `python -m tagslut`)
@@ -43,22 +43,22 @@ Use these replacements for operator docs and shell aliases:
 
 | Old | New (preferred) |
 | --- | --- |
-| `dedupe intake ...` | `tagslut intake ...` |
-| `dedupe index ...` | `tagslut index ...` |
-| `dedupe decide ...` | `tagslut decide ...` |
-| `dedupe execute ...` | `tagslut execute ...` |
-| `dedupe verify ...` | `tagslut verify ...` |
-| `dedupe report ...` | `tagslut report ...` |
-| `dedupe auth ...` | `tagslut auth ...` |
+| `tagslut intake ...` | `tagslut intake ...` |
+| `tagslut index ...` | `tagslut index ...` |
+| `tagslut decide ...` | `tagslut decide ...` |
+| `tagslut execute ...` | `tagslut execute ...` |
+| `tagslut verify ...` | `tagslut verify ...` |
+| `tagslut report ...` | `tagslut report ...` |
+| `tagslut auth ...` | `tagslut auth ...` |
 
 ## Rollout Policy
 
 1. **Now**: `tagslut` is preferred in docs and helper targets.
-2. **Transition window**: keep `dedupe` as a fully working alias.
-3. **Future (optional)**: emit advisory warning when invoked as `dedupe`.
+2. **Transition window**: keep `tagslut` as a fully working alias.
+3. **Future (optional)**: emit advisory warning when invoked as `tagslut`.
 4. **Removal decision**: defer until all operator automation is migrated.
 
 ## Notes
 
-- Internal package/module namespace remains `dedupe/` for now to avoid high-risk churn.
+- Internal package/module namespace remains `tagslut/` for now to avoid high-risk churn.
 - Wrapper scripts and CLI behavior are unchanged functionally; this is a branding/migration pass.

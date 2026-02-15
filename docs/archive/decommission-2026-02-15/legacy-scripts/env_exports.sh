@@ -52,4 +52,4 @@ export LOG_FILE="harvest_duration.log"
 export STATE_FILE="harvest_duration.state"
 
 ########## DATABASE ##########
-export MUSIC_DB="/Users/georgeskhawam/Projects/dedupe/EPOCH_2026-01-24/music.db"
+export MUSIC_DB="/Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-24/music.db"

@@ -4,8 +4,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
-DB="/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-01-09/music.db"
-OUT_DIR="/Users/georgeskhawam/Projects/dedupe/artifacts/M/03_reports"
+DB="/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-01-09/music.db"
+OUT_DIR="/Users/georgeskhawam/Projects/tagslut/artifacts/M/03_reports"
 JQ="/opt/homebrew/bin/jq"
 KEEP_DEST="/Volumes/COMMUNE/M/Library/_staging/$(date +%F)_keep"
 MARKED=""
@@ -19,8 +19,8 @@ usage() {
 Usage: tools/review/auto_cycle.sh [options]
 
 Options:
-  --db PATH            DB path (default: /Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-01-09/music.db)
-  --out-dir DIR        Reports directory (default: /Users/georgeskhawam/Projects/dedupe/artifacts/M/03_reports)
+  --db PATH            DB path (default: /Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-01-09/music.db)
+  --out-dir DIR        Reports directory (default: /Users/georgeskhawam/Projects/tagslut/artifacts/M/03_reports)
   --keep-dest DIR      Staging destination (default: /Volumes/COMMUNE/M/Library/_staging/$(date +%F)_keep)
   --marked PATH        Marked suggestions CSV (default: <out-dir>/recommend_marked_suggestions.csv)
   --progress-every N   Progress interval (default: 500)

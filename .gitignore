@@ -101,7 +101,7 @@ Thumbs.db
 
 # Local config
 /config.toml
-/Users/georgeskhawam/Projects/dedupe/legacy
+/Users/georgeskhawam/Projects/tagslut/legacy
 # Working directories / run outputs
 artifacts/**
 out/
@@ -123,14 +123,14 @@ runs/
 
 # Archived run outputs (keep out of git)
 archive/ops_artifacts
-/Users/georgeskhawam/Projects/dedupe/beatportdl
+/Users/georgeskhawam/Projects/tagslut/beatportdl
 # Large legacy volumes and exports
 Volumes/
 
 # Known large legacy blobs currently present in history
 ARCHIVE_DBS/*.db*
 ARCHIVE_SCRIPTS/move_plan.sh
-dedupe/ARCHIVE/archive/**
+tagslut/ARCHIVE/archive/**
 
 # Local helper binaries / scratch files sometimes in repo root
 /python3
@@ -145,9 +145,9 @@ tests/data/healthy.flac
 tests/__pycache__/conftest.cpython-312-pytest-9.0.1.pyc
 tools/__pycache__/db_upgrade.cpython-312.pyc
 tools/__pycache__/manual_ingest.cpython-312.pyc
-dedupe/__pycache__/scanner.cpython-312.pyc
-dedupe/__pycache__/rstudio_parser.cpython-312.pyc
-dedupe/__pycache__/__init__.cpython-312.pyc
+tagslut/__pycache__/scanner.cpython-312.pyc
+tagslut/__pycache__/rstudio_parser.cpython-312.pyc
+tagslut/__pycache__/__init__.cpython-312.pyc
 Recognized4_APFS Container tree.txt.zip
 music.session.sql
 duplicates_for_decision.csv
@@ -155,7 +155,7 @@ duplicates_for_decision.csv
 fs_existence_summary_by_prefix.csv
 fs_existence_Volumes__bad___ALL_FLACS_FLAT.csv
 fs_existence_Volumes__bad___BAD_VS_DOTAD_DISCARDS.csv
-fs_existence_Volumes__bad__.dedupe_db.csv
+fs_existence_Volumes__bad__.tagslut_db.csv
 fs_existence_Volumes__bad__FINAL_LIBRARY.csv
 fs_existence_Volumes__COMMUNE___PROMOTION_STAGING.csv
 fs_existence_Volumes__COMMUNE__R2.csv
@@ -171,7 +171,7 @@ output.zip
 prefix_overlap_matrix.csv
 prefix_summary_Volumes__bad___ALL_FLACS_FLAT.csv
 prefix_summary_Volumes__bad___BAD_VS_DOTAD_DISCARDS.csv
-prefix_summary_Volumes__bad__.dedupe_db.csv
+prefix_summary_Volumes__bad__.tagslut_db.csv
 prefix_summary_Volumes__bad__FINAL_LIBRARY.csv
 prefix_summary_Volumes__COMMUNE___PROMOTION_STAGING.csv
 prefix_summary_Volumes__COMMUNE__R2.csv
@@ -190,7 +190,7 @@ fs_existence_bad_comparison.csv
 fs_existence_commune_comparison.csv
 fs_existence_ro_Volumes__bad___ALL_FLACS_FLAT.csv
 fs_existence_ro_Volumes__bad___BAD_VS_DOTAD_DISCARDS.csv
-fs_existence_ro_Volumes__bad__.dedupe_db.csv
+fs_existence_ro_Volumes__bad__.tagslut_db.csv
 fs_existence_ro_Volumes__bad__FINAL_LIBRARY.csv
 fs_existence_ro_Volumes__COMMUNE___PROMOTION_STAGING.csv
 fs_existence_ro_Volumes__COMMUNE__R2.csv
@@ -309,7 +309,7 @@ flac_recovery_pipeline/03_verify.sh
 flac_recovery_pipeline/04_summary.sh
 flac_recovery_pipeline/config.sh
 flac_recovery_pipeline/flac_state.csv
-/Users/georgeskhawam/Projects/dedupe/flac_recovery_pipeline
+/Users/georgeskhawam/Projects/tagslut/flac_recovery_pipeline
 .gitignore
 tests/legacy/test_zone_logic.py.disabled
 .claude/settings.local.json
@@ -330,10 +330,10 @@ docs/metadata/Core idea multi-service metadata and summary.md
 docs/metadata/metadata-extraction-report.md
 docs/metadata/info.txt
 .gitignore
-EPOCH_2026-01-24/.dedupe_write_test_29399
-EPOCH_2026-01-24/.dedupe_write_test_52723
-EPOCH_2026-01-24/.dedupe_write_test_52517
-EPOCH_2026-01-24/.dedupe_write_test_7676
+EPOCH_2026-01-24/.tagslut_write_test_29399
+EPOCH_2026-01-24/.tagslut_write_test_52723
+EPOCH_2026-01-24/.tagslut_write_test_52517
+EPOCH_2026-01-24/.tagslut_write_test_7676
 docs/metadata/metadata_bible.md
 .gitignore
 phase1_harvest/env_exports.sh
@@ -379,15 +379,15 @@ poetry.lock
 docs/WORKFLOW_METADATA.md
 poetry.lock
 .claude/settings.local.json
-EPOCH_2026-01-27/.dedupe_write_test_59391
-EPOCH_2026-01-28/.dedupe_write_test_13493
-EPOCH_2026-01-27/.dedupe_write_test_82381
+EPOCH_2026-01-27/.tagslut_write_test_59391
+EPOCH_2026-01-28/.tagslut_write_test_13493
+EPOCH_2026-01-27/.tagslut_write_test_82381
 .claude/settings.local.json
 poetry.lock
 .claude/settings.local.json
 poetry.lock
-/Users/georgeskhawam/Projects/dedupe/tools/review/promote_by_tags_versions
-/Users/georgeskhawam/Projects/dedupe/mp3tag_sources
+/Users/georgeskhawam/Projects/tagslut/tools/review/promote_by_tags_versions
+/Users/georgeskhawam/Projects/tagslut/mp3tag_sources
 tools/rules/library_canon.picard.pms
 .gitignore
 tools/review/promote_by_tags_versions/v3-supercharged/2026-01-12__680c986__promote_by_tags.py
@@ -410,7 +410,7 @@ postman/chat/chat 7.md
 postman/chat/last.md
 trackhub.patch
 docs/metadata_system_report.md
-/Users/georgeskhawam/Projects/dedupe/beatportdl
+/Users/georgeskhawam/Projects/tagslut/beatportdl
 beatportdl/vendor/gopkg.in/yaml.v2/yamlprivateh.go
 ~/Music/btdl/01. Vlad Caia, Cristi Cons, SIT - Magnetized (Original Mix).flac
 ~/Music/btdl/02. Vlad Caia, Cristi Cons, SIT - Roundandround (Original Mix).flac
@@ -436,7 +436,7 @@ mp3tag_sources/Apple Music Web Source 4/localhost.pem
 poetry.lock
 tools/flacs_inventory_20260202_191907.xlsx
 poetry.lock
-dedupe/storage/migrations/2026_02_03_add_duration_safety.sql
+tagslut/storage/migrations/2026_02_03_add_duration_safety.sql
 DJ.xlsx
 output/spreadsheet/ALL_audio_health_report_postcheck.xlsx
 output/spreadsheet/ALL_audio_health_report_precheck.xlsx

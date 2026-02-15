@@ -23,8 +23,8 @@ from typing import Iterable
 # Ensure imports work
 sys.path.insert(0, str(Path(__file__).parents[2]))
 
-from dedupe.utils import env_paths
-from dedupe.utils.db import open_db, resolve_db_path
+from tagslut.utils import env_paths
+from tagslut.utils.db import open_db, resolve_db_path
 
 
 ZONE_DEFAULT = ["accepted", "staging", "suspect", "quarantine"]
@@ -89,11 +89,11 @@ def main() -> None:
     )
     parser.add_argument(
         "--db",
-        help="Path to dedupe DB (default: $DEDUPE_DB)",
+        help="Path to dedupe DB (default: $TAGSLUT_DB)",
     )
     parser.add_argument(
         "--output",
-        help="Where to write the removal plan CSV (default: $DEDUPE_REPORTS/removal_plan.csv)",
+        help="Where to write the removal plan CSV (default: $TAGSLUT_REPORTS/removal_plan.csv)",
     )
     parser.add_argument(
         "--zone-priority",

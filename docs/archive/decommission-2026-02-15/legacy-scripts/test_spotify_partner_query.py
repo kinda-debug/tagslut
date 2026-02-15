@@ -12,7 +12,7 @@ except ImportError:
     print("Error: httpx is required. Install with: pip install httpx")
     sys.exit(1)
 
-from dedupe.metadata.spotify_partner_tokens import get_partner_headers
+from tagslut.metadata.spotify_partner_tokens import get_partner_headers
 
 PARTNER_ENDPOINT = "https://api-partner.spotify.com/pathfinder/v1/query"
 

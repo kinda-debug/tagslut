@@ -6,9 +6,9 @@ This report closes Phase 2 (`Policy + Decide Engine`) in
 ## Scope Verified
 
 1. Policy module and profile loader are live:
-- `dedupe/policy/models.py`
-- `dedupe/policy/loader.py`
-- `dedupe/policy/lint.py`
+- `tagslut/policy/models.py`
+- `tagslut/policy/loader.py`
+- `tagslut/policy/lint.py`
 
 2. Baseline profiles exist:
 - `config/policies/dj_strict.yaml`
@@ -16,7 +16,7 @@ This report closes Phase 2 (`Policy + Decide Engine`) in
 - `config/policies/bulk_recovery.yaml`
 
 3. Deterministic planner is live:
-- `dedupe/decide/planner.py`
+- `tagslut/decide/planner.py`
 - deterministic `plan_hash` behavior under stable input/policy
 - policy-stamped plan artifacts (`policy.version`, `run_id`)
 
@@ -26,10 +26,10 @@ Executed on 2026-02-09:
 
 ```bash
 poetry run python -m py_compile \
-  dedupe/policy/models.py \
-  dedupe/policy/loader.py \
-  dedupe/policy/lint.py \
-  dedupe/decide/planner.py \
+  tagslut/policy/models.py \
+  tagslut/policy/loader.py \
+  tagslut/policy/lint.py \
+  tagslut/decide/planner.py \
   scripts/lint_policy_profiles.py
 ```
 
@@ -37,8 +37,8 @@ Result: success.
 
 ```bash
 poetry run flake8 \
-  dedupe/policy \
-  dedupe/decide \
+  tagslut/policy \
+  tagslut/decide \
   scripts/lint_policy_profiles.py \
   tests/test_phase2_policy_decide.py \
   tests/test_policy_lint_script.py

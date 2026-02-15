@@ -4,10 +4,10 @@ Phase 2 introduces a policy-driven deterministic planning layer.
 
 ## What Was Added
 
-1. `dedupe.policy` module
-- Loader: `dedupe/policy/loader.py`
-- Model types: `dedupe/policy/models.py`
-- Lint rules: `dedupe/policy/lint.py`
+1. `tagslut.policy` module
+- Loader: `tagslut/policy/loader.py`
+- Model types: `tagslut/policy/models.py`
+- Lint rules: `tagslut/policy/lint.py`
 
 2. Policy profiles
 - `config/policies/dj_strict.yaml`
@@ -15,8 +15,8 @@ Phase 2 introduces a policy-driven deterministic planning layer.
 - `config/policies/bulk_recovery.yaml`
 
 3. Deterministic planning API
-- `dedupe/decide/planner.py`
-- `dedupe/decide/__init__.py`
+- `tagslut/decide/planner.py`
+- `tagslut/decide/__init__.py`
 
 ## Contract
 
@@ -56,8 +56,8 @@ Plan artifacts are stamped with:
 ## Usage (Python API)
 
 ```python
-from dedupe.decide import PlanCandidate, build_deterministic_plan
-from dedupe.policy import load_policy_profile
+from tagslut.decide import PlanCandidate, build_deterministic_plan
+from tagslut.policy import load_policy_profile
 
 policy = load_policy_profile("library_balanced")
 plan = build_deterministic_plan(

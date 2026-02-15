@@ -1,6 +1,6 @@
 # tools/review
 
-Active operational scripts for dedupe planning, analysis, and move execution.
+Active operational scripts for tagslut planning, analysis, and move execution.
 
 ## Core Move Workflow
 

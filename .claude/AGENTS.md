@@ -4,7 +4,7 @@
 
 This repository manages a **music library deduplication and rebuild effort** after major data loss. The project is about **sanity, deduplication, provenance, and deterministic operations**.
 
-- The project is **tagslut** (implemented in the `dedupe/` package during migration).
+- The project is **tagslut** (implemented in the `tagslut/` package).
 - **bpdl** and **tiddl** are download tools inside the project.
 - **Yate** is the manual precision tagger for edge cases.
 - Scanning, indexing, planning, execution, verification, and reporting are first-class workflow stages.
@@ -52,7 +52,7 @@ Reference map:
 ### DON'T
 
 - Don't use retired wrappers (`mgmt`, `metadata`, `recover`, `scan`, `recommend`, `apply`, `promote`, `quarantine`).
-- Don't copy music files as part of operational dedupe flows.
+- Don't copy music files as part of operational dedup flows.
 - Don't overwrite/delete media without explicit operator intent.
 - Don't change folder structure assumptions without checking real filesystem state.
 - Don't leave orphaned docs in active surface when no longer part of workflow.

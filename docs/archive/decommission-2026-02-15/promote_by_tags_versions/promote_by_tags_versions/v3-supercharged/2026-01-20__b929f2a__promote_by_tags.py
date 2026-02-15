@@ -46,8 +46,8 @@ sys.path.insert(0, str(Path(__file__).parents[2]))
 from mutagen import MutagenError  # type: ignore[attr-defined]
 from mutagen.flac import FLAC, FLACNoHeaderError
 
-from dedupe.utils import env_paths
-from dedupe.utils.db import open_db, resolve_db_path
+from tagslut.utils import env_paths
+from tagslut.utils.db import open_db, resolve_db_path
 
 TRUTHY = {"1", "true", "yes", "y", "t"}
 
@@ -750,7 +750,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--db",
-        help="Database path for tracking promotions (default: $DEDUPE_DB)",
+        help="Database path for tracking promotions (default: $TAGSLUT_DB)",
     )
     args = parser.parse_args()
 
@@ -773,14 +773,14 @@ def main() -> None:
         if args.log_file:
             log_path = Path(args.log_file).expanduser()
         else:
-            log_path = Path("/Users/georgeskhawam/Projects/dedupe/artifacts/M/03_reports/promote_by_tags.log")
+            log_path = Path("/Users/georgeskhawam/Projects/tagslut/artifacts/M/03_reports/promote_by_tags.log")
         log_path.parent.mkdir(parents=True, exist_ok=True)
         log_file = log_path.open("a", encoding="utf-8")
 
     resume_path = None
     if not args.no_resume:
         resume_path = Path(args.resume_file).expanduser() if args.resume_file else Path(
-            "/Users/georgeskhawam/Projects/dedupe/artifacts/M/03_reports/promote_by_tags.resume.json"
+            "/Users/georgeskhawam/Projects/tagslut/artifacts/M/03_reports/promote_by_tags.resume.json"
         )
     resume_index_override = None
     if args.resume_index is not None:

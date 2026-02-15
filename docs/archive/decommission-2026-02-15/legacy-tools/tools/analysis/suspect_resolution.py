@@ -3,7 +3,7 @@ import os
 import sqlite3
 import pandas as pd
 from pathlib import Path
-from dedupe.utils.env_paths import get_db_path
+from tagslut.utils.env_paths import get_db_path
 
 def analyze_suspect_files():
     db_path = get_db_path()

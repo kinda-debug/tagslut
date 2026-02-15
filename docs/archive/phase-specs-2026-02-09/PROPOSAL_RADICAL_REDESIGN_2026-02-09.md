@@ -1,8 +1,8 @@
-# Radical Redesign Proposal - dedupe (2026-02-09)
+# Radical Redesign Proposal - tagslut (2026-02-09)
 
 ## Executive Summary
 
-This proposal redesigns dedupe from a script-heavy toolkit into a policy-driven, stateful library operating system for audio assets.
+This proposal redesigns tagslut from a script-heavy toolkit into a policy-driven, stateful library operating system for audio assets.
 
 Execution tracker:
 - `docs/REDESIGN_TRACKER.md`
@@ -20,7 +20,7 @@ The redesign keeps current project philosophy intact: provenance-first, move-onl
 
 Current pain points:
 1. Operational surface fragmentation:
-- core behavior split across `dedupe/`, `tools/review/`, and `legacy/` wrappers
+- core behavior split across `tagslut/`, `tools/review/`, and `legacy/` wrappers
 - duplicated script intent and mixed maturity levels
 
 2. Documentation/implementation drift:
@@ -46,27 +46,27 @@ Current pain points:
 
 ### 1. Layered System
 
-1. `dedupe.domain` (new):
+1. `tagslut.domain` (new):
 - pure domain model (TrackCandidate, LibraryAsset, Decision, MovePlan, PolicyOutcome)
 - no IO, no DB calls
 
-2. `dedupe.policy` (new):
+2. `tagslut.policy` (new):
 - declarative rule engine
 - policy profiles (`dj_strict`, `library_balanced`, `bulk_recovery`)
 
-3. `dedupe.store`:
+3. `tagslut.store`:
 - repository interfaces + SQLite implementation
 - migration-managed schema
 
-4. `dedupe.pipeline` (new):
+4. `tagslut.pipeline` (new):
 - orchestrates stages as resumable jobs
 - event journal per run
 
-5. `dedupe.exec` (new):
+5. `tagslut.exec` (new):
 - single move-only executor
 - preflight + hash verification + atomic move commit
 
-6. `dedupe.adapters`:
+6. `tagslut.adapters`:
 - Beatport/Tidal intake adapters
 - metadata provider adapters
 - legacy script compatibility adapters
@@ -137,25 +137,25 @@ Example decisions:
 ## CLI Redesign (Stable Surface)
 
 Proposed top-level commands:
-1. `dedupe intake`:
+1. `tagslut intake`:
 - fetch + prefilter + register for external URLs/sources
 
-2. `dedupe index`:
+2. `tagslut index`:
 - scan/index local trees and refresh inventory state
 
-3. `dedupe decide`:
+3. `tagslut decide`:
 - run policy evaluation and generate deterministic plans
 
-4. `dedupe execute`:
+4. `tagslut execute`:
 - apply move plan through centralized move engine
 
-5. `dedupe verify`:
+5. `tagslut verify`:
 - verify moved/promoted assets, duration gates, integrity
 
-6. `dedupe report`:
+6. `tagslut report`:
 - summarize runs, drift, anomalies, KPIs
 
-7. `dedupe auth`:
+7. `tagslut auth`:
 - provider auth management
 
 Compatibility strategy:
@@ -281,16 +281,16 @@ Key dashboards/metrics:
 - new v3 schema tables
 - run journal scaffolding
 - policy loader stub
-4. Route `tools/get-intake` planning output through provisional `dedupe.decide` API while preserving current behavior.
+4. Route `tools/get-intake` planning output through provisional `tagslut.decide` API while preserving current behavior.
 
 ## Appendix A - Proposed Mapping From Current Surface
 
 Current -> Target:
-1. `tools/get-intake` -> `dedupe intake`
-2. `dedupe mgmt register/check/...` -> `dedupe index` + `dedupe decide`
-3. `tools/review/plan_*` -> `dedupe decide --plan-type ...`
-4. `tools/review/move_from_plan.py` -> `dedupe execute --plan <plan.csv|json>`
-5. `dedupe recover` -> `dedupe verify` + `dedupe repair` (optional future split)
+1. `tools/get-intake` -> `tagslut intake`
+2. `tagslut mgmt register/check/...` -> `tagslut index` + `tagslut decide`
+3. `tools/review/plan_*` -> `tagslut decide --plan-type ...`
+4. `tools/review/move_from_plan.py` -> `tagslut execute --plan <plan.csv|json>`
+5. `tagslut recover` -> `tagslut verify` + `tagslut repair` (optional future split)
 
 ## Appendix B - Non-Goals In First Redesign Wave
 

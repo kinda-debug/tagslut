@@ -9,8 +9,8 @@ import click
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
-from dedupe.utils.config import get_config
-from dedupe.utils.db import open_db, resolve_db_path
+from tagslut.utils.config import get_config
+from tagslut.utils.db import open_db, resolve_db_path
 
 
 EXPECTED_FILES_COLUMNS = {

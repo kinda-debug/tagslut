@@ -3,10 +3,10 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from dedupe.external.picard import reconcile_picard_changes
-from dedupe.storage import LIBRARY_TABLE, PICARD_MOVES_TABLE, initialise_library_schema
-from dedupe.storage.queries import upsert_library_rows
-from dedupe.utils import compute_md5, normalise_path
+from tagslut.external.picard import reconcile_picard_changes
+from tagslut.storage import LIBRARY_TABLE, PICARD_MOVES_TABLE, initialise_library_schema
+from tagslut.storage.queries import upsert_library_rows
+from tagslut.utils import compute_md5, normalise_path
 
 
 def _payload_for(path: Path) -> dict[str, object]:

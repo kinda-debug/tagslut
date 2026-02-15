@@ -4,8 +4,8 @@
 
 ### Project Name: tagslut (Music Library Deduplication and Rebuild)
 
-Note: the implementation package remains `dedupe/` during migration. CLI aliases:
-`tagslut` (preferred), `dedupe` (compatibility), and `taglslut` (typo-tolerant).
+Note: the implementation package remains `tagslut/` during migration. CLI aliases:
+`tagslut` (preferred), `tagslut` (compatibility), and `taglslut` (typo-tolerant).
 
 This repository manages a comprehensive effort to **deduplicate, rebuild, and maintain** a large electronic music library after significant data loss. The project uses multiple tools—including **bpdl (Beatport Downloader)** for sourcing DJ-critical material, **Yate** for manual precision tagging, and custom scanning/hashing infrastructure—to create a clean, well-organized, metadata-rich library.
 
@@ -240,12 +240,12 @@ A radical redesign proposal (architecture, data model v3, policy engine, CLI con
 - Execution tracker: `docs/REDESIGN_TRACKER.md`
 - Move executor compatibility contract (Phase 0 baseline):
   - `docs/MOVE_EXECUTOR_COMPAT.md`
-  - Adapter module: `dedupe/exec/compat.py`
+  - Adapter module: `tagslut/exec/compat.py`
   - Current adapter consumers:
     - `tools/review/move_from_plan.py`
     - `tools/review/quarantine_from_plan.py`
   - Additional active move path with structured audit logging:
-    - `tools/review/promote_by_tags.py` (via `dedupe/utils/file_operations.py`, `--move-log`)
+    - `tools/review/promote_by_tags.py` (via `tagslut/utils/file_operations.py`, `--move-log`)
 - Phase 1 runbook:
   - `docs/PHASE1_V3_DUAL_WRITE.md`
 - Phase 1 verification report:
@@ -340,4 +340,4 @@ This project is:
   - Canonical CLI groups for intake/index/decide/execute/verify/report/auth.
 - A **long-term framework** for deduplicating, normalizing, and promoting tracks into a clean, tool-friendly, DJ-safe library—without ever going back to ad-hoc, manual chaos.
 
-**bpdl is a tool (for downloading). dedupe handles inventory/M3U/verification through canonical commands. The project is dedupe.**
+**bpdl is a tool (for downloading). tagslut handles inventory/M3U/verification through canonical commands. The project is tagslut.**

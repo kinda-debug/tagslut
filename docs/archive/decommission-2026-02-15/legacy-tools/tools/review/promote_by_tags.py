@@ -24,10 +24,10 @@ from typing import Iterable
 sys.path.insert(0, str(Path(__file__).parents[2]))
 
 from mutagen.flac import FLAC
-from dedupe.utils.console_ui import ConsoleUI
-from dedupe.utils.file_operations import FileOperations
-from dedupe.utils.safety_gates import SafetyGates
-from dedupe.utils.db import open_db, resolve_db_path
+from tagslut.utils.console_ui import ConsoleUI
+from tagslut.utils.file_operations import FileOperations
+from tagslut.utils.safety_gates import SafetyGates
+from tagslut.utils.db import open_db, resolve_db_path
 
 TRUTHY = {"1", "true", "yes", "y", "t"}
 

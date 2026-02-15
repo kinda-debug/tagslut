@@ -24,17 +24,17 @@ import click
 
 sys.path.insert(0, str(Path(__file__).parents[2]))
 
-from dedupe.core.duration_validator import (
+from tagslut.core.duration_validator import (
     check_file_duration,
     format_mismatch_report,
     DEFAULT_TOLERANCE_SECONDS,
     STRICT_TOLERANCE_SECONDS,
 )
-from dedupe.storage.schema import get_connection
-from dedupe.utils.cli_helper import common_options, configure_execution
-from dedupe.utils import env_paths
+from tagslut.storage.schema import get_connection
+from tagslut.utils.cli_helper import common_options, configure_execution
+from tagslut.utils import env_paths
 
-logger = logging.getLogger("dedupe")
+logger = logging.getLogger("tagslut")
 
 
 def scan_database_durations(
@@ -240,7 +240,7 @@ def main(
     if not db:
         db = env_paths.get_db_path()
         if not db:
-            logger.error("No database path found in config. Set DEDUPE_DB environment variable or use --db")
+            logger.error("No database path found in config. Set TAGSLUT_DB environment variable or use --db")
             raise click.ClickException("Database path not configured")
         logger.info(f"Using database from config: {db}")
 

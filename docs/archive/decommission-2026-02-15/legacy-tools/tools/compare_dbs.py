@@ -14,8 +14,8 @@ import sqlite3
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from dedupe.utils.config import get_config
-from dedupe.utils.db import open_db, resolve_db_path
+from tagslut.utils.config import get_config
+from tagslut.utils.db import open_db, resolve_db_path
 
 CORE_TABLES = (
     "files",

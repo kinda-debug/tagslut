@@ -14,9 +14,9 @@ with concrete validation evidence.
 - `move_execution`
 
 2. Dual-write plumbing is present and gated:
-- `dedupe mgmt register` dual-write path
+- `tagslut mgmt register` dual-write path
 - move execution scripts (`move_from_plan`, `quarantine_from_plan`)
-- env/config gate (`DEDUPE_V3_DUAL_WRITE` / `dedupe.v3.dual_write`)
+- env/config gate (`TAGSLUT_V3_DUAL_WRITE` / `tagslut.v3.dual_write`)
 
 3. Backfill/parity tooling exists:
 - `scripts/backfill_v3_identity_links.py`
@@ -29,7 +29,7 @@ Executed on 2026-02-09:
 
 ```bash
 poetry run python -m py_compile \
-  dedupe/storage/v3.py \
+  tagslut/storage/v3.py \
   scripts/backfill_v3_identity_links.py \
   scripts/backfill_v3_provenance_from_logs.py \
   scripts/validate_v3_dual_write_parity.py
@@ -39,7 +39,7 @@ Result: success.
 
 ```bash
 poetry run flake8 \
-  dedupe/storage/v3.py \
+  tagslut/storage/v3.py \
   scripts/backfill_v3_identity_links.py \
   scripts/backfill_v3_provenance_from_logs.py \
   scripts/validate_v3_dual_write_parity.py \

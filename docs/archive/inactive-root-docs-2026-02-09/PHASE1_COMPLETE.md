@@ -2,12 +2,12 @@
 
 ## Summary
 
-Successfully implemented **dedupe mgmt** (management mode) for inventory tracking and duplicate checking. This is the foundation for the entire deduplication workflow and enables the core features outlined in ACTION_PLAN.md Phase 1.
+Successfully implemented **tagslut mgmt** (management mode) for inventory tracking and duplicate checking. This is the foundation for the entire deduplication workflow and enables the core features outlined in ACTION_PLAN.md Phase 1.
 
 ## What Was Built
 
 ### 1. Database Schema Extensions
-**File**: [dedupe/storage/schema.py](dedupe/storage/schema.py)
+**File**: [tagslut/storage/schema.py](tagslut/storage/schema.py)
 
 Added 6 new management fields to the `files` table:
 - `download_source` - Track where files came from (bpdl, tidal, qobuz, legacy, etc.)
@@ -26,20 +26,20 @@ Added 4 performance indices:
 **Schema Migration**: Automatic via `init_db()` using `ALTER TABLE ADD COLUMN IF NOT EXISTS`. Zero downtime, fully backward compatible.
 
 ### 2. CLI Commands
-**File**: [dedupe/cli/main.py](dedupe/cli/main.py#L1695)
+**File**: [tagslut/cli/main.py](tagslut/cli/main.py#L1695)
 
-#### `dedupe mgmt register`
+#### `tagslut mgmt register`
 Register files in inventory with source tracking.
 
 ```bash
 # Dry-run (default)
-dedupe mgmt register ~/Downloads/bpdl --source bpdl --db music.db
+tagslut mgmt register ~/Downloads/bpdl --source bpdl --db music.db
 
 # Execute and save
-dedupe mgmt register ~/Downloads/bpdl --source bpdl --db music.db --execute
+tagslut mgmt register ~/Downloads/bpdl --source bpdl --db music.db --execute
 
 # Verbose output
-dedupe mgmt register ~/Downloads/bpdl --source bpdl --db music.db --execute -v
+tagslut mgmt register ~/Downloads/bpdl --source bpdl --db music.db --execute -v
 ```
 
 **Features**:
@@ -66,21 +66,21 @@ RESULTS
   Errors:           0
 ```
 
-#### `dedupe mgmt check`
+#### `tagslut mgmt check`
 Detect duplicate files before downloading.
 
 ```bash
 # Check a directory
-dedupe mgmt check ~/Downloads/bpdl --source bpdl --db music.db
+tagslut mgmt check ~/Downloads/bpdl --source bpdl --db music.db
 
 # Check with stdin
-find ~/incoming -name "*.flac" | dedupe mgmt check --source tidal --db music.db
+find ~/incoming -name "*.flac" | tagslut mgmt check --source tidal --db music.db
 
 # Strict mode: reject if same file exists anywhere
-dedupe mgmt check ~/Downloads --strict --db music.db
+tagslut mgmt check ~/Downloads --strict --db music.db
 
 # Verbose output
-dedupe mgmt check ~/Downloads/bpdl --source bpdl --db music.db -v
+tagslut mgmt check ~/Downloads/bpdl --source bpdl --db music.db -v
 ```
 
 **Features**:
@@ -114,7 +114,7 @@ Conflicts (files that already exist):
 ```
 
 ### 3. Data Model Extensions
-**File**: [dedupe/storage/models.py](dedupe/storage/models.py#L9)
+**File**: [tagslut/storage/models.py](tagslut/storage/models.py#L9)
 
 Extended `AudioFile` dataclass with management fields:
 ```python
@@ -170,22 +170,22 @@ Created 9 integration tests covering:
 
 2. **Check for duplicates before registering**
    ```bash
-   dedupe mgmt check ~/Downloads/bpdl --source bpdl --db music.db
+   tagslut mgmt check ~/Downloads/bpdl --source bpdl --db music.db
    ```
 
 3. **Register if unique**
    ```bash
-   dedupe mgmt register ~/Downloads/bpdl --source bpdl --db music.db --execute
+   tagslut mgmt register ~/Downloads/bpdl --source bpdl --db music.db --execute
    ```
 
 4. **Generate M3U** (Phase 1.5, coming soon)
    ```bash
-   dedupe mgmt --m3u ~/Downloads/bpdl
+   tagslut mgmt --m3u ~/Downloads/bpdl
    ```
 
 5. **Move to canonical library** (Phase 2, coming soon)
    ```bash
-   dedupe recovery --move ~/Downloads/bpdl --target /Volumes/DJSSD/EM/Archive
+   tagslut recovery --move ~/Downloads/bpdl --target /Volumes/DJSSD/EM/Archive
    ```
 
 ## Database State
@@ -211,7 +211,7 @@ HAVING count > 1;
 ## Next Steps (Phase 1.5 → Phase 2)
 
 ### Immediate (Phase 1.5)
-1. **M3U Generation** (`dedupe mgmt --m3u`)
+1. **M3U Generation** (`tagslut mgmt --m3u`)
    - Export registered files as M3U playlists
    - Integrate with Roon/DJ software
    - Track `m3u_exported` timestamp
@@ -221,7 +221,7 @@ HAVING count > 1;
    - Log decisions to audit trail
 
 ### Short-term (Phase 2)
-1. **Recovery Mode** (`dedupe recovery`)
+1. **Recovery Mode** (`tagslut recovery`)
    - Move files with move-only semantics
    - Update `mgmt_status` through lifecycle
    - Hash verification before source removal
@@ -288,9 +288,9 @@ tests/test_mgmt_workflow.py::TestDatabaseSchema::test_new_indices_exist PASSED
 
 | File | Change | Status |
 |------|--------|--------|
-| [dedupe/cli/main.py](dedupe/cli/main.py) | Added `mgmt` group, `register`, `check` commands | ✅ |
-| [dedupe/storage/schema.py](dedupe/storage/schema.py) | Added 6 management columns, 4 indices | ✅ |
-| [dedupe/storage/models.py](dedupe/storage/models.py) | Extended `AudioFile` with 6 mgmt fields | ✅ |
+| [tagslut/cli/main.py](tagslut/cli/main.py) | Added `mgmt` group, `register`, `check` commands | ✅ |
+| [tagslut/storage/schema.py](tagslut/storage/schema.py) | Added 6 management columns, 4 indices | ✅ |
+| [tagslut/storage/models.py](tagslut/storage/models.py) | Extended `AudioFile` with 6 mgmt fields | ✅ |
 | [tests/test_mgmt_workflow.py](tests/test_mgmt_workflow.py) | New comprehensive test suite (9 tests) | ✅ |
 
 ## Metrics
@@ -303,7 +303,7 @@ tests/test_mgmt_workflow.py::TestDatabaseSchema::test_new_indices_exist PASSED
 
 ## Conclusion
 
-Phase 1 of dedupe mgmt is **complete and tested**. The foundation is solid:
+Phase 1 of tagslut mgmt is **complete and tested**. The foundation is solid:
 - ✅ Database schema supports full lifecycle tracking
 - ✅ CLI provides intuitive workflow
 - ✅ Data model properly extended

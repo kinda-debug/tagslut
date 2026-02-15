@@ -1,22 +1,22 @@
 # Phase 3 - Central Move Executor
 
-Phase 3 centralizes move execution and receipt persistence under `dedupe.exec`.
+Phase 3 centralizes move execution and receipt persistence under `tagslut.exec`.
 
 ## What Was Added
 
 1. Central executor
-- `dedupe/exec/engine.py`
+- `tagslut/exec/engine.py`
 - API: `execute_move(src, dest, execute, collision_policy=...)`
 - Receipt model: `MoveReceipt`
 - Verification hook: `verify_receipt(receipt)`
 
 2. Receipt persistence + path mutation contract
-- `dedupe/exec/receipts.py`
+- `tagslut/exec/receipts.py`
 - `record_move_receipt(...)`
 - `update_legacy_path_with_receipt(...)`
 
 3. Compatibility adapter retained
-- `dedupe/exec/compat.py`
+- `tagslut/exec/compat.py`
 - Legacy API `execute_move_action(...)` now delegates to central executor.
 
 4. Plan workflow integration
@@ -39,8 +39,8 @@ Phase 3 centralizes move execution and receipt persistence under `dedupe.exec`.
 
 ## Compatibility
 
-Legacy callers using `dedupe.exec.compat.execute_move_action(...)` remain
-supported, but new code should import from `dedupe.exec` directly.
+Legacy callers using `tagslut.exec.compat.execute_move_action(...)` remain
+supported, but new code should import from `tagslut.exec` directly.
 
 ## Validation
 

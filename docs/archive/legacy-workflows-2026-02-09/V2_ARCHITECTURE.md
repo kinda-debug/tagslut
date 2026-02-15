@@ -9,7 +9,7 @@ This document describes the current production architecture of the Dedupe system
 
 ## 🎯 Design Principles
 
-1.  **Unified Entry Point**: All operations are routed through `python3 -m dedupe`, ensuring consistent environment loading and configuration.
+1.  **Unified Entry Point**: All operations are routed through `python3 -m tagslut`, ensuring consistent environment loading and configuration.
 2.  **Tiered Hashing**: Balanced performance and safety using Pre-hash (T1) and Full SHA256 (T2).
 3.  **Deterministic Decisions**: Rule-based "Keeper" selection to eliminate ambiguity in duplicate resolution.
 4.  **Evidence Preservation**: The database tracks every scan session and file outcome, creating a complete audit trail of the library's state.
@@ -19,7 +19,7 @@ This document describes the current production architecture of the Dedupe system
 ## 📁 Synthesized Structure
 
 ```text
-dedupe/
+tagslut/
 ├── cli/                 # Click-based CLI router
 │   └── main.py          # Command definitions (scan, recommend, apply)
 ├── core/                # Functional logic
@@ -63,12 +63,12 @@ Uses SQLite for local, high-speed querying. The schema is designed for surgical 
 # Paths support environment variable expansion: ${VAR_NAME}
 
 database:
-  path: ${DEDUPE_DB_PATH:-~/.dedupe/music.db}
+  path: ${TAGSLUT_DB_PATH:-~/.tagslut/music.db}
   auto_migrate: true
 
 paths:
-  artifacts: ${DEDUPE_ARTIFACTS:-~/.dedupe/artifacts}
-  logs: ${DEDUPE_LOGS:-~/.dedupe/logs}
+  artifacts: ${TAGSLUT_ARTIFACTS:-~/.tagslut/artifacts}
+  logs: ${TAGSLUT_LOGS:-~/.tagslut/logs}
 
 volumes:
   library:
@@ -107,14 +107,14 @@ decisions:
 logging:
   level: INFO
   format: structured
-  file: ${DEDUPE_LOGS}/dedupe.log
+  file: ${TAGSLUT_LOGS}/tagslut.log
 ```
 
 ### .env.example
 
 ```bash
 # Database
-DEDUPE_DB_PATH=/path/to/music.db
+TAGSLUT_DB_PATH=/path/to/music.db
 
 # Volumes - Update these for your system
 LIBRARY_PATH=/Volumes/Library
@@ -123,8 +123,8 @@ SUSPECT_PATH=/Volumes/Suspect
 QUARANTINE_PATH=/Volumes/Quarantine
 
 # Artifacts
-DEDUPE_ARTIFACTS=./artifacts
-DEDUPE_LOGS=./logs
+TAGSLUT_ARTIFACTS=./artifacts
+TAGSLUT_LOGS=./logs
 
 # Scan options
 SCAN_WORKERS=8
@@ -136,7 +136,7 @@ SCAN_WORKERS=8
 
 ### Main Command
 ```bash
-dedupe [--config PATH] [--verbose] [--quiet] COMMAND [ARGS...]
+tagslut [--config PATH] [--verbose] [--quiet] COMMAND [ARGS...]
 ```
 
 ### Commands
@@ -144,85 +144,85 @@ dedupe [--config PATH] [--verbose] [--quiet] COMMAND [ARGS...]
 #### 1. Scan
 ```bash
 # Scan a volume
-dedupe scan /path/to/volume --zone suspect
+tagslut scan /path/to/volume --zone suspect
 
 # Scan using config
-dedupe scan library  # Uses path from config
+tagslut scan library  # Uses path from config
 
 # Resume interrupted scan
-dedupe scan library --incremental
+tagslut scan library --incremental
 ```
 
 #### 2. Recommend
 ```bash
 # Generate recommendations
-dedupe recommend
+tagslut recommend
 
 # Custom thresholds
-dedupe recommend --threshold 0.9
+tagslut recommend --threshold 0.9
 
 # Output to file
-dedupe recommend --output plan.json
+tagslut recommend --output plan.json
 ```
 
 #### 3. Apply
 ```bash
 # Dry run (default)
-dedupe apply --plan plan.json
+tagslut apply --plan plan.json
 
 # Execute
-dedupe apply --plan plan.json --execute
+tagslut apply --plan plan.json --execute
 
 # Interactive mode
-dedupe apply --plan plan.json --interactive
+tagslut apply --plan plan.json --interactive
 ```
 
 #### 4. Promote
 ```bash
 # Promote from staging to library
-dedupe promote staging library
+tagslut promote staging library
 
 # Custom paths
-dedupe promote /path/from /path/to --move
+tagslut promote /path/from /path/to --move
 ```
 
 #### 5. Quarantine
 ```bash
 # List quarantined files
-dedupe quarantine list
+tagslut quarantine list
 
 # Clean old files
-dedupe quarantine clean --days 30
+tagslut quarantine clean --days 30
 
 # Restore specific file
-dedupe quarantine restore <file_id>
+tagslut quarantine restore <file_id>
 ```
 
 #### 6. Database
 ```bash
 # Check database health
-dedupe db doctor
+tagslut db doctor
 
 # Run migrations
-dedupe db migrate
+tagslut db migrate
 
 # Export data
-dedupe db export --format csv --output data.csv
+tagslut db export --format csv --output data.csv
 
 # Backup
-dedupe db backup --output backup.db
+tagslut db backup --output backup.db
 ```
 
 #### 7. Config
 ```bash
 # Show current config
-dedupe config show
+tagslut config show
 
 # Validate config
-dedupe config validate
+tagslut config validate
 
 # Initialize config
-dedupe config init
+tagslut config init
 ```
 
 ---
@@ -231,28 +231,28 @@ dedupe config init
 
 ```bash
 # 1. Initialize (first time only)
-dedupe config init
+tagslut config init
 # Edit config.yaml or .env with your paths
 
 # 2. Scan volumes
-dedupe scan library
-dedupe scan staging
-dedupe scan suspect
+tagslut scan library
+tagslut scan staging
+tagslut scan suspect
 
 # 3. Find duplicates & recommend actions
-dedupe recommend --output plan.json
+tagslut recommend --output plan.json
 
 # 4. Review plan (manual step)
 # Edit plan.json or use interactive mode
 
 # 5. Apply decisions
-dedupe apply --plan plan.json --execute
+tagslut apply --plan plan.json --execute
 
 # 6. Promote staging to library
-dedupe promote staging library --execute
+tagslut promote staging library --execute
 
 # 7. Clean old quarantined files
-dedupe quarantine clean --days 30
+tagslut quarantine clean --days 30
 ```
 
 **That's it!** 7 simple steps instead of dozens of scripts.
@@ -411,7 +411,7 @@ tests/e2e/
 ## 📚 DOCUMENTATION (Consolidated)
 
 ### 1. README.md (1 page)
-- What is dedupe?
+- What is tagslut?
 - Quick install
 - 5-minute quick start
 - Link to full guide
@@ -447,18 +447,18 @@ tests/e2e/
 python legacy/tools/integrity/scan.py /path --db /db/path
 
 # New way
-dedupe scan /path  # Uses config
+tagslut scan /path  # Uses config
 ```
 
 ### Phase 2: Deprecation Warnings
 ```bash
 python legacy/tools/integrity/scan.py /path
-# Warning: This script is deprecated. Use 'dedupe scan' instead.
+# Warning: This script is deprecated. Use 'tagslut scan' instead.
 ```
 
 ### Phase 3: Migration Tool
 ```bash
-dedupe migrate --from-v1
+tagslut migrate --from-v1
 # Converts old hardcoded paths to config
 # Provides .env file
 # Shows what changed
@@ -475,7 +475,7 @@ dedupe migrate --from-v1
 ### For Users
 - **Simpler**: 1 command vs 30 scripts
 - **Portable**: Config file, not hardcoded paths
-- **Discoverable**: `dedupe --help` shows everything
+- **Discoverable**: `tagslut --help` shows everything
 - **Safe**: Dry-run by default
 - **Fast**: Less overhead, better caching
 

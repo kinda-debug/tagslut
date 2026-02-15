@@ -14,14 +14,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parents[2]))
 
-from dedupe.utils import env_paths
-from dedupe.storage.schema import init_db
-from dedupe.utils.db import open_db, resolve_db_path
-from dedupe.utils.validators import PreFlightValidator
-from dedupe.utils.plan import PlanRow, load_plan_rows
-from dedupe.utils.console_ui import ConsoleUI
-from dedupe.utils.safety_gates import SafetyGates
-from dedupe.utils.file_operations import FileOperations
+from tagslut.utils import env_paths
+from tagslut.storage.schema import init_db
+from tagslut.utils.db import open_db, resolve_db_path
+from tagslut.utils.validators import PreFlightValidator
+from tagslut.utils.plan import PlanRow, load_plan_rows
+from tagslut.utils.console_ui import ConsoleUI
+from tagslut.utils.safety_gates import SafetyGates
+from tagslut.utils.file_operations import FileOperations
 
 
 def rel_to(path: Path, root: Path) -> Path:

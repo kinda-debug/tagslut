@@ -3,21 +3,21 @@
 ## Purpose
 
 Define the compatibility layer between legacy move callers and the centralized
-`dedupe.exec` engine introduced in Phase 3.
+`tagslut.exec` engine introduced in Phase 3.
 
 ## Contract
 
 Central executor:
-- `dedupe/exec/engine.py`
+- `tagslut/exec/engine.py`
 - Contract version: `move_exec.v2`
 
 Compatibility adapter:
-- `dedupe/exec/compat.py`
+- `tagslut/exec/compat.py`
 - Adapter API: `execute_move_action(src, dest, execute, collision_policy="skip")`
 - Adapter contract version: `move_exec_adapter.v1`
 
 Plan receipt helpers:
-- `dedupe/exec/receipts.py`
+- `tagslut/exec/receipts.py`
 - `record_move_receipt(...)`
 - `update_legacy_path_with_receipt(...)`
 
@@ -47,7 +47,7 @@ receipts via `record_move_receipt(...)`.
 ## Additional Active Move Path
 
 `tools/review/promote_by_tags.py` uses:
-- `dedupe/utils/file_operations.py`
+- `tagslut/utils/file_operations.py`
 - `FileOperations.safe_move(...)`
 
 Required for this path:
@@ -58,7 +58,7 @@ Required for this path:
 ## Enforcement
 
 `scripts/audit_repo_layout.py` enforces:
-1. Active move executors import `execute_move` from `dedupe.exec`.
+1. Active move executors import `execute_move` from `tagslut.exec`.
 2. Active move executors do not use direct `shutil.move(...)` or `os.replace(...)`.
 3. `promote_by_tags.py` routes moves through `FileOperations` with `--move-log` support.
 4. `file_operations.py` emits structured `file_move` audit events with verification metadata.
@@ -72,5 +72,5 @@ poetry run python scripts/audit_repo_layout.py
 
 ## Migration Note
 
-`dedupe/exec/compat.py` remains for legacy callers. New execution code should
-use `dedupe.exec.execute_move` and receipt helpers directly.
+`tagslut/exec/compat.py` remains for legacy callers. New execution code should
+use `tagslut.exec.execute_move` and receipt helpers directly.

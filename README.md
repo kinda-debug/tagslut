@@ -5,7 +5,7 @@ Music library deduplication and metadata orchestration toolkit.
 ## Quick Start
 
 ```bash
-cd ~/Projects/dedupe
+cd ~/Projects/tagslut
 source .venv/bin/activate
 tagslut --help
 ```

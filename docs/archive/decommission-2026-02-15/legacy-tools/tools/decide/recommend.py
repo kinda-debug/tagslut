@@ -8,18 +8,18 @@ from typing import List, Dict, Any
 # Ensure imports work
 sys.path.insert(0, str(Path(__file__).parents[2]))
 
-from dedupe.storage.schema import get_connection
-from dedupe.core.matching import find_exact_duplicates
-from dedupe.core.keeper_selection import select_keeper_for_group
-from dedupe.utils.cli_helper import common_options, configure_execution
-from dedupe.utils.config import get_config
-from dedupe.utils.db import resolve_db_path
-from dedupe.utils.zones import load_zone_manager
-from dedupe.storage.models import DuplicateGroup
-from dedupe.storage.queries import _row_to_audiofile
+from tagslut.storage.schema import get_connection
+from tagslut.core.matching import find_exact_duplicates
+from tagslut.core.keeper_selection import select_keeper_for_group
+from tagslut.utils.cli_helper import common_options, configure_execution
+from tagslut.utils.config import get_config
+from tagslut.utils.db import resolve_db_path
+from tagslut.utils.zones import load_zone_manager
+from tagslut.storage.models import DuplicateGroup
+from tagslut.storage.queries import _row_to_audiofile
 
 @click.command()
-@click.option("--db", required=False, type=click.Path(dir_okay=False), help="Path to SQLite database (default: $DEDUPE_DB)")
+@click.option("--db", required=False, type=click.Path(dir_okay=False), help="Path to SQLite database (default: $TAGSLUT_DB)")
 @click.option("--output", "-o", type=click.Path(writable=True), help="Output JSON file for the plan")
 @click.option("--priority", "-p", multiple=True, help="Zone priority order (e.g. -p accepted -p staging).")
 @click.option(
@@ -43,7 +43,7 @@ def recommend(
     Outputs a JSON plan.
     """
     configure_execution(verbose, config)
-    logger = logging.getLogger("dedupe")
+    logger = logging.getLogger("tagslut")
 
     app_config = get_config(Path(config) if config else None)
     # Load config priorities if not overridden

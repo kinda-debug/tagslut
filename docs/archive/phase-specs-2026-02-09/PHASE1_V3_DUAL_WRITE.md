@@ -7,7 +7,7 @@ register/move execution flows.
 
 ## New V3 Tables
 
-`dedupe/storage/schema.py` now initializes:
+`tagslut/storage/schema.py` now initializes:
 
 1. `asset_file`
 2. `track_identity`
@@ -22,14 +22,14 @@ Dual-write is gated and disabled by default.
 
 Enable with either:
 
-1. env: `DEDUPE_V3_DUAL_WRITE=1`
-2. config: `dedupe.v3.dual_write = true`
+1. env: `TAGSLUT_V3_DUAL_WRITE=1`
+2. config: `tagslut.v3.dual_write = true`
 
 ## Dual-Write Entry Points
 
 When enabled:
 
-1. `dedupe mgmt register ... --execute`
+1. `tagslut mgmt register ... --execute`
    - writes legacy `files`
    - writes v3 `asset_file` / `track_identity` / `asset_link`
    - writes v3 `provenance_event` (`event_type=registered`)

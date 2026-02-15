@@ -986,7 +986,7 @@ If the token expires mid‑session and you start getting 401/403:
 1. Run in terminal:
 
    ```
-   cd /Users/georgeskhawam/Projects/dedupe
+   cd /Users/georgeskhawam/Projects/tagslut
    python3 auth_manager.py refresh 
        beatport  # once you implement it
    source ./env_exports.
@@ -2214,7 +2214,7 @@ Job completed successfully
 
 I’ve created the concrete files and wired them into your project, following the patterns from `metadata_guide.md`.
 
-Where they are (relative to your project root `/Users/georgeskhawam/Projects/dedupe`):
+Where they are (relative to your project root `/Users/georgeskhawam/Projects/tagslut`):
 
 - `phase1_harvest/beatport_harvest_my_tracks.sh`
 - `phase1_harvest/beatport_normalize.py`
@@ -2275,12 +2275,12 @@ Config in `phase1_harvest/env_exports.sh`:
 - `BEATPORT_MY_TRACKS_STATE="beatport_my_tracks.state"`
 - `BEATPORT_PER_PAGE` (e.g. 50)
 - `BEATPORT_MAX_PAGES` (safety upper bound)
-- `MUSIC_DB="/Users/georgeskhawam/Projects/dedupe/EPOCH_2026-01-24/music.db"`
+- `MUSIC_DB="/Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-24/music.db"`
 
 How to run:
 
 ```
-cd /Users/georgeskhawam/Projects/dedupe/
+cd /Users/georgeskhawam/Projects/tagslut/
     phase1_harvest
 
 # Load env (will also set 
@@ -2354,7 +2354,7 @@ Behavior:
 How to run:
 
 ```
-cd /Users/georgeskhawam/Projects/dedupe/
+cd /Users/georgeskhawam/Projects/tagslut/
     phase1_harvest
 source ./env_exports.sh
 
@@ -2384,7 +2384,7 @@ Purpose:
 Usage sketch:
 
 ```
-cd /Users/georgeskhawam/Projects/dedupe/
+cd /Users/georgeskhawam/Projects/tagslut/
     phase1_harvest
 source ./env_exports.sh
 chmod +x beatport_harvest_catalog_track.sh
@@ -2423,7 +2423,7 @@ Suggested order:
 
 1. Get `BEATPORT_ACCESS_TOKEN` fresh (as you did for your curl examples).
 
-2. `cd /Users/georgeskhawam/Projects/dedupe/phase1_harvest && source ./env_exports.sh`.
+2. `cd /Users/georgeskhawam/Projects/tagslut/phase1_harvest && source ./env_exports.sh`.
 
 3. Run `./beatport_harvest_my_tracks.sh` and confirm `beatport_my_tracks.ndjson` looks sane.
 
@@ -2467,7 +2467,7 @@ Right now I’ve created:
 - `phase1_harvest/beatport_harvest_catalog_track.sh`
 - and touched `phase1_harvest/env_exports.sh`
 
-If you prefer everything to live alongside `metadata_guide.md` / `metadata_add.md` under `dedupe/metadata` (or just in the project root next to those docs), we should:
+If you prefer everything to live alongside `metadata_guide.md` / `metadata_add.md` under `tagslut/metadata` (or just in the project root next to those docs), we should:
 
 - Move/rename these scripts into that area.
 - Optionally add a short section to `metadata_guide.md` referencing them.
@@ -2475,8 +2475,8 @@ If you prefer everything to live alongside `metadata_guide.md` / `metadata_add.m
 I need one bit of clarification from you before I move things:
 
 - Do you want these scripts under:
-  - `dedupe/metadata/` (i.e., `/Users/georgeskhawam/Projects/dedupe/dedupe/metadata/…`), or
-  - Directly in the project root `/Users/georgeskhawam/Projects/dedupe/` (next to `metadata_guide.md` and `metadata_add.md`)?
+  - `tagslut/metadata/` (i.e., `/Users/georgeskhawam/Projects/tagslut/tagslut/metadata/…`), or
+  - Directly in the project root `/Users/georgeskhawam/Projects/tagslut/` (next to `metadata_guide.md` and `metadata_add.md`)?
 
 Once you pick one, I’ll:
 
@@ -2497,9 +2497,9 @@ metadata_guide.md
 
 metadata
 
-dedupe/metadata/ with the rest of the scripts, no?
+tagslut/metadata/ with the rest of the scripts, no?
 
-Yes, that’s the right place. I’ll re‑center everything under `dedupe/metadata` and align with how you’re treating `metadata_guide.md` / `metadata_add.md` as the source of truth.
+Yes, that’s the right place. I’ll re‑center everything under `tagslut/metadata` and align with how you’re treating `metadata_guide.md` / `metadata_add.md` as the source of truth.
 
 Here’s what I’ll do and what you should expect.
 
@@ -2510,7 +2510,7 @@ Here’s what I’ll do and what you should expect.
 Under:
 
 ```
-/Users/georgeskhawam/Projects/dedupe/dedupe/metadata/
+/Users/georgeskhawam/Projects/tagslut/tagslut/metadata/
 ```
 
 I’ll place:
@@ -2534,27 +2534,27 @@ I’ll also:
 From your project root:
 
 ```
-cd /Users/georgeskhawam/Projects/dedupe
+cd /Users/georgeskhawam/Projects/tagslut
 
 # Load env (same env_exports.sh as before)
 source ./env_exports.sh
 
 # Harvest “My Beatport” tracks into NDJSON
-chmod +x dedupe/metadata/
+chmod +x tagslut/metadata/
     beatport_harvest_my_tracks.sh
-dedupe/metadata/beatport_harvest_my_tracks.sh
+tagslut/metadata/beatport_harvest_my_tracks.sh
 
 # Import NDJSON into SQLite (library_tracks 
     + library_track_sources)
-chmod +x dedupe/metadata/
+chmod +x tagslut/metadata/
     beatport_import_my_tracks.py
-python3 dedupe/metadata/
+python3 tagslut/metadata/
     beatport_import_my_tracks.py
 ```
 
 Everything else (DB path, token usage) stays as in `metadata_guide.md`:
 
-- `MUSIC_DB` from `env_exports.sh` → `/Users/georgeskhawam/Projects/dedupe/EPOCH_2026-01-24/music.db`
+- `MUSIC_DB` from `env_exports.sh` → `/Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-24/music.db`
 - `BEATPORT_ACCESS_TOKEN` from your manual/managed token.
 
 ------
@@ -2567,7 +2567,7 @@ By having:
 - Beatport helpers (`beatport_*` scripts)
 - Any future provider‑specific harvest/import scripts
 
-all under `dedupe/metadata/`, you can think of that directory as:
+all under `tagslut/metadata/`, you can think of that directory as:
 
 - The “metadata brain” for the whole library.
 - The only place you need to look when you tweak harvesting/hoarding logic.
@@ -2575,8 +2575,8 @@ all under `dedupe/metadata/`, you can think of that directory as:
 If you’d like, next I can:
 
 - Add a tiny “Beatport helpers” subsection at the end of `metadata_guide.md` that just says:
-  - “To harvest My Beatport tracks, run `dedupe/metadata/beatport_harvest_my_tracks.sh` then `beatport_import_my_tracks.py`.”
-- Or show you the exact contents of `beatport_harvest_my_tracks.sh` / `beatport_import_my_tracks.py` as they now exist under `dedupe/metadata/`, so you can tune field choices (e.g., add more Beatport fields to the NDJSON and DB).
+  - “To harvest My Beatport tracks, run `tagslut/metadata/beatport_harvest_my_tracks.sh` then `beatport_import_my_tracks.py`.”
+- Or show you the exact contents of `beatport_harvest_my_tracks.sh` / `beatport_import_my_tracks.py` as they now exist under `tagslut/metadata/`, so you can tune field choices (e.g., add more Beatport fields to the NDJSON and DB).
 
 beatport.py
 
@@ -2628,7 +2628,7 @@ Command executed
 
 Read env_exports.sh L1-55
 
-Now I have all the information. The scripts in `phase1_harvest/` need to be moved to `dedupe/metadata/`. I need to update the scripts to source env_exports.sh from the project root (which doesn't exist yet - it's only in phase1_harvest). Let me move the files and update the paths.
+Now I have all the information. The scripts in `phase1_harvest/` need to be moved to `tagslut/metadata/`. I need to update the scripts to source env_exports.sh from the project root (which doesn't exist yet - it's only in phase1_harvest). Let me move the files and update the paths.
 
 
 
@@ -2670,7 +2670,7 @@ Listed directory
 
 Command executed
 
-All Beatport scripts are now in `dedupe/metadata/`. Let me list the final contents of that directory:
+All Beatport scripts are now in `tagslut/metadata/`. Let me list the final contents of that directory:
 
 
 
@@ -2684,23 +2684,23 @@ Command executed
 
 Job completed successfully
 
-Yes—they’re in `dedupe/metadata` now.
+Yes—they’re in `tagslut/metadata` now.
 
 Here’s what exists and where:
 
-- `/Users/georgeskhawam/Projects/dedupe/dedupe/metadata/beatport_harvest_catalog_track.sh`
-- `/Users/georgeskhawam/Projects/dedupe/dedupe/metadata/beatport_harvest_my_tracks.sh`
-- `/Users/georgeskhawam/Projects/dedupe/dedupe/metadata/beatport_import_my_tracks.py`
-- `/Users/georgeskhawam/Projects/dedupe/dedupe/metadata/beatport_normalize.py`
-- Existing provider: `/Users/georgeskhawam/Projects/dedupe/dedupe/metadata/providers/beatport.py`
+- `/Users/georgeskhawam/Projects/tagslut/tagslut/metadata/beatport_harvest_catalog_track.sh`
+- `/Users/georgeskhawam/Projects/tagslut/tagslut/metadata/beatport_harvest_my_tracks.sh`
+- `/Users/georgeskhawam/Projects/tagslut/tagslut/metadata/beatport_import_my_tracks.py`
+- `/Users/georgeskhawam/Projects/tagslut/tagslut/metadata/beatport_normalize.py`
+- Existing provider: `/Users/georgeskhawam/Projects/tagslut/tagslut/metadata/providers/beatport.py`
 
 And your shared env file is at:
 
-- `/Users/georgeskhawam/Projects/dedupe/env_exports.sh`
+- `/Users/georgeskhawam/Projects/tagslut/env_exports.sh`
 
 Both shell scripts now:
 
-- Live under `dedupe/metadata/`
+- Live under `tagslut/metadata/`
 - Source `env_exports.sh` from the project root
 - Use `MUSIC_DB`, `BEATPORT_ACCESS_TOKEN`, etc., exactly as in `metadata_guide.md`.
 
@@ -2826,7 +2826,7 @@ From your `metadata_guide.md`, the intention is:
 - You edit only on your local machine:
 
 ```
-cd /Users/georgeskhawam/Projects/dedupe
+cd /Users/georgeskhawam/Projects/tagslut
 
 # If you want, re-init (this overwrites if 
     you delete existing tokens.json first):
@@ -3352,7 +3352,7 @@ Given that `auth_manager.py` does a clean `grant_type=client_credentials` call, 
 
 2. **Re‑init and test `auth_manager.py` manually**
 
-   From `/Users/georgeskhawam/Projects/dedupe`:
+   From `/Users/georgeskhawam/Projects/tagslut`:
 
    ```
    # See what Spotify thinks the status is
@@ -3584,7 +3584,7 @@ Read base.py L85-270
 
 Job completed successfully
 
-Right now those warnings are coming from the **old/other** harvesting path, not from the new `TokenManager` in `dedupe/metadata/auth.py`.
+Right now those warnings are coming from the **old/other** harvesting path, not from the new `TokenManager` in `tagslut/metadata/auth.py`.
 
 You already have the “good” Spotify handling here in `auth.py`:
 
@@ -3781,9 +3781,9 @@ Here’s what I’ve done and what you need to do.
 
 ------
 
-## 1. New helper: `dedupe/metadata/spotify_harvest_utils.py`
+## 1. New helper: `tagslut/metadata/spotify_harvest_utils.py`
 
-I added a small module under `dedupe/metadata/` that sits on top of your existing `TokenManager` in `auth.py`:
+I added a small module under `tagslut/metadata/` that sits on top of your existing `TokenManager` in `auth.py`:
 
 **What it does**
 
@@ -3792,7 +3792,7 @@ I added a small module under `dedupe/metadata/` that sits on top of your existin
 - Exposes:
 
 ```
-from dedupe.metadata.spotify_harvest_utils 
+from tagslut.metadata.spotify_harvest_utils 
     import (
     spotify_available,
     get_spotify_token,
@@ -3825,29 +3825,29 @@ You can call it from bash without re‑implementing auth:
 
 ```
 # Exit 0 if Spotify is usable, 1 if not
-python3 -m dedupe.metadata.
+python3 -m tagslut.metadata.
     spotify_harvest_utils check
 
 # Print raw token (or nothing + nonzero exit 
     if unavailable)
-python3 -m dedupe.metadata.
+python3 -m tagslut.metadata.
     spotify_harvest_utils print-token
 
 # Print just the bearer value: "Bearer 
     <token>"
-python3 -m dedupe.metadata.
+python3 -m tagslut.metadata.
     spotify_harvest_utils print-header
 
 # Print a curl-ready header line:
 # Authorization: Bearer <token>
-python3 -m dedupe.metadata.
+python3 -m tagslut.metadata.
     spotify_harvest_utils curl-header
 ```
 
 So in a shell harvester you can now do something like:
 
 ```
-SPOTIFY_HEADER=$(python3 -m dedupe.metadata.
+SPOTIFY_HEADER=$(python3 -m tagslut.metadata.
     spotify_harvest_utils curl-header) || 
     SPOTIFY_HEADER=""
 if [ -z "$SPOTIFY_HEADER" ]; then
@@ -3871,15 +3871,15 @@ In the main harvester script I wired up Spotify to use this helper instead of do
 - If that fails, set a flag like `SPOTIFY_AVAILABLE=0` and skip all Spotify lookups for this run.
 - Do not loop on 403s; if Spotify fails, it’s disabled for the remainder of the run.
 
-You can now re‑use the same pattern in any new harvest script under `dedupe/metadata` instead of touching auth directly.
+You can now re‑use the same pattern in any new harvest script under `tagslut/metadata` instead of touching auth directly.
 
 ------
 
 ## 3. Using a different Tidal account
 
-You do **not** need any code changes to switch Tidal accounts. Everything is driven by your tokens file (the file path you pass into `TokenManager`, or the default `~/.config/dedupe/tokens.json`).
+You do **not** need any code changes to switch Tidal accounts. Everything is driven by your tokens file (the file path you pass into `TokenManager`, or the default `~/.config/tagslut/tokens.json`).
 
-In `dedupe/metadata/auth.py`, the `TokenManager` is already designed for this, and I’ve made the Tidal docs very explicit:
+In `tagslut/metadata/auth.py`, the `TokenManager` is already designed for this, and I’ve made the Tidal docs very explicit:
 
 ### How it works now
 
@@ -3888,7 +3888,7 @@ In `dedupe/metadata/auth.py`, the `TokenManager` is already designed for this, a
 
 ```
 "tidal": {
-    "_comment": "Run 'dedupe metadata 
+    "_comment": "Run 'tagslut metadata 
         auth-login tidal' to authenticate 
         via browser. To switch accounts: 
         update refresh_token (and optionally 
@@ -3912,14 +3912,14 @@ You have two options:
 
 #### Option A – Re‑authenticate via your CLI
 
-If you’ve wired your CLI as described in `metadata_guide.md` (e.g. `dedupe metadata auth-login tidal`):
+If you’ve wired your CLI as described in `metadata_guide.md` (e.g. `tagslut metadata auth-login tidal`):
 
 1. Log out of Tidal in the browser (or at least know which account you want).
 
 2. Run:
 
    ```
-   dedupe metadata auth-login tidal
+   tagslut metadata auth-login tidal
    ```
 
 3. Complete the device auth / browser flow with the **new** Tidal account.
@@ -3935,7 +3935,7 @@ If you already have a refresh token from another environment/session:
 1. Open your tokens file (the one `TokenManager` is using). For the default:
 
    ```
-   nano ~/.config/dedupe/tokens.json
+   nano ~/.config/tagslut/tokens.json
    ```
 
 2. Find the `tidal` section and replace its values with the new account’s data:
@@ -3971,7 +3971,7 @@ If you already have a refresh token from another environment/session:
 ## 4. Quick recap
 
 - **Spotify:**
-  - Use `dedupe/metadata/spotify_harvest_utils.py` from both Python and bash.
+  - Use `tagslut/metadata/spotify_harvest_utils.py` from both Python and bash.
   - Single source of truth via `TokenManager` + tokens file.
   - No more direct auth logic in shell scripts.
 - **Tidal:**

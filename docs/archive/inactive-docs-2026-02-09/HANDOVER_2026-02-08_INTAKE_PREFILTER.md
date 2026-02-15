@@ -73,7 +73,7 @@ Add a fast pre-download Beatport filter to intake so obvious duplicates are skip
 
 ## Limitations
 
-1. This is a fast prefilter, not final dedupe authority.
+1. This is a fast prefilter, not final tagslut authority.
 2. No audio fingerprinting is possible pre-download.
 3. Artist/title heuristic can under-match or over-match edge cases.
 4. Post-download audit/planning remains mandatory for high-confidence decisions.
@@ -83,7 +83,7 @@ Add a fast pre-download Beatport filter to intake so obvious duplicates are skip
 1. Dry-run intake with prefilter:
 ```bash
 tools/get-intake \
-  --db /Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-02-08/music.db \
+  --db /Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-08/music.db \
   --batch-root /Volumes/DJSSD/beatport \
   "https://www.beatport.com/chart/warm-up-essentials-2026-electronica/879544"
 ```
@@ -92,7 +92,7 @@ tools/get-intake \
 ```bash
 tools/get-intake \
   --execute \
-  --db /Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-02-08/music.db \
+  --db /Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-08/music.db \
   --batch-root /Volumes/DJSSD/beatport \
   "https://www.beatport.com/chart/warm-up-essentials-2026-electronica/879544"
 ```
@@ -101,7 +101,7 @@ tools/get-intake \
 ```bash
 tools/get-intake \
   --skip-beatport-prefilter \
-  --db /Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-02-08/music.db \
+  --db /Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-08/music.db \
   --batch-root /Volumes/DJSSD/beatport \
   "https://www.beatport.com/chart/warm-up-essentials-2026-electronica/879544"
 ```

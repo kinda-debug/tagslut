@@ -4,7 +4,7 @@ You can copy-paste this as-is:
 
 ---
 
-## Project: dedupe — Library Recovery, Deduplication, and Rebuild
+## Project: tagslut — Library Recovery, Deduplication, and Rebuild
 
 ### 1. Why this project exists
 
@@ -22,7 +22,7 @@ As a result, **“what’s currently on disk” cannot be assumed to be canonica
 - **Provenance** — tracking where files came from and how trustworthy they are.
 
 This is not a “bpdl project.”  
-This is the **dedupe project**: a comprehensive, multi-tool effort to rebuild a clean, DJ-safe, metadata-rich library from a damaged, oversized legacy archive.
+This is the **tagslut project**: a comprehensive, multi-tool effort to rebuild a clean, DJ-safe, metadata-rich library from a damaged, oversized legacy archive.
 
 ---
 

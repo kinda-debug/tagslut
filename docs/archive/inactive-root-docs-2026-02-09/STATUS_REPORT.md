@@ -37,10 +37,10 @@
 ### ✅ Core Infrastructure
 - [x] Environment auto-population (auto_env.py)
 - [x] Zone configuration (zones.yaml)
-- [x] Database scanning (dedupe scan)
-- [x] Deduplication planning (dedupe recommend)
+- [x] Database scanning (tagslut scan)
+- [x] Deduplication planning (tagslut recommend)
 - [x] Plan visualization (plan_summary.py) — **NEW**
-- [x] Metadata extraction (dedupe metadata enrich)
+- [x] Metadata extraction (tagslut metadata enrich)
 - [x] File organization (promote_by_tags.py)
 
 ### ✅ Tools & Scripts
@@ -55,7 +55,7 @@
 
 ### 🔴 CRITICAL (Blocking Full Workflow)
 
-#### 1. `dedupe mgmt` (Management Mode)
+#### 1. `tagslut mgmt` (Management Mode)
 - Status: **Stubs only, no implementation**
 - Required for:
   - Central inventory tracking
@@ -64,7 +64,7 @@
   - Download source registration
 - **Blocking**: Can't download safely or generate Roon playlists
 
-#### 2. `dedupe recovery` (Recovery Mode)
+#### 2. `tagslut recovery` (Recovery Mode)
 - Status: **Partially done (old recover command), needs rewrite**
 - Required for:
   - Move-only file operations (--move / --no-move)
@@ -91,7 +91,7 @@
 - Wrapper for seamless workflow
 
 #### 5. M3U Generation
-- Proper `dedupe mgmt --m3u` implementation
+- Proper `tagslut mgmt --m3u` implementation
 - Support for --merge flag
 - Roon compatibility
 
@@ -110,14 +110,14 @@
 ### Phase 1: Immediate (Today)
 - [x] ✅ Create plan visualization (DONE)
 - [x] ✅ Review duplicate groups
-- [ ] **Implement basic `dedupe mgmt`** with --check and --register
+- [ ] **Implement basic `tagslut mgmt`** with --check and --register
 - [ ] Update database schema with missing fields
 - [ ] Add migration script
 
 **Time Estimate**: 2-3 hours
 
 ### Phase 2: This Week
-- [ ] Implement `dedupe recovery` with --move / --no-move
+- [ ] Implement `tagslut recovery` with --move / --no-move
 - [ ] Add audit logging (JSON format)
 - [ ] BeatportDL config template
 - [ ] Basic M3U generation
@@ -139,10 +139,10 @@
 # 1. Review duplicate groups
 cat plan_report.csv | head -20
 
-# 2. [WAIT] Implement dedupe mgmt
-# 3. [WAIT] Implement dedupe recovery
+# 2. [WAIT] Implement tagslut mgmt
+# 3. [WAIT] Implement tagslut recovery
 # 4. Then: Safe apply
-dedupe apply plan.json --confirm
+tagslut apply plan.json --confirm
 ```
 
 ### Option B: Manual Cleanup (Risky)
@@ -155,7 +155,7 @@ dedupe apply plan.json --confirm
 ### Option C: Keep & Review Later
 ```bash
 # Save the plan, continue with new downloads
-# Come back when dedupe mgmt is ready
+# Come back when tagslut mgmt is ready
 ```
 
 **RECOMMENDATION**: Wait for Phase 1 implementation, then execute safely.
@@ -196,4 +196,4 @@ dedupe apply plan.json --confirm
 ---
 
 **Status**: Ready for Phase 1 implementation
-**Next Review**: After dedupe mgmt is implemented
+**Next Review**: After tagslut mgmt is implemented

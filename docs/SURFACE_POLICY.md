@@ -1,4 +1,4 @@
-# Surface Policy - tagslut/dedupe (2026-02-09)
+# Surface Policy - tagslut (2026-02-09)
 
 ## Purpose
 
@@ -19,7 +19,7 @@ Reference map:
 
 Branding note:
 - `tagslut` is the preferred CLI brand.
-- `dedupe` remains a compatibility alias during migration.
+- `tagslut` remains a compatibility alias during migration.
 - `taglslut` is retained as a typo-tolerant alias.
 
 ## Transitional Surface
@@ -27,14 +27,14 @@ Branding note:
 Transitional wrappers have been retired from top-level CLI exposure.
 
 Retired in Phase 5:
-1. `dedupe scan`
-2. `dedupe recommend`
-3. `dedupe apply`
-4. `dedupe promote`
-5. `dedupe quarantine ...`
-6. `dedupe mgmt ...`
-7. `dedupe metadata ...`
-8. `dedupe recover ...`
+1. `tagslut scan`
+2. `tagslut recommend`
+3. `tagslut apply`
+4. `tagslut promote`
+5. `tagslut quarantine ...`
+6. `tagslut mgmt ...`
+7. `tagslut metadata ...`
+8. `tagslut recover ...`
 
 ## Removal Horizon
 
@@ -77,7 +77,7 @@ Compatibility wrappers were removed after satisfying these gates:
 8. `poetry run tagslut verify --help`
 9. `poetry run tagslut report --help`
 10. `poetry run tagslut auth --help`
-11. `poetry run dedupe --help` (compatibility alias)
+11. `poetry run tagslut --help` (compatibility alias)
 12. Move executor contract doc: `docs/MOVE_EXECUTOR_COMPAT.md`
 13. V3 parity validator: `python scripts/validate_v3_dual_write_parity.py --db <db> --strict`
 14. Policy profile lint: `python scripts/lint_policy_profiles.py`

@@ -41,7 +41,7 @@ Two operational modes are supported:
 When using the DB-backed workflow, these come from `files.metadata_json` + `files.duration`. In standalone mode, they’re pulled directly from tags on disk.
 
 ### 3.2 EnrichmentResult (output)
-`EnrichmentResult` stores canonical values and all provider matches for auditing. Canonical values are chosen using precedence rules defined in `dedupe/metadata/models.py`.
+`EnrichmentResult` stores canonical values and all provider matches for auditing. Canonical values are chosen using precedence rules defined in `tagslut/metadata/models.py`.
 
 Examples of canonical fields:
 - canonical_title / canonical_artist / canonical_album
@@ -75,7 +75,7 @@ When multiple providers return data, canonical values are selected using precede
 - Composer: `apple_music → qobuz → tidal → spotify`
 - ISRC: `beatport → apple_music → qobuz → tidal → spotify`
 
-These rules are centralized in `dedupe/metadata/models/precedence.py` so changes are deterministic and traceable.
+These rules are centralized in `tagslut/metadata/models/precedence.py` so changes are deterministic and traceable.
 
 ## 6) Database Fields Written
 
@@ -92,13 +92,13 @@ All writes are centralized in `Enricher.update_database`.
 ### 7.1 DB-backed (normal)
 
 ```
-dedupe metadata enrich --db /path/to/music.db --recovery --execute
+tagslut metadata enrich --db /path/to/music.db --recovery --execute
 ```
 
 Filter by path pattern and zones:
 
 ```
-dedupe metadata enrich --db /path/to/music.db \
+tagslut metadata enrich --db /path/to/music.db \
   --recovery --path "/Volumes/Music/DJ/%" --zones accepted,staging --execute
 ```
 
@@ -107,20 +107,20 @@ dedupe metadata enrich --db /path/to/music.db \
 Single file:
 
 ```
-dedupe enrich-file --standalone --file /path/to/file.flac --providers beatport,spotify
+tagslut enrich-file --standalone --file /path/to/file.flac --providers beatport,spotify
 ```
 
 Directory:
 
 ```
-dedupe metadata enrich --standalone --path /path/to/flacs --providers beatport,spotify
+tagslut metadata enrich --standalone --path /path/to/flacs --providers beatport,spotify
 ```
 
 Standalone mode reads tags directly from disk and **never writes to a DB**.
 
 ## 8) Authentication & Tokens
 
-Tokens are stored in `~/.config/dedupe/tokens.json` by default. Supported flows:
+Tokens are stored in `~/.config/tagslut/tokens.json` by default. Supported flows:
 
 - **Spotify**: client credentials
 - **Beatport**: client credentials (public client ID) or web scraping fallback
@@ -132,9 +132,9 @@ Tokens are stored in `~/.config/dedupe/tokens.json` by default. Supported flows:
 Initialize or check tokens:
 
 ```
-dedupe metadata auth-init
+tagslut metadata auth-init
 
-dedupe metadata auth-status
+tagslut metadata auth-status
 ```
 
 ### Apple Music Provider
@@ -162,16 +162,16 @@ These scripts are optional and are not required for the normal enrichment workfl
 Common issues:
 
 - **No matches**: check tags (artist/title), verify provider tokens, or try a different provider order.
-- **Token expired**: run `dedupe metadata auth-status` to refresh supported providers.
+- **Token expired**: run `tagslut metadata auth-status` to refresh supported providers.
 - **Unexpected canonical values**: check precedence rules in `metadata/models.py` and match confidence in `metadata/providers/base.py`.
 
 ## 11) Code Map
 
-- `dedupe/metadata/enricher.py` — Orchestrates the entire workflow.
-- `dedupe/metadata/models.py` — Data structures + canonical precedence rules.
-- `dedupe/metadata/auth.py` — Token management.
-- `dedupe/metadata/providers/` — Provider implementations.
-- `dedupe/cli/main.py` — CLI entry points.
+- `tagslut/metadata/enricher.py` — Orchestrates the entire workflow.
+- `tagslut/metadata/models.py` — Data structures + canonical precedence rules.
+- `tagslut/metadata/auth.py` — Token management.
+- `tagslut/metadata/providers/` — Provider implementations.
+- `tagslut/cli/main.py` — CLI entry points.
 
 ---
 

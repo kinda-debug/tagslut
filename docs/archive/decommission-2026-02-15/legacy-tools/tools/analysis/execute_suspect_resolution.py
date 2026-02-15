@@ -7,9 +7,9 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).parents[2]))
 
-from dedupe.utils.console_ui import ConsoleUI
-from dedupe.utils.safety_gates import SafetyGates
-from dedupe.utils.file_operations import FileOperations
+from tagslut.utils.console_ui import ConsoleUI
+from tagslut.utils.safety_gates import SafetyGates
+from tagslut.utils.file_operations import FileOperations
 
 
 def execute_resolution(report_csv: str, dry_run: bool = True):

@@ -9,23 +9,23 @@
 ### ✅ IMPLEMENTED & WORKING
 
 1. **Core Scanning**
-   - `dedupe scan` — Full integrity + hash scanning
+   - `tagslut scan` — Full integrity + hash scanning
    - Database schema for files, hashes, metadata
    - Zone auto-assignment
    - 158 files scanned in ~34 seconds ✓
 
 2. **Deduplication Planning**
-   - `dedupe recommend` — Generates duplicate groups (4226 groups found)
-   - `dedupe apply` — Executes deduplication plan
+   - `tagslut recommend` — Generates duplicate groups (4226 groups found)
+   - `tagslut apply` — Executes deduplication plan
    - Keeper selection logic (4-stage tie-breaker)
 
 3. **Metadata Enrichment**
-   - `dedupe metadata enrich` — Beatport, iTunes, Spotify, Tidal, Qobuz support
-   - `dedupe enrich-file` — Single-file enrichment
+   - `tagslut metadata enrich` — Beatport, iTunes, Spotify, Tidal, Qobuz support
+   - `tagslut enrich-file` — Single-file enrichment
    - Duration-based health validation
 
 4. **Promotion & Organization**
-   - `dedupe promote` — Moves files to canonical structure
+   - `tagslut promote` — Moves files to canonical structure
    - `tools/review/promote_by_tags.py` — Alternative promotion with canon rules
    - `tools/review/canonize_tags.py` — Tag normalization
 
@@ -35,7 +35,7 @@
    - .env template with EPOCH_PLACEHOLDER pattern ✓
 
 6. **Utility Tools**
-   - `dedupe show-zone` — Zone assignment verification
+   - `tagslut show-zone` — Zone assignment verification
    - `tools/tiddl` — Tidal downloader wrapper
    - `tools/get` — Unified download entrypoint
    - `tools/review/hoard_tags.py` — Tag inventory collection
@@ -46,7 +46,7 @@
 
 #### High Priority (Blocking Current Workflow)
 
-1. **`dedupe mgmt` (Management Mode)**
+1. **`tagslut mgmt` (Management Mode)**
    - NOT IMPLEMENTED
    - Supposed to:
      - Maintain central inventory of downloads
@@ -55,7 +55,7 @@
      - Generate M3U playlists for Roon
    - Status: Stubs exist but no real implementation
 
-2. **`dedupe recovery` (Recovery Mode)**
+2. **`tagslut recovery` (Recovery Mode)**
    - PARTIALLY IMPLEMENTED (old recover command exists)
    - Needs:
      - `--move` / `--no-move` flags with explicit semantics
@@ -77,11 +77,11 @@
    - Needs:
      - Config file template with directory templates
      - Post-download registration hook
-     - Wrapper script that integrates with `dedupe mgmt`
+     - Wrapper script that integrates with `tagslut mgmt`
 
 5. **M3U Generation**
    - Currently: Manual via `promote_by_tags.py`
-   - Needs: Proper `dedupe mgmt --m3u` implementation
+   - Needs: Proper `tagslut mgmt --m3u` implementation
    - Should: Support --merge for single playlists
 
 6. **Inventory Database Schema**
@@ -116,7 +116,7 @@
     - Could add: Cron-friendly batch mode
 
 11. **Interactive Prompts**
-    - `dedupe mgmt --check` should prompt when similar files exist
+    - `tagslut mgmt --check` should prompt when similar files exist
     - Currently: Silent, non-interactive
 
 12. **Documentation**
@@ -135,32 +135,32 @@
   - Output: CSV of duplicate groups with recommendations
   - Goal: Make the 4226 groups useful and reviewable
 
-- [ ] **1.2** Implement `dedupe mgmt` stub → basic version
-  - `dedupe mgmt --check <path>` — Check if files exist in DB
-  - `dedupe mgmt --register <path>` — Add to inventory
+- [ ] **1.2** Implement `tagslut mgmt` stub → basic version
+  - `tagslut mgmt --check <path>` — Check if files exist in DB
+  - `tagslut mgmt --register <path>` — Add to inventory
   - Goal: Basic inventory tracking (even if incomplete)
 
 - [ ] **1.3** Update database schema with missing fields
   - Add: `download_source`, `download_date`, `original_path`, `mgmt_status`
-  - Migration: `dedupe/migrations/add_mgmt_fields.py`
+  - Migration: `tagslut/migrations/add_mgmt_fields.py`
   - Goal: Support inventory tracking
 
 ### Phase 2: Management & Recovery Modes (Next 1-2 Weeks)
 
-- [ ] **2.1** Implement `dedupe recovery` properly
+- [ ] **2.1** Implement `tagslut recovery` properly
   - `--move` / `--no-move` explicit semantics
   - `--rename-only` for in-place normalization
   - Full audit logging to JSON
   - Goal: Safe file operations with provenance tracking
 
-- [ ] **2.2** Implement `dedupe mgmt` fully
+- [ ] **2.2** Implement `tagslut mgmt` fully
   - `--m3u` M3U playlist generation
   - `--merge` for combining playlists
   - Interactive prompts for conflicts
   - Goal: Complete inventory management workflow
 
 - [ ] **2.3** BeatportDL wrapper integration
-  - Post-download hook: `dedupe mgmt --source bpdl --register <path>`
+  - Post-download hook: `tagslut mgmt --source bpdl --register <path>`
   - Config template: `tools/beatportdl/bpdl/beatportdl-config.yml`
   - Goal: Seamless download → inventory → M3U pipeline
 
@@ -192,7 +192,7 @@
 
 2. **Review the 4226 duplicate groups** in CSV format
 
-3. **Implement basic `dedupe mgmt`** with `--check` and `--register`
+3. **Implement basic `tagslut mgmt`** with `--check` and `--register`
 
 4. **Test inventory registration** with a small subset
 
@@ -212,18 +212,18 @@ python3 scripts/auto_env.py && source .env
 tools/get https://www.beatport.com/release/12345
 
 # 3. Register to inventory
-dedupe mgmt --source bpdl --register ~/Downloads/bpdl/
+tagslut mgmt --source bpdl --register ~/Downloads/bpdl/
 
 # 4. Check for duplicates
-dedupe mgmt --check ~/Downloads/bpdl/
+tagslut mgmt --check ~/Downloads/bpdl/
 
 # 5. Generate playlist
-dedupe mgmt --m3u ~/Downloads/bpdl/
+tagslut mgmt --m3u ~/Downloads/bpdl/
 
 # 6. Verify in Roon (external)
 
 # 7. Move to canonical library
-dedupe recovery --move ~/Downloads/bpdl/ --zone accepted
+tagslut recovery --move ~/Downloads/bpdl/ --zone accepted
 
 # 8. Cleanup (manual for safety)
 rm -rf ~/Downloads/bpdl/

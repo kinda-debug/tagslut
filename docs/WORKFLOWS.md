@@ -19,12 +19,12 @@ EOF
 ### Step 2: Run Pre-Download Check
 
 ```bash
-cd ~/Projects/dedupe
+cd ~/Projects/tagslut
 source .venv/bin/activate
 
 python tools/review/pre_download_check.py \
   --input ~/beatport_links.txt \
-  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db \
+  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
   --out-dir output/precheck
 ```
 
@@ -91,7 +91,7 @@ EOF
 ```bash
 python tools/review/pre_download_check.py \
   --input ~/tidal_links.txt \
-  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db \
+  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
   --out-dir output/precheck
 ```
 
@@ -189,11 +189,11 @@ tagslut index register \
 ```bash
 # Duplicate check
 tagslut index check \
-  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db
+  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
 
 # Duration check (DJ safety)
 tagslut index duration-check \
-  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db
+  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
 ```
 
 ### Step 4: Generate Plan (decide)
@@ -201,7 +201,7 @@ tagslut index duration-check \
 ```bash
 tagslut decide plan \
   --profile default \
-  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db \
+  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
   --output output/move_plan.json
 ```
 
@@ -223,17 +223,17 @@ tagslut execute move-plan \
 
 ```bash
 tagslut verify receipts \
-  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db
+  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
 
 tagslut verify duration \
-  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db
+  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
 ```
 
 ### Step 8: Generate Report (report)
 
 ```bash
 tagslut report duration \
-  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db \
+  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
   --output artifacts/duration_report.md
 ```
 
@@ -247,7 +247,7 @@ tagslut report duration \
 
 ```bash
 tools/tag-build \
-  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db \
+  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
   --output output/onetagger_batch.m3u
 ```
 
@@ -262,7 +262,7 @@ tools/tag-run \
 
 ```bash
 tagslut index enrich \
-  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db
+  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
 ```
 
 ---
@@ -292,7 +292,7 @@ python tools/review/promote_by_tags.py \
 ```bash
 tagslut decide plan \
   --profile quarantine \
-  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db \
+  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
   --output output/quarantine_plan.json
 ```
 
@@ -320,7 +320,7 @@ tagslut execute quarantine-plan \
 
 ```bash
 tagslut index set-duration-ref \
-  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db \
+  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
   --source beatport  # or tidal
 ```
 
@@ -328,7 +328,7 @@ tagslut index set-duration-ref \
 
 ```bash
 tagslut index duration-audit \
-  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db
+  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
 ```
 
 ---
@@ -341,14 +341,14 @@ tagslut index duration-audit \
 
 ```bash
 tagslut verify recovery \
-  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db
+  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
 ```
 
 ### Step 2: Generate Recovery Report
 
 ```bash
 tagslut report recovery \
-  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db \
+  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
   --output artifacts/recovery_report.md
 ```
 

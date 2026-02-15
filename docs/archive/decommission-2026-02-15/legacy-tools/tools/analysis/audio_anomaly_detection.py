@@ -21,10 +21,10 @@ from datetime import datetime
 # Ensure imports from root
 sys.path.insert(0, str(Path(__file__).parents[2]))
 
-from dedupe.utils.db import resolve_db_path
-from dedupe.utils.config import get_config
+from tagslut.utils.db import resolve_db_path
+from tagslut.utils.config import get_config
 
-logger = logging.getLogger("dedupe.analysis.audio_anomaly")
+logger = logging.getLogger("tagslut.analysis.audio_anomaly")
 
 
 @dataclass

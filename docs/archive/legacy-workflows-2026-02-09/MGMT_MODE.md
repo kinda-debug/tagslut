@@ -1,11 +1,11 @@
-# Management & Recovery Modes — dedupe CLI
+# Management & Recovery Modes — tagslut CLI
 
 > Status note (2026-02-08): This document contains both current behavior and historical design notes.
-> For the authoritative command surface, run `poetry run dedupe mgmt --help` and see `docs/SCRIPT_SURFACE.md`.
+> For the authoritative command surface, run `poetry run tagslut mgmt --help` and see `docs/SCRIPT_SURFACE.md`.
 
-This document specifies the **`mgmt`** and **`recovery`** commands for the dedupe CLI, designed to support a controlled, inventory-driven workflow for building a clean, sanitized music library from fresh downloads.
+This document specifies the **`mgmt`** and **`recovery`** commands for the tagslut CLI, designed to support a controlled, inventory-driven workflow for building a clean, sanitized music library from fresh downloads.
 
-**Important:** M3U playlist generation is a `dedupe mgmt` responsibility, NOT a BeatportDL feature. BeatportDL handles downloading and directory organization only.
+**Important:** M3U playlist generation is a `tagslut mgmt` responsibility, NOT a BeatportDL feature. BeatportDL handles downloading and directory organization only.
 
 ---
 
@@ -23,15 +23,15 @@ The goal is to **build a small, super-sanitized library from new downloads** rat
 ## Commands Overview
 
 ```
-dedupe mgmt [options]       # management & inventory
-dedupe m [options]          # shorthand alias for mgmt
-dedupe -m [options]         # shorthand flag for mgmt
-dedupe recovery [options]   # file operations & library building
+tagslut mgmt [options]       # management & inventory
+tagslut m [options]          # shorthand alias for mgmt
+tagslut -m [options]         # shorthand flag for mgmt
+tagslut recovery [options]   # file operations & library building
 ```
 
 ---
 
-## `dedupe mgmt` — Management Mode
+## `tagslut mgmt` — Management Mode
 
 Management mode intercepts and manages downloads from multiple sources (bpdl, qobuz-dl, tidal-dl, etc.).
 
@@ -45,7 +45,7 @@ Management mode intercepts and manages downloads from multiple sources (bpdl, qo
 ### Command Surface (Current)
 
 ```
-dedupe mgmt [GROUP OPTIONS] COMMAND [ARGS...]
+tagslut mgmt [GROUP OPTIONS] COMMAND [ARGS...]
 
 Group options:
   --db PATH              Path to inventory database (default: from config)
@@ -65,7 +65,7 @@ Commands:
 
 ### Similarity Check Workflow
 
-When running `dedupe mgmt check`, before any download:
+When running `tagslut mgmt check`, before any download:
 
 1. Query inventory DB for tracks with similar:
    - Artist + Title (fuzzy match)
@@ -101,16 +101,16 @@ Size/format never override a duration mismatch.
 New mgmt commands:
 ```bash
 # Register + duration checks
-dedupe mgmt register --source bpdl --dj-only --check-duration /path/to/downloads
+tagslut mgmt register --source bpdl --dj-only --check-duration /path/to/downloads
 
 # Re-check durations
-dedupe mgmt check-duration /path/to/files --dj-only --execute
+tagslut mgmt check-duration /path/to/files --dj-only --execute
 
 # Audit anomalies
-dedupe mgmt audit-duration --dj-only --status warn,fail,unknown
+tagslut mgmt audit-duration --dj-only --status warn,fail,unknown
 
 # Manually set a trusted duration reference
-dedupe mgmt set-duration-ref /path/to/file --dj-only --confirm --execute
+tagslut mgmt set-duration-ref /path/to/file --dj-only --confirm --execute
 ```
 
 Defaults (configurable):
@@ -120,18 +120,18 @@ Defaults (configurable):
 
 ### M3U Generation
 
-**Note:** M3U generation is handled by `dedupe mgmt`, NOT by BeatportDL. BeatportDL does not have a `--m3u` flag.
+**Note:** M3U generation is handled by `tagslut mgmt`, NOT by BeatportDL. BeatportDL does not have a `--m3u` flag.
 
-✅ `dedupe mgmt --m3u` is implemented.
+✅ `tagslut mgmt --m3u` is implemented.
 
 The `--m3u` flag generates Roon-compatible M3U playlists:
 
 ```bash
 # One M3U per download item (album/release)
-dedupe mgmt --m3u --source bpdl /path/to/downloads
+tagslut mgmt --m3u --source bpdl /path/to/downloads
 
 # Single merged M3U for entire session
-dedupe mgmt --m3u --merge --source bpdl /path/to/downloads
+tagslut mgmt --m3u --merge --source bpdl /path/to/downloads
 ```
 
 M3U format (Roon-compatible extended M3U):
@@ -147,21 +147,21 @@ M3U format (Roon-compatible extended M3U):
 
 ```bash
 # Register new bpdl downloads to inventory
-dedupe mgmt register --source bpdl ~/Downloads/bpdl/
+tagslut mgmt register --source bpdl ~/Downloads/bpdl/
 
 # Generate M3U for registered downloads (separate step)
-dedupe mgmt --m3u ~/Downloads/bpdl/
+tagslut mgmt --m3u ~/Downloads/bpdl/
 
 # Check if tracks exist before qobuz download
-dedupe mgmt check --source qobuz ~/queue.txt
+tagslut mgmt check --source qobuz ~/queue.txt
 
 # Register existing library into inventory
-dedupe mgmt register --source legacy /Volumes/Music/
+tagslut mgmt register --source legacy /Volumes/Music/
 ```
 
 ---
 
-## `dedupe recovery` — Recovery Mode
+## `tagslut recovery` — Recovery Mode
 
 Recovery mode handles actual file operations: moving, renaming, and organizing files into the canonical library structure.
 
@@ -175,7 +175,7 @@ Recovery mode handles actual file operations: moving, renaming, and organizing f
 ### Flags & Options
 
 ```
-dedupe recovery [OPTIONS] [PATHS...]
+tagslut recovery [OPTIONS] [PATHS...]
 
 Options:
   --db PATH              Path to inventory database (default: from config)
@@ -222,10 +222,10 @@ The `--rename-only` flag renames files in place without relocating:
 
 ```bash
 # Preview renames
-dedupe recovery --rename-only --dry-run /path/to/files/
+tagslut recovery --rename-only --dry-run /path/to/files/
 
 # Execute renames
-dedupe recovery --rename-only --move /path/to/files/
+tagslut recovery --rename-only --move /path/to/files/
 ```
 
 Rename rules (configurable):
@@ -238,16 +238,16 @@ Rename rules (configurable):
 
 ```bash
 # Preview what would be moved from staging to accepted
-dedupe recovery --no-move --zone accepted /Volumes/Music/staging/
+tagslut recovery --no-move --zone accepted /Volumes/Music/staging/
 
 # Actually move verified files
-dedupe recovery --move --zone accepted --status verified /Volumes/Music/staging/
+tagslut recovery --move --zone accepted --status verified /Volumes/Music/staging/
 
 # Rename-only pass on existing library
-dedupe recovery --rename-only --move /Volumes/Music/accepted/
+tagslut recovery --rename-only --move /Volumes/Music/accepted/
 
 # Move recent bpdl downloads to canonical location
-dedupe recovery --move --source bpdl --since 2026-01-01 --dest /Volumes/Music/accepted/
+tagslut recovery --move --source bpdl --since 2026-01-01 --dest /Volumes/Music/accepted/
 ```
 
 ---
@@ -391,7 +391,7 @@ prompt_on_similar = true
 default_dest = "/Volumes/Music/accepted"
 
 # Log directory
-log_dir = "~/.dedupe/logs"
+log_dir = "~/.tagslut/logs"
 
 # Naming template
 name_template = "{artist} - {title}"
@@ -403,15 +403,15 @@ name_template = "{artist} - {title}"
 
 ### bpdl (BeatportDL) Integration
 
-BeatportDL is an **upstream download tool** that feeds the dedupe pipeline. It handles:
+BeatportDL is an **upstream download tool** that feeds the tagslut pipeline. It handles:
 - Downloading tracks from Beatport with rich metadata
 - Directory organization via `sort_by_context` and `*_directory_template` settings
 - Filename formatting via `track_file_template`
 
-**BeatportDL does NOT generate M3U playlists.** M3U generation is handled by `dedupe mgmt --m3u` after downloads are registered.
+**BeatportDL does NOT generate M3U playlists.** M3U generation is handled by `tagslut mgmt --m3u` after downloads are registered.
 
 bpdl should be configured to:
-1. Output to a staging directory monitored by `dedupe mgmt`
+1. Output to a staging directory monitored by `tagslut mgmt`
 2. Use `sort_by_context: true` for organized directory output
 3. Set appropriate `*_directory_template` values for releases, playlists, charts, labels, artists
 
@@ -422,9 +422,9 @@ Example wrapper script:
 #!/bin/bash
 # bpdl-wrapper.sh
 bpdl "$@"
-# Register downloads and generate M3U (M3U is a dedupe mgmt feature, not bpdl)
-dedupe mgmt register --source bpdl ~/Downloads/bpdl/
-dedupe mgmt --m3u ~/Downloads/bpdl/
+# Register downloads and generate M3U (M3U is a tagslut mgmt feature, not bpdl)
+tagslut mgmt register --source bpdl ~/Downloads/bpdl/
+tagslut mgmt --m3u ~/Downloads/bpdl/
 ```
 
 ### qobuz-dl Integration
@@ -434,8 +434,8 @@ Similar pattern:
 #!/bin/bash
 # qobuz-wrapper.sh
 qobuz-dl "$@"
-dedupe mgmt register --source qobuz ~/Downloads/qobuz/
-dedupe mgmt --m3u ~/Downloads/qobuz/
+tagslut mgmt register --source qobuz ~/Downloads/qobuz/
+tagslut mgmt --m3u ~/Downloads/qobuz/
 ```
 
 ### TIDDL (Tidal Downloader) Integration
@@ -456,13 +456,13 @@ tools/tiddl <tidal-url>
 TIDDL_BIN=/custom/path/tiddl tools/tiddl <tidal-url>
 
 # Register to inventory and generate M3U
-dedupe mgmt register --source tidal ~/Downloads/tiddl/
-dedupe mgmt --m3u ~/Downloads/tiddl/
+tagslut mgmt register --source tidal ~/Downloads/tiddl/
+tagslut mgmt --m3u ~/Downloads/tiddl/
 ```
 
 **Key points:**
 - No system binaries in repo — only the wrapper script
-- M3U generation is handled by `dedupe mgmt --m3u`, NOT by TIDDL
+- M3U generation is handled by `tagslut mgmt --m3u`, NOT by TIDDL
 - Use `--source tidal` when registering downloads
 
 ---
@@ -531,7 +531,7 @@ For full deduplication tracking and library management:
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │  1. PRE-CHECK (optional, avoids re-downloading)                 │
-│  dedupe mgmt check --source tidal <url-or-path>                 │
+│  tagslut mgmt check --source tidal <url-or-path>                 │
 │  → "You already have this track from bpdl (2026-01-15)"         │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
@@ -543,19 +543,19 @@ For full deduplication tracking and library management:
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
 │  3. REGISTER (adds to inventory DB)                             │
-│  dedupe mgmt register --source tidal ~/Downloads/tiddl/         │
+│  tagslut mgmt register --source tidal ~/Downloads/tiddl/         │
 │  → hashes files, records provenance, flags duplicates           │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
 │  4. M3U GENERATION (for Roon import)                            │
-│  dedupe mgmt --m3u ~/Downloads/tiddl/                           │
+│  tagslut mgmt --m3u ~/Downloads/tiddl/                           │
 │  → creates playlist for immediate listening/review              │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
 │  5. PROMOTE TO LIBRARY (move-only)                              │
-│  dedupe recovery --move --zone accepted --source tidal          │
+│  tagslut recovery --move --zone accepted --source tidal          │
 │  → moves verified files to canonical structure                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -564,38 +564,38 @@ For full deduplication tracking and library management:
 
 ```bash
 # 1. (Optional) Check if you already have these tracks
-dedupe mgmt check --source bpdl ~/queue.txt
+tagslut mgmt check --source bpdl ~/queue.txt
 
 # 2. Download from Beatport or Tidal
 tools/get https://www.beatport.com/release/some-release/12345
 tools/get https://tidal.com/browse/album/67890
 
 # 3. Register to inventory, check for dupes
-dedupe mgmt register --source bpdl ~/Downloads/bpdl/
-dedupe mgmt register --source tidal ~/Downloads/tiddl/
+tagslut mgmt register --source bpdl ~/Downloads/bpdl/
+tagslut mgmt register --source tidal ~/Downloads/tiddl/
 
-# 4. Generate M3U playlist (this is a dedupe mgmt feature, NOT the downloaders)
-dedupe mgmt --m3u ~/Downloads/bpdl/
-dedupe mgmt --m3u ~/Downloads/tiddl/
+# 4. Generate M3U playlist (this is a tagslut mgmt feature, NOT the downloaders)
+tagslut mgmt --m3u ~/Downloads/bpdl/
+tagslut mgmt --m3u ~/Downloads/tiddl/
 
 # 5. Review M3U in Roon, verify tracks sound good
 
 # 6. Move verified tracks to canonical library
-dedupe recovery --move --zone accepted --source bpdl --since today
-dedupe recovery --move --zone accepted --source tidal --since today
+tagslut recovery --move --zone accepted --source bpdl --since today
+tagslut recovery --move --zone accepted --source tidal --since today
 ```
 
 ### Integration Points
 
 | Step | Tool | DB Interaction |
 |------|------|----------------|
-| Pre-check | `dedupe mgmt check` | Queries DB to avoid re-downloading |
+| Pre-check | `tagslut mgmt check` | Queries DB to avoid re-downloading |
 | Download | `tools/get` | **None** — just a URL router |
-| Register | `dedupe mgmt register` | Adds files with source/date/hash |
-| M3U | `dedupe mgmt --m3u` | Uses DB metadata for rich playlists |
-| Promote | `dedupe recovery --move` | Uses DB to track verified files |
+| Register | `tagslut mgmt register` | Adds files with source/date/hash |
+| M3U | `tagslut mgmt --m3u` | Uses DB metadata for rich playlists |
+| Promote | `tagslut recovery --move` | Uses DB to track verified files |
 
-**Note:** BeatportDL does NOT have a `--m3u` flag. M3U generation is always done via `dedupe mgmt --m3u` or `tools/review/promote_by_tags.py`.
+**Note:** BeatportDL does NOT have a `--m3u` flag. M3U generation is always done via `tagslut mgmt --m3u` or `tools/review/promote_by_tags.py`.
 
 This workflow ensures:
 - No accidental re-downloads
@@ -614,18 +614,18 @@ bpdl --config ... "https://www.beatport.com/playlist/..."
 
 2) Register + duration check (DJ-only):
 ```bash
-dedupe mgmt register --source bpdl --dj-only --check-duration /staging/beatport/incoming
+tagslut mgmt register --source bpdl --dj-only --check-duration /staging/beatport/incoming
 ```
 
 3) Audit duration anomalies:
 ```bash
-dedupe mgmt audit-duration --dj-only --status warn,fail,unknown
+tagslut mgmt audit-duration --dj-only --status warn,fail,unknown
 ```
 
 4) Promote only duration-clean DJ tracks:
 ```bash
-dedupe recovery --no-move --zone accepted --require-duration-ok --dj-only /staging/beatport/incoming
-dedupe recovery --move    --zone accepted --require-duration-ok --dj-only /staging/beatport/incoming
+tagslut recovery --no-move --zone accepted --require-duration-ok --dj-only /staging/beatport/incoming
+tagslut recovery --move    --zone accepted --require-duration-ok --dj-only /staging/beatport/incoming
 ```
 
 Safety guarantees:

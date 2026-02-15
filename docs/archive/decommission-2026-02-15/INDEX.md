@@ -1,15 +1,15 @@
 # Decommission Archive — 2026-02-15
 
-Files moved here are no longer actively used by the dedupe project.
+Files moved here are no longer actively used by the tagslut project.
 They are preserved for reference only. Do not depend on them.
 
 ## Origin Map
 
 | New location | Old location | Reason |
 |---|---|---|
-| `mp3tag_sources/` | `legacy/mp3tag_sources/` | Third-party MP3Tag web source scripts; not part of dedupe pipeline |
+| `mp3tag_sources/` | `legacy/mp3tag_sources/` | Third-party MP3Tag web source scripts; not part of tagslut pipeline |
 | `legacy-scripts/` | `legacy/scripts/` | Superseded utility scripts (env_exports, filter_plan, roon_playlist_builder, etc.) |
-| `legacy-tools/` | `legacy/tools/` | Old tooling (analysis, batch_process, decide, integrity, review); replaced by `tools/` and `dedupe/` |
+| `legacy-tools/` | `legacy/tools/` | Old tooling (analysis, batch_process, decide, integrity, review); replaced by `tools/` and `tagslut/` |
 | `legacy-match/` | `legacy/match/` | Old standalone matching code with its own uv.lock |
 | `postman-chat/` | `legacy/postman/chat/` | Chat/conversation logs — not code |
 | `promote_by_tags_versions/` | `tools/archive/promote_by_tags_versions/` | 13 timestamped snapshots of one script; git history serves this purpose |

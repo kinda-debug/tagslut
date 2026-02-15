@@ -185,7 +185,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Apply KEEP/DROP from marked CSV (dry-run by default).")
     parser.add_argument(
         "--marked",
-        default="/Users/georgeskhawam/Projects/dedupe/artifacts/M/03_reports/recommend_marked_suggestions.csv",
+        default="/Users/georgeskhawam/Projects/tagslut/artifacts/M/03_reports/recommend_marked_suggestions.csv",
         help="CSV with action column (KEEP/DROP)",
     )
     parser.add_argument(

@@ -2171,7 +2171,7 @@ Here’s what I see in your repo and how we can use it to finish the dynamic Pos
 
 ## 1. What I found in `info.txt`
 
-`/Users/georgeskhawam/Projects/dedupe/info.txt` is essentially a scratchpad that already contains:
+`/Users/georgeskhawam/Projects/tagslut/info.txt` is essentially a scratchpad that already contains:
 
 - **Qobuz**
   - Email / user id
@@ -3126,7 +3126,7 @@ Once you’re in `G` on the macOS app:
 
 1. Click on the workspace name `G` (top-left) → **Workspace Settings**.
 2. Look for the **Git** / **Repository** or “Connect repository” option (depending on your UI version).
-3. Follow the steps to connect your GitHub repo (`dedupe` or whichever you want):
+3. Follow the steps to connect your GitHub repo (`tagslut` or whichever you want):
    - Authorize GitHub if prompted.
    - Choose the repo.
    - Configure which branch / directory stores Postman collections (if applicable).
@@ -3577,9 +3577,9 @@ Collection
 
 EPOCH_2026-01-24
 
-the db is here: /Users/georgeskhawam/Projects/dedupe/EPOCH_2026-01-24/music.db
+the db is here: /Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-24/music.db
 
-Got it: your SQLite DB is `/Users/georgeskhawam/Projects/dedupe/EPOCH_2026-01-24/music.db`.
+Got it: your SQLite DB is `/Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-24/music.db`.
 
 To make the exporter genuinely “DB-ready”, the JSON we emit from Postman should match your existing schema as closely as possible. Right now I don’t know the table/column names in that DB, so I’ll outline what to do in two tight steps:
 
@@ -3595,7 +3595,7 @@ Because I can’t execute `sqlite3` commands from here, you’ll need to run the
 In a terminal on your Mac:
 
 ```
-cd /Users/georgeskhawam/Projects/dedupe/EPOCH_2026-01-24
+cd /Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-24
 
 # Open sqlite shell
 sqlite3 music.db
@@ -3703,7 +3703,7 @@ I’ll keep this tight and concrete.
 
 ## 1. Add library tables to `music.db`
 
-Run in `sqlite3 /Users/georgeskhawam/Projects/dedupe/EPOCH_2026-01-24/music.db`:
+Run in `sqlite3 /Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-24/music.db`:
 
 ```
 -- Main logical track table
@@ -4037,9 +4037,9 @@ import json
 import sqlite3
 from pathlib import Path
 
-DB_PATH = "/Users/georgeskhawam/Projects/dedupe/
+DB_PATH = "/Users/georgeskhawam/Projects/tagslut/
     EPOCH_2026-01-24/music.db"
-NDJSON_PATH = "/Users/georgeskhawam/Projects/dedupe/
+NDJSON_PATH = "/Users/georgeskhawam/Projects/tagslut/
     EPOCH_2026-01-24/exported_metadata.ndjson"
 
 conn = sqlite3.connect(DB_PATH)
@@ -4771,7 +4771,7 @@ You already have:
 
 We can reuse these plus add a small number of metadata-health columns.
 
-In `sqlite3 /Users/georgeskhawam/Projects/dedupe/EPOCH_2026-01-24/music.db`:
+In `sqlite3 /Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-24/music.db`:
 
 ```
 ALTER TABLE files ADD COLUMN canonical_duration REAL;
@@ -4951,9 +4951,9 @@ import json
 import sqlite3
 from pathlib import Path
 
-DB_PATH = "/Users/georgeskhawam/Projects/dedupe/
+DB_PATH = "/Users/georgeskhawam/Projects/tagslut/
     EPOCH_2026-01-24/music.db"
-NDJSON_PATH = "/Users/georgeskhawam/Projects/dedupe/
+NDJSON_PATH = "/Users/georgeskhawam/Projects/tagslut/
     EPOCH_2026-01-24/recovery_export.ndjson"
 TOLERANCE_SEC = 2.0  # e.g. 2 seconds
 
@@ -5206,9 +5206,9 @@ import csv
 import sqlite3
 from pathlib import Path
 
-DB_PATH = "/Users/georgeskhawam/Projects/dedupe/
+DB_PATH = "/Users/georgeskhawam/Projects/tagslut/
     EPOCH_2026-01-24/music.db"
-OUT_CSV = "/Users/georgeskhawam/Projects/dedupe/
+OUT_CSV = "/Users/georgeskhawam/Projects/tagslut/
     EPOCH_2026-01-24/recovery_input.csv"
 
 conn = sqlite3.connect(DB_PATH)
@@ -5512,9 +5512,9 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from threading import Thread
 
-DB_PATH = "/Users/georgeskhawam/Projects/dedupe/
+DB_PATH = "/Users/georgeskhawam/Projects/tagslut/
     EPOCH_2026-01-24/music.db"
-NDJSON_PATH = "/Users/georgeskhawam/Projects/dedupe/
+NDJSON_PATH = "/Users/georgeskhawam/Projects/tagslut/
     EPOCH_2026-01-24/recovery_export.ndjson"
 TOLERANCE_SEC = 2.0
 
@@ -5804,9 +5804,9 @@ import json
 import sqlite3
 from pathlib import Path
 
-DB_PATH = "/Users/georgeskhawam/Projects/dedupe/
+DB_PATH = "/Users/georgeskhawam/Projects/tagslut/
     EPOCH_2026-01-24/music.db"
-NDJSON_PATH = "/Users/georgeskhawam/Projects/dedupe/
+NDJSON_PATH = "/Users/georgeskhawam/Projects/tagslut/
     EPOCH_2026-01-24/hoarding_export.ndjson"
 
 conn = sqlite3.connect(DB_PATH)
@@ -6370,9 +6370,9 @@ import csv
 import sqlite3
 from pathlib import Path
 
-DB_PATH = "/Users/georgeskhawam/Projects/dedupe/
+DB_PATH = "/Users/georgeskhawam/Projects/tagslut/
     EPOCH_2026-01-24/music.db"
-CANONICAL_CSV = "/Users/georgeskhawam/Projects/dedupe/
+CANONICAL_CSV = "/Users/georgeskhawam/Projects/tagslut/
     EPOCH_2026-01-24/metadata_canonical.csv"
 TOLERANCE_SEC = 2.0
 
@@ -6586,7 +6586,7 @@ metadata-extraction-report.md
 
 metadata_bible.md
 
-dedupe
+tagslut
 
 +2
 
@@ -6649,7 +6649,7 @@ We will build a 3‑layer system:
 
 1. **Storage layer: SQLite database**
    - Located at:
-     `/Users/georgeskhawam/Projects/dedupe/EPOCH_2026-01-24/music.db`
+     `/Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-24/music.db`
    - Contains:
      - `files` table (existing): list of audio files with paths and measured durations.
      - New extensions to `files` for canonical duration + health.
@@ -6894,7 +6894,7 @@ export LOG_FILE="metadata_harvest_full.log"
 export STATE_FILE="metadata_harvest.state"
 
 # Path to your SQLite DB:
-export MUSIC_DB="/Users/georgeskhawam/Projects/dedupe/
+export MUSIC_DB="/Users/georgeskhawam/Projects/tagslut/
     EPOCH_2026-01-24/music.db"
 ```
 
@@ -6921,7 +6921,7 @@ from pathlib import Path
 import os
 
 DB_PATH = os.environ.get("MUSIC_DB", "/Users/georgeskhawam/
-    Projects/dedupe/EPOCH_2026-01-24/music.db")
+    Projects/tagslut/EPOCH_2026-01-24/music.db")
 OUT_CSV = os.environ.get("INPUT_CSV", "recovery_input.csv")
 
 def main():
@@ -7723,7 +7723,7 @@ import os
 from typing import Tuple
 
 DB_PATH = os.environ.get("MUSIC_DB", "/Users/georgeskhawam/
-    Projects/dedupe/EPOCH_2026-01-24/music.db")
+    Projects/tagslut/EPOCH_2026-01-24/music.db")
 CANONICAL_CSV = "metadata_canonical.csv"
 TOLERANCE_SEC = 2.0  # allowed absolute difference
 
@@ -8159,7 +8159,7 @@ from pathlib import Path
 import os
 
 DB_PATH = os.environ.get("MUSIC_DB", "/Users/georgeskhawam/
-    Projects/dedupe/EPOCH_2026-01-24/music.db")
+    Projects/tagslut/EPOCH_2026-01-24/music.db")
 NDJSON_PATH = Path("hoarding_export.ndjson")
 
 def main():
@@ -8425,7 +8425,7 @@ import click
 import os
 import subprocess
 
-DB_PATH_DEFAULT = "/Users/georgeskhawam/Projects/dedupe/
+DB_PATH_DEFAULT = "/Users/georgeskhawam/Projects/tagslut/
     EPOCH_2026-01-24/music.db"
 
 @click.group()
@@ -8494,12 +8494,12 @@ source ./env_exports.sh
 
 # Recovery mode
 python3 cli.py recovery --db "/Users/georgeskhawam/
-    Projects/dedupe/EPOCH_2026-01-24/music.db"
+    Projects/tagslut/EPOCH_2026-01-24/music.db"
 
 # Hoarding mode (after you've run your Postman hoarding 
     exporter and saved to hoarding_export.ndjson)
 python3 cli.py hoard hoarding_export.ndjson --db "/Users/
-    georgeskhawam/Projects/dedupe/EPOCH_2026-01-24/music.
+    georgeskhawam/Projects/tagslut/EPOCH_2026-01-24/music.
     db"
 ```
 
@@ -8554,7 +8554,7 @@ metadata-extraction-report.md
 
 metadata_bible.md
 
-dedupe
+tagslut
 
 +2
 
@@ -9120,7 +9120,7 @@ metadata-extraction-report.md
 
 metadata_bible.md
 
-dedupe
+tagslut
 
 +2
 
@@ -9547,7 +9547,7 @@ Job completed successfully
 The new addendum has already been written and appended to `metadata_guide.md` at:
 
 ```
-/Users/georgeskhawam/Projects/dedupe/metadata_guide.md
+/Users/georgeskhawam/Projects/tagslut/metadata_guide.md
 ```
 
 It’s a fully self-contained “orbiter-level” guide that:
@@ -9581,7 +9581,7 @@ It’s a fully self-contained “orbiter-level” guide that:
   - Your real Spotify client credentials.
   - Integration with `auth_manager.py` (it actually calls `python3 auth_manager.py get spotify`, etc., to auto-populate `SPOTIFY_ACCESS_TOKEN`, `TIDAL_ACCESS_TOKEN`, `QOBUZ_USER_AUTH_TOKEN`, etc. when possible).
   - All key paths:
-    - `MUSIC_DB=/Users/georgeskhawam/Projects/dedupe/EPOCH_2026-01-24/music.db`
+    - `MUSIC_DB=/Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-24/music.db`
     - `INPUT_CSV`, `OUTPUT_NDJSON`, `LOG_FILE`, `STATE_FILE`
   - Explicit per-provider rate-limit exports.
 - Provides **end-to-end, landed-from-space instructions**, including:
@@ -10714,7 +10714,7 @@ metadata_add.md
 
 metadata_guide.md
 
-no add a very comprehensive fully detaqiled part with the info you mentionned (/Users/georgeskhawam/Projects/dedupe/metadata_add.md) to metadata_guide.md
+no add a very comprehensive fully detaqiled part with the info you mentionned (/Users/georgeskhawam/Projects/tagslut/metadata_add.md) to metadata_guide.md
 
 
 
@@ -10740,14 +10740,14 @@ Edited metadata_guide.md
 
 Job completed successfully
 
-The new material from `/Users/georgeskhawam/Projects/dedupe/metadata_add.md` is now fully integrated into `metadata_guide.md` as Section 10, without changing any of your existing sections.
+The new material from `/Users/georgeskhawam/Projects/tagslut/metadata_add.md` is now fully integrated into `metadata_guide.md` as Section 10, without changing any of your existing sections.
 
 What I’ve done:
 
 - Read both:
 
-  - `/Users/georgeskhawam/Projects/dedupe/metadata_guide.md`
-  - `/Users/georgeskhawam/Projects/dedupe/metadata_add.md`
+  - `/Users/georgeskhawam/Projects/tagslut/metadata_guide.md`
+  - `/Users/georgeskhawam/Projects/tagslut/metadata_add.md`
 
 - Appended a new section at the end of `metadata_guide.md`:
 
@@ -11024,7 +11024,7 @@ Inside `[bp4 Copy](collection/bp4 Copy.postman_collection.json)` (Beatport colle
 To integrate with your SQLite DB at:
 
 ```
-/Users/georgeskhawam/Projects/dedupe/EPOCH_2026-01-24/music.db
+/Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-24/music.db
 ```
 
 you can:

@@ -6,13 +6,13 @@ from pathlib import Path
 # Ensure we can import dedupe from root
 sys.path.insert(0, str(Path(__file__).parents[2]))
 
-from dedupe.integrity_scanner import scan_library
-from dedupe.core.metadata import extract_metadata
-from dedupe.utils import env_paths
-from dedupe.utils.paths import list_files
-from dedupe.utils.cli_helper import configure_execution
-from dedupe.utils.config import get_config
-from dedupe.utils.db import resolve_db_path
+from tagslut.integrity_scanner import scan_library
+from tagslut.core.metadata import extract_metadata
+from tagslut.utils import env_paths
+from tagslut.utils.paths import list_files
+from tagslut.utils.cli_helper import configure_execution
+from tagslut.utils.config import get_config
+from tagslut.utils.db import resolve_db_path
 
 
 def main():

@@ -8,12 +8,12 @@
 
 ## What Was Implemented
 
-### Core Feature: `dedupe mgmt` (Management Mode)
+### Core Feature: `tagslut mgmt` (Management Mode)
 A complete inventory and duplicate-checking system for the music library.
 
 **Two main commands**:
-1. `dedupe mgmt register` - Add downloaded files to inventory
-2. `dedupe mgmt check` - Detect duplicates before downloading
+1. `tagslut mgmt register` - Add downloaded files to inventory
+2. `tagslut mgmt check` - Detect duplicates before downloading
 
 **Database enhancements**:
 - 6 new columns for tracking source, date, status
@@ -34,8 +34,8 @@ A complete inventory and duplicate-checking system for the music library.
 ## Deliverables
 
 ### 1. CLI Commands (Fully Functional ✓)
-- `dedupe mgmt register` with dry-run and execute modes
-- `dedupe mgmt check` with source filtering and strict mode
+- `tagslut mgmt register` with dry-run and execute modes
+- `tagslut mgmt check` with source filtering and strict mode
 - Proper error handling and progress reporting
 - Full documentation in help text
 
@@ -112,11 +112,11 @@ m3u_exported: Optional[str]
 tools/get https://www.beatport.com/release/xyz/123
 
 # 2. Check for duplicates
-dedupe mgmt check ~/Downloads/bpdl --source bpdl
+tagslut mgmt check ~/Downloads/bpdl --source bpdl
 # Output: Unique: 3, Duplicates: 0
 
 # 3. Register if unique
-dedupe mgmt register ~/Downloads/bpdl --source bpdl --execute
+tagslut mgmt register ~/Downloads/bpdl --source bpdl --execute
 # Output: Registered: 3
 
 # Result: Database now knows about these 3 tracks
@@ -127,13 +127,13 @@ dedupe mgmt register ~/Downloads/bpdl --source bpdl --execute
 ```bash
 # 1. Try Beatport
 tools/get https://www.beatport.com/release/xyz/123
-dedupe mgmt register ~/Downloads/bpdl --source bpdl --execute
+tagslut mgmt register ~/Downloads/bpdl --source bpdl --execute
 
 # 2. Also try Tidal (won't conflict because different source)
 tools/get https://tidal.com/browse/album/456
-dedupe mgmt check ~/Downloads/tiddl --source tidal
+tagslut mgmt check ~/Downloads/tiddl --source tidal
 # Output: Unique: 2 (no conflict with bpdl source)
-dedupe mgmt register ~/Downloads/tiddl --source tidal --execute
+tagslut mgmt register ~/Downloads/tiddl --source tidal --execute
 
 # Result: Can choose between Beatport and Tidal versions later
 ```
@@ -168,15 +168,15 @@ tests/test_mgmt_workflow.py::TestDatabaseSchema::test_new_indices_exist PASSED
 
 ### With existing tools:
 - ✓ `tools/get` - Downloads files
-- ✓ `dedupe scan` - Scans library
-- → `dedupe recovery` - Moves files (Phase 2)
+- ✓ `tagslut scan` - Scans library
+- → `tagslut recovery` - Moves files (Phase 2)
 - → `Yate` - Manual tagging (Phase 2)
 - → `Roon` - M3U export (Phase 1.5)
 
 ### With existing systems:
 - ✓ Zone system - Respects zone configuration
 - ✓ Database - Uses existing sqlite3 schema
-- ✓ Environment - Respects $DEDUPE_DB and zones.yaml
+- ✓ Environment - Respects $TAGSLUT_DB and zones.yaml
 - ✓ CLI framework - Extends Click CLI consistently
 
 ---
@@ -184,8 +184,8 @@ tests/test_mgmt_workflow.py::TestDatabaseSchema::test_new_indices_exist PASSED
 ## Known Limitations (By Design)
 
 1. **No interactive prompts (yet)** - Phase 2 will add "skip/download/replace" prompts
-2. **No M3U generation (yet)** - Phase 1.5 will add `dedupe mgmt --m3u`
-3. **No file movement (yet)** - Phase 2 will add `dedupe recovery --move`
+2. **No M3U generation (yet)** - Phase 1.5 will add `tagslut mgmt --m3u`
+3. **No file movement (yet)** - Phase 2 will add `tagslut recovery --move`
 4. **Fingerprinting computed manually** - Will be auto-computed in Phase 2
 
 These are all planned and documented in ACTION_PLAN.md.
@@ -209,9 +209,9 @@ Tested on EPOCH_2026-02-02 database with ~150 existing files.
 ## Files Changed
 
 ```
-dedupe/
+tagslut/
 ├── cli/
-│   └── main.py                    [+200 lines] dedupe mgmt register/check
+│   └── main.py                    [+200 lines] tagslut mgmt register/check
 ├── storage/
 │   ├── schema.py                  [+20 lines] 6 columns + 4 indices
 │   └── models.py                  [+10 lines] AudioFile extended
@@ -227,13 +227,13 @@ MGMT_QUICK_REFERENCE.md            [NEW] User guide
 
 ### For User
 1. Review [MGMT_QUICK_REFERENCE.md](MGMT_QUICK_REFERENCE.md) for usage
-2. Test with a small download: `tools/get <url>` → `dedupe mgmt register` → `dedupe mgmt check`
+2. Test with a small download: `tools/get <url>` → `tagslut mgmt register` → `tagslut mgmt check`
 3. Verify database state: `sqlite3 music.db "SELECT COUNT(*) FROM files WHERE download_source IS NOT NULL"`
 
 ### For Development
 1. ✓ Phase 1 complete and tested
-2. → Phase 1.5: M3U generation (`dedupe mgmt --m3u`)
-3. → Phase 2: Recovery mode (`dedupe recovery --move`)
+2. → Phase 1.5: M3U generation (`tagslut mgmt --m3u`)
+3. → Phase 2: Recovery mode (`tagslut recovery --move`)
 4. → Phase 3: Automation and Yate integration
 
 ---

@@ -1,4 +1,4 @@
-# Redesign Tracker - dedupe V3 (2026-02-09)
+# Redesign Tracker - tagslut V3 (2026-02-09)
 
 ## Scope
 
@@ -66,7 +66,7 @@ This tracker is the working control plane for milestones, ownership, acceptance 
 
 2. Dual-write
 - [x] Implement dual-write from existing register/plan/execute flows
-- [x] Gate dual-write behind config flag: `dedupe.v3.dual_write=true`
+- [x] Gate dual-write behind config flag: `tagslut.v3.dual_write=true`
 - [x] Add migration validation script for row parity checks
 
 3. Backfill
@@ -76,12 +76,12 @@ This tracker is the working control plane for milestones, ownership, acceptance 
 ## Phase 2 Backlog (Completed)
 
 1. Policy loader and profile definitions
-- [x] Implement `dedupe.policy` package with profile models and loader
+- [x] Implement `tagslut.policy` package with profile models and loader
 - [x] Add policy lint rules and lint script (`scripts/lint_policy_profiles.py`)
 - [x] Add baseline policy profiles (`dj_strict`, `library_balanced`, `bulk_recovery`)
 
 2. Deterministic decide planner
-- [x] Implement deterministic planning API (`dedupe.decide`)
+- [x] Implement deterministic planning API (`tagslut.decide`)
 - [x] Stamp plans with `policy.version`, `policy.hash`, and deterministic `run_id`
 - [x] Ensure same input + same policy yields same `plan_hash`
 
@@ -93,9 +93,9 @@ This tracker is the working control plane for milestones, ownership, acceptance 
 ## Phase 3 Backlog (Completed)
 
 1. Central executor
-- [x] Add `dedupe.exec.engine` with structured `MoveReceipt`
+- [x] Add `tagslut.exec.engine` with structured `MoveReceipt`
 - [x] Add verification hook (`verify_receipt`) and stable receipt hashing
-- [x] Keep compatibility adapter (`dedupe.exec.compat`) mapped to central executor
+- [x] Keep compatibility adapter (`tagslut.exec.compat`) mapped to central executor
 
 2. Receipt + mutation contract
 - [x] Add `record_move_receipt(...)` for `move_execution` and provenance journaling
@@ -157,14 +157,14 @@ This tracker is the working control plane for milestones, ownership, acceptance 
 - `docs/PHASE1_VERIFICATION_2026-02-09.md` verification report
 
 ### Phase 2 Deliverables
-- `dedupe.policy` module
+- `tagslut.policy` module
 - policy profiles (`dj_strict`, `library_balanced`, `bulk_recovery`)
 - deterministic planning API + snapshot tests
 - `docs/PHASE2_POLICY_DECIDE.md` runbook
 - `docs/PHASE2_VERIFICATION_2026-02-09.md` verification report
 
 ### Phase 3 Deliverables
-- `dedupe.exec` centralized move executor
+- `tagslut.exec` centralized move executor
 - execution receipt schema + verification hooks
 - compatibility adapter for existing plan CSV workflows
 - `docs/PHASE3_EXECUTOR.md` runbook
@@ -244,14 +244,14 @@ Targets (Phase 4/5):
 | 2026-02-09 | Added CI audit step and legacy-wrapper import allowlist guard | Prevent silent surface drift while migration is in progress | `TBD` |
 | 2026-02-09 | MGMT mode doc flag drift removed; audit markers tightened to exact stale signatures | Remove false-positive warnings and keep audit actionable | `TBD` |
 | 2026-02-09 | Added CLI/docs consistency audit script and CI gate | Enforce canonical docs/help alignment during migration | `TBD` |
-| 2026-02-09 | Added `dedupe.exec.compat` move executor adapter and wired plan-based move scripts through it | Establish centralized move execution contract before full v3 executor rollout | `TBD` |
+| 2026-02-09 | Added `tagslut.exec.compat` move executor adapter and wired plan-based move scripts through it | Establish centralized move execution contract before full v3 executor rollout | `TBD` |
 | 2026-02-09 | Added move audit coverage for `promote_by_tags` through `FileOperations` and enforced it in repo audit checks | Close final Phase 0 move-only baseline gap (verification + audit logging across active move paths) | `TBD` |
 | 2026-02-09 | Added Phase 1 v3 schema tables, dual-write hooks, backfill scripts, and parity validator | Complete Data Model V3 foundation before policy engine work | `codex` |
 | 2026-02-09 | Published Phase 1 verification report with test/lint/parity evidence and runbook linkage | Close Step 1 with explicit validation evidence before opening Phase 2 work | `codex` |
-| 2026-02-09 | Added `dedupe.policy` package, baseline profiles, and `scripts/lint_policy_profiles.py` gate | Establish explicit policy contract before central executor cutover | `codex` |
-| 2026-02-09 | Added deterministic `dedupe.decide` planner with golden snapshot hashes and policy stamping | Close Phase 2 deterministic planning exit criteria | `codex` |
+| 2026-02-09 | Added `tagslut.policy` package, baseline profiles, and `scripts/lint_policy_profiles.py` gate | Establish explicit policy contract before central executor cutover | `codex` |
+| 2026-02-09 | Added deterministic `tagslut.decide` planner with golden snapshot hashes and policy stamping | Close Phase 2 deterministic planning exit criteria | `codex` |
 | 2026-02-09 | Published Phase 2 runbook + verification report | Close Step 2 with explicit validation evidence before opening Phase 3 work | `codex` |
-| 2026-02-09 | Added centralized `dedupe.exec` engine with receipt verification and legacy mutation guard rails | Enforce one execution contract and close DB path mutation safety gap | `codex` |
+| 2026-02-09 | Added centralized `tagslut.exec` engine with receipt verification and legacy mutation guard rails | Enforce one execution contract and close DB path mutation safety gap | `codex` |
 | 2026-02-09 | Routed plan move executors through central engine + receipt persistence helpers | Complete Phase 3 adoption without breaking existing CSV workflows | `codex` |
 | 2026-02-09 | Published Phase 3 runbook + verification report | Close Step 3 with explicit validation evidence before opening Phase 4 work | `codex` |
 | 2026-02-09 | Added converged CLI groups (`intake/index/decide/execute/verify/report/auth`) with wrapper mapping to existing flows | Expose one stable operator surface without breaking operational scripts during migration | `codex` |
@@ -260,7 +260,7 @@ Targets (Phase 4/5):
 | 2026-02-09 | Published compatibility wrapper archival criteria and dated Phase 5 timeline | Make `mgmt/metadata/recover` removal objective and auditable before cutover | `codex` |
 | 2026-02-09 | Archived inactive docs/assets from active `docs/` and repo root; rewired AGENTS/GUIDE/Makefile to canonical CLI only | Remove workflow drift and keep active surface strictly aligned to `intake/index/decide/execute/verify/report/auth` | `codex` |
 | 2026-02-09 | Formalized Beatport wrapper split: `tools/get` (sync default), `tools/get-sync`, `tools/get-report`; documented m3u-only auto mode and slug-based naming | Keep Beatport intake behavior simple and predictable while preserving report-only path | `codex` |
-| 2026-02-09 | Rebrand initiated: package metadata + CLI aliases (`tagslut`, `taglslut`) with `dedupe` compatibility retained; added rebrand runbook | Move operator-facing brand to tagslut without destabilizing existing automation | `codex` |
+| 2026-02-09 | Rebrand initiated: package metadata + CLI aliases (`tagslut`, `taglslut`) with `tagslut` compatibility retained; added rebrand runbook | Move operator-facing brand to tagslut without destabilizing existing automation | `codex` |
 | 2026-02-09 | Removed `scan/recommend/apply/promote/quarantine` from top-level CLI and updated canonical surface docs/checks | Execute `P5-LEG-001..005` in one batch while preserving `mgmt/metadata/recover` compatibility window | `codex` |
 | 2026-02-09 | Removed `mgmt/metadata/recover` from top-level CLI, rewired canonical groups to hidden internal commands, and published Phase 5 verification report | Complete `P5-COMP-001..003` and close the CLI decommission phase with executable validation evidence | `codex` |
 | 2026-02-09 | Added OneTagger operational wrappers (`tools/tag-build`, `tools/tag-run`, `tools/tag`) with DB-driven missing-ISRC batching and run summaries | Reduce metadata enrichment friction to one-command defaults while preserving deterministic artifacts and auditability | `codex` |

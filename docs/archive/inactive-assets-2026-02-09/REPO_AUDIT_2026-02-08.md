@@ -2,7 +2,7 @@
 
 ## Scope
 
-Audit focused on command surface, script organization, and repo hygiene with emphasis on dedupe operational scripts (`tools/review`) and legacy/archive overlap.
+Audit focused on command surface, script organization, and repo hygiene with emphasis on tagslut operational scripts (`tools/review`) and legacy/archive overlap.
 
 ## Findings
 
@@ -11,7 +11,7 @@ Audit focused on command surface, script organization, and repo hygiene with emp
 - `docs/V2_ARCHITECTURE.md` presents historical architecture as current.
 
 2. Build helper drift:
-- `Makefile` referenced non-existent commands (`dedupe sync`, quarantine subcommands not present).
+- `Makefile` referenced non-existent commands (`tagslut sync`, quarantine subcommands not present).
 - Promote targets pointed to legacy script path instead of active `tools/review` path.
 
 3. Script surface ambiguity:
@@ -62,8 +62,8 @@ Audit focused on command surface, script organization, and repo hygiene with emp
 1. Decide single canonical promote implementation:
 - Keep either `tools/review/promote_by_tags.py` or `legacy/tools/review/promote_by_tags.py` as primary; deprecate the other.
 
-2. Resolve `dedupe recovery` mismatch:
-- Either implement move pipeline in `dedupe recovery` or clearly route to plan/move scripts.
+2. Resolve `tagslut recovery` mismatch:
+- Either implement move pipeline in `tagslut recovery` or clearly route to plan/move scripts.
 
 3. Split historical sections from `docs/MGMT_MODE.md`:
 - Keep only currently supported options in main body.

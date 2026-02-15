@@ -40,9 +40,9 @@ def get_db_path(override: Path = None) -> Path:
     """Get database path from override, environment, or default."""
     if override:
         return override
-    if "DEDUPE_DB" in os.environ:
-        return Path(os.environ["DEDUPE_DB"])
-    return Path.home() / ".config" / "dedupe" / "music.db"
+    if "TAGSLUT_DB" in os.environ:
+        return Path(os.environ["TAGSLUT_DB"])
+    return Path.home() / ".config" / "tagslut" / "music.db"
 
 def get_download_dir(source: str, override: Path = None) -> Path:
     """Get download directory from override or sensible defaults."""
@@ -278,7 +278,7 @@ def register_files(files: list, source: str, db_path: Path):
 
     result = subprocess.run(
         [
-            sys.executable, "-m", "dedupe", "mgmt", "register",
+            sys.executable, "-m", "tagslut", "mgmt", "register",
             str(download_dir),
             "--source", source,
             "--db", str(db_path),
@@ -367,7 +367,7 @@ def main():
         print("\nUsage: tools/playlist-sync <URL> [OPTIONS]")
         print("\nOPTIONS:")
         print("  --output FILE         M3U output filename (auto-generated if omitted)")
-        print("  --db PATH             Database path (auto-detected via DEDUPE_DB if omitted)")
+        print("  --db PATH             Database path (auto-detected via TAGSLUT_DB if omitted)")
         print("  --download-dir PATH   Download directory (~/Downloads/bpdl or ~/Downloads/tiddl if omitted)")
         print("\nExamples:")
         print("  # Simple: auto-detect everything")

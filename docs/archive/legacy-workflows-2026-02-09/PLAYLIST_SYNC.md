@@ -42,7 +42,7 @@ tools/playlist-sync https://tidal.com/browse/playlist/abc --db ~/my-music.db --o
 PLAYLIST SYNC
 ======================================================================
 Source: BPDL
-Database: /Users/you/.config/dedupe/music.db
+Database: /Users/you/.config/tagslut/music.db
 
 📥 Downloading bpdl playlist...
 ✓ Playlist downloaded
@@ -85,7 +85,7 @@ Import into Roon or your DJ software
 |--------|-------------|
 | `URL` | Beatport or Tidal playlist/album URL (required) |
 | `--output FILE` | Output M3U filename (default: `playlist-TIMESTAMP.m3u`) |
-| `--db PATH` | Custom database path (default: `$DEDUPE_DB` or `~/.config/dedupe/music.db`) |
+| `--db PATH` | Custom database path (default: `$TAGSLUT_DB` or `~/.config/tagslut/music.db`) |
 
 ## Supported URLs
 
@@ -162,7 +162,7 @@ This is **smarter than filename matching** because:
 
 ```bash
 # Just check, don't download
-dedupe mgmt check ~/Downloads/bpdl --source bpdl
+tagslut mgmt check ~/Downloads/bpdl --source bpdl
 
 # See what's unique vs. duplicate
 ```
@@ -205,9 +205,9 @@ tools/get <URL>
 ```
 
 ### "Database not found"
-Set the `$DEDUPE_DB` environment variable:
+Set the `$TAGSLUT_DB` environment variable:
 ```bash
-export DEDUPE_DB=/path/to/music.db
+export TAGSLUT_DB=/path/to/music.db
 tools/playlist-sync <URL>
 ```
 
@@ -228,7 +228,7 @@ After syncing:
 **Ready to**:
 - Import M3U into DJ software (Rekordbox, Serato, Traktor)
 - Import into Roon for discovery
-- Move files to canonical library (`dedupe recovery --move`, Phase 2)
+- Move files to canonical library (`tagslut recovery --move`, Phase 2)
 - Tag files with Yate for detailed metadata
 
 ## One-Liner

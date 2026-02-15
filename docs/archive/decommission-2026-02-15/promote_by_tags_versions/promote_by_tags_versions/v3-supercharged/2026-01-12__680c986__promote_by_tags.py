@@ -435,14 +435,14 @@ def main() -> None:
         if args.log_file:
             log_path = Path(args.log_file).expanduser()
         else:
-            log_path = Path("/Users/georgeskhawam/Projects/dedupe/artifacts/M/03_reports/promote_by_tags.log")
+            log_path = Path("/Users/georgeskhawam/Projects/tagslut/artifacts/M/03_reports/promote_by_tags.log")
         log_path.parent.mkdir(parents=True, exist_ok=True)
         log_file = log_path.open("a", encoding="utf-8")
 
     resume_path = None
     if not args.no_resume:
         resume_path = Path(args.resume_file).expanduser() if args.resume_file else Path(
-            "/Users/georgeskhawam/Projects/dedupe/artifacts/M/03_reports/promote_by_tags.resume.json"
+            "/Users/georgeskhawam/Projects/tagslut/artifacts/M/03_reports/promote_by_tags.resume.json"
         )
 
     try:

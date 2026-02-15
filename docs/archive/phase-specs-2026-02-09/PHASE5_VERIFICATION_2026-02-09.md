@@ -21,7 +21,7 @@ This report closes Phase 5 (`Legacy Decommission`) in:
 Executed on February 9, 2026:
 
 ```bash
-python -m dedupe --help
+python -m tagslut --help
 ```
 
 Result: top-level wrapper commands are absent; canonical groups are present.
@@ -50,10 +50,10 @@ Result: passing.
 ## Closure
 
 Phase 5 decommission is complete. The v3 CLI surface is stable on:
-- `dedupe intake`
-- `dedupe index`
-- `dedupe decide`
-- `dedupe execute`
-- `dedupe verify`
-- `dedupe report`
-- `dedupe auth`
+- `tagslut intake`
+- `tagslut index`
+- `tagslut decide`
+- `tagslut execute`
+- `tagslut verify`
+- `tagslut report`
+- `tagslut auth`

@@ -10,10 +10,10 @@ from typing import Any
 # Ensure imports work
 sys.path.insert(0, str(Path(__file__).parents[2]))
 
-from dedupe.storage.schema import get_connection
-from dedupe.core.decisions import assess_duplicate_group
-from dedupe.utils.cli_helper import common_options, configure_execution
-from dedupe.utils.config import get_config
+from tagslut.storage.schema import get_connection
+from tagslut.core.decisions import assess_duplicate_group
+from tagslut.utils.cli_helper import common_options, configure_execution
+from tagslut.utils.config import get_config
 
 class MockFile:
     def __init__(self, row: sqlite3.Row):
@@ -85,7 +85,7 @@ def main(
     Analyzes ACOUSTIC duplicates (streaminfo_md5) and produces curator-facing review guidance.
     """
     configure_execution(verbose, config)
-    logger = logging.getLogger("dedupe")
+    logger = logging.getLogger("tagslut")
 
     app_config = get_config(Path(config) if config else None)
     priority_order = list(priority) if priority else list(

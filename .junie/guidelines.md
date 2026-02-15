@@ -1,4 +1,4 @@
-# FLAC Dedupe Project Guidelines
+# Tagslut Project Guidelines
 
 ## Build & Configuration
 
@@ -14,7 +14,7 @@ poetry update
 ```
 
 ### Configuration
-The project uses TOML configuration files. Set the `DEDUPE_CONFIG` environment variable to specify a custom config path, or place `config.toml` in the project root (see `config.example.toml` for reference).
+The project uses TOML configuration files. Set the `TAGSLUT_CONFIG` environment variable to specify a custom config path, or place `config.toml` in the project root (see `config.example.toml` for reference).
 
 ## Testing
 
@@ -84,10 +84,10 @@ def test_example_function(tmp_path: Path) -> None:
 ### Linting & Type Checking
 ```bash
 # Run flake8 linting
-poetry run flake8 dedupe tools tests
+poetry run flake8 tagslut tools tests
 
 # Run mypy type checking
-poetry run mypy dedupe
+poetry run mypy tagslut
 
 # Run all checks (lint, type-check, test)
 make check
@@ -101,7 +101,7 @@ make check
 
 ### Project Structure
 ```
-dedupe/
+tagslut/
 ├── core/          # Core deduplication logic (decisions, matching, metadata)
 ├── filters/       # File filtering utilities
 ├── migrations/    # Database migrations

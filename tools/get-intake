@@ -37,7 +37,7 @@ Options:
   --batch-root PATH    Download batch root to process (required)
   --source TEXT        Source label (bpdl|tidal). Auto-inferred from URL if omitted.
   --url URL            Source URL (alternative to positional URL)
-  --db PATH            SQLite DB path (default: $DEDUPE_DB or auto-detected latest dedupe_db EPOCH)
+  --db PATH            SQLite DB path (default: $TAGSLUT_DB or auto-detected latest tagslut_db EPOCH)
   --library-root PATH  Final library root (default: /Volumes/MUSIC/LIBRARY)
   --fix-root PATH      FIX root (default: /Volumes/MUSIC/FIX)
   --out-dir PATH       Output directory for plans (default: artifacts/compare)
@@ -160,16 +160,16 @@ autodetect_db_path() {
   local candidates=()
   local latest=""
 
-  if [[ -d "$REPO_ROOT/../dedupe_db" ]]; then
+  if [[ -d "$REPO_ROOT/../tagslut_db" ]]; then
     while IFS= read -r file; do
       [[ -n "$file" ]] && candidates+=("$file")
-    done < <(find "$REPO_ROOT/../dedupe_db" -type f -name music.db 2>/dev/null || true)
+    done < <(find "$REPO_ROOT/../tagslut_db" -type f -name music.db 2>/dev/null || true)
   fi
 
-  if [[ -d "$HOME/Projects/dedupe_db" ]]; then
+  if [[ -d "$HOME/Projects/tagslut_db" ]]; then
     while IFS= read -r file; do
       [[ -n "$file" ]] && candidates+=("$file")
-    done < <(find "$HOME/Projects/dedupe_db" -type f -name music.db 2>/dev/null || true)
+    done < <(find "$HOME/Projects/tagslut_db" -type f -name music.db 2>/dev/null || true)
   fi
 
   if [[ ${#candidates[@]} -eq 0 ]]; then
@@ -283,7 +283,7 @@ M3U_ONLY=0
 URL=""
 BATCH_ROOT=""
 SOURCE=""
-DB_PATH="${DEDUPE_DB:-}"
+DB_PATH="${TAGSLUT_DB:-}"
 LIBRARY_ROOT="/Volumes/MUSIC/LIBRARY"
 FIX_ROOT="/Volumes/MUSIC/FIX"
 OUT_DIR="$REPO_ROOT/artifacts/compare"
@@ -433,7 +433,7 @@ fi
 if [[ -z "$DB_PATH" ]]; then
   DB_PATH="$(autodetect_db_path)"
 fi
-[[ -n "$DB_PATH" ]] || err "Missing DB path. Set --db or DEDUPE_DB."
+[[ -n "$DB_PATH" ]] || err "Missing DB path. Set --db or TAGSLUT_DB."
 [[ "$TRUST" =~ ^[0-3]$ ]] || err "--trust must be 0,1,2,3"
 [[ "$TRUST_POST" =~ ^[0-3]$ ]] || err "--trust-post must be 0,1,2,3"
 [[ "$WORKERS" =~ ^[0-9]+$ ]] || err "--workers must be an integer"

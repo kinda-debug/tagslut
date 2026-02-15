@@ -7,8 +7,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Import existing database utilities
-from dedupe.utils import env_paths
-from dedupe.utils.db import open_db
+from tagslut.utils import env_paths
+from tagslut.utils.db import open_db
 
 # Import new zone logic
 from dedupe_v2.core.zone_assignment import determine_zone
@@ -37,7 +37,7 @@ def test_database_compatibility():
     
     # Open database (read-only test)
     try:
-        from dedupe.utils.db import resolve_db_path
+        from tagslut.utils.db import resolve_db_path
         resolution = resolve_db_path(
             cli_db=db_path,
             allow_create=False,

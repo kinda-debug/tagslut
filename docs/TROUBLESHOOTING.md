@@ -46,7 +46,7 @@ Beatport uses web scraping with fallback to API. If scraping fails:
 **Solution:**
 ```bash
 # Find processes using the database
-lsof +D ~/Projects/dedupe_db/
+lsof +D ~/Projects/tagslut_db/
 
 # Kill any stale processes
 # Then retry operation
@@ -60,10 +60,10 @@ lsof +D ~/Projects/dedupe_db/
 **Solution:**
 ```bash
 # Check the path exists
-ls -la ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db
+ls -la ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
 
 # Check .env configuration
-cat .env | grep DEDUPE_DB
+cat .env | grep TAGSLUT_DB
 ```
 
 ---
@@ -78,7 +78,7 @@ cat .env | grep DEDUPE_DB
 **Solution:**
 ```bash
 # Run from repo root
-cd ~/Projects/dedupe
+cd ~/Projects/tagslut
 source .venv/bin/activate
 
 # The script is at:
@@ -138,10 +138,10 @@ This is by design - tagslut uses move-only semantics and won't overwrite.
 **Solution:**
 ```bash
 # Check move receipts
-tagslut verify receipts --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db
+tagslut verify receipts --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
 
 # Review recovery status
-tagslut verify recovery --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db
+tagslut verify recovery --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
 
 # See PROVENANCE_AND_RECOVERY.md for full recovery procedure
 ```
@@ -159,10 +159,10 @@ tagslut verify recovery --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.
 **Solution:**
 ```bash
 # Get detailed audit
-tagslut index duration-audit --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db
+tagslut index duration-audit --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
 
 # If file duration is correct but reference is wrong:
-tagslut index set-duration-ref --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db
+tagslut index set-duration-ref --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
 
 # If file is corrupted:
 # - Quarantine the file
@@ -181,7 +181,7 @@ tagslut index set-duration-ref --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK
 **Solution:**
 ```bash
 # Activate virtual environment
-cd ~/Projects/dedupe
+cd ~/Projects/tagslut
 source .venv/bin/activate
 
 # Verify installation
@@ -202,14 +202,14 @@ These commands were retired on Feb 9, 2026:
 
 | Old | New |
 |-----|-----|
-| `dedupe scan` | `tagslut index ...` |
-| `dedupe recommend` | `tagslut decide plan ...` |
-| `dedupe apply` | `tagslut execute move-plan ...` |
-| `dedupe promote` | `tagslut execute promote-tags ...` |
-| `dedupe quarantine` | `tagslut execute quarantine-plan ...` |
-| `dedupe mgmt` | `tagslut index ... + tagslut report m3u ...` |
-| `dedupe metadata` | `tagslut auth ... + tagslut index enrich ...` |
-| `dedupe recover` | `tagslut verify recovery ... + tagslut report recovery ...` |
+| `tagslut scan` | `tagslut index ...` |
+| `tagslut recommend` | `tagslut decide plan ...` |
+| `tagslut apply` | `tagslut execute move-plan ...` |
+| `tagslut promote` | `tagslut execute promote-tags ...` |
+| `tagslut quarantine` | `tagslut execute quarantine-plan ...` |
+| `tagslut mgmt` | `tagslut index ... + tagslut report m3u ...` |
+| `tagslut metadata` | `tagslut auth ... + tagslut index enrich ...` |
+| `tagslut recover` | `tagslut verify recovery ... + tagslut report recovery ...` |
 
 ---
 
@@ -245,10 +245,10 @@ tagslut index register --zone library --recursive /path/to/files
 
 ```bash
 # Check environment
-env | grep -E "(DEDUPE|VOLUME)"
+env | grep -E "(TAGSLUT|VOLUME)"
 
 # Check database
-sqlite3 ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db "SELECT COUNT(*) FROM files;"
+sqlite3 ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db "SELECT COUNT(*) FROM files;"
 
 # Check token status
 tagslut auth status

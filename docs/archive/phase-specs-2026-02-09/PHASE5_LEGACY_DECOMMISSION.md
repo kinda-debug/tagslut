@@ -6,20 +6,20 @@ This document is the execution plan for Phase 5 (`Legacy Decommission`) from:
 ## Scope
 
 1. Archive/remove legacy transitional wrappers:
-- `dedupe scan`
-- `dedupe recommend`
-- `dedupe apply`
-- `dedupe promote`
-- `dedupe quarantine ...`
+- `tagslut scan`
+- `tagslut recommend`
+- `tagslut apply`
+- `tagslut promote`
+- `tagslut quarantine ...`
 
 2. Retire compatibility wrappers:
-- `dedupe mgmt ...`
-- `dedupe metadata ...`
-- `dedupe recover ...`
+- `tagslut mgmt ...`
+- `tagslut metadata ...`
+- `tagslut recover ...`
 
 ## Execution Status (as of February 9, 2026)
 
-1. Legacy wrapper command removal from `dedupe` top-level CLI: completed.
+1. Legacy wrapper command removal from `tagslut` top-level CLI: completed.
 2. Compatibility wrapper retirement (`mgmt/metadata/recover`): completed.
 
 ## Ticket Board
@@ -28,23 +28,23 @@ This document is the execution plan for Phase 5 (`Legacy Decommission`) from:
 
 | Ticket | Wrapper | Canonical Replacement | Status | Target Date |
 |---|---|---|---|---|
-| `P5-LEG-001` | `dedupe scan` | `dedupe index ...` and `dedupe verify ...` | Completed (2026-02-09) | June 15, 2026 |
-| `P5-LEG-002` | `dedupe recommend` | `dedupe decide plan ...` | Completed (2026-02-09) | June 15, 2026 |
-| `P5-LEG-003` | `dedupe apply` | `dedupe execute move-plan ...` | Completed (2026-02-09) | June 15, 2026 |
-| `P5-LEG-004` | `dedupe promote` | `dedupe execute promote-tags ...` | Completed (2026-02-09) | June 15, 2026 |
-| `P5-LEG-005` | `dedupe quarantine ...` | `dedupe execute quarantine-plan ...` | Completed (2026-02-09) | June 15, 2026 |
+| `P5-LEG-001` | `tagslut scan` | `tagslut index ...` and `tagslut verify ...` | Completed (2026-02-09) | June 15, 2026 |
+| `P5-LEG-002` | `tagslut recommend` | `tagslut decide plan ...` | Completed (2026-02-09) | June 15, 2026 |
+| `P5-LEG-003` | `tagslut apply` | `tagslut execute move-plan ...` | Completed (2026-02-09) | June 15, 2026 |
+| `P5-LEG-004` | `tagslut promote` | `tagslut execute promote-tags ...` | Completed (2026-02-09) | June 15, 2026 |
+| `P5-LEG-005` | `tagslut quarantine ...` | `tagslut execute quarantine-plan ...` | Completed (2026-02-09) | June 15, 2026 |
 
 ### Compatibility Wrapper Retirement Tickets
 
 | Ticket | Wrapper | Canonical Replacement | Status | Target Date |
 |---|---|---|---|---|
-| `P5-COMP-001` | `dedupe mgmt ...` | `dedupe index ...` + `dedupe report m3u ...` | Completed (2026-02-09) | July 3, 2026 |
-| `P5-COMP-002` | `dedupe metadata ...` | `dedupe auth ...` + `dedupe index enrich ...` | Completed (2026-02-09) | July 3, 2026 |
-| `P5-COMP-003` | `dedupe recover ...` | `dedupe verify recovery ...` + `dedupe report recovery ...` | Completed (2026-02-09) | July 3, 2026 |
+| `P5-COMP-001` | `tagslut mgmt ...` | `tagslut index ...` + `tagslut report m3u ...` | Completed (2026-02-09) | July 3, 2026 |
+| `P5-COMP-002` | `tagslut metadata ...` | `tagslut auth ...` + `tagslut index enrich ...` | Completed (2026-02-09) | July 3, 2026 |
+| `P5-COMP-003` | `tagslut recover ...` | `tagslut verify recovery ...` + `tagslut report recovery ...` | Completed (2026-02-09) | July 3, 2026 |
 
 ## Removal Gates
 
-These gates were satisfied before deleting compatibility wrappers in `dedupe/cli/main.py`.
+These gates were satisfied before deleting compatibility wrappers in `tagslut/cli/main.py`.
 
 ### Gate A - Coverage Parity
 

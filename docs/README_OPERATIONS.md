@@ -9,7 +9,7 @@ This is the single source of truth for operating the tagslut music library autom
 
 ```bash
 # Activate environment
-cd ~/Projects/dedupe
+cd ~/Projects/tagslut
 source .venv/bin/activate
 
 # Verify CLI works
@@ -19,7 +19,7 @@ tagslut --help
 ## Current Database
 
 ```
-/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db
+/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
 ```
 
 ## Canonical CLI Commands
@@ -52,7 +52,7 @@ EOF
 # Run pre-download check
 python tools/review/pre_download_check.py \
   --input ~/links.txt \
-  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db \
+  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
   --out-dir output/precheck
 ```
 
@@ -110,7 +110,7 @@ tagslut index register \
 
 ```bash
 tagslut index check \
-  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db
+  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
 ```
 
 ### 7. Duration Check (DJ Safety)
@@ -118,11 +118,11 @@ tagslut index check \
 ```bash
 # Quick check
 tagslut index duration-check \
-  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db
+  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
 
 # Full audit
 tagslut index duration-audit \
-  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db
+  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
 ```
 
 ### 7. Generate Execution Plan
@@ -134,7 +134,7 @@ tagslut decide profiles
 # Generate plan
 tagslut decide plan \
   --profile default \
-  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db \
+  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
   --output output/move_plan.json
 ```
 
@@ -156,19 +156,19 @@ python tools/review/promote_by_tags.py \
 
 ```bash
 # All verifications
-tagslut verify duration --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db
-tagslut verify recovery --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db
-tagslut verify receipts --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db
+tagslut verify duration --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
+tagslut verify recovery --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
+tagslut verify receipts --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
 ```
 
 ### 10. Generate Reports
 
 ```bash
 # M3U playlist
-tagslut report m3u --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db
+tagslut report m3u --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
 
 # Duration report
-tagslut report duration --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db
+tagslut report duration --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
 ```
 
 ## What Each Command Writes
@@ -228,16 +228,16 @@ These commands were retired on Feb 9, 2026:
 
 | Retired | Use Instead |
 |---------|-------------|
-| `dedupe scan` | `tagslut index ...` |
-| `dedupe recommend` | `tagslut decide plan ...` |
-| `dedupe apply` | `tagslut execute move-plan ...` |
-| `dedupe promote` | `tagslut execute promote-tags ...` |
-| `dedupe quarantine` | `tagslut execute quarantine-plan ...` |
-| `dedupe mgmt` | `tagslut index ... + tagslut report m3u ...` |
-| `dedupe metadata` | `tagslut auth ... + tagslut index enrich ...` |
-| `dedupe recover` | `tagslut verify recovery ... + tagslut report recovery ...` |
+| `tagslut scan` | `tagslut index ...` |
+| `tagslut recommend` | `tagslut decide plan ...` |
+| `tagslut apply` | `tagslut execute move-plan ...` |
+| `tagslut promote` | `tagslut execute promote-tags ...` |
+| `tagslut quarantine` | `tagslut execute quarantine-plan ...` |
+| `tagslut mgmt` | `tagslut index ... + tagslut report m3u ...` |
+| `tagslut metadata` | `tagslut auth ... + tagslut index enrich ...` |
+| `tagslut recover` | `tagslut verify recovery ... + tagslut report recovery ...` |
 
-**Note:** `dedupe` as an alias for `tagslut` still works, but use `tagslut` for new work.
+**Note:** `tagslut` as an alias for `tagslut` still works, but use `tagslut` for new work.
 
 ## Downloader Locations
 
@@ -252,12 +252,12 @@ Deezer:   deemix (via PATH or tools/deemix)
 Set in `.env`:
 
 ```
-DEDUPE_DB=/path/to/music.db
+TAGSLUT_DB=/path/to/music.db
 VOLUME_LIBRARY=/path/to/library
 VOLUME_STAGING=/path/to/staging
 VOLUME_ARCHIVE=/path/to/archive
 VOLUME_QUARANTINE=/path/to/quarantine
-DEDUPE_ARTIFACTS=/path/to/artifacts
+TAGSLUT_ARTIFACTS=/path/to/artifacts
 ```
 
 ## Getting Help

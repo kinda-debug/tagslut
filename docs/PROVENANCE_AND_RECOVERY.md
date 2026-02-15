@@ -52,15 +52,15 @@ artifacts/moves_<timestamp>.jsonl
 ```bash
 # 1. Check receipt status
 tagslut verify receipts \
-  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db
+  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
 
 # 2. Get recovery report
 tagslut verify recovery \
-  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db
+  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
 
 # 3. Generate detailed report
 tagslut report recovery \
-  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db \
+  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
   --output artifacts/recovery_report.md
 
 # 4. Review the report
@@ -84,7 +84,7 @@ cat artifacts/recovery_report.md
 ```bash
 # 1. Find the discrepancy
 tagslut verify recovery \
-  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db
+  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
 
 # 2. Option A: Update database to match filesystem
 tagslut index register \
@@ -112,7 +112,7 @@ mv "/old/path/file.flac" "/new/path/from/database/file.flac"
 
 # 2. Verify
 tagslut verify receipts \
-  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db
+  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
 ```
 
 ### Scenario 4: Corrupted File After Move
@@ -127,7 +127,7 @@ tagslut verify receipts \
 ```bash
 # 1. Identify the issue
 tagslut verify receipts \
-  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db
+  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
 
 # 2. Check if source still exists
 ls -la "/original/source/path.flac"
@@ -162,11 +162,11 @@ tagslut index register \
 
 # 2. Enrich with metadata
 tagslut index enrich \
-  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db
+  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
 
 # 3. Verify
 tagslut verify recovery \
-  --db ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db
+  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
 ```
 
 ## JSONL Log Format
@@ -200,16 +200,16 @@ cat artifacts/moves_*.jsonl | jq -r '.src' | xargs dirname | sort -u
 
 ```bash
 # Backup before major operations
-cp ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db \
-   ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db.backup_$(date +%Y%m%d_%H%M%S)
+cp ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
+   ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db.backup_$(date +%Y%m%d_%H%M%S)
 ```
 
 ### Restoring Backup
 
 ```bash
 # Stop any running operations first
-cp ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db.backup_YYYYMMDD_HHMMSS \
-   ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db
+cp ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db.backup_YYYYMMDD_HHMMSS \
+   ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
 ```
 
 ## Provenance Queries
@@ -217,21 +217,21 @@ cp ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db.backup_YYYYMMDD_HHMMSS 
 ### Find All Files from Beatport
 
 ```bash
-sqlite3 ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db \
+sqlite3 ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
   "SELECT path, beatport_id FROM files WHERE download_source = 'beatport' LIMIT 10;"
 ```
 
 ### Find Files with ISRC
 
 ```bash
-sqlite3 ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db \
+sqlite3 ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
   "SELECT COUNT(*) FROM files WHERE canonical_isrc IS NOT NULL AND canonical_isrc != '';"
 ```
 
 ### Find Recent Moves
 
 ```bash
-sqlite3 ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db \
+sqlite3 ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
   "SELECT * FROM moves ORDER BY timestamp DESC LIMIT 10;"
 ```
 
@@ -239,7 +239,7 @@ sqlite3 ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db \
 
 ```bash
 # Files in DB but not on filesystem
-sqlite3 ~/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db \
+sqlite3 ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
   "SELECT path FROM files;" | while read -r path; do
   [ ! -f "$path" ] && echo "Missing: $path"
 done

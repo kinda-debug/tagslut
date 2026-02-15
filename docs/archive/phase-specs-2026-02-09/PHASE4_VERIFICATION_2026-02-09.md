@@ -21,14 +21,14 @@ This report closes Phase 4 (`CLI Convergence`) in
 Executed on 2026-02-09:
 
 ```bash
-python -m dedupe --help
-python -m dedupe intake --help
-python -m dedupe index --help
-python -m dedupe decide --help
-python -m dedupe execute --help
-python -m dedupe verify --help
-python -m dedupe report --help
-python -m dedupe auth --help
+python -m tagslut --help
+python -m tagslut intake --help
+python -m tagslut index --help
+python -m tagslut decide --help
+python -m tagslut execute --help
+python -m tagslut verify --help
+python -m tagslut report --help
+python -m tagslut auth --help
 ```
 
 Result: all commands available.

@@ -1,8 +1,8 @@
 Here is the complete, **downloadable** in-place refactoring script.
 
-You can save the code block below as `refactor_dedupe.sh` in the root of your `dedupe` repository.
+You can save the code block below as `refactor_tagslut.sh` in the root of your `tagslut` repository.
 
-### `refactor_dedupe.sh`
+### `refactor_tagslut.sh`
 
 ```bash
 #!/usr/bin/env bash
@@ -12,10 +12,10 @@ set -e
 # Dedupe V2 In-Place Refactoring Script
 # ============================================================================
 # This script applies the requested architectural changes in-place:
-# 1. Enhanced Zone System (dedupe/utils/zones.py)
-# 2. Zone-Aware Keeper Selection (dedupe/core/keeper_selection.py)
-# 3. Flexible Configuration (dedupe/utils/config.py)
-# 4. Standalone Tool Support (dedupe/cli/standalone.py)
+# 1. Enhanced Zone System (tagslut/utils/zones.py)
+# 2. Zone-Aware Keeper Selection (tagslut/core/keeper_selection.py)
+# 3. Flexible Configuration (tagslut/utils/config.py)
+# 4. Standalone Tool Support (tagslut/cli/standalone.py)
 # 5. Documentation Updates (docs/)
 # ============================================================================
 
@@ -26,14 +26,14 @@ echo "🔧 Starting Dedupe V2 Refactoring..."
 echo "Target: $(pwd)"
 
 # Create necessary directories
-mkdir -p dedupe/utils dedupe/core dedupe/cli docs
+mkdir -p tagslut/utils tagslut/core tagslut/cli docs
 
 # ============================================================================
 # 1. Zone System Implementation
 # ============================================================================
-echo "📦 Creating Zone System (dedupe/utils/zones.py)..."
+echo "📦 Creating Zone System (tagslut/utils/zones.py)..."
 
-cat > dedupe/utils/zones.py << 'PYTHON_EOF'
+cat > tagslut/utils/zones.py << 'PYTHON_EOF'
 """
 Zone Management System
 
@@ -197,9 +197,9 @@ PYTHON_EOF
 # ============================================================================
 # 2. Keeper Selection Logic
 # ============================================================================
-echo "🎯 Creating Keeper Selection Logic (dedupe/core/keeper_selection.py)..."
+echo "🎯 Creating Keeper Selection Logic (tagslut/core/keeper_selection.py)..."
 
-cat > dedupe/core/keeper_selection.py << 'PYTHON_EOF'
+cat > tagslut/core/keeper_selection.py << 'PYTHON_EOF'
 """
 Keeper Selection Module
 
@@ -216,7 +216,7 @@ Produces machine-readable result AND plain-English explanation.
 from typing import List, Tuple
 from pathlib import Path
 from dataclasses import dataclass
-from dedupe.utils.zones import ZoneManager, Zone
+from tagslut.utils.zones import ZoneManager, Zone
 
 @dataclass
 class FileCandidate:
@@ -323,9 +323,9 @@ PYTHON_EOF
 # ============================================================================
 # 3. Configuration Loader
 # ============================================================================
-echo "⚙️  Creating Configuration System (dedupe/utils/config.py)..."
+echo "⚙️  Creating Configuration System (tagslut/utils/config.py)..."
 
-cat > dedupe/utils/config.py << 'PYTHON_EOF'
+cat > tagslut/utils/config.py << 'PYTHON_EOF'
 """
 Configuration Loader
 
@@ -335,7 +335,7 @@ import yaml
 import os
 from pathlib import Path
 from typing import Dict, Any
-from dedupe.utils.zones import ZoneManager
+from tagslut.utils.zones import ZoneManager
 
 class Config:
     def __init__(self, config_path: str = "config.yaml"):
@@ -350,9 +350,9 @@ class Config:
         self.zone_manager = ZoneManager(self.data)
         
         # Database Config
-        self.db_path = self.data.get('database', {}).get('path', os.getenv('DEDUPE_DB'))
+        self.db_path = self.data.get('database', {}).get('path', os.getenv('TAGSLUT_DB'))
         if not self.db_path:
-            self.db_path = "~/.dedupe/music.db"
+            self.db_path = "~/.tagslut/music.db"
         self.db_path = Path(self.db_path).expanduser()
 
     def get_scan_config(self) -> Dict[str, Any]:
@@ -372,7 +372,7 @@ cat > config.example.yaml << 'YAML_EOF'
 # Copy to config.yaml and edit to match your setup
 
 database:
-  path: ~/.dedupe/music.db
+  path: ~/.tagslut/music.db
 
 # --- Scenario A: Single Main Library ---
 # zones:
@@ -426,9 +426,9 @@ YAML_EOF
 # ============================================================================
 # 5. Standalone Tools CLI
 # ============================================================================
-echo "🛠️  Creating Standalone CLI (dedupe/cli/standalone.py)..."
+echo "🛠️  Creating Standalone CLI (tagslut/cli/standalone.py)..."
 
-cat > dedupe/cli/standalone.py << 'PYTHON_EOF'
+cat > tagslut/cli/standalone.py << 'PYTHON_EOF'
 """
 Standalone CLI Commands
 
@@ -436,9 +436,9 @@ Granular tools for inspecting, enriching, and debugging without full workflows.
 """
 import click
 from pathlib import Path
-from dedupe.utils.config import Config
-from dedupe.core.keeper_selection import KeeperSelector, FileCandidate
-from dedupe.utils.zones import Zone
+from tagslut.utils.config import Config
+from tagslut.core.keeper_selection import KeeperSelector, FileCandidate
+from tagslut.utils.zones import Zone
 
 @click.group()
 def standalone():
@@ -534,7 +534,7 @@ When duplicates are found, the Keeper is selected by:
 4. **Integrity** (Pass > Fail)
 5. **Size** (Larger is better)
 
-Decision explanations are available via `dedupe explain-keeper`.
+Decision explanations are available via `tagslut explain-keeper`.
 MD_EOF
 
 cat > docs/STANDALONE_TOOLS.md << 'MD_EOF'
@@ -547,19 +547,19 @@ Dedupe V2 supports granular operations alongside full workflows.
 ### Enrich Single File
 Enrich a file without scanning the whole DB.
 ```bash
-dedupe standalone enrich-file --file "/path/to/song.flac" --providers "tidal"
+tagslut standalone enrich-file --file "/path/to/song.flac" --providers "tidal"
 ```
 
 ### Explain Keeper
 Understand why a file was chosen (or would be chosen).
 ```bash
-dedupe standalone explain-keeper --group-id 123
+tagslut standalone explain-keeper --group-id 123
 ```
 
 ### Check Zone
 Verify how the system sees a path.
 ```bash
-dedupe standalone show-zone --path "/Volumes/Library/song.flac"
+tagslut standalone show-zone --path "/Volumes/Library/song.flac"
 ```
 MD_EOF
 
@@ -567,8 +567,8 @@ echo "✅ Refactoring Complete."
 ```
 
 ### Instructions to Run:
-1.  **Save** the content above into a file named `refactor_dedupe.sh` in the root of your repository.
-2.  **Make it executable**: `chmod +x refactor_dedupe.sh`.
-3.  **Run it**: `./refactor_dedupe.sh`.
+1.  **Save** the content above into a file named `refactor_tagslut.sh` in the root of your repository.
+2.  **Make it executable**: `chmod +x refactor_tagslut.sh`.
+3.  **Run it**: `./refactor_tagslut.sh`.
 
 This will create/update the files in your repository, implementing the zone system, keeper logic, config handling, and standalone tools exactly as specified.

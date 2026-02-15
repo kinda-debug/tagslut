@@ -44,7 +44,7 @@ Thanks — I can help debug token refresh. A few quick clarifying questions so I
 2. Which script did you run when it failed? (e.g., auth_manager.py get spotify, auth_manager.py refresh spotify, or the env_exports.sh / harvest script that calls auth_manager)
 3. Exact error/output you see when you try to refresh (copy-paste the terminal output). If there’s an HTTP status (401/403/400/429) include it and any response body snippet.
 4. Did you initialize tokens.json per the guide and populate client_id / client_secret (for Spotify/Beatport) or the required refresh_token for Tidal? Confirm which fields you filled.
-5. Are you running these from the project directory /Users/georgeskhawam/Projects/dedupe and using the Python environment there? Which Python version (python3 --version)?
+5. Are you running these from the project directory /Users/georgeskhawam/Projects/tagslut and using the Python environment there? Which Python version (python3 --version)?
 
 While you reply I’ll list the most common causes and quick checks you can run now:
 
@@ -494,7 +494,7 @@ Below is how to get the Python-side Spotify refresh working reliably, then I’l
 
 Given your current code (`TokenManager.refresh_spotify_token`), **Spotify creds must live in tokens.json**, not only in env_exports.sh.
 
-Open `~/.config/dedupe/tokens.json` (or whatever path you’re using) and ensure there is a section like:
+Open `~/.config/tagslut/tokens.json` (or whatever path you’re using) and ensure there is a section like:
 
 ```
 {
@@ -525,7 +525,7 @@ Your `auth.py` already has `init_template()` — simplest is to run a short, one
 
 ```
 python3 - << 'EOF'
-from dedupe.metadata.auth import TokenManager
+from tagslut.metadata.auth import TokenManager
 tm = TokenManager()
 tm.init_template()
 EOF
@@ -541,7 +541,7 @@ Now test the actual refresh path your scripts use:
 
 ```
 python3 - << 'EOF'
-from dedupe.metadata.auth import TokenManager
+from tagslut.metadata.auth import TokenManager
 
 tm = TokenManager()
 tok = tm.refresh_spotify_token()
@@ -553,7 +553,7 @@ What should happen:
 
 - If credentials are correct:
   - You get a non-empty access token printed.
-  - `~/.config/dedupe/tokens.json` is updated with `"access_token"` and `"expires_at"` under `"spotify"`.
+  - `~/.config/tagslut/tokens.json` is updated with `"access_token"` and `"expires_at"` under `"spotify"`.
 - If *not* correct, you’ll see one of the logged errors from `refresh_spotify_token`:
   - `Spotify client_id or client_secret not configured in tokens.json`
   - `Spotify credentials invalid (401 Unauthorized): ...`
@@ -571,7 +571,7 @@ You already have `spotify_harvest_utils.py` that uses `TokenManager.ensure_valid
 To sanity-check that path:
 
 ```
-python3 -m dedupe.metadata.spotify_harvest_utils print-token
+python3 -m tagslut.metadata.spotify_harvest_utils print-token
 echo $?
 ```
 
@@ -611,7 +611,7 @@ If you want to stop copying browser tokens and instead use the client-credential
 
    ```
    python3 - << 'EOF'
-   from dedupe.metadata.auth import TokenManager
+   from tagslut.metadata.auth import TokenManager
    tm = TokenManager()
    tok = tm.ensure_valid_token("spotify")
    print(tok.access_token)
@@ -634,7 +634,7 @@ Note: That token is valid for regular Web API endpoints (`api.spotify.com/v1/...
 
 If you paste:
 
-- The content of your current `~/.config/dedupe/tokens.json` (just the `"spotify"` part, redact if needed),
+- The content of your current `~/.config/tagslut/tokens.json` (just the `"spotify"` part, redact if needed),
 - And the exact traceback / log when you try `tm.refresh_spotify_token()`,
 
 I can give you a minimal patch (or even an exact `tokens.json` shape) to make the refresh path work.
@@ -820,7 +820,7 @@ This is as close as you’ll get to “automatic” for that internal `api-partn
 You now have proper automation for **Web API** tokens:
 
 - `TokenManager.ensure_valid_token("spotify")` gives a valid `api.spotify.com` access token.
-- `SpotifyProvider` ([dedupe/metadata/providers/spotify.py]) already wraps:
+- `SpotifyProvider` ([tagslut/metadata/providers/spotify.py]) already wraps:
   - Track by ID `/v1/tracks/{id}`
   - Search `/v1/search?q=...`
   - ISRC search `q=isrc:USRC11702778&type=track`
@@ -845,8 +845,8 @@ If you want, I can:
 
 Given your current files:
 
-- `dedupe/metadata/auth.py` – already handles official Spotify tokens.
-- `dedupe/metadata/providers/spotify.py` – wraps the Web API and returns `ProviderTrack`.
+- `tagslut/metadata/auth.py` – already handles official Spotify tokens.
+- `tagslut/metadata/providers/spotify.py` – wraps the Web API and returns `ProviderTrack`.
 - Postman:
   - Your current `pathfinder` request is effectively a one-off “partner data source” with visualization.
   - The token-extractor script lets you keep using that request without hand-pasting headers.
@@ -1802,7 +1802,7 @@ You have two sane options:
    - You maintain `spotify_partner_bearer` (and optionally `spotify_partner_client_token`) in Postman.
    - A small export step writes those into a JSON file that your Python code reads.
 2. Python is the source of truth
-   - You let `TokenManager` keep Spotify tokens in `~/.config/dedupe/tokens.json`.
+   - You let `TokenManager` keep Spotify tokens in `~/.config/tagslut/tokens.json`.
    - Postman only uses environment variables that are generated from that file.
 
 Given you already have a working Postman flow with those huge partner tokens, and your Python stack is already organized around `TokenManager`, the smoothest approach is:
@@ -1821,7 +1821,7 @@ Create a tiny local HTTP collector in your project (so Postman can `POST` to it)
 
 ### 2.1. Python collector script
 
-Create `partner_token_collector.py` in `/Users/georgeskhawam/Projects/dedupe`:
+Create `partner_token_collector.py` in `/Users/georgeskhawam/Projects/tagslut`:
 
 ```
 #!/usr/bin/env python3
@@ -1906,7 +1906,7 @@ if __name__ == "__main__":
 Run it in a terminal:
 
 ```
-cd /Users/georgeskhawam/Projects/dedupe
+cd /Users/georgeskhawam/Projects/tagslut
 python3 partner_token_collector.py
 ```
 
@@ -1965,7 +1965,7 @@ Now anytime the Postman request succeeds, `spotify_partner_tokens.json` is updat
 
 ## 3. Read those partner tokens from Python
 
-Create a tiny helper module in `dedupe/metadata/spotify_partner_tokens.py`:
+Create a tiny helper module in `tagslut/metadata/spotify_partner_tokens.py`:
 
 ```
 """
@@ -1978,7 +1978,7 @@ import json
 from pathlib import Path
 from typing import Optional, Dict
 
-ROOT = Path(__file__).resolve().parents[1]  # /Users/.../dedupe
+ROOT = Path(__file__).resolve().parents[1]  # /Users/.../tagslut
 TOKENS_PATH = ROOT / "spotify_partner_tokens.json"
 
 
@@ -2037,7 +2037,7 @@ Say you want a quick test script that replays the same query from Python:
 #!/usr/bin/env python3
 import json
 import httpx
-from dedupe.metadata.spotify_partner_tokens import get_partner_headers
+from tagslut.metadata.spotify_partner_tokens import get_partner_headers
 
 URL = "https://api-partner.spotify.com/pathfinder/v1/query"
 
@@ -2072,9 +2072,9 @@ That gives you a clean, repeatable path:
 
 Important: your existing `TokenManager` + `SpotifyProvider` are already solid for the official Web API:
 
-- `TokenManager.refresh_spotify_token()` does client‑credentials → writes `~/.config/dedupe/tokens.json`.
+- `TokenManager.refresh_spotify_token()` does client‑credentials → writes `~/.config/tagslut/tokens.json`.
 - `SpotifyProvider._get_token()` uses that for `/v1/tracks`, `/v1/search`, etc.
-- `spotify_harvest_utils` lets shell harvesters get a token via `python -m dedupe.metadata.spotify_harvest_utils print-header`.
+- `spotify_harvest_utils` lets shell harvesters get a token via `python -m tagslut.metadata.spotify_harvest_utils print-header`.
 
 The partner bridge I just described is *parallel* to that:
 
@@ -2085,7 +2085,7 @@ You can integrate further (e.g., add a `partner` entry into `tokens.json` and ha
 
 ------
 
-If you tell me where you want to plug partner calls into your current pipeline (e.g., a specific harvester script or a new provider class under `dedupe/metadata/providers`), I can give you the exact code for that class/function using `get_partner_headers()`.
+If you tell me where you want to plug partner calls into your current pipeline (e.g., a specific harvester script or a new provider class under `tagslut/metadata/providers`), I can give you the exact code for that class/function using `get_partner_headers()`.
 
 Environment
 
@@ -2109,7 +2109,7 @@ Job completed successfully
 
 Here’s what I’ve set up for you in the repo; you just have to run it.
 
-New files created under `/Users/georgeskhawam/Projects/dedupe`:
+New files created under `/Users/georgeskhawam/Projects/tagslut`:
 
 1. `partner_token_collector.py` (project root)
 
@@ -2128,16 +2128,16 @@ New files created under `/Users/georgeskhawam/Projects/dedupe`:
 - You run it with:
 
 ```
-cd /Users/georgeskhawam/Projects/dedupe
+cd /Users/georgeskhawam/Projects/tagslut
 python3 partner_token_collector.py
 ```
 
-1. `dedupe/metadata/spotify_partner_tokens.py`
+1. `tagslut/metadata/spotify_partner_tokens.py`
 
 - Helper that your code can import:
 
 ```
-from dedupe.metadata.spotify_partner_tokens import load_partner_tokens, get_partner_headers
+from tagslut.metadata.spotify_partner_tokens import load_partner_tokens, get_partner_headers
 ```
 
 - `load_partner_tokens()` reads `spotify_partner_tokens.json` and returns a dict with:
@@ -2173,7 +2173,7 @@ https://api-partner.spotify.com/pathfinder/v1/query
 You run it with:
 
 ```
-cd /Users/georgeskhawam/Projects/dedupe
+cd /Users/georgeskhawam/Projects/tagslut
 python3 test_spotify_partner_query.py
 ```
 
@@ -2204,7 +2204,7 @@ python3 partner_token_collector.py
 2. Now any Python code can do:
 
 ```
-from dedupe.metadata.spotify_partner_tokens import get_partner_headers
+from tagslut.metadata.spotify_partner_tokens import get_partner_headers
 import httpx
 
 headers = get_partner_headers()
@@ -2221,7 +2221,7 @@ If you want, next I can:
 
 Environment
 
-python3 test_spotify_partner_query.py Error: No partner tokens found. Run partner_token_collector.py and POST your tokens from Postman first. ~/Pr/dedupe v3-supercharged !12 ?15 ❯ Py dedupe 22:55:09
+python3 test_spotify_partner_query.py Error: No partner tokens found. Run partner_token_collector.py and POST your tokens from Postman first. ~/Pr/tagslut v3-supercharged !12 ?15 ❯ Py tagslut 22:55:09
 
 That error means the bridge code is working correctly but you haven’t sent any tokens into it yet.
 
@@ -2232,7 +2232,7 @@ Here’s exactly what to do, step by step, using what’s already in your projec
 From your project root:
 
 ```
-cd /Users/georgeskhawam/Projects/dedupe
+cd /Users/georgeskhawam/Projects/tagslut
 python3 partner_token_collector.py
 ```
 
@@ -2275,7 +2275,7 @@ Then click **Send**.
 If the collector is running, this will create/overwrite:
 
 ```
-/Users/georgeskhawam/Projects/dedupe/spotify_partner_tokens.json
+/Users/georgeskhawam/Projects/tagslut/spotify_partner_tokens.json
 ```
 
 1. Re-run your test script
@@ -2318,7 +2318,7 @@ If you paste the exact contents of `spotify_partner_tokens.json` (redact secrets
 
 Untitled Request
 
-~/Pr/dedupe v3-supercharged !12 ?16 ❯ python3 test_spotify_partner_query.py POST https://api-partner.spotify.com/pathfinder/v1/query Headers: { "Authorization": "Bearer BQDfUA6ymflow...", "client-token": "AABHSaI3IJoGU36g3eHC...", "Accept": "application/json", "Content-Type": "application/json", "Origin": "https://open.spotify...", "Referer": "https://open.spotify...", "Cookie": "sp_landing=https%3A%..." } Body: { "operationName": "placeholder", "variables": {}, "extensions": {} } ---------------------------------------- Status: 401 ---------------------------------------- ~/Pr/dedupe v3-supercharged !12 ?16 ❯ Py dedupe 22:57:26
+~/Pr/tagslut v3-supercharged !12 ?16 ❯ python3 test_spotify_partner_query.py POST https://api-partner.spotify.com/pathfinder/v1/query Headers: { "Authorization": "Bearer BQDfUA6ymflow...", "client-token": "AABHSaI3IJoGU36g3eHC...", "Accept": "application/json", "Content-Type": "application/json", "Origin": "https://open.spotify...", "Referer": "https://open.spotify...", "Cookie": "sp_landing=https%3A%..." } Body: { "operationName": "placeholder", "variables": {}, "extensions": {} } ---------------------------------------- Status: 401 ---------------------------------------- ~/Pr/tagslut v3-supercharged !12 ?16 ❯ Py tagslut 22:57:26
 
 Your Python bridge is working: it’s sending the same-style headers and a request body to the Spotify partner endpoint. The 401 is now down to what you’re sending, not how.
 
@@ -2435,7 +2435,7 @@ Compare with the working 200 Postman request. If it has these, add them into `ge
 - `User-Agent: <copy from browser>` (or a reasonable desktop UA)
 - Any other obvious “Spotify-client” headers.
 
-For example, in `dedupe/metadata/spotify_partner_tokens.py`:
+For example, in `tagslut/metadata/spotify_partner_tokens.py`:
 
 ```
 def get_partner_headers() -> Dict[str, str]:
@@ -2617,7 +2617,7 @@ Given your context, here’s the minimal, repeatable loop:
 A. Start your local token collector (once per dev session)
 
 ```
-cd /Users/georgeskhawam/Projects/dedupe
+cd /Users/georgeskhawam/Projects/tagslut
 python3 partner_token_collector.py
 ```
 
@@ -2736,7 +2736,7 @@ If you’d like, paste the JSON body from your 200 OK Postman call (redact any p
 
 Untitled Request
 
-POST http://127.0.0.1:5005/spotify-partner-tokens: { "Network": { "addresses": { "local": { "address": "127.0.0.1", "family": "IPv4", "port": 54283 }, "remote": { "address": "127.0.0.1", "family": "IPv4", "port": 5005 } } }, "Request Headers": { "authorization": "Bearer BQDfUA6ymflowDfDKiJHhsXtDd0dIWT4Ty1BfgLF7l_xyipufQtXZhmA3mr9fayOYS9h6kl1C7-zjYjpjmfWdEt_-XlqxVPXd27SiHfj7GCr8TyvRKjS3aP2B6gnJgTNZSJN1kW9XYRYSfFiKpif36GC4-fQjS1uQsuiwYUwa_yCrnruP-_QLdteqeNl9Yi_qDcbCzK3pF0EgJrrEwfmiIONq-yB6YoY1e_aXx24WbybAO6F68_PS9e2sL4THWKMWHUu8u_I0n_eYxQp1RbZ-QPvZb1rueDw6M-BLG7pJnX7A9c2tQvU1WJ8TSf5yXHPBTD-gESJW7cuSwQ82s2XCMYo5Ji7jnstK6VIToTdPgGvUu64yKWdJ-mc", "client-token": "AABHSaI3IJoGU36g3eHC3mTcxeakVeT3+VexhYY7OvvYEbN2394Z0KRTDs2fKOZog4ja26w666gweGsannIFH/ZKfGlrQV7HXpVCYrlZ2ds79fRIETIHVhOijaWeYy+iimdOzIQErvKVKm7XyG9xXmhWcppnOnjYNrzb+bxlgCKhp86uPNvLg8f9qyg/d5YaTukQpP6LyJqbV0DlPX5repgXKdxob70Syn8oEwrVn5TeI5uspP/4pp2Xk7D9ogzR35kLyTFe6277ROUYpjG/mYBnu7OuCiPBZZ4w30ol3vptk+X0aazwhHN+qbGeQiPgReQBFMY6PaaKPY03Ty8haGsEh6I=", "cookie": "sp_landing=https%3A%2F%2Fwww.spotify.com%2Fapi%2Fmasthead%2Fv1%2Fmasthead; sp_new=1; sp_t=3f0cd36f-8b75-43e9-b621-cbe2740700c6", "content-type": "application/json", "user-agent": "PostmanRuntime/7.51.0", "accept": "*/*", "postman-token": "7250aaad-8b01-40b5-abd4-e6941d30749a", "host": "127.0.0.1:5005", "accept-encoding": "gzip, deflate, br", "connection": "keep-alive", "content-length": "954" }, "Request Body": "{\n \"spotify_partner_bearer\": \"BQDfUA6ymflowDfDKiJHhsXtDd0dIWT4Ty1BfgLF7l_xyipufQtXZhmA3mr9fayOYS9h6kl1C7-zjYjpjmfWdEt_-XlqxVPXd27SiHfj7GCr8TyvRKjS3aP2B6gnJgTNZSJN1kW9XYRYSfFiKpif36GC4-fQjS1uQsuiwYUwa_yCrnruP-_QLdteqeNl9Yi_qDcbCzK3pF0EgJrrEwfmiIONq-yB6YoY1e_aXx24WbybAO6F68_PS9e2sL4THWKMWHUu8u_I0n_eYxQp1RbZ-QPvZb1rueDw6M-BLG7pJnX7A9c2tQvU1WJ8TSf5yXHPBTD-gESJW7cuSwQ82s2XCMYo5Ji7jnstK6VIToTdPgGvUu64yKWdJ-mc\",\n \"spotify_partner_client_token\": \"AABHSaI3IJoGU36g3eHC3mTcxeakVeT3+VexhYY7OvvYEbN2394Z0KRTDs2fKOZog4ja26w666gweGsannIFH/ZKfGlrQV7HXpVCYrlZ2ds79fRIETIHVhOijaWeYy+iimdOzIQErvKVKm7XyG9xXmhWcppnOnjYNrzb+bxlgCKhp86uPNvLg8f9qyg/d5YaTukQpP6LyJqbV0DlPX5repgXKdxob70Syn8oEwrVn5TeI5uspP/4pp2Xk7D9ogzR35kLyTFe6277ROUYpjG/mYBnu7OuCiPBZZ4w30ol3vptk+X0aazwhHN+qbGeQiPgReQBFMY6PaaKPY03Ty8haGsEh6I=\",\n \"spotify_partner_cookie\": \"sp_landing=https%3A%2F%2Fwww.spotify.com%2Fapi%2Fmasthead%2Fv1%2Fmasthead; sp_new=1; sp_t=3f0cd36f-8b75-43e9-b621-cbe2740700c6\"\n}", "Response Headers": { "server": "BaseHTTP/0.6 Python/3.12.12", "date": "Tue, 27 Jan 2026 21:03:56 GMT", "content-type": "application/json" }, "Response Body": "{\"status\": \"ok\", \"file\": \"/Users/georgeskhawam/Projects/dedupe/spotify_partner_tokens.json\"}" }
+POST http://127.0.0.1:5005/spotify-partner-tokens: { "Network": { "addresses": { "local": { "address": "127.0.0.1", "family": "IPv4", "port": 54283 }, "remote": { "address": "127.0.0.1", "family": "IPv4", "port": 5005 } } }, "Request Headers": { "authorization": "Bearer BQDfUA6ymflowDfDKiJHhsXtDd0dIWT4Ty1BfgLF7l_xyipufQtXZhmA3mr9fayOYS9h6kl1C7-zjYjpjmfWdEt_-XlqxVPXd27SiHfj7GCr8TyvRKjS3aP2B6gnJgTNZSJN1kW9XYRYSfFiKpif36GC4-fQjS1uQsuiwYUwa_yCrnruP-_QLdteqeNl9Yi_qDcbCzK3pF0EgJrrEwfmiIONq-yB6YoY1e_aXx24WbybAO6F68_PS9e2sL4THWKMWHUu8u_I0n_eYxQp1RbZ-QPvZb1rueDw6M-BLG7pJnX7A9c2tQvU1WJ8TSf5yXHPBTD-gESJW7cuSwQ82s2XCMYo5Ji7jnstK6VIToTdPgGvUu64yKWdJ-mc", "client-token": "AABHSaI3IJoGU36g3eHC3mTcxeakVeT3+VexhYY7OvvYEbN2394Z0KRTDs2fKOZog4ja26w666gweGsannIFH/ZKfGlrQV7HXpVCYrlZ2ds79fRIETIHVhOijaWeYy+iimdOzIQErvKVKm7XyG9xXmhWcppnOnjYNrzb+bxlgCKhp86uPNvLg8f9qyg/d5YaTukQpP6LyJqbV0DlPX5repgXKdxob70Syn8oEwrVn5TeI5uspP/4pp2Xk7D9ogzR35kLyTFe6277ROUYpjG/mYBnu7OuCiPBZZ4w30ol3vptk+X0aazwhHN+qbGeQiPgReQBFMY6PaaKPY03Ty8haGsEh6I=", "cookie": "sp_landing=https%3A%2F%2Fwww.spotify.com%2Fapi%2Fmasthead%2Fv1%2Fmasthead; sp_new=1; sp_t=3f0cd36f-8b75-43e9-b621-cbe2740700c6", "content-type": "application/json", "user-agent": "PostmanRuntime/7.51.0", "accept": "*/*", "postman-token": "7250aaad-8b01-40b5-abd4-e6941d30749a", "host": "127.0.0.1:5005", "accept-encoding": "gzip, deflate, br", "connection": "keep-alive", "content-length": "954" }, "Request Body": "{\n \"spotify_partner_bearer\": \"BQDfUA6ymflowDfDKiJHhsXtDd0dIWT4Ty1BfgLF7l_xyipufQtXZhmA3mr9fayOYS9h6kl1C7-zjYjpjmfWdEt_-XlqxVPXd27SiHfj7GCr8TyvRKjS3aP2B6gnJgTNZSJN1kW9XYRYSfFiKpif36GC4-fQjS1uQsuiwYUwa_yCrnruP-_QLdteqeNl9Yi_qDcbCzK3pF0EgJrrEwfmiIONq-yB6YoY1e_aXx24WbybAO6F68_PS9e2sL4THWKMWHUu8u_I0n_eYxQp1RbZ-QPvZb1rueDw6M-BLG7pJnX7A9c2tQvU1WJ8TSf5yXHPBTD-gESJW7cuSwQ82s2XCMYo5Ji7jnstK6VIToTdPgGvUu64yKWdJ-mc\",\n \"spotify_partner_client_token\": \"AABHSaI3IJoGU36g3eHC3mTcxeakVeT3+VexhYY7OvvYEbN2394Z0KRTDs2fKOZog4ja26w666gweGsannIFH/ZKfGlrQV7HXpVCYrlZ2ds79fRIETIHVhOijaWeYy+iimdOzIQErvKVKm7XyG9xXmhWcppnOnjYNrzb+bxlgCKhp86uPNvLg8f9qyg/d5YaTukQpP6LyJqbV0DlPX5repgXKdxob70Syn8oEwrVn5TeI5uspP/4pp2Xk7D9ogzR35kLyTFe6277ROUYpjG/mYBnu7OuCiPBZZ4w30ol3vptk+X0aazwhHN+qbGeQiPgReQBFMY6PaaKPY03Ty8haGsEh6I=\",\n \"spotify_partner_cookie\": \"sp_landing=https%3A%2F%2Fwww.spotify.com%2Fapi%2Fmasthead%2Fv1%2Fmasthead; sp_new=1; sp_t=3f0cd36f-8b75-43e9-b621-cbe2740700c6\"\n}", "Response Headers": { "server": "BaseHTTP/0.6 Python/3.12.12", "date": "Tue, 27 Jan 2026 21:03:56 GMT", "content-type": "application/json" }, "Response Body": "{\"status\": \"ok\", \"file\": \"/Users/georgeskhawam/Projects/tagslut/spotify_partner_tokens.json\"}" }
 
 Good news: this log proves the bridge is working exactly as intended.
 
@@ -2747,7 +2747,7 @@ Good news: this log proves the bridge is working exactly as intended.
 ```
 {
     "status": "ok",
-    "file": "/Users/georgeskhawam/Projects/dedupe/spotify_partner_tokens.json"
+    "file": "/Users/georgeskhawam/Projects/tagslut/spotify_partner_tokens.json"
 }
 ```
 
@@ -2772,7 +2772,7 @@ Here’s the minimal checklist to get a working Python call.
 From the project root:
 
 ```
-cd /Users/georgeskhawam/Projects/dedupe
+cd /Users/georgeskhawam/Projects/tagslut
 cat spotify_partner_tokens.json
 ```
 
@@ -2899,7 +2899,7 @@ If this still gives 401 and the response headers again say `"error_description" 
 
 Untitled Request
 
-~/Pr/dedupe v3-supercharged !12 ?16 ❯ cd /Users/georgeskhawam/Projects/dedupe cat spotify_partner_tokens.json { "spotify_partner_bearer": "BQDfUA6ymflowDfDKiJHhsXtDd0dIWT4Ty1BfgLF7l_xyipufQtXZhmA3mr9fayOYS9h6kl1C7-zjYjpjmfWdEt_-XlqxVPXd27SiHfj7GCr8TyvRKjS3aP2B6gnJgTNZSJN1kW9XYRYSfFiKpif36GC4-fQjS1uQsuiwYUwa_yCrnruP-_QLdteqeNl9Yi_qDcbCzK3pF0EgJrrEwfmiIONq-yB6YoY1e_aXx24WbybAO6F68_PS9e2sL4THWKMWHUu8u_I0n_eYxQp1RbZ-QPvZb1rueDw6M-BLG7pJnX7A9c2tQvU1WJ8TSf5yXHPBTD-gESJW7cuSwQ82s2XCMYo5Ji7jnstK6VIToTdPgGvUu64yKWdJ-mc", "spotify_partner_client_token": "AABHSaI3IJoGU36g3eHC3mTcxeakVeT3+VexhYY7OvvYEbN2394Z0KRTDs2fKOZog4ja26w666gweGsannIFH/ZKfGlrQV7HXpVCYrlZ2ds79fRIETIHVhOijaWeYy+iimdOzIQErvKVKm7XyG9xXmhWcppnOnjYNrzb+bxlgCKhp86uPNvLg8f9qyg/d5YaTukQpP6LyJqbV0DlPX5repgXKdxob70Syn8oEwrVn5TeI5uspP/4pp2Xk7D9ogzR35kLyTFe6277ROUYpjG/mYBnu7OuCiPBZZ4w30ol3vptk+X0aazwhHN+qbGeQiPgReQBFMY6PaaKPY03Ty8haGsEh6I=", "spotify_partner_cookie": "sp_landing=https%3A%2F%2Fwww.spotify.com%2Fapi%2Fmasthead%2Fv1%2Fmasthead; sp_new=1; sp_t=3f0cd36f-8b75-43e9-b621-cbe2740700c6" }% ~/Pr/dedupe v3-supercharged !12 ?16 ❯ Py dedupe 23:04:36
+~/Pr/tagslut v3-supercharged !12 ?16 ❯ cd /Users/georgeskhawam/Projects/tagslut cat spotify_partner_tokens.json { "spotify_partner_bearer": "BQDfUA6ymflowDfDKiJHhsXtDd0dIWT4Ty1BfgLF7l_xyipufQtXZhmA3mr9fayOYS9h6kl1C7-zjYjpjmfWdEt_-XlqxVPXd27SiHfj7GCr8TyvRKjS3aP2B6gnJgTNZSJN1kW9XYRYSfFiKpif36GC4-fQjS1uQsuiwYUwa_yCrnruP-_QLdteqeNl9Yi_qDcbCzK3pF0EgJrrEwfmiIONq-yB6YoY1e_aXx24WbybAO6F68_PS9e2sL4THWKMWHUu8u_I0n_eYxQp1RbZ-QPvZb1rueDw6M-BLG7pJnX7A9c2tQvU1WJ8TSf5yXHPBTD-gESJW7cuSwQ82s2XCMYo5Ji7jnstK6VIToTdPgGvUu64yKWdJ-mc", "spotify_partner_client_token": "AABHSaI3IJoGU36g3eHC3mTcxeakVeT3+VexhYY7OvvYEbN2394Z0KRTDs2fKOZog4ja26w666gweGsannIFH/ZKfGlrQV7HXpVCYrlZ2ds79fRIETIHVhOijaWeYy+iimdOzIQErvKVKm7XyG9xXmhWcppnOnjYNrzb+bxlgCKhp86uPNvLg8f9qyg/d5YaTukQpP6LyJqbV0DlPX5repgXKdxob70Syn8oEwrVn5TeI5uspP/4pp2Xk7D9ogzR35kLyTFe6277ROUYpjG/mYBnu7OuCiPBZZ4w30ol3vptk+X0aazwhHN+qbGeQiPgReQBFMY6PaaKPY03Ty8haGsEh6I=", "spotify_partner_cookie": "sp_landing=https%3A%2F%2Fwww.spotify.com%2Fapi%2Fmasthead%2Fv1%2Fmasthead; sp_new=1; sp_t=3f0cd36f-8b75-43e9-b621-cbe2740700c6" }% ~/Pr/tagslut v3-supercharged !12 ?16 ❯ Py tagslut 23:04:36
 
 You now have exactly what we wanted in `spotify_partner_tokens.json`:
 
@@ -2924,7 +2924,7 @@ Let’s lock down both.
 
 1. Make Python read these exact keys
 
-Your `dedupe/metadata/spotify_partner_tokens.py` should look like this (or very close):
+Your `tagslut/metadata/spotify_partner_tokens.py` should look like this (or very close):
 
 ```
 import json
@@ -2993,7 +2993,7 @@ For example:
 
 ```
 import httpx
-from dedupe.metadata.spotify_partner_tokens import get_partner_headers
+from tagslut.metadata.spotify_partner_tokens import get_partner_headers
 
 def main():
     url = "https://api-partner.spotify.com/pathfinder/v1/query"
@@ -3111,7 +3111,7 @@ GET
 
 Untitled Request
 
-POST http://127.0.0.1:5005/spotify-partner-tokens 200 24 ms Network Request Headers Authorization: Bearer BQDfUA6ymflowDfDKiJHhsXtDd0dIWT4Ty1BfgLF7l_xyipufQtXZhmA3mr9fayOYS9h6kl1C7-zjYjpjmfWdEt_-XlqxVPXd27SiHfj7GCr8TyvRKjS3aP2B6gnJgTNZSJN1kW9XYRYSfFiKpif36GC4-fQjS1uQsuiwYUwa_yCrnruP-_QLdteqeNl9Yi_qDcbCzK3pF0EgJrrEwfmiIONq-yB6YoY1e_aXx24WbybAO6F68_PS9e2sL4THWKMWHUu8u_I0n_eYxQp1RbZ-QPvZb1rueDw6M-BLG7pJnX7A9c2tQvU1WJ8TSf5yXHPBTD-gESJW7cuSwQ82s2XCMYo5Ji7jnstK6VIToTdPgGvUu64yKWdJ-mc client-token: AABHSaI3IJoGU36g3eHC3mTcxeakVeT3+VexhYY7OvvYEbN2394Z0KRTDs2fKOZog4ja26w666gweGsannIFH/ZKfGlrQV7HXpVCYrlZ2ds79fRIETIHVhOijaWeYy+iimdOzIQErvKVKm7XyG9xXmhWcppnOnjYNrzb+bxlgCKhp86uPNvLg8f9qyg/d5YaTukQpP6LyJqbV0DlPX5repgXKdxob70Syn8oEwrVn5TeI5uspP/4pp2Xk7D9ogzR35kLyTFe6277ROUYpjG/mYBnu7OuCiPBZZ4w30ol3vptk+X0aazwhHN+qbGeQiPgReQBFMY6PaaKPY03Ty8haGsEh6I= Cookie: sp_landing=https%3A%2F%2Fwww.spotify.com%2Fapi%2Fmasthead%2Fv1%2Fmasthead; sp_new=1; sp_t=3f0cd36f-8b75-43e9-b621-cbe2740700c6 Content-Type: application/json User-Agent: PostmanRuntime/7.51.0 Accept: */* Postman-Token: 7c6ef5fa-04ab-429e-95f3-e87f9f94a1a6 Host: 127.0.0.1:5005 Accept-Encoding: gzip, deflate, br Connection: keep-alive Content-Length: 954 Request Body Response Headers Server: BaseHTTP/0.6 Python/3.12.12 Date: Tue, 27 Jan 2026 21:56:50 GMT Content-Type: application/json Response Body {"status": "ok", "file": "/Users/georgeskhawam/Projects/dedupe/spotify_partner_tokens.json"} i cant be any faster ~/Pr/dedupe v3-supercharged !12 ?16 ❯ python3 test_spotify_partner_query.py POST https://api-partner.spotify.com/pathfinder/v1/query Headers: { "Authorization": "Bearer BQDfUA6ymflow...", "client-token": "AABHSaI3IJoGU36g3eHC...", "Accept": "application/json", "Content-Type": "application/json", "Origin": "https://open.spotify...", "Referer": "https://open.spotify...", "Cookie": "sp_landing=https%3A%..." } Body: { "operationName": "placeholder", "variables": {}, "extensions": {} } ---------------------------------------- Status: 401 ---------------------------------------- ~/Pr/dedupe v3-supercharged !12 ?16 ❯ Py dedupe 23:57:01 ~/Pr/dedupe v3-supercharged !12 ?15 ❯ cd /Users/georgeskhawam/Projects/dedupe python3 partner_token_collector.py Token collector listening on http://127.0.0.1:5005/spotify-partner-tokens POST your Postman environment variables here to save them. [+] Tokens written to /Users/georgeskhawam/Projects/dedupe/spotify_partner_tokens.json [127.0.0.1] "POST /spotify-partner-tokens HTTP/1.1" 200 - [+] Tokens written to /Users/georgeskhawam/Projects/dedupe/spotify_partner_tokens.json [127.0.0.1] "POST /spotify-partner-tokens HTTP/1.1" 200 - [+] Tokens written to /Users/georgeskhawam/Projects/dedupe/spotify_partner_tokens.json [127.0.0.1] "POST /spotify-partner-tokens HTTP/1.1" 200 - [+] Tokens written to /Users/georgeskhawam/Projects/dedupe/spotify_partner_tokens.json [127.0.0.1] "POST /spotify-partner-tokens HTTP/1.1" 200 -
+POST http://127.0.0.1:5005/spotify-partner-tokens 200 24 ms Network Request Headers Authorization: Bearer BQDfUA6ymflowDfDKiJHhsXtDd0dIWT4Ty1BfgLF7l_xyipufQtXZhmA3mr9fayOYS9h6kl1C7-zjYjpjmfWdEt_-XlqxVPXd27SiHfj7GCr8TyvRKjS3aP2B6gnJgTNZSJN1kW9XYRYSfFiKpif36GC4-fQjS1uQsuiwYUwa_yCrnruP-_QLdteqeNl9Yi_qDcbCzK3pF0EgJrrEwfmiIONq-yB6YoY1e_aXx24WbybAO6F68_PS9e2sL4THWKMWHUu8u_I0n_eYxQp1RbZ-QPvZb1rueDw6M-BLG7pJnX7A9c2tQvU1WJ8TSf5yXHPBTD-gESJW7cuSwQ82s2XCMYo5Ji7jnstK6VIToTdPgGvUu64yKWdJ-mc client-token: AABHSaI3IJoGU36g3eHC3mTcxeakVeT3+VexhYY7OvvYEbN2394Z0KRTDs2fKOZog4ja26w666gweGsannIFH/ZKfGlrQV7HXpVCYrlZ2ds79fRIETIHVhOijaWeYy+iimdOzIQErvKVKm7XyG9xXmhWcppnOnjYNrzb+bxlgCKhp86uPNvLg8f9qyg/d5YaTukQpP6LyJqbV0DlPX5repgXKdxob70Syn8oEwrVn5TeI5uspP/4pp2Xk7D9ogzR35kLyTFe6277ROUYpjG/mYBnu7OuCiPBZZ4w30ol3vptk+X0aazwhHN+qbGeQiPgReQBFMY6PaaKPY03Ty8haGsEh6I= Cookie: sp_landing=https%3A%2F%2Fwww.spotify.com%2Fapi%2Fmasthead%2Fv1%2Fmasthead; sp_new=1; sp_t=3f0cd36f-8b75-43e9-b621-cbe2740700c6 Content-Type: application/json User-Agent: PostmanRuntime/7.51.0 Accept: */* Postman-Token: 7c6ef5fa-04ab-429e-95f3-e87f9f94a1a6 Host: 127.0.0.1:5005 Accept-Encoding: gzip, deflate, br Connection: keep-alive Content-Length: 954 Request Body Response Headers Server: BaseHTTP/0.6 Python/3.12.12 Date: Tue, 27 Jan 2026 21:56:50 GMT Content-Type: application/json Response Body {"status": "ok", "file": "/Users/georgeskhawam/Projects/tagslut/spotify_partner_tokens.json"} i cant be any faster ~/Pr/tagslut v3-supercharged !12 ?16 ❯ python3 test_spotify_partner_query.py POST https://api-partner.spotify.com/pathfinder/v1/query Headers: { "Authorization": "Bearer BQDfUA6ymflow...", "client-token": "AABHSaI3IJoGU36g3eHC...", "Accept": "application/json", "Content-Type": "application/json", "Origin": "https://open.spotify...", "Referer": "https://open.spotify...", "Cookie": "sp_landing=https%3A%..." } Body: { "operationName": "placeholder", "variables": {}, "extensions": {} } ---------------------------------------- Status: 401 ---------------------------------------- ~/Pr/tagslut v3-supercharged !12 ?16 ❯ Py tagslut 23:57:01 ~/Pr/tagslut v3-supercharged !12 ?15 ❯ cd /Users/georgeskhawam/Projects/tagslut python3 partner_token_collector.py Token collector listening on http://127.0.0.1:5005/spotify-partner-tokens POST your Postman environment variables here to save them. [+] Tokens written to /Users/georgeskhawam/Projects/tagslut/spotify_partner_tokens.json [127.0.0.1] "POST /spotify-partner-tokens HTTP/1.1" 200 - [+] Tokens written to /Users/georgeskhawam/Projects/tagslut/spotify_partner_tokens.json [127.0.0.1] "POST /spotify-partner-tokens HTTP/1.1" 200 - [+] Tokens written to /Users/georgeskhawam/Projects/tagslut/spotify_partner_tokens.json [127.0.0.1] "POST /spotify-partner-tokens HTTP/1.1" 200 - [+] Tokens written to /Users/georgeskhawam/Projects/tagslut/spotify_partner_tokens.json [127.0.0.1] "POST /spotify-partner-tokens HTTP/1.1" 200 -
 
 You’re not doing anything wrong or “too slow.” The 401 is happening because:
 
@@ -3173,7 +3173,7 @@ Open `test_spotify_partner_query.py` and replace the dummy body with the copied 
 
 ```
 import httpx
-from dedupe.metadata.spotify_partner_tokens import get_partner_headers
+from tagslut.metadata.spotify_partner_tokens import get_partner_headers
 
 def main():
     url = "https://api-partner.spotify.com/pathfinder/v1/query"
@@ -3228,7 +3228,7 @@ Your sequence is already good:
 3. Immediately:
 
 ```
-cd /Users/georgeskhawam/Projects/dedupe
+cd /Users/georgeskhawam/Projects/tagslut
 python3 test_spotify_partner_query.py
 ```
 
@@ -3244,7 +3244,7 @@ GET
 
 Untitled Request
 
-~/Pr/dedupe v3-supercharged !12 ?16 ❯ cat /Users/georgeskhawam/Projects/dedupe/partner_token_collector.py import httpx from dedupe.metadata.spotify_partner_tokens import get_partner_headers def main(): url = "https://api-partner.spotify.com/pathfinder/v1/query" headers = get_partner_headers() body = {"variables":{"uris":["spotify:track:1xYsgHPHiR3IIdpRzkfKcE","spotify:track:00xBwgnA5bj9UG0GwR3IcM","spotify:track:4hl0xxnnQ2QNjZYVwizQaw","spotify:track:3nM8DUmkWDLpdnu0UH0a4M","spotify:track:5EhlQgSiQeoB2tnbzw5X5m"]},"extensions":{"persistedQuery":{"version":1,"sha256Hash":"697706196617419cd713ed01a204a312876b51fba591b70bf961ddc0eccd5e8e"}}} print("POST", url) print("Headers:", headers) print("Body:", body) with httpx.Client(timeout=10) as client: resp = client.post(url, headers=headers, json=body) print("-" * 40) print("Status:", resp.status_code) print("-" * 40) try: print(resp.json()) except Exception: print(resp.text) if __name__ == "__main__": main()y ~/Pr/dedupe v3-supercharged !12 ?16 ❯ python3 test_spotify_partner_query.py POST https://api-partner.spotify.com/pathfinder/v1/query Headers: { "Authorization": "Bearer BQDfUA6ymflow...", "client-token": "AABHSaI3IJoGU36g3eHC...", "Accept": "application/json", "Content-Type": "application/json", "Origin": "https://open.spotify...", "Referer": "https://open.spotify...", "Cookie": "sp_landing=https%3A%..." } Body: { "operationName": "placeholder", "variables": {}, "extensions": {} } ---------------------------------------- Status: 401 ---------------------------------------- POST http://127.0.0.1:5005/spotify-partner-tokens: { "Network": { "addresses": { "local": { "address": "127.0.0.1", "family": "IPv4", "port": 59303 }, "remote": { "address": "127.0.0.1", "family": "IPv4", "port": 5005 } } }, "Request Headers": { "authorization": "Bearer BQDfUA6ymflowDfDKiJHhsXtDd0dIWT4Ty1BfgLF7l_xyipufQtXZhmA3mr9fayOYS9h6kl1C7-zjYjpjmfWdEt_-XlqxVPXd27SiHfj7GCr8TyvRKjS3aP2B6gnJgTNZSJN1kW9XYRYSfFiKpif36GC4-fQjS1uQsuiwYUwa_yCrnruP-_QLdteqeNl9Yi_qDcbCzK3pF0EgJrrEwfmiIONq-yB6YoY1e_aXx24WbybAO6F68_PS9e2sL4THWKMWHUu8u_I0n_eYxQp1RbZ-QPvZb1rueDw6M-BLG7pJnX7A9c2tQvU1WJ8TSf5yXHPBTD-gESJW7cuSwQ82s2XCMYo5Ji7jnstK6VIToTdPgGvUu64yKWdJ-mc", "client-token": "AABHSaI3IJoGU36g3eHC3mTcxeakVeT3+VexhYY7OvvYEbN2394Z0KRTDs2fKOZog4ja26w666gweGsannIFH/ZKfGlrQV7HXpVCYrlZ2ds79fRIETIHVhOijaWeYy+iimdOzIQErvKVKm7XyG9xXmhWcppnOnjYNrzb+bxlgCKhp86uPNvLg8f9qyg/d5YaTukQpP6LyJqbV0DlPX5repgXKdxob70Syn8oEwrVn5TeI5uspP/4pp2Xk7D9ogzR35kLyTFe6277ROUYpjG/mYBnu7OuCiPBZZ4w30ol3vptk+X0aazwhHN+qbGeQiPgReQBFMY6PaaKPY03Ty8haGsEh6I=", "cookie": "sp_landing=https%3A%2F%2Fwww.spotify.com%2Fapi%2Fmasthead%2Fv1%2Fmasthead; sp_new=1; sp_t=3f0cd36f-8b75-43e9-b621-cbe2740700c6", "content-type": "application/json", "user-agent": "PostmanRuntime/7.51.0", "accept": "*/*", "postman-token": "4307f043-efc8-4dd7-bcff-14ca579d48df", "host": "127.0.0.1:5005", "accept-encoding": "gzip, deflate, br", "connection": "keep-alive", "content-length": "954" }, "Request Body": "{\n \"spotify_partner_bearer\": \"BQDfUA6ymflowDfDKiJHhsXtDd0dIWT4Ty1BfgLF7l_xyipufQtXZhmA3mr9fayOYS9h6kl1C7-zjYjpjmfWdEt_-XlqxVPXd27SiHfj7GCr8TyvRKjS3aP2B6gnJgTNZSJN1kW9XYRYSfFiKpif36GC4-fQjS1uQsuiwYUwa_yCrnruP-_QLdteqeNl9Yi_qDcbCzK3pF0EgJrrEwfmiIONq-yB6YoY1e_aXx24WbybAO6F68_PS9e2sL4THWKMWHUu8u_I0n_eYxQp1RbZ-QPvZb1rueDw6M-BLG7pJnX7A9c2tQvU1WJ8TSf5yXHPBTD-gESJW7cuSwQ82s2XCMYo5Ji7jnstK6VIToTdPgGvUu64yKWdJ-mc\",\n \"spotify_partner_client_token\": \"AABHSaI3IJoGU36g3eHC3mTcxeakVeT3+VexhYY7OvvYEbN2394Z0KRTDs2fKOZog4ja26w666gweGsannIFH/ZKfGlrQV7HXpVCYrlZ2ds79fRIETIHVhOijaWeYy+iimdOzIQErvKVKm7XyG9xXmhWcppnOnjYNrzb+bxlgCKhp86uPNvLg8f9qyg/d5YaTukQpP6LyJqbV0DlPX5repgXKdxob70Syn8oEwrVn5TeI5uspP/4pp2Xk7D9ogzR35kLyTFe6277ROUYpjG/mYBnu7OuCiPBZZ4w30ol3vptk+X0aazwhHN+qbGeQiPgReQBFMY6PaaKPY03Ty8haGsEh6I=\",\n \"spotify_partner_cookie\": \"sp_landing=https%3A%2F%2Fwww.spotify.com%2Fapi%2Fmasthead%2Fv1%2Fmasthead; sp_new=1; sp_t=3f0cd36f-8b75-43e9-b621-cbe2740700c6\"\n}", "Response Headers": { "server": "BaseHTTP/0.6 Python/3.12.12", "date": "Tue, 27 Jan 2026 22:04:44 GMT", "content-type": "application/json" }, "Response Body": "{\"status\": \"ok\", \"file\": \"/Users/georgeskhawam/Projects/dedupe/spotify_partner_tokens.json\"}" }
+~/Pr/tagslut v3-supercharged !12 ?16 ❯ cat /Users/georgeskhawam/Projects/tagslut/partner_token_collector.py import httpx from tagslut.metadata.spotify_partner_tokens import get_partner_headers def main(): url = "https://api-partner.spotify.com/pathfinder/v1/query" headers = get_partner_headers() body = {"variables":{"uris":["spotify:track:1xYsgHPHiR3IIdpRzkfKcE","spotify:track:00xBwgnA5bj9UG0GwR3IcM","spotify:track:4hl0xxnnQ2QNjZYVwizQaw","spotify:track:3nM8DUmkWDLpdnu0UH0a4M","spotify:track:5EhlQgSiQeoB2tnbzw5X5m"]},"extensions":{"persistedQuery":{"version":1,"sha256Hash":"697706196617419cd713ed01a204a312876b51fba591b70bf961ddc0eccd5e8e"}}} print("POST", url) print("Headers:", headers) print("Body:", body) with httpx.Client(timeout=10) as client: resp = client.post(url, headers=headers, json=body) print("-" * 40) print("Status:", resp.status_code) print("-" * 40) try: print(resp.json()) except Exception: print(resp.text) if __name__ == "__main__": main()y ~/Pr/tagslut v3-supercharged !12 ?16 ❯ python3 test_spotify_partner_query.py POST https://api-partner.spotify.com/pathfinder/v1/query Headers: { "Authorization": "Bearer BQDfUA6ymflow...", "client-token": "AABHSaI3IJoGU36g3eHC...", "Accept": "application/json", "Content-Type": "application/json", "Origin": "https://open.spotify...", "Referer": "https://open.spotify...", "Cookie": "sp_landing=https%3A%..." } Body: { "operationName": "placeholder", "variables": {}, "extensions": {} } ---------------------------------------- Status: 401 ---------------------------------------- POST http://127.0.0.1:5005/spotify-partner-tokens: { "Network": { "addresses": { "local": { "address": "127.0.0.1", "family": "IPv4", "port": 59303 }, "remote": { "address": "127.0.0.1", "family": "IPv4", "port": 5005 } } }, "Request Headers": { "authorization": "Bearer BQDfUA6ymflowDfDKiJHhsXtDd0dIWT4Ty1BfgLF7l_xyipufQtXZhmA3mr9fayOYS9h6kl1C7-zjYjpjmfWdEt_-XlqxVPXd27SiHfj7GCr8TyvRKjS3aP2B6gnJgTNZSJN1kW9XYRYSfFiKpif36GC4-fQjS1uQsuiwYUwa_yCrnruP-_QLdteqeNl9Yi_qDcbCzK3pF0EgJrrEwfmiIONq-yB6YoY1e_aXx24WbybAO6F68_PS9e2sL4THWKMWHUu8u_I0n_eYxQp1RbZ-QPvZb1rueDw6M-BLG7pJnX7A9c2tQvU1WJ8TSf5yXHPBTD-gESJW7cuSwQ82s2XCMYo5Ji7jnstK6VIToTdPgGvUu64yKWdJ-mc", "client-token": "AABHSaI3IJoGU36g3eHC3mTcxeakVeT3+VexhYY7OvvYEbN2394Z0KRTDs2fKOZog4ja26w666gweGsannIFH/ZKfGlrQV7HXpVCYrlZ2ds79fRIETIHVhOijaWeYy+iimdOzIQErvKVKm7XyG9xXmhWcppnOnjYNrzb+bxlgCKhp86uPNvLg8f9qyg/d5YaTukQpP6LyJqbV0DlPX5repgXKdxob70Syn8oEwrVn5TeI5uspP/4pp2Xk7D9ogzR35kLyTFe6277ROUYpjG/mYBnu7OuCiPBZZ4w30ol3vptk+X0aazwhHN+qbGeQiPgReQBFMY6PaaKPY03Ty8haGsEh6I=", "cookie": "sp_landing=https%3A%2F%2Fwww.spotify.com%2Fapi%2Fmasthead%2Fv1%2Fmasthead; sp_new=1; sp_t=3f0cd36f-8b75-43e9-b621-cbe2740700c6", "content-type": "application/json", "user-agent": "PostmanRuntime/7.51.0", "accept": "*/*", "postman-token": "4307f043-efc8-4dd7-bcff-14ca579d48df", "host": "127.0.0.1:5005", "accept-encoding": "gzip, deflate, br", "connection": "keep-alive", "content-length": "954" }, "Request Body": "{\n \"spotify_partner_bearer\": \"BQDfUA6ymflowDfDKiJHhsXtDd0dIWT4Ty1BfgLF7l_xyipufQtXZhmA3mr9fayOYS9h6kl1C7-zjYjpjmfWdEt_-XlqxVPXd27SiHfj7GCr8TyvRKjS3aP2B6gnJgTNZSJN1kW9XYRYSfFiKpif36GC4-fQjS1uQsuiwYUwa_yCrnruP-_QLdteqeNl9Yi_qDcbCzK3pF0EgJrrEwfmiIONq-yB6YoY1e_aXx24WbybAO6F68_PS9e2sL4THWKMWHUu8u_I0n_eYxQp1RbZ-QPvZb1rueDw6M-BLG7pJnX7A9c2tQvU1WJ8TSf5yXHPBTD-gESJW7cuSwQ82s2XCMYo5Ji7jnstK6VIToTdPgGvUu64yKWdJ-mc\",\n \"spotify_partner_client_token\": \"AABHSaI3IJoGU36g3eHC3mTcxeakVeT3+VexhYY7OvvYEbN2394Z0KRTDs2fKOZog4ja26w666gweGsannIFH/ZKfGlrQV7HXpVCYrlZ2ds79fRIETIHVhOijaWeYy+iimdOzIQErvKVKm7XyG9xXmhWcppnOnjYNrzb+bxlgCKhp86uPNvLg8f9qyg/d5YaTukQpP6LyJqbV0DlPX5repgXKdxob70Syn8oEwrVn5TeI5uspP/4pp2Xk7D9ogzR35kLyTFe6277ROUYpjG/mYBnu7OuCiPBZZ4w30ol3vptk+X0aazwhHN+qbGeQiPgReQBFMY6PaaKPY03Ty8haGsEh6I=\",\n \"spotify_partner_cookie\": \"sp_landing=https%3A%2F%2Fwww.spotify.com%2Fapi%2Fmasthead%2Fv1%2Fmasthead; sp_new=1; sp_t=3f0cd36f-8b75-43e9-b621-cbe2740700c6\"\n}", "Response Headers": { "server": "BaseHTTP/0.6 Python/3.12.12", "date": "Tue, 27 Jan 2026 22:04:44 GMT", "content-type": "application/json" }, "Response Body": "{\"status\": \"ok\", \"file\": \"/Users/georgeskhawam/Projects/tagslut/spotify_partner_tokens.json\"}" }
 
 You’ve got two different Python scripts mixed up:
 
@@ -3256,7 +3256,7 @@ But right now, your **collector file** contains the HTTP client code with the pl
 ```
 # This should NOT be in partner_token_collector.py
 import httpx
-from dedupe.metadata.spotify_partner_tokens import get_partner_headers
+from tagslut.metadata.spotify_partner_tokens import get_partner_headers
 
 def main():
     url = "https://api-partner.spotify.com/pathfinder/v1/query"
@@ -3288,7 +3288,7 @@ Below is a clean, minimal setup you can copy over.
 
 ### 1. Restore `partner_token_collector.py` to be ONLY the server
 
-Replace `/Users/georgeskhawam/Projects/dedupe/partner_token_collector.py` with:
+Replace `/Users/georgeskhawam/Projects/tagslut/partner_token_collector.py` with:
 
 ```
 import json
@@ -3373,7 +3373,7 @@ So `test_spotify_partner_query.py` should look like:
 
 ```
 import httpx
-from dedupe.metadata.spotify_partner_tokens import get_partner_headers
+from tagslut.metadata.spotify_partner_tokens import get_partner_headers
 
 def main():
     url = "https://api-partner.spotify.com/pathfinder/v1/query"
@@ -3419,7 +3419,7 @@ if __name__ == "__main__":
 After saving, run:
 
 ```
-cd /Users/georgeskhawam/Projects/dedupe
+cd /Users/georgeskhawam/Projects/tagslut
 python3 test_spotify_partner_query.py
 ```
 
@@ -3492,7 +3492,7 @@ Both files are updated and verified:
 
 **test_spotify_partner_query.py** — Client that:
 
-- Imports `get_partner_headers()` from `dedupe.metadata.spotify_partner_tokens`
+- Imports `get_partner_headers()` from `tagslut.metadata.spotify_partner_tokens`
 - POSTs to `https://api-partner.spotify.com/pathfinder/v1/query`
 - Uses the correct body with `variables.uris` and `extensions.persistedQuery` (sha256Hash `697706196617419cd713ed01a204a312876b51fba591b70bf961ddc0eccd5e8e`)
 - No placeholder body remains — `"operationName": "placeholder"` is gone
@@ -3507,7 +3507,7 @@ Both files are updated and verified:
 
 **test_spotify_partner_query.py** — Client that:
 
-- Imports `get_partner_headers()` from `dedupe.metadata.spotify_partner_tokens`
+- Imports `get_partner_headers()` from `tagslut.metadata.spotify_partner_tokens`
 - POSTs to `https://api-partner.spotify.com/pathfinder/v1/query`
 - Uses the correct body with `variables.uris` and `extensions.persistedQuery` (sha256Hash `697706196617419cd713ed01a204a312876b51fba591b70bf961ddc0eccd5e8e`)
 - No placeholder body remains — `"operationName": "placeholder"` is gone
@@ -3569,7 +3569,7 @@ if __name__ == "__main__":
 Run this in one terminal:
 
 ```
-cd /Users/georgeskhawam/Projects/dedupe
+cd /Users/georgeskhawam/Projects/tagslut
 python3 partner_token_collector.py
 ```
 
@@ -3579,7 +3579,7 @@ This file now calls the Spotify partner endpoint using the correct body:
 
 ```
 import httpx
-from dedupe.metadata.spotify_partner_tokens import get_partner_headers
+from tagslut.metadata.spotify_partner_tokens import get_partner_headers
 
 def main():
     url = "https://api-partner.spotify.com/pathfinder/v1/query"
@@ -3631,7 +3631,7 @@ In order:
 1. Start the collector:
 
    ```
-   cd /Users/georgeskhawam/Projects/dedupe
+   cd /Users/georgeskhawam/Projects/tagslut
    python3 partner_token_collector.py
    ```
 
@@ -3654,7 +3654,7 @@ In order:
 3. In another terminal:
 
    ```
-   cd /Users/georgeskhawam/Projects/dedupe
+   cd /Users/georgeskhawam/Projects/tagslut
    python3 test_spotify_partner_query.py
    ```
 
@@ -3664,7 +3664,7 @@ GET
 
 Untitled Request
 
-~/Pr/dedupe v3-supercharged !12 ?16 ❯ cd /Users/georgeskhawam/Projects/dedupe python3 partner_token_collector.py Traceback (most recent call last): File "/Users/georgeskhawam/Projects/dedupe/partner_token_collector.py", line 38, in <module> server = HTTPServer(("127.0.0.1", 5005), TokenHandler) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ File "/opt/homebrew/Cellar/python@3.12/3.12.12_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/socketserver.py", line 457, in __init__ self.server_bind() File "/opt/homebrew/Cellar/python@3.12/3.12.12_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/http/server.py", line 136, in server_bind socketserver.TCPServer.server_bind(self) File "/opt/homebrew/Cellar/python@3.12/3.12.12_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/socketserver.py", line 478, in server_bind self.socket.bind(self.server_address) OSError: [Errno 48] Address already in use
+~/Pr/tagslut v3-supercharged !12 ?16 ❯ cd /Users/georgeskhawam/Projects/tagslut python3 partner_token_collector.py Traceback (most recent call last): File "/Users/georgeskhawam/Projects/tagslut/partner_token_collector.py", line 38, in <module> server = HTTPServer(("127.0.0.1", 5005), TokenHandler) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ File "/opt/homebrew/Cellar/python@3.12/3.12.12_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/socketserver.py", line 457, in __init__ self.server_bind() File "/opt/homebrew/Cellar/python@3.12/3.12.12_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/http/server.py", line 136, in server_bind socketserver.TCPServer.server_bind(self) File "/opt/homebrew/Cellar/python@3.12/3.12.12_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/socketserver.py", line 478, in server_bind self.socket.bind(self.server_address) OSError: [Errno 48] Address already in use
 
 Port 5005 is already in use, which means you still have an old `partner_token_collector.py` (or something else) running on that port.
 
@@ -3697,7 +3697,7 @@ Run `lsof -i :5005` again to confirm nothing is listening.
 1. Start the collector again
 
 ```
-cd /Users/georgeskhawam/Projects/dedupe
+cd /Users/georgeskhawam/Projects/tagslut
 python3 partner_token_collector.py
 ```
 
@@ -3723,7 +3723,7 @@ GET
 
 Untitled Request
 
-~/Pr/dedupe v3-supercharged !12 ?16 ❯ python3 test_spotify_partner_query.py POST https://api-partner.spotify.com/pathfinder/v1/query Headers: { "Authorization": "Bearer BQDfUA6ymflow...", "client-token": "AABHSaI3IJoGU36g3eHC...", "Accept": "application/json", "Content-Type": "application/json", "Origin": "https://open.spotify...", "Referer": "https://open.spotify...", "Cookie": "sp_landing=https%3A%..." } Body: { "variables": { "uris": [ "spotify:track:1xYsgHPHiR3IIdpRzkfKcE", "spotify:track:00xBwgnA5bj9UG0GwR3IcM", "spotify:track:4hl0xxnnQ2QNjZYVwizQaw", "spotify:track:3nM8DUmkWDLpdnu0UH0a4M", "spotify:track:5EhlQgSiQeoB2tnbzw5X5m" ] }, "extensions": { "persistedQuery": { "version": 1, "sha256Hash": "697706196617419cd713ed01a204a312876b51fba591b70bf961ddc0eccd5e8e" } } } ---------------------------------------- Status: 401 ---------------------------------------- ~/Pr/dedupe v3-supercharged !12 ?16 ❯ Py dedupe 00:26:16
+~/Pr/tagslut v3-supercharged !12 ?16 ❯ python3 test_spotify_partner_query.py POST https://api-partner.spotify.com/pathfinder/v1/query Headers: { "Authorization": "Bearer BQDfUA6ymflow...", "client-token": "AABHSaI3IJoGU36g3eHC...", "Accept": "application/json", "Content-Type": "application/json", "Origin": "https://open.spotify...", "Referer": "https://open.spotify...", "Cookie": "sp_landing=https%3A%..." } Body: { "variables": { "uris": [ "spotify:track:1xYsgHPHiR3IIdpRzkfKcE", "spotify:track:00xBwgnA5bj9UG0GwR3IcM", "spotify:track:4hl0xxnnQ2QNjZYVwizQaw", "spotify:track:3nM8DUmkWDLpdnu0UH0a4M", "spotify:track:5EhlQgSiQeoB2tnbzw5X5m" ] }, "extensions": { "persistedQuery": { "version": 1, "sha256Hash": "697706196617419cd713ed01a204a312876b51fba591b70bf961ddc0eccd5e8e" } } } ---------------------------------------- Status: 401 ---------------------------------------- ~/Pr/tagslut v3-supercharged !12 ?16 ❯ Py tagslut 00:26:16
 
 Now your Python call is structurally correct:
 
@@ -3764,7 +3764,7 @@ GET
 
 Untitled Request
 
-~/Pr/dedupe v3-supercharged !12 ?16 ❯ cd /Users/georgeskhawam/Projects/dedupe python3 partner_token_collector.py Listening on http://127.0.0.1:5005/spotify-partner-tokens 127.0.0.1 - - [28/Jan/2026 00:25:39] "POST /spotify-partner-tokens HTTP/1.1" 200 - Saved tokens to spotify_partner_tokens.json
+~/Pr/tagslut v3-supercharged !12 ?16 ❯ cd /Users/georgeskhawam/Projects/tagslut python3 partner_token_collector.py Listening on http://127.0.0.1:5005/spotify-partner-tokens 127.0.0.1 - - [28/Jan/2026 00:25:39] "POST /spotify-partner-tokens HTTP/1.1" 200 - Saved tokens to spotify_partner_tokens.json
 
 You’ve got everything wired correctly now:
 
@@ -3889,7 +3889,7 @@ GET
 
 Untitled Request
 
-/Pr/dedupe v3-supercharged !12 ?16 ❯ python3 test_spotify_partner_query.py POST https://api-partner.spotify.com/pathfinder/v1/query Headers: { "Authorization": "Bearer BQDfUA6ymflow...", "client-token": "AABHSaI3IJoGU36g3eHC...", "Accept": "application/json", "Content-Type": "application/json", "Origin": "https://open.spotify...", "Referer": "https://open.spotify...", "Cookie": "sp_landing=https%3A%..." } Body: { "variables": { "uris": [ "spotify:track:1xYsgHPHiR3IIdpRzkfKcE", "spotify:track:00xBwgnA5bj9UG0GwR3IcM", "spotify:track:4hl0xxnnQ2QNjZYVwizQaw", "spotify:track:3nM8DUmkWDLpdnu0UH0a4M", "spotify:track:5EhlQgSiQeoB2tnbzw5X5m" ] }, "extensions": { "persistedQuery": { "version": 1, "sha256Hash": "697706196617419cd713ed01a204a312876b51fba591b70bf961ddc0eccd5e8e" } } } ---------------------------------------- Status: 401 ---------------------------------------- ~/Pr/dedupe v3-supercharged !12 ?16 ❯ Py dedupe 00:31:23 /Pr/dedupe v3-supercharged !12 ?16 ❯ cd /Users/georgeskhawam/Projects/dedupe python3 partner_token_collector.py Listening on http://127.0.0.1:5005/spotify-partner-tokens 127.0.0.1 - - [28/Jan/2026 00:31:12] "POST /spotify-partner-tokens HTTP/1.1" 200 - Saved tokens to spotify_partner_tokens.json 127.0.0.1 - - [28/Jan/2026 00:31:12] "POST /spotify-partner-tokens HTTP/1.1" 200 - Saved tokens to spotify_partner_tokens.json
+/Pr/tagslut v3-supercharged !12 ?16 ❯ python3 test_spotify_partner_query.py POST https://api-partner.spotify.com/pathfinder/v1/query Headers: { "Authorization": "Bearer BQDfUA6ymflow...", "client-token": "AABHSaI3IJoGU36g3eHC...", "Accept": "application/json", "Content-Type": "application/json", "Origin": "https://open.spotify...", "Referer": "https://open.spotify...", "Cookie": "sp_landing=https%3A%..." } Body: { "variables": { "uris": [ "spotify:track:1xYsgHPHiR3IIdpRzkfKcE", "spotify:track:00xBwgnA5bj9UG0GwR3IcM", "spotify:track:4hl0xxnnQ2QNjZYVwizQaw", "spotify:track:3nM8DUmkWDLpdnu0UH0a4M", "spotify:track:5EhlQgSiQeoB2tnbzw5X5m" ] }, "extensions": { "persistedQuery": { "version": 1, "sha256Hash": "697706196617419cd713ed01a204a312876b51fba591b70bf961ddc0eccd5e8e" } } } ---------------------------------------- Status: 401 ---------------------------------------- ~/Pr/tagslut v3-supercharged !12 ?16 ❯ Py tagslut 00:31:23 /Pr/tagslut v3-supercharged !12 ?16 ❯ cd /Users/georgeskhawam/Projects/tagslut python3 partner_token_collector.py Listening on http://127.0.0.1:5005/spotify-partner-tokens 127.0.0.1 - - [28/Jan/2026 00:31:12] "POST /spotify-partner-tokens HTTP/1.1" 200 - Saved tokens to spotify_partner_tokens.json 127.0.0.1 - - [28/Jan/2026 00:31:12] "POST /spotify-partner-tokens HTTP/1.1" 200 - Saved tokens to spotify_partner_tokens.json
 
 The Postman side is now doing everything it should:
 
@@ -4170,7 +4170,7 @@ Add a new one, e.g. `test_spotify_partner_query_v2.py` at the project root:
 
 ```
 import httpx
-from dedupe.metadata.spotify_partner_tokens import get_partner_headers
+from tagslut.metadata.spotify_partner_tokens import get_partner_headers
 
 def main():
     url = "https://api-partner.spotify.com/pathfinder/v2/query"
@@ -4215,7 +4215,7 @@ if __name__ == "__main__":
 
 1. Make `get_partner_headers()` include the extra v2 headers (optional but closer to browser)
 
-In `dedupe/metadata/spotify_partner_tokens.py`, you can safely add:
+In `tagslut/metadata/spotify_partner_tokens.py`, you can safely add:
 
 ```
 def get_partner_headers() -> Dict[str, str]:
@@ -4252,7 +4252,7 @@ Sequence:
 1. Start collector (if not already):
 
    ```
-   cd /Users/georgeskhawam/Projects/dedupe
+   cd /Users/georgeskhawam/Projects/tagslut
    python3 partner_token_collector.py
    ```
 
@@ -4347,12 +4347,12 @@ If you tell me which one you prefer (Deezer vs Apple/iTunes), I can:
 
 Untitled Request
 
-/Users/georgeskhawam/Projects/dedupe/postman/environments/New_Environment.postman_environment.json/Users/georgeskhawam/Projects/dedupe/postman/environments/New_Environment.postman_environment.json
+/Users/georgeskhawam/Projects/tagslut/postman/environments/New_Environment.postman_environment.json/Users/georgeskhawam/Projects/tagslut/postman/environments/New_Environment.postman_environment.json
 
 You’ve pasted the same path twice:
 
 ```
-/Users/georgeskhawam/Projects/dedupe/postman/environments/New_Environment.postman_environment.json/Users/georgeskhawam/Projects/dedupe/postman/environments/New_Environment.postman_environment.json
+/Users/georgeskhawam/Projects/tagslut/postman/environments/New_Environment.postman_environment.json/Users/georgeskhawam/Projects/tagslut/postman/environments/New_Environment.postman_environment.json
 ```
 
 So there are two likely interpretations:
@@ -4513,13 +4513,13 @@ Job completed successfully
 
 Now I have read all Python files. Let me compile the audit report.
 
-Here’s a concise audit of the Python scripts under `dedupe/metadata` (and `dedupe/metadata/providers`), focused on what they do, obvious issues, and what’s worth fixing.
+Here’s a concise audit of the Python scripts under `tagslut/metadata` (and `tagslut/metadata/providers`), focused on what they do, obvious issues, and what’s worth fixing.
 
 I’ll group by file, then give a short priority list.
 
 ------
 
-1. `dedupe/metadata/__init__.py`
+1. `tagslut/metadata/__init__.py`
 
 Purpose: Package init; exposes key types (`ProviderTrack`, `EnrichmentResult`, `TokenManager`, etc.).
 Issues: None.
@@ -4527,7 +4527,7 @@ Recommendation: Keep as-is.
 
 ------
 
-1. `dedupe/metadata/auth.py`
+1. `tagslut/metadata/auth.py`
 
 Purpose: Central auth/token manager for multiple providers (Spotify, Tidal, Qobuz, Beatport). Handles:
 
@@ -4552,7 +4552,7 @@ Recommendations:
 
 ------
 
-1. `dedupe/metadata/beatport_import_my_tracks.py`
+1. `tagslut/metadata/beatport_import_my_tracks.py`
 
 Purpose: Import Beatport tracks from an NDJSON export into a SQLite DB (`music.db`).
 
@@ -4567,7 +4567,7 @@ Issues:
 - Hard‑coded absolute DB path with your username:
 
   ```
-  DEFAULT_DB_PATH = "/Users/georgeskhawam/Projects/dedupe/EPOCH_2026-01-24/music.db"
+  DEFAULT_DB_PATH = "/Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-24/music.db"
   ```
 
 - Import process isn’t fully wrapped in a transaction; partial import is possible on error.
@@ -4582,7 +4582,7 @@ Recommendations:
 
 ------
 
-1. `dedupe/metadata/beatport_normalize.py`
+1. `tagslut/metadata/beatport_normalize.py`
 
 Purpose: Normalize Beatport JSON (API or Next.js blobs) into a unified `BeatportTrack` structure.
 
@@ -4597,7 +4597,7 @@ Recommendation: Leave as-is; just keep an eye on Beatport JSON structure changes
 
 ------
 
-1. `dedupe/metadata/enricher.py`
+1. `tagslut/metadata/enricher.py`
 
 Purpose: Main enrichment orchestrator:
 
@@ -4624,7 +4624,7 @@ Recommendations:
 
 ------
 
-1. `dedupe/metadata/models.py`
+1. `tagslut/metadata/models.py`
 
 Purpose: Defines data structures (`ProviderTrack`, `EnrichmentResult`, etc.) and precedence rules.
 
@@ -4633,7 +4633,7 @@ Recommendation: No changes needed.
 
 ------
 
-1. `dedupe/metadata/spotify_harvest_utils.py`
+1. `tagslut/metadata/spotify_harvest_utils.py`
 
 Purpose: Utilities + CLI helpers around Spotify token access for shell scripts.
 
@@ -4654,7 +4654,7 @@ Recommendations:
 
 ------
 
-1. `dedupe/metadata/spotify_partner_tokens.py`
+1. `tagslut/metadata/spotify_partner_tokens.py`
 
 Purpose: Bridge from `spotify_partner_tokens.json` into Python—exactly what you’ve been working with.
 
@@ -4676,14 +4676,14 @@ Recommendations:
 
 ------
 
-1. `dedupe/metadata/providers/__init__.py`
+1. `tagslut/metadata/providers/__init__.py`
 
 Purpose: Package init; re-exports provider classes.
 Issues: None.
 
 ------
 
-1. `dedupe/metadata/providers/base.py`
+1. `tagslut/metadata/providers/base.py`
 
 Purpose: Base class for all providers:
 
@@ -4709,7 +4709,7 @@ Recommendations:
 
 ------
 
-1. `dedupe/metadata/providers/beatport.py`
+1. `tagslut/metadata/providers/beatport.py`
 
 Purpose: Beatport provider:
 
@@ -4734,7 +4734,7 @@ Recommendations:
 
 ------
 
-1. `dedupe/metadata/providers/itunes.py`
+1. `tagslut/metadata/providers/itunes.py`
 
 Purpose: iTunes Search API provider (public, no auth).
 
@@ -4753,7 +4753,7 @@ Recommendations:
 
 ------
 
-1. `dedupe/metadata/providers/qobuz.py`
+1. `tagslut/metadata/providers/qobuz.py`
 
 Purpose: Qobuz provider, uses Qobuz’s public-ish API with app_id and creds from auth.
 
@@ -4772,7 +4772,7 @@ Recommendations:
 
 ------
 
-1. `dedupe/metadata/providers/spotify.py`
+1. `tagslut/metadata/providers/spotify.py`
 
 Purpose: Spotify Web API provider:
 
@@ -4790,7 +4790,7 @@ Recommendation: No urgent changes; maybe add comments noting relevant Spotify en
 
 ------
 
-1. `dedupe/metadata/providers/tidal.py`
+1. `tagslut/metadata/providers/tidal.py`
 
 Purpose: Tidal Open API provider.
 
@@ -4886,9 +4886,9 @@ Edited tidal.py
 
 Job completed successfully
 
-Here’s what I’ve already done directly in your repo under `dedupe/metadata` and `dedupe/metadata/providers`:
+Here’s what I’ve already done directly in your repo under `tagslut/metadata` and `tagslut/metadata/providers`:
 
-1. `dedupe/metadata/beatport_import_my_tracks.py`
+1. `tagslut/metadata/beatport_import_my_tracks.py`
 
 Changes:
 
@@ -4896,7 +4896,7 @@ Changes:
 
   ```
   # OLD (removed)
-  DEFAULT_DB_PATH = "/Users/georgeskhawam/Projects/dedupe/EPOCH_2026-01-24/music.db"
+  DEFAULT_DB_PATH = "/Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-24/music.db"
   ```
 
 - Replaced with a safer pattern:
@@ -4948,7 +4948,7 @@ What this means for you:
 
 ------
 
-1. `dedupe/metadata/spotify_partner_tokens.py`
+1. `tagslut/metadata/spotify_partner_tokens.py`
 
 Changes:
 
@@ -5005,7 +5005,7 @@ What this means:
 
 ------
 
-1. `dedupe/metadata/auth.py`
+1. `tagslut/metadata/auth.py`
 
 Changes:
 
@@ -5069,7 +5069,7 @@ export BEATPORT_DJ_CLIENT_ID=...
 
 ------
 
-1. `dedupe/metadata/providers/tidal.py`
+1. `tagslut/metadata/providers/tidal.py`
 
 Changes:
 
@@ -5132,7 +5132,7 @@ Effect:
 Next steps for you
 
 - Run your normal flows and make sure everything still works:
-  - Beatport import: `python -m dedupe.metadata.beatport_import_my_tracks` (with `MUSIC_DB` set, if you want a custom db).
+  - Beatport import: `python -m tagslut.metadata.beatport_import_my_tracks` (with `MUSIC_DB` set, if you want a custom db).
   - Spotify partner Python caller: confirm that when `spotify_partner_tokens.json` is missing/invalid you see the new diagnostics.
   - Tidal enrichment: test a few tracks, and optionally try a different `TIDAL_COUNTRY_CODE` to sanity‑check.
 
@@ -5147,7 +5147,7 @@ Untitled Request
 
 metadata
 
-/Pr/dedupe v3-supercharged !13 ?16 ❯ python -m dedupe.metadata.beatport_import_my_tracks --db /Users/georgeskhawam/Projects/dedupe/EPOCH_2026-01-27/music.db Traceback (most recent call last): File "<frozen runpy>", line 189, in _run_module_as_main File "<frozen runpy>", line 112, in _get_module_details File "/Users/georgeskhawam/Projects/dedupe/dedupe/metadata/__init__.py", line 12, in <module> from dedupe.metadata.auth import TokenManager File "/Users/georgeskhawam/Projects/dedupe/dedupe/metadata/auth.py", line 71, in <module> TIDAL_CLIENT_ID, TIDAL_CLIENT_SECRET = _get_tidal_credentials() ^^^^^^^^^^^^^^^^^^^^^^^^ File "/Users/georgeskhawam/Projects/dedupe/dedupe/metadata/auth.py", line 52, in _get_tidal_credentials client_id = os.environ.get("TIDAL_CLIENT_ID", default_id) ^^ NameError: name 'os' is not defined. Did you forget to import 'os'? ~/Pr/dedupe v3-supercharged !13 ?16 ❯ Py dedupe 01:33:00
+/Pr/tagslut v3-supercharged !13 ?16 ❯ python -m tagslut.metadata.beatport_import_my_tracks --db /Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-27/music.db Traceback (most recent call last): File "<frozen runpy>", line 189, in _run_module_as_main File "<frozen runpy>", line 112, in _get_module_details File "/Users/georgeskhawam/Projects/tagslut/tagslut/metadata/__init__.py", line 12, in <module> from tagslut.metadata.auth import TokenManager File "/Users/georgeskhawam/Projects/tagslut/tagslut/metadata/auth.py", line 71, in <module> TIDAL_CLIENT_ID, TIDAL_CLIENT_SECRET = _get_tidal_credentials() ^^^^^^^^^^^^^^^^^^^^^^^^ File "/Users/georgeskhawam/Projects/tagslut/tagslut/metadata/auth.py", line 52, in _get_tidal_credentials client_id = os.environ.get("TIDAL_CLIENT_ID", default_id) ^^ NameError: name 'os' is not defined. Did you forget to import 'os'? ~/Pr/tagslut v3-supercharged !13 ?16 ❯ Py tagslut 01:33:00
 
 
 
@@ -5197,7 +5197,7 @@ Untitled Request
 
 metadata
 
-~/Pr/dedupe v3-supercharged !13 ?16 ❯ python3 -c "import dedupe.metadata.auth; print('Module imports successfully')" Module imports successfully
+~/Pr/tagslut v3-supercharged !13 ?16 ❯ python3 -c "import tagslut.metadata.auth; print('Module imports successfully')" Module imports successfully
 
 The module imports successfully.
 
@@ -5207,11 +5207,11 @@ Job completed successfully
 
 The module imports successfully.
 
-The traceback was due to `os` not being imported in `dedupe/metadata/auth.py` when `_get_tidal_credentials()` used `os.environ.get`.
+The traceback was due to `os` not being imported in `tagslut/metadata/auth.py` when `_get_tidal_credentials()` used `os.environ.get`.
 
 What I’ve done:
 
-1. Opened `dedupe/metadata/auth.py`.
+1. Opened `tagslut/metadata/auth.py`.
 2. Added the missing import:
 
 ```
@@ -5224,13 +5224,13 @@ import os
 2. Verified that the module imports cleanly:
 
 ```
-python3 -c "import dedupe.metadata.auth"
+python3 -c "import tagslut.metadata.auth"
 ```
 
 You can now safely rerun:
 
 ```
-python -m dedupe.metadata.beatport_import_my_tracks --db /Users/georgeskhawam/Projects/dedupe/
+python -m tagslut.metadata.beatport_import_my_tracks --db /Users/georgeskhawam/Projects/tagslut/
     EPOCH_2026-01-27/music.db
 ```
 
@@ -5242,7 +5242,7 @@ Untitled Request
 
 metadata
 
-~/Pr/dedupe v3-supercharged !13 ?16 ❯ python -m dedupe.metadata.beatport_import_my_tracks --db /Users/georgeskhawam/Projects/dedupe/EPOCH_2026-01-27/music.db ERROR: NDJSON file not found: beatport_my_tracks.ndjson
+~/Pr/tagslut v3-supercharged !13 ?16 ❯ python -m tagslut.metadata.beatport_import_my_tracks --db /Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-27/music.db ERROR: NDJSON file not found: beatport_my_tracks.ndjson
 
 The Beatport import script is now running far enough to hit its *intended* guard: it can’t find the source NDJSON file it expects.
 
@@ -5252,7 +5252,7 @@ Right now it’s looking for:
 beatport_my_tracks.ndjson
 ```
 
-in the current working directory (`/Users/georgeskhawam/Projects/dedupe` based on your prompt).
+in the current working directory (`/Users/georgeskhawam/Projects/tagslut` based on your prompt).
 
 Nothing is “broken” in the code at this point; it just has no input file to import.
 
@@ -5268,14 +5268,14 @@ A. Copy / move it to the project root:
 
 ```
 cp /path/to/your/beatport_my_tracks.ndjson \
-   /Users/georgeskhawam/Projects/dedupe/beatport_my_tracks.ndjson
+   /Users/georgeskhawam/Projects/tagslut/beatport_my_tracks.ndjson
 ```
 
 then rerun:
 
 ```
-cd /Users/georgeskhawam/Projects/dedupe
-python -m dedupe.metadata.beatport_import_my_tracks --db EPOCH_2026-01-27/music.db
+cd /Users/georgeskhawam/Projects/tagslut
+python -m tagslut.metadata.beatport_import_my_tracks --db EPOCH_2026-01-27/music.db
 ```
 
 (or with the absolute DB path as you did).
@@ -5283,8 +5283,8 @@ python -m dedupe.metadata.beatport_import_my_tracks --db EPOCH_2026-01-27/music.
 B. Or, if the script supports a CLI option for the NDJSON path (for example `--file` or `--input`), use that instead:
 
 ```
-python -m dedupe.metadata.beatport_import_my_tracks \
-  --db /Users/georgeskhawam/Projects/dedupe/EPOCH_2026-01-27/music.db \
+python -m tagslut.metadata.beatport_import_my_tracks \
+  --db /Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-27/music.db \
   --file /path/to/beatport_my_tracks.ndjson
 ```
 
@@ -5301,7 +5301,7 @@ The importer expects a newline-delimited JSON file of your Beatport tracks. Typi
 
 If you want, I can:
 
-- Locate the Beatport export script in `dedupe/metadata` (or elsewhere in this repo),
+- Locate the Beatport export script in `tagslut/metadata` (or elsewhere in this repo),
 - Wire its output path directly to `beatport_my_tracks.ndjson` under the project root,
 - Or make the importer read from an explicit path/ENV var instead of a hard-coded filename.
 
@@ -5318,7 +5318,7 @@ A small quality-of-life edit I can do for you:
 Example of the resulting usage:
 
 ```
-python -m dedupe.metadata.beatport_import_my_tracks \
+python -m tagslut.metadata.beatport_import_my_tracks \
   --db EPOCH_2026-01-27/music.db \
   --input exports/beatport_my_tracks_2026-01-27.ndjson
 ```
@@ -5354,7 +5354,7 @@ Untitled Request
 
 metadata
 
-~/Pr/dedupe v3-supercharged !13 ?16 ❯ find . -name "beatport_my_tracks.ndjson" -type f 2>/dev/null ~/Pr/dedupe v3-supercharged !13 ?16 ❯
+~/Pr/tagslut v3-supercharged !13 ?16 ❯ find . -name "beatport_my_tracks.ndjson" -type f 2>/dev/null ~/Pr/tagslut v3-supercharged !13 ?16 ❯
 
 
 
@@ -5364,7 +5364,7 @@ There is currently **no** `beatport_my_tracks.ndjson` file anywhere in your repo
 
 From the inspection:
 
-- Searched under: `/Users/georgeskhawam/Projects/dedupe`
+- Searched under: `/Users/georgeskhawam/Projects/tagslut`
 - File searched: `beatport_my_tracks.ndjson`
 - Result: **not found**
 
@@ -5383,15 +5383,15 @@ You have two choices:
 
    ```
    # Example if you find it at ~/Downloads/beatport_my_tracks.ndjson
-   python -m dedupe.metadata.beatport_import_my_tracks \
-     --db /Users/georgeskhawam/Projects/dedupe/EPOCH_2026-01-27/music.db \
+   python -m tagslut.metadata.beatport_import_my_tracks \
+     --db /Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-27/music.db \
      --input ~/Downloads/beatport_my_tracks.ndjson
    ```
 
    or move/symlink it into the project root and rely on the default name.
 
 2. If you don’t have the export yet
-   You need to run whatever script or process in this project that talks to Beatport and **creates** that NDJSON file. Look in [`dedupe/metadata`](https://desktop.postman.com/?desktopVersion=11.82.1&webVersion=11.82.4-ui-260129-0309&userId=49297136&teamId=10867715&region=us#) for something like:
+   You need to run whatever script or process in this project that talks to Beatport and **creates** that NDJSON file. Look in [`tagslut/metadata`](https://desktop.postman.com/?desktopVersion=11.82.1&webVersion=11.82.4-ui-260129-0309&userId=49297136&teamId=10867715&region=us#) for something like:
 
 - `beatport_export_my_tracks.py`
 - `beatport_my_tracks.py`
@@ -5402,15 +5402,15 @@ Once that exporter is run and writes `beatport_my_tracks.ndjson`, the importer c
 If you’d like, the next step I can take is:
 
 - locate the Beatport exporter script in this repo,
-- wire it so it writes to a known path (e.g. `dedupe/exports/beatport_my_tracks.ndjson`),
+- wire it so it writes to a known path (e.g. `tagslut/exports/beatport_my_tracks.ndjson`),
 - and adjust `beatport_import_my_tracks.py` to default to that path, so the flow becomes:
 
 ```
 # 1. Export from Beatport to NDJSON
-python -m dedupe.metadata.beatport_export_my_tracks  # or whatever script exists
+python -m tagslut.metadata.beatport_export_my_tracks  # or whatever script exists
 
 # 2. Import into your SQLite DB
-python -m dedupe.metadata.beatport_import_my_tracks \
+python -m tagslut.metadata.beatport_import_my_tracks \
   --db EPOCH_2026-01-27/music.db
 ```
 
@@ -5432,7 +5432,7 @@ ok
 
 You don’t have the Beatport “my tracks” NDJSON yet; we need to generate it first, then import.
 
-You already have a harvester script in `dedupe/metadata`:
+You already have a harvester script in `tagslut/metadata`:
 
 - [`beatport_harvest_my_tracks.sh`](https://desktop.postman.com/?desktopVersion=11.82.1&webVersion=11.82.4-ui-260129-0309&userId=49297136&teamId=10867715&region=us#)
 
@@ -5449,7 +5449,7 @@ From the script header:
 So:
 
 ```
-cd /Users/georgeskhawam/Projects/dedupe
+cd /Users/georgeskhawam/Projects/tagslut
 
 # Edit env_exports.sh (or create if needed) and add:
 # export BEATPORT_ACCESS_TOKEN='your-real-token-here'
@@ -5471,9 +5471,9 @@ The harvester already defaults to the filename we’re missing:
 So in the project root:
 
 ```
-cd /Users/georgeskhawam/Projects/dedupe
-chmod +x dedupe/metadata/beatport_harvest_my_tracks.sh  # if not already
-./dedupe/metadata/beatport_harvest_my_tracks.sh
+cd /Users/georgeskhawam/Projects/tagslut
+chmod +x tagslut/metadata/beatport_harvest_my_tracks.sh  # if not already
+./tagslut/metadata/beatport_harvest_my_tracks.sh
 ```
 
 This will:
@@ -5494,15 +5494,15 @@ head -n 3 beatport_my_tracks.ndjson
 Now that the NDJSON exists, run the importer again:
 
 ```
-python -m dedupe.metadata.beatport_import_my_tracks \
-  --db /Users/georgeskhawam/Projects/dedupe/EPOCH_2026-01-27/music.db
+python -m tagslut.metadata.beatport_import_my_tracks \
+  --db /Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-27/music.db
 ```
 
 Or, if you ever change the output path, you can use the `--input` flag explicitly:
 
 ```
-python -m dedupe.metadata.beatport_import_my_tracks \
-  --db /Users/georgeskhawam/Projects/dedupe/EPOCH_2026-01-27/music.db \
+python -m tagslut.metadata.beatport_import_my_tracks \
+  --db /Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-27/music.db \
   --input /full/path/to/beatport_my_tracks.ndjson
 ```
 
@@ -5545,9 +5545,9 @@ Save this as, for example, `beatport_harvest_and_import.sh` in your project root
 #
 # End-to-end workflow:
 #   1) Load env_exports.sh (for BEATPORT_ACCESS_TOKEN, etc.)
-#   2) Run dedupe/metadata/beatport_harvest_my_tracks.sh
+#   2) Run tagslut/metadata/beatport_harvest_my_tracks.sh
 #      -> writes beatport_my_tracks.ndjson (or a custom OUTPUT)
-#   3) Run Python importer dedupe.metadata.beatport_import_my_tracks
+#   3) Run Python importer tagslut.metadata.beatport_import_my_tracks
 #      -> imports NDJSON into SQLite DB
 #
 # Usage:
@@ -5556,7 +5556,7 @@ Save this as, for example, `beatport_harvest_and_import.sh` in your project root
 #
 # Example:
 #   ./beatport_harvest_and_import.sh \
-#     /Users/georgeskhawam/Projects/dedupe/EPOCH_2026-01-27/music.db
+#     /Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-27/music.db
 
 set -euo pipefail
 
@@ -5613,7 +5613,7 @@ EOF
 fi
 
 # 3) Run the harvester to produce NDJSON
-HARVEST_SCRIPT="${PROJECT_ROOT}/dedupe/metadata/beatport_harvest_my_tracks.sh"
+HARVEST_SCRIPT="${PROJECT_ROOT}/tagslut/metadata/beatport_harvest_my_tracks.sh"
 
 if [[ ! -x "$HARVEST_SCRIPT" ]]; then
   echo "Making harvester executable: $HARVEST_SCRIPT"
@@ -5660,7 +5660,7 @@ echo "Running Python importer..."
 echo
 
 cd "$PROJECT_ROOT"
-python -m dedupe.metadata.beatport_import_my_tracks \
+python -m tagslut.metadata.beatport_import_my_tracks \
   --db "$DB_PATH" \
   --input "$NDJSON_PATH"
 
@@ -5679,11 +5679,11 @@ exit "$IMPORT_STATUS"
 How to use:
 
 ```
-cd /Users/georgeskhawam/Projects/dedupe
+cd /Users/georgeskhawam/Projects/tagslut
 chmod +x beatport_harvest_and_import.sh
 
 ./beatport_harvest_and_import.sh \
-  /Users/georgeskhawam/Projects/dedupe/EPOCH_2026-01-27/music.db
+  /Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-27/music.db
 ```
 
 If you want, I can also add a small `--dry-run` toggle and extra logging, but this is the minimal full pipeline.
@@ -5702,7 +5702,7 @@ beatport_harvest_my_tracks.sh
 
 beatport_harvest_catalog_track.sh
 
-Project root: /Users/georgeskhawam/Projects/dedupe Database path: /Users/georgeskhawam/Projects/dedupe/EPOCH_2026-01-27/music.db ---------------------------------------- Sourcing env_exports.sh... ---------------------------------------- Running Beatport harvester... Script: /Users/georgeskhawam/Projects/dedupe/dedupe/metadata/beatport_harvest_my_tracks.sh [2026-01-28T02:06:04+0200] ========================================== [2026-01-28T02:06:04+0200] BEATPORT MY TRACKS HARVEST [2026-01-28T02:06:04+0200] ========================================== [2026-01-28T02:06:04+0200] CONFIG: [2026-01-28T02:06:04+0200] OUTPUT: beatport_my_tracks.ndjson [2026-01-28T02:06:04+0200] PER_PAGE: 100 [2026-01-28T02:06:04+0200] MAX_PAGES: 1000 [2026-01-28T02:06:04+0200] RATE_LIMIT_DELAY: 3 [2026-01-28T02:06:04+0200] ========================================== [2026-01-28T02:06:04+0200] Resuming from page > 0 [2026-01-28T02:06:04+0200] Fetching page 1... ~/Pr/dedupe v3-supercharged !13 ?19 ❯ Py dedupe 02:06:04
+Project root: /Users/georgeskhawam/Projects/tagslut Database path: /Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-27/music.db ---------------------------------------- Sourcing env_exports.sh... ---------------------------------------- Running Beatport harvester... Script: /Users/georgeskhawam/Projects/tagslut/tagslut/metadata/beatport_harvest_my_tracks.sh [2026-01-28T02:06:04+0200] ========================================== [2026-01-28T02:06:04+0200] BEATPORT MY TRACKS HARVEST [2026-01-28T02:06:04+0200] ========================================== [2026-01-28T02:06:04+0200] CONFIG: [2026-01-28T02:06:04+0200] OUTPUT: beatport_my_tracks.ndjson [2026-01-28T02:06:04+0200] PER_PAGE: 100 [2026-01-28T02:06:04+0200] MAX_PAGES: 1000 [2026-01-28T02:06:04+0200] RATE_LIMIT_DELAY: 3 [2026-01-28T02:06:04+0200] ========================================== [2026-01-28T02:06:04+0200] Resuming from page > 0 [2026-01-28T02:06:04+0200] Fetching page 1... ~/Pr/tagslut v3-supercharged !13 ?19 ❯ Py tagslut 02:06:04
 
 The harvester started correctly and is now busy fetching page 1 (and then subsequent pages) from Beatport. It’s running under `set -euo pipefail`, so if anything goes wrong you’ll see an error and it will exit; otherwise it will keep paginating until it finishes or hits `MAX_PAGES`.
 
@@ -5720,7 +5720,7 @@ What to check now
    In another terminal:
 
    ```
-   cd /Users/georgeskhawam/Projects/dedupe
+   cd /Users/georgeskhawam/Projects/tagslut
    ls -lh beatport_my_tracks.ndjson
    wc -l beatport_my_tracks.ndjson
    ```
@@ -5734,9 +5734,9 @@ What to check now
    - then call:
 
      ```
-     python -m dedupe.metadata.beatport_import_my_tracks \
-       --db /Users/georgeskhawam/Projects/dedupe/EPOCH_2026-01-27/music.db \
-       --input /Users/georgeskhawam/Projects/dedupe/beatport_my_tracks.ndjson
+     python -m tagslut.metadata.beatport_import_my_tracks \
+       --db /Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-27/music.db \
+       --input /Users/georgeskhawam/Projects/tagslut/beatport_my_tracks.ndjson
      ```
 
    And you’ll see its own summary:
@@ -5759,7 +5759,7 @@ beatport_harvest_my_tracks.sh
 
 beatport_harvest_catalog_track.sh
 
-~/Projects/dedupe v3-supercharged !13 ?16 ❯ cd /Users/georgeskhawam/Projects/dedupe 01:53:13 ls -lh beatport_my_tracks.ndjson wc -l beatport_my_tracks.ndjson -rw-r--r--@ 1 georgeskhawam staff 0B Jan 28 02:06 beatport_my_tracks.ndjson 0 beatport_my_tracks.ndjson
+~/Projects/tagslut v3-supercharged !13 ?16 ❯ cd /Users/georgeskhawam/Projects/tagslut 01:53:13 ls -lh beatport_my_tracks.ndjson wc -l beatport_my_tracks.ndjson -rw-r--r--@ 1 georgeskhawam staff 0B Jan 28 02:06 beatport_my_tracks.ndjson 0 beatport_my_tracks.ndjson
 
 
 
@@ -5914,12 +5914,12 @@ You can confirm what Beatport actually returned for page 1:
 
 ```
 # Re-run just the harvester, but capture its raw JSON once
-cd /Users/georgeskhawam/Projects/dedupe
+cd /Users/georgeskhawam/Projects/tagslut
 BEATPORT_MAX_PAGES=1 \
 BEATPORT_PER_PAGE=1 \
 BEATPORT_MY_TRACKS_LOG=beatport_debug.log \
 BEATPORT_MY_TRACKS_NDJSON=beatport_my_tracks_debug.ndjson \
-./dedupe/metadata/beatport_harvest_my_tracks.sh
+./tagslut/metadata/beatport_harvest_my_tracks.sh
 ```
 
 Then look at the log to see what happened and inspect whether you really have any tracks in `/v4/my/beatport/tracks/` for this account.
@@ -5943,7 +5943,7 @@ beatport_harvest_my_tracks.sh
 
 beatport_harvest_catalog_track.sh
 
-you fucked my repo. even this is not working anymore ~/Pr/dedupe v3-supercharged !13 ?19 ❯ poetry run dedupe metadata enrich --db "EPOCH_2026-01-27/music.db" --providers itunes --execute --recovery ┌──────────────────────────────────────────────────┐ │ METADATA ENRICHMENT - Recovery Mode │ └──────────────────────────────────────────────────┘ Database: EPOCH_2026-01-27/music.db Providers: itunes Log file: EPOCH_2026-01-27/enrich_20260128_021128.log Resumable: Ctrl+C to pause, run again to continue ================================================== RESULTS ================================================== Total: 0 Enriched: 0 ✓ No match: 0 Failed: 0 Full log: EPOCH_2026-01-27/enrich_20260128_021128.log ~/Pr/dedupe v3-supercharged !13 ?19 ❯ Py dedupe 02:11:28
+you fucked my repo. even this is not working anymore ~/Pr/tagslut v3-supercharged !13 ?19 ❯ poetry run tagslut metadata enrich --db "EPOCH_2026-01-27/music.db" --providers itunes --execute --recovery ┌──────────────────────────────────────────────────┐ │ METADATA ENRICHMENT - Recovery Mode │ └──────────────────────────────────────────────────┘ Database: EPOCH_2026-01-27/music.db Providers: itunes Log file: EPOCH_2026-01-27/enrich_20260128_021128.log Resumable: Ctrl+C to pause, run again to continue ================================================== RESULTS ================================================== Total: 0 Enriched: 0 ✓ No match: 0 Failed: 0 Full log: EPOCH_2026-01-27/enrich_20260128_021128.log ~/Pr/tagslut v3-supercharged !13 ?19 ❯ Py tagslut 02:11:28
 
 
 
@@ -6027,7 +6027,7 @@ Here’s what I found (no changes made for this analysis):
    That message comes from the existing `Enricher` code when it doesn’t find any rows to work on.
 
 2. How `Total` is computed
-   The `dedupe metadata enrich` CLI ends up in an `Enricher` class (in `dedupe/metadata/enricher.py`), which roughly does this:
+   The `tagslut metadata enrich` CLI ends up in an `Enricher` class (in `tagslut/metadata/enricher.py`), which roughly does this:
 
    - `get_eligible_files()` runs a query over your DB.
    - `Total` is basically `len(eligible_files)`.
@@ -6055,7 +6055,7 @@ Here’s what I found (no changes made for this analysis):
 You ran:
 
 ```
-poetry run dedupe metadata enrich \
+poetry run tagslut metadata enrich \
   --db "EPOCH_2026-01-27/music.db" \
   --providers itunes \
   --execute \
@@ -6073,7 +6073,7 @@ If your intent is to re-run enrichment for iTunes on the existing library, you n
 - Re-enrich **all** tracks (even those already enriched):
 
   ```
-  poetry run dedupe metadata enrich \
+  poetry run tagslut metadata enrich \
     --db "EPOCH_2026-01-27/music.db" \
     --providers itunes \
     --execute \
@@ -6084,7 +6084,7 @@ If your intent is to re-run enrichment for iTunes on the existing library, you n
 - Or only retry tracks that previously got **no match** (if that mode exists in your CLI, which it typically does in this codebase):
 
   ```
-  poetry run dedupe metadata enrich \
+  poetry run tagslut metadata enrich \
     --db "EPOCH_2026-01-27/music.db" \
     --providers itunes \
     --execute \
@@ -6159,7 +6159,7 @@ For a collection of, say, 20k tracks, that’s many hours.
 If you want it faster, there are two things to check/change in your codebase:
 
 1. Find the iTunes provider’s `RateLimitConfig`
-   In `dedupe/metadata/providers/itunes.py` (or similarly named), there should be something like:
+   In `tagslut/metadata/providers/itunes.py` (or similarly named), there should be something like:
 
    ```
    rate_limit_config = RateLimitConfig(
@@ -6233,7 +6233,7 @@ Job completed successfully
 
 I’ve made the change.
 
-In `dedupe/metadata/providers/itunes.py` the `RateLimitConfig` for `iTunesProvider` now looks like:
+In `tagslut/metadata/providers/itunes.py` the `RateLimitConfig` for `iTunesProvider` now looks like:
 
 ```
 rate_limit_config = RateLimitConfig(
@@ -6248,11 +6248,11 @@ So for iTunes:
 - The baseline delay between calls is now 0.5s instead of ~2.5–3s.
 - Retry and backoff behavior is unchanged.
 
-You should see the “Rate limiting: sleeping …s” lines drop to around `0.5s` in your next `poetry run dedupe metadata enrich ...` run, and the overall job will be several times faster.
+You should see the “Rate limiting: sleeping …s” lines drop to around `0.5s` in your next `poetry run tagslut metadata enrich ...` run, and the overall job will be several times faster.
 
 If it still feels too slow or you start hitting errors (e.g. 429s), we can tune further or make the delay configurable via an env var.
 
-~/Pr/dedupe v3-supercharged !13 ?20 ❯ dedupe metadata enrich \ --db "$DB_PATH" \ --recovery \ --path "/Volumes/DJSSD/DRPBX" \ --providers itunes,tidal \ --execute \ --verbose DEBUG: Loaded tokens from /Users/georgeskhawam/.config/dedupe/tokens.json ┌──────────────────────────────────────────────────┐ │ METADATA ENRICHMENT - Recovery Mode │ └──────────────────────────────────────────────────┘ Database: /Users/georgeskhawam/Projects/dedupe/EPOCH_2026-01-28/music.db Providers: itunes → tidal Path: /Volumes/DJSSD/DRPBX Log file: /Users/georgeskhawam/Projects/dedupe/EPOCH_2026-01-28/enrich_20260128_200018.log Resumable: Ctrl+C to pause, run again to continue INFO: No eligible files found ================================================== RESULTS ================================================== Total: 0 Enriched: 0 ✓ No match: 0 Failed: 0 Full log: /Users/georgeskhawam/Projects/dedupe/EPOCH_2026-01-28/enrich_20260128_200018.log ~/Pr/dedupe v3-supercharged !13 ?20 ❯ Py dedupe 20:00:18 an you fiox the script so it is applicable as a standalne tool and not part of a process? the project is a mess a needs arefactoring
+~/Pr/tagslut v3-supercharged !13 ?20 ❯ tagslut metadata enrich \ --db "$DB_PATH" \ --recovery \ --path "/Volumes/DJSSD/DRPBX" \ --providers itunes,tidal \ --execute \ --verbose DEBUG: Loaded tokens from /Users/georgeskhawam/.config/tagslut/tokens.json ┌──────────────────────────────────────────────────┐ │ METADATA ENRICHMENT - Recovery Mode │ └──────────────────────────────────────────────────┘ Database: /Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-28/music.db Providers: itunes → tidal Path: /Volumes/DJSSD/DRPBX Log file: /Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-28/enrich_20260128_200018.log Resumable: Ctrl+C to pause, run again to continue INFO: No eligible files found ================================================== RESULTS ================================================== Total: 0 Enriched: 0 ✓ No match: 0 Failed: 0 Full log: /Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-28/enrich_20260128_200018.log ~/Pr/tagslut v3-supercharged !13 ?20 ❯ Py tagslut 20:00:18 an you fiox the script so it is applicable as a standalne tool and not part of a process? the project is a mess a needs arefactoring
 
 Right now the enrich command is doing exactly what it’s coded to do: it’s only looking for “eligible” rows in the DB, and in your current snapshots that’s often zero. That makes it feel like a dead tool unless you happen to be in the right stage of the bigger pipeline.
 
@@ -6287,7 +6287,7 @@ So for your 2026‑01‑28 DB:
 To verify that this is still the case on the new DB, you can run:
 
 ```
-sqlite3 /Users/georgeskhawam/Projects/dedupe/EPOCH_2026-01-28/music.db \
+sqlite3 /Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-28/music.db \
   "SELECT 
       COUNT(*) AS total,
       SUM(CASE WHEN flac_ok = 1 THEN 1 ELSE 0 END) AS flac_ok,
@@ -6300,7 +6300,7 @@ If `flac_ok == enriched`, the tool is behaving as designed: it sees nothing “p
 To re‑use enrichment on an already‑enriched DB, the CLI *must* be told to ignore `enriched_at`:
 
 ```
-dedupe metadata enrich \
+tagslut metadata enrich \
   --db "$DB_PATH" \
   --recovery \
   --path "/Volumes/DJSSD/DRPBX" \
@@ -6363,7 +6363,7 @@ WHERE flac_ok = 1
 Then your command:
 
 ```
-dedupe metadata enrich \
+tagslut metadata enrich \
   --db "$DB_PATH" \
   --recovery \
   --path "/Volumes/DJSSD/DRPBX" \
@@ -6380,7 +6380,7 @@ becomes a “real” standalone tool: as long as the DB knows about those files 
 In addition, you clearly want something like:
 
 ```
-dedupe enrich-file \
+tagslut enrich-file \
   --db EPOCH_2026-01-28/music.db \
   --file "/Volumes/DJSSD/DRPBX/Artist/Album/01. Track.flac" \
   --providers itunes,tidal \
@@ -6390,7 +6390,7 @@ dedupe enrich-file \
 or
 
 ```
-dedupe enrich-path \
+tagslut enrich-path \
   --db EPOCH_2026-01-28/music.db \
   --root "/Volumes/DJSSD/DRPBX/SomeFolder" \
   --providers itunes,tidal
@@ -6426,7 +6426,7 @@ That gives you two concrete new tools:
 - “Enrich everything under this path, even if already enriched”:
 
   ```
-  dedupe metadata enrich \
+  tagslut metadata enrich \
     --db EPOCH_2026-01-28/music.db \
     --path "/Volumes/DJSSD/DRPBX" \
     --providers itunes,tidal \
@@ -6438,7 +6438,7 @@ That gives you two concrete new tools:
 - “Enrich just this single FLAC right now”:
 
   ```
-  dedupe enrich-file \
+  tagslut enrich-file \
     --db EPOCH_2026-01-28/music.db \
     --file "/Volumes/DJSSD/DRPBX/Artist/Album/01. Track.flac" \
     --providers itunes
@@ -6461,7 +6461,7 @@ You can paste this as‑is into an AI tool that can work with your codebase.
 
 ## Refactor prompt for AI agent
 
-You are an expert Python engineer and architect tasked with **refactoring and simplifying** a large, messy music‑metadata project called `dedupe`. Your goals are:
+You are an expert Python engineer and architect tasked with **refactoring and simplifying** a large, messy music‑metadata project called `tagslut`. Your goals are:
 
 - Make it **modular**, **coherent**, and **easy to reason about**
 - Preserve existing behavior where it’s actually useful
@@ -6473,8 +6473,8 @@ You are an expert Python engineer and architect tasked with **refactoring and si
 This project:
 
 - Manages a large music library (tens of thousands of FLACs) and stores metadata in a SQLite DB (`EPOCH_YYYY-MM-DD/music.db`)
-- Has multiple metadata providers (iTunes, Tidal, Spotify, Qobuz, Beatport, etc.) under `dedupe/metadata/providers`
-- Includes various scripts and CLIs under `dedupe/metadata` and probably `dedupe/cli` that:
+- Has multiple metadata providers (iTunes, Tidal, Spotify, Qobuz, Beatport, etc.) under `tagslut/metadata/providers`
+- Includes various scripts and CLIs under `tagslut/metadata` and probably `tagslut/cli` that:
   - Import library file lists
   - Validate FLACs
   - Enrich metadata from external APIs
@@ -6518,7 +6518,7 @@ b) Clean enrichment workflow
   - A **standalone enrichment command** that can be safely run on any DB snapshot:
 
     ```
-    dedupe metadata enrich \
+    tagslut metadata enrich \
       --db <path> \
       --path <root-path> \
       --providers itunes,tidal \
@@ -6536,7 +6536,7 @@ b) Clean enrichment workflow
   - A simple command to enrich a **single file**:
 
     ```
-    dedupe enrich-file \
+    tagslut enrich-file \
       --db <path> \
       --file "/Volumes/.../Artist/Album/01. Track.flac" \
       --providers itunes,tidal \
@@ -6554,7 +6554,7 @@ c) Provider architecture
 d) Configuration and environment handling
 
 - Centralize configuration:
-  - Token locations (`~/.config/dedupe/tokens.json`)
+  - Token locations (`~/.config/tagslut/tokens.json`)
   - API keys / env vars (TIDAL_*, BEATPORT_*, etc.)
   - Paths / DB roots (EPOCH directories)
 - Provide a small config module that:
@@ -6590,7 +6590,7 @@ g) Legacy and dead code
 - Either:
   - Remove them, or
   - Move them into a `legacy/` folder with README and “here be dragons” comments.
-- The goal: the main package (`dedupe.metadata`, `dedupe.cli`) should be **clean, current, and focused**. No more huge piles of half‑used code in the main tree.
+- The goal: the main package (`tagslut.metadata`, `tagslut.cli`) should be **clean, current, and focused**. No more huge piles of half‑used code in the main tree.
 
 ### 3. Constraints and expectations
 
@@ -6613,10 +6613,10 @@ g) Legacy and dead code
 By the end of this refactor, I want:
 
 1. A clean, modular package layout, e.g.:
-   - `dedupe/`
+   - `tagslut/`
      - `cli/`
        - `__init__.py`
-       - `main.py` (top‑level cli: `dedupe ...`)
+       - `main.py` (top‑level cli: `tagslut ...`)
        - `enrich.py` (CLI handlers)
      - `metadata/`
        - `__init__.py`
@@ -6630,8 +6630,8 @@ By the end of this refactor, I want:
        - `legacy/` (optional, carefully labeled)
    - `scripts/` (optional thin wrappers, if needed)
 2. Clear, documented CLIs:
-   - `dedupe metadata enrich ...`
-   - `dedupe enrich-file ...`
+   - `tagslut metadata enrich ...`
+   - `tagslut enrich-file ...`
    - (Any other core commands, each with `--help` that’s actually helpful.)
 3. Documentation:
    - A short high‑level README for the new architecture: how the pieces fit together.
@@ -6673,7 +6673,7 @@ You can paste this directly into an AI tool that has access to your repo.
 
 ## Refactor prompt for AI agent (with required reading)
 
-You are an expert Python engineer and software architect tasked with **refactoring and simplifying** a FLAC library management project called `dedupe`.
+You are an expert Python engineer and software architect tasked with **refactoring and simplifying** a FLAC library management project called `tagslut`.
 
 Before you do anything, you **must read and internalize** these documents from the repo:
 
@@ -6701,12 +6701,12 @@ From the docs you must extract and respect the following:
   - NO automatic deletion by code, ever
 - Workflow stages:
   - Stage 0–7 as described in `GUIDE.md` (scan, plan, review, quarantine, optional promotion, final audit)
-  - V2 CLI flow from `docs/V2_ARCHITECTURE.md` (`dedupe scan`, `dedupe recommend`, `dedupe apply`, `dedupe promote`, etc.)
+  - V2 CLI flow from `docs/V2_ARCHITECTURE.md` (`tagslut scan`, `tagslut recommend`, `tagslut apply`, `tagslut promote`, etc.)
 - Zones:
   - `accepted`, `staging`, `suspect`, `quarantine` (and any others described)
   - The intended keeper selection logic and priority rules
 - Architecture:
-  - Unified entry point via `python3 -m dedupe` / `dedupe ...` CLI
+  - Unified entry point via `python3 -m tagslut` / `tagslut ...` CLI
   - Module layout proposed in `V2_ARCHITECTURE.md` (cli/core/storage/utils, etc.)
   - Data models (AudioFile, DuplicateGroup, Decision) and DB schema
 
@@ -6737,15 +6737,15 @@ Refactor the project so that it:
 
 - Compare the current package layout and CLIs with the design in `docs/V2_ARCHITECTURE.md`:
 
-  - What’s already close to the proposed `dedupe/cli`, `dedupe/core`, `dedupe/storage`, `dedupe/utils`?
+  - What’s already close to the proposed `tagslut/cli`, `tagslut/core`, `tagslut/storage`, `tagslut/utils`?
   - Where are there legacy directories (`tools/`, old scripts) that don’t fit the V2 model?
 
 - Move and/or refactor code to match the synthesized structure in `V2_ARCHITECTURE.md` as much as feasible, for example:
 
   ```
-  dedupe/
+  tagslut/
     cli/
-      main.py        # dedupe scan/recommend/apply/promote/etc.
+      main.py        # tagslut scan/recommend/apply/promote/etc.
     core/
       integrity_scanner.py
       hashing.py
@@ -6760,7 +6760,7 @@ Refactor the project so that it:
       paths.py
   ```
 
-- Ensure the `dedupe` CLI documented in `V2_ARCHITECTURE.md` is the **primary** way to interact with the system, and that it actually works as described (or provide a short mapping doc if minor deviations are necessary).
+- Ensure the `tagslut` CLI documented in `V2_ARCHITECTURE.md` is the **primary** way to interact with the system, and that it actually works as described (or provide a short mapping doc if minor deviations are necessary).
 
 #### B. Zones and stages: simplify and clarify
 
@@ -6771,11 +6771,11 @@ Using `GUIDE.md` and `V2_ARCHITECTURE.md`:
   - Clear helper functions (e.g. `is_canonical_zone`, `zone_priority`, etc.)
 - Replace scattered “zone” string checks with a coherent, documented API.
 - Align the workflow stages (SCAN, PLAN, REVIEW, QUARANTINE, PROMOTE, etc.) with the CLI as described in the docs:
-  - `dedupe scan ...`
-  - `dedupe recommend ...`
-  - `dedupe apply ...`
-  - `dedupe promote ...`
-  - `dedupe quarantine ...` (if implemented)
+  - `tagslut scan ...`
+  - `tagslut recommend ...`
+  - `tagslut apply ...`
+  - `tagslut promote ...`
+  - `tagslut quarantine ...` (if implemented)
 - Make sure each stage:
   - Has a single, obvious entrypoint
   - Has a minimal, understandable contract
@@ -6783,9 +6783,9 @@ Using `GUIDE.md` and `V2_ARCHITECTURE.md`:
 
 #### C. Metadata enrichment as a first‑class, standalone tool
 
-Based on `GUIDE.md` plus what you discover in `dedupe/metadata`:
+Based on `GUIDE.md` plus what you discover in `tagslut/metadata`:
 
-- Identify the current enrichment code and its CLI(s) (e.g. `dedupe metadata enrich`).
+- Identify the current enrichment code and its CLI(s) (e.g. `tagslut metadata enrich`).
 
 - Untangle enrichment from any unnecessary pipeline coupling:
 
@@ -6796,7 +6796,7 @@ Based on `GUIDE.md` plus what you discover in `dedupe/metadata`:
   1. **Batch enrichment**:
 
      ```
-     dedupe metadata enrich \
+     tagslut metadata enrich \
        --db <path-to-db> \
        --path <root-path> \
        --providers itunes,tidal \
@@ -6814,7 +6814,7 @@ Based on `GUIDE.md` plus what you discover in `dedupe/metadata`:
   2. **Single‑file enrichment**:
 
      ```
-     dedupe enrich-file \
+     tagslut enrich-file \
        --db <path> \
        --file "/Volumes/.../Artist/Album/01. Track.flac" \
        --providers itunes,tidal \
@@ -6823,7 +6823,7 @@ Based on `GUIDE.md` plus what you discover in `dedupe/metadata`:
 
      This should re‑use the same enrichment core, not duplicate it.
 
-- Normalize provider implementations (`dedupe/metadata/providers/*.py`) around a common interface, and centralize:
+- Normalize provider implementations (`tagslut/metadata/providers/*.py`) around a common interface, and centralize:
 
   - Rate limiting and retry behavior
   - Token/config loading
@@ -6836,7 +6836,7 @@ Based on `GUIDE.md` plus what you discover in `dedupe/metadata`:
 Using guidance from `GUIDE.md` and `V2_ARCHITECTURE.md`:
 
 - Centralize configuration in a `config` module:
-  - DB path (`DEDUPE_DB`, etc.)
+  - DB path (`TAGSLUT_DB`, etc.)
   - Volumes / zones (`LIBRARY_PATH`, `STAGING_PATH`, etc.)
   - Provider tokens (TIDAL, Beatport, Spotify, Apple, etc.)
 - Make the config behavior match (or cleanly extend) what the docs describe:
@@ -6846,7 +6846,7 @@ Using guidance from `GUIDE.md` and `V2_ARCHITECTURE.md`:
 
 #### E. Legacy code and old scripts
 
-- Scan the repo (especially `tools/` and older scripts under `dedupe/metadata`) for:
+- Scan the repo (especially `tools/` and older scripts under `tagslut/metadata`) for:
   - Scripts that duplicate CLI functionality already documented in `V2_ARCHITECTURE.md`
   - Old one‑off tools that are now superseded by the unified CLI
 - For each such script, do one of:
@@ -6876,8 +6876,8 @@ After refactoring, I want:
 
 1. A code structure that closely matches (or cleanly extends) the architecture in `docs/V2_ARCHITECTURE.md`.
 2. A clear, usable enrichment subsystem:
-   - `dedupe metadata enrich ...`
-   - `dedupe enrich-file ...`
+   - `tagslut metadata enrich ...`
+   - `tagslut enrich-file ...`
 3. Zones and stages implemented as **first‑class, documented concepts**, not scattered magic strings.
 4. Legacy / dead code isolated or removed, with clear references to the modern equivalents.
 5. Updated or confirmed documentation where appropriate:
@@ -6914,7 +6914,7 @@ Here’s why it’s reasonable as‑is, and what you might tweak.
 
    - Calls out modules to separate (cli/core/storage/utils/metadata/enrichment/config).
    - States how zones and stages should be modeled.
-   - Defines expected CLIs (`dedupe scan`, `dedupe recommend`, `dedupe apply`, `dedupe promote`, `dedupe metadata enrich`, `dedupe enrich-file`).
+   - Defines expected CLIs (`tagslut scan`, `tagslut recommend`, `tagslut apply`, `tagslut promote`, `tagslut metadata enrich`, `tagslut enrich-file`).
    - Tells the agent how to handle legacy code (move/remove + docs).
 
    An agent that can see your codebase will know where to start from that.
@@ -6943,11 +6943,11 @@ Treat them as the source of truth for:
 
 - Recovery-first, copy-only, NO DELETION.
 - Workflow stages (Stage 0–7), zones (accepted, staging, suspect, quarantine).
-- The intended V2 architecture and CLI (dedupe scan/recommend/apply/promote, etc.).
+- The intended V2 architecture and CLI (tagslut scan/recommend/apply/promote, etc.).
 - Data models and DB schema.
 
 Goal:
-Refactor the entire `dedupe` project to match the V2 architecture, simplify the process and zones, 
+Refactor the entire `tagslut` project to match the V2 architecture, simplify the process and zones, 
     and make the code modular and maintainable. Clean up or isolate old code while preserving 
     working behavior.
 
@@ -6957,7 +6957,7 @@ Concrete tasks:
 - Compare current layout with docs/V2_ARCHITECTURE.md (cli/core/storage/utils).
 - Move/refactor code toward:
 
-  dedupe/
+  tagslut/
     cli/
     core/
     storage/
@@ -6966,25 +6966,25 @@ Concrete tasks:
       providers/
       enrichment/
 
-- Make the `dedupe` CLI described in the docs the primary entrypoint and ensure it works.
+- Make the `tagslut` CLI described in the docs the primary entrypoint and ensure it works.
 
 2) Zones and workflow
 - Implement zones (accepted, staging, suspect, quarantine) as first-class concepts (enums/config + 
     helpers), not scattered strings.
 - Map documented stages (SCAN, PLAN, REVIEW, QUARANTINE, PROMOTE, FINAL AUDIT) to clear CLI commands 
     and modules:
-  - dedupe scan
-  - dedupe recommend
-  - dedupe apply
-  - dedupe promote
-  - optional dedupe quarantine commands
+  - tagslut scan
+  - tagslut recommend
+  - tagslut apply
+  - tagslut promote
+  - optional tagslut quarantine commands
 
 3) Metadata enrichment as a standalone tool
 - Untangle enrichment from hidden pipeline state.
 - Provide:
 
   a) Batch enrichment:
-     dedupe metadata enrich \
+     tagslut metadata enrich \
        --db <db> \
        --path <root> \
        --providers itunes,tidal \
@@ -6993,7 +6993,7 @@ Concrete tasks:
        [--force] [--retry-no-match] [--dry-run] [--standalone]
 
   b) Single-file enrichment:
-     dedupe enrich-file \
+     tagslut enrich-file \
        --db <db> \
        --file <absolute-path-to-flac> \
        --providers itunes,tidal \
@@ -7058,9 +7058,9 @@ You can paste this directly into an AI code assistant that has access to both yo
 
 You are an expert Python engineer and architect.
 
-You are working on a project called `dedupe`, a recovery‑first FLAC library management and deduplication toolkit.
+You are working on a project called `tagslut`, a recovery‑first FLAC library management and deduplication toolkit.
 
-Before doing anything, you MUST read and internalize these files from the `dedupe` repo:
+Before doing anything, you MUST read and internalize these files from the `tagslut` repo:
 
 - `README.md`
 - `GUIDE.md`
@@ -7070,7 +7070,7 @@ Treat them as the source of truth for:
 
 - Recovery‑first, copy‑only, **NO DELETION**
 - Workflow stages (Stage 0–7) and zones (`accepted`, `staging`, `suspect`, `quarantine`, etc.)
-- Intended V2 architecture and CLI (`dedupe scan`, `dedupe recommend`, `dedupe apply`, `dedupe promote`, etc.)
+- Intended V2 architecture and CLI (`tagslut scan`, `tagslut recommend`, `tagslut apply`, `tagslut promote`, etc.)
 - Data models and DB schema
 
 You also have access to this external project:
@@ -7090,13 +7090,13 @@ Use it as a **reference for a clean TIDAL integration**, not as a drop‑in depe
 
 ### Goals
 
-Refactor the `dedupe` project to:
+Refactor the `tagslut` project to:
 
 1. Match the intended architecture from `docs/V2_ARCHITECTURE.md` as closely as practical.
 2. Simplify and clarify zones and workflow stages.
 3. Turn metadata enrichment (iTunes, Tidal, etc.) into a **modular, standalone, testable subsystem**.
 4. Clean up or isolate old/legacy code.
-5. Improve the TIDAL integration by modeling it more like `python-tidal` (sessions, clients, clear API surface), while still fitting into `dedupe`’s architecture and recovery‑first philosophy.
+5. Improve the TIDAL integration by modeling it more like `python-tidal` (sessions, clients, clear API surface), while still fitting into `tagslut`’s architecture and recovery‑first philosophy.
 
 ------
 
@@ -7109,9 +7109,9 @@ Refactor the `dedupe` project to:
 - Move/refactor code toward something like:
 
   ```
-  dedupe/
+  tagslut/
     cli/
-      main.py          # dedupe scan, recommend, apply, promote, metadata, etc.
+      main.py          # tagslut scan, recommend, apply, promote, metadata, etc.
     core/
       integrity_scanner.py
       hashing.py
@@ -7130,7 +7130,7 @@ Refactor the `dedupe` project to:
       legacy/          # any old scripts kept for reference
   ```
 
-- Ensure `dedupe` (or `python -m dedupe`) with subcommands is the primary entrypoint, matching the docs as closely as possible.
+- Ensure `tagslut` (or `python -m tagslut`) with subcommands is the primary entrypoint, matching the docs as closely as possible.
 
 #### 2. Zones and workflow stages
 
@@ -7140,11 +7140,11 @@ Using `GUIDE.md` and `docs/V2_ARCHITECTURE.md`:
   - Enumerations or small types, plus helper functions (e.g. `zone_priority`, `is_primary_library_zone`, etc.).
   - Replace scattered magic string comparisons with these helpers.
 - Map documented stages (SCAN, PLAN, REVIEW, QUARANTINE, PROMOTE, FINAL AUDIT) to clear CLI commands and code paths:
-  - `dedupe scan ...`
-  - `dedupe recommend ...`
-  - `dedupe apply ...`
-  - `dedupe promote ...`
-  - `dedupe quarantine ...` (if implemented)
+  - `tagslut scan ...`
+  - `tagslut recommend ...`
+  - `tagslut apply ...`
+  - `tagslut promote ...`
+  - `tagslut quarantine ...` (if implemented)
 - Make sure each stage has:
   - A single, obvious CLI
   - A small, well‑defined module responsible for the work
@@ -7152,7 +7152,7 @@ Using `GUIDE.md` and `docs/V2_ARCHITECTURE.md`:
 
 #### 3. Metadata enrichment as a standalone subsystem
 
-Refactor the enrichment code under `dedupe/metadata` to:
+Refactor the enrichment code under `tagslut/metadata` to:
 
 - Separate **selection** (which files to work on) from **enrichment logic** and **DB persistence**.
 
@@ -7174,7 +7174,7 @@ Refactor the enrichment code under `dedupe/metadata` to:
   1. Batch enrichment:
 
      ```
-     dedupe metadata enrich \
+     tagslut metadata enrich \
        --db <path-to-db> \
        --path <root-path> \
        --providers itunes,tidal \
@@ -7197,7 +7197,7 @@ Refactor the enrichment code under `dedupe/metadata` to:
   2. Single‑file enrichment:
 
      ```
-     dedupe enrich-file \
+     tagslut enrich-file \
        --db <path-to-db> \
        --file "/Volumes/.../Artist/Album/01. Track.flac" \
        --providers itunes,tidal \
@@ -7216,7 +7216,7 @@ Using `https://github.com/EbbLabs/python-tidal` as inspiration:
   - Structures API methods (search, get track/album, etc.)
   - Handles errors and rate limiting
 
-Then refactor `dedupe`’s TIDAL provider (`dedupe/metadata/providers/tidal.py` and any related auth code) to:
+Then refactor `tagslut`’s TIDAL provider (`tagslut/metadata/providers/tidal.py` and any related auth code) to:
 
 - Have a clear separation between:
   - Auth/session (e.g., `TidalSession` / `TidalClient`)
@@ -7233,14 +7233,14 @@ Then refactor `dedupe`’s TIDAL provider (`dedupe/metadata/providers/tidal.py` 
 You do **not** have to vendor in the entire `python-tidal` library. You can:
 
 - Either depend on it (if appropriate for the project), or
-- Reimplement only the patterns and concepts (session class, client abstraction, etc.) that fit `dedupe`’s architecture and licensing constraints.
+- Reimplement only the patterns and concepts (session class, client abstraction, etc.) that fit `tagslut`’s architecture and licensing constraints.
 
 #### 5. Config and DB access
 
 Guided by `docs/V2_ARCHITECTURE.md`:
 
 - Centralize configuration:
-  - DB path (`DEDUPE_DB`, or from `.env`/config.yaml)
+  - DB path (`TAGSLUT_DB`, or from `.env`/config.yaml)
   - Volume roots and zones (`LIBRARY_PATH`, `STAGING_PATH`, etc.)
   - Provider credentials (Apple/iTunes, Tidal, Spotify, Qobuz, Beatport, etc.)
 - Provide a simple `config` module to load, validate, and expose these settings.
@@ -7250,16 +7250,16 @@ Guided by `docs/V2_ARCHITECTURE.md`:
 
 #### 6. Legacy code and cleanup
 
-- Scan the repo (especially `tools/` and miscellaneous scripts under `dedupe/metadata`) for legacy or one‑off tools.
+- Scan the repo (especially `tools/` and miscellaneous scripts under `tagslut/metadata`) for legacy or one‑off tools.
 - Either:
   - Remove clearly obsolete scripts, or
-  - Move them to `dedupe/metadata/legacy/` (or similar) with a short README indicating:
+  - Move them to `tagslut/metadata/legacy/` (or similar) with a short README indicating:
     - What they did,
-    - What the modern replacement is (usually a `dedupe` CLI command).
+    - What the modern replacement is (usually a `tagslut` CLI command).
 
 The active path for users should be:
 
-- The `dedupe` CLI with its subcommands
+- The `tagslut` CLI with its subcommands
 - The enrichment commands described above
 - No reliance on mystery scripts unless explicitly labeled as legacy.
 
@@ -7283,8 +7283,8 @@ At the end of this refactor:
 
 3. Metadata enrichment should be a clean, modular subsystem with:
 
-   - `dedupe metadata enrich ...`
-   - `dedupe enrich-file ...`
+   - `tagslut metadata enrich ...`
+   - `tagslut enrich-file ...`
 
    working as standalone, understandable tools.
 
@@ -7296,7 +7296,7 @@ At the end of this refactor:
 
 ------
 
-Use this prompt as your spec. Read the docs, study `python-tidal`, and then refactor `dedupe` so that it becomes a modular, understandable, recovery‑first system with a clean TIDAL integration and a sane enrichment workflow.
+Use this prompt as your spec. Read the docs, study `python-tidal`, and then refactor `tagslut` so that it becomes a modular, understandable, recovery‑first system with a clean TIDAL integration and a sane enrichment workflow.
 
 README.md
 
@@ -7308,7 +7308,7 @@ https://github.com/raraz15/electronic_music_downloader
 
 Here’s an updated refactor prompt that also explicitly tells the agent to study `electronic_music_downloader` alongside `python-tidal` and your own docs. This is what I’d actually paste into a code-aware AI that can see your repo and browse GitHub.
 
-You can treat this as the “master spec” for refactoring `dedupe`.
+You can treat this as the “master spec” for refactoring `tagslut`.
 
 ------
 
@@ -7316,11 +7316,11 @@ You can treat this as the “master spec” for refactoring `dedupe`.
 
 You are an expert Python engineer and architect.
 
-You are working on a project called `dedupe`, a recovery‑first FLAC library management and deduplication toolkit.
+You are working on a project called `tagslut`, a recovery‑first FLAC library management and deduplication toolkit.
 
 ### 0. Required reading (in this order)
 
-Before you change any code, you MUST carefully read and internalize these files from the `dedupe` repo:
+Before you change any code, you MUST carefully read and internalize these files from the `tagslut` repo:
 
 1. `README.md`
 2. `GUIDE.md`
@@ -7332,7 +7332,7 @@ From these, build a mental model of:
 - The staged workflow: environment setup, SCAN → PLAN → REVIEW → QUARANTINE → (optional PROMOTE) → FINAL AUDIT.
 - The **zones**: `accepted`, `staging`, `suspect`, `quarantine` (and any others mentioned) and how zone priority/keeper selection works.
 - The intended **V2 architecture** and CLI:
-  - Unified entrypoint via `dedupe` or `python3 -m dedupe`
+  - Unified entrypoint via `tagslut` or `python3 -m tagslut`
   - Commands: `scan`, `recommend`, `apply`, `promote`, `quarantine`, `db`, `config`, etc.
 - Data models (`AudioFile`, `DuplicateGroup`, `Decision`) and DB schema (files, duplicate_groups, decisions, quarantine, promotions).
 
@@ -7352,13 +7352,13 @@ You should study both of these external projects:
   - Business logic
   - CLI / user interface.
 
-Use them as **architectural and design inspiration**, not as raw copy‑paste targets. Any reuse must respect licenses and be adapted to fit `dedupe`’s philosophy and architecture.
+Use them as **architectural and design inspiration**, not as raw copy‑paste targets. Any reuse must respect licenses and be adapted to fit `tagslut`’s philosophy and architecture.
 
 ------
 
 ### 1. Goals
 
-Refactor and simplify `dedupe` so that it:
+Refactor and simplify `tagslut` so that it:
 
 1. Conforms as much as practical to the V2 architecture in `docs/V2_ARCHITECTURE.md`.
 2. Treats **zones and stages** as clear, first‑class concepts, not scattered magic strings and ad‑hoc logic.
@@ -7373,9 +7373,9 @@ Refactor and simplify `dedupe` so that it:
 - Compare the current layout with the synthesized structure in `docs/V2_ARCHITECTURE.md`. Aim to move toward something like:
 
   ```
-  dedupe/
+  tagslut/
     cli/
-      main.py            # dedupe ... top-level CLI
+      main.py            # tagslut ... top-level CLI
       scan.py
       recommend.py
       apply.py
@@ -7412,15 +7412,15 @@ Refactor and simplify `dedupe` so that it:
       legacy/            # old scripts kept for reference only
   ```
 
-- Ensure `dedupe` CLI commands match (or cleanly extend) what the docs describe:
+- Ensure `tagslut` CLI commands match (or cleanly extend) what the docs describe:
 
-  - `dedupe scan ...`
-  - `dedupe recommend ...`
-  - `dedupe apply ...`
-  - `dedupe promote ...`
-  - `dedupe quarantine ...`
-  - `dedupe db ...`
-  - `dedupe config ...`
+  - `tagslut scan ...`
+  - `tagslut recommend ...`
+  - `tagslut apply ...`
+  - `tagslut promote ...`
+  - `tagslut quarantine ...`
+  - `tagslut db ...`
+  - `tagslut config ...`
 
 If small deviations are necessary, add a short migration note or doc describing the actual CLI.
 
@@ -7447,7 +7447,7 @@ Using `GUIDE.md` and `docs/V2_ARCHITECTURE.md`:
 
 Map each stage to:
 
-- A CLI command (`dedupe scan`, `dedupe recommend`, `dedupe apply`, `dedupe promote`, etc.)
+- A CLI command (`tagslut scan`, `tagslut recommend`, `tagslut apply`, `tagslut promote`, etc.)
 - A small, focused module that implements the stage with clear inputs/outputs and no hidden side‑effects.
 
 ------
@@ -7476,7 +7476,7 @@ Provide these user‑facing CLIs:
 1. **Batch enrichment**:
 
    ```
-   dedupe metadata enrich \
+   tagslut metadata enrich \
      --db <path-to-db> \
      --path <root-path> \
      --providers itunes,tidal \
@@ -7499,7 +7499,7 @@ Provide these user‑facing CLIs:
 2. **Single‑file enrichment**:
 
    ```
-   dedupe enrich-file \
+   tagslut enrich-file \
      --db <path-to-db> \
      --file "/Volumes/.../Artist/Album/01. Track.flac" \
      --providers itunes,tidal \
@@ -7534,7 +7534,7 @@ From **electronic_music_downloader**:
   - Handles fetching, pagination, rate limiting.
   - Coordinates downloads/metadata across providers.
 
-Use those patterns to refactor `dedupe/metadata/providers/*` so that:
+Use those patterns to refactor `tagslut/metadata/providers/*` so that:
 
 - Each provider (iTunes, TIDAL, Qobuz, Beatport, Spotify partner, etc.) follows a common interface, e.g.:
 
@@ -7559,7 +7559,7 @@ Use those patterns to refactor `dedupe/metadata/providers/*` so that:
 
 - TIDAL provider specifically:
 
-  - Refactor `dedupe/metadata/providers/tidal.py` to be closer in spirit to `python-tidal`:
+  - Refactor `tagslut/metadata/providers/tidal.py` to be closer in spirit to `python-tidal`:
     - A `TidalClient`/`TidalSession` that encapsulates auth and HTTP.
     - Methods for search by ISRC, search by text, fetch track/album.
     - Clean mapping to `AudioFile`/metadata models.
@@ -7570,7 +7570,7 @@ Use those patterns to refactor `dedupe/metadata/providers/*` so that:
   - Borrow good patterns from `electronic_music_downloader` for:
     - Pagination, “my tracks” harvesting.
     - Robust handling of partial failures.
-  - Integrate them into `dedupe`’s Beatport provider and related tools in a cleaner, modular way.
+  - Integrate them into `tagslut`’s Beatport provider and related tools in a cleaner, modular way.
 
 ------
 
@@ -7598,16 +7598,16 @@ Guided by `docs/V2_ARCHITECTURE.md`:
 
 ### 7. Legacy code and cleanup
 
-- Scan the repo (especially `tools/` and older scripts under `dedupe/metadata`) for:
+- Scan the repo (especially `tools/` and older scripts under `tagslut/metadata`) for:
   - Duplicated functionality now covered by the unified CLI.
   - Old one‑off scripts that were early experiments.
 - For each such script/module:
   - If clearly obsolete: remove it.
-  - If possibly still useful but not part of the main path: move to `dedupe/metadata/legacy/` or `legacy/` with a README that:
+  - If possibly still useful but not part of the main path: move to `tagslut/metadata/legacy/` or `legacy/` with a README that:
     - Explains what it does.
-    - Points to the modern replacement (usually a `dedupe` CLI command).
+    - Points to the modern replacement (usually a `tagslut` CLI command).
 
-The goal is that a new user (or a future you) can look at `dedupe/` and see:
+The goal is that a new user (or a future you) can look at `tagslut/` and see:
 
 - A small number of clean, primary entrypoints.
 - A clear architecture (cli/core/storage/utils/metadata).
@@ -7641,8 +7641,8 @@ When you’re done, I expect:
 
 3. A clean metadata enrichment subsystem with:
 
-   - `dedupe metadata enrich ...`
-   - `dedupe enrich-file ...`
+   - `tagslut metadata enrich ...`
+   - `tagslut enrich-file ...`
 
    working as straightforward standalone tools.
 
@@ -7654,7 +7654,7 @@ When you’re done, I expect:
 
 ------
 
-Use this prompt as your spec. First, read `README.md`, `GUIDE.md`, `docs/V2_ARCHITECTURE.md`. Second, study `python-tidal` and `electronic_music_downloader` to see good patterns. Then refactor `dedupe` into a modular, recovery‑first, sustainable system with a clean enrichment and provider architecture.
+Use this prompt as your spec. First, read `README.md`, `GUIDE.md`, `docs/V2_ARCHITECTURE.md`. Second, study `python-tidal` and `electronic_music_downloader` to see good patterns. Then refactor `tagslut` into a modular, recovery‑first, sustainable system with a clean enrichment and provider architecture.
 
 README.md
 
@@ -7666,13 +7666,13 @@ https://github.com/raraz15/electronic_music_downloader
 
 Use it as a reference point in the prompt so the agent actually studies its structure and patterns before touching your code.
 
-Here’s a tight prompt you can paste into a code‑aware AI that has access to your `dedupe` repo and can browse GitHub, explicitly telling it to read:
+Here’s a tight prompt you can paste into a code‑aware AI that has access to your `tagslut` repo and can browse GitHub, explicitly telling it to read:
 
 - Your docs (`README.md`, `GUIDE.md`, `docs/V2_ARCHITECTURE.md`)
 - `python-tidal`
 - `electronic_music_downloader`
 
-and then refactor `dedupe` around those ideas.
+and then refactor `tagslut` around those ideas.
 
 You can copy‑paste this as‑is:
 
@@ -7680,11 +7680,11 @@ You can copy‑paste this as‑is:
 
 You are an expert Python engineer and architect.
 
-You are working on a project called `dedupe`, a recovery‑first FLAC library management, deduplication, and metadata enrichment toolkit.
+You are working on a project called `tagslut`, a recovery‑first FLAC library management, deduplication, and metadata enrichment toolkit.
 
 Before you change any code, you MUST do the following:
 
-1. In the `dedupe` repo, read and internalize:
+1. In the `tagslut` repo, read and internalize:
 
    - `README.md`
    - `GUIDE.md`
@@ -7695,7 +7695,7 @@ Before you change any code, you MUST do the following:
    - The recovery‑first, copy‑only philosophy and the hard “NO DELETION” rule.
    - The workflow stages: SCAN → PLAN → REVIEW → QUARANTINE → (PROMOTE) → FINAL AUDIT.
    - The zones: `accepted`, `staging`, `suspect`, `quarantine`, etc., and their priorities.
-   - The intended V2 architecture and CLI (`dedupe scan`, `dedupe recommend`, `dedupe apply`, `dedupe promote`, `dedupe metadata`, etc.).
+   - The intended V2 architecture and CLI (`tagslut scan`, `tagslut recommend`, `tagslut apply`, `tagslut promote`, `tagslut metadata`, etc.).
    - Data models (`AudioFile`, `DuplicateGroup`, `Decision`, etc.) and the DB schema.
 
 2. Study these external repos as design references:
@@ -7712,13 +7712,13 @@ Before you change any code, you MUST do the following:
    - How they handle auth, rate limiting, pagination.
    - How they separate core logic from CLI/UI.
 
-Use these *only* as architectural inspiration and patterns; adapt them to `dedupe`’s philosophy and license. Do not blindly copy code.
+Use these *only* as architectural inspiration and patterns; adapt them to `tagslut`’s philosophy and license. Do not blindly copy code.
 
 ------
 
 ## Goals
 
-Refactor `dedupe` into a clean, modular, testable system that:
+Refactor `tagslut` into a clean, modular, testable system that:
 
 1. Aligns with the V2 architecture in `docs/V2_ARCHITECTURE.md` as much as practical.
 2. Treats zones and stages as first‑class, well‑documented concepts.
@@ -7735,9 +7735,9 @@ Refactor `dedupe` into a clean, modular, testable system that:
 Refactor the code layout towards something like:
 
 ```
-dedupe/
+tagslut/
   cli/
-    main.py            # top-level: dedupe ...
+    main.py            # top-level: tagslut ...
     scan.py
     recommend.py
     apply.py
@@ -7774,7 +7774,7 @@ dedupe/
     legacy/            # old scripts moved out of main path
 ```
 
-Make `dedupe` (or `python -m dedupe`) the primary entrypoint with subcommands that match or clearly extend what the docs describe.
+Make `tagslut` (or `python -m tagslut`) the primary entrypoint with subcommands that match or clearly extend what the docs describe.
 
 ### 2. Zones and stages
 
@@ -7785,7 +7785,7 @@ Using `GUIDE.md` and `docs/V2_ARCHITECTURE.md`:
   - Helpers like `zone_priority(zone)`, `is_library_zone(zone)`, etc.
   - Replace scattered string literals with these constructs.
 - Make each stage (SCAN, PLAN, REVIEW, QUARANTINE, PROMOTE, FINAL AUDIT) map to:
-  - A dedicated CLI command (e.g. `dedupe scan`, `dedupe recommend`, `dedupe apply`, `dedupe promote`).
+  - A dedicated CLI command (e.g. `tagslut scan`, `tagslut recommend`, `tagslut apply`, `tagslut promote`).
   - A clear module implementing the stage with defined inputs/outputs and minimal side‑effects.
 
 ### 3. Metadata enrichment as a first‑class, standalone subsystem
@@ -7810,7 +7810,7 @@ Untangle enrichment from the rest of the pipeline so it can be used easily and p
   1. Batch enrichment:
 
      ```
-     dedupe metadata enrich \
+     tagslut metadata enrich \
        --db <db-path> \
        --path <root-path> \
        --providers itunes,tidal \
@@ -7833,7 +7833,7 @@ Untangle enrichment from the rest of the pipeline so it can be used easily and p
   2. Single‑file enrichment:
 
      ```
-     dedupe enrich-file \
+     tagslut enrich-file \
        --db <db-path> \
        --file "/Volumes/.../Artist/Album/01. Track.flac" \
        --providers itunes,tidal \
@@ -7858,7 +7858,7 @@ From `electronic_music_downloader`:
   - Pagination and collection handling.
   - Beatport/electronic music workflows.
 
-Refactor `dedupe/metadata/providers/*` so that:
+Refactor `tagslut/metadata/providers/*` so that:
 
 - Each provider exposes a common interface (search/enrich for a given track candidate).
 - Each provider:
@@ -7898,7 +7898,7 @@ Minimize raw SQL in CLI or provider code.
 
 ### 6. Legacy code cleanup
 
-Scan the repo for old scripts, especially in `tools/` and `dedupe/metadata`, that:
+Scan the repo for old scripts, especially in `tools/` and `tagslut/metadata`, that:
 
 - Duplicate functionality already covered by the unified CLI, or
 - Are clearly from “V1” and no longer match docs.
@@ -7908,7 +7908,7 @@ For each:
 - If safe, remove.
 - Otherwise, move to `legacy/` with a short README explaining:
   - What it does.
-  - The recommended modern `dedupe` command that replaces it.
+  - The recommended modern `tagslut` command that replaces it.
 
 ------
 
@@ -7930,8 +7930,8 @@ When you are done:
 
 3. Metadata enrichment should be a clean subsystem with:
 
-   - `dedupe metadata enrich ...`
-   - `dedupe enrich-file ...`
+   - `tagslut metadata enrich ...`
+   - `tagslut enrich-file ...`
 
    that behave predictably as standalone tools.
 
@@ -7943,7 +7943,7 @@ When you are done:
 
 ------
 
-Paste this into your refactor agent, point it at your `dedupe` repo, and let it iterate. If you want, I can also help you carve this down into a smaller first phase (e.g., “fix TIDAL + Beatport providers only, then tackle enrichment CLI”).
+Paste this into your refactor agent, point it at your `tagslut` repo, and let it iterate. If you want, I can also help you carve this down into a smaller first phase (e.g., “fix TIDAL + Beatport providers only, then tackle enrichment CLI”).
 
 README.md
 
@@ -7955,19 +7955,19 @@ https://github.com/Marekkon5/onetagger/tree/master
 
 Here’s a refined prompt you can give to a refactor agent that now explicitly includes OneTagger (`onetagger`) as a design reference, alongside `python-tidal` and `electronic_music_downloader`, and still forces it to read your own docs first.
 
-You can paste this directly into an AI tool that has access to your `dedupe` repo and can browse GitHub.
+You can paste this directly into an AI tool that has access to your `tagslut` repo and can browse GitHub.
 
 ------
 
 You are an expert Python engineer and architect.
 
-You are working on a project called `dedupe`, a recovery‑first FLAC library management, deduplication, and metadata enrichment toolkit.
+You are working on a project called `tagslut`, a recovery‑first FLAC library management, deduplication, and metadata enrichment toolkit.
 
 ## 0. Required reading (in this order)
 
 Before you change any code, you MUST:
 
-1. In the `dedupe` repo, read and internalize:
+1. In the `tagslut` repo, read and internalize:
 
    - `README.md`
    - `GUIDE.md`
@@ -7978,7 +7978,7 @@ Before you change any code, you MUST:
    - The **recovery‑first, copy‑only**, **NO DELETION** rule.
    - The staged workflow: environment setup, then SCAN → PLAN → REVIEW → QUARANTINE → (optional PROMOTE) → FINAL AUDIT.
    - Zones and their semantics: `accepted`, `staging`, `suspect`, `quarantine`, etc., including zone priorities and keeper selection logic.
-   - The intended V2 architecture and unified CLI (`dedupe scan`, `dedupe recommend`, `dedupe apply`, `dedupe promote`, `dedupe metadata`, etc.).
+   - The intended V2 architecture and unified CLI (`tagslut scan`, `tagslut recommend`, `tagslut apply`, `tagslut promote`, `tagslut metadata`, etc.).
    - Data models (`AudioFile`, `DuplicateGroup`, `Decision`, etc.) and the DB schema.
 
 2. Study these external projects as **design references**:
@@ -8005,13 +8005,13 @@ Before you change any code, you MUST:
      - Provider‑specific adapters.
      - Configuration and UI/CLI as thin layers over the core.
 
-Use these repositories as **architectural and API‑design inspiration**, not as direct copy‑paste sources. Any reuse must respect licenses and be adapted to fit `dedupe`’s philosophy and structure.
+Use these repositories as **architectural and API‑design inspiration**, not as direct copy‑paste sources. Any reuse must respect licenses and be adapted to fit `tagslut`’s philosophy and structure.
 
 ------
 
 ## 1. Goals
 
-Refactor and simplify `dedupe` so that it:
+Refactor and simplify `tagslut` so that it:
 
 1. Aligns with the V2 architecture described in `docs/V2_ARCHITECTURE.md` as much as practical.
 2. Treats **zones** and **stages** as explicit, first‑class, documented concepts.
@@ -8023,12 +8023,12 @@ Refactor and simplify `dedupe` so that it:
 
 ## 2. Architecture alignment
 
-Refactor the layout of `dedupe` toward something like:
+Refactor the layout of `tagslut` toward something like:
 
 ```
-dedupe/
+tagslut/
   cli/
-    main.py            # top-level: dedupe ...
+    main.py            # top-level: tagslut ...
     scan.py
     recommend.py
     apply.py
@@ -8068,7 +8068,7 @@ dedupe/
     legacy/            # any old scripts kept for reference only
 ```
 
-Make the `dedupe` CLI (or `python -m dedupe`) the primary entrypoint with subcommands that match (or clearly extend) those in the docs.
+Make the `tagslut` CLI (or `python -m tagslut`) the primary entrypoint with subcommands that match (or clearly extend) those in the docs.
 
 ------
 
@@ -8093,7 +8093,7 @@ Using `GUIDE.md` and `docs/V2_ARCHITECTURE.md`:
 
 Map each stage to:
 
-- A dedicated CLI (e.g., `dedupe scan`, `dedupe recommend`, `dedupe apply`, `dedupe promote`).
+- A dedicated CLI (e.g., `tagslut scan`, `tagslut recommend`, `tagslut apply`, `tagslut promote`).
 - A dedicated module in `core/` or `cli/` that implements the stage with clear inputs and outputs.
 
 Keep the behavior aligned with the docs (especially the safety guarantees and “copy then validate” pattern).
@@ -8104,7 +8104,7 @@ Keep the behavior aligned with the docs (especially the safety guarantees and �
 
 Using patterns from OneTagger, python‑tidal, and electronic_music_downloader:
 
-- Extract a **central enrichment engine** (similar in spirit to OneTagger’s, but tailored to `dedupe`):
+- Extract a **central enrichment engine** (similar in spirit to OneTagger’s, but tailored to `tagslut`):
 
   ```
   def enrich_files(
@@ -8138,7 +8138,7 @@ Using patterns from OneTagger, python‑tidal, and electronic_music_downloader:
   1. Batch enrichment:
 
      ```
-     dedupe metadata enrich \
+     tagslut metadata enrich \
        --db <db-path> \
        --path <root-path> \
        --providers itunes,tidal \
@@ -8161,7 +8161,7 @@ Using patterns from OneTagger, python‑tidal, and electronic_music_downloader:
   2. Single‑file enrichment:
 
      ```
-     dedupe enrich-file \
+     tagslut enrich-file \
        --db <db-path> \
        --file "/Volumes/.../Artist/Album/01. Track.flac" \
        --providers itunes,tidal \
@@ -8183,7 +8183,7 @@ From the external projects:
   - Error handling and retry policies.
   - Rate limiting and pagination.
 
-Refactor `dedupe/metadata/providers/*` so that:
+Refactor `tagslut/metadata/providers/*` so that:
 
 - Each provider implements a common interface, e.g.:
 
@@ -8253,7 +8253,7 @@ Avoid ad‑hoc SQL in CLI/business logic; use these helper functions instead.
 
 ## 7. Legacy code cleanup
 
-Scan the repo (especially `tools/` and older scripts under `dedupe/metadata`) for:
+Scan the repo (especially `tools/` and older scripts under `tagslut/metadata`) for:
 
 - Duplicated functionality now superseded by the unified CLI.
 - V1 or experimental scripts that don’t match the V2 docs.
@@ -8261,9 +8261,9 @@ Scan the repo (especially `tools/` and older scripts under `dedupe/metadata`) fo
 For each:
 
 - If clearly obsolete and unused: remove.
-- If potentially useful but not part of the main flow: move to `dedupe/metadata/legacy/` or `legacy/` with a README explaining:
+- If potentially useful but not part of the main flow: move to `tagslut/metadata/legacy/` or `legacy/` with a README explaining:
   - What it does.
-  - What the modern `dedupe` command is that replaces it.
+  - What the modern `tagslut` command is that replaces it.
 
 Goal: new contributors (and future you) should see a small, clear, modern codepath without needing to dig through piles of old scripts.
 
@@ -8287,8 +8287,8 @@ When you are done:
 
 3. Metadata enrichment should be a clean subsystem, with:
 
-   - `dedupe metadata enrich ...`
-   - `dedupe enrich-file ...`
+   - `tagslut metadata enrich ...`
+   - `tagslut enrich-file ...`
 
    working as standalone, understandable commands.
 
@@ -8300,7 +8300,7 @@ When you are done:
 
 ------
 
-Use this prompt as your spec. First, read the `dedupe` docs; then study python‑tidal, electronic_music_downloader, and OneTagger’s structure; then refactor `dedupe` into a modular, recovery‑first system with a clean enrichment/tagging architecture.
+Use this prompt as your spec. First, read the `tagslut` docs; then study python‑tidal, electronic_music_downloader, and OneTagger’s structure; then refactor `tagslut` into a modular, recovery‑first system with a clean enrichment/tagging architecture.
 
 README.md
 
@@ -8308,7 +8308,7 @@ GUIDE.md
 
 V2_ARCHITECTURE.md
 
-youtr prompt should respond to this; Perfect! I've created a **single comprehensive shell script** that generates the entire refactored dedupe V2 structure. Here's what's different and better: ## 🎯 Key Improvements ### 1. **Simpler Priority System** (No More Zones!) **Old confusing way:** ```python zone = "accepted" # What does this mean? zone = "suspect" # Why is this different? ``` **New intuitive way:** ```yaml path_priorities: /Volumes/Library: 1 # Your main library - highest priority /Volumes/Archive: 2 # Archive - second choice /Users/you/Downloads: 3 # Downloads - lowest priority ``` **Keeper selection is now obvious:** - File from `/Volumes/Library` always beats `/Downloads` - Within same path, higher quality (bitrate, sample rate, integrity) wins - Every decision explained in plain English ### 2. **Clear Decision Explanations** ``` KEEPER: /Volumes/Library/song.flac Priority: 1, Quality: 95.0, Size: 35MB REMOVED: /Downloads/song.flac - lower path priority (3 vs 1) ``` ### 3. **Code Deletion Allowed** Yes, you can delete code! The "NO DELETION" rule was about **files**, not code. The refactor removes all the confusing zone abstraction code. ## 📦 The Shell Script I've created `/tmp/create_dedupe_v2.sh` which generates: ``` dedupe-v2-refactored/ ├── dedupe/ │ ├── cli/main.py # Simple Click CLI │ ├── core/ │ │ ├── priority.py # Path-based priority system │ │ ├── scanner.py # File scanning │ │ ├── hashing.py # T1/T2 hashing │ │ ├── metadata.py # FLAC metadata │ │ └── deduplicator.py # Duplicate detection │ ├── storage/schema.py # Database schema │ └── utils/config.py # Config loader ├── config/ │ ├── config.example.yaml # Clear YAML config │ └── .env.example # Environment variables ├── docs/ │ ├── ARCHITECTURE.md │ └── MIGRATION.md # Zone → Path migration guide ├── README.md # Complete usage guide ├── INSTALL.md ├── setup.py └── requirements.txt ``` ## 🚀 Usage ```bash # Run the script chmod +x /tmp/create_dedupe_v2.sh /tmp/create_dedupe_v2.sh ./dedupe-v2-refactored # Install cd dedupe-v2-refactored pip install -e . # Configure (edit your paths) cp config/config.example.yaml config.yaml nano config.yaml # Use it! dedupe scan /Volumes/Library dedupe recommend --output plan.json dedupe apply plan.json --execute ``` ## ✨ What Makes This Better 1. **No Abstract Concepts**: Just paths you already know 2. **Self-Documenting**: Config file shows exactly what matters 3. **Transparent Decisions**: Every choice explained clearly 4. **Flexible**: Add/change paths anytime, priorities update automatically 5. **Safe**: Still copy-only, quarantine, full audit trail The script is ready at `/tmp/create_dedupe_v2.sh` - run it and you'll have a complete, working dedupe V2 system with intuitive path-based priority instead of confusing zone labels!
+youtr prompt should respond to this; Perfect! I've created a **single comprehensive shell script** that generates the entire refactored tagslut V2 structure. Here's what's different and better: ## 🎯 Key Improvements ### 1. **Simpler Priority System** (No More Zones!) **Old confusing way:** ```python zone = "accepted" # What does this mean? zone = "suspect" # Why is this different? ``` **New intuitive way:** ```yaml path_priorities: /Volumes/Library: 1 # Your main library - highest priority /Volumes/Archive: 2 # Archive - second choice /Users/you/Downloads: 3 # Downloads - lowest priority ``` **Keeper selection is now obvious:** - File from `/Volumes/Library` always beats `/Downloads` - Within same path, higher quality (bitrate, sample rate, integrity) wins - Every decision explained in plain English ### 2. **Clear Decision Explanations** ``` KEEPER: /Volumes/Library/song.flac Priority: 1, Quality: 95.0, Size: 35MB REMOVED: /Downloads/song.flac - lower path priority (3 vs 1) ``` ### 3. **Code Deletion Allowed** Yes, you can delete code! The "NO DELETION" rule was about **files**, not code. The refactor removes all the confusing zone abstraction code. ## 📦 The Shell Script I've created `/tmp/create_tagslut_v2.sh` which generates: ``` tagslut-v2-refactored/ ├── tagslut/ │ ├── cli/main.py # Simple Click CLI │ ├── core/ │ │ ├── priority.py # Path-based priority system │ │ ├── scanner.py # File scanning │ │ ├── hashing.py # T1/T2 hashing │ │ ├── metadata.py # FLAC metadata │ │ └── deduplicator.py # Duplicate detection │ ├── storage/schema.py # Database schema │ └── utils/config.py # Config loader ├── config/ │ ├── config.example.yaml # Clear YAML config │ └── .env.example # Environment variables ├── docs/ │ ├── ARCHITECTURE.md │ └── MIGRATION.md # Zone → Path migration guide ├── README.md # Complete usage guide ├── INSTALL.md ├── setup.py └── requirements.txt ``` ## 🚀 Usage ```bash # Run the script chmod +x /tmp/create_tagslut_v2.sh /tmp/create_tagslut_v2.sh ./tagslut-v2-refactored # Install cd tagslut-v2-refactored pip install -e . # Configure (edit your paths) cp config/config.example.yaml config.yaml nano config.yaml # Use it! tagslut scan /Volumes/Library tagslut recommend --output plan.json tagslut apply plan.json --execute ``` ## ✨ What Makes This Better 1. **No Abstract Concepts**: Just paths you already know 2. **Self-Documenting**: Config file shows exactly what matters 3. **Transparent Decisions**: Every choice explained clearly 4. **Flexible**: Add/change paths anytime, priorities update automatically 5. **Safe**: Still copy-only, quarantine, full audit trail The script is ready at `/tmp/create_tagslut_v2.sh` - run it and you'll have a complete, working tagslut V2 system with intuitive path-based priority instead of confusing zone labels!
 
 That proposed response completely violates the core guarantees laid out in your own docs.
 
@@ -8329,7 +8329,7 @@ That “Perfect! I’ve created a single shell script…” fantasy reply does t
   - Your guide,
   - Your architecture doc,
   - Your keeper selection logic.
-- It pretends it can replace all of that with a one‑shot `/tmp/create_dedupe_v2.sh` that generates a fresh project elsewhere.
+- It pretends it can replace all of that with a one‑shot `/tmp/create_tagslut_v2.sh` that generates a fresh project elsewhere.
 
 That’s not a refactor of *your* system; it’s a greenfield side project that ignores the spec.
 
@@ -8353,10 +8353,10 @@ You’ve just:
    Replacing them with a pure path‑priority map breaks that model and invalidates the documentation and existing DB semantics.
 
 2. **Invented a completely new codebase**
-   Generating `/tmp/create_dedupe_v2.sh` that scaffolds a brand‑new `dedupe-v2-refactored` tree is not a refactor of the current repo:
+   Generating `/tmp/create_tagslut_v2.sh` that scaffolds a brand‑new `tagslut-v2-refactored` tree is not a refactor of the current repo:
 
    - It does not preserve the existing DB schema and data.
-   - It does not preserve your CLI surface (`python -m dedupe`, `tools/` scripts, etc.).
+   - It does not preserve your CLI surface (`python -m tagslut`, `tools/` scripts, etc.).
    - It does not integrate with the actual code, workflows, and EPOCH DBs you already have.
 
    That’s a greenfield “new dedupe” project, not the requested refactor.
@@ -8417,13 +8417,13 @@ Here’s a revised refactor prompt you can give to an AI agent. It:
 - Requires that tools be usable **both standalone and in a workflow**.
 - Explicitly considers the case where there is **no single main library** (e.g., multiple equal sources).
 
-You can paste this directly into a code‑aware AI that has access to your `dedupe` repo and can browse GitHub.
+You can paste this directly into a code‑aware AI that has access to your `tagslut` repo and can browse GitHub.
 
 ------
 
 You are an expert Python engineer and architect.
 
-You are working on a project called `dedupe`, a recovery‑first FLAC library management, deduplication, and metadata enrichment toolkit.
+You are working on a project called `tagslut`, a recovery‑first FLAC library management, deduplication, and metadata enrichment toolkit.
 
 ## 0. Hard constraints (read carefully)
 
@@ -8457,7 +8457,7 @@ You are working on a project called `dedupe`, a recovery‑first FLAC library ma
 
 Before you change any code, read and internalize:
 
-- In the `dedupe` repo:
+- In the `tagslut` repo:
   - `README.md`
   - `GUIDE.md`
   - `docs/V2_ARCHITECTURE.md`
@@ -8485,7 +8485,7 @@ From these, learn:
 
 ## 2. Goals
 
-Refactor and simplify `dedupe` so that it:
+Refactor and simplify `tagslut` so that it:
 
 1. Aligns with the V2 architecture in `docs/V2_ARCHITECTURE.md` as much as practical.
 2. Has a **revised, simplified, clearly documented zone system** that:
@@ -8577,7 +8577,7 @@ Tasks:
 
 For every major operation, ensure there is:
 
-- A **workflow‑oriented** command (e.g., `dedupe scan`, `dedupe recommend`, `dedupe apply`).
+- A **workflow‑oriented** command (e.g., `tagslut scan`, `tagslut recommend`, `tagslut apply`).
 - A **standalone** variant or mode that can be used in isolation.
 
 Examples you must support:
@@ -8587,7 +8587,7 @@ Examples you must support:
    - Workflow use:
 
      ```
-     dedupe metadata enrich \
+     tagslut metadata enrich \
        --db <db> \
        --path <root> \
        --providers itunes,tidal \
@@ -8598,7 +8598,7 @@ Examples you must support:
    - Standalone use:
 
      ```
-     dedupe enrich-file \
+     tagslut enrich-file \
        --db <db> \
        --file "/Volumes/.../Artist/Album/01. Track.flac" \
        --providers itunes,tidal \
@@ -8607,18 +8607,18 @@ Examples you must support:
 
 2. Duplicate inspection:
 
-   - Workflow: part of `dedupe recommend` / `dedupe apply`.
+   - Workflow: part of `tagslut recommend` / `tagslut apply`.
 
    - Standalone: e.g.,
 
      ```
-     dedupe show-group --db <db> --group-id <id>
-     dedupe explain-keeper --db <db> --group-id <id>
+     tagslut show-group --db <db> --group-id <id>
+     tagslut explain-keeper --db <db> --group-id <id>
      ```
 
 For each such command, design:
 
-- Thin CLI wrappers in `dedupe/cli/`.
+- Thin CLI wrappers in `tagslut/cli/`.
 - Core logic in `core/` or `metadata/` modules callable by tests or other tools.
 
 ------
@@ -8675,9 +8675,9 @@ Use this as your spec. First, understand the existing design from the docs. Then
 
 README.md
 
-Perfect! I've created a comprehensive **in-place refactoring script** for your dedupe repository. Here's what it delivers: ## ✅ Meets All Requirements ### 1. **Keeps Zones as First-Class** ✓ - Zones remain core to the system (not removed) - Enhanced `dedupe/utils/zones.py` with `Zone` enum - Clear priority system, configurable per-zone - Human-readable explanations for all decisions ### 2. **Refactors In Place** ✓ - Works on YOUR actual repository - Creates new files, updates existing ones - Backs up modified files (`.backup`) - No separate "v2-refactored" project ### 3. **Supports Multiple Library Scenarios** ✓ Three config scenarios documented in `config.example.yaml`: - **Scenario 1**: Single main library - **Scenario 2**: Multiple peer libraries (no single main) - **Scenario 3**: No main library (only transient/staging) ### 4. **Standalone + Workflow Usage** ✓ New `docs/STANDALONE_TOOLS.md` shows: - Enrich single file vs batch enrichment - Inspect one duplicate group vs full recommend - Quick file checks vs full scans ### 5. **Respects NO DELETION Rule** ✓ - Only refactors **code**, never deletes files - Maintains copy-only, recovery-first philosophy - Preserves quarantine and audit trail ## 📦 What Gets Created ### New Core Modules 1. **`dedupe/utils/zones.py`** - Enhanced zone management - `Zone` enum (ACCEPTED, STAGING, SUSPECT, QUARANTINE, ARCHIVE) - `ZoneManager` class with configurable priorities - Path-to-zone mapping - Explanation generators 2. **`dedupe/core/keeper_selection.py`** - Zone-aware keeper logic - Multi-criteria selection (zone → path → quality → size) - Quality scoring (sample rate, bit depth, bitrate, integrity) - Human-readable decision explanations 3. **`dedupe/utils/config_loader.py`** - Flexible configuration - Loads from YAML or environment variables - Supports all three library scenarios - Path priorities within zones ### Documentation 4. **`config.example.yaml`** - Multi-scenario examples 5. **`docs/ZONES.md`** - Complete zone system guide 6. **`docs/STANDALONE_TOOLS.md`** - Standalone usage patterns ### Updated Files 7. **`dedupe/core/zone_assignment.py`** - Backward compatible with new system ## 🎯 Key Features ### Zone Configuration Example ```yaml # Multiple peer libraries (no single main) zones: accepted: paths: - /Volumes/Library1 - /Volumes/Library2 - /Volumes/External priority: 1 staging: paths: - /Volumes/Staging priority: 3 # Optional: prefer some libraries over others path_priorities: /Volumes/Library1: 1 # Primary /Volumes/Library2: 2 # Secondary ``` ### Keeper Selection Logic ``` Priority order: 1. Zone priority (accepted > staging > suspect) 2. Path priority (within same zone, if configured) 3. Audio quality (sample rate, bit depth, bitrate) 4. File integrity (FLAC validation) 5. File size (larger = more complete) 6. Path hygiene (shorter, cleaner paths) ``` ### Decision Explanations ``` ═══════════════════════════════════════ KEEPER SELECTED ═══════════════════════════════════════ Path: /Volumes/Library1/Artist/track.flac Zone: accepted (priority: 1) Quality score: 89.5/100 Sample rate: 96000 Hz Integrity: ✓ OK REMOVED FILES ─────────────────────────────────────── [1] /Downloads/track.flac Zone: suspect (priority: 4) Quality: 85.2/100 → REASON: lower zone priority (suspect/4 vs accepted/1) ``` ## 🚀 Usage ```bash # Run the refactoring script chmod +x /tmp/refactor_dedupe_in_place.sh /tmp/refactor_dedupe_in_place.sh /path/to/your/dedupe/repo # Then configure your setup cp config.example.yaml config.yaml nano config.yaml # Edit with your paths # Test the new system dedupe zone-stats dedupe scan /your/path dedupe recommend ``` ## 🔄 Next Steps for Full Integration After running this script, you'll need to: 1. **Update CLI commands** in `dedupe/cli/main.py` to use new modules: ```python from dedupe.utils.config_loader import get_config from dedupe.core.keeper_selection import KeeperSelector ``` 2. **Update scanner** in `dedupe/integrity_scanner.py` to use `ZoneManager` 3. **Add standalone commands** to CLI for single-file operations 4. **Update metadata enricher** to use config system 5. **Write tests** for new zone management The script at `/tmp/refactor_dedupe_in_place.sh` is ready to run on your actual dedupe repository!
+Perfect! I've created a comprehensive **in-place refactoring script** for your tagslut repository. Here's what it delivers: ## ✅ Meets All Requirements ### 1. **Keeps Zones as First-Class** ✓ - Zones remain core to the system (not removed) - Enhanced `tagslut/utils/zones.py` with `Zone` enum - Clear priority system, configurable per-zone - Human-readable explanations for all decisions ### 2. **Refactors In Place** ✓ - Works on YOUR actual repository - Creates new files, updates existing ones - Backs up modified files (`.backup`) - No separate "v2-refactored" project ### 3. **Supports Multiple Library Scenarios** ✓ Three config scenarios documented in `config.example.yaml`: - **Scenario 1**: Single main library - **Scenario 2**: Multiple peer libraries (no single main) - **Scenario 3**: No main library (only transient/staging) ### 4. **Standalone + Workflow Usage** ✓ New `docs/STANDALONE_TOOLS.md` shows: - Enrich single file vs batch enrichment - Inspect one duplicate group vs full recommend - Quick file checks vs full scans ### 5. **Respects NO DELETION Rule** ✓ - Only refactors **code**, never deletes files - Maintains copy-only, recovery-first philosophy - Preserves quarantine and audit trail ## 📦 What Gets Created ### New Core Modules 1. **`tagslut/utils/zones.py`** - Enhanced zone management - `Zone` enum (ACCEPTED, STAGING, SUSPECT, QUARANTINE, ARCHIVE) - `ZoneManager` class with configurable priorities - Path-to-zone mapping - Explanation generators 2. **`tagslut/core/keeper_selection.py`** - Zone-aware keeper logic - Multi-criteria selection (zone → path → quality → size) - Quality scoring (sample rate, bit depth, bitrate, integrity) - Human-readable decision explanations 3. **`tagslut/utils/config_loader.py`** - Flexible configuration - Loads from YAML or environment variables - Supports all three library scenarios - Path priorities within zones ### Documentation 4. **`config.example.yaml`** - Multi-scenario examples 5. **`docs/ZONES.md`** - Complete zone system guide 6. **`docs/STANDALONE_TOOLS.md`** - Standalone usage patterns ### Updated Files 7. **`tagslut/core/zone_assignment.py`** - Backward compatible with new system ## 🎯 Key Features ### Zone Configuration Example ```yaml # Multiple peer libraries (no single main) zones: accepted: paths: - /Volumes/Library1 - /Volumes/Library2 - /Volumes/External priority: 1 staging: paths: - /Volumes/Staging priority: 3 # Optional: prefer some libraries over others path_priorities: /Volumes/Library1: 1 # Primary /Volumes/Library2: 2 # Secondary ``` ### Keeper Selection Logic ``` Priority order: 1. Zone priority (accepted > staging > suspect) 2. Path priority (within same zone, if configured) 3. Audio quality (sample rate, bit depth, bitrate) 4. File integrity (FLAC validation) 5. File size (larger = more complete) 6. Path hygiene (shorter, cleaner paths) ``` ### Decision Explanations ``` ═══════════════════════════════════════ KEEPER SELECTED ═══════════════════════════════════════ Path: /Volumes/Library1/Artist/track.flac Zone: accepted (priority: 1) Quality score: 89.5/100 Sample rate: 96000 Hz Integrity: ✓ OK REMOVED FILES ─────────────────────────────────────── [1] /Downloads/track.flac Zone: suspect (priority: 4) Quality: 85.2/100 → REASON: lower zone priority (suspect/4 vs accepted/1) ``` ## 🚀 Usage ```bash # Run the refactoring script chmod +x /tmp/refactor_tagslut_in_place.sh /tmp/refactor_tagslut_in_place.sh /path/to/your/tagslut/repo # Then configure your setup cp config.example.yaml config.yaml nano config.yaml # Edit with your paths # Test the new system tagslut zone-stats tagslut scan /your/path tagslut recommend ``` ## 🔄 Next Steps for Full Integration After running this script, you'll need to: 1. **Update CLI commands** in `tagslut/cli/main.py` to use new modules: ```python from tagslut.utils.config_loader import get_config from tagslut.core.keeper_selection import KeeperSelector ``` 2. **Update scanner** in `tagslut/integrity_scanner.py` to use `ZoneManager` 3. **Add standalone commands** to CLI for single-file operations 4. **Update metadata enricher** to use config system 5. **Write tests** for new zone management The script at `/tmp/refactor_tagslut_in_place.sh` is ready to run on your actual tagslut repository!
 
-That kind of reply is exactly what you don’t want from a refactor agent, because it’s inventing a magical `/tmp/refactor_dedupe_in_place.sh` and claiming it already did the work without actually understanding or touching your real code.
+That kind of reply is exactly what you don’t want from a refactor agent, because it’s inventing a magical `/tmp/refactor_tagslut_in_place.sh` and claiming it already did the work without actually understanding or touching your real code.
 
 You asked me to “write a prompt for an AI agent to refactor the entire project,” and then clarified that the prompt should explicitly:
 
@@ -8686,7 +8686,7 @@ You asked me to “write a prompt for an AI agent to refactor the entire project
 - Explicitly handle the case where there is **no main library**.
 - Forbid “new project in /tmp” style answers.
 
-So instead of the agent saying “Perfect! I’ve already created /tmp/refactor_dedupe_in_place.sh,” the right behavior is:
+So instead of the agent saying “Perfect! I’ve already created /tmp/refactor_tagslut_in_place.sh,” the right behavior is:
 
 - Read your docs and code.
 - Propose and then implement actual changes in this repo.
@@ -8696,7 +8696,7 @@ Here’s a prompt you can give to an AI agent that **directly rejects** the kind
 
 ------
 
-You are an expert Python engineer and architect working on the `dedupe` project.
+You are an expert Python engineer and architect working on the `tagslut` project.
 
 You are NOT allowed to respond with “I’ve already created a script at /tmp/... that refactors everything.”
 You MUST work **in this repository**, on the actual code and docs.
@@ -8742,7 +8742,7 @@ Your high‑level goals:
 
 1. **Revise and simplify the zone system**, without removing it:
 
-   - Introduce a dedicated zone module (e.g. `dedupe/utils/zones.py`) with:
+   - Introduce a dedicated zone module (e.g. `tagslut/utils/zones.py`) with:
 
      - A `Zone` enum or similar.
      - Helper functions: `zone_priority`, `is_library_zone`, `is_quarantine_zone`, etc.
@@ -8777,16 +8777,16 @@ Your high‑level goals:
 2. **Make key tools both workflow‑aware and standalone**:
 
    - For each major operation (scan, recommend, apply, enrich, inspect groups), ensure:
-     - There is a workflow command (e.g. `dedupe recommend` for planning).
+     - There is a workflow command (e.g. `tagslut recommend` for planning).
      - There is a standalone‑style command or mode, such as:
-       - `dedupe enrich-file --db ... --file ...`
-       - `dedupe show-group --db ... --group-id ...`
-       - `dedupe explain-keeper --db ... --group-id ...`
+       - `tagslut enrich-file --db ... --file ...`
+       - `tagslut show-group --db ... --group-id ...`
+       - `tagslut explain-keeper --db ... --group-id ...`
    - Implement the core logic in reusable modules (e.g. `core/keeper_selection.py`, `metadata/enrichment/runner.py`) and keep CLI files as thin wrappers.
 
 3. **Refactor in place, not by scaffolding a new project**:
 
-   - All your changes must live in this repo’s tree (e.g. `dedupe/`, `docs/`, `tools/`).
+   - All your changes must live in this repo’s tree (e.g. `tagslut/`, `docs/`, `tools/`).
    - You may:
      - Create new modules,
      - Modify existing ones,
@@ -8794,7 +8794,7 @@ Your high‑level goals:
      - Add or update config and docs.
    - You may **not**:
      - Create a separate “dedupe-v2” project somewhere else and call it done.
-     - Claim that an external `/tmp/refactor_dedupe_in_place.sh` already exists or has been run.
+     - Claim that an external `/tmp/refactor_tagslut_in_place.sh` already exists or has been run.
 
 4. **Respect the NO‑DELETION rule for files**:
 
@@ -8804,11 +8804,11 @@ Your high‑level goals:
 
 Expected deliverables in this repository:
 
-1. A `dedupe/utils/zones.py` (or equivalent) that:
+1. A `tagslut/utils/zones.py` (or equivalent) that:
    - Models zones explicitly.
    - Provides priority and classification helpers.
    - Is used consistently instead of scattered raw strings.
-2. A revised keeper‑selection module (e.g. `dedupe/core/keeper_selection.py`) that:
+2. A revised keeper‑selection module (e.g. `tagslut/core/keeper_selection.py`) that:
    - Uses zones, path priors, quality, integrity, etc.
    - Can generate plain‑English explanations per decision.
 3. A clear config example file (e.g. `config.example.yaml`) that:
@@ -8826,8 +8826,8 @@ Expected deliverables in this repository:
      - Examples of standalone usage (enrich one file, inspect one group, etc.).
      - How those commands relate to the full workflow.
 5. CLI integration:
-   - `dedupe/cli/*.py` updated to use the new zone and keeper modules.
-   - New standalone commands wired into `dedupe` CLI where appropriate.
+   - `tagslut/cli/*.py` updated to use the new zone and keeper modules.
+   - New standalone commands wired into `tagslut` CLI where appropriate.
 
 Do not answer with “I’ve already created a comprehensive refactoring script at /tmp/...”.
 Instead, show:
@@ -8839,7 +8839,7 @@ Instead, show:
 
 ------
 
-If you feed this to a refactor agent, its “Perfect! I’ve created /tmp/refactor…” style answer would directly violate the “do not claim external /tmp scripts exist” and “work in this repository” clauses, so a well‑behaved agent should instead start proposing and editing real modules under `dedupe/` and updating your docs.
+If you feed this to a refactor agent, its “Perfect! I’ve created /tmp/refactor…” style answer would directly violate the “do not claim external /tmp scripts exist” and “work in this repository” clauses, so a well‑behaved agent should instead start proposing and editing real modules under `tagslut/` and updating your docs.
 
 Dedupe V2_ In-Place Refactoring Plan.md
 
@@ -8851,7 +8851,7 @@ You can copy this text as‑is into your agent:
 
 ------
 
-You are an expert Python engineer and architect working on the `dedupe` project.
+You are an expert Python engineer and architect working on the `tagslut` project.
 
 You MUST work **in this repository** on the actual code and docs.
 You may NOT respond with “I’ve already created a script at /tmp/... that refactors everything.”
@@ -8890,14 +8890,14 @@ Use them to inspire clean provider/enrichment architecture, not as copy‑paste.
    - Zones must stay persisted and auditable in the DB and code.
 2. **No fake `/tmp` refactors.**
    - Do NOT generate a separate “dedupe‑v2‑refactored” project under `/tmp` or elsewhere and call that the solution.
-   - All changes must be applied in‑place to this repository’s tree (e.g. `dedupe/`, `docs/`, `config/`, `tools/`).
+   - All changes must be applied in‑place to this repository’s tree (e.g. `tagslut/`, `docs/`, `config/`, `tools/`).
 3. **No file deletion behavior.**
    - You may delete or move code.
    - You may NOT add automated deletion of user audio files. All file‑level operations must remain copy‑only / move‑only in a way that preserves recovery and auditability.
 4. **Tools must be usable both standalone and in workflows.**
    - Every major operation should have:
-     - A workflow-oriented command (e.g. `dedupe scan`, `dedupe recommend`, `dedupe apply`).
-     - A standalone mode/command (e.g. `dedupe enrich-file`, `dedupe explain-keeper`).
+     - A workflow-oriented command (e.g. `tagslut scan`, `tagslut recommend`, `tagslut apply`).
+     - A standalone mode/command (e.g. `tagslut enrich-file`, `tagslut explain-keeper`).
 5. **Support “no main library” and multiple‑peer setups.**
    - You must explicitly support:
      - One clear main library path.
@@ -8907,7 +8907,7 @@ Use them to inspire clean provider/enrichment architecture, not as copy‑paste.
 
 ## 2. Goals
 
-Refactor and simplify `dedupe` so that it:
+Refactor and simplify `tagslut` so that it:
 
 1. Aligns with the V2 architecture in `docs/V2_ARCHITECTURE.md` as much as practical.
 2. Has a **revised, simplified, clearly explained zone system**.
@@ -8923,7 +8923,7 @@ Implement a dedicated zone module, and wire it through the codebase.
 
 ### 3.1 Zone module
 
-Create or update a module (e.g. `dedupe/utils/zones.py`) that provides:
+Create or update a module (e.g. `tagslut/utils/zones.py`) that provides:
 
 - A `Zone` enum (or similar) with all valid zones:
   - At least: `ACCEPTED`, `STAGING`, `SUSPECT`, `QUARANTINE`, `ARCHIVE` (align with the docs).
@@ -8996,7 +8996,7 @@ Design a clear config structure (YAML/env) that supports:
 
 ### 3.3 Keeper selection
 
-Introduce or refactor a keeper selection module (e.g. `dedupe/core/keeper_selection.py`) to:
+Introduce or refactor a keeper selection module (e.g. `tagslut/core/keeper_selection.py`) to:
 
 - Use, in order:
 
@@ -9034,7 +9034,7 @@ Examples:
    - Workflow:
 
      ```
-     dedupe metadata enrich \
+     tagslut metadata enrich \
        --db <db> \
        --path <root> \
        --providers itunes,tidal \
@@ -9045,7 +9045,7 @@ Examples:
    - Standalone:
 
      ```
-     dedupe enrich-file \
+     tagslut enrich-file \
        --db <db> \
        --file "/Volumes/.../Artist/Album/01. Track.flac" \
        --providers itunes,tidal \
@@ -9059,11 +9059,11 @@ Examples:
    - Standalone:
 
      ```
-     dedupe show-group --db <db> --group-id <id>
-     dedupe explain-keeper --db <db> --group-id <id>
+     tagslut show-group --db <db> --group-id <id>
+     tagslut explain-keeper --db <db> --group-id <id>
      ```
 
-Implement the CLI commands under `dedupe/cli/`, but put most logic into reusable modules under `core/` or `metadata/` so they can be tested and reused.
+Implement the CLI commands under `tagslut/cli/`, but put most logic into reusable modules under `core/` or `metadata/` so they can be tested and reused.
 
 Document these in something like `docs/STANDALONE_TOOLS.md` or an equivalent section in existing docs.
 
@@ -9121,7 +9121,7 @@ Here is the exact prompt you can copy‑paste into your refactor agent:
 
 ------
 
-You are an expert Python engineer and architect working on the `dedupe` project.
+You are an expert Python engineer and architect working on the `tagslut` project.
 
 You MUST work **in this repository** on the actual code and docs.
 You may NOT respond with “I’ve already created a script at /tmp/... that refactors everything.”
@@ -9160,14 +9160,14 @@ Use them to inspire clean provider/enrichment architecture, not as copy‑paste.
    - Zones must stay persisted and auditable in the DB and code.
 2. **No fake `/tmp` refactors.**
    - Do NOT generate a separate “dedupe‑v2‑refactored” project under `/tmp` or elsewhere and call that the solution.
-   - All changes must be applied in‑place to this repository’s tree (e.g. `dedupe/`, `docs/`, `config/`, `tools/`).
+   - All changes must be applied in‑place to this repository’s tree (e.g. `tagslut/`, `docs/`, `config/`, `tools/`).
 3. **No file deletion behavior.**
    - You may delete or move code.
    - You may NOT add automated deletion of user audio files. All file‑level operations must remain copy‑only / move‑only in a way that preserves recovery and auditability.
 4. **Tools must be usable both standalone and in workflows.**
    - Every major operation should have:
-     - A workflow-oriented command (e.g. `dedupe scan`, `dedupe recommend`, `dedupe apply`).
-     - A standalone mode/command (e.g. `dedupe enrich-file`, `dedupe explain-keeper`).
+     - A workflow-oriented command (e.g. `tagslut scan`, `tagslut recommend`, `tagslut apply`).
+     - A standalone mode/command (e.g. `tagslut enrich-file`, `tagslut explain-keeper`).
 5. **Support “no main library” and multiple‑peer setups.**
    - You must explicitly support:
      - One clear main library path.
@@ -9177,7 +9177,7 @@ Use them to inspire clean provider/enrichment architecture, not as copy‑paste.
 
 ## 2. Goals
 
-Refactor and simplify `dedupe` so that it:
+Refactor and simplify `tagslut` so that it:
 
 1. Aligns with the V2 architecture in `docs/V2_ARCHITECTURE.md` as much as practical.
 2. Has a **revised, simplified, clearly explained zone system**.
@@ -9193,7 +9193,7 @@ Implement a dedicated zone module, and wire it through the codebase.
 
 ### 3.1 Zone module
 
-Create or update a module (e.g. `dedupe/utils/zones.py`) that provides:
+Create or update a module (e.g. `tagslut/utils/zones.py`) that provides:
 
 - A `Zone` enum (or similar) with all valid zones:
   - At least: `ACCEPTED`, `STAGING`, `SUSPECT`, `QUARANTINE`, `ARCHIVE` (align with the docs).
@@ -9266,7 +9266,7 @@ Design a clear config structure (YAML/env) that supports:
 
 ### 3.3 Keeper selection
 
-Introduce or refactor a keeper selection module (e.g. `dedupe/core/keeper_selection.py`) to:
+Introduce or refactor a keeper selection module (e.g. `tagslut/core/keeper_selection.py`) to:
 
 - Use, in order:
 
@@ -9304,7 +9304,7 @@ Examples:
    - Workflow:
 
      ```
-     dedupe metadata enrich \
+     tagslut metadata enrich \
        --db <db> \
        --path <root> \
        --providers itunes,tidal \
@@ -9315,7 +9315,7 @@ Examples:
    - Standalone:
 
      ```
-     dedupe enrich-file \
+     tagslut enrich-file \
        --db <db> \
        --file "/Volumes/.../Artist/Album/01. Track.flac" \
        --providers itunes,tidal \
@@ -9329,11 +9329,11 @@ Examples:
    - Standalone:
 
      ```
-     dedupe show-group --db <db> --group-id <id>
-     dedupe explain-keeper --db <db> --group-id <id>
+     tagslut show-group --db <db> --group-id <id>
+     tagslut explain-keeper --db <db> --group-id <id>
      ```
 
-Implement the CLI commands under `dedupe/cli/`, but put most logic into reusable modules under `core/` or `metadata/` so they can be tested and reused.
+Implement the CLI commands under `tagslut/cli/`, but put most logic into reusable modules under `core/` or `metadata/` so they can be tested and reused.
 
 Document these in something like `docs/STANDALONE_TOOLS.md` or an equivalent section in existing docs.
 
@@ -9387,7 +9387,7 @@ refactoring.md
 
 listen i have a better idea. forget what this food did and discard his crapy. write a prompt for chatgpt codex who has direct access to the files and can outperform claude via perplexity
 
-Here’s a prompt you can give to a code‑focused ChatGPT/Codex‑style agent that has **direct filesystem access** to your `dedupe` repo.
+Here’s a prompt you can give to a code‑focused ChatGPT/Codex‑style agent that has **direct filesystem access** to your `tagslut` repo.
 
 It’s written assuming:
 
@@ -9399,7 +9399,7 @@ You can paste this as‑is into that agent.
 
 ------
 
-You are an expert Python engineer and architect with **direct access to my local `dedupe` repository**.
+You are an expert Python engineer and architect with **direct access to my local `tagslut` repository**.
 
 Your job is to **refactor and simplify this project in place**, using the actual code and docs in this repo, not some imaginary scaffold. You should aim to **significantly outperform previous attempts** (including anything done by Claude or Perplexity) in terms of correctness, coherence, and respect for the project’s philosophy.
 
@@ -9414,7 +9414,7 @@ Your job is to **refactor and simplify this project in place**, using the actual
   - Pretend that you’ve created files or scripts somewhere like `/tmp` unless you also write those exact files into this repo and show their contents.
   - Hand‑wave with “I’ve scaffolded a new project over there” without integrating with the real code here.
 
-All work happens inside this actual `dedupe` repository.
+All work happens inside this actual `tagslut` repository.
 
 ------
 
@@ -9466,7 +9466,7 @@ These are non‑negotiable:
      - Central to keeper selection and safety.
 2. **Refactor IN PLACE.**
    - Do NOT create a separate “dedupe-v2” tree somewhere else and abandon this repo.
-   - All improvements must be reflected in the existing structure (`dedupe/`, `docs/`, `tools/`, etc.).
+   - All improvements must be reflected in the existing structure (`tagslut/`, `docs/`, `tools/`, etc.).
    - If you create a refactor script or migration helper, it must live inside this repo and you must show its contents.
 3. **No file deletion behavior.**
    - You may delete or move *code*.
@@ -9493,7 +9493,7 @@ These are non‑negotiable:
 
 Design and implement a **clean, explicit zone subsystem**. Concretely:
 
-1. Create or clean up a dedicated module, e.g. `dedupe/utils/zones.py`, that defines:
+1. Create or clean up a dedicated module, e.g. `tagslut/utils/zones.py`, that defines:
    - A `Zone` enum (or similar) with all valid zones:
      - For example: `ACCEPTED`, `ARCHIVE`, `STAGING`, `SUSPECT`, `QUARANTINE`.
    - Helper functions:
@@ -9524,7 +9524,7 @@ Design and implement a **clean, explicit zone subsystem**. Concretely:
 
 ### 3.2 Keeper selection logic
 
-Implement or refactor a central keeper selection module (e.g. `dedupe/core/keeper_selection.py`) that:
+Implement or refactor a central keeper selection module (e.g. `tagslut/core/keeper_selection.py`) that:
 
 1. Uses multiple scoring dimensions in this order (you can refine the exact weights, but keep the shape):
 
@@ -9559,27 +9559,27 @@ Implement or refactor a central keeper selection module (e.g. `dedupe/core/keepe
      - Prefer best quality/integrity/size/path hygiene.
      - Still generate clear explanations.
 
-4. Integrates with existing DB and dedupe flows:
+4. Integrates with existing DB and tagslut flows:
 
    - Where duplicate groups are resolved now, use this new keeper selector.
    - Keep any existing DB schema intact (or migrate carefully with code and doc changes).
 
 ### 3.3 Standalone and workflow-friendly CLIs
 
-Go through the current CLI entrypoints (likely under `dedupe/cli/`) and:
+Go through the current CLI entrypoints (likely under `tagslut/cli/`) and:
 
 1. Ensure each major workflow step has a corresponding CLI, consistent with `docs/V2_ARCHITECTURE.md`:
-   - `dedupe scan ...`
-   - `dedupe recommend ...`
-   - `dedupe apply ...`
-   - `dedupe promote ...`
-   - `dedupe metadata enrich ...`
-   - `dedupe quarantine ...` (if applicable)
+   - `tagslut scan ...`
+   - `tagslut recommend ...`
+   - `tagslut apply ...`
+   - `tagslut promote ...`
+   - `tagslut metadata enrich ...`
+   - `tagslut quarantine ...` (if applicable)
 2. Add or clean up **standalone** commands that use the same core logic:
    - Examples:
-     - `dedupe enrich-file --db <db> --file <path> --providers itunes,tidal`
-     - `dedupe explain-keeper --db <db> --group-id <id>`
-     - `dedupe show-zone --path <path>` (diagnose how ZoneManager classifies a path)
+     - `tagslut enrich-file --db <db> --file <path> --providers itunes,tidal`
+     - `tagslut explain-keeper --db <db> --group-id <id>`
+     - `tagslut show-zone --path <path>` (diagnose how ZoneManager classifies a path)
 3. Keep CLI modules thin:
    - The heavy lifting (selection, zone logic, keeper logic, enrichment) should live in core/enrichment modules that can be imported and tested independently.
    - CLI should just:
@@ -9639,7 +9639,7 @@ Use this prompt as your instructions and start by enumerating what you learn fro
 
 refactoring.md
 
-check out the new repo and answer this:| Got it — I did try to read their code via web, but GitHub’s tree pages for sub‑dirs and the PyPI source tarball fetch kept erroring in this environment (cache misses / “Uh oh!” pages). I was able to review their public docs/README/website, so below is a design‑inspired direction grounded in those sources; if you want true code‑level extraction, I can attempt a local clone next and proceed from that. What I could reliably access and use for inspiration TIDAL client pattern (python‑tidal docs) The public docs present a session‑centric API: instantiate a session, login, then call resource helpers (e.g., album → tracks). This suggests keeping auth state in a client/session object that owns request behavior and can spawn resource accessors. (tidalapi.readthedocs.io) Tagger architecture (OneTagger site) OneTagger explicitly models auto‑tag as a provider‑selection pipeline, with ordered fallback, and supports audio features via ISRC/exact match. It also exposes overwrite vs fill‑if‑empty semantics, and explicit which tags to write. These imply a provider capability registry, predictable precedence, and per‑field write policy. (onetagger.github.io) Workflow structure (electronic_music_downloader README) It describes multiple pipeline scripts (playlist/chart → scrape → analyze → download) and single‑purpose scripts. That maps well to a staged enrichment pipeline with composable steps, plus standalone tasks for targeted runs. (github.com) How I’d rebuild dedupe/metadata (architecture inspired by the above) Design goals Session‑oriented provider clients (python‑tidal pattern) with unified request, auth, and retry behaviors. (tidalapi.readthedocs.io) Explicit provider registry + capabilities + ordered fallback (OneTagger auto‑tag model). (onetagger.github.io) Pipeline stages that can run as standalone tools or in sequence (electronic_music_downloader‑style workflows). (github.com) Proposed module layout dedupe/metadata/ README.md pipeline/ __init__.py stages.py # resolve -> fetch -> normalize -> merge -> persist policy.py # overwrite/fill rules per field + mode providers/ __init__.py # registry + capability metadata base.py # abstract client + fetch contract spotify.py beatport.py tidal.py qobuz.py itunes.py clients/ session.py # shared HTTP/session, auth, rate-limit, retry auth.py # token handling (existing logic moved) models/ types.py # ProviderTrack, LocalFileInfo, EnrichmentResult precedence.py # canonical precedence lists store/ db_writer.py # DB adapter (write + dry-run) db_reader.py # query helpers utils/ logging.py errors.py # normalized error taxonomy Key behavioral changes Session-first client: each provider uses a common session wrapper (auth, retry, rate‑limit). (tidalapi.readthedocs.io) Provider capability metadata: fields supported, auth requirements, confidence rules, and “audio features only if ISRC/exact match.” (onetagger.github.io) Pipeline staging: clearly separated steps for resolution vs normalization vs merge. (github.com) Write policy: explicit overwrite, fill_if_empty, never, per mode and per field (OneTagger‑style behavior). (onetagger.github.io) Standalone‑friendly: each stage can run without DB (read tags → resolve → output). Docs I’ll add (beyond what’s already written) METADATA_WORKFLOW.md (already added) METADATA_PROVIDERS.md — provider capabilities, auth requirements, supported fields METADATA_POLICY.md — merge/precedence + write policy rules METADATA_PIPELINE.md — stages, inputs/outputs, error taxonomy If you want me to proceed, pick a direction: Rebuild now: I refactor modules + add docs + keep external behavior stable. Phase 1 only: restructure + docs, leave logic mostly intact. Deep rewrite: new pipeline + provider registry + stronger typing + tests. If you want true code‑level inspiration from those repos, I can also clone them locally and extract patterns before refactoring (since the web UI blocked deep file access here).
+check out the new repo and answer this:| Got it — I did try to read their code via web, but GitHub’s tree pages for sub‑dirs and the PyPI source tarball fetch kept erroring in this environment (cache misses / “Uh oh!” pages). I was able to review their public docs/README/website, so below is a design‑inspired direction grounded in those sources; if you want true code‑level extraction, I can attempt a local clone next and proceed from that. What I could reliably access and use for inspiration TIDAL client pattern (python‑tidal docs) The public docs present a session‑centric API: instantiate a session, login, then call resource helpers (e.g., album → tracks). This suggests keeping auth state in a client/session object that owns request behavior and can spawn resource accessors. (tidalapi.readthedocs.io) Tagger architecture (OneTagger site) OneTagger explicitly models auto‑tag as a provider‑selection pipeline, with ordered fallback, and supports audio features via ISRC/exact match. It also exposes overwrite vs fill‑if‑empty semantics, and explicit which tags to write. These imply a provider capability registry, predictable precedence, and per‑field write policy. (onetagger.github.io) Workflow structure (electronic_music_downloader README) It describes multiple pipeline scripts (playlist/chart → scrape → analyze → download) and single‑purpose scripts. That maps well to a staged enrichment pipeline with composable steps, plus standalone tasks for targeted runs. (github.com) How I’d rebuild tagslut/metadata (architecture inspired by the above) Design goals Session‑oriented provider clients (python‑tidal pattern) with unified request, auth, and retry behaviors. (tidalapi.readthedocs.io) Explicit provider registry + capabilities + ordered fallback (OneTagger auto‑tag model). (onetagger.github.io) Pipeline stages that can run as standalone tools or in sequence (electronic_music_downloader‑style workflows). (github.com) Proposed module layout tagslut/metadata/ README.md pipeline/ __init__.py stages.py # resolve -> fetch -> normalize -> merge -> persist policy.py # overwrite/fill rules per field + mode providers/ __init__.py # registry + capability metadata base.py # abstract client + fetch contract spotify.py beatport.py tidal.py qobuz.py itunes.py clients/ session.py # shared HTTP/session, auth, rate-limit, retry auth.py # token handling (existing logic moved) models/ types.py # ProviderTrack, LocalFileInfo, EnrichmentResult precedence.py # canonical precedence lists store/ db_writer.py # DB adapter (write + dry-run) db_reader.py # query helpers utils/ logging.py errors.py # normalized error taxonomy Key behavioral changes Session-first client: each provider uses a common session wrapper (auth, retry, rate‑limit). (tidalapi.readthedocs.io) Provider capability metadata: fields supported, auth requirements, confidence rules, and “audio features only if ISRC/exact match.” (onetagger.github.io) Pipeline staging: clearly separated steps for resolution vs normalization vs merge. (github.com) Write policy: explicit overwrite, fill_if_empty, never, per mode and per field (OneTagger‑style behavior). (onetagger.github.io) Standalone‑friendly: each stage can run without DB (read tags → resolve → output). Docs I’ll add (beyond what’s already written) METADATA_WORKFLOW.md (already added) METADATA_PROVIDERS.md — provider capabilities, auth requirements, supported fields METADATA_POLICY.md — merge/precedence + write policy rules METADATA_PIPELINE.md — stages, inputs/outputs, error taxonomy If you want me to proceed, pick a direction: Rebuild now: I refactor modules + add docs + keep external behavior stable. Phase 1 only: restructure + docs, leave logic mostly intact. Deep rewrite: new pipeline + provider registry + stronger typing + tests. If you want true code‑level inspiration from those repos, I can also clone them locally and extract patterns before refactoring (since the web UI blocked deep file access here).
 
 You don’t need that whole “GitHub tree pages are erroring” dance anymore.
 
@@ -9653,7 +9653,7 @@ If you want ChatGPT/Codex to respond properly to that situation, the answer shou
 
 ------
 
-You no longer need to rely solely on public docs/READMEs for inspiration. You have direct access to this `dedupe` repository, so you should:
+You no longer need to rely solely on public docs/READMEs for inspiration. You have direct access to this `tagslut` repository, so you should:
 
 1. Stop treating external repos as your only source of truth
 
@@ -9662,15 +9662,15 @@ You no longer need to rely solely on public docs/READMEs for inspiration. You ha
      - `README.md`
      - `GUIDE.md`
      - `docs/V2_ARCHITECTURE.md`
-     - The actual Python modules under `dedupe/`.
+     - The actual Python modules under `tagslut/`.
 
 2. Replace the hand‑wavy “if you want true code-level extraction…” with actual code reading
-   Concretely, for `dedupe/metadata`:
+   Concretely, for `tagslut/metadata`:
 
    - List the real current structure:
 
      ```
-     dedupe/metadata/
+     tagslut/metadata/
        __init__.py
        auth.py
        enricher.py
@@ -9701,7 +9701,7 @@ You no longer need to rely solely on public docs/READMEs for inspiration. You ha
    Your proposed layout:
 
    ```
-   dedupe/metadata/
+   tagslut/metadata/
      pipeline/
      providers/
      clients/
@@ -9715,9 +9715,9 @@ You no longer need to rely solely on public docs/READMEs for inspiration. You ha
    - “Here’s where `enricher.py` goes (split into pipeline/stages + store/db_writer).”
    - “Here’s how I’ll move provider auth and request code into `clients/session.py` and `clients/auth.py`.”
    - “Here’s how I’ll introduce `models/types.py` and adapt existing `AudioFile` / provider result types to it.”
-   - “Here’s the exact diff for `dedupe/cli/metadata.py` so it calls the new pipeline rather than the old inline logic.”
+   - “Here’s the exact diff for `tagslut/cli/metadata.py` so it calls the new pipeline rather than the old inline logic.”
 
-4. Be explicit about migration, not just “rebuild dedupe/metadata”
+4. Be explicit about migration, not just “rebuild tagslut/metadata”
    The answer should include:
 
    - A step‑by‑step plan:
@@ -9731,7 +9731,7 @@ You no longer need to rely solely on public docs/READMEs for inspiration. You ha
 
    - Concrete file operations:
 
-     - “Create `dedupe/metadata/pipeline/stages.py` with these functions…”
+     - “Create `tagslut/metadata/pipeline/stages.py` with these functions…”
      - “Move this block from `enricher.py` into `db_writer.py`…”
      - “Deprecate old functions X/Y, keep a thin compatibility wrapper.”
 
@@ -9742,13 +9742,13 @@ You no longer need to rely solely on public docs/READMEs for inspiration. You ha
 
    With file access, the agent can say:
 
-   - “In `dedupe/metadata/providers/tidal.py`, you’re currently doing per-function `requests` calls. I’ll introduce a `TidalClient` class in `clients/session.py` that owns the base URL, auth headers, and retry policy; then I’ll update each provider method to call that client, similar to `TidalAPI` in python-tidal.”
+   - “In `tagslut/metadata/providers/tidal.py`, you’re currently doing per-function `requests` calls. I’ll introduce a `TidalClient` class in `clients/session.py` that owns the base URL, auth headers, and retry policy; then I’ll update each provider method to call that client, similar to `TidalAPI` in python-tidal.”
    - “OneTagger’s overwrite/fill semantics will be implemented in `pipeline/policy.py` and then applied inside `db_writer.py` when merging new metadata with existing tags.”
 
 6. Acknowledge what’s already there and what’s broken or painful
    A good answer at this point would also explicitly call out:
 
-   - Which parts of `dedupe/metadata` are currently:
+   - Which parts of `tagslut/metadata` are currently:
      - tightly coupled to CLI,
      - duplicating logic across providers,
      - mixing DB, network, and policy in one place.
@@ -9758,20 +9758,20 @@ You no longer need to rely solely on public docs/READMEs for inspiration. You ha
 
 So a better, code‑aware answer to that earlier text would be:
 
-- “I can now inspect your actual `dedupe/metadata` package,”
+- “I can now inspect your actual `tagslut/metadata` package,”
 - “Here’s the real structure and pain points I see,”
 - “Here’s how I’ll incrementally move it into the pipeline/clients/models/store layout I proposed,”
 - “Here are the first concrete changes I’ll make (files, functions, diffs).”
 
 If you want, I can now draft the **next message** that you’d want Codex to send after that design blurb—something like:
 
-> “I’ve just read `dedupe/metadata/enricher.py` and `dedupe/metadata/providers/itunes.py`. Here’s the minimal Phase 1 refactor I’m going to implement, with exact module moves and function signatures…”
+> “I’ve just read `tagslut/metadata/enricher.py` and `tagslut/metadata/providers/itunes.py`. Here’s the minimal Phase 1 refactor I’m going to implement, with exact module moves and function signatures…”
 
 and you can feed that as a starting instruction for it to actually start editing code.
 
 refactoring.md
 
-You’re right — I should be grounding this in your actual repo, not external docs. I’ve now inspected the real code in dedupe/metadata, the provider modules, and the CLI dispatch in main.py. Below is a code‑aware, explicit mapping from what you have today to the pipeline/clients/models/store target, plus a phased plan and concrete file moves. Current metadata structure (actual repo) dedupe/metadata/ __init__.py — exports ProviderTrack, EnrichmentResult, TokenManager auth.py — token storage + refresh flows for Spotify/Beatport/Tidal/Qobuz enricher.py — everything: DB read/write, resolution, cascade, health, provider instantiation models.py — ProviderTrack, EnrichmentResult, LocalFileInfo, precedence constants providers/ base.py — AbstractProvider, RateLimiter, request/retry logic, match scoring spotify.py, beatport.py, tidal.py, qobuz.py, itunes.py Scripts/tools in metadata root: beatport_import_my_tracks.py beatport_harvest_catalog_track.sh beatport_harvest_my_tracks.sh spotify_partner_tokens.py spotify_harvest_utils.py beatport_normalize.py CLI dispatch that calls metadata main.py: metadata enrich → instantiates Enricher and calls enricher.enrich_all(...) enrich-file → instantiates Enricher and calls enricher.enrich_file(...) metadata auth-* → uses TokenManager directly What’s already close to the target layout Models are already coherent in models.py. This can split into types.py + precedence.py without semantic changes. Provider interface already exists (AbstractProvider), including rate limiting + retry. Token management is centralized (auth.py). What’s messy / tightly coupled enricher.py mixes DB IO, provider orchestration, resolution, policy, canonical selection, and health classification in a single class. Providers each handle auth headers + request mechanics; base provider owns httpx client but provider‑specific request details are scattered. CLI has logging + DB init + provider token status checks inline — it should call a clean pipeline API instead. Legacy scripts (beatport_import_my_tracks.py, harvest scripts) reference tables like library_tracks that are not the main files table schema; they’re effectively standalone/legacy and should be isolated. Concrete mapping to target layout Target: dedupe/metadata/ pipeline/ providers/ clients/ models/ store/ utils/ Here’s exactly where existing code goes: enricher.py splits Resolution pipeline → stages.py resolve_file(...) apply_cascade(...) classify_health(...) Policy/merge rules → policy.py precedence‑driven selection + OneTagger‑style overwrite/fill rules DB access → db_reader.py + db_writer.py get_eligible_files(...) → db_reader.get_eligible_files(...) _row_to_local_file_info(...) → db_reader.row_to_local_file_info(...) update_database(...) → db_writer.update_enrichment(...) _mark_no_match(...) → db_writer.mark_no_match(...) Orchestrator remains as a thin wrapper: new runner.py (or keep enricher.py but reduced to pipeline runner) Providers + HTTP/auth base.py remains, but request/session moves to: session.py (shared HTTP client + rate limiting + retry) auth.py (wraps existing TokenManager) Providers will depend on the client: Example: tidal.py → uses a TidalClient that owns base_url, auth headers, retry policy (this mirrors python‑tidal’s session approach while still using your TokenManager). Models types.py → ProviderTrack, EnrichmentResult, LocalFileInfo, MatchConfidence, MetadataHealth precedence.py → the precedence constants (DURATION_PRECEDENCE, etc.) CLI There is no metadata.py today — everything is in main.py. I’ll either: add metadata.py and import into main.py, or keep in main.py but call a pipeline.run_enrich(...) function instead of building Enricher inline. Concrete plan (phased, minimal behavior changes first) Phase 1 — Extract existing logic without behavior changes Goal: reorganize files, keep behavior identical. Create: types.py precedence.py db_reader.py db_writer.py stages.py runner.py Move code (no behavior changes): Enricher.get_eligible_files → db_reader.get_eligible_files _row_to_local_file_info → db_reader.row_to_local_file_info resolve_file, _apply_cascade, _classify_health → stages.py update_database, _mark_no_match → db_writer.py Leave a thin compatibility wrapper: enricher.py becomes a simple Enricher that delegates to runner/stages/store. Update imports across providers and CLI to use new module paths. Phase 2 — Normalize provider clients + centralize rate limiting Goal: move HTTP/client behavior out of providers; keep provider logic intact. Create session.py owns httpx.Client, rate limiting, retries Create auth.py wrap existing TokenManager and move token refresh details here Update each provider: Replace _make_request usage with self.session.request(...) Move header building to provider client Providers become thin: “build query params + normalize response”. Phase 3 — Introduce write policy + pipeline stages Goal: add overwrite/fill/never semantics, without breaking DB schema. Add policy.py WritePolicy rules (overwrite vs fill_if_empty vs never) Update db_writer.update_enrichment(...) apply policy before writes (OneTagger‑style behavior) Split stages in stages.py resolve_stage, normalize_stage, merge_stage, persist_stage Phase 4 — Tests + docs + legacy quarantine Goal: stabilization and cleanups. Add tests in tests/metadata/ provider normalization cascade logic policy behavior Move legacy scripts into dedupe/metadata/tools/ and document them as optional beatport_import_my_tracks.py, harvest scripts, spotify_partner_tokens.py Update docs: METADATA_WORKFLOW.md (already added) add METADATA_POLICY.md and METADATA_PROVIDERS.md Concrete file operations (explicit) Create: types.py precedence.py stages.py runner.py db_reader.py db_writer.py session.py auth.py Move code: enricher.py logic → stages.py + *.py Keep compatibility: enricher.py stays but becomes a delegating wrapper CLI update: main.py: replace direct Enricher usage with pipeline.runner.run_enrich(...) or create metadata.py and call from main.py Explicit code mapping (answering your examples) “Here’s where enricher.py goes” Resolution + cascade + health → stages.py DB access → db_reader.py + db_writer.py enricher.py remains as thin wrapper for backwards compatibility. “Here’s how provider auth/request code moves” Current AbstractProvider._make_request → session.py Provider headers become methods on a Client object (e.g., TidalClient or HttpSession) This mirrors python‑tidal’s session object pattern but keeps your TokenManager as source of truth. “Introduce types.py and adapt existing types” Move ProviderTrack, EnrichmentResult, LocalFileInfo, MatchConfidence, MetadataHealth into types.py Move precedence constants into precedence.py Update all imports accordingly. “Exact diff for CLI dispatch” Right now there is no metadata.py; everything is in main.py. The exact change will be: replace Enricher(...).enrich_all(...) with pipeline.runner.run_enrich(...) and similarly for enrich_file. If you want, I’ll implement that in Phase 1. Pain points explicitly fixed by the new layout Mixing DB + network + policy in enricher.py → split into store + pipeline. Duplicate request logic across providers → shared client/session. CLI‑coupled orchestration → pipeline runner + CLI wrapper. Legacy scripts in core module → move to metadata/tools/ and document them as optional. If you want me to proceed, confirm: Should I start with Phase 1 extraction only (no behavior changes), or Go straight through Phase 2 (client/session refactor) as well? I’ll start as soon as you pick.
+You’re right — I should be grounding this in your actual repo, not external docs. I’ve now inspected the real code in tagslut/metadata, the provider modules, and the CLI dispatch in main.py. Below is a code‑aware, explicit mapping from what you have today to the pipeline/clients/models/store target, plus a phased plan and concrete file moves. Current metadata structure (actual repo) tagslut/metadata/ __init__.py — exports ProviderTrack, EnrichmentResult, TokenManager auth.py — token storage + refresh flows for Spotify/Beatport/Tidal/Qobuz enricher.py — everything: DB read/write, resolution, cascade, health, provider instantiation models.py — ProviderTrack, EnrichmentResult, LocalFileInfo, precedence constants providers/ base.py — AbstractProvider, RateLimiter, request/retry logic, match scoring spotify.py, beatport.py, tidal.py, qobuz.py, itunes.py Scripts/tools in metadata root: beatport_import_my_tracks.py beatport_harvest_catalog_track.sh beatport_harvest_my_tracks.sh spotify_partner_tokens.py spotify_harvest_utils.py beatport_normalize.py CLI dispatch that calls metadata main.py: metadata enrich → instantiates Enricher and calls enricher.enrich_all(...) enrich-file → instantiates Enricher and calls enricher.enrich_file(...) metadata auth-* → uses TokenManager directly What’s already close to the target layout Models are already coherent in models.py. This can split into types.py + precedence.py without semantic changes. Provider interface already exists (AbstractProvider), including rate limiting + retry. Token management is centralized (auth.py). What’s messy / tightly coupled enricher.py mixes DB IO, provider orchestration, resolution, policy, canonical selection, and health classification in a single class. Providers each handle auth headers + request mechanics; base provider owns httpx client but provider‑specific request details are scattered. CLI has logging + DB init + provider token status checks inline — it should call a clean pipeline API instead. Legacy scripts (beatport_import_my_tracks.py, harvest scripts) reference tables like library_tracks that are not the main files table schema; they’re effectively standalone/legacy and should be isolated. Concrete mapping to target layout Target: tagslut/metadata/ pipeline/ providers/ clients/ models/ store/ utils/ Here’s exactly where existing code goes: enricher.py splits Resolution pipeline → stages.py resolve_file(...) apply_cascade(...) classify_health(...) Policy/merge rules → policy.py precedence‑driven selection + OneTagger‑style overwrite/fill rules DB access → db_reader.py + db_writer.py get_eligible_files(...) → db_reader.get_eligible_files(...) _row_to_local_file_info(...) → db_reader.row_to_local_file_info(...) update_database(...) → db_writer.update_enrichment(...) _mark_no_match(...) → db_writer.mark_no_match(...) Orchestrator remains as a thin wrapper: new runner.py (or keep enricher.py but reduced to pipeline runner) Providers + HTTP/auth base.py remains, but request/session moves to: session.py (shared HTTP client + rate limiting + retry) auth.py (wraps existing TokenManager) Providers will depend on the client: Example: tidal.py → uses a TidalClient that owns base_url, auth headers, retry policy (this mirrors python‑tidal’s session approach while still using your TokenManager). Models types.py → ProviderTrack, EnrichmentResult, LocalFileInfo, MatchConfidence, MetadataHealth precedence.py → the precedence constants (DURATION_PRECEDENCE, etc.) CLI There is no metadata.py today — everything is in main.py. I’ll either: add metadata.py and import into main.py, or keep in main.py but call a pipeline.run_enrich(...) function instead of building Enricher inline. Concrete plan (phased, minimal behavior changes first) Phase 1 — Extract existing logic without behavior changes Goal: reorganize files, keep behavior identical. Create: types.py precedence.py db_reader.py db_writer.py stages.py runner.py Move code (no behavior changes): Enricher.get_eligible_files → db_reader.get_eligible_files _row_to_local_file_info → db_reader.row_to_local_file_info resolve_file, _apply_cascade, _classify_health → stages.py update_database, _mark_no_match → db_writer.py Leave a thin compatibility wrapper: enricher.py becomes a simple Enricher that delegates to runner/stages/store. Update imports across providers and CLI to use new module paths. Phase 2 — Normalize provider clients + centralize rate limiting Goal: move HTTP/client behavior out of providers; keep provider logic intact. Create session.py owns httpx.Client, rate limiting, retries Create auth.py wrap existing TokenManager and move token refresh details here Update each provider: Replace _make_request usage with self.session.request(...) Move header building to provider client Providers become thin: “build query params + normalize response”. Phase 3 — Introduce write policy + pipeline stages Goal: add overwrite/fill/never semantics, without breaking DB schema. Add policy.py WritePolicy rules (overwrite vs fill_if_empty vs never) Update db_writer.update_enrichment(...) apply policy before writes (OneTagger‑style behavior) Split stages in stages.py resolve_stage, normalize_stage, merge_stage, persist_stage Phase 4 — Tests + docs + legacy quarantine Goal: stabilization and cleanups. Add tests in tests/metadata/ provider normalization cascade logic policy behavior Move legacy scripts into tagslut/metadata/tools/ and document them as optional beatport_import_my_tracks.py, harvest scripts, spotify_partner_tokens.py Update docs: METADATA_WORKFLOW.md (already added) add METADATA_POLICY.md and METADATA_PROVIDERS.md Concrete file operations (explicit) Create: types.py precedence.py stages.py runner.py db_reader.py db_writer.py session.py auth.py Move code: enricher.py logic → stages.py + *.py Keep compatibility: enricher.py stays but becomes a delegating wrapper CLI update: main.py: replace direct Enricher usage with pipeline.runner.run_enrich(...) or create metadata.py and call from main.py Explicit code mapping (answering your examples) “Here’s where enricher.py goes” Resolution + cascade + health → stages.py DB access → db_reader.py + db_writer.py enricher.py remains as thin wrapper for backwards compatibility. “Here’s how provider auth/request code moves” Current AbstractProvider._make_request → session.py Provider headers become methods on a Client object (e.g., TidalClient or HttpSession) This mirrors python‑tidal’s session object pattern but keeps your TokenManager as source of truth. “Introduce types.py and adapt existing types” Move ProviderTrack, EnrichmentResult, LocalFileInfo, MatchConfidence, MetadataHealth into types.py Move precedence constants into precedence.py Update all imports accordingly. “Exact diff for CLI dispatch” Right now there is no metadata.py; everything is in main.py. The exact change will be: replace Enricher(...).enrich_all(...) with pipeline.runner.run_enrich(...) and similarly for enrich_file. If you want, I’ll implement that in Phase 1. Pain points explicitly fixed by the new layout Mixing DB + network + policy in enricher.py → split into store + pipeline. Duplicate request logic across providers → shared client/session. CLI‑coupled orchestration → pipeline runner + CLI wrapper. Legacy scripts in core module → move to metadata/tools/ and document them as optional. If you want me to proceed, confirm: Should I start with Phase 1 extraction only (no behavior changes), or Go straight through Phase 2 (client/session refactor) as well? I’ll start as soon as you pick.
 
 That answer is finally in the right shape: it’s grounded in your actual repo, names real files, and proposes a phased, code‑aware refactor instead of fantasy scripts.
 
@@ -9781,14 +9781,14 @@ What it gets right
 
 - It correctly reflects your current layout:
 
-  - `dedupe/metadata/enricher.py` as the god‑object.
+  - `tagslut/metadata/enricher.py` as the god‑object.
   - `models.py`, `auth.py`, `providers/*`, plus the Beatport/Spotify helper scripts.
   - CLI dispatch in `main.py` calling `Enricher`.
 
 - It proposes a sensible target structure:
 
   ```
-  dedupe/metadata/
+  tagslut/metadata/
     pipeline/
     providers/
     clients/
@@ -9822,13 +9822,13 @@ Then adjust the last bit. Here’s a cleaned‑up version you can give the agent
 
 ------
 
-You now have direct filesystem access to my `dedupe` repo. Implement the following refactor **in place**.
+You now have direct filesystem access to my `tagslut` repo. Implement the following refactor **in place**.
 
 You’ve inspected:
 
-- `dedupe/metadata/__init__.py`, `auth.py`, `enricher.py`, `models.py`
-- `dedupe/metadata/providers/*`
-- CLI dispatch in `dedupe/cli/main.py` (or the main CLI entry)
+- `tagslut/metadata/__init__.py`, `auth.py`, `enricher.py`, `models.py`
+- `tagslut/metadata/providers/*`
+- CLI dispatch in `tagslut/cli/main.py` (or the main CLI entry)
 
 You summarized the current structure correctly:
 
@@ -9841,7 +9841,7 @@ You summarized the current structure correctly:
 You’ve proposed a target layout:
 
 ```
-dedupe/metadata/
+tagslut/metadata/
   pipeline/
     stages.py
     policy.py
@@ -9871,7 +9871,7 @@ And you’ve defined four phases. **Now implement Phase 1 in this repo, exactly 
 
 Phase 1 – Extract existing logic, no behavioral changes
 
-1. Create the following modules under `dedupe/metadata`:
+1. Create the following modules under `tagslut/metadata`:
 
    - `models/types.py`
    - `models/precedence.py`
@@ -9943,9 +9943,9 @@ Phase 1 – Extract existing logic, no behavioral changes
    - Rewrite those methods to **delegate** to `pipeline/runner.py` and the new modules.
    - Do not change function signatures or external behavior.
 
-4. Update imports throughout `dedupe/metadata` and the CLI:
+4. Update imports throughout `tagslut/metadata` and the CLI:
 
-   - Where code previously imported `ProviderTrack`, `EnrichmentResult`, etc. from `dedupe.metadata.models`, update it to import from `dedupe.metadata.models.types`.
+   - Where code previously imported `ProviderTrack`, `EnrichmentResult`, etc. from `tagslut.metadata.models`, update it to import from `tagslut.metadata.models.types`.
    - Where code previously called functions/methods that now live in `store/db_reader.py`, `store/db_writer.py`, or `pipeline/stages.py`, update imports accordingly.
    - Ensure the CLI (`main.py` / `cli/metadata` command) still creates `Enricher` and calls `enrich_all/enrich_file` the same way as before.
 
@@ -9958,15 +9958,15 @@ Phase 1 – Extract existing logic, no behavioral changes
 6. After Phase 1 changes:
 
    - Show the updated content of:
-     - `dedupe/metadata/models/types.py`
-     - `dedupe/metadata/models/precedence.py`
-     - `dedupe/metadata/store/db_reader.py`
-     - `dedupe/metadata/store/db_writer.py`
-     - `dedupe/metadata/pipeline/stages.py`
-     - `dedupe/metadata/pipeline/runner.py`
-     - `dedupe/metadata/enricher.py` (the thin wrapper)
+     - `tagslut/metadata/models/types.py`
+     - `tagslut/metadata/models/precedence.py`
+     - `tagslut/metadata/store/db_reader.py`
+     - `tagslut/metadata/store/db_writer.py`
+     - `tagslut/metadata/pipeline/stages.py`
+     - `tagslut/metadata/pipeline/runner.py`
+     - `tagslut/metadata/enricher.py` (the thin wrapper)
    - Summarize any import changes in `providers/*` and CLI files.
-   - Confirm that running the existing enrichment CLI command (e.g. `dedupe metadata enrich ...`) still works and produces identical results on a small test DB.
+   - Confirm that running the existing enrichment CLI command (e.g. `tagslut metadata enrich ...`) still works and produces identical results on a small test DB.
 
 Do not ask whether you should proceed with Phase 1 vs Phase 2; just do Phase 1 now as described, then stop and show the diffs and updated files. After that, we can decide when to proceed to Phase 2.
 
@@ -9978,19 +9978,19 @@ refactoring.md
 
 metadata
 
-codex: That answer is finally in the right shape: it’s grounded in your actual repo, names real files, and proposes a phased, code‑aware refactor instead of fantasy scripts. Here’s what it’s doing well, and what I’d tweak if you hand this to a coding agent like ChatGPT/Codex with filesystem access. What it gets right - It correctly reflects your current layout: - `dedupe/metadata/enricher.py` as the god‑object. - `models.py`, `auth.py`, `providers/*`, plus the Beatport/Spotify helper scripts. - CLI dispatch in `main.py` calling `Enricher`. - It proposes a sensible target structure: ```text dedupe/metadata/ pipeline/ providers/ clients/ models/ store/ utils/ ``` - It gives a **phased plan**, with Phase 1 focused on file extraction without behavior changes, which is exactly what you want for a big refactor. - It shows **explicit mapping** of functions and responsibilities from `enricher.py` into: - `pipeline/stages.py` - `store/db_reader.py` - `store/db_writer.py` - `pipeline/runner.py` - It reuses what you already have (models, provider base, TokenManager) instead of discarding them. - It acknowledges the legacy Beatport/Spotify harvesting scripts and suggests quarantining them under `metadata/tools/`. If you paste that answer into Codex and say “OK, do Phase 1 now”, it’s a decent directive. What I’d tighten to make it maximally actionable Right now, the text is half “plan” and half “shall I proceed?”. For a code agent you want something that is clearly *an instruction*, not a conversation. You can keep everything you like, but prepend something like: > You have direct filesystem access to this repo. Implement Phase 1 of the plan below now, as real code changes, and show me the resulting diffs for all touched files. Then adjust the last bit. Here’s a cleaned‑up version you can give the agent directly: --- You now have direct filesystem access to my `dedupe` repo. Implement the following refactor **in place**. You’ve inspected: - `dedupe/metadata/__init__.py`, `auth.py`, `enricher.py`, `models.py` - `dedupe/metadata/providers/*` - CLI dispatch in `dedupe/cli/main.py` (or the main CLI entry) You summarized the current structure correctly: - `enricher.py` mixes DB IO, provider orchestration, resolution, policy, canonical selection, and health classification. - `models.py` holds `ProviderTrack`, `EnrichmentResult`, `LocalFileInfo`, precedence constants. - `auth.py` manages tokens (Spotify/Beatport/Tidal/Qobuz). - `providers/base.py` defines `AbstractProvider`, `RateLimiter`, request/retry, match scoring. - CLI commands `metadata enrich` / `enrich-file` build `Enricher` directly. You’ve proposed a target layout: ```text dedupe/metadata/ pipeline/ stages.py policy.py runner.py providers/ base.py spotify.py beatport.py tidal.py qobuz.py itunes.py clients/ session.py auth.py models/ types.py precedence.py store/ db_reader.py db_writer.py utils/ logging.py errors.py ``` And you’ve defined four phases. **Now implement Phase 1 in this repo, exactly as described**, without changing behavior. Phase 1 – Extract existing logic, no behavioral changes 1. Create the following modules under `dedupe/metadata`: - `models/types.py` - `models/precedence.py` - `store/db_reader.py` - `store/db_writer.py` - `pipeline/stages.py` - `pipeline/runner.py` 2. Move code from `enricher.py` and `models.py` into these modules **by cut‑and‑paste, keeping logic identical**: - From `models.py`: - Move all data classes / types (`ProviderTrack`, `EnrichmentResult`, `LocalFileInfo`, `MatchConfidence`, `MetadataHealth`, etc.) into `models/types.py`. - Move precedence constants and related helpers into `models/precedence.py`. - Update imports in existing code to use the new module paths. - From `enricher.py`: - Move DB read/query functions into `store/db_reader.py`, e.g.: - `get_eligible_files(...)` - `_row_to_local_file_info(...)` (rename to public helper if needed). - Move DB write/update functions into `store/db_writer.py`, e.g.: - `update_database(...)` - `_mark_no_match(...)` - Move resolution / cascade / health logic into `pipeline/stages.py`, e.g.: - `resolve_file(...)` - `_apply_cascade(...)` - `_classify_health(...)` (and related helpers). - Create `pipeline/runner.py` with functions like: - `run_enrich_all(...)` - `run_enrich_file(...)` that orchestrate calls into `db_reader`, `stages`, and `db_writer`, reusing the extracted code. 3. Leave a thin compatibility wrapper in `enricher.py`: - Keep the existing `Enricher` class name and public methods (`enrich_all`, `enrich_file`, etc.). - Rewrite those methods to **delegate** to `pipeline/runner.py` and the new modules. - Do not change function signatures or external behavior. 4. Update imports throughout `dedupe/metadata` and the CLI: - Where code previously imported `ProviderTrack`, `EnrichmentResult`, etc. from `dedupe.metadata.models`, update it to import from `dedupe.metadata.models.types`. - Where code previously called functions/methods that now live in `store/db_reader.py`, `store/db_writer.py`, or `pipeline/stages.py`, update imports accordingly. - Ensure the CLI (`main.py` / `cli/metadata` command) still creates `Enricher` and calls `enrich_all/enrich_file` the same way as before. 5. Do **not**: - Change core logic, SQL queries, or control flow. - Introduce new behavior, new policies, or new provider clients in Phase 1. - Touch rate limiting or provider request code (that’s Phase 2). 6. After Phase 1 changes: - Show the updated content of: - `dedupe/metadata/models/types.py` - `dedupe/metadata/models/precedence.py` - `dedupe/metadata/store/db_reader.py` - `dedupe/metadata/store/db_writer.py` - `dedupe/metadata/pipeline/stages.py` - `dedupe/metadata/pipeline/runner.py` - `dedupe/metadata/enricher.py` (the thin wrapper) - Summarize any import changes in `providers/*` and CLI files. - Confirm that running the existing enrichment CLI command (e.g. `dedupe metadata enrich ...`) still works and produces identical results on a small test DB. Do not ask whether you should proceed with Phase 1 vs Phase 2; just do Phase 1 now as described, then stop and show the diffs and updated files. After that, we can decide when to proceed to Phase 2. --- You can give that to ChatGPT/Codex and it will have a very concrete, code‑level job: implement Phase 1 extraction exactly as you specified in that earlier “answer,” now grounded and framed as an instruction rather than a suggestion.
+codex: That answer is finally in the right shape: it’s grounded in your actual repo, names real files, and proposes a phased, code‑aware refactor instead of fantasy scripts. Here’s what it’s doing well, and what I’d tweak if you hand this to a coding agent like ChatGPT/Codex with filesystem access. What it gets right - It correctly reflects your current layout: - `tagslut/metadata/enricher.py` as the god‑object. - `models.py`, `auth.py`, `providers/*`, plus the Beatport/Spotify helper scripts. - CLI dispatch in `main.py` calling `Enricher`. - It proposes a sensible target structure: ```text tagslut/metadata/ pipeline/ providers/ clients/ models/ store/ utils/ ``` - It gives a **phased plan**, with Phase 1 focused on file extraction without behavior changes, which is exactly what you want for a big refactor. - It shows **explicit mapping** of functions and responsibilities from `enricher.py` into: - `pipeline/stages.py` - `store/db_reader.py` - `store/db_writer.py` - `pipeline/runner.py` - It reuses what you already have (models, provider base, TokenManager) instead of discarding them. - It acknowledges the legacy Beatport/Spotify harvesting scripts and suggests quarantining them under `metadata/tools/`. If you paste that answer into Codex and say “OK, do Phase 1 now”, it’s a decent directive. What I’d tighten to make it maximally actionable Right now, the text is half “plan” and half “shall I proceed?”. For a code agent you want something that is clearly *an instruction*, not a conversation. You can keep everything you like, but prepend something like: > You have direct filesystem access to this repo. Implement Phase 1 of the plan below now, as real code changes, and show me the resulting diffs for all touched files. Then adjust the last bit. Here’s a cleaned‑up version you can give the agent directly: --- You now have direct filesystem access to my `tagslut` repo. Implement the following refactor **in place**. You’ve inspected: - `tagslut/metadata/__init__.py`, `auth.py`, `enricher.py`, `models.py` - `tagslut/metadata/providers/*` - CLI dispatch in `tagslut/cli/main.py` (or the main CLI entry) You summarized the current structure correctly: - `enricher.py` mixes DB IO, provider orchestration, resolution, policy, canonical selection, and health classification. - `models.py` holds `ProviderTrack`, `EnrichmentResult`, `LocalFileInfo`, precedence constants. - `auth.py` manages tokens (Spotify/Beatport/Tidal/Qobuz). - `providers/base.py` defines `AbstractProvider`, `RateLimiter`, request/retry, match scoring. - CLI commands `metadata enrich` / `enrich-file` build `Enricher` directly. You’ve proposed a target layout: ```text tagslut/metadata/ pipeline/ stages.py policy.py runner.py providers/ base.py spotify.py beatport.py tidal.py qobuz.py itunes.py clients/ session.py auth.py models/ types.py precedence.py store/ db_reader.py db_writer.py utils/ logging.py errors.py ``` And you’ve defined four phases. **Now implement Phase 1 in this repo, exactly as described**, without changing behavior. Phase 1 – Extract existing logic, no behavioral changes 1. Create the following modules under `tagslut/metadata`: - `models/types.py` - `models/precedence.py` - `store/db_reader.py` - `store/db_writer.py` - `pipeline/stages.py` - `pipeline/runner.py` 2. Move code from `enricher.py` and `models.py` into these modules **by cut‑and‑paste, keeping logic identical**: - From `models.py`: - Move all data classes / types (`ProviderTrack`, `EnrichmentResult`, `LocalFileInfo`, `MatchConfidence`, `MetadataHealth`, etc.) into `models/types.py`. - Move precedence constants and related helpers into `models/precedence.py`. - Update imports in existing code to use the new module paths. - From `enricher.py`: - Move DB read/query functions into `store/db_reader.py`, e.g.: - `get_eligible_files(...)` - `_row_to_local_file_info(...)` (rename to public helper if needed). - Move DB write/update functions into `store/db_writer.py`, e.g.: - `update_database(...)` - `_mark_no_match(...)` - Move resolution / cascade / health logic into `pipeline/stages.py`, e.g.: - `resolve_file(...)` - `_apply_cascade(...)` - `_classify_health(...)` (and related helpers). - Create `pipeline/runner.py` with functions like: - `run_enrich_all(...)` - `run_enrich_file(...)` that orchestrate calls into `db_reader`, `stages`, and `db_writer`, reusing the extracted code. 3. Leave a thin compatibility wrapper in `enricher.py`: - Keep the existing `Enricher` class name and public methods (`enrich_all`, `enrich_file`, etc.). - Rewrite those methods to **delegate** to `pipeline/runner.py` and the new modules. - Do not change function signatures or external behavior. 4. Update imports throughout `tagslut/metadata` and the CLI: - Where code previously imported `ProviderTrack`, `EnrichmentResult`, etc. from `tagslut.metadata.models`, update it to import from `tagslut.metadata.models.types`. - Where code previously called functions/methods that now live in `store/db_reader.py`, `store/db_writer.py`, or `pipeline/stages.py`, update imports accordingly. - Ensure the CLI (`main.py` / `cli/metadata` command) still creates `Enricher` and calls `enrich_all/enrich_file` the same way as before. 5. Do **not**: - Change core logic, SQL queries, or control flow. - Introduce new behavior, new policies, or new provider clients in Phase 1. - Touch rate limiting or provider request code (that’s Phase 2). 6. After Phase 1 changes: - Show the updated content of: - `tagslut/metadata/models/types.py` - `tagslut/metadata/models/precedence.py` - `tagslut/metadata/store/db_reader.py` - `tagslut/metadata/store/db_writer.py` - `tagslut/metadata/pipeline/stages.py` - `tagslut/metadata/pipeline/runner.py` - `tagslut/metadata/enricher.py` (the thin wrapper) - Summarize any import changes in `providers/*` and CLI files. - Confirm that running the existing enrichment CLI command (e.g. `tagslut metadata enrich ...`) still works and produces identical results on a small test DB. Do not ask whether you should proceed with Phase 1 vs Phase 2; just do Phase 1 now as described, then stop and show the diffs and updated files. After that, we can decide when to proceed to Phase 2. --- You can give that to ChatGPT/Codex and it will have a very concrete, code‑level job: implement Phase 1 extraction exactly as you specified in that earlier “answer,” now grounded and framed as an instruction rather than a suggestion.
 
 Use exactly this with Codex (or any code-capable ChatGPT) as your instruction. It’s already in the right format; you don’t need to change it:
 
 ------
 
-You now have direct filesystem access to my `dedupe` repo. Implement the following refactor **in place**.
+You now have direct filesystem access to my `tagslut` repo. Implement the following refactor **in place**.
 
 You’ve inspected:
 
-- `dedupe/metadata/__init__.py`, `auth.py`, `enricher.py`, `models.py`
-- `dedupe/metadata/providers/*`
-- CLI dispatch in `dedupe/cli/main.py` (or the main CLI entry)
+- `tagslut/metadata/__init__.py`, `auth.py`, `enricher.py`, `models.py`
+- `tagslut/metadata/providers/*`
+- CLI dispatch in `tagslut/cli/main.py` (or the main CLI entry)
 
 You summarized the current structure correctly:
 
@@ -10003,7 +10003,7 @@ You summarized the current structure correctly:
 You’ve proposed a target layout:
 
 ```
-dedupe/metadata/
+tagslut/metadata/
   pipeline/
     stages.py
     policy.py
@@ -10033,7 +10033,7 @@ And you’ve defined four phases. **Now implement Phase 1 in this repo, exactly 
 
 ### Phase 1 – Extract existing logic, no behavioral changes
 
-1. Create the following modules under `dedupe/metadata`:
+1. Create the following modules under `tagslut/metadata`:
 
    - `models/types.py`
    - `models/precedence.py`
@@ -10105,9 +10105,9 @@ And you’ve defined four phases. **Now implement Phase 1 in this repo, exactly 
    - Rewrite those methods to **delegate** to `pipeline/runner.py` and the new modules.
    - Do not change function signatures or external behavior.
 
-4. Update imports throughout `dedupe/metadata` and the CLI:
+4. Update imports throughout `tagslut/metadata` and the CLI:
 
-   - Where code previously imported `ProviderTrack`, `EnrichmentResult`, etc. from `dedupe.metadata.models`, update it to import from `dedupe.metadata.models.types`.
+   - Where code previously imported `ProviderTrack`, `EnrichmentResult`, etc. from `tagslut.metadata.models`, update it to import from `tagslut.metadata.models.types`.
    - Where code previously called functions/methods that now live in `store/db_reader.py`, `store/db_writer.py`, or `pipeline/stages.py`, update imports accordingly.
    - Ensure the CLI (`main.py` / `cli/metadata` command) still creates `Enricher` and calls `enrich_all/enrich_file` the same way as before.
 
@@ -10120,15 +10120,15 @@ And you’ve defined four phases. **Now implement Phase 1 in this repo, exactly 
 6. After Phase 1 changes:
 
    - Show the updated content of:
-     - `dedupe/metadata/models/types.py`
-     - `dedupe/metadata/models/precedence.py`
-     - `dedupe/metadata/store/db_reader.py`
-     - `dedupe/metadata/store/db_writer.py`
-     - `dedupe/metadata/pipeline/stages.py`
-     - `dedupe/metadata/pipeline/runner.py`
-     - `dedupe/metadata/enricher.py` (the thin wrapper)
+     - `tagslut/metadata/models/types.py`
+     - `tagslut/metadata/models/precedence.py`
+     - `tagslut/metadata/store/db_reader.py`
+     - `tagslut/metadata/store/db_writer.py`
+     - `tagslut/metadata/pipeline/stages.py`
+     - `tagslut/metadata/pipeline/runner.py`
+     - `tagslut/metadata/enricher.py` (the thin wrapper)
    - Summarize any import changes in `providers/*` and CLI files.
-   - Confirm that running the existing enrichment CLI command (e.g. `dedupe metadata enrich ...`) still works and produces identical results on a small test DB.
+   - Confirm that running the existing enrichment CLI command (e.g. `tagslut metadata enrich ...`) still works and produces identical results on a small test DB.
 
 Do not ask whether you should proceed with Phase 1 vs Phase 2; just do Phase 1 now as described, then stop and show the diffs and updated files. After that, we can decide when to proceed to Phase 2.
 
@@ -10140,7 +10140,7 @@ refactoring.md
 
 metadata
 
-codex: Phase 1 is already implemented in the repo with a strict cut‑and‑paste extraction and thin wrapper in enricher.py. No behavior changes were introduced; CLI still constructs Enricher the same way. Updated content (requested files) types.py Import changes summary Providers now import ProviderTrack and MatchConfidence from dedupe.metadata.models.types. CLI helper _local_file_info_from_path imports LocalFileInfo from dedupe.metadata.models.types. __init__.py exports ProviderTrack and EnrichmentResult from models/types. Verification status I did not run the CLI against a test DB in this environment, so I cannot confirm execution output. The refactor is a direct extraction and should be behavior‑identical. If you want a quick manual check, run: test.db --recovery --execute file.flac --providers spotify --execute If you want, I can run a minimal smoke test next and report the results.
+codex: Phase 1 is already implemented in the repo with a strict cut‑and‑paste extraction and thin wrapper in enricher.py. No behavior changes were introduced; CLI still constructs Enricher the same way. Updated content (requested files) types.py Import changes summary Providers now import ProviderTrack and MatchConfidence from tagslut.metadata.models.types. CLI helper _local_file_info_from_path imports LocalFileInfo from tagslut.metadata.models.types. __init__.py exports ProviderTrack and EnrichmentResult from models/types. Verification status I did not run the CLI against a test DB in this environment, so I cannot confirm execution output. The refactor is a direct extraction and should be behavior‑identical. If you want a quick manual check, run: test.db --recovery --execute file.flac --providers spotify --execute If you want, I can run a minimal smoke test next and report the results.
 
 Given that response from Codex, here’s how I’d treat it and what you should do next.
 
@@ -10149,7 +10149,7 @@ Given that response from Codex, here’s how I’d treat it and what you should 
 Codex is explicitly claiming:
 
 - It performed a **strict cut‑and‑paste extraction**:
-  - Created `dedupe/metadata/models/types.py`
+  - Created `tagslut/metadata/models/types.py`
   - Moved types from `models.py` into it
   - Updated imports (providers, CLI, `__init__.py` exports)
 - Left a **thin wrapper** in `enricher.py` that delegates to the new pipeline/store modules.
@@ -10164,13 +10164,13 @@ Codex didn’t actually run the CLI. You can:
 A. Run a quick enrichment smoke test on one of your EPOCH DBs:
 
 ```
-cd /Users/georgeskhawam/Projects/dedupe
+cd /Users/georgeskhawam/Projects/tagslut
 
 # Pick a DB you know is valid
 DB=EPOCH_2026-01-28/music.db  # or your latest
 
 # Basic metadata enrich run (adjust flags to your usual pattern)
-poetry run dedupe metadata enrich \
+poetry run tagslut metadata enrich \
   --db "$DB" \
   --providers itunes \
   --path "/Volumes/DJSSD/DRPBX" \
@@ -10182,7 +10182,7 @@ poetry run dedupe metadata enrich \
 B. And a single‑file test (if your CLI supports it):
 
 ```
-poetry run dedupe enrich-file \
+poetry run tagslut enrich-file \
   --db "$DB" \
   --file "/path/to/single/test/track.flac" \
   --providers itunes \
@@ -10195,16 +10195,16 @@ If those behave as before (same log patterns, same DB mutations), the extraction
 
 You can also eyeball the key files Codex mentioned to see if they look like pure extraction:
 
-- `dedupe/metadata/models/types.py`
+- `tagslut/metadata/models/types.py`
   - Should mostly be your old dataclasses / NamedTuples / enums moved from `models.py`.
-- `dedupe/metadata/enricher.py`
+- `tagslut/metadata/enricher.py`
   - Should still export `Enricher` with the same public methods.
   - Methods should be thin: delegating to something in `pipeline` / `store`.
 
 And confirm import updates:
 
-- `dedupe/metadata/providers/*` now import types from `dedupe.metadata.models.types`.
-- `dedupe/metadata/__init__.py` re‑exports from `models.types` instead of `models`.
+- `tagslut/metadata/providers/*` now import types from `tagslut.metadata.models.types`.
+- `tagslut/metadata/__init__.py` re‑exports from `models.types` instead of `models`.
 
 If any of that looks off, I can help you draft a small follow‑up instruction aimed just at fixing those bits.
 
@@ -10222,8 +10222,8 @@ For example:
 > You’ve completed Phase 1: extraction into models/types, store/db_reader, store/db_writer, pipeline/stages, pipeline/runner, with a thin Enricher wrapper.
 > Now implement Phase 2:
 >
-> - Create `dedupe/metadata/clients/session.py` with a shared HTTP client abstraction and rate‑limiting logic (using the existing `RateLimiter` / request code from `providers/base.py`).
-> - Create `dedupe/metadata/clients/auth.py` that wraps `TokenManager` and encapsulates provider‑specific auth header construction (Spotify, Beatport, Tidal, Qobuz, etc.).
+> - Create `tagslut/metadata/clients/session.py` with a shared HTTP client abstraction and rate‑limiting logic (using the existing `RateLimiter` / request code from `providers/base.py`).
+> - Create `tagslut/metadata/clients/auth.py` that wraps `TokenManager` and encapsulates provider‑specific auth header construction (Spotify, Beatport, Tidal, Qobuz, etc.).
 > - Update each provider (`providers/spotify.py`, `providers/beatport.py`, `providers/tidal.py`, `providers/qobuz.py`, `providers/itunes.py`):
 >   - Move raw `requests`/`httpx` calls and header construction into use of a shared client from `clients/session.py` + `clients/auth.py`.
 >   - Keep existing endpoints, query params, and JSON parsing logic unchanged.
@@ -10236,7 +10236,7 @@ If you want, I can write that Phase 2 instruction out in full like we did for Ph
 
 If, after running the smoke tests, you see:
 
-- ImportError from `dedupe.metadata.models` or providers.
+- ImportError from `tagslut.metadata.models` or providers.
 - AttributeError on `Enricher` or `enrich_all`.
 - SQL / DB access issues.
 

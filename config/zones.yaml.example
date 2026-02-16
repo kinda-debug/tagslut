@@ -1,0 +1,12 @@
+# Example zones file for tagslut auto environment loading
+# Copy to ~/.config/tagslut/zones.yaml and adjust for your system.
+
+zones:
+  staging:
+    - /path/to/staging
+  archive:
+    - /path/to/archive
+  suspect:
+    - /path/to/suspect
+  quarantine:
+    - /path/to/quarantine

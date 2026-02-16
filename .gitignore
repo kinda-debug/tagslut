@@ -446,3 +446,6 @@ output/spreadsheet/DJ_NEW_audio_health_report_precheck.xlsx
 output/spreadsheet/ALL_audio_health_report_corrected.xlsx
 output/spreadsheet/ALL_missing_db_checksum_matches.xlsx
 output/spreadsheet/ALL_missing_db_unicode_matches.xlsx
+
+!tools/rules/library_canon.json
+!tools/baselines/mypy.txt

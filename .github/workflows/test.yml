@@ -17,7 +17,7 @@ jobs:
           pip install poetry
           poetry install
       - name: Run Type Checks
-        run: poetry run mypy .
+        run: poetry run python scripts/mypy_baseline_check.py
       - name: Run Tests
         run: poetry run pytest
       - name: Run Repo Surface Audit

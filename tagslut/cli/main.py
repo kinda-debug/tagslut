@@ -6,19 +6,26 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
+from tagslut.cli.runtime import (
+    WRAPPER_CONTEXT,
+    collect_flac_paths as _collect_flac_paths,
+    is_internal_cli_call,
+)
+
+from tagslut.cli.commands.auth import register_auth_group
+from tagslut.cli.commands.decide import register_decide_group
+from tagslut.cli.commands.execute import register_execute_group
+from tagslut.cli.commands.index import register_index_group
+from tagslut.cli.commands.intake import register_intake_group
+from tagslut.cli.commands.report import register_report_group
+from tagslut.cli.commands.verify import register_verify_group
+
 # Add project root to path so we can import tools as modules if needed
 sys.path.insert(0, str(Path(__file__).parents[2]))
-_PROJECT_ROOT = Path(__file__).parents[2]
 
 logger = logging.getLogger("tagslut")
 
 _TRANSITIONAL_COMMAND_REPLACEMENTS: dict[str, str] = {
-    "tagslut _mgmt": "tagslut index ... / tagslut report m3u ...",
-    "tagslut _metadata": "tagslut auth ... / tagslut index enrich ...",
-    "tagslut _recover": "tagslut verify recovery ... / tagslut report recovery ...",
-}
-_INTERNAL_CLI_ENV = "TAGSLUT_CLI_INTERNAL_CALL"
-_TAGSLUT_ALIAS_RETIRE_AFTER = datetime(2026, 7, 31).date()
 
 
 def _format_transitional_warning(command: str) -> str:
@@ -34,10 +41,6 @@ def _format_transitional_warning(command: str) -> str:
 
 def _warn_transitional_command(command: str) -> None:
     click.secho(_format_transitional_warning(command), fg="yellow", err=True)
-
-
-def _is_internal_cli_call() -> bool:
-    return os.getenv(_INTERNAL_CLI_ENV) == "1"
 
 
 def _format_dedupe_alias_warning(argv0: str | None = None) -> str | None:
@@ -62,48 +65,15 @@ class _TagslutGroup(click.Group):
     """CLI group that can emit alias warnings before help handling."""
 
     def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
-        if not _is_internal_cli_call():
+        if not is_internal_cli_call():
             warning = _format_dedupe_alias_warning(ctx.info_name)
             if warning:
                 click.secho(warning, fg="yellow", err=True)
         return super().parse_args(ctx, args)
-
-
-def _run_subprocess(cmd: list[str], *, internal: bool = False) -> None:
-    import subprocess
-
-    env = os.environ.copy()
-    if internal:
-        env[_INTERNAL_CLI_ENV] = "1"
-    proc = subprocess.run(cmd, cwd=_PROJECT_ROOT, env=env, check=False)
-    if proc.returncode != 0:
-        raise SystemExit(proc.returncode)
-
-
-def _run_tagslut_wrapper(args: list[str]) -> None:
-    _run_subprocess([sys.executable, "-m", "tagslut", *args], internal=True)
-
-
-def _run_python_script(script_rel_path: str, args: tuple[str, ...]) -> None:
-    script_path = (_PROJECT_ROOT / script_rel_path).resolve()
-    _run_subprocess([sys.executable, str(script_path), *list(args)], internal=True)
-
-
-def _run_executable(script_rel_path: str, args: tuple[str, ...]) -> None:
-    script_path = (_PROJECT_ROOT / script_rel_path).resolve()
-    _run_subprocess([str(script_path), *list(args)], internal=True)
-
-
-def _collect_flac_paths(input_path: str) -> list[Path]:
-    path = Path(input_path).expanduser().resolve()
-    if path.is_dir():
-        from tagslut.utils.paths import list_files
-        files = list(list_files(path, {".flac"}))
-        return sorted(files, key=lambda p: str(p))
-    if path.is_file():
-        return [path]
-    raise click.ClickException(f"Path not found: {input_path}")
-
+    "tagslut _mgmt": "tagslut index ... / tagslut report m3u ...",
+    "tagslut _metadata": "tagslut auth ... / tagslut index enrich ...",
+    "tagslut _recover": "tagslut verify recovery ... / tagslut report recovery ...",
+}
 
 def _local_file_info_from_path(file_path: Path):
     from tagslut.core.metadata import extract_metadata
@@ -2832,330 +2802,13 @@ def set_duration_ref(path, db, dj_only, confirm, execute):
     click.echo(f"Duration reference set: {manual_id} ({duration_measured_ms} ms)")
 
 
-_WRAPPER_CONTEXT = dict(ignore_unknown_options=True, help_option_names=[])
-
-
-@cli.group()
-def intake():
-    """Canonical intake commands."""
-
-
-@intake.command("run", context_settings=_WRAPPER_CONTEXT)
-@click.argument("args", nargs=-1, type=click.UNPROCESSED)
-def intake_run(args):
-    """Run unified download + intake orchestration."""
-    _run_executable("tools/get-intake", args)
-
-
-@intake.command("prefilter", context_settings=_WRAPPER_CONTEXT)
-@click.argument("args", nargs=-1, type=click.UNPROCESSED)
-def intake_prefilter(args):
-    """Run Beatport prefilter against inventory DB."""
-    _run_python_script("tools/review/beatport_prefilter.py", args)
-
-
-@cli.group()
-def index():
-    """Canonical indexing and metadata registration commands."""
-
-
-@index.command("register", context_settings=_WRAPPER_CONTEXT)
-@click.argument("args", nargs=-1, type=click.UNPROCESSED)
-def index_register(args):
-    """Register files in inventory."""
-    _run_tagslut_wrapper(["_mgmt", "register", *list(args)])
-
-
-@index.command("check", context_settings=_WRAPPER_CONTEXT)
-@click.argument("args", nargs=-1, type=click.UNPROCESSED)
-def index_check(args):
-    """Check for duplicates before downloading."""
-    _run_tagslut_wrapper(["_mgmt", "check", *list(args)])
-
-
-@index.command("duration-check", context_settings=_WRAPPER_CONTEXT)
-@click.argument("args", nargs=-1, type=click.UNPROCESSED)
-def index_duration_check(args):
-    """Measure durations and compute duration status."""
-    _run_tagslut_wrapper(["_mgmt", "check-duration", *list(args)])
-
-
-@index.command("duration-audit", context_settings=_WRAPPER_CONTEXT)
-@click.argument("args", nargs=-1, type=click.UNPROCESSED)
-def index_duration_audit(args):
-    """Audit duration anomalies from inventory."""
-    _run_tagslut_wrapper(["_mgmt", "audit-duration", *list(args)])
-
-
-@index.command("set-duration-ref", context_settings=_WRAPPER_CONTEXT)
-@click.argument("args", nargs=-1, type=click.UNPROCESSED)
-def index_set_duration_ref(args):
-    """Set manual duration reference from a known-good file."""
-    _run_tagslut_wrapper(["_mgmt", "set-duration-ref", *list(args)])
-
-
-@index.command("enrich", context_settings=_WRAPPER_CONTEXT)
-@click.argument("args", nargs=-1, type=click.UNPROCESSED)
-def index_enrich(args):
-    """Run metadata enrichment for indexed files."""
-    _run_tagslut_wrapper(["_metadata", "enrich", *list(args)])
-
-
-@cli.group()
-def decide():
-    """Canonical deterministic planning commands."""
-
-
-@decide.command("profiles")
-def decide_profiles():
-    """List available policy profiles."""
-    from tagslut.policy import list_policy_profiles, load_policy_profile
-
-    names = list_policy_profiles()
-    if not names:
-        click.echo("No policy profiles found.")
-        return
-    click.echo("Policy profiles:")
-    for name in names:
-        profile = load_policy_profile(name)
-        click.echo(f"  - {profile.name} ({profile.version}) lane={profile.lane}")
-
-
-@decide.command("plan")
-@click.option("--policy", default="library_balanced", show_default=True, help="Policy profile name")
-@click.option("--input", "input_path", type=click.Path(exists=True), required=True, help="Input JSON candidates file")
-@click.option("--output", "output_path", type=click.Path(), help="Output JSON plan path")
-@click.option("--run-label", default="decide", show_default=True, help="Run label prefix")
-def decide_plan(policy, input_path, output_path, run_label):
-    """Build deterministic policy-stamped plan from candidate JSON."""
-    import json
-
-    from tagslut.decide import PlanCandidate, build_deterministic_plan
-    from tagslut.policy import load_policy_profile
-
-    payload = json.loads(Path(input_path).read_text(encoding="utf-8"))
-    if isinstance(payload, dict):
-        raw_candidates = payload.get("candidates", [])
-    elif isinstance(payload, list):
-        raw_candidates = payload
-    else:
-        raise click.ClickException("Input JSON must be a list or {'candidates': [...]} object")
-
-    if not isinstance(raw_candidates, list):
-        raise click.ClickException("Input candidates must be a JSON list")
-
-    candidates: list[PlanCandidate] = []
-    for idx, item in enumerate(raw_candidates, start=1):
-        if not isinstance(item, dict):
-            raise click.ClickException(f"Candidate #{idx} must be a JSON object")
-        path = str(item.get("path", "")).strip()
-        if not path:
-            raise click.ClickException(f"Candidate #{idx} missing required 'path'")
-        match_reasons = item.get("match_reasons", ())
-        if isinstance(match_reasons, str):
-            match_reasons = [match_reasons]
-        if not isinstance(match_reasons, list):
-            match_reasons = []
-        candidates.append(
-            PlanCandidate(
-                path=path,
-                proposed_action=item.get("proposed_action"),
-                proposed_reason=item.get("proposed_reason"),
-                match_reasons=tuple(str(v) for v in match_reasons),
-                is_dj_material=bool(item.get("is_dj_material", False)),
-                duration_status=item.get("duration_status"),
-                context=item.get("context", {}) if isinstance(item.get("context"), dict) else {},
-            )
-        )
-
-    policy_profile = load_policy_profile(policy)
-    plan = build_deterministic_plan(candidates, policy_profile, run_label=run_label)
-    serialized = plan.to_json(indent=2)
-    if output_path:
-        output_file = Path(output_path).expanduser().resolve()
-        output_file.parent.mkdir(parents=True, exist_ok=True)
-        output_file.write_text(serialized, encoding="utf-8")
-        click.echo(f"Wrote plan: {output_file}")
-    else:
-        click.echo(serialized.rstrip())
-    click.echo(f"Plan hash: {plan.plan_hash}")
-    click.echo(f"Run id: {plan.run_id}")
-
-
-@cli.group(name="execute")
-def execute_group():
-    """Canonical execution commands."""
-
-
-@execute_group.command("move-plan", context_settings=_WRAPPER_CONTEXT)
-@click.argument("args", nargs=-1, type=click.UNPROCESSED)
-def execute_move_plan(args):
-    """Execute move actions from a plan CSV."""
-    _run_python_script("tools/review/move_from_plan.py", args)
-
-
-@execute_group.command("quarantine-plan", context_settings=_WRAPPER_CONTEXT)
-@click.argument("args", nargs=-1, type=click.UNPROCESSED)
-def execute_quarantine_plan(args):
-    """Execute quarantine move actions from a plan CSV."""
-    _run_python_script("tools/review/quarantine_from_plan.py", args)
-
-
-@execute_group.command("promote-tags", context_settings=_WRAPPER_CONTEXT)
-@click.argument("args", nargs=-1, type=click.UNPROCESSED)
-def execute_promote_tags(args):
-    """Execute promote-by-tags move workflow."""
-    _run_python_script("tools/review/promote_by_tags.py", args)
-
-
-@cli.group()
-def verify():
-    """Canonical verification commands."""
-
-
-@verify.command("duration", context_settings=_WRAPPER_CONTEXT)
-@click.argument("args", nargs=-1, type=click.UNPROCESSED)
-def verify_duration(args):
-    """Verify duration health status from inventory."""
-    _run_tagslut_wrapper(["_mgmt", "audit-duration", *list(args)])
-
-
-@verify.command("recovery", context_settings=_WRAPPER_CONTEXT)
-@click.argument("args", nargs=-1, type=click.UNPROCESSED)
-def verify_recovery(args):
-    """Run recovery verification phase."""
-    _run_tagslut_wrapper(["_recover", "--phase", "verify", *list(args)])
-
-
-@verify.command("parity", context_settings=_WRAPPER_CONTEXT)
-@click.argument("args", nargs=-1, type=click.UNPROCESSED)
-def verify_parity(args):
-    """Run legacy-v3 parity validation checks."""
-    _run_python_script("scripts/validate_v3_dual_write_parity.py", args)
-
-
-@verify.command("receipts")
-@click.option("--db", type=click.Path(), required=True, help="SQLite DB path")
-@click.option("--strict", is_flag=True, help="Return non-zero when warnings are detected")
-def verify_receipts(db, strict):
-    """Validate move execution receipt consistency in v3 tables."""
-    import sqlite3
-
-    from tagslut.storage.schema import init_db
-
-    db_path = Path(db).expanduser().resolve()
-    if not db_path.exists():
-        raise click.ClickException(f"DB not found: {db_path}")
-
-    conn = sqlite3.connect(str(db_path))
-    init_db(conn)
-    try:
-        totals = {
-            "total": conn.execute("SELECT COUNT(*) FROM move_execution").fetchone()[0],
-            "moved": conn.execute("SELECT COUNT(*) FROM move_execution WHERE status = 'moved'").fetchone()[0],
-            "errors": conn.execute("SELECT COUNT(*) FROM move_execution WHERE status = 'error'").fetchone()[0],
-            "missing_dest": conn.execute(
-                "SELECT COUNT(*) FROM move_execution WHERE status = 'moved' AND (dest_path IS NULL OR TRIM(dest_path) = '')"
-            ).fetchone()[0],
-            "missing_plan": conn.execute(
-                "SELECT COUNT(*) FROM move_execution WHERE plan_id IS NULL"
-            ).fetchone()[0],
-        }
-    finally:
-        conn.close()
-
-    click.echo("Move receipt verification summary:")
-    click.echo(f"  total:        {totals['total']}")
-    click.echo(f"  moved:        {totals['moved']}")
-    click.echo(f"  errors:       {totals['errors']}")
-    click.echo(f"  missing_dest: {totals['missing_dest']}")
-    click.echo(f"  missing_plan: {totals['missing_plan']}")
-
-    warnings = totals["errors"] + totals["missing_dest"]
-    if strict and warnings > 0:
-        raise SystemExit(2)
-
-
-@cli.group()
-def report():
-    """Canonical reporting and export commands."""
-
-
-@report.command("m3u")
-@click.argument("paths", nargs=-1, type=click.Path(exists=True), required=True)
-@click.option("--db", type=click.Path(), help="Database path")
-@click.option("--source", help="Source label for playlist naming")
-@click.option("--m3u-dir", type=click.Path(), help="Output directory")
-@click.option("--merge", is_flag=True, help="Merge all paths into one playlist")
-def report_m3u(paths, db, source, m3u_dir, merge):
-    """Generate M3U playlists from paths."""
-    args: list[str] = ["_mgmt", "--m3u"]
-    if merge:
-        args.append("--merge")
-    if m3u_dir:
-        args.extend(["--m3u-dir", str(m3u_dir)])
-    if db:
-        args.extend(["--db", str(db)])
-    if source:
-        args.extend(["--source", str(source)])
-    for path in paths:
-        args.extend(["--path", str(path)])
-    _run_tagslut_wrapper(args)
-
-
-@report.command("duration", context_settings=_WRAPPER_CONTEXT)
-@click.argument("args", nargs=-1, type=click.UNPROCESSED)
-def report_duration(args):
-    """Report duration status issues."""
-    _run_tagslut_wrapper(["_mgmt", "audit-duration", *list(args)])
-
-
-@report.command("recovery", context_settings=_WRAPPER_CONTEXT)
-@click.argument("args", nargs=-1, type=click.UNPROCESSED)
-def report_recovery(args):
-    """Run recovery report phase."""
-    _run_tagslut_wrapper(["_recover", "--phase", "report", *list(args)])
-
-
-@report.command("plan-summary", context_settings=_WRAPPER_CONTEXT)
-@click.argument("args", nargs=-1, type=click.UNPROCESSED)
-def report_plan_summary(args):
-    """Summarize decide plan JSON into table/csv/json views."""
-    _run_python_script("tools/review/plan_summary.py", args)
-
-
-@cli.group()
-def auth():
-    """Canonical provider authentication commands."""
-
-
-@auth.command("status", context_settings=_WRAPPER_CONTEXT)
-@click.argument("args", nargs=-1, type=click.UNPROCESSED)
-def auth_status_wrapper(args):
-    """Show provider auth/token status."""
-    _run_tagslut_wrapper(["_metadata", "auth-status", *list(args)])
-
-
-@auth.command("init", context_settings=_WRAPPER_CONTEXT)
-@click.argument("args", nargs=-1, type=click.UNPROCESSED)
-def auth_init_wrapper(args):
-    """Initialize provider token template file."""
-    _run_tagslut_wrapper(["_metadata", "auth-init", *list(args)])
-
-
-@auth.command("refresh", context_settings=_WRAPPER_CONTEXT)
-@click.argument("args", nargs=-1, type=click.UNPROCESSED)
-def auth_refresh_wrapper(args):
-    """Refresh provider access tokens."""
-    _run_tagslut_wrapper(["_metadata", "auth-refresh", *list(args)])
-
-
-@auth.command("login", context_settings=_WRAPPER_CONTEXT)
-@click.argument("args", nargs=-1, type=click.UNPROCESSED)
-def auth_login_wrapper(args):
-    """Run interactive provider login flows."""
-    _run_tagslut_wrapper(["_metadata", "auth-login", *list(args)])
-
+register_intake_group(cli)
+register_index_group(cli)
+register_decide_group(cli)
+register_execute_group(cli)
+register_verify_group(cli)
+register_report_group(cli)
+register_auth_group(cli)
 
 @cli.command()
 @click.argument("paths", nargs=-1, type=click.Path(exists=True))

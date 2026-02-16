@@ -1,0 +1,1 @@
+"""CLI command group registrations."""

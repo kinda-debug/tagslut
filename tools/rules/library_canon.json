@@ -1,0 +1,29 @@
+{
+  "fallbacks": {},
+  "numbers": {},
+  "year_only": ["date", "originaldate"],
+  "set_if_present": [],
+  "unset_exact": [
+    "replaygain_track_gain",
+    "replaygain_track_peak",
+    "replaygain_album_gain",
+    "replaygain_album_peak",
+    "acoustid_id",
+    "encoder"
+  ],
+  "unset_prefixes": [
+    "performer:",
+    "instrument:",
+    "_"
+  ],
+  "unset_globs": [
+    "replaygain_*"
+  ],
+  "keep_exact": [
+    "composer",
+    "comment",
+    "copyright",
+    "itunestrackid"
+  ],
+  "aliases": {}
+}

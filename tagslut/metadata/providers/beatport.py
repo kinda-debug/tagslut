@@ -14,6 +14,7 @@ API Reference: https://api.beatport.com/v4/docs/
 
 import logging
 import re
+import time
 from typing import Optional, List, Dict, Any
 import httpx
 from urllib.parse import quote

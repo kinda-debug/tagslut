@@ -1,0 +1,47 @@
+from __future__ import annotations
+
+import click
+
+from tagslut.cli.runtime import run_tagslut_wrapper, WRAPPER_CONTEXT
+
+
+def register_index_group(cli: click.Group) -> None:
+    @cli.group()
+    def index():
+        """Canonical indexing and metadata registration commands."""
+
+    @index.command("register", context_settings=WRAPPER_CONTEXT)
+    @click.argument("args", nargs=-1, type=click.UNPROCESSED)
+    def index_register(args):
+        """Register files in inventory."""
+        run_tagslut_wrapper(["_mgmt", "register", *list(args)])
+
+    @index.command("check", context_settings=WRAPPER_CONTEXT)
+    @click.argument("args", nargs=-1, type=click.UNPROCESSED)
+    def index_check(args):
+        """Check for duplicates before downloading."""
+        run_tagslut_wrapper(["_mgmt", "check", *list(args)])
+
+    @index.command("duration-check", context_settings=WRAPPER_CONTEXT)
+    @click.argument("args", nargs=-1, type=click.UNPROCESSED)
+    def index_duration_check(args):
+        """Measure durations and compute duration status."""
+        run_tagslut_wrapper(["_mgmt", "check-duration", *list(args)])
+
+    @index.command("duration-audit", context_settings=WRAPPER_CONTEXT)
+    @click.argument("args", nargs=-1, type=click.UNPROCESSED)
+    def index_duration_audit(args):
+        """Audit duration anomalies from inventory."""
+        run_tagslut_wrapper(["_mgmt", "audit-duration", *list(args)])
+
+    @index.command("set-duration-ref", context_settings=WRAPPER_CONTEXT)
+    @click.argument("args", nargs=-1, type=click.UNPROCESSED)
+    def index_set_duration_ref(args):
+        """Set manual duration reference from a known-good file."""
+        run_tagslut_wrapper(["_mgmt", "set-duration-ref", *list(args)])
+
+    @index.command("enrich", context_settings=WRAPPER_CONTEXT)
+    @click.argument("args", nargs=-1, type=click.UNPROCESSED)
+    def index_enrich(args):
+        """Run metadata enrichment for indexed files."""
+        run_tagslut_wrapper(["_metadata", "enrich", *list(args)])

@@ -29,7 +29,6 @@ This repository manages a **music library deduplication and rebuild effort** aft
 
 Compatibility aliases:
 - `dedupe ...`
-- `taglslut ...`
 
 Reference map:
 - `docs/SCRIPT_SURFACE.md`

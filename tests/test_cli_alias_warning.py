@@ -17,7 +17,6 @@ def test_format_dedupe_alias_warning_for_dedupe() -> None:
 
 def test_format_dedupe_alias_warning_not_emitted_for_tagslut() -> None:
     assert _format_dedupe_alias_warning("tagslut") is None
-    assert _format_dedupe_alias_warning("taglslut") is None
 
 
 def test_dedupe_invocation_emits_alias_warning() -> None:

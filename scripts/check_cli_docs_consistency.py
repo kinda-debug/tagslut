@@ -193,7 +193,6 @@ def main() -> int:
         )
     ensure_contains(script_surface, "Compatibility aliases:", errors, "docs/SCRIPT_SURFACE.md")
     ensure_contains(script_surface, "`dedupe`", errors, "docs/SCRIPT_SURFACE.md")
-    ensure_contains(script_surface, "`taglslut`", errors, "docs/SCRIPT_SURFACE.md")
     # Phase runbook doc references removed — docs archived during decommission
 
     for removed in sorted(REMOVED_LEGACY_COMMANDS | REMOVED_COMPAT_COMMANDS):

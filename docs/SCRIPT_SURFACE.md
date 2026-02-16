@@ -34,7 +34,6 @@ The preferred command brand is now `tagslut`.
 
 Compatibility aliases:
 - `dedupe` (legacy alias, retiring June 2026)
-- `taglslut` (typo-tolerant alias)
 
 ## Operational Wrappers (Active)
 
@@ -54,16 +53,13 @@ Role: Beatport report-only mode (no download).
 4. `tools/tagslut [args...]`
 Role: Local wrapper for `python -m tagslut`.
 
-5. `tools/taglslut [args...]`
-Role: Typo-tolerant local wrapper for `python -m tagslut`.
-
-6. `tools/tag-build [options]`
+5. `tools/tag-build [options]`
 Role: Build M3U from DB for library FLAC files missing ISRC.
 
-7. `tools/tag-run --m3u <path> [options]`
+6. `tools/tag-run --m3u <path> [options]`
 Role: Run `onetagger-cli` on a symlink batch from M3U and emit summary artifacts.
 
-8. `tools/tag [options]`
+7. `tools/tag [options]`
 Role: Combined build + run OneTagger workflow with defaults.
 
 ## Transitional Wrapper Status

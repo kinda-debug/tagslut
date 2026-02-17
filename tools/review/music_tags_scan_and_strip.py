@@ -4,7 +4,7 @@ music_tags_scan_and_strip.py
 
 Standalone (no DB) scanner for a local music folder and an optional tag-stripping pass.
 
-Primary use case: scan /Users/georgeskhawam/Music/Music, generate an XLSX inventory of:
+Primary use case: scan ~/Music/Music, generate an XLSX inventory of:
   - all tag frames encountered across files (with counts + examples)
   - per-file canonical fields (Title, Artist, Album, etc.)
 
@@ -486,7 +486,7 @@ def _strip_tags_mp3(
 
 def parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(description="Scan tags and optionally strip everything except a small allowlist.")
-    ap.add_argument("root", type=Path, help="Root folder to scan (e.g., /Users/georgeskhawam/Music/Music)")
+    ap.add_argument("root", type=Path, help="Root folder to scan (e.g., ~/Music/Music)")
     ap.add_argument(
         "--xlsx",
         type=Path,

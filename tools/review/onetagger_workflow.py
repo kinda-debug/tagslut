@@ -26,17 +26,15 @@ except Exception as exc:  # pragma: no cover
     raise SystemExit(f"mutagen is required: {exc}") from exc
 
 
-DEFAULT_DB = os.environ.get(
-    "TAGSLUT_DB",
-    "/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-08/music.db",
-)
+_REPO = Path(__file__).resolve().parents[2]
+DEFAULT_DB = os.environ.get("TAGSLUT_DB", "")
 DEFAULT_LIBRARY_ROOT = Path("/Volumes/MUSIC/LIBRARY")
 DEFAULT_WORK_ROOT = Path("/Volumes/MUSIC/_work")
-DEFAULT_OUT_DIR = Path("/Users/georgeskhawam/Projects/tagslut/artifacts/compare")
-DEFAULT_ONETAGGER_BIN = Path("/Users/georgeskhawam/Downloads/onetagger-cli")
-DEFAULT_CONFIG_PATH = Path("/Users/georgeskhawam/.config/onetagger/config.tagslut-missing-isrc.json")
-DEFAULT_BASE_CONFIG_PATH = Path("/Users/georgeskhawam/.config/onetagger/config.json")
-DEFAULT_RUNS_DIR = Path("/Users/georgeskhawam/Library/Preferences/com.OneTagger.OneTagger/runs")
+DEFAULT_OUT_DIR = _REPO / "artifacts/compare"
+DEFAULT_ONETAGGER_BIN = Path.home() / "Downloads/onetagger-cli"
+DEFAULT_CONFIG_PATH = Path.home() / ".config/onetagger/config.tagslut-missing-isrc.json"
+DEFAULT_BASE_CONFIG_PATH = Path.home() / ".config/onetagger/config.json"
+DEFAULT_RUNS_DIR = Path.home() / "Library/Preferences/com.OneTagger.OneTagger/runs"
 
 
 @dataclass

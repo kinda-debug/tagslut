@@ -134,8 +134,9 @@ def main() -> int:
     ap.add_argument("source", type=Path)
     ap.add_argument("--dest", type=Path, required=True)
     ap.add_argument("--db", type=Path, required=True)
-    ap.add_argument("--canon-rules", type=Path, default=Path("/Users/georgeskhawam/Projects/tagslut/tools/rules/library_canon.json"))
-    ap.add_argument("--move-log", type=Path, default=Path("/Users/georgeskhawam/Projects/tagslut/artifacts/logs/file_move_mdl_replace.jsonl"))
+    _repo = Path(__file__).resolve().parents[2]
+    ap.add_argument("--canon-rules", type=Path, default=_repo / "tools/rules/library_canon.json")
+    ap.add_argument("--move-log", type=Path, default=_repo / "artifacts/logs/file_move_mdl_replace.jsonl")
     ap.add_argument("--execute", action="store_true")
     args = ap.parse_args()
 

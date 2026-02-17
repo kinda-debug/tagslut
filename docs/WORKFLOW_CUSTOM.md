@@ -8,10 +8,10 @@ Set these once per shell session.
 
 ```bash
 # Core paths
-export REPO_ROOT="/Users/georgeskhawam/Projects/tagslut"
-export TAGSLUT_DB="/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db"
+export REPO_ROOT="/path/to/your/tagslut"
+export TAGSLUT_DB="/path/to/your/tagslut_db/EPOCH_PLACEHOLDER/music.db"
 export LIBRARY_ROOT="/Volumes/MUSIC/LIBRARY"
-export STAGING_ROOT="/Users/georgeskhawam/Music/mdl"
+export STAGING_ROOT="$HOME/Music/mdl"
 
 # Output/log roots
 export OUT_DIR="$REPO_ROOT/output"
@@ -296,7 +296,7 @@ poetry run tagslut report m3u "$LIBRARY_ROOT" \
 ```bash
 # Example playlist audit script
 python scripts/audit_playlist_xlsx.py \
-  --xlsx "/Users/georgeskhawam/Desktop/DJ_NEW.xlsx" \
+  --xlsx "$HOME/Desktop/DJ_NEW.xlsx" \
   --db "$TAGSLUT_DB" \
   --library-root "$LIBRARY_ROOT"
 ```
@@ -330,10 +330,10 @@ python scripts/embed_artwork_from_sources.py \
 ## 18) Relink After Picard Renames (Lightweight New DB Flow)
 
 ```bash
-export RELINK_DB="/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db"
+export RELINK_DB="/path/to/your/tagslut_db/EPOCH_2026-02-10_RELINK/music.db"
 
 python scripts/bootstrap_relink_db.py \
-  --from-db "/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-08/music.db" \
+  --from-db "/path/to/your/tagslut_db/EPOCH_2026-02-08/music.db" \
   --to-db "$RELINK_DB"
 
 poetry run tagslut index register \
@@ -347,7 +347,7 @@ poetry run tagslut index register \
 
 ```bash
 export DBX_LOCAL="/Volumes/bad/dbx/Dropbox"
-export DBX_TOKEN_FILE="/Users/georgeskhawam/dbtoken.txt"
+export DBX_TOKEN_FILE="$HOME/dbtoken.txt"
 
 # 1) Verify local files are fully downloaded / decodable
 python scripts/scan_dropbox_audio_health.py --root "$DBX_LOCAL"

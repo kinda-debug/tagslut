@@ -87,18 +87,18 @@ tools/deemix "https://www.deezer.com/en/track/..."
 
 ```bash
 poetry run tagslut index register \
+  "$STAGING_ROOT" \
   --db "$TAGSLUT_DB" \
   --source staging \
-  --recursive \
-  "$STAGING_ROOT"
+  --execute
 ```
 
 If source-specific folder:
 
 ```bash
-poetry run tagslut index register --db "$TAGSLUT_DB" --source deezer --recursive "$STAGING_ROOT/deezer"
-poetry run tagslut index register --db "$TAGSLUT_DB" --source tidal --recursive "$STAGING_ROOT/tiddl"
-poetry run tagslut index register --db "$TAGSLUT_DB" --source beatport --recursive "$STAGING_ROOT/beatport"
+poetry run tagslut index register "$STAGING_ROOT/deezer" --db "$TAGSLUT_DB" --source deezer --execute
+poetry run tagslut index register "$STAGING_ROOT/tiddl" --db "$TAGSLUT_DB" --source tidal --execute
+poetry run tagslut index register "$STAGING_ROOT/beatport" --db "$TAGSLUT_DB" --source beatport --execute
 ```
 
 ## 5) Enrich Metadata (Beatport + Tidal)
@@ -143,29 +143,34 @@ poetry run tagslut verify duration \
 
 ```bash
 poetry run tagslut execute promote-tags \
-  --db "$TAGSLUT_DB" \
-  --source "$STAGING_ROOT" \
-  --dest "$LIBRARY_ROOT" \
-  --dry-run
+  "$STAGING_ROOT" \
+  --dest "$LIBRARY_ROOT"
 ```
 
 ### 7.2 Execute
 
 ```bash
 poetry run tagslut execute promote-tags \
-  --db "$TAGSLUT_DB" \
-  --source "$STAGING_ROOT" \
+  "$STAGING_ROOT" \
   --dest "$LIBRARY_ROOT" \
   --execute
 ```
 
-## 8) Roon M3U Exports (Duration Buckets)
+## 8) Roon M3U Export
 
 ```bash
-poetry run tagslut report m3u --db "$TAGSLUT_DB" --status ok --output "$LIBRARY_ROOT/DURATION_OK.m3u"
-poetry run tagslut report m3u --db "$TAGSLUT_DB" --status warn --output "$LIBRARY_ROOT/DURATION_WARN.m3u"
-poetry run tagslut report m3u --db "$TAGSLUT_DB" --status fail --output "$LIBRARY_ROOT/DURATION_FAIL.m3u"
-poetry run tagslut report m3u --db "$TAGSLUT_DB" --status unknown --output "$LIBRARY_ROOT/DURATION_UNKNOWN.m3u"
+poetry run tagslut report m3u "$LIBRARY_ROOT" \
+  --db "$TAGSLUT_DB" \
+  --source library \
+  --m3u-dir "$LIBRARY_ROOT" \
+  --merge
+```
+
+Duration status buckets:
+
+```bash
+poetry run tagslut verify duration --db "$TAGSLUT_DB" --status warn,fail,unknown
+poetry run tagslut report duration --db "$TAGSLUT_DB"
 ```
 
 ## 9) Rekordbox MP3 320 (from playlist)
@@ -279,9 +284,11 @@ python scripts/reassess_duration_variant_mismatch.py \
 Then refresh playlists:
 
 ```bash
-poetry run tagslut report m3u --db "$TAGSLUT_DB" --status ok --output "$LIBRARY_ROOT/ROON_DURATION_OK.m3u"
-poetry run tagslut report m3u --db "$TAGSLUT_DB" --status warn --output "$LIBRARY_ROOT/ROON_DURATION_WARN.m3u"
-poetry run tagslut report m3u --db "$TAGSLUT_DB" --status fail --output "$LIBRARY_ROOT/ROON_DURATION_FAIL.m3u"
+poetry run tagslut report m3u "$LIBRARY_ROOT" \
+  --db "$TAGSLUT_DB" \
+  --source library \
+  --m3u-dir "$LIBRARY_ROOT" \
+  --merge
 ```
 
 ## 16) Playlist Audit Against DB (XLSX)
@@ -323,16 +330,17 @@ python scripts/embed_artwork_from_sources.py \
 ## 18) Relink After Picard Renames (Lightweight New DB Flow)
 
 ```bash
-export RELINK_DB="/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db"
+export RELINK_DB="/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db"
 
 python scripts/bootstrap_relink_db.py \
-  --from-db "/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-02-08/music.db" \
+  --from-db "/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-08/music.db" \
   --to-db "$RELINK_DB"
 
 poetry run tagslut index register \
+  "$LIBRARY_ROOT" \
   --db "$RELINK_DB" \
-  --recursive \
-  "$LIBRARY_ROOT"
+  --source relink \
+  --execute
 ```
 
 ## 19) Dropbox Promotion + Cloud Deletion Safety
@@ -346,8 +354,7 @@ python scripts/scan_dropbox_audio_health.py --root "$DBX_LOCAL"
 
 # 2) Promote valid FLACs
 poetry run tagslut execute promote-tags \
-  --db "$TAGSLUT_DB" \
-  --source "$DBX_LOCAL/Music Hi-Res" \
+  "$DBX_LOCAL/Music Hi-Res" \
   --dest "$LIBRARY_ROOT" \
   --execute
 

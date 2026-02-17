@@ -101,9 +101,9 @@ tools/deemix "https://www.deezer.com/en/track/3451496391"
 
 ```bash
 tagslut index register \
-  --zone staging \
-  --recursive \
-  /path/to/new/files
+  /path/to/new/files \
+  --source bpdl \
+  --execute
 ```
 
 ### 6. Check for Duplicates
@@ -118,6 +118,7 @@ tagslut index check \
 ```bash
 # Quick check
 tagslut index duration-check \
+  /path/to/downloads \
   --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
 
 # Full audit
@@ -133,8 +134,8 @@ tagslut decide profiles
 
 # Generate plan
 tagslut decide plan \
-  --profile default \
-  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
+  --policy library_balanced \
+  --input output/candidates.json \
   --output output/move_plan.json
 ```
 
@@ -143,7 +144,11 @@ tagslut decide plan \
 ```bash
 # Execute move plan
 tagslut execute move-plan \
-  --plan output/move_plan.json
+  output/move_plan.csv \
+  --source-root /path/to/staging \
+  --dest-root /path/to/library \
+  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
+  --execute
 
 # Or use direct script
 python tools/review/promote_by_tags.py \
@@ -165,7 +170,10 @@ tagslut verify receipts --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music
 
 ```bash
 # M3U playlist
-tagslut report m3u --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
+tagslut report m3u /Volumes/MUSIC/LIBRARY \
+  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
+  --source library \
+  --m3u-dir /Volumes/MUSIC/LIBRARY
 
 # Duration report
 tagslut report duration --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
@@ -180,7 +188,7 @@ tagslut report duration --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music
 | `tagslut index duration-check` | Console output only |
 | `tagslut index enrich` | `metadata_json` column in DB |
 | `tagslut decide plan` | JSON file (--output) |
-| `tagslut execute move-plan` | Moves files + `moves` table in DB + JSONL log |
+| `tagslut execute move-plan` | Moves files from plan CSV + updates DB path + JSONL log |
 | `tagslut verify *` | Console output only |
 | `tagslut report *` | Output files (M3U, CSV, MD) |
 | `pre_download_check.py` | CSV + TXT files in --out-dir |

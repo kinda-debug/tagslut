@@ -26,6 +26,11 @@ sys.path.insert(0, str(Path(__file__).parents[2]))
 logger = logging.getLogger("tagslut")
 
 _TRANSITIONAL_COMMAND_REPLACEMENTS: dict[str, str] = {
+    "tagslut _mgmt": "tagslut index ... / tagslut report m3u ...",
+    "tagslut _metadata": "tagslut auth ... / tagslut index enrich ...",
+    "tagslut _recover": "tagslut verify recovery ... / tagslut report recovery ...",
+}
+_TAGSLUT_ALIAS_RETIRE_AFTER = datetime(2026, 7, 31).date()
 
 
 def _format_transitional_warning(command: str) -> str:
@@ -70,10 +75,7 @@ class _TagslutGroup(click.Group):
             if warning:
                 click.secho(warning, fg="yellow", err=True)
         return super().parse_args(ctx, args)
-    "tagslut _mgmt": "tagslut index ... / tagslut report m3u ...",
-    "tagslut _metadata": "tagslut auth ... / tagslut index enrich ...",
-    "tagslut _recover": "tagslut verify recovery ... / tagslut report recovery ...",
-}
+
 
 def _local_file_info_from_path(file_path: Path):
     from tagslut.core.metadata import extract_metadata

@@ -58,9 +58,9 @@ done < "$KEEP_FILE"
 
 ```bash
 tagslut index register \
-  --zone staging \
-  --recursive \
-  /path/to/downloaded/files
+  /path/to/downloaded/files \
+  --source bpdl \
+  --execute
 ```
 
 ---
@@ -179,9 +179,9 @@ tools/get "https://tidal.com/browse/album/67890"
 
 ```bash
 tagslut index register \
-  --zone staging \
-  --recursive \
-  /path/to/downloads
+  /path/to/downloads \
+  --source bpdl \
+  --execute
 ```
 
 ### Step 3: Check for Issues (index)
@@ -193,6 +193,7 @@ tagslut index check \
 
 # Duration check (DJ safety)
 tagslut index duration-check \
+  /path/to/downloads \
   --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
 ```
 
@@ -200,23 +201,26 @@ tagslut index duration-check \
 
 ```bash
 tagslut decide plan \
-  --profile default \
-  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
+  --policy library_balanced \
+  --input output/candidates.json \
   --output output/move_plan.json
 ```
 
 ### Step 5: Review Plan
 
 ```bash
-tagslut report plan-summary \
-  --plan output/move_plan.json
+tagslut report plan-summary output/move_plan.json
 ```
 
 ### Step 6: Execute Plan (execute)
 
 ```bash
 tagslut execute move-plan \
-  --plan output/move_plan.json
+  output/move_plan.csv \
+  --source-root /path/to/downloads \
+  --dest-root /path/to/library \
+  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
+  --execute
 ```
 
 ### Step 7: Verify (verify)
@@ -233,8 +237,7 @@ tagslut verify duration \
 
 ```bash
 tagslut report duration \
-  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
-  --output artifacts/duration_report.md
+  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
 ```
 
 ---
@@ -291,23 +294,26 @@ python tools/review/promote_by_tags.py \
 
 ```bash
 tagslut decide plan \
-  --profile quarantine \
-  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
+  --policy quarantine \
+  --input output/quarantine_candidates.json \
   --output output/quarantine_plan.json
 ```
 
 ### Step 2: Review Plan
 
 ```bash
-tagslut report plan-summary \
-  --plan output/quarantine_plan.json
+tagslut report plan-summary output/quarantine_plan.json
 ```
 
 ### Step 3: Execute Quarantine
 
 ```bash
 tagslut execute quarantine-plan \
-  --plan output/quarantine_plan.json
+  output/quarantine_plan.csv \
+  --library-root /path/to/library \
+  --quarantine-root /path/to/quarantine \
+  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
+  --execute
 ```
 
 ---
@@ -320,8 +326,10 @@ tagslut execute quarantine-plan \
 
 ```bash
 tagslut index set-duration-ref \
+  /path/to/known-good.flac \
   --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
-  --source beatport  # or tidal
+  --confirm \
+  --execute
 ```
 
 ### Step 2: Verify Duration Consistency

@@ -459,3 +459,5 @@ docs/WORKFLOW_CUSTOM.md
 docs/WORKFLOW_CUSTOM.md
 scripts/workflow_health_rescan.py
 docs/WORKFLOW_HEALTH_RESCAN.md
+.coverage
+.junie/

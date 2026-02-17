@@ -1,11 +1,11 @@
 """CLI module to inspect the track hub directly.
 
 Usage:
-    python -m tagslut.tools.track_hub_cli track-by-path /path/to/file.flac --db /path/to/music.db
-    python -m tagslut.tools.track_hub_cli track-by-key "isrc:USRC12345678" --db /path/to/music.db
-    python -m tagslut.tools.track_hub_cli list-files-for-key "isrc:USRC12345678" --db /path/to/music.db
-    python -m tagslut.tools.track_hub_cli find-by-isrc USRC12345678 --db /path/to/music.db
-    python -m tagslut.tools.track_hub_cli find-by-provider spotify 4iV5W9uYEdYUVa79Axb7Rh --db /path/to/music.db
+    python -m tagslut.cli.track_hub_cli track-by-path /path/to/file.flac --db /path/to/music.db
+    python -m tagslut.cli.track_hub_cli track-by-key "isrc:USRC12345678" --db /path/to/music.db
+    python -m tagslut.cli.track_hub_cli list-files-for-key "isrc:USRC12345678" --db /path/to/music.db
+    python -m tagslut.cli.track_hub_cli find-by-isrc USRC12345678 --db /path/to/music.db
+    python -m tagslut.cli.track_hub_cli find-by-provider spotify 4iV5W9uYEdYUVa79Axb7Rh --db /path/to/music.db
 
 Commands:
     track-by-path      Look up a file by its path and show linked track hub data.
@@ -19,7 +19,7 @@ Both commands display:
     - The library_tracks row for the linked key
     - All library_track_sources rows for that key
 
-Note: This module lives under tagslut/tools/ to avoid colliding with the main
+Note: This module lives under tagslut/cli/ alongside the main
 Click-based CLI under tagslut/cli/.
 """
 
@@ -1161,18 +1161,18 @@ def cmd_propose_plan(args: argparse.Namespace) -> None:
 def main() -> None:
     """Main entry point for the CLI."""
     parser = argparse.ArgumentParser(
-        prog="tagslut.tools.track_hub_cli",
+        prog="tagslut.cli.track_hub_cli",
         description="Inspect the track hub (library_tracks, library_track_sources) directly.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    python -m tagslut.tools.track_hub_cli track-by-path /Music/Artist/Track.flac --db ./music.db
-    python -m tagslut.tools.track_hub_cli track-by-key "isrc:USRC12345678" --db ./music.db
-    python -m tagslut.tools.track_hub_cli track-by-key "spotify:4iV5W9uYEdYUVa79Axb7Rh" --db ./music.db
-    python -m tagslut.tools.track_hub_cli list-files-for-key "isrc:USRC12345678" --db ./music.db
-    python -m tagslut.tools.track_hub_cli find-by-isrc USRC12345678 --db ./music.db
-    python -m tagslut.tools.track_hub_cli find-by-provider spotify 4iV5W9uYEdYUVa79Axb7Rh --db ./music.db
-    python -m tagslut.tools.track_hub_cli diagnose-duplicates --db ./music.db --min-files 2 --limit 50
+    python -m tagslut.cli.track_hub_cli track-by-path /Music/Artist/Track.flac --db ./music.db
+    python -m tagslut.cli.track_hub_cli track-by-key "isrc:USRC12345678" --db ./music.db
+    python -m tagslut.cli.track_hub_cli track-by-key "spotify:4iV5W9uYEdYUVa79Axb7Rh" --db ./music.db
+    python -m tagslut.cli.track_hub_cli list-files-for-key "isrc:USRC12345678" --db ./music.db
+    python -m tagslut.cli.track_hub_cli find-by-isrc USRC12345678 --db ./music.db
+    python -m tagslut.cli.track_hub_cli find-by-provider spotify 4iV5W9uYEdYUVa79Axb7Rh --db ./music.db
+    python -m tagslut.cli.track_hub_cli diagnose-duplicates --db ./music.db --min-files 2 --limit 50
         """,
     )
     

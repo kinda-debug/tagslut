@@ -5,6 +5,7 @@
 | Document | Purpose |
 |----------|---------|
 | `README_OPERATIONS.md` | **Single source of truth** - all commands and operations |
+| `CONFIG.md` | Environment variables and config precedence |
 | `WORKFLOWS.md` | Step-by-step workflow guides (all sources) |
 | `TROUBLESHOOTING.md` | Common issues and fixes |
 | `PROVENANCE_AND_RECOVERY.md` | Recovery and provenance procedures |

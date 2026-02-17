@@ -1,17 +1,9 @@
-[tool.poetry]
-name = "tagslut"
-version = "2.0.0"
-description = "Tagslut: recovery-first music library deduplication and metadata orchestration toolkit."
-authors = ["Georges Khawam <georgeskhawam@users.noreply.github.com>"]
-readme = "README.md"
-packages = [{ include = "tagslut" }]
-
 [project]
 name = "tagslut"
 version = "2.0.0"
 description = "Tagslut: recovery-first music library deduplication and metadata orchestration toolkit."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<4.0"
 authors = [
     { name = "Georges Khawam", email = "georgeskhawam@users.noreply.github.com" },
 ]
@@ -38,31 +30,12 @@ dependencies = [
 tagslut = "tagslut.cli.main:cli"
 dedupe = "tagslut.cli.main:cli"
 
-[tool.poetry.scripts]
-tagslut = "tagslut.cli.main:cli"
-dedupe = "tagslut.cli.main:cli"
-
-[tool.poetry.dependencies]
-python = "^3.11"
-click = "^8.1"
-mutagen = "^1.46"
-jsonschema = "^4.0"
-tqdm = "^4.66"
-pandas = "^2.3.3"
-openpyxl = "^3.1.5"
-rapidfuzz = "^3.14.3"
-unidecode = "^1.4.0"
-roonapi = "^0.1.6"
-httpx = "^0.27"
-pyyaml = "^6.0"
-flask = "^3.1.2"
-python-dotenv = "^1.2.1"
-pydantic = "^2.0"
-pydantic-settings = "^2.0"
-typer = "^0.9"
+[tool.poetry]
+packages = [{ include = "tagslut" }]
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^9.0.2"
+pytest-cov = "^6.0"
 mypy = "^1.0"
 flake8 = "^7.0.0"
 types-click = "^7.1"

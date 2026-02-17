@@ -19,7 +19,11 @@ jobs:
       - name: Run Type Checks
         run: poetry run python scripts/mypy_baseline_check.py
       - name: Run Tests
-        run: poetry run pytest
+        run: poetry run pytest --cov=tagslut --cov-report=xml
+      - name: Upload Coverage to Codecov
+        uses: codecov/codecov-action@v5
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       - name: Run Repo Surface Audit
         run: poetry run python scripts/audit_repo_layout.py
       - name: Run CLI/Docs Consistency Audit

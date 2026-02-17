@@ -75,6 +75,9 @@ class Enricher:
             elif name == "qobuz":
                 from tagslut.metadata.providers.qobuz import QobuzProvider
                 self._providers[name] = QobuzProvider(self.token_manager)
+            elif name == "deezer":
+                from tagslut.metadata.providers.deezer import DeezerProvider
+                self._providers[name] = DeezerProvider()
             elif name == "tidal":
                 from tagslut.metadata.providers.tidal import TidalProvider
                 self._providers[name] = TidalProvider(self.token_manager)

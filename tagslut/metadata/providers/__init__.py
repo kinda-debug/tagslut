@@ -9,6 +9,7 @@ from tagslut.metadata.providers.base import AbstractProvider, RateLimiter
 from tagslut.metadata.providers.spotify import SpotifyProvider
 from tagslut.metadata.providers.beatport import BeatportProvider
 from tagslut.metadata.providers.qobuz import QobuzProvider
+from tagslut.metadata.providers.deezer import DeezerProvider
 from tagslut.metadata.providers.tidal import TidalProvider
 from tagslut.metadata.providers.itunes import iTunesProvider
 from tagslut.metadata.providers.apple_music import AppleMusicProvider
@@ -19,6 +20,7 @@ __all__ = [
     "SpotifyProvider",
     "BeatportProvider",
     "QobuzProvider",
+    "DeezerProvider",
     "TidalProvider",
     "iTunesProvider",
     "AppleMusicProvider",

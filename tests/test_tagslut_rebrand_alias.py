@@ -35,8 +35,6 @@ def test_pyproject_rebrand_scripts_present() -> None:
         data = tomllib.load(handle)
 
     project_scripts = data.get("project", {}).get("scripts", {})
-    poetry_scripts = data.get("tool", {}).get("poetry", {}).get("scripts", {})
 
     for script_name in ("tagslut", "dedupe"):
         assert script_name in project_scripts
-        assert script_name in poetry_scripts

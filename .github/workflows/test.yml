@@ -19,7 +19,7 @@ jobs:
       - name: Run Type Checks
         run: poetry run python scripts/mypy_baseline_check.py
       - name: Run Tests
-        run: poetry run pytest --cov=tagslut --cov-report=term-missing
+        run: poetry run pytest --cov=tagslut --cov-report=term-missing --cov-fail-under=25
       - name: Run Repo Surface Audit
         run: poetry run python scripts/audit_repo_layout.py
       - name: Run CLI/Docs Consistency Audit

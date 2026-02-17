@@ -1,112 +1,369 @@
-# Custom Workflow (DJ Health)
+# Custom Workflow (Full Commands + Variables)
 
-This is a full, copy‑pasteable workflow with commands and variables. It assumes the `tagslut` CLI and tools in this repo.
+This is your end-to-end operating runbook for intake, metadata, health checks, promotion, and playlist export.
 
-## Variables
+## 0) Variables
 
-Set these once per shell session or in `.env`.
+Set these once per shell session.
 
 ```bash
-# Database (source of truth)
-export TAGSLUT_DB="/path/to/your/tagslut_db/EPOCH_YYYY-MM-DD/music.db"
+# Core paths
+export REPO_ROOT="/Users/georgeskhawam/Projects/tagslut"
+export TAGSLUT_DB="/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db"
+export LIBRARY_ROOT="/Volumes/MUSIC/LIBRARY"
+export STAGING_ROOT="/Users/georgeskhawam/Music/mdl"
 
-# Library root (for playlist output)
-export TAGSLUT_LIBRARY="/Volumes/MUSIC/LIBRARY"
+# Output/log roots
+export OUT_DIR="$REPO_ROOT/output"
+export ARTIFACTS_DIR="$REPO_ROOT/artifacts"
 
-# Optional: zones config (if you use it)
-export TAGSLUT_ZONES="~/.config/tagslut/zones.yaml"
+# Optional provider/auth config
+export TAGSLUT_ARTIFACTS="$ARTIFACTS_DIR"
+export TAGSLUT_ZONES="$REPO_ROOT/config/zones.yaml"
 
-# Optional: reports/artifacts root
-export TAGSLUT_ARTIFACTS="/path/to/tagslut/artifacts"
+# Policy choices
+export PROVIDERS="beatport,tidal"
+export NO_QOBUZ="1"
 ```
 
-## Inputs
-
-Pick one:
+## 1) Environment Check
 
 ```bash
-# Folder of FLACs
-export INPUT_PATH="/path/to/folder"
-
-# Or a file list (one path per line)
-export INPUT_LIST="/path/to/paths.txt"
+cd "$REPO_ROOT"
+poetry --version
+poetry run python --version
 ```
 
-## 1) Register & measure durations
+## 2) Pre-Download DB Check (Skip What You Already Have)
+
+### 2.1 Single URL
 
 ```bash
-# Register files in the inventory (no mutations by default)
-poetry run tagslut index register --db "$TAGSLUT_DB" "$INPUT_PATH"
-
-# Measure durations and compute duration status
-poetry run tagslut index duration-check --db "$TAGSLUT_DB" "$INPUT_PATH"
+python tools/review/pre_download_check.py \
+  --input <(printf '%s\n' "https://tidal.com/album/447061568/u") \
+  --db "$TAGSLUT_DB" \
+  --out-dir "$OUT_DIR/precheck"
 ```
 
-## 2) Enrich metadata (Beatport + Tidal)
+### 2.2 Links file
 
 ```bash
-# Enrich metadata using provider cascade
-# Use --providers to limit sources; example uses beatport + tidal
-poetry run tagslut index enrich --db "$TAGSLUT_DB" --providers beatport,tidal "$INPUT_PATH"
+python tools/review/pre_download_check.py \
+  --input ~/links.txt \
+  --db "$TAGSLUT_DB" \
+  --out-dir "$OUT_DIR/precheck"
 ```
 
-## 3) Re‑audit duration anomalies
+### 2.3 Automatic keep-only download
 
 ```bash
-# Audit duration anomalies (ok/warn/fail/unknown)
-poetry run tagslut index duration-audit --db "$TAGSLUT_DB" --status warn
-poetry run tagslut index duration-audit --db "$TAGSLUT_DB" --status fail
-poetry run tagslut index duration-audit --db "$TAGSLUT_DB" --status unknown
+tools/get-auto --links-file ~/links.txt
 ```
 
-## 4) Export Roon playlists (OK/Warn/Fail)
+## 3) Downloaders (Source-Aware)
+
+### 3.1 Unified router
 
 ```bash
-# OK
-poetry run tagslut report m3u --db "$TAGSLUT_DB" --source ok --m3u-dir "$TAGSLUT_LIBRARY" "$INPUT_PATH"
-
-# WARN
-poetry run tagslut report m3u --db "$TAGSLUT_DB" --source warn --m3u-dir "$TAGSLUT_LIBRARY" "$INPUT_PATH"
-
-# FAIL
-poetry run tagslut report m3u --db "$TAGSLUT_DB" --source fail --m3u-dir "$TAGSLUT_LIBRARY" "$INPUT_PATH"
+tools/get "https://www.beatport.com/release/.../..."
+tools/get "https://tidal.com/browse/album/..."
+tools/get "https://www.deezer.com/en/track/..."
 ```
 
-## 5) Canonize tags (optional, uses library_canon.json)
+### 3.2 Direct wrappers
 
 ```bash
-# Dry‑run canonization
-poetry run tagslut canonize "$INPUT_PATH" --canon-dry-run
+# Beatport
+tools/get-sync "https://www.beatport.com/release/.../..."
 
-# Execute canonization
-poetry run tagslut canonize "$INPUT_PATH" --execute
+# Tidal
+tools/tiddl "https://tidal.com/browse/album/..."
+
+# Deezer (FLAC by default, auto-register source=deezer)
+tools/deemix "https://www.deezer.com/en/track/..."
 ```
 
-## 6) Provider auth (only if needed)
+## 4) Register New Audio Into DB
 
 ```bash
-# Show auth status
+poetry run tagslut index register \
+  --db "$TAGSLUT_DB" \
+  --source staging \
+  --recursive \
+  "$STAGING_ROOT"
+```
+
+If source-specific folder:
+
+```bash
+poetry run tagslut index register --db "$TAGSLUT_DB" --source deezer --recursive "$STAGING_ROOT/deezer"
+poetry run tagslut index register --db "$TAGSLUT_DB" --source tidal --recursive "$STAGING_ROOT/tiddl"
+poetry run tagslut index register --db "$TAGSLUT_DB" --source beatport --recursive "$STAGING_ROOT/beatport"
+```
+
+## 5) Enrich Metadata (Beatport + Tidal)
+
+```bash
+poetry run tagslut index enrich \
+  --db "$TAGSLUT_DB" \
+  --providers "$PROVIDERS" \
+  --path "$STAGING_ROOT/%" \
+  --retry-no-match \
+  --execute
+```
+
+Notes:
+- Keep Qobuz out by not including it in `--providers`.
+- Use `--force` only when you intentionally want full re-enrichment.
+
+## 6) Duration Health + Verification
+
+### 6.1 Measure and classify
+
+```bash
+poetry run tagslut index duration-check \
+  "$STAGING_ROOT" \
+  --db "$TAGSLUT_DB" \
+  --execute \
+  --dj-only
+```
+
+### 6.2 Verify status buckets
+
+```bash
+poetry run tagslut verify duration \
+  --db "$TAGSLUT_DB" \
+  --dj-only \
+  --status ok,warn,fail,unknown
+```
+
+## 7) Promote to Library (Move Workflow)
+
+### 7.1 Dry run
+
+```bash
+poetry run tagslut execute promote-tags \
+  --db "$TAGSLUT_DB" \
+  --source "$STAGING_ROOT" \
+  --dest "$LIBRARY_ROOT" \
+  --dry-run
+```
+
+### 7.2 Execute
+
+```bash
+poetry run tagslut execute promote-tags \
+  --db "$TAGSLUT_DB" \
+  --source "$STAGING_ROOT" \
+  --dest "$LIBRARY_ROOT" \
+  --execute
+```
+
+## 8) Roon M3U Exports (Duration Buckets)
+
+```bash
+poetry run tagslut report m3u --db "$TAGSLUT_DB" --status ok --output "$LIBRARY_ROOT/DURATION_OK.m3u"
+poetry run tagslut report m3u --db "$TAGSLUT_DB" --status warn --output "$LIBRARY_ROOT/DURATION_WARN.m3u"
+poetry run tagslut report m3u --db "$TAGSLUT_DB" --status fail --output "$LIBRARY_ROOT/DURATION_FAIL.m3u"
+poetry run tagslut report m3u --db "$TAGSLUT_DB" --status unknown --output "$LIBRARY_ROOT/DURATION_UNKNOWN.m3u"
+```
+
+## 9) Rekordbox MP3 320 (from playlist)
+
+```bash
+export SRC_M3U="$LIBRARY_ROOT/BEATPORT_TIDAL_MATCHES.m3u"
+export MP3_OUT="$HOME/Music/Rekordbox_MP3_320"
+
+python scripts/convert_m3u_to_mp3_320.py \
+  --input-m3u "$SRC_M3U" \
+  --output-root "$MP3_OUT" \
+  --dedupe \
+  --embed-cover
+```
+
+## 10) Dropbox Intake Cleanup (Optional)
+
+```bash
+export DROPBOX_SYNC_ROOT="/Volumes/bad/dbx/Dropbox"
+
+# Scan/verify fully downloaded FLACs
+python scripts/scan_dropbox_audio_health.py --root "$DROPBOX_SYNC_ROOT"
+
+# Promote valid files
+poetry run tagslut execute promote-tags \
+  --db "$TAGSLUT_DB" \
+  --source "$DROPBOX_SYNC_ROOT/Music Hi-Res" \
+  --dest "$LIBRARY_ROOT" \
+  --execute
+```
+
+## 11) Daily Operator Sequence
+
+```bash
+# 1) precheck links
+# 2) download keep-only
+# 3) register
+# 4) enrich beatport+tidal
+# 5) duration-check
+# 6) promote
+# 7) export m3u buckets
+```
+
+## 12) Quick Troubleshooting
+
+```bash
+# Check auth
 poetry run tagslut auth status
 
-# Initialize token template
-poetry run tagslut auth init
+# Show command groups
+poetry run tagslut --help
 
-# Refresh tokens
-poetry run tagslut auth refresh
+# Check DB file exists
+ls -lh "$TAGSLUT_DB"
+
+# Check latest precheck output
+ls -lt "$OUT_DIR/precheck" | head
 ```
 
-## One‑shot helper commands
+## 13) What This Workflow Enforces
+
+- No Qobuz in active enrichment.
+- Beatport + Tidal priority for metadata references.
+- Duration-based DJ safety gates (`ok/warn/fail/unknown`).
+- Roon playlists exported directly to library root.
+- Source-aware registration for provenance and recovery.
+
+## 14) Unknown Reduction (Head-On, No Qobuz)
+
+Use this when `duration_status=unknown` is too high.
 
 ```bash
-# Full intake flow (Beatport/Tidal/Deezer via tools/get-intake)
-poetry run tagslut intake run --help
+# 1) Local bootstrap of refs (no provider tokens)
+python scripts/bootstrap_duration_refs_local.py \
+  --db "$TAGSLUT_DB" \
+  --execute
 
-# Beatport prefilter only
-poetry run tagslut intake prefilter --help
+# 2) Recompute durations for library
+poetry run tagslut index duration-check \
+  "$LIBRARY_ROOT" \
+  --db "$TAGSLUT_DB" \
+  --execute \
+  --dj-only
+
+# 3) Optional provider pass (Beatport + Tidal only)
+poetry run tagslut index enrich \
+  --db "$TAGSLUT_DB" \
+  --providers beatport,tidal \
+  --path "$LIBRARY_ROOT/%" \
+  --recovery \
+  --retry-no-match \
+  --execute
+
+# 4) Verify status counts
+poetry run tagslut verify duration \
+  --db "$TAGSLUT_DB" \
+  --dj-only \
+  --status ok,warn,fail,unknown
 ```
 
-## Notes
+## 15) False Fail Reassessment (Extended/Remix Mismatch)
 
-- `tagslut` expects FLAC inputs for most health checks.
-- Beatport token is not required for the tokenless paths; if you want authenticated paths, use `tagslut auth`.
-- Adjust `--providers` for strict source control.
+Use this for "audio is fine but marked fail" cases.
+
+```bash
+python scripts/reassess_duration_variant_mismatch.py \
+  --db "$TAGSLUT_DB" \
+  --execute
+```
+
+Then refresh playlists:
+
+```bash
+poetry run tagslut report m3u --db "$TAGSLUT_DB" --status ok --output "$LIBRARY_ROOT/ROON_DURATION_OK.m3u"
+poetry run tagslut report m3u --db "$TAGSLUT_DB" --status warn --output "$LIBRARY_ROOT/ROON_DURATION_WARN.m3u"
+poetry run tagslut report m3u --db "$TAGSLUT_DB" --status fail --output "$LIBRARY_ROOT/ROON_DURATION_FAIL.m3u"
+```
+
+## 16) Playlist Audit Against DB (XLSX)
+
+```bash
+# Example playlist audit script
+python scripts/audit_playlist_xlsx.py \
+  --xlsx "/Users/georgeskhawam/Desktop/DJ_NEW.xlsx" \
+  --db "$TAGSLUT_DB" \
+  --library-root "$LIBRARY_ROOT"
+```
+
+Expected outputs:
+- status report CSV/XLSX
+- `*_ok.m3u`, `*_warn.m3u`, `*_fail.m3u`, `*_unknown.m3u`
+
+## 17) Rekordbox Conversion (Whole Playlist, Deduped, 320 CBR)
+
+```bash
+export SRC_M3U="$LIBRARY_ROOT/BEATPORT_TIDAL_MATCHES.m3u"
+export OUT_MP3="$HOME/Music/Rekordbox_MP3_320"
+
+python scripts/convert_m3u_to_mp3_320.py \
+  --input-m3u "$SRC_M3U" \
+  --output-root "$OUT_MP3" \
+  --dedupe \
+  --bitrate 320 \
+  --cbr
+```
+
+Cover embed pass (if source contains art):
+
+```bash
+python scripts/embed_artwork_from_sources.py \
+  --source-m3u "$SRC_M3U" \
+  --target-m3u "$LIBRARY_ROOT/BEATPORT_TIDAL_MATCHES_FULL_MP3_320.m3u"
+```
+
+## 18) Relink After Picard Renames (Lightweight New DB Flow)
+
+```bash
+export RELINK_DB="/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db"
+
+python scripts/bootstrap_relink_db.py \
+  --from-db "/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-02-08/music.db" \
+  --to-db "$RELINK_DB"
+
+poetry run tagslut index register \
+  --db "$RELINK_DB" \
+  --recursive \
+  "$LIBRARY_ROOT"
+```
+
+## 19) Dropbox Promotion + Cloud Deletion Safety
+
+```bash
+export DBX_LOCAL="/Volumes/bad/dbx/Dropbox"
+export DBX_TOKEN_FILE="/Users/georgeskhawam/dbtoken.txt"
+
+# 1) Verify local files are fully downloaded / decodable
+python scripts/scan_dropbox_audio_health.py --root "$DBX_LOCAL"
+
+# 2) Promote valid FLACs
+poetry run tagslut execute promote-tags \
+  --db "$TAGSLUT_DB" \
+  --source "$DBX_LOCAL/Music Hi-Res" \
+  --dest "$LIBRARY_ROOT" \
+  --execute
+
+# 3) Delete in cloud only with valid write-scope token
+# Required Dropbox scopes: files.content.write + files.metadata.read
+python scripts/delete_dropbox_cloud_paths.py \
+  --token-file "$DBX_TOKEN_FILE" \
+  --paths-file "$REPO_ROOT/dropbox_processed_cloud_paths.txt"
+```
+
+If cloud delete returns `missing_scope` or `expired_access_token`, regenerate token and retry.
+
+## 20) Daily “No-Pollution” Policy
+
+- Always precheck links against DB before download.
+- Never promote without duration-check.
+- Keep providers restricted to `beatport,tidal` unless explicitly needed.
+- Treat `warn/fail` as review queues, not auto-delete signals.
+- Rebuild Roon playlists from DB statuses after each major run.

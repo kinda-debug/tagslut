@@ -17,7 +17,6 @@ from typing import Optional, List, Dict, Any, Iterator
 from tagslut.metadata.models.types import EnrichmentResult, LocalFileInfo
 from tagslut.metadata.auth import TokenManager
 from tagslut.metadata.providers.base import AbstractProvider
-from tagslut.metadata.providers.spotify import SpotifyProvider
 from tagslut.metadata.pipeline import runner, stages
 from tagslut.metadata.store import db_reader, db_writer
 
@@ -48,7 +47,7 @@ class Enricher:
         Args:
             db_path: Path to SQLite database
             token_manager: Token manager for API auth
-            providers: List of provider names to use (default: ["spotify"])
+            providers: List of provider names to use (default: ["beatport"])
             dry_run: If True, don't write to database
             mode: Operation mode - "recovery", "hoarding", or "both"
                   - recovery: Focus on duration health validation, accept lower-confidence matches
@@ -57,7 +56,7 @@ class Enricher:
         """
         self.db_path = db_path
         self.token_manager = token_manager or TokenManager()
-        self.provider_names = providers or ["spotify"]
+        self.provider_names = providers or ["beatport"]
         self.dry_run = dry_run
         self.mode = mode
 
@@ -68,7 +67,8 @@ class Enricher:
         """Get or create a provider instance."""
         if name not in self._providers:
             if name == "spotify":
-                self._providers[name] = SpotifyProvider(self.token_manager)
+                logger.warning("Spotify provider is disabled by policy.")
+                return None
             elif name == "beatport":
                 from tagslut.metadata.providers.beatport import BeatportProvider
                 self._providers[name] = BeatportProvider(self.token_manager)

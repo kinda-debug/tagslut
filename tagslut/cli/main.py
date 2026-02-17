@@ -266,7 +266,7 @@ def explain_keeper(db, group_id, zones_config, config, priority, metadata_tiebre
 @cli.command("enrich-file")
 @click.option("--db", type=click.Path(), required=False, help="Database path")
 @click.option("--file", "file_path", type=click.Path(), required=True, help="Exact file path in DB (or on disk in --standalone mode)")
-@click.option("--providers", default="beatport,spotify,tidal,deezer,itunes", help="Comma-separated providers")
+@click.option("--providers", default="beatport,tidal,deezer,itunes", help="Comma-separated providers")
 @click.option("--force", is_flag=True, help="Re-process even if already enriched")
 @click.option("--retry-no-match", is_flag=True, help="Retry files previously with no match")
 @click.option("--execute", is_flag=True, help="Write updates to DB (default: dry-run)")
@@ -293,6 +293,8 @@ def enrich_file(db, file_path, providers, force, retry_no_match, execute, recove
     provider_list = [p.strip() for p in providers.split(",") if p.strip()]
     if "qobuz" in provider_list:
         raise click.ClickException("Qobuz is disabled. Remove it from --providers.")
+    if "spotify" in provider_list:
+        raise click.ClickException("Spotify is disabled. Remove it from --providers.")
     token_manager = TokenManager()
 
     if standalone:
@@ -1009,7 +1011,7 @@ def recover(
 
         token_manager = TokenManager()
         # Using default providers for now, could be an option
-        provider_list = ["spotify", "beatport", "tidal", "deezer", "itunes"]
+        provider_list = ["beatport", "tidal", "deezer", "itunes"]
 
         click.echo(f"Enriching with providers: {', '.join(provider_list)}")
 
@@ -1066,7 +1068,7 @@ def metadata():
 @click.option('--db', type=click.Path(), required=False, help='Database path')
 @click.option('--path', type=str, help='Filter files by path pattern (SQL LIKE) or file/dir in --standalone mode')
 @click.option('--zones', type=str, help='Comma-separated zones to include (e.g. accepted,staging)')
-@click.option('--providers', default='beatport,spotify,tidal,deezer,itunes', help='Comma-separated list of providers (order = priority)')
+@click.option('--providers', default='beatport,tidal,deezer,itunes', help='Comma-separated list of providers (order = priority)')
 @click.option('--limit', type=int, help='Maximum files to process')
 @click.option('--force', is_flag=True, help='Re-process ALL already-processed files')
 @click.option('--retry-no-match', is_flag=True, help='Retry files that had no provider match')
@@ -1099,7 +1101,7 @@ def enrich(db, path, zones, providers, limit, force, retry_no_match, execute, re
         tagslut index enrich --db music.db --recovery --execute
 
         # Hoarding mode: collect full metadata for DJ library
-        tagslut index enrich --db music.db --hoarding --providers beatport,spotify --execute
+        tagslut index enrich --db music.db --hoarding --providers beatport,tidal,deezer --execute
 
         # Both modes: health check + full metadata
         tagslut index enrich --db music.db --recovery --hoarding --execute
@@ -1158,6 +1160,8 @@ def enrich(db, path, zones, providers, limit, force, retry_no_match, execute, re
         provider_list = [p.strip() for p in providers.split(',') if p.strip()]
         if "qobuz" in provider_list:
             raise click.ClickException("Qobuz is disabled. Remove it from --providers.")
+        if "spotify" in provider_list:
+            raise click.ClickException("Spotify is disabled. Remove it from --providers.")
         token_manager = TokenManager()
 
         click.echo("")
@@ -1241,6 +1245,8 @@ def enrich(db, path, zones, providers, limit, force, retry_no_match, execute, re
 
     # Parse providers
     provider_list = [p.strip() for p in providers.split(',')]
+    if "spotify" in provider_list:
+        raise click.ClickException("Spotify is disabled. Remove it from --providers.")
     if "qobuz" in provider_list:
         raise click.ClickException("Qobuz is disabled. Remove it from --providers.")
 

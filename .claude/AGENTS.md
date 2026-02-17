@@ -118,4 +118,12 @@ poetry run tagslut index enrich --db <db> --recovery --execute
 - `docs/REDESIGN_TRACKER.md` - migration tracker
 - `docs/PHASE5_LEGACY_DECOMMISSION.md` - decommission plan
 - `tools/beatportdl/bpdl/README.md` - BeatportDL config reference
-- `docs/archive/` - historical docs/assets no longer in active surface
+
+## Preconditions for Edits
+
+1. Read ALL docs in `docs/` relevant to the change before editing any file.
+2. Read the actual source code being changed — never rely on external audit summaries or assumptions.
+3. Never recommend paid third-party services without asking first.
+4. Run `tagslut auth status` and read `docs/TROUBLESHOOTING.md` before making claims about provider health.
+5. Do not delete or restructure `pyproject.toml` sections without first running `poetry check` to understand what Poetry actually expects.
+6. No authoritative statements about what's broken until you've read the code that implements it.

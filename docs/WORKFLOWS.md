@@ -390,6 +390,114 @@ tagslut index register ~/Music/mdl/deezer --source deezer --execute
 
 ---
 
+## Workflow 9: Genre Normalization
+
+**Goal:** Normalize genre/style metadata across files and optionally backfill the database with canonical genre values.
+
+**Context:** Genre tags vary widely in format and hierarchy. This workflow uses centralized normalization rules to standardize them across your library, supporting both Beatport-style hierarchies and custom mappings.
+
+### Option A: DB Backfill (Canonical Values)
+
+Normalize genre/style tags across a path and update database `canonical_genre` and `canonical_sub_genre` fields.
+
+```bash
+# Dry-run: report what would be normalized
+python tools/review/normalize_genres.py \
+  /Volumes/DJSSD/LIBRARY \
+  --db "$TAGSLUT_DB" \
+  --rules tools/rules/genre_normalization.json \
+  --output artifacts/genre_normalization_report.md \
+  --csv artifacts/genre_normalization_rows.csv
+
+# Execute: write to database
+python tools/review/normalize_genres.py \
+  /Volumes/DJSSD/LIBRARY \
+  --db "$TAGSLUT_DB" \
+  --rules tools/rules/genre_normalization.json \
+  --output artifacts/genre_normalization_report.md \
+  --csv artifacts/genre_normalization_rows.csv \
+  --execute
+```
+
+**Output:**
+- `genre_normalization_report.md` — Summary of scan and updates
+- `genre_normalization_rows.csv` — Detailed row-by-row mapping (original → normalized)
+
+### Option B: In-Place Tag Normalization
+
+Apply normalized genre tags directly to FLAC files without touching the database.
+
+```bash
+# Dry-run: scan and report
+python tools/review/tag_normalized_genres.py \
+  /Volumes/DJSSD/LIBRARY \
+  --rules tools/rules/genre_normalization.json \
+  --limit 100
+
+# Execute: write tags to files
+python tools/review/tag_normalized_genres.py \
+  /Volumes/DJSSD/LIBRARY \
+  --rules tools/rules/genre_normalization.json \
+  --execute
+```
+
+**Tag Output (Beatport-compatible):**
+- `GENRE` — Primary genre (e.g., "House")
+- `SUBGENRE` — Style/sub-genre (e.g., "Deep House")
+- `GENRE_PREFERRED` — Preferred for cascading (style if present, else genre)
+- `GENRE_FULL` — Hierarchical format (e.g., "House | Deep House")
+
+### Option C: Combined Workflow (DB + Tags)
+
+Both backfill the database AND apply tags in-place:
+
+```bash
+# Step 1: Backfill DB with canonical values
+python tools/review/normalize_genres.py \
+  /Volumes/DJSSD/LIBRARY \
+  --db "$TAGSLUT_DB" \
+  --rules tools/rules/genre_normalization.json \
+  --execute
+
+# Step 2: Apply tags to files for portability
+python tools/review/tag_normalized_genres.py \
+  /Volumes/DJSSD/LIBRARY \
+  --rules tools/rules/genre_normalization.json \
+  --execute
+```
+
+### Normalization Rules Format
+
+Create or edit `tools/rules/genre_normalization.json`:
+
+```json
+{
+  "genre_map": {
+    "House Music": "House",
+    "Tech House": "Tech House",
+    "Deep House": "House",
+    "UK Garage": "UK Garage / Bassline"
+  },
+  "style_map": {
+    "Deep House": "Deep House",
+    "Soulful House": "Soulful",
+    "Minimal": "Minimal / Deep Tech",
+    "Liquid": "Liquid"
+  }
+}
+```
+
+**Reference:** See `docs/archive/inactive-root-docs-2026-02-09/Beatport Genres and Sub-Genres.md` for complete Beatport taxonomy.
+
+### Implementation Notes
+
+- Both scripts use shared `GenreNormalizer` class (`tagslut/metadata/genre_normalization.py`) for consistent logic
+- Cascade priority: `GENRE_PREFERRED` → `SUBGENRE` → `GENRE` → `GENRE_FULL` → fallback to first available
+- "Dropped tags" are reported in CSV for audit (tags that were present but not used)
+- Safe by default: dry-run is always the first step; use `--execute` to write changes
+
+---
+
 ## Match Strategy Reference
 
 The pre-download check tool uses this matching hierarchy:

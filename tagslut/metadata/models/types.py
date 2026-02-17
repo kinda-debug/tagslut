@@ -191,6 +191,13 @@ class LocalFileInfo:
     tag_label: Optional[str] = None
     tag_year: Optional[int] = None
 
+    # Genre/style tags (for normalization workflows)
+    tag_genre: Optional[str] = None
+    tag_subgenre: Optional[str] = None
+    tag_style: Optional[str] = None
+    tag_genre_preferred: Optional[str] = None
+    tag_genre_full: Optional[str] = None
+
     # Known provider IDs (if any)
     spotify_id: Optional[str] = None
     qobuz_id: Optional[str] = None

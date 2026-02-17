@@ -29,8 +29,12 @@ Active operational scripts for tagslut planning, analysis, and move execution.
 - `scan_with_trust.py`
 - `hoard_tags.py`
 - `canonize_tags.py`
-- `normalize_genres.py`
-- `tag_normalized_genres.py`
+- **Genre Normalization (synergistic):**
+  - `normalize_genres.py` — Normalize genre/style tags and backfill DB with canonical values
+  - `tag_normalized_genres.py` — Apply normalized genre/style tags in-place to FLAC files
+  - Both use shared `GenreNormalizer` class for consistent tag processing
+  - See `docs/WORKFLOWS.md` Workflow 9 for usage guide
+  - Rules format: `tools/rules/genre_normalization.json` (Beatport-compatible mappings)
 - `dump_file_tags.py`
 - `music_tags_scan_and_strip.py`
 

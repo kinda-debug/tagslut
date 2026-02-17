@@ -2,68 +2,45 @@
 """
 Normalize genre/style for a path and backfill DB canonical_genre/canonical_sub_genre.
 Also emit a report of original tags, dropped tags, and final normalized values.
+
+Uses shared GenreNormalizer (tagslut.metadata.genre_normalization) for consistent
+tag processing with tag_normalized_genres.py.
+
+Usage:
+    # Dry-run: scan and report
+    python tools/review/normalize_genres.py /path/to/files \\
+      --db music.db \\
+      --rules tools/rules/genre_normalization.json
+
+    # Execute: write to database
+    python tools/review/normalize_genres.py /path/to/files \\
+      --db music.db \\
+      --rules tools/rules/genre_normalization.json \\
+      --execute
+
+Output:
+    - Report: genre_normalization_report.md
+    - CSV: genre_normalization_rows.csv (detailed row-by-row mapping)
+
+For combined workflows (DB + in-place tags), pair with tag_normalized_genres.py.
 """
 from __future__ import annotations
 
 import argparse
 import csv
-import json
+import sys
 from pathlib import Path
-from typing import Dict, Any, List, Tuple
+from typing import List
 
 try:
     import mutagen
 except Exception as e:
     raise SystemExit("mutagen is required (pip install mutagen)") from e
 
+# Add tagslut package to path for imports
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-def load_rules(path: Path) -> Dict[str, Dict[str, str]]:
-    data = json.loads(path.read_text(encoding="utf-8"))
-    return {
-        "genre_map": data.get("genre_map", {}),
-        "style_map": data.get("style_map", {}),
-    }
-
-
-def get_tag(tags: Dict[str, Any], key: str) -> List[str]:
-    if key in tags:
-        val = tags[key]
-        if isinstance(val, (list, tuple)):
-            return [str(v).strip() for v in val if str(v).strip()]
-        return [str(val).strip()] if str(val).strip() else []
-    return []
-
-
-def normalize_value(value: str, mapping: Dict[str, str]) -> str:
-    return mapping.get(value, value)
-
-
-def choose_normalized(tags: Dict[str, Any], rules: Dict[str, Dict[str, str]]) -> Tuple[str | None, str | None, List[str]]:
-    """Return (genre, style, dropped_tags)."""
-    genre_candidates = (
-        get_tag(tags, "GENRE_PREFERRED")
-        or get_tag(tags, "SUBGENRE")
-        or get_tag(tags, "GENRE")
-        or get_tag(tags, "GENRE_FULL")
-    )
-    style_candidates = get_tag(tags, "STYLE")
-
-    dropped = []
-    # Any present tag that doesn't participate in the chosen output is "dropped" for reporting
-    all_tag_keys = ["GENRE_PREFERRED", "SUBGENRE", "GENRE", "GENRE_FULL", "STYLE"]
-    for k in all_tag_keys:
-        if get_tag(tags, k) and k not in ("STYLE",) and k not in ("GENRE_PREFERRED", "SUBGENRE", "GENRE", "GENRE_FULL"):
-            dropped.append(k)
-
-    genre = None
-    if genre_candidates:
-        genre = normalize_value(genre_candidates[0], rules["genre_map"])
-
-    style = None
-    if style_candidates:
-        style = normalize_value(style_candidates[0], rules["style_map"])
-
-    return genre, style, dropped
+from tagslut.metadata.genre_normalization import GenreNormalizer
 
 
 def iter_flac_paths(root: Path) -> List[Path]:
@@ -82,7 +59,7 @@ def main() -> int:
     ap.add_argument("--execute", action="store_true", help="Write updates to DB")
     args = ap.parse_args()
 
-    rules = load_rules(args.rules)
+    normalizer = GenreNormalizer(args.rules)
     root = args.path.expanduser().resolve()
     db_path = args.db.expanduser().resolve()
 
@@ -101,13 +78,14 @@ def main() -> int:
         try:
             audio = mutagen.File(str(p), easy=False)
             tags = audio.tags or {} if audio else {}
-            genre_raw = get_tag(tags, "GENRE")
-            subgenre_raw = get_tag(tags, "SUBGENRE")
-            genre_pref = get_tag(tags, "GENRE_PREFERRED")
-            genre_full = get_tag(tags, "GENRE_FULL")
-            style_raw = get_tag(tags, "STYLE")
 
-            norm_genre, norm_style, dropped = choose_normalized(tags, rules)
+            genre_raw = GenreNormalizer.get_tag(tags, "GENRE")
+            subgenre_raw = GenreNormalizer.get_tag(tags, "SUBGENRE")
+            genre_pref = GenreNormalizer.get_tag(tags, "GENRE_PREFERRED")
+            genre_full = GenreNormalizer.get_tag(tags, "GENRE_FULL")
+            style_raw = GenreNormalizer.get_tag(tags, "STYLE")
+
+            norm_genre, norm_style, dropped = normalizer.choose_normalized(tags)
 
             rows.append({
                 "path": str(p),

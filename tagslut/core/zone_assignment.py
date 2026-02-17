@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from tagslut.utils.zones import Zone, ZoneManager, get_default_zone_manager, is_quarantine_zone
+from tagslut.utils.zones import Zone, ZoneManager
 
 logger = logging.getLogger("tagslut")
 
@@ -20,21 +20,14 @@ def determine_zone(
     default_zone: Zone | None = None,
 ) -> Zone:
     """
-    Assign a zone based on scan results and path classification.
+    Assign a zone based on scan results only.
 
     Priority:
-    1. If the path is explicitly in a quarantine zone, keep it quarantine.
-    2. Integrity failures or duplicates are forced to SUSPECT.
-    3. Otherwise, use the zone derived from the path mapping.
-    4. Fall back to default_zone or SUSPECT.
+    1. Integrity failures or duplicates -> SUSPECT.
+    2. Otherwise -> default_zone (if provided) or STAGING.
+
+    Path-based zones are ignored to keep assignment tool-driven.
     """
-    zm = zone_manager or get_default_zone_manager()
-    match = zm.get_zone_for_path(file_path)
-
-    if is_quarantine_zone(match.zone):
-        logger.debug("Zone=quarantine (path match): %s", file_path)
-        return Zone.QUARANTINE
-
     if not integrity_ok:
         logger.debug("Zone=suspect (integrity failed): %s", file_path)
         return Zone.SUSPECT
@@ -43,11 +36,7 @@ def determine_zone(
         logger.debug("Zone=suspect (duplicate detected): %s", file_path)
         return Zone.SUSPECT
 
-    if match.zone:
-        logger.debug("Zone=%s (path match): %s", match.zone, file_path)
-        return match.zone
-
-    return default_zone or Zone.SUSPECT
+    return default_zone or Zone.STAGING
 
 
 def update_zone_after_decision(current_zone: Zone, decision: str) -> Zone:

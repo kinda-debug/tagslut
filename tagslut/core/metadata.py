@@ -11,7 +11,7 @@ from tagslut.core.integrity import classify_flac_integrity, IntegrityState
 from tagslut.core.hashing import calculate_file_hash
 from tagslut.core.zone_assignment import determine_zone
 from tagslut.core.duration_validator import check_file_duration
-from tagslut.utils.zones import Zone, coerce_zone, ZoneManager, get_default_zone_manager
+from tagslut.utils.zones import Zone, coerce_zone, ZoneManager
 
 logger = logging.getLogger("tagslut")
 
@@ -191,7 +191,6 @@ def extract_metadata(
     # Auto-assign zone based on scan results
     # Note: is_duplicate check requires database query - will be updated in a later pass
     # Duration suspicious files are treated like integrity failures
-    zone_manager = zone_manager or get_default_zone_manager()
     zone = determine_zone(
         # If we didn't run `flac -t`, flac_ok will be None; treat as "not known-bad"
         integrity_ok=(flac_ok is not False) and not duration_suspicious,

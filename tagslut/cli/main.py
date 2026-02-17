@@ -1973,7 +1973,6 @@ def register(path, source, db, execute, full_hash, limit, dj_only, check_duratio
     from tagslut.utils.audit_log import append_jsonl, resolve_log_path
     from tagslut.utils.config import get_config
     from tagslut.utils.paths import list_files
-    from tagslut.utils.zones import get_default_zone_manager
     import json
     import itertools
 
@@ -2022,7 +2021,6 @@ def register(path, source, db, execute, full_hash, limit, dj_only, check_duratio
         now_iso = datetime.now(timezone.utc).isoformat()
         ok_max_ms, warn_max_ms = _duration_thresholds_from_config()
         duration_version = _duration_check_version(ok_max_ms, warn_max_ms)
-        zone_manager = get_default_zone_manager()
 
         total = 0
         for i, file_path in enumerate(flac_iter, start=1):
@@ -2044,7 +2042,7 @@ def register(path, source, db, execute, full_hash, limit, dj_only, check_duratio
                     scan_integrity=False,
                     scan_hash=bool(full_hash),
                     library="default",
-                    zone_manager=zone_manager,
+                    zone_manager=None,
                 )
 
                 checksum = audio.checksum
@@ -2054,7 +2052,7 @@ def register(path, source, db, execute, full_hash, limit, dj_only, check_duratio
                     sha256 = calculate_file_hash(file_path)
                     checksum = sha256
 
-                zone_value = audio.zone.value if audio.zone else "suspect"
+                zone_value = audio.zone.value if audio.zone else "staging"
                 metadata_json = json.dumps(audio.metadata or {}, ensure_ascii=False, sort_keys=True)
 
                 # Check for existing file with same content fingerprint

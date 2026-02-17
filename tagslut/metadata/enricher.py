@@ -67,14 +67,14 @@ class Enricher:
         """Get or create a provider instance."""
         if name not in self._providers:
             if name == "spotify":
-                logger.warning("Spotify provider is disabled by policy.")
+                logger.warning("Spotify provider is disabled by policy (API changes).")
                 return None
             elif name == "beatport":
                 from tagslut.metadata.providers.beatport import BeatportProvider
                 self._providers[name] = BeatportProvider(self.token_manager)
             elif name == "qobuz":
-                from tagslut.metadata.providers.qobuz import QobuzProvider
-                self._providers[name] = QobuzProvider(self.token_manager)
+                logger.warning("Qobuz provider is disabled by policy.")
+                return None
             elif name == "deezer":
                 from tagslut.metadata.providers.deezer import DeezerProvider
                 self._providers[name] = DeezerProvider()

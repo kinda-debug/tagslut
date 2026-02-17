@@ -61,7 +61,6 @@ See `docs/archive/inactive-root-docs-2026-02-09/Beatport Genres and Sub-Genres.m
 - `models/precedence.py` — canonical selection rules
 - `auth.py` — token management
 - `providers/` — provider implementations:
-  - `spotify.py` — Spotify Web API
   - `beatport.py` — Beatport V4 API + web scraping (returns genre/sub_genre)
   - `qobuz.py` — Qobuz API
   - `tidal.py` — Tidal API

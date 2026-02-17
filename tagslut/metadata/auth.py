@@ -96,13 +96,6 @@ class TokenManager:
 
     Tokens are stored in a JSON file with the structure:
     {
-        "spotify": {
-            "client_id": "...",
-            "client_secret": "...",
-            "access_token": "...",
-            "refresh_token": "...",
-            "expires_at": 1234567890
-        },
         "tidal": {
             "refresh_token": "...",
             "user_id": "...",
@@ -206,114 +199,6 @@ class TokenManager:
             "client_id": data.get("client_id", ""),
             "client_secret": data.get("client_secret", ""),
         }
-
-    def refresh_spotify_token(self) -> Optional[TokenInfo]:
-        """
-        Refresh Spotify access token using client credentials flow.
-
-        This is the simplest OAuth flow - just uses client_id and client_secret
-        to get an access token. Good for public data access.
-        
-        Returns None if credentials are missing or invalid.
-        """
-        creds = self.get_credentials("spotify")
-        if not creds.get("client_id") or not creds.get("client_secret"):
-            logger.error("Spotify client_id or client_secret not configured in tokens.json")
-            return None
-
-        # Base64 encode credentials
-        auth_str = f"{creds['client_id']}:{creds['client_secret']}"
-        auth_b64 = base64.b64encode(auth_str.encode()).decode()
-
-        try:
-            response = httpx.post(
-                "https://accounts.spotify.com/api/token",
-                headers={
-                    "Authorization": f"Basic {auth_b64}",
-                    "Content-Type": "application/x-www-form-urlencoded",
-                },
-                data={"grant_type": "client_credentials"},
-                timeout=30.0,
-            )
-            
-            # Handle specific error cases with clear messages
-            if response.status_code == 400:
-                # Bad request - usually invalid grant_type or malformed request
-                error_body = ""
-                try:
-                    error_data = response.json()
-                    error_body = f"{error_data.get('error', 'unknown')}: {error_data.get('error_description', '')}"
-                except Exception:
-                    error_body = response.text[:200] if response.text else "(empty)"
-                logger.error(
-                    "Spotify token request failed (400 Bad Request): %s",
-                    error_body,
-                )
-                return None
-            
-            if response.status_code == 401:
-                # Invalid client credentials
-                error_body = ""
-                try:
-                    error_data = response.json()
-                    error_body = f"{error_data.get('error', 'unknown')}: {error_data.get('error_description', '')}"
-                except Exception:
-                    error_body = response.text[:200] if response.text else "(empty)"
-                logger.error(
-                    "Spotify credentials invalid (401 Unauthorized): %s. "
-                    "Check client_id and client_secret in tokens.json.",
-                    error_body,
-                )
-                return None
-            
-            if response.status_code == 403:
-                # Forbidden - credentials may be valid but lack permissions
-                error_body = ""
-                try:
-                    error_data = response.json()
-                    error_body = f"{error_data.get('error', 'unknown')}: {error_data.get('error_description', '')}"
-                except Exception:
-                    error_body = response.text[:200] if response.text else "(empty)"
-                logger.error(
-                    "Spotify access forbidden (403): %s. "
-                    "The client credentials may lack required permissions.",
-                    error_body,
-                )
-                return None
-            
-            response.raise_for_status()
-
-            data = response.json()
-            expires_at = time.time() + data.get("expires_in", 3600)
-
-            self.set_token(
-                "spotify",
-                access_token=data["access_token"],
-                expires_at=expires_at,
-                token_type=data.get("token_type", "Bearer"),
-            )
-
-            logger.info("Refreshed Spotify token (expires in %ds)", data.get("expires_in", 3600))
-            return self.get_token("spotify")
-
-        except httpx.HTTPStatusError as e:
-            # Catch any other HTTP errors not handled above
-            error_body = ""
-            try:
-                error_body = e.response.text[:200] if e.response.text else ""
-            except Exception:
-                pass
-            logger.error(
-                "Spotify token refresh failed with HTTP %d: %s. Response: %s",
-                e.response.status_code,
-                str(e),
-                error_body or "(empty)",
-            )
-            return None
-        except httpx.HTTPError as e:
-            # Network errors, timeouts, etc.
-            logger.error("Spotify token refresh failed (network error): %s", e)
-            return None
 
     def refresh_tidal_token(self) -> Optional[TokenInfo]:
         """
@@ -569,7 +454,6 @@ class TokenManager:
         Ensure we have a valid token for a provider.
 
         Refreshes if expired or missing. Supports auto-refresh for:
-        - spotify (client credentials) - needs client_id + client_secret
         - tidal (refresh token) - needs initial device auth, then auto-refreshes
         - beatport (client credentials) - needs client_id + client_secret
 
@@ -583,9 +467,7 @@ class TokenManager:
         token = self.get_token(provider)
 
         if token is None or token.is_expired:
-            if provider == "spotify":
-                return self.refresh_spotify_token()
-            elif provider == "tidal":
+            if provider == "tidal":
                 # Tidal needs refresh_token from device auth
                 if self._tokens.get("tidal", {}).get("refresh_token"):
                     return self.refresh_tidal_token()
@@ -614,7 +496,7 @@ class TokenManager:
 
     def status(self) -> Dict[str, Dict[str, Any]]:
         """Get status of all configured providers."""
-        all_providers = ["spotify", "beatport", "tidal", "qobuz", "itunes", "apple_music"]
+        all_providers = ["beatport", "tidal", "qobuz", "itunes", "apple_music"]
         result = {}
 
         for provider in all_providers:
@@ -663,9 +545,7 @@ class TokenManager:
             }
 
             # Add auth type info
-            if provider == "spotify":
-                result[provider]["auth_type"] = "client_credentials"
-            elif provider == "beatport":
+            if provider == "beatport":
                 result[provider]["auth_type"] = "client_credentials"
             elif provider == "tidal":
                 result[provider]["auth_type"] = "device_auth"
@@ -689,11 +569,6 @@ class TokenManager:
         - Or manually copy refresh_token from another authenticated session
         """
         template = {
-            "spotify": {
-                "_comment": "Get credentials from https://developer.spotify.com/dashboard",
-                "client_id": "",
-                "client_secret": "",
-            },
             "beatport": {
                 "_comment": "Get credentials from https://api.beatport.com (if you have access)",
                 "client_id": "",
@@ -743,9 +618,7 @@ class TokenManager:
 
         data = self._tokens[provider]
 
-        if provider == "spotify":
-            return bool(data.get("client_id") and data.get("client_secret"))
-        elif provider == "tidal":
+        if provider == "tidal":
             return bool(data.get("refresh_token"))
         elif provider == "qobuz":
             return bool(data.get("user_auth_token"))

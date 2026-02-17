@@ -249,16 +249,28 @@ Deezer:   deemix (via PATH or tools/deemix)
 
 ## Environment Variables
 
-Set in `.env`:
+Set in `.env` (full reference: `docs/CONFIG.md`):
 
 ```
 TAGSLUT_DB=/path/to/music.db
-VOLUME_LIBRARY=/path/to/library
 VOLUME_STAGING=/path/to/staging
 VOLUME_ARCHIVE=/path/to/archive
+VOLUME_SUSPECT=/path/to/suspect
 VOLUME_QUARANTINE=/path/to/quarantine
 TAGSLUT_ARTIFACTS=/path/to/artifacts
+TAGSLUT_REPORTS=/path/to/artifacts/reports
 ```
+
+## Config Quick Check
+
+```bash
+cd ~/Projects/tagslut
+printenv TAGSLUT_DB
+ls -l "$TAGSLUT_DB"
+poetry run tagslut --help
+```
+
+See `docs/CONFIG.md` for precedence rules and `zones.yaml` integration.
 
 ## Getting Help
 

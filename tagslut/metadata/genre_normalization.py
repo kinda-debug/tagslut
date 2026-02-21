@@ -38,6 +38,7 @@ Output Format (Beatport-compatible):
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Dict, Any, List, Tuple, Optional
 
@@ -58,6 +59,27 @@ class GenreNormalizer:
     # Canonical tag keys by priority for genre selection
     GENRE_TAG_KEYS = ["GENRE_PREFERRED", "SUBGENRE", "GENRE", "GENRE_FULL"]
     STYLE_TAG_KEYS = ["STYLE"]
+
+    PROTECTED_COMPOUND = {
+        "140 / deep dubstep / grime",
+        "ambient / experimental",
+        "bass / club",
+        "breaks / breakbeat / uk bass",
+        "dance / pop",
+        "drum & bass",
+        "electro (classic / detroit / modern)",
+        "hard dance / hardcore / neo rave",
+        "melodic house & techno",
+        "minimal / deep tech",
+        "nu disco / disco",
+        "psy-trance",
+        "techno (peak time / driving)",
+        "techno (raw / deep / hypnotic)",
+        "trance (main floor)",
+        "trance (raw / deep / hypnotic)",
+        "trap / future bass",
+        "uk garage / bassline",
+    }
 
     def __init__(self, rules_path: Optional[Path] = None):
         """
@@ -116,6 +138,74 @@ class GenreNormalizer:
         mapping = self.rules.get(f"{mapping_type}_map", {})
         return mapping.get(value, value)
 
+    @staticmethod
+    def _normalize_spacing(value: str) -> str:
+        return re.sub(r"\s+", " ", value.strip())
+
+    @classmethod
+    def _is_protected(cls, value: str) -> bool:
+        if not value:
+            return False
+        v = cls._normalize_spacing(value).lower()
+        return v in cls.PROTECTED_COMPOUND
+
+    @staticmethod
+    def _split_compound(value: str) -> List[str]:
+        # Split a compound genre/style string on separators, but ignore
+        # separators inside parentheses.
+        if not value:
+            return []
+        if GenreNormalizer._is_protected(value):
+            return [GenreNormalizer._normalize_spacing(value)]
+        parts: List[str] = []
+        buf: List[str] = []
+        depth = 0
+        i = 0
+        while i < len(value):
+            ch = value[i]
+            if ch == "(":
+                depth += 1
+            elif ch == ")" and depth > 0:
+                depth -= 1
+
+            if depth == 0:
+                if value[i : i + 3] == " / ":
+                    part = "".join(buf).strip()
+                    if part:
+                        parts.append(part)
+                    buf = []
+                    i += 3
+                    continue
+                if ch in [",", ";", "|", "/"]:
+                    part = "".join(buf).strip()
+                    if part:
+                        parts.append(part)
+                    buf = []
+                    i += 1
+                    while i < len(value) and value[i] == " ":
+                        i += 1
+                    continue
+
+            buf.append(ch)
+            i += 1
+
+        if buf:
+            part = "".join(buf).strip()
+            if part:
+                parts.append(part)
+        return parts
+
+    @staticmethod
+    def _split_parenthetical(value: str) -> Tuple[Optional[str], Optional[str]]:
+        # If value looks like 'Genre (Style)', split into (genre, style).
+        if not value:
+            return None, None
+        value = GenreNormalizer._normalize_spacing(value)
+        match = re.match(r"^(.+?)\s*\((.+)\)\s*$", value)
+        if not match:
+            return value, None
+        return match.group(1).strip(), match.group(2).strip()
+
     def choose_normalized(
         self, tags: Dict[str, Any]
     ) -> Tuple[Optional[str], Optional[str], List[str]]:
@@ -151,13 +241,32 @@ class GenreNormalizer:
                 present_tags.add(key)
 
         # Select best candidate and normalize
-        genre = None
-        if genre_candidates:
-            genre = self.normalize_value(genre_candidates[0], "genre")
+        genre = genre_candidates[0] if genre_candidates else None
+        style = style_candidates[0] if style_candidates else None
 
-        style = None
-        if style_candidates:
-            style = self.normalize_value(style_candidates[0], "style")
+        # If no explicit style, split parenthetical from genre
+        if genre and not style:
+            genre, style = self._split_parenthetical(genre)
+
+        # If still no style, split compound genre
+        if genre:
+            parts = self._split_compound(genre)
+            if parts:
+                genre = parts[0]
+                if not style and len(parts) >= 2:
+                    style = parts[1]
+
+        # If style contains compounds, take first part
+        if style:
+            style_parts = self._split_compound(style)
+            if style_parts:
+                style = style_parts[0]
+
+        # Normalize values via rules (if present)
+        if genre:
+            genre = self.normalize_value(genre, "genre")
+        if style:
+            style = self.normalize_value(style, "style")
 
         # Any present tag that didn't participate is "dropped"
         used_tags = set()

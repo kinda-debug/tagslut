@@ -461,3 +461,4 @@ scripts/workflow_health_rescan.py
 docs/WORKFLOW_HEALTH_RESCAN.md
 .coverage
 .junie/
+docs/WORKFLOW_OFFLINE_CHEATSHEET.md

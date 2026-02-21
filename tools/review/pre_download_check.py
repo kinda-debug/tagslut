@@ -178,7 +178,7 @@ def get_repo_root() -> Path:
 def main() -> int:
     repo_root = get_repo_root()
     default_extract_script = repo_root / "scripts" / "extract_tracklists_from_links.py"
-    default_db = os.environ.get("TAGSLUT_DB", "")
+    default_db = os.environ.get("TAGSLUT_DB", "") or "/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db"
 
     ap = argparse.ArgumentParser(
         description="Check Beatport/Tidal links against DB before download",
@@ -195,7 +195,8 @@ Match Methods (in priority order):
   4. Title + Artist exact match (confidence: low)
 """,
     )
-    ap.add_argument("--input", required=True, help="Text file with links (one URL per line)")
+    ap.add_argument("input_arg", nargs="?", help="Text file or single URL (positional)")
+    ap.add_argument("--input", help="Text file with links (one URL per line)")
     ap.add_argument(
         "--db",
         default=default_db,
@@ -210,7 +211,17 @@ Match Methods (in priority order):
     )
     args = ap.parse_args()
 
-    input_path = Path(args.input).expanduser().resolve()
+    input_val = args.input or args.input_arg
+    if not input_val:
+        raise SystemExit("--input is required (file path or single URL)")
+
+    if input_val.startswith("http://") or input_val.startswith("https://"):
+        tmp = Path("artifacts/precheck_urls.txt")
+        tmp.parent.mkdir(parents=True, exist_ok=True)
+        tmp.write_text(input_val + "\n", encoding="utf-8")
+        input_path = tmp
+    else:
+        input_path = Path(input_val).expanduser().resolve()
     db_path = Path(args.db).expanduser().resolve()
     out_dir = Path(args.out_dir).expanduser().resolve()
     extract_script = Path(args.extract_script).expanduser().resolve()

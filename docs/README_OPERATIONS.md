@@ -38,6 +38,31 @@ All operations use these 7 command groups:
 
 ## Most Common Operations
 
+### 0. One-Command Interactive Processing (Recommended)
+
+Use this when you already downloaded files and want the **entire pipeline** with minimal prompts.
+
+```bash
+cd ~/Projects/tagslut
+export PYTHONPATH=.
+tools/review/process_root.py
+```
+
+What it does, in order:
+1. Scans the folder and writes `flac_ok` (integrity)
+2. Hoards tags into the DB
+3. Normalizes genres and writes tags to files
+4. Enriches metadata (BPM/key/ISRC/label/artwork) in the DB
+5. Embeds cover art from the DB
+6. Promotes into `/Volumes/MUSIC/LIBRARY`
+
+What it asks you for:
+- Only the **root folder** to process
+
+What it assumes:
+- Trust pre/post = 3 (no prompts)
+- Providers: beatport, deezer, apple_music, itunes
+
 ### 1. Check Links Before Download
 
 Check if tracks from Beatport/Tidal links already exist in your library:

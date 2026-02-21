@@ -129,6 +129,42 @@ def db_update_path(conn: sqlite3.Connection, src: Path, dest: Path) -> int:
         return cur.rowcount
 
 
+def find_duplicate_by_hash(conn: sqlite3.Connection, src: Path, dest_root: Path) -> str | None:
+    """Find an existing file in dest_root with same audio hash as src."""
+    cur = conn.execute(
+        """
+        SELECT sha256, streaminfo_md5, checksum
+        FROM files
+        WHERE path = ?
+        """,
+        (str(src),),
+    )
+    row = cur.fetchone()
+    if not row:
+        return None
+    sha256, streaminfo_md5, checksum = row
+
+    def _query(col: str, val: str) -> str | None:
+        if not val:
+            return None
+        r = conn.execute(
+            f"""
+            SELECT path FROM files
+            WHERE {col} = ? AND path != ? AND path LIKE ?
+            LIMIT 1
+            """,
+            (val, str(src), str(dest_root) + "%"),
+        ).fetchone()
+        return r[0] if r else None
+
+    # Prefer strongest hashes first
+    for col, val in (("sha256", sha256), ("streaminfo_md5", streaminfo_md5), ("checksum", checksum)):
+        hit = _query(col, val)
+        if hit:
+            return hit
+    return None
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Promote tracks with collision replace + metadata merge")
     ap.add_argument("source", type=Path)
@@ -137,6 +173,11 @@ def main() -> int:
     _repo = Path(__file__).resolve().parents[2]
     ap.add_argument("--canon-rules", type=Path, default=_repo / "tools/rules/library_canon.json")
     ap.add_argument("--move-log", type=Path, default=_repo / "artifacts/logs/file_move_mdl_replace.jsonl")
+    ap.add_argument(
+        "--allow-duplicate-hash",
+        action="store_true",
+        help="Allow moving files even if identical hash exists in library",
+    )
     ap.add_argument("--execute", action="store_true")
     args = ap.parse_args()
 
@@ -164,6 +205,7 @@ def main() -> int:
     skipped = 0
     errored = 0
     unresolved = 0
+    dup_skipped = 0
     db_updated = 0
 
     try:
@@ -180,6 +222,12 @@ def main() -> int:
                 if src == dest:
                     skipped += 1
                     continue
+
+                if not args.allow_duplicate_hash:
+                    dup = find_duplicate_by_hash(conn, src, dest_root)
+                    if dup:
+                        dup_skipped += 1
+                        continue
 
                 if args.execute and dest.exists() and dest != src:
                     tags_added, pics_added = merge_old_metadata_into_new(dest, src)
@@ -215,6 +263,7 @@ def main() -> int:
     print(f"merged_pictures={merged_pictures}")
     print(f"db_updated={db_updated}")
     print(f"unresolved_layout={unresolved}")
+    print(f"dup_skipped={dup_skipped}")
     print(f"skipped={skipped}")
     print(f"errors={errored}")
     print(f"move_log={args.move_log}")

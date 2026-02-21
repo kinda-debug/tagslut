@@ -79,6 +79,14 @@ python tools/review/pre_download_check.py \
   --input ~/links.txt \
   --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
   --out-dir output/precheck
+
+### Clean Claude Export Files
+
+```bash
+tools/claude-clean /Users/georgeskhawam/Documents/StarredClaude.md \
+  /Users/georgeskhawam/Documents/claude2.md \
+  --out-dir output/claude_clean
+```
 ```
 
 **Outputs:**

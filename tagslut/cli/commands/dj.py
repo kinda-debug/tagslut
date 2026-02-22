@@ -11,6 +11,14 @@ import click
 
 from tagslut.dj.curation import load_dj_curation_config, resolve_track_override
 from tagslut.dj.export import get_audio_duration, plan_export, run_export
+from tagslut.dj.lexicon import (
+    build_location_map,
+    estimate_tags,
+    load_lexicon_tracks,
+    push_to_lexicon_api,
+    resolve_location,
+    write_lexicon_csv,
+)
 from tagslut.dj.transcode import (
     TrackRow,
     assign_output_paths,
@@ -23,6 +31,7 @@ from tagslut.dj.transcode import (
 DEFAULT_POLICY = "config/dj/dj_curation.yaml"
 DEFAULT_OUTPUT = "/Volumes/MUSIC/DJ_YES"
 DEFAULT_INPUT = "/Users/georgeskhawam/Desktop/DJ_YES.xlsx"
+DEFAULT_DJUSB = "/Volumes/DJUSB"
 TRACK_OVERRIDES_PATH = Path("config/dj/track_overrides.csv")
 
 
@@ -187,6 +196,26 @@ def _prompt_choice() -> str:
         return click.getchar().upper()
     except Exception:
         return ""
+
+
+def _lexicon_tracks(output_root: Path) -> list[dict]:
+    lexicon_tracks = load_lexicon_tracks(TRACK_OVERRIDES_PATH)
+    manifest = build_location_map(output_root)
+    output: list[dict] = []
+    for track in lexicon_tracks:
+        item = {
+            "path": track.path,
+            "artist": track.artist,
+            "title": track.title,
+            "crate": track.crate,
+            "bpm": track.bpm,
+            "key": track.key,
+            "genre": track.genre,
+            "duration_sec": track.duration_sec,
+        }
+        item["location"] = resolve_location(item, output_root, manifest)
+        output.append(item)
+    return output
 
 
 @click.group("dj")
@@ -368,6 +397,115 @@ def export(
 
     if safe_only:
         click.echo(f"Exported {len(deduped)} tracks. {skipped} skipped (not yet classified).")
+
+
+@dj_group.group("lexicon")
+def lexicon_group() -> None:
+    """Estimate and export Lexicon tags for DJ tracks."""
+
+
+@lexicon_group.command("status")
+@click.option(
+    "--output-root",
+    type=click.Path(),
+    default=DEFAULT_DJUSB,
+    help="Export root containing export_manifest.jsonl",
+)
+def lexicon_status(output_root: str) -> None:
+    tracks = _lexicon_tracks(Path(output_root))
+    counts = {"high": 0, "medium": 0, "low": 0}
+    for track in tracks:
+        tags = estimate_tags(track)
+        counts[tags["confidence"]] = counts.get(tags["confidence"], 0) + 1
+    click.echo(f"High confidence:   {counts['high']}")
+    click.echo(f"Medium confidence: {counts['medium']}")
+    click.echo(f"Low confidence:    {counts['low']}")
+
+
+@lexicon_group.command("estimate")
+@click.option(
+    "--output-root",
+    type=click.Path(),
+    default=DEFAULT_DJUSB,
+    help="Export root containing export_manifest.jsonl",
+)
+def lexicon_estimate(output_root: str) -> None:
+    tracks = _lexicon_tracks(Path(output_root))
+    if not tracks:
+        click.echo("No safe tracks found in track_overrides.csv.")
+        return
+
+    click.echo("Artist | Title | BPM | Energy | Danceability | Happiness | Confidence")
+    for track in tracks[:20]:
+        tags = estimate_tags(track)
+        bpm = track.get("bpm")
+        bpm_display = f"{int(round(bpm))}" if isinstance(bpm, (int, float)) else "n/a"
+        artist = str(track.get("artist") or "")[:24]
+        title = str(track.get("title") or "")[:28]
+        click.echo(
+            f"{artist:24} | {title:28} | {bpm_display:>3} | "
+            f"{tags['Energy']:>6} | {tags['Danceability']:>12} | "
+            f"{tags['Happiness']:>9} | {tags['confidence']}"
+        )
+
+
+@lexicon_group.command("csv")
+@click.option(
+    "--output",
+    "output_path",
+    type=click.Path(),
+    default="config/dj/lexicon_import.csv",
+    help="Output CSV path for Lexicon import",
+)
+@click.option(
+    "--output-root",
+    type=click.Path(),
+    default=DEFAULT_DJUSB,
+    help="Export root containing export_manifest.jsonl",
+)
+def lexicon_csv(output_path: str, output_root: str) -> None:
+    tracks = _lexicon_tracks(Path(output_root))
+    count = write_lexicon_csv(tracks, Path(output_path), Path(output_root))
+    click.echo(f"Written {count} tracks to {output_path}")
+    click.echo("Import via: Lexicon → Utility → Import Tags From CSV")
+
+
+@lexicon_group.command("push")
+@click.option("--dry-run", is_flag=True, help="Show what would be pushed, no writes")
+@click.option(
+    "--only-high-confidence",
+    is_flag=True,
+    help="Only push tracks with high confidence estimates",
+)
+@click.option(
+    "--output-root",
+    type=click.Path(),
+    default=DEFAULT_DJUSB,
+    help="Export root containing export_manifest.jsonl",
+)
+def lexicon_push(dry_run: bool, only_high_confidence: bool, output_root: str) -> None:
+    tracks = _lexicon_tracks(Path(output_root))
+    if not tracks:
+        click.echo("No safe tracks found in track_overrides.csv.")
+        return
+
+    if dry_run:
+        preview = tracks[:10]
+        click.echo("Dry run — previewing first 10 tracks:")
+        for track in preview:
+            tags = estimate_tags(track)
+            click.echo(
+                f"{track.get('artist')} — {track.get('title')} | "
+                f"{tags['Energy']}/{tags['Danceability']}/{tags['Happiness']} "
+                f"({tags['confidence']})"
+            )
+
+    result = push_to_lexicon_api(
+        tracks,
+        only_high=only_high_confidence,
+        dry_run=dry_run,
+    )
+    click.echo(f"Pushed: {result['pushed']} | Skipped: {result['skipped']} | Failed: {result['failed']}")
 
 
 @dj_group.group("crates")

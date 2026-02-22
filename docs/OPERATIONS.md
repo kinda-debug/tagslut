@@ -1,6 +1,8 @@
 # Operations
 
+
 ## CLI Reference and Common Operations
+
 
 # tagslut Operations Manual
 
@@ -9,7 +11,7 @@
 
 This is the single source of truth for operating the tagslut music library automation toolkit.
 
-## Quick Start
+### Quick Start
 
 ```bash
 # Activate environment
@@ -20,13 +22,13 @@ source .venv/bin/activate
 tagslut --help
 ```
 
-## Current Database
+### Current Database
 
 ```
 /Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
 ```
 
-## Canonical CLI Commands
+### Canonical CLI Commands
 
 All operations use these 7 command groups:
 
@@ -40,7 +42,7 @@ All operations use these 7 command groups:
 | `tagslut report` | Generate reports |
 | `tagslut auth` | Provider authentication |
 
-## Most Common Operations
+### Most Common Operations
 
 ### 0. One-Command Interactive Processing (Recommended)
 
@@ -216,7 +218,7 @@ tagslut report m3u /Volumes/MUSIC/LIBRARY \
 tagslut report duration --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
 ```
 
-## What Each Command Writes
+### What Each Command Writes
 
 | Command | Writes To |
 |---------|-----------|
@@ -230,7 +232,7 @@ tagslut report duration --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music
 | `tagslut report *` | Output files (M3U, CSV, MD) |
 | `pre_download_check.py` | CSV + TXT files in --out-dir |
 
-## Safe vs Unsafe Operations
+### Safe vs Unsafe Operations
 
 ### Safe (Read-Only)
 
@@ -267,7 +269,7 @@ tagslut report duration --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music
 - `tools/tiddl` (Tidal)
 - `tools/deemix` (Deezer, auto-registers)
 
-## DO NOT USE (Retired)
+### DO NOT USE (Retired)
 
 These commands were retired on Feb 9, 2026:
 
@@ -284,7 +286,7 @@ These commands were retired on Feb 9, 2026:
 
 **Note:** Use `tagslut` for all CLI commands.
 
-## Downloader Locations
+### Downloader Locations
 
 ```
 Beatport: tools/beatportdl/bpdl/bpdl (or ~/Projects/beatportdl/beatportdl-darwin-arm64)
@@ -294,7 +296,7 @@ Deezer:   deemix (via PATH or tools/deemix)
 
 ## Environment Variables
 
-Set in `.env` (full reference: `docs/CONFIG.md`):
+Set in `.env` (full reference: `docs/OPERATIONS.md#configuration-and-environment`):
 
 ```
 TAGSLUT_DB=/path/to/music.db
@@ -315,9 +317,9 @@ ls -l "$TAGSLUT_DB"
 poetry run tagslut --help
 ```
 
-See `docs/CONFIG.md` for precedence rules and `zones.yaml` integration.
+See `docs/OPERATIONS.md#configuration-and-environment` for precedence rules and `zones.yaml` integration.
 
-## Getting Help
+### Getting Help
 
 ```bash
 # CLI help
@@ -326,20 +328,20 @@ tagslut index --help
 tagslut execute --help
 
 # Policy docs
-cat docs/SURFACE_POLICY.md
-cat docs/SCRIPT_SURFACE.md
+cat docs/OPERATIONS.md#script-surface-and-command-policy
+cat docs/OPERATIONS.md#script-surface-and-command-policy
 ```
 
-## Related Documentation
+### Related Documentation
 
 - `docs/WORKFLOWS.md` - Detailed workflow guides
 - `docs/TROUBLESHOOTING.md` - Common issues and fixes
 - `docs/PROVENANCE_AND_RECOVERY.md` - Recovery procedures
 - `docs/ZONES.md` - Zone system explanation
 
-## Source Registration Matrix
+### Source Registration Matrix
 
-## Source Registration Matrix
+### Source Registration Matrix
 
 | Source | Wrapper | --source Flag | Auto-register | Default Path |
 |--------|---------|---------------|---------------|--------------|
@@ -350,11 +352,12 @@ cat docs/SCRIPT_SURFACE.md
 
 ## Configuration and Environment
 
+
 # Configuration Guide
 
 This document defines how `tagslut` reads configuration from environment variables and optional config files.
 
-## Scope
+### Scope
 
 Configuration sources used by this project:
 
@@ -363,7 +366,7 @@ Configuration sources used by this project:
 - Optional zone config at `~/.config/tagslut/zones.yaml`
 - CLI flags (highest priority for individual commands)
 
-## Precedence
+### Precedence
 
 General precedence (highest to lowest):
 
@@ -373,7 +376,7 @@ General precedence (highest to lowest):
 4. `zones.yaml` auto-populated roots (for volume variables)
 5. Command defaults
 
-## Required Variables
+### Required Variables
 
 `TAGSLUT_DB` is the only hard requirement for most inventory and reporting operations.
 
@@ -381,7 +384,7 @@ General precedence (highest to lowest):
 TAGSLUT_DB=/absolute/path/to/music.db
 ```
 
-## Recommended Variables
+### Recommended Variables
 
 Use these for stable, repeatable runs:
 
@@ -410,7 +413,7 @@ PREFER_HIGH_SAMPLE_RATE=true
 PREFER_VALID_INTEGRITY=true
 ```
 
-## .env Bootstrap
+### .env Bootstrap
 
 Create `.env` from example:
 
@@ -421,7 +424,7 @@ cp .env.example .env
 
 Then edit values in `/Users/georgeskhawam/Projects/tagslut/.env`.
 
-## zones.yaml Integration
+### zones.yaml Integration
 
 `zones.yaml` is optional. When present, it can supply staging/archive/suspect/quarantine roots.
 
@@ -447,7 +450,7 @@ zones:
     - /path/to/quarantine
 ```
 
-## Validation Commands
+### Validation Commands
 
 Verify effective setup before heavy operations:
 
@@ -468,7 +471,7 @@ poetry run tagslut --help
 poetry run tagslut show-zone "$VOLUME_STAGING"
 ```
 
-## Common Pitfalls
+### Common Pitfalls
 
 - `TAGSLUT_DB` points to an old epoch DB.
   Use the active DB explicitly via `--db` when needed.
@@ -482,22 +485,23 @@ poetry run tagslut show-zone "$VOLUME_STAGING"
 - Conflicting shell exports vs `.env`.
   `printenv` shows the winning values at runtime.
 
-## Canonical References
+### Canonical References
 
 - Environment template: `/Users/georgeskhawam/Projects/tagslut/.env.example`
-- Operations guide: `/Users/georgeskhawam/Projects/tagslut/docs/README_OPERATIONS.md`
+- Operations guide: `/Users/georgeskhawam/Projects/tagslut/docs/OPERATIONS.md#cli-reference-and-common-operations`
 - Zones details: `/Users/georgeskhawam/Projects/tagslut/docs/ZONES.md`
 
 ## Script Surface and Command Policy
+
 
 # Script Surface (Canonical vs Legacy)
 
 This file is the authoritative map of where to run things in this repo.
 
 Policy and deprecation rules are defined in:
-- `docs/SURFACE_POLICY.md`
+- `docs/OPERATIONS.md#script-surface-and-command-policy`
 
-## Canonical Entry Points
+### Canonical Entry Points
 
 1. `poetry run tagslut intake ...`
 Role: Download/intake orchestration and prefilter operations.
@@ -520,13 +524,13 @@ Role: M3U and operational reports (duration, recovery, plan summaries).
 7. `poetry run tagslut auth ...`
 Role: Provider authentication and token lifecycle flows.
 
-## Rebrand Invocation
+### Rebrand Invocation
 
 The preferred command brand is now `tagslut`.
 
 Compatibility aliases:
 
-## Operational Wrappers (Active)
+### Operational Wrappers (Active)
 
 These wrappers are active convenience entrypoints around canonical intake/report flows:
 
@@ -553,7 +557,7 @@ Role: Run `onetagger-cli` on a symlink batch from M3U and emit summary artifacts
 7. `tools/tag [options]`
 Role: Combined build + run OneTagger workflow with defaults.
 
-## Transitional Wrapper Status
+### Transitional Wrapper Status
 
 No transitional wrappers remain on the top-level `tagslut` CLI surface.
 
@@ -572,7 +576,7 @@ to preserve implementation reuse without exposing transitional operator entrypoi
 
 Use `tagslut intake/index/decide/execute/verify/report/auth` for new work.
 
-## Recovery Command Status
+### Recovery Command Status
 
 - `tagslut recovery` is currently a minimal stub logger and does not implement the full move pipeline described in some historical docs.
 - For move execution today, use:
@@ -584,14 +588,14 @@ Use `tagslut intake/index/decide/execute/verify/report/auth` for new work.
   - `docs/MOVE_EXECUTOR_COMPAT.md`
   - `docs/archive/phase-specs-2026-02-09/` (phase runbooks and verification reports)
 
-## Directory Ownership
+### Directory Ownership
 
 - `tagslut/`: Productized CLI/package code.
 - `tools/review/`: Active operational scripts.
 - `legacy/tools/`: Archived historical scripts kept for reference and compatibility.
 - `tools/review/promote_by_tags_versions/`: Historical snapshots.
 
-## Rules for Keeping This Logical
+### Rules for Keeping This Logical
 
 1. New operational logic should go in `tagslut/` or `tools/review/`, not `legacy/`.
 2. If a script is superseded, move it to an archive location and add a note in `legacy/tools/README.md`.
@@ -604,11 +608,11 @@ Use `tagslut intake/index/decide/execute/verify/report/auth` for new work.
 
 # Surface Policy - tagslut (2026-02-09)
 
-## Purpose
+### Purpose
 
 Define the supported command/script surface during v3 migration so operators and contributors use one logical path.
 
-## Canonical Surface (Use For New Work)
+### Canonical Surface (Use For New Work)
 
 1. `poetry run tagslut intake ...`
 2. `poetry run tagslut index ...`
@@ -619,13 +623,13 @@ Define the supported command/script surface during v3 migration so operators and
 7. `poetry run tagslut auth ...`
 
 Reference map:
-- `docs/SCRIPT_SURFACE.md`
+- `docs/OPERATIONS.md#script-surface-and-command-policy`
 
 Branding note:
 - `tagslut` is the preferred CLI brand.
 - No legacy aliases are supported during migration.
 
-## Transitional Surface
+### Transitional Surface
 
 Transitional wrappers have been retired from top-level CLI exposure.
 
@@ -639,13 +643,13 @@ Retired in Phase 5:
 7. `tagslut metadata ...`
 8. `tagslut recover ...`
 
-## Removal Horizon
+### Removal Horizon
 
 - Warning period starts: February 9, 2026
 - Target archival/removal window: June-July 2026 (aligned to `docs/archive/REDESIGN_TRACKER.md` Phase 5)
 - Dated decommission plan: `docs/archive/phase-specs-2026-02-09/PHASE5_LEGACY_DECOMMISSION.md`
 
-## Phase 5 Decommission Gates
+### Phase 5 Decommission Gates
 
 Compatibility wrappers were removed after satisfying these gates:
 
@@ -661,14 +665,14 @@ Compatibility wrappers were removed after satisfying these gates:
 - `scripts/audit_repo_layout.py` passes.
 - Canonical `decide/execute/verify/report` regression tests pass.
 
-## Enforcement Rules
+### Enforcement Rules
 
 1. Do not add new user-facing commands under `legacy/`.
 2. Do not introduce new top-level CLI wrappers that bypass canonical surfaces.
 3. Keep runtime artifacts out of repo root; write to `artifacts/`.
 4. Keep docs synchronized with live CLI help and script surface map.
 
-## Validation Hooks
+### Validation Hooks
 
 1. `poetry run python scripts/audit_repo_layout.py`
 2. `poetry run python scripts/check_cli_docs_consistency.py`
@@ -689,29 +693,29 @@ Compatibility wrappers were removed after satisfying these gates:
 CI integration:
 - `.github/workflows/test.yml` runs `scripts/audit_repo_layout.py` on push/PR.
 
-## Change Control
+### Change Control
 
 Any change to canonical or transitional surface must update all of:
-- `docs/SCRIPT_SURFACE.md`
-- `docs/SURFACE_POLICY.md`
+- `docs/OPERATIONS.md#script-surface-and-command-policy`
+- `docs/OPERATIONS.md#script-surface-and-command-policy`
 - `docs/MOVE_EXECUTOR_COMPAT.md` (if move execution contract changes)
 - `docs/archive/phase-specs-2026-02-09/` (if phase runbook or decommission contract changes)
 - `docs/archive/REDESIGN_TRACKER.md` (if milestone impact)
 
 ## Quality Gates
 
-# Quality Gates
 
-## Decision
+
+### Decision
 - `mypy` is gating in CI, but enforced via a baseline to allow incremental cleanup.
 - `lint` (flake8) is advisory for now and runs locally only.
 
-## Mypy Baseline Workflow
+### Mypy Baseline Workflow
 - CI runs: `poetry run python scripts/mypy_baseline_check.py`
 - Update baseline when intentional changes shift the error surface:
   `python scripts/mypy_baseline_check.py --update`
 
-## Burn-Down Plan
+### Burn-Down Plan
 - Target: reduce baseline error count by 20% per month.
 - Rule: any touched module should not increase its error count; fix or add targeted ignores.
 - Check-in cadence: update the baseline only when the net error count decreases.

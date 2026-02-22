@@ -5,7 +5,7 @@ This package handles metadata enrichment and provider resolution for FLAC files.
 Start here:
 - `poetry run tagslut index enrich --help` — active enrichment command help.
 - `docs/SCRIPT_SURFACE.md` — canonical command surface and workflow ownership.
-- `docs/archive/legacy-workflows-2026-02-09/METADATA_WORKFLOW.md` — archived legacy metadata workflow notes.
+- `docs/archive/ (historical — see docs/archive/)METADATA_WORKFLOW.md` — archived legacy metadata workflow notes.
 
 ## Supported Providers
 
@@ -51,7 +51,7 @@ Both scripts import `GenreNormalizer` to ensure consistent normalization logic.
 }
 ```
 
-See `docs/archive/inactive-root-docs-2026-02-09/Beatport Genres and Sub-Genres.md` for complete Beatport taxonomy.
+See `docs/archive/ (historical — see docs/archive/)Beatport Genres and Sub-Genres.md` for complete Beatport taxonomy.
 
 ## Key Modules
 

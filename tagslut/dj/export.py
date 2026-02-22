@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 import json
 from pathlib import Path
 import subprocess
+import sys
 from typing import Callable
 
 from tagslut.dj.curation import CurationResult, DjCurationConfig, filter_candidates
@@ -44,7 +45,7 @@ def plan_export(
 ) -> ExportPlan:
     """Dry-run: apply curation filters and build export plan without transcoding."""
     _ = output_root
-    candidates = _build_candidates(tracks)
+    candidates = _build_candidates(tracks, allow_duration_estimation=False)
 
     curation = filter_candidates(candidates, config)
 
@@ -75,6 +76,7 @@ def run_export(
     overwrite: bool = False,
     detect_keys: bool = False,
     dry_run: bool = False,
+    safe_mode: bool = False,
     progress_callback: Callable[[int, int], None] | None = None,
 ) -> ExportStats:
     """Run full DJ export: curate → (key detect) → transcode → place.
@@ -92,7 +94,15 @@ def run_export(
     Returns:
         ExportStats with counts for each stage
     """
-    candidates = _build_candidates(tracks)
+    if safe_mode:
+        print("Loading track overrides...", flush=True)
+    print("Building candidates...", flush=True)
+    allow_duration_estimation = (not safe_mode) and (not dry_run)
+    candidates = _build_candidates(
+        tracks,
+        allow_duration_estimation=allow_duration_estimation,
+    )
+    print("Running curation filters...", flush=True)
     curation = filter_candidates(candidates, config)
     passed_tracks = [c["_track"] for c in curation.passed]
 
@@ -112,9 +122,11 @@ def run_export(
     )
 
     if dry_run:
+        print("Dry run complete.", flush=True)
         log.info("Dry run — skipping key detection and transcoding")
         return stats
 
+    print("Starting transcode...", flush=True)
     if detect_keys and is_keyfinder_available():
         log.info("Detecting keys for %d tracks...", len(passed_tracks))
         for track in passed_tracks:
@@ -222,12 +234,32 @@ def get_audio_duration(path: Path, timeout_sec: int = 8) -> float | None:
     return value if value > 0 else None
 
 
-def _build_candidates(tracks: list[TrackRow]) -> list[dict[str, object]]:
+def _build_candidates(
+    tracks: list[TrackRow],
+    *,
+    allow_duration_estimation: bool,
+) -> list[dict[str, object]]:
     candidates: list[dict[str, object]] = []
+    estimate_total = sum(
+        1
+        for track in tracks
+        if allow_duration_estimation and not getattr(track, "duration_sec", None)
+    )
+    if estimate_total:
+        print(
+            f"Estimating durations for {estimate_total} tracks (this may take a moment)...",
+            end="",
+            flush=True,
+        )
+    estimated = 0
     for track in tracks:
         duration = getattr(track, "duration_sec", None)
-        if not duration:
+        if allow_duration_estimation and not duration:
             duration = get_audio_duration(track.source_path)
+            estimated += 1
+            if estimate_total and estimated % 10 == 0:
+                sys.stdout.write(".")
+                sys.stdout.flush()
         candidates.append(
             {
                 "artist": track.track_artist or track.album_artist,
@@ -238,4 +270,6 @@ def _build_candidates(tracks: list[TrackRow]) -> list[dict[str, object]]:
                 "_track": track,
             }
         )
+    if estimate_total:
+        print("", flush=True)
     return candidates

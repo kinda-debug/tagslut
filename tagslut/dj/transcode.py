@@ -93,6 +93,8 @@ def make_dedupe_key(track: TrackRow) -> Tuple[str, ...]:
 def load_tracks(
     xlsx_path: Path,
     sheet_name: Optional[str],
+    *,
+    check_paths: bool = True,
 ) -> Tuple[List[TrackRow], List[Dict[str, object]], List[str]]:
     """Load tracks from XLSX for DJ export."""
     wb = load_workbook(xlsx_path, data_only=True, read_only=True)
@@ -118,7 +120,7 @@ def load_tracks(
             continue
 
         source_path = Path(str(raw_path))
-        if not source_path.exists():
+        if check_paths and not source_path.exists():
             dropped_missing_path.append(
                 {"row_num": row_num, "reason": "missing_on_disk", "path": str(source_path)}
             )

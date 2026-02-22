@@ -12,9 +12,11 @@ import click
 from tagslut.dj.curation import load_dj_curation_config, resolve_track_override
 from tagslut.dj.export import get_audio_duration, plan_export, run_export
 from tagslut.dj.transcode import (
+    TrackRow,
     assign_output_paths,
     dedupe_tracks,
     load_tracks,
+    make_dedupe_key,
     sanitize_component,
 )
 
@@ -125,6 +127,51 @@ def _read_key_from_file(path: Path) -> str | None:
                 return str(value[0]) if value else None
             return str(value)
     return None
+
+
+def _load_tracks_from_overrides(
+    *,
+    safe_only: bool,
+    crate: str | None,
+) -> list:
+    items = _load_override_items(TRACK_OVERRIDES_PATH)
+    rows = list(_iter_override_rows(items))
+    tracks = []
+    row_num = 1
+    for row in rows:
+        if len(row) < 6:
+            continue
+        path_value = row[0].strip()
+        artist = row[1].strip()
+        title = row[2].strip()
+        verdict = row[3].strip().lower() if len(row) > 3 else ""
+        crate_field = row[5].strip() if len(row) > 5 else ""
+
+        if not path_value or not artist or not title:
+            continue
+        if verdict == "block":
+            continue
+        if safe_only and verdict != "safe":
+            continue
+        if crate and not _crate_matches(crate, crate_field):
+            continue
+
+        track = TrackRow(
+            row_num=row_num,
+            album_artist=artist,
+            album="",
+            track_number=None,
+            title=title,
+            track_artist=artist,
+            external_id="",
+            source="override",
+            source_path=Path(path_value),
+            dedupe_key=("",),
+        )
+        track.dedupe_key = make_dedupe_key(track)
+        tracks.append(track)
+        row_num += 1
+    return tracks
 
 
 def _format_duration(seconds: float | None) -> str:
@@ -251,9 +298,16 @@ def export(
     crate_name: str | None,
 ) -> None:
     """Curate and transcode DJ library to USB output root."""
+    click.echo("Loading tracks...")
     config = load_dj_curation_config(policy_path)
-    tracks, dropped_missing, _ = load_tracks(Path(input_xlsx), sheet)
-    deduped, dropped_dupes = dedupe_tracks(tracks)
+    if safe_only or crate_name:
+        tracks = _load_tracks_from_overrides(safe_only=safe_only, crate=crate_name)
+        dropped_missing = []
+        dropped_dupes = []
+        deduped = tracks
+    else:
+        tracks, dropped_missing, _ = load_tracks(Path(input_xlsx), sheet, check_paths=True)
+        deduped, dropped_dupes = dedupe_tracks(tracks)
 
     export_root = Path(output_root)
     if crate_name:
@@ -263,17 +317,9 @@ def export(
 
     skipped = 0
     if safe_only or crate_name:
-        total_before_filter = len(deduped)
-        deduped, skipped = _select_tracks_with_overrides(
-            deduped,
-            safe_only=safe_only,
-            crate=crate_name,
-        )
         if not deduped:
             click.echo("No tracks matched the requested safe/crate filters.")
             return
-        if safe_only:
-            skipped = total_before_filter - len(deduped)
 
     if dry_run:
         click.echo("Dry run mode — no transcoding will occur")
@@ -294,6 +340,7 @@ def export(
         overwrite=overwrite,
         detect_keys=detect_keys,
         dry_run=dry_run,
+        safe_mode=safe_only,
         progress_callback=progress,
     )
 
@@ -547,6 +594,7 @@ def crates_export(
         overwrite=overwrite,
         detect_keys=detect_keys,
         dry_run=dry_run,
+        safe_mode=True,
         progress_callback=progress,
     )
 

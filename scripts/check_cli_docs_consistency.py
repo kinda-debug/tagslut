@@ -166,8 +166,7 @@ def main() -> int:
     if missing_auth:
         errors.append("Missing expected auth subcommands: " + ", ".join(missing_auth))
 
-    script_surface = (DOCS_DIR / "SCRIPT_SURFACE.md").read_text(encoding="utf-8", errors="replace")
-    surface_policy = (DOCS_DIR / "SURFACE_POLICY.md").read_text(encoding="utf-8", errors="replace")
+    operations_doc = (DOCS_DIR / "OPERATIONS.md").read_text(encoding="utf-8", errors="replace")
     # Phase runbook docs have been archived — read if present, skip checks otherwise
     def _read_optional(name: str) -> str:
         p = DOCS_DIR / name
@@ -182,46 +181,46 @@ def main() -> int:
     workflow_3_doc = _read_optional("WORKFLOW_3_COMMANDS.md")
     readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8", errors="replace")
 
-    # SCRIPT_SURFACE requirements
+    # SCRIPT_SURFACE requirements (now consolidated into docs/OPERATIONS.md)
     for canonical in sorted(TOP_CANONICAL_COMMANDS):
         ensure_contains(
-            script_surface,
+            operations_doc,
             f"poetry run tagslut {canonical} ...",
             errors,
-            "docs/SCRIPT_SURFACE.md",
+            "docs/OPERATIONS.md",
         )
-    ensure_contains(script_surface, "Compatibility aliases:", errors, "docs/SCRIPT_SURFACE.md")
+    ensure_contains(operations_doc, "Compatibility aliases:", errors, "docs/OPERATIONS.md")
     # Phase runbook doc references removed — docs archived during decommission
 
     for removed in sorted(REMOVED_LEGACY_COMMANDS | REMOVED_COMPAT_COMMANDS):
         ensure_not_contains(
-            script_surface, f"`dedupe {removed}`", errors, "docs/SCRIPT_SURFACE.md"
+            operations_doc, f"`dedupe {removed}`", errors, "docs/OPERATIONS.md"
         )
 
-    # SURFACE_POLICY requirements
+    # SURFACE_POLICY requirements (now consolidated into docs/OPERATIONS.md)
     ensure_contains(
-        surface_policy,
+        operations_doc,
         "## Canonical Surface (Use For New Work)",
         errors,
-        "docs/SURFACE_POLICY.md",
+        "docs/OPERATIONS.md",
     )
     ensure_contains(
-        surface_policy,
+        operations_doc,
         "## Transitional Surface",
         errors,
-        "docs/SURFACE_POLICY.md",
+        "docs/OPERATIONS.md",
     )
     ensure_contains(
-        surface_policy,
+        operations_doc,
         "validate_v3_dual_write_parity.py",
         errors,
-        "docs/SURFACE_POLICY.md",
+        "docs/OPERATIONS.md",
     )
     ensure_contains(
-        surface_policy,
+        operations_doc,
         "lint_policy_profiles.py",
         errors,
-        "docs/SURFACE_POLICY.md",
+        "docs/OPERATIONS.md",
     )
     # Phase runbook doc cross-references removed — docs archived during decommission
 

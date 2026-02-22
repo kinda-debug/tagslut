@@ -145,9 +145,8 @@ def main() -> int:
             errors.append(f"Missing artifacts subdirectory: {expected}")
 
     for doc_name in (
-        "SCRIPT_SURFACE.md",
-        "SURFACE_POLICY.md",
-        "MOVE_EXECUTOR_COMPAT.md",
+        "OPERATIONS.md",
+        "ARCHITECTURE.md",
     ):
         doc_path = PROJECT_ROOT / "docs" / doc_name
         if not doc_path.is_file():

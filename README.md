@@ -1,40 +1,30 @@
 # tagslut
 
-Music library deduplication and metadata orchestration toolkit.
+Tagslut is a recovery-first music library deduplication and metadata orchestration toolkit.
+It focuses on safe ingest, deterministic decisioning, and audit-friendly execution for large FLAC libraries.
 
-## Quick Start
+## Install
 
 ```bash
-cd ~/Projects/tagslut
-source .venv/bin/activate
-tagslut --help
+poetry install
+```
+
+## Most Useful Commands
+
+```bash
+poetry run tagslut --help
+poetry run tagslut intake --help
+poetry run tagslut index --help
+poetry run tagslut decide --help
+poetry run tagslut execute --help
 ```
 
 ## Documentation
 
-| Document | Purpose |
-|----------|---------|
-| `docs/README_OPERATIONS.md` | **Single source of truth** - all commands |
-| `docs/WORKFLOWS.md` | Step-by-step workflow guides |
-| `docs/TROUBLESHOOTING.md` | Common issues and fixes |
+See `docs/` for workflows, operations, architecture, and troubleshooting.
 
-## Common Commands
-
-```bash
-# Download from any source (Beatport/Tidal/Deezer)
-tools/get <url>
-
-# Pre-check + download only missing
-tools/get-auto <url>
-
-# Register downloads to DB
-tagslut index register <path> --source [bpdl|tidal|deezer]
-
-# Check for duplicates
-tagslut index check --db <db>
-```
-
-## CLI
-
-- `tagslut` - preferred command name
-- `dedupe` - compatibility alias (retiring June 2026)
+- `docs/WORKFLOWS.md`
+- `docs/OPERATIONS.md`
+- `docs/ARCHITECTURE.md`
+- `docs/TROUBLESHOOTING.md`
+- `docs/DJ_WORKFLOW.md`

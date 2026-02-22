@@ -24,6 +24,7 @@ class ExportStats:
     transcoded_ok: int = 0
     transcoded_skipped: int = 0
     transcoded_failed: int = 0
+    missing_source: int = 0
     keys_detected: int = 0
     keys_skipped: int = 0
 
@@ -121,6 +122,30 @@ def run_export(
         len(curation.flagged_reviewlist),
     )
 
+    missing_tracks: list[TrackRow] = []
+    for track in passed_tracks:
+        if not track.source_path.exists():
+            stats.missing_source += 1
+            missing_tracks.append(track)
+
+    if missing_tracks:
+        manifest_rows = [
+            {
+                "path": str(track.output_path or track.source_path),
+                "artist": track.track_artist or track.album_artist,
+                "title": track.title,
+                "key": track.canonical_key,
+                "transcode_status": "missing",
+                "source_path": str(track.source_path),
+            }
+            for track in missing_tracks
+        ]
+    else:
+        manifest_rows = []
+    if missing_tracks:
+        missing_ids = {id(t) for t in missing_tracks}
+        passed_tracks = [t for t in passed_tracks if id(t) not in missing_ids]
+
     if dry_run:
         print("Dry run complete.", flush=True)
         log.info("Dry run — skipping key detection and transcoding")
@@ -142,7 +167,6 @@ def run_export(
     total = len(passed_tracks)
     completed = 0
 
-    manifest_rows: list[dict[str, object]] = []
     with ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
         futures = [pool.submit(transcode_one, track, overwrite) for track in passed_tracks]
         for future in as_completed(futures):

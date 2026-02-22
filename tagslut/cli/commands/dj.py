@@ -278,6 +278,7 @@ def curate(
 @click.option("--overwrite", is_flag=True, help="Overwrite existing files")
 @click.option("--detect-keys", is_flag=True, help="Run KeyFinder key detection")
 @click.option("--dry-run", is_flag=True, help="Plan only, no transcoding")
+@click.option("--verbose", is_flag=True, help="Show planned output paths")
 @click.option(
     "--safe",
     "safe_only",
@@ -294,6 +295,7 @@ def export(
     overwrite: bool,
     detect_keys: bool,
     dry_run: bool,
+    verbose: bool,
     safe_only: bool,
     crate_name: str | None,
 ) -> None:
@@ -314,6 +316,11 @@ def export(
         export_root = export_root / sanitize_component(crate_name, crate_name)
 
     assign_output_paths(deduped, export_root)
+
+    if verbose:
+        click.echo("Planned output paths (first 5):")
+        for track in deduped[:5]:
+            click.echo(f"- {track.output_path}")
 
     skipped = 0
     if safe_only or crate_name:
@@ -353,9 +360,11 @@ def export(
     if not dry_run:
         click.echo(f"Transcoded OK:     {stats.transcoded_ok}")
         click.echo(f"Skipped existing:  {stats.transcoded_skipped}")
+        click.echo(f"Missing source:    {stats.missing_source}")
         click.echo(f"Failed:            {stats.transcoded_failed}")
     else:
         click.echo("(Dry run — transcoding skipped)")
+        click.echo(f"Missing source:    {stats.missing_source}")
 
     if safe_only:
         click.echo(f"Exported {len(deduped)} tracks. {skipped} skipped (not yet classified).")

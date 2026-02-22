@@ -147,7 +147,10 @@ def load_tracks(
 def build_output_path(output_root: Path, track: TrackRow) -> Path:
     """Construct the output path for a track."""
     artist_dir = sanitize_component(track.album_artist or track.track_artist, "Unknown Artist")
-    album_dir = sanitize_component(track.album, "Unknown Album")
+    if track.album and track.album.strip():
+        album_dir = sanitize_component(track.album, "Unknown Album")
+    else:
+        album_dir = sanitize_component(track.source_path.parent.name, "Unknown Album")
     title = sanitize_component(track.title, track.source_path.stem)
 
     if track.track_number is not None:

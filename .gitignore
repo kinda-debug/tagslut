@@ -462,3 +462,18 @@ docs/WORKFLOW_HEALTH_RESCAN.md
 .coverage
 .junie/
 docs/WORKFLOW_OFFLINE_CHEATSHEET.md
+
+# macOS
+.DS_Store
+
+# Test coverage
+.coverage
+coverage.xml
+
+# Generated output and runtime artifacts
+output/
+artifacts/
+
+# Python cache
+__pycache__/
+*.pyc

@@ -148,7 +148,6 @@ def main() -> int:
         "SCRIPT_SURFACE.md",
         "SURFACE_POLICY.md",
         "MOVE_EXECUTOR_COMPAT.md",
-        "README.md",
     ):
         doc_path = PROJECT_ROOT / "docs" / doc_name
         if not doc_path.is_file():

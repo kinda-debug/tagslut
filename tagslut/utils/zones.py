@@ -21,6 +21,7 @@ class Zone(StrEnum):
 
     ACCEPTED = "accepted"
     ARCHIVE = "archive"
+    DJ_USB = "dj_usb"
     STAGING = "staging"
     SUSPECT = "suspect"
     QUARANTINE = "quarantine"
@@ -32,6 +33,7 @@ class Zone(StrEnum):
 DEFAULT_ZONE_PRIORITY: dict[Zone, int] = {
     Zone.ACCEPTED: 10,
     Zone.ARCHIVE: 20,
+    Zone.DJ_USB: 25,
     Zone.STAGING: 30,
     Zone.INBOX: 35,
     Zone.SUSPECT: 40,

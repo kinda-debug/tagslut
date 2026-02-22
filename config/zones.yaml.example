@@ -6,6 +6,8 @@ zones:
     - /path/to/staging
   archive:
     - /path/to/archive
+  dj_usb:
+    - /path/to/dj_usb
   suspect:
     - /path/to/suspect
   quarantine:

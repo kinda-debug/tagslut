@@ -1,0 +1,10 @@
+name: dj_curation
+version: 2026-02-22.dj_curation.v1
+description: DJ curation rules for USB export (duration, blocklists, genre filters).
+lane: dj
+rules:
+  duration_min: 180
+  duration_max: 720
+  artist_blocklist_path: config/blocklists/non_dj_artists.txt
+  artist_reviewlist_path: config/blocklists/borderline_artists.txt
+  genre_filters: []

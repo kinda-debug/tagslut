@@ -28,7 +28,6 @@ dependencies = [
 
 [project.scripts]
 tagslut = "tagslut.cli.main:cli"
-dedupe = "tagslut.cli.main:cli"
 
 [tool.poetry]
 packages = [{ include = "tagslut" }]

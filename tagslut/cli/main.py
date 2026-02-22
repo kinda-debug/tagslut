@@ -30,9 +30,6 @@ _TRANSITIONAL_COMMAND_REPLACEMENTS: dict[str, str] = {
     "tagslut _metadata": "tagslut auth ... / tagslut index enrich ...",
     "tagslut _recover": "tagslut verify recovery ... / tagslut report recovery ...",
 }
-_TAGSLUT_ALIAS_RETIRE_AFTER = datetime(2026, 7, 31).date()
-
-
 def _format_transitional_warning(command: str) -> str:
     replacement = _TRANSITIONAL_COMMAND_REPLACEMENTS.get(command)
     message = (
@@ -48,32 +45,10 @@ def _warn_transitional_command(command: str) -> None:
     click.secho(_format_transitional_warning(command), fg="yellow", err=True)
 
 
-def _format_dedupe_alias_warning(argv0: str | None = None) -> str | None:
-    invoked = (argv0 or Path(sys.argv[0]).name).strip().lower()
-    if invoked != "dedupe":
-        return None
-
-    today = datetime.now(UTC).date()
-    retirement = _TAGSLUT_ALIAS_RETIRE_AFTER.strftime("%B %d, %Y")
-    if today <= _TAGSLUT_ALIAS_RETIRE_AFTER:
-        return (
-            "ALIAS DEPRECATION: 'dedupe' is a legacy alias and is scheduled "
-            f"for retirement after {retirement}. Use 'tagslut' for all new commands."
-        )
-    return (
-        "ALIAS DEPRECATION: 'dedupe' is past its planned retirement window "
-        f"({retirement}). Switch to 'tagslut' immediately."
-    )
-
-
 class _TagslutGroup(click.Group):
     """CLI group that can emit alias warnings before help handling."""
 
     def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
-        if not is_internal_cli_call():
-            warning = _format_dedupe_alias_warning(ctx.info_name)
-            if warning:
-                click.secho(warning, fg="yellow", err=True)
         return super().parse_args(ctx, args)
 
 

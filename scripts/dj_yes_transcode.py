@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Build a deduped DJ_YES manifest from XLSX and transcode tracks to MP3 LAME 320 CBR.
+    Build a DJ_YES manifest from XLSX, removing duplicates, and transcode tracks to MP3 LAME 320 CBR.
 
 Default workflow:
 1) Read `/Users/georgeskhawam/Desktop/DJ_YES.xlsx`

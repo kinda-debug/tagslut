@@ -33,7 +33,6 @@ Role: Provider authentication and token lifecycle flows.
 The preferred command brand is now `tagslut`.
 
 Compatibility aliases:
-- `dedupe` (legacy alias, retiring June 2026)
 
 ## Operational Wrappers (Active)
 

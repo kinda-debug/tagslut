@@ -3,15 +3,12 @@ from __future__ import annotations
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
+import json
 from pathlib import Path
+import subprocess
 from typing import Callable
 
-from tagslut.dj.curation import (
-    CurationResult,
-    DjCurationConfig,
-    filter_candidates,
-    load_dj_curation_config,
-)
+from tagslut.dj.curation import CurationResult, DjCurationConfig, filter_candidates
 from tagslut.dj.key_detection import detect_key, is_keyfinder_available
 from tagslut.dj.transcode import TrackRow, transcode_one
 
@@ -47,15 +44,7 @@ def plan_export(
 ) -> ExportPlan:
     """Dry-run: apply curation filters and build export plan without transcoding."""
     _ = output_root
-    candidates = [
-        {
-            "artist": t.track_artist or t.album_artist,
-            "duration_sec": None,
-            "genre": None,
-            "_track": t,
-        }
-        for t in tracks
-    ]
+    candidates = _build_candidates(tracks)
 
     curation = filter_candidates(candidates, config)
 
@@ -103,16 +92,7 @@ def run_export(
     Returns:
         ExportStats with counts for each stage
     """
-    _ = output_root
-    candidates = [
-        {
-            "artist": t.track_artist or t.album_artist,
-            "duration_sec": None,
-            "genre": None,
-            "_track": t,
-        }
-        for t in tracks
-    ]
+    candidates = _build_candidates(tracks)
     curation = filter_candidates(candidates, config)
     passed_tracks = [c["_track"] for c in curation.passed]
 
@@ -140,6 +120,7 @@ def run_export(
         for track in passed_tracks:
             key = detect_key(track.source_path)
             if key:
+                track.canonical_key = key
                 stats.keys_detected += 1
             else:
                 stats.keys_skipped += 1
@@ -149,6 +130,7 @@ def run_export(
     total = len(passed_tracks)
     completed = 0
 
+    manifest_rows: list[dict[str, object]] = []
     with ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
         futures = [pool.submit(transcode_one, track, overwrite) for track in passed_tracks]
         for future in as_completed(futures):
@@ -164,6 +146,24 @@ def run_export(
             if progress_callback:
                 progress_callback(completed, total)
 
+            manifest_rows.append(
+                {
+                    "path": str(track.output_path or track.source_path),
+                    "artist": track.track_artist or track.album_artist,
+                    "title": track.title,
+                    "key": track.canonical_key,
+                    "transcode_status": status,
+                }
+            )
+
+    if manifest_rows:
+        manifest_path = output_root / "export_manifest.jsonl"
+        manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        for_write = sorted(manifest_rows, key=lambda row: str(row.get("path") or ""))
+        with manifest_path.open("w", encoding="utf-8") as handle:
+            for row in for_write:
+                handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+
     log.info(
         "Export complete: %d ok, %d skipped, %d failed",
         stats.transcoded_ok,
@@ -171,3 +171,71 @@ def run_export(
         stats.transcoded_failed,
     )
     return stats
+
+
+def get_audio_duration(path: Path, timeout_sec: int = 8) -> float | None:
+    """Return audio duration in seconds, or None if unavailable."""
+    try:
+        from mutagen import File as MutagenFile  # type: ignore
+    except Exception:
+        MutagenFile = None
+
+    if MutagenFile is not None:
+        try:
+            audio = MutagenFile(path)
+        except Exception:
+            audio = None
+        if audio is not None and hasattr(audio, "info") and hasattr(audio.info, "length"):
+            try:
+                duration = float(audio.info.length)
+                if duration > 0:
+                    return duration
+            except Exception:
+                pass
+
+    cmd = [
+        "ffprobe",
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        str(path),
+    ]
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout_sec,
+            check=False,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    if result.returncode != 0:
+        return None
+    try:
+        value = float(result.stdout.strip())
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
+def _build_candidates(tracks: list[TrackRow]) -> list[dict[str, object]]:
+    candidates: list[dict[str, object]] = []
+    for track in tracks:
+        duration = getattr(track, "duration_sec", None)
+        if not duration:
+            duration = get_audio_duration(track.source_path)
+        candidates.append(
+            {
+                "artist": track.track_artist or track.album_artist,
+                "title": track.title,
+                "path": str(track.source_path),
+                "duration_sec": duration,
+                "genre": None,
+                "_track": track,
+            }
+        )
+    return candidates

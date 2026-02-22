@@ -1,5 +1,21 @@
 # DJ Workflow
 
+## Quick Export (Safe Mode)
+
+Once tracks have been classified, just run:
+
+```bash
+tagslut dj export --safe --output-root /Volumes/DJUSB
+```
+
+Nothing else needed. No prompts.
+
+To export a specific crate:
+
+```bash
+tagslut dj export --safe --crate peak-time --output-root /Volumes/DJUSB
+```
+
 ## Commands
 
 ### tagslut dj curate
@@ -56,3 +72,15 @@ Format: one artist per line, `#` for comments.
 - Uses `keyfinder-cli` if available on PATH.
 - If not installed, key detection is skipped gracefully.
 - Enables `--detect-keys` flag for `tagslut dj export`.
+
+## Future
+
+Playlist import as classification source:
+
+`tagslut dj import --source spotify --playlist "DJ Set 2024-08"`
+
+`tagslut dj import --source roon --playlist "Friday Night"`
+
+Every track → verdict=safe, crate=<playlist name>
+
+Requires: Spotify/Tidal API auth, Roon local API

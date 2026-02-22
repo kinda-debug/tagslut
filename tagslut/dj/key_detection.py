@@ -81,19 +81,3 @@ def detect_key(path: Path, timeout_sec: int = 30) -> str | None:
         log.warning("keyfinder-cli OS error for %s: %s", path, exc)
         return None
 
-
-def detect_key_batch(
-    paths: list[Path],
-    *,
-    skip_if_unavailable: bool = True,
-    timeout_sec: int = 30,
-) -> dict[Path, str | None]:
-    """Detect keys for multiple files.
-
-    Returns dict mapping path → Camelot key (or None if detection failed).
-    """
-    if skip_if_unavailable and not is_keyfinder_available():
-        log.info("keyfinder-cli not available, returning empty key map")
-        return {p: None for p in paths}
-
-    return {p: detect_key(p, timeout_sec=timeout_sec) for p in paths}

@@ -9,6 +9,7 @@ from typing import Any
 import yaml
 
 log = logging.getLogger(__name__)
+_OVERRIDE_CACHE: dict[str, dict[str, dict[str, Any]]] | None = None
 
 
 @dataclass(frozen=True)
@@ -58,6 +59,70 @@ def _normalize(text: str) -> str:
     return re.sub(r"\s+", " ", text.strip().lower())
 
 
+def _override_key(artist: str, title: str) -> str:
+    return f"{_normalize(artist)}|{_normalize(title)}"
+
+
+def _load_track_overrides() -> dict[str, dict[str, dict[str, Any]]]:
+    global _OVERRIDE_CACHE
+    if _OVERRIDE_CACHE is not None:
+        return _OVERRIDE_CACHE
+
+    overrides_path = Path("config/dj/track_overrides.csv")
+    by_path: dict[str, dict[str, Any]] = {}
+    by_artist_title: dict[str, dict[str, Any]] = {}
+
+    if not overrides_path.exists():
+        _OVERRIDE_CACHE = {"by_path": by_path, "by_artist_title": by_artist_title}
+        return _OVERRIDE_CACHE
+
+    import csv
+
+    with overrides_path.open("r", encoding="utf-8", errors="replace", newline="") as handle:
+        reader = csv.reader(handle)
+        for row in reader:
+            if not row:
+                continue
+            if row[0].strip().startswith("#"):
+                continue
+            # Expected columns: path, artist, title, verdict, reason, crate
+            while len(row) < 6:
+                row.append("")
+            path, artist, title, verdict, reason, crate = [cell.strip() for cell in row[:6]]
+            if not artist or not title or not verdict:
+                continue
+            entry = {
+                "path": path,
+                "artist": artist,
+                "title": title,
+                "verdict": verdict.lower(),
+                "reason": reason,
+                "crate": crate,
+            }
+            if path:
+                by_path[path.lower()] = entry
+            by_artist_title[_override_key(artist, title)] = entry
+
+    _OVERRIDE_CACHE = {"by_path": by_path, "by_artist_title": by_artist_title}
+    return _OVERRIDE_CACHE
+
+
+def resolve_track_override(
+    *,
+    path: str | None = None,
+    artist: str | None = None,
+    title: str | None = None,
+) -> dict[str, Any] | None:
+    overrides = _load_track_overrides()
+    if path:
+        entry = overrides["by_path"].get(path.lower())
+        if entry is not None:
+            return entry
+    if artist and title:
+        return overrides["by_artist_title"].get(_override_key(artist, title))
+    return None
+
+
 def _load_list_file(path: str) -> frozenset[str]:
     """Load a text file of names (one per line) into a normalized frozenset."""
     p = Path(path)
@@ -101,8 +166,40 @@ def filter_candidates(
     Returns CurationResult with tracks sorted into buckets.
     """
     result = CurationResult()
-
     for track in candidates:
+        path_value = str(track.get("path") or "").strip()
+        artist_value = str(track.get("artist") or "").strip()
+        title_value = str(track.get("title") or "").strip()
+        override = resolve_track_override(path=path_value, artist=artist_value, title=title_value)
+
+        if override:
+            verdict = override.get("verdict")
+            crate = override.get("crate")
+            if verdict == "safe":
+                result.passed.append({**track, "_verdict": "safe", "crate": crate})
+            elif verdict == "block":
+                result.rejected_blocklist.append(
+                    {
+                        **track,
+                        "_verdict": "block",
+                        "_rejection_reason": "track_override",
+                        "crate": crate,
+                    }
+                )
+            elif verdict == "review":
+                result.flagged_reviewlist.append(
+                    {
+                        **track,
+                        "_verdict": "review",
+                        "_flag_reason": "track_override",
+                        "crate": crate,
+                    }
+                )
+                result.passed.append({**track, "_verdict": "review", "crate": crate})
+            else:
+                result.passed.append({**track, "_verdict": verdict or "unknown", "crate": crate})
+            continue
+
         artist_normalized = _normalize(str(track.get("artist", "")))
 
         if artist_normalized in config.artist_blocklist:

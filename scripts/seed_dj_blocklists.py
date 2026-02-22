@@ -5,7 +5,6 @@ import argparse
 import csv
 import datetime as dt
 import json
-import os
 import re
 import sys
 import termios
@@ -15,61 +14,49 @@ from pathlib import Path
 from statistics import median
 from typing import Any, Iterable
 
+TRACK_OVERRIDES_PATH = Path("config/dj/track_overrides.csv")
 BLOCKLIST_PATH = Path("config/blocklists/non_dj_artists.txt")
-REVIEWLIST_PATH = Path("config/blocklists/borderline_artists.txt")
 
-SAFE_GENRES = {
-    "techno",
-    "house",
-    "tech house",
-    "deep house",
-    "melodic house & techno",
-    "minimal/deep tech",
-    "trance",
-    "progressive house",
-    "big room",
-    "bass/club",
-    "breaks/breakbeat/uk bass",
-    "drum & bass",
-    "dubstep",
-    "hard techno",
-    "afro house",
-    "nu disco/disco",
-    "funky/groove/jackin' house",
-    "indie dance",
-    "uk garage/bassline",
-    "trap/wave",
+SAFE_OVERRIDES = {
+    "pantha du prince",
+    "kollektiv turmstrasse",
+    "soulwax",
+    "bicep",
+    "kerri chandler",
+    "dj t.",
+    "crazy p",
 }
 
-BLOCK_GENRES = {
-    "classical",
-    "jazz",
-    "ambient",
-    "spoken word",
-    "soundtrack",
-    "children's",
-    "folk",
-    "country",
-    "gospel",
-    "opera",
-    "acoustic",
-    "singer-songwriter",
-    "world",
-    "reggae/dancehall/dub",
-    "organic house/downtempo",
-    "electronica",
-    "dj tools",
-}
+REMIX_KEYWORDS = [
+    "remix",
+    "edit",
+    "rework",
+    "re-edit",
+    "refix",
+    "dub",
+    "dub mix",
+    "extended",
+    "club mix",
+    "instrumental",
+    "version",
+    "vip",
+]
 
-AMBIGUOUS_GENRES = {
-    "electronic",
-    "pop",
-    "r&b",
-    "hip-hop",
-    "soul",
-    "disco",
-    "dance",
-    "alternative",
+CLASSICAL_KEYWORDS = {
+    "symphony",
+    "concerto",
+    "sonata",
+    "quartet",
+    "opus",
+    "suite",
+    "nocturne",
+    "prelude",
+    "fugue",
+    "étude",
+    "etude",
+    "requiem",
+    "oratorio",
+    "cantata",
 }
 
 
@@ -77,56 +64,12 @@ def _normalize(text: str) -> str:
     return re.sub(r"\s+", " ", text.strip().lower())
 
 
-def _split_genres(raw: str) -> list[str]:
-    if not raw:
-        return []
-    # split by common separators
-    parts = re.split(r"[\|,/;]+", raw)
-    return [p.strip() for p in parts if p.strip()]
-
-
-def _match_bucket(genres: Iterable[str], bucket: set[str]) -> bool:
-    for g in genres:
-        g_norm = _normalize(g)
-        for b in bucket:
-            if _normalize(b) in g_norm:
-                return True
-    return False
-
-
-def _all_in_bucket(genres: Iterable[str], bucket: set[str]) -> bool:
-    normalized = [_normalize(g) for g in genres if g.strip()]
-    if not normalized:
-        return False
-    for g in normalized:
-        if not any(_normalize(b) in g for b in bucket):
-            return False
-    return True
-
-
-def _parse_float(value: Any) -> float | None:
-    if value is None:
-        return None
-    try:
-        return float(str(value).strip())
-    except ValueError:
-        return None
-
-
-def _parse_duration_seconds(value: Any) -> float | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    if not text:
-        return None
-    # support mm:ss
-    if re.match(r"^\d+:\d+$", text):
-        mins, secs = text.split(":", 1)
-        return float(mins) * 60 + float(secs)
-    try:
-        return float(text)
-    except ValueError:
-        return None
+def _format_duration(seconds: float | None) -> str:
+    if seconds is None:
+        return "n/a"
+    mins = int(seconds // 60)
+    secs = int(seconds % 60)
+    return f"{mins}:{secs:02d}"
 
 
 def _latest_by_timestamp(pattern: str) -> Path | None:
@@ -143,7 +86,6 @@ def _latest_by_timestamp(pattern: str) -> Path | None:
             return (1, m.group(1))
         return (2, "")
 
-    # sort by detected timestamp, fallback to mtime
     def key(p: Path):
         kind, ts = extract_ts(p.name)
         if ts:
@@ -178,7 +120,14 @@ def _load_jsonl(path: Path) -> list[dict[str, Any]]:
 
 def _detect_columns(rows: list[dict[str, Any]]) -> dict[str, str | None]:
     if not rows:
-        return {"artist": None, "genre": None, "bpm": None, "duration": None, "title": None}
+        return {
+            "artist": None,
+            "title": None,
+            "genre": None,
+            "bpm": None,
+            "duration": None,
+            "path": None,
+        }
     keys = [k for k in rows[0].keys()]
     norm_map = {k: _normalize(k) for k in keys}
 
@@ -190,42 +139,96 @@ def _detect_columns(rows: list[dict[str, Any]]) -> dict[str, str | None]:
         return None
 
     return {
-        "artist": find_key(["artist", "album artist", "track artist", "artist name"]),
-        "genre": find_key(["genre", "style", "subgenre"]),
-        "bpm": find_key(["bpm", "tempo"]),
-        "duration": find_key(["duration", "length", "seconds", "duration_s"]),
+        "artist": find_key(["artist", "track_artist", "trackartist", "performer"]),
         "title": find_key(["title", "track", "name"]),
+        "genre": find_key(["genre", "track_genre", "canonical_genre"]),
+        "bpm": find_key(["bpm", "canonical_bpm", "tempo"]),
+        "duration": find_key(["duration", "duration_sec", "duration_seconds", "length"]),
+        "path": find_key(["path", "source_path", "file_path"]),
     }
 
 
-def _iter_tracks_from_rows(rows: list[dict[str, Any]]) -> Iterable[dict[str, Any]]:
+def _validate_columns(path: Path, rows: list[dict[str, Any]]) -> dict[str, str | None]:
     cols = _detect_columns(rows)
+    if not cols["artist"] or not cols["title"]:
+        found = ", ".join(rows[0].keys()) if rows else "<none>"
+        print(
+            "ERROR: Input file has no usable columns for track classification.\n"
+            f"File: {path}\n"
+            f"Found columns: {found}\n"
+            "Expected at least: artist + title"
+        )
+        raise SystemExit(2)
+    return cols
+
+
+def _parse_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(str(value).strip())
+    except ValueError:
+        return None
+
+
+def _parse_duration_seconds(value: Any) -> float | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if re.match(r"^\d+:\d+$", text):
+        mins, secs = text.split(":", 1)
+        return float(mins) * 60 + float(secs)
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def _iter_tracks_from_rows(rows: list[dict[str, Any]], *, path: Path) -> list[dict[str, Any]]:
+    cols = _validate_columns(path, rows)
+    tracks = []
     for row in rows:
-        artist = row.get(cols["artist"] or "", "") if cols["artist"] else ""
-        genre = row.get(cols["genre"] or "", "") if cols["genre"] else ""
-        bpm = _parse_float(row.get(cols["bpm"] or "", "")) if cols["bpm"] else None
-        duration = _parse_duration_seconds(row.get(cols["duration"] or "", "")) if cols["duration"] else None
-        title = row.get(cols["title"] or "", "") if cols["title"] else ""
-        yield {
-            "artist": artist,
-            "genre": genre,
-            "bpm": bpm,
-            "duration": duration,
-            "title": title,
-        }
+        artist = row.get(cols["artist"], "") if cols["artist"] else ""
+        title = row.get(cols["title"], "") if cols["title"] else ""
+        genre = row.get(cols["genre"], "") if cols["genre"] else ""
+        bpm = _parse_float(row.get(cols["bpm"], "")) if cols["bpm"] else None
+        duration = _parse_duration_seconds(row.get(cols["duration"], "")) if cols["duration"] else None
+        source_path = row.get(cols["path"], "") if cols["path"] else ""
+        tracks.append(
+            {
+                "artist": str(artist).strip(),
+                "title": str(title).strip(),
+                "genre": str(genre).strip(),
+                "bpm": bpm,
+                "duration": duration,
+                "path": str(source_path).strip(),
+            }
+        )
+    return tracks
 
 
-def _read_existing(path: Path) -> set[str]:
+def _load_existing_overrides(path: Path) -> tuple[set[str], set[str]]:
     if not path.exists():
-        return set()
-    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-    items = []
-    for line in lines:
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        items.append(_normalize(line))
-    return set(items)
+        return set(), set()
+    by_path: set[str] = set()
+    by_artist_title: set[str] = set()
+    with path.open("r", encoding="utf-8", errors="replace", newline="") as handle:
+        reader = csv.reader(handle)
+        for row in reader:
+            if not row:
+                continue
+            if row[0].strip().startswith("#"):
+                continue
+            while len(row) < 3:
+                row.append("")
+            p, artist, title = [cell.strip() for cell in row[:3]]
+            if p:
+                by_path.add(p.lower())
+            if artist and title:
+                by_artist_title.add(f"{_normalize(artist)}|{_normalize(title)}")
+    return by_path, by_artist_title
 
 
 def _prompt_choice() -> str:
@@ -240,242 +243,322 @@ def _prompt_choice() -> str:
         return input().strip().upper()[:1]
 
 
-def _select_latest_inputs() -> dict[str, Path | None]:
-    return {
-        "dj_draft": _latest_by_timestamp("output/spreadsheet/dj_draft_scan_report_*.csv"),
-        "genre_summary": _latest_by_timestamp("output/spreadsheet/genre_summary_*.csv"),
-        "integrity": _latest_by_timestamp("artifacts/integrity_*.jsonl"),
-    }
+def _extract_remixer(title: str) -> str | None:
+    # Look for last parenthetical/bracketed segment with remix keyword
+    segments = re.findall(r"[\(\[]([^\)\]]+)[\)\]]", title)
+    for seg in reversed(segments):
+        seg_lower = seg.lower()
+        if any(k in seg_lower for k in REMIX_KEYWORDS):
+            cleaned = _clean_remixer(seg)
+            return cleaned
+
+    # Look for hyphen pattern: " - Name Remix"
+    m = re.search(r"-\s*([^\-]+?)\s*(remix|edit|rework|re-edit|refix|dub|mix|version|vip)$", title, re.I)
+    if m:
+        cleaned = _clean_remixer(m.group(1))
+        return cleaned
+
+    return None
 
 
-def build_artist_profiles(tracks: Iterable[dict[str, Any]]):
-    profiles: dict[str, dict[str, Any]] = {}
-    for t in tracks:
-        artist_raw = str(t.get("artist") or "").strip()
-        if not artist_raw:
-            continue
-        artist_key = _normalize(artist_raw)
-        profile = profiles.setdefault(
-            artist_key,
-            {
-                "artist": artist_raw,
-                "genres": defaultdict(int),
-                "bpms": [],
-                "durations": [],
-                "titles": [],
-                "track_count": 0,
-                "missing_genre": 0,
-            },
-        )
-        genres = _split_genres(str(t.get("genre") or ""))
-        if not genres:
-            profile["missing_genre"] += 1
-        for g in genres:
-            profile["genres"][g] += 1
-        if t.get("bpm") is not None:
-            profile["bpms"].append(float(t["bpm"]))
-        if t.get("duration") is not None:
-            profile["durations"].append(float(t["duration"]))
-        title = str(t.get("title") or "").strip()
-        if title:
-            profile["titles"].append(title)
-        profile["track_count"] += 1
-    return profiles
+def _clean_remixer(text: str) -> str | None:
+    cleaned = text
+    cleaned = re.sub(
+        r"\b(remix|edit|rework|re-edit|refix|dub|mix|version|vip|club|extended|instrumental)\b",
+        "",
+        cleaned,
+        flags=re.I,
+    )
+    cleaned = cleaned.strip(" -[]()\t ")
+    if not cleaned:
+        return None
+    # Remove generic labels
+    generic = {"radio", "club", "extended", "instrumental", "version", "dub"}
+    if _normalize(cleaned) in generic:
+        return None
+    return cleaned
 
 
-def classify_artists(profiles: dict[str, dict[str, Any]], auto_only: bool):
-    auto_blocked = []
-    auto_safe = []
-    manual_blocked = []
-    manual_review = []
-    manual_skipped = []
-
-    for key, p in sorted(profiles.items(), key=lambda kv: kv[0]):
-        genres = list(p["genres"].keys())
-        bpm_list = p["bpms"]
-        duration_list = p["durations"]
-        track_count = p["track_count"]
-        missing_genre_ratio = (p["missing_genre"] / track_count) if track_count else 1
-
-        median_bpm = median(bpm_list) if bpm_list else None
-        all_under_90 = all(d < 90 for d in duration_list) if duration_list else False
-        bpm_outside = (median_bpm is not None and (median_bpm < 80 or median_bpm > 210))
-
-        genres_exclusive_block = _all_in_bucket(genres, BLOCK_GENRES)
-        has_safe_genre = _match_bucket(genres, SAFE_GENRES)
-        has_block_genre = _match_bucket(genres, BLOCK_GENRES)
-        has_ambiguous = _match_bucket(genres, AMBIGUOUS_GENRES)
-
-        # Auto BLOCK
-        if genres_exclusive_block or bpm_outside or all_under_90:
-            auto_blocked.append(p)
-            continue
-
-        # Auto SAFE
-        if has_safe_genre and median_bpm is not None and 100 <= median_bpm <= 175:
-            auto_safe.append(p)
-            continue
-
-        # Uncertain
-        uncertain = False
-        if has_safe_genre and has_block_genre:
-            uncertain = True
-        if missing_genre_ratio > 0.5:
-            uncertain = True
-        if has_ambiguous:
-            uncertain = True
-
-        if uncertain:
-            if auto_only:
-                manual_skipped.append(p)
-            else:
-                print("\n" + "─" * 38)
-                bpm_range = (
-                    f"{min(bpm_list):.0f}–{max(bpm_list):.0f}" if bpm_list else "n/a"
-                )
-                dur_avg = (
-                    f"{(sum(duration_list)/len(duration_list))/60:.1f}"
-                    if duration_list
-                    else "n/a"
-                )
-                genre_counts = ", ".join(
-                    f"{g} ({c})" for g, c in sorted(p["genres"].items(), key=lambda kv: -kv[1])
-                )
-                titles = ", ".join(p["titles"][:3])
-                print(f"ARTIST: {p['artist']}")
-                print(f"Tracks: {track_count}  |  BPM range: {bpm_range}  |  Duration avg: {dur_avg} min")
-                print(f"Genres: {genre_counts or 'n/a'}")
-                if titles:
-                    print(f"Sample titles: {titles}")
-                print("[K] Keep (DJ-safe)  [B] Block  [R] Review list  [S] Skip for now")
-                choice = _prompt_choice()
-                if choice == 'B':
-                    manual_blocked.append(p)
-                elif choice == 'R':
-                    manual_review.append(p)
-                elif choice == 'K':
-                    auto_safe.append(p)
-                else:
-                    manual_skipped.append(p)
-        else:
-            manual_skipped.append(p)
-
-    return {
-        "auto_blocked": auto_blocked,
-        "auto_safe": auto_safe,
-        "manual_blocked": manual_blocked,
-        "manual_review": manual_review,
-        "manual_skipped": manual_skipped,
-    }
+def _detect_remix_tier(title: str, primary_artists: set[str]) -> tuple[str | None, str | None]:
+    title_lower = title.lower()
+    if not any(k in title_lower for k in REMIX_KEYWORDS):
+        return None, None
+    remixer = _extract_remixer(title)
+    if remixer:
+        if _normalize(remixer) in primary_artists:
+            return "tier1", remixer
+        return "tier2", remixer
+    return "tier3", None
 
 
-def append_blocklists(
-    blocked: list[dict[str, Any]],
-    review: list[dict[str, Any]],
-    *,
-    dry_run: bool,
-):
-    today = dt.datetime.now().strftime("%Y-%m-%d")
-    blocked_names = [p["artist"] for p in blocked]
-    review_names = [p["artist"] for p in review]
-
-    existing_block = _read_existing(BLOCKLIST_PATH)
-    existing_review = _read_existing(REVIEWLIST_PATH)
-
-    blocked_new = []
-    for name in blocked_names:
-        if _normalize(name) not in existing_block:
-            blocked_new.append(name)
-
-    review_new = []
-    for name in review_names:
-        if _normalize(name) not in existing_review:
-            review_new.append(name)
-
-    header = f"# Seeded {today} via seed_dj_blocklists.py — {len(blocked_new)} auto-blocked, {len(review_new)} manual\n"
-
-    if dry_run:
-        print("\n[DRY RUN] Would append to non_dj_artists.txt:")
-        print(header.rstrip())
-        for name in blocked_new:
-            print(name)
-        print("\n[DRY RUN] Would append to borderline_artists.txt:")
-        print(header.rstrip())
-        for name in review_new:
-            print(name)
-        return
-
-    for path, names in [(BLOCKLIST_PATH, blocked_new), (REVIEWLIST_PATH, review_new)]:
-        if not names:
-            continue
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8") as f:
-            f.write("\n" + header)
-            for name in names:
-                f.write(name + "\n")
+def _select_latest_input() -> Path | None:
+    report = _latest_by_timestamp("output/spreadsheet/dj*scan_report*.csv")
+    if report and report.exists():
+        return report
+    integrity = _latest_by_timestamp("artifacts/integrity_*.jsonl")
+    if integrity and integrity.exists():
+        return integrity
+    return None
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Seed DJ artist blocklists from library metadata")
+    parser = argparse.ArgumentParser(description="Seed DJ track overrides from library metadata")
     parser.add_argument("--dry-run", action="store_true", help="Run classification but do not write")
     parser.add_argument("--auto-only", action="store_true", help="Skip interactive prompts")
+    parser.add_argument("--limit", type=int, default=30, help="Cap interactive prompts")
     args = parser.parse_args()
 
-    inputs = _select_latest_inputs()
-    if not any(inputs.values()):
+    input_path = _select_latest_input()
+    if input_path is None:
         print("No input data found. Expected one of:")
-        print("- output/spreadsheet/dj_draft_scan_report_*.csv")
-        print("- output/spreadsheet/genre_summary_*.csv")
+        print("- output/spreadsheet/dj*scan_report*.csv")
         print("- artifacts/integrity_*.jsonl")
         return 2
 
-    tracks = []
-    used = []
-    if inputs["dj_draft"] and inputs["dj_draft"].exists():
-        rows = _load_csv(inputs["dj_draft"])
-        tracks.extend(_iter_tracks_from_rows(rows))
-        used.append(inputs["dj_draft"])
-    elif inputs["genre_summary"] and inputs["genre_summary"].exists():
-        rows = _load_csv(inputs["genre_summary"])
-        tracks.extend(_iter_tracks_from_rows(rows))
-        used.append(inputs["genre_summary"])
-    elif inputs["integrity"] and inputs["integrity"].exists():
-        rows = _load_jsonl(inputs["integrity"])
-        tracks.extend(_iter_tracks_from_rows(rows))
-        used.append(inputs["integrity"])
+    if input_path.suffix.lower() == ".jsonl":
+        rows = _load_jsonl(input_path)
+    else:
+        rows = _load_csv(input_path)
 
+    columns = ", ".join(rows[0].keys()) if rows else "<none>"
+    print(f"Using: {input_path} ({len(rows)} rows, columns: {columns})")
+
+    tracks = _iter_tracks_from_rows(rows, path=input_path)
     if not tracks:
         print("No track rows found in input files. Check file formats.")
         return 2
 
-    print("Using input files:")
-    for p in used:
-        print(f"- {p}")
+    existing_paths, existing_artist_titles = _load_existing_overrides(TRACK_OVERRIDES_PATH)
 
-    profiles = build_artist_profiles(tracks)
-    classified = classify_artists(profiles, auto_only=args.auto_only)
+    primary_artists = {_normalize(t["artist"]) for t in tracks if t.get("artist")}
 
-    auto_blocked = classified["auto_blocked"]
-    auto_safe = classified["auto_safe"]
-    manual_blocked = classified["manual_blocked"]
-    manual_review = classified["manual_review"]
-    manual_skipped = classified["manual_skipped"]
+    # build artist stats
+    artist_stats: dict[str, dict[str, Any]] = {}
+    for t in tracks:
+        artist = str(t.get("artist") or "").strip()
+        if not artist:
+            continue
+        key = _normalize(artist)
+        stats = artist_stats.setdefault(
+            key,
+            {
+                "artist": artist,
+                "track_count": 0,
+                "bpms": [],
+                "durations": [],
+                "tracks": [],
+            },
+        )
+        stats["track_count"] += 1
+        if t.get("bpm") is not None:
+            stats["bpms"].append(float(t["bpm"]))
+        if t.get("duration") is not None:
+            stats["durations"].append(float(t["duration"]))
+        stats["tracks"].append(t)
 
+    def artist_median_bpm(artist_key: str) -> float | None:
+        bpms = artist_stats[artist_key]["bpms"]
+        return median(bpms) if bpms else None
+
+    def artist_median_duration(artist_key: str) -> float | None:
+        durations = artist_stats[artist_key]["durations"]
+        return median(durations) if durations else None
+
+    # classification
+    auto_safe_t1 = []
+    auto_safe_t2 = []
+    auto_blocked = []
+    manual_kept = []
+    manual_blocked = []
+    manual_review = []
+    skipped = []
+    assigned_crates = 0
+
+    session_safe_overrides = set(SAFE_OVERRIDES)
+
+    # build interactive queue
+    queue = []
+    for t in tracks:
+        artist = t.get("artist") or ""
+        title = t.get("title") or ""
+        if not artist or not title:
+            continue
+        key = _normalize(artist)
+        track_key = f"{_normalize(artist)}|{_normalize(title)}"
+        path_value = str(t.get("path") or "").strip().lower()
+        if path_value and path_value in existing_paths:
+            continue
+        if track_key in existing_artist_titles:
+            continue
+
+        tier, remixer = _detect_remix_tier(title, primary_artists)
+        if tier == "tier1":
+            auto_safe_t1.append((t, f"remix_tier1:{remixer}"))
+            continue
+        if tier == "tier2":
+            auto_safe_t2.append((t, f"remix_tier2:{remixer}"))
+            continue
+        if tier == "tier3":
+            queue.append((t, "remix_tier3"))
+            continue
+
+        if _normalize(artist) in session_safe_overrides:
+            skipped.append(t)
+            continue
+
+        title_lower = title.lower()
+        has_classical = any(k in title_lower for k in CLASSICAL_KEYWORDS)
+        med_bpm = artist_median_bpm(key)
+        med_dur = artist_median_duration(key)
+        bpm_condition = (med_bpm is None or med_bpm < 60)
+        dur_condition = (med_dur is not None and med_dur < 300)
+        if has_classical and bpm_condition and dur_condition:
+            auto_blocked.append((t, "classical_low_bpm_short_duration"))
+            continue
+
+        queue.append((t, "manual"))
+
+    # interactive session
+    if not args.auto_only:
+        queue_sorted = sorted(
+            queue,
+            key=lambda item: (-artist_stats[_normalize(item[0]["artist"])]["track_count"], item[0]["artist"], item[0]["title"]),
+        )
+        processed = 0
+        for track, reason in queue_sorted:
+            if processed >= args.limit:
+                skipped.append(track)
+                continue
+            artist = track.get("artist") or ""
+            title = track.get("title") or ""
+            key = _normalize(artist)
+            stats = artist_stats[key]
+            bpm = track.get("bpm")
+            duration = track.get("duration")
+            genre = track.get("genre") or ""
+
+            tier_label = ""
+            if reason == "remix_tier3":
+                tier_label = " [TIER 3 — remix keyword only]"
+
+            print("\n" + "─" * 48)
+            print(f"ARTIST: {artist}")
+            print(f"TITLE:  \"{title}\"{tier_label}")
+            bpm_display = f"{bpm:.0f}" if isinstance(bpm, (int, float)) else "n/a"
+            dur_display = _format_duration(duration)
+            print(f"BPM: {bpm_display}  |  Duration: {dur_display}  |  Genre: {genre or 'n/a'}")
+
+            # top 3 longest tracks by artist
+            durations = [t for t in stats["tracks"] if t.get("duration")]
+            durations.sort(key=lambda x: x.get("duration"), reverse=True)
+            print("Top 3 longest tracks by this artist:")
+            for t in durations[:3]:
+                print(f"  - \"{t.get('title') or ''}\" {_format_duration(t.get('duration'))}")
+
+            print("[K] Keep  [B] Block  [R] Review  [A] Always-safe  [S] Skip")
+            choice = _prompt_choice()
+            if choice == "A":
+                session_safe_overrides.add(_normalize(artist))
+                manual_kept.append((track, "always_safe"))
+            elif choice == "K":
+                manual_kept.append((track, "manual_keep"))
+            elif choice == "B":
+                manual_blocked.append((track, "manual_block"))
+            elif choice == "R":
+                manual_review.append((track, "manual_review"))
+            else:
+                skipped.append(track)
+                processed += 1
+                continue
+
+            crate = ""
+            if choice in {"K", "R"}:
+                existing_crates = sorted({c for _, _, _, _, _, c in _load_existing_rows(TRACK_OVERRIDES_PATH) if c})
+                if existing_crates:
+                    print(f"Existing crates: {', '.join(existing_crates)}")
+                crate = input("Assign crate (Enter to skip, Tab for existing crates): ").strip()
+            if crate:
+                assigned_crates += 1
+                track["crate"] = crate
+
+            processed += 1
+
+    else:
+        skipped.extend([t for t, _ in queue])
+
+    # Build output rows
+    to_write = []
+    for track, reason in auto_safe_t1 + auto_safe_t2:
+        to_write.append(_row(track, "safe", reason))
+    for track, reason in auto_blocked:
+        to_write.append(_row(track, "block", reason))
+    for track, reason in manual_kept:
+        to_write.append(_row(track, "safe", reason))
+    for track, reason in manual_blocked:
+        to_write.append(_row(track, "block", reason))
+    for track, reason in manual_review:
+        to_write.append(_row(track, "review", reason))
+
+    # Summary
     print("\nSummary:")
-    print(f"- {len(auto_blocked)} artists auto-blocked")
-    print(f"- {len(auto_safe)} artists auto-safe (skipped)")
-    print(f"- {len(manual_blocked)} manually blocked")
-    print(f"- {len(manual_review)} added to review list")
-    print(f"- {len(manual_skipped)} skipped (undecided)")
+    print(f"- {len(auto_safe_t1)} tracks auto-safe TIER 1 (remixer in library)")
+    print(f"- {len(auto_safe_t2)} tracks auto-safe TIER 2 (remixer unknown but remix detected)")
+    print(f"- {len(auto_blocked)} tracks auto-blocked (classical + BPM + duration)")
+    print(f"- {len(manual_kept)} tracks manually kept")
+    print(f"- {len(manual_blocked)} tracks manually blocked")
+    print(f"- {len(manual_review)} tracks added to review list")
+    print(f"- {assigned_crates} tracks assigned to crates")
+    print(f"- {len(skipped)} tracks skipped")
 
     if not args.auto_only:
         confirm = input("Proceed? [y/n] ").strip().lower()
-        if confirm != 'y':
+        if confirm != "y":
             print("Aborted.")
             return 1
 
-    append_blocklists(auto_blocked + manual_blocked, manual_review, dry_run=args.dry_run)
+    if args.dry_run:
+        print("\n[DRY RUN] Would append to track_overrides.csv:")
+        print(f"# Seeded {dt.datetime.now().strftime('%Y-%m-%d')} via seed_dj_blocklists.py")
+        for row in to_write[:20]:
+            print(", ".join(row))
+        return 0
+
+    if not to_write:
+        print("No new classifications to write.")
+        return 0
+
+    TRACK_OVERRIDES_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with TRACK_OVERRIDES_PATH.open("a", encoding="utf-8", newline="") as handle:
+        handle.write(f"# Seeded {dt.datetime.now().strftime('%Y-%m-%d')} via seed_dj_blocklists.py\n")
+        writer = csv.writer(handle)
+        for row in to_write:
+            writer.writerow(row)
     return 0
+
+
+def _row(track: dict[str, Any], verdict: str, reason: str) -> list[str]:
+    path = str(track.get("path") or "").strip()
+    artist = str(track.get("artist") or "").strip()
+    title = str(track.get("title") or "").strip()
+    crate = str(track.get("crate") or "").strip()
+    return [path, artist, title, verdict, reason, crate]
+
+
+def _load_existing_rows(path: Path):
+    if not path.exists():
+        return []
+    rows = []
+    with path.open("r", encoding="utf-8", errors="replace", newline="") as handle:
+        reader = csv.reader(handle)
+        for row in reader:
+            if not row:
+                continue
+            if row[0].strip().startswith("#"):
+                continue
+            while len(row) < 6:
+                row.append("")
+            rows.append(row[:6])
+    return rows
 
 
 if __name__ == "__main__":

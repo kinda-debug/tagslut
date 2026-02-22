@@ -1,17 +1,145 @@
 from __future__ import annotations
 
+import csv
+import io
 import json
+from collections import Counter
 from pathlib import Path
+from typing import Iterable
 
 import click
 
-from tagslut.dj.curation import load_dj_curation_config
-from tagslut.dj.export import plan_export, run_export
-from tagslut.dj.transcode import load_tracks, dedupe_tracks, assign_output_paths
+from tagslut.dj.curation import load_dj_curation_config, resolve_track_override
+from tagslut.dj.export import get_audio_duration, plan_export, run_export
+from tagslut.dj.transcode import (
+    assign_output_paths,
+    dedupe_tracks,
+    load_tracks,
+    sanitize_component,
+)
 
 DEFAULT_POLICY = "config/dj/dj_curation.yaml"
 DEFAULT_OUTPUT = "/Volumes/MUSIC/DJ_YES"
 DEFAULT_INPUT = "/Users/georgeskhawam/Desktop/DJ_YES.xlsx"
+TRACK_OVERRIDES_PATH = Path("config/dj/track_overrides.csv")
+
+
+def _normalize_crate(value: str) -> str:
+    return value.strip().lower()
+
+
+def _parse_crates(value: str) -> list[str]:
+    return [crate.strip() for crate in value.split(",") if crate.strip()]
+
+
+def _crate_matches(crate_name: str, crate_field: str) -> bool:
+    target = _normalize_crate(crate_name)
+    return any(_normalize_crate(crate) == target for crate in _parse_crates(crate_field))
+
+
+def _select_tracks_with_overrides(
+    tracks: list,
+    *,
+    safe_only: bool,
+    crate: str | None,
+) -> tuple[list, int]:
+    selected: list = []
+    skipped = 0
+    for track in tracks:
+        override = resolve_track_override(
+            path=str(track.source_path),
+            artist=track.track_artist or track.album_artist,
+            title=track.title,
+        )
+        if override is None:
+            skipped += 1
+            continue
+        verdict = str(override.get("verdict") or "").lower()
+        if verdict == "block":
+            skipped += 1
+            continue
+        if safe_only and verdict != "safe":
+            skipped += 1
+            continue
+        crate_field = str(override.get("crate") or "")
+        if crate and not _crate_matches(crate, crate_field):
+            skipped += 1
+            continue
+        selected.append(track)
+    return selected, skipped
+
+
+def _load_override_items(path: Path) -> list[tuple[str, object]]:
+    if not path.exists():
+        return []
+    items: list[tuple[str, object]] = []
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    for line in lines:
+        if not line.strip():
+            continue
+        if line.lstrip().startswith("#"):
+            items.append(("comment", line))
+            continue
+        row = next(csv.reader([line]))
+        while len(row) < 6:
+            row.append("")
+        items.append(("row", row))
+    return items
+
+
+def _write_override_items(path: Path, items: list[tuple[str, object]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        for kind, payload in items:
+            if kind == "comment":
+                handle.write(str(payload).rstrip("\n") + "\n")
+                continue
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(payload)
+            handle.write(output.getvalue())
+
+
+def _iter_override_rows(items: list[tuple[str, object]]) -> Iterable[list[str]]:
+    for kind, payload in items:
+        if kind == "row":
+            yield payload  # type: ignore[misc]
+
+
+def _read_key_from_file(path: Path) -> str | None:
+    try:
+        from mutagen import File as MutagenFile  # type: ignore
+    except Exception:
+        return None
+
+    try:
+        audio = MutagenFile(path, easy=False)
+    except Exception:
+        return None
+    if audio is None:
+        return None
+    for tag in ("TKEY", "KEY", "key", "initialkey", "INITIALKEY"):
+        if tag in audio:
+            value = audio[tag]
+            if isinstance(value, list):
+                return str(value[0]) if value else None
+            return str(value)
+    return None
+
+
+def _format_duration(seconds: float | None) -> str:
+    if seconds is None:
+        return "n/a"
+    mins = int(seconds // 60)
+    secs = int(seconds % 60)
+    return f"{mins}:{secs:02d}"
+
+
+def _prompt_choice() -> str:
+    try:
+        return click.getchar().upper()
+    except Exception:
+        return ""
 
 
 @click.group("dj")
@@ -103,6 +231,13 @@ def curate(
 @click.option("--overwrite", is_flag=True, help="Overwrite existing files")
 @click.option("--detect-keys", is_flag=True, help="Run KeyFinder key detection")
 @click.option("--dry-run", is_flag=True, help="Plan only, no transcoding")
+@click.option(
+    "--safe",
+    "safe_only",
+    is_flag=True,
+    help="Only export tracks marked safe in track_overrides.csv",
+)
+@click.option("--crate", "crate_name", default=None, help="Filter to a specific crate")
 def export(
     input_xlsx: str,
     sheet: str | None,
@@ -112,12 +247,33 @@ def export(
     overwrite: bool,
     detect_keys: bool,
     dry_run: bool,
+    safe_only: bool,
+    crate_name: str | None,
 ) -> None:
     """Curate and transcode DJ library to USB output root."""
     config = load_dj_curation_config(policy_path)
     tracks, dropped_missing, _ = load_tracks(Path(input_xlsx), sheet)
     deduped, dropped_dupes = dedupe_tracks(tracks)
-    assign_output_paths(deduped, Path(output_root))
+
+    export_root = Path(output_root)
+    if crate_name:
+        export_root = export_root / sanitize_component(crate_name, crate_name)
+
+    assign_output_paths(deduped, export_root)
+
+    skipped = 0
+    if safe_only or crate_name:
+        total_before_filter = len(deduped)
+        deduped, skipped = _select_tracks_with_overrides(
+            deduped,
+            safe_only=safe_only,
+            crate=crate_name,
+        )
+        if not deduped:
+            click.echo("No tracks matched the requested safe/crate filters.")
+            return
+        if safe_only:
+            skipped = total_before_filter - len(deduped)
 
     if dry_run:
         click.echo("Dry run mode — no transcoding will occur")
@@ -133,7 +289,7 @@ def export(
     stats = run_export(
         deduped,
         config,
-        Path(output_root),
+        export_root,
         jobs=jobs,
         overwrite=overwrite,
         detect_keys=detect_keys,
@@ -153,3 +309,258 @@ def export(
         click.echo(f"Failed:            {stats.transcoded_failed}")
     else:
         click.echo("(Dry run — transcoding skipped)")
+
+    if safe_only:
+        click.echo(f"Exported {len(deduped)} tracks. {skipped} skipped (not yet classified).")
+
+
+@dj_group.group("crates")
+def crates_group() -> None:
+    """Manage DJ crate assignments."""
+
+
+@crates_group.command("list")
+def crates_list() -> None:
+    items = _load_override_items(TRACK_OVERRIDES_PATH)
+    rows = list(_iter_override_rows(items))
+    if not rows:
+        click.echo("No track overrides found.")
+        return
+
+    counts: Counter[str] = Counter()
+    for row in rows:
+        crate_field = row[5] if len(row) > 5 else ""
+        for crate in _parse_crates(crate_field):
+            counts[crate] += 1
+
+    if not counts:
+        click.echo("No crates defined.")
+        return
+
+    for crate, count in sorted(counts.items(), key=lambda item: item[0].lower()):
+        click.echo(f"{crate}: {count}")
+
+
+@crates_group.command("show")
+@click.argument("crate_name")
+def crates_show(crate_name: str) -> None:
+    items = _load_override_items(TRACK_OVERRIDES_PATH)
+    rows = list(_iter_override_rows(items))
+    matches = [
+        row
+        for row in rows
+        if len(row) > 5 and _crate_matches(crate_name, row[5])
+    ]
+
+    if not matches:
+        click.echo(f"No tracks found in crate '{crate_name}'.")
+        return
+
+    for row in matches:
+        path_value = row[0]
+        artist = row[1]
+        title = row[2]
+        duration = None
+        key = None
+        if path_value:
+            path = Path(path_value)
+            if path.exists():
+                duration = get_audio_duration(path)
+                key = _read_key_from_file(path)
+        duration_display = _format_duration(duration)
+        key_display = key or "n/a"
+        click.echo(f"{artist} — {title} | {duration_display} | {key_display}")
+
+
+@crates_group.command("move")
+@click.argument("from_crate")
+@click.argument("to_crate")
+def crates_move(from_crate: str, to_crate: str) -> None:
+    items = _load_override_items(TRACK_OVERRIDES_PATH)
+    if not items:
+        click.echo("No track overrides found.")
+        return
+
+    moved = 0
+    for row in _iter_override_rows(items):
+        if len(row) < 6:
+            continue
+        crates = _parse_crates(row[5])
+        if not crates:
+            continue
+        updated = False
+        new_crates: list[str] = []
+        for crate in crates:
+            if _normalize_crate(crate) == _normalize_crate(from_crate):
+                new_crates.append(to_crate)
+                updated = True
+            else:
+                new_crates.append(crate)
+        if updated:
+            deduped: list[str] = []
+            seen = set()
+            for crate in new_crates:
+                key = _normalize_crate(crate)
+                if key in seen:
+                    continue
+                seen.add(key)
+                deduped.append(crate)
+            row[5] = ", ".join(deduped)
+            moved += 1
+
+    if moved == 0:
+        click.echo(f"No tracks found in crate '{from_crate}'.")
+        return
+
+    if not click.confirm(f"Move {moved} tracks from '{from_crate}' to '{to_crate}'?"):
+        click.echo("Aborted.")
+        return
+
+    _write_override_items(TRACK_OVERRIDES_PATH, items)
+    click.echo(f"Moved {moved} tracks.")
+
+
+@crates_group.command("retag")
+@click.argument("crate_name")
+def crates_retag(crate_name: str) -> None:
+    items = _load_override_items(TRACK_OVERRIDES_PATH)
+    if not items:
+        click.echo("No track overrides found.")
+        return
+
+    matches = [
+        row
+        for row in _iter_override_rows(items)
+        if len(row) > 5 and _crate_matches(crate_name, row[5])
+    ]
+    if not matches:
+        click.echo(f"No tracks found in crate '{crate_name}'.")
+        return
+
+    updated = 0
+    for row in matches:
+        artist = row[1]
+        title = row[2]
+        verdict = row[3] if len(row) > 3 else ""
+        crate_field = row[5] if len(row) > 5 else ""
+
+        click.echo("\n" + "-" * 48)
+        click.echo(f"ARTIST: {artist}")
+        click.echo(f"TITLE:  \"{title}\"")
+        click.echo(f"Current verdict: {verdict or 'n/a'} | Current crate: {crate_field or 'n/a'}")
+        click.echo("[K] Keep  [B] Block  [R] Review  [S] Skip")
+        choice = _prompt_choice()
+
+        if choice == "S" or choice == "":
+            continue
+
+        if choice == "B":
+            row[3] = "block"
+            row[5] = ""
+            updated += 1
+            continue
+
+        if choice in {"K", "R"}:
+            row[3] = "safe" if choice == "K" else "review"
+            new_crate = input("Assign crate (Enter to keep current): ").strip()
+            if new_crate:
+                row[5] = new_crate
+            updated += 1
+
+    if updated == 0:
+        click.echo("No changes made.")
+        return
+
+    _write_override_items(TRACK_OVERRIDES_PATH, items)
+    click.echo(f"Updated {updated} tracks.")
+
+
+@crates_group.command("export")
+@click.argument("crate_name")
+@click.option(
+    "--input-xlsx",
+    type=click.Path(exists=True),
+    default=DEFAULT_INPUT,
+    help="Source XLSX manifest",
+)
+@click.option("--sheet", default=None, help="Worksheet name")
+@click.option(
+    "--policy",
+    "policy_path",
+    default=DEFAULT_POLICY,
+    help="DJ curation policy YAML",
+)
+@click.option(
+    "--output-root",
+    type=click.Path(),
+    default=DEFAULT_OUTPUT,
+    help="Export destination root",
+)
+@click.option("--jobs", default=4, show_default=True, help="Parallel transcode workers")
+@click.option("--overwrite", is_flag=True, help="Overwrite existing files")
+@click.option("--detect-keys", is_flag=True, help="Run KeyFinder key detection")
+@click.option("--dry-run", is_flag=True, help="Plan only, no transcoding")
+def crates_export(
+    crate_name: str,
+    input_xlsx: str,
+    sheet: str | None,
+    policy_path: str,
+    output_root: str,
+    jobs: int,
+    overwrite: bool,
+    detect_keys: bool,
+    dry_run: bool,
+) -> None:
+    """Export only the tracks in a specific crate."""
+    config = load_dj_curation_config(policy_path)
+    tracks, dropped_missing, _ = load_tracks(Path(input_xlsx), sheet)
+    deduped, dropped_dupes = dedupe_tracks(tracks)
+
+    export_root = Path(output_root) / sanitize_component(crate_name, crate_name)
+    assign_output_paths(deduped, export_root)
+
+    deduped, skipped = _select_tracks_with_overrides(
+        deduped,
+        safe_only=True,
+        crate=crate_name,
+    )
+    if not deduped:
+        click.echo(f"No tracks matched crate '{crate_name}'.")
+        return
+
+    if dry_run:
+        click.echo("Dry run mode — no transcoding will occur")
+
+    total_ref = [0]
+
+    def progress(completed: int, total: int) -> None:
+        if total_ref[0] != total:
+            total_ref[0] = total
+        if completed % 50 == 0 or completed == total:
+            click.echo(f"Progress: {completed}/{total}")
+
+    stats = run_export(
+        deduped,
+        config,
+        export_root,
+        jobs=jobs,
+        overwrite=overwrite,
+        detect_keys=detect_keys,
+        dry_run=dry_run,
+        progress_callback=progress,
+    )
+
+    click.echo("")
+    click.echo(f"Crate:            {crate_name}")
+    click.echo(f"Total candidates: {stats.total_candidates}")
+    click.echo(f"Passed curation:  {stats.passed_curation}")
+    click.echo(f"Rejected:         {stats.rejected_curation}")
+    click.echo(f"Dropped missing:  {len(dropped_missing)}")
+    click.echo(f"Dropped dupes:    {len(dropped_dupes)}")
+    if not dry_run:
+        click.echo(f"Transcoded OK:    {stats.transcoded_ok}")
+        click.echo(f"Skipped existing: {stats.transcoded_skipped}")
+        click.echo(f"Failed:           {stats.transcoded_failed}")
+    else:
+        click.echo("(Dry run — transcoding skipped)")
+    click.echo(f"Skipped (unclassified): {skipped}")

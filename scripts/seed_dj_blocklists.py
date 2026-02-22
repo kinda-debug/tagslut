@@ -196,6 +196,21 @@ def _normalize_path(path_str: str) -> str:
     stem = p.stem
     if suffix == ".flac" and stem.lower().endswith(".flac"):
         p = p.with_name(stem[:-5] + ".flac")
+    if p.exists():
+        return str(p)
+    if (path_str + ".flac") and Path(path_str + ".flac").exists():
+        return str(Path(path_str + ".flac"))
+    candidates = []
+    if " - " in text:
+        candidates.append(text.replace(" - ", " – "))
+    if " – " in text:
+        candidates.append(text.replace(" – ", " - "))
+    for candidate in candidates:
+        candidate_path = Path(candidate)
+        if candidate_path.suffix.lower() == ".flac" and candidate_path.stem.lower().endswith(".flac"):
+            candidate_path = candidate_path.with_name(candidate_path.stem[:-5] + ".flac")
+        if candidate_path.exists():
+            return str(candidate_path)
     return str(p)
 
 

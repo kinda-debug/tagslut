@@ -11,7 +11,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).parents[2]))
 
 from tagslut.storage.schema import get_connection
-from tagslut.core.decisions import assess_duplicate_group
+from tagslut.decide.planner import assess_duplicate_group
 from tagslut.utils.cli_helper import common_options, configure_execution
 from tagslut.utils.config import get_config
 

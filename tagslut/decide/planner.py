@@ -6,9 +6,12 @@ from dataclasses import dataclass, field
 import hashlib
 import json
 import os
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable, Mapping, Sequence
 
 from tagslut.policy.models import ALLOWED_ACTIONS, PolicyProfile
+from tagslut.storage.models import AudioFile, Decision, DuplicateGroup
+from tagslut.core.keeper_selection import select_keeper_for_group
+from tagslut.utils.zones import load_zone_manager
 
 
 def _stable_hash(payload: Any) -> str:
@@ -252,3 +255,40 @@ def build_deterministic_plan(
         plan_hash=plan_hash,
         rows=tuple(rows),
     )
+
+
+# Legacy duplicate-group assessment helpers (migrated from tagslut.core.decisions).
+# Keep these here to consolidate decision logic in the decide/ module.
+DEFAULT_ZONE_PRIORITY = ["accepted", "staging"]
+
+
+def get_zone_priority(file: AudioFile, priorities: Sequence[str]) -> int:
+    """Deprecated: retained for compatibility with legacy callers."""
+    if file.zone and str(file.zone) in priorities:
+        return priorities.index(str(file.zone))
+    return 999
+
+
+def assess_duplicate_group(
+    group: DuplicateGroup,
+    priority_order: list[str] | None = None,
+    *,
+    use_metadata_tiebreaker: bool = False,
+    metadata_fields: Iterable[str] = ("artist", "album", "title"),
+) -> list[Decision]:
+    """
+    Analyze a group of duplicates and return decisions for each file.
+
+    This wraps the new keeper selection module while keeping the legacy API.
+    """
+    zone_manager = load_zone_manager()
+    if priority_order:
+        zone_manager = zone_manager.override_priorities(priority_order)
+
+    result = select_keeper_for_group(
+        group,
+        zone_manager=zone_manager,
+        use_metadata_tiebreaker=use_metadata_tiebreaker,
+        metadata_fields=tuple(metadata_fields),
+    )
+    return result.decisions

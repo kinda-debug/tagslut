@@ -136,8 +136,7 @@ def main() -> int:
         errors.append(
             "Removed top-level commands still present: " + ", ".join(stale_top)
         )
-    # Note: dedupe alias check removed — `python -m dedupe` no longer works
-    # after rebrand. The `dedupe` script entry point still exists via pyproject.toml
+    # Note: dedupe alias removed — no legacy entrypoint should remain after rebrand.
 
     missing_intake = sorted(INTAKE_REQUIRED_COMMANDS - intake_commands)
     if missing_intake:
@@ -192,7 +191,6 @@ def main() -> int:
             "docs/SCRIPT_SURFACE.md",
         )
     ensure_contains(script_surface, "Compatibility aliases:", errors, "docs/SCRIPT_SURFACE.md")
-    ensure_contains(script_surface, "`dedupe`", errors, "docs/SCRIPT_SURFACE.md")
     # Phase runbook doc references removed — docs archived during decommission
 
     for removed in sorted(REMOVED_LEGACY_COMMANDS | REMOVED_COMPAT_COMMANDS):

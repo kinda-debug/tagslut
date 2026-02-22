@@ -1,3 +1,19 @@
+"""
+CLI Entry Point for Tagslut
+
+ARCHITECTURE INTENT:
+This file should contain ONLY:
+- Top-level Click group registration
+- Command group imports from tagslut.cli.commands.*
+- Global Click options/context setup
+
+All command implementations belong in tagslut/cli/commands/*.py
+Target size: < 500 bytes
+
+Current state: 113KB god file (MIGRATION IN PROGRESS)
+Target: Extract all command decorators to commands/ subdirectory
+"""
+
 import click
 import logging
 import os

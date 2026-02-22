@@ -66,7 +66,7 @@ def test_pyproject_toml_parses() -> None:
         "tagslut.core.matching",
         "tagslut.core.metadata",
         "tagslut.exec",
-        "tagslut.integrity_scanner",
+        "tagslut.core.scanner",
         "tagslut.policy",
         "tagslut.decide",
         "tagslut.storage",

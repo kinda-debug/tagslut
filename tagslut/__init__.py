@@ -11,7 +11,6 @@ from typing import Any
 __all__ = [
     "decide",
     "core",
-    "integrity_scanner",
     "policy",
     "storage",
     "utils",

@@ -86,8 +86,8 @@ def _load_track_overrides() -> dict[str, dict[str, dict[str, Any]]]:
             if row[0].strip().startswith("#"):
                 continue
             # Expected columns: path, artist, title, verdict, reason, crate
-            while len(row) < 6:
-                row.append("")
+            if len(row) < 6:
+                row = list(row) + [""] * (6 - len(row))
             path, artist, title, verdict, reason, crate = [cell.strip() for cell in row[:6]]
             if not artist or not title or not verdict:
                 continue

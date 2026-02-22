@@ -9,6 +9,7 @@ import re
 import sys
 import termios
 import tty
+import io
 from collections import defaultdict
 from pathlib import Path
 from statistics import median
@@ -186,6 +187,18 @@ def _parse_duration_seconds(value: Any) -> float | None:
         return None
 
 
+def _normalize_path(path_str: str) -> str:
+    text = path_str.strip()
+    if not text:
+        return ""
+    p = Path(text)
+    suffix = p.suffix.lower()
+    stem = p.stem
+    if suffix == ".flac" and stem.lower().endswith(".flac"):
+        p = p.with_name(stem[:-5] + ".flac")
+    return str(p)
+
+
 def _iter_tracks_from_rows(rows: list[dict[str, Any]], *, path: Path) -> list[dict[str, Any]]:
     cols = _validate_columns(path, rows)
     tracks = []
@@ -196,6 +209,7 @@ def _iter_tracks_from_rows(rows: list[dict[str, Any]], *, path: Path) -> list[di
         bpm = _parse_float(row.get(cols["bpm"], "")) if cols["bpm"] else None
         duration = _parse_duration_seconds(row.get(cols["duration"], "")) if cols["duration"] else None
         source_path = row.get(cols["path"], "") if cols["path"] else ""
+        normalized_path = _normalize_path(str(source_path)) if source_path else ""
         tracks.append(
             {
                 "artist": str(artist).strip(),
@@ -203,7 +217,7 @@ def _iter_tracks_from_rows(rows: list[dict[str, Any]], *, path: Path) -> list[di
                 "genre": str(genre).strip(),
                 "bpm": bpm,
                 "duration": duration,
-                "path": str(source_path).strip(),
+                "path": normalized_path,
             }
         )
     return tracks
@@ -225,7 +239,9 @@ def _load_existing_overrides(path: Path) -> tuple[set[str], set[str]]:
                 row.append("")
             p, artist, title = [cell.strip() for cell in row[:3]]
             if p:
-                by_path.add(p.lower())
+                normalized = _normalize_path(p)
+                if normalized:
+                    by_path.add(normalized.lower())
             if artist and title:
                 by_artist_title.add(f"{_normalize(artist)}|{_normalize(title)}")
     return by_path, by_artist_title
@@ -330,7 +346,15 @@ def main() -> int:
 
     existing_paths, existing_artist_titles = _load_existing_overrides(TRACK_OVERRIDES_PATH)
 
-    primary_artists = {_normalize(t["artist"]) for t in tracks if t.get("artist")}
+    primary_artists = set()
+    for t in tracks:
+        artist_field = str(t.get("artist") or "").strip()
+        if not artist_field:
+            continue
+        for part in artist_field.split(","):
+            name = part.strip()
+            if name:
+                primary_artists.add(_normalize(name))
 
     # build artist stats
     artist_stats: dict[str, dict[str, Any]] = {}
@@ -520,7 +544,10 @@ def main() -> int:
         print("\n[DRY RUN] Would append to track_overrides.csv:")
         print(f"# Seeded {dt.datetime.now().strftime('%Y-%m-%d')} via seed_dj_blocklists.py")
         for row in to_write[:20]:
-            print(", ".join(row))
+            output = io.StringIO()
+            writer = csv.writer(output, quoting=csv.QUOTE_MINIMAL)
+            writer.writerow(row)
+            print(output.getvalue().strip())
         return 0
 
     if not to_write:
@@ -530,7 +557,7 @@ def main() -> int:
     TRACK_OVERRIDES_PATH.parent.mkdir(parents=True, exist_ok=True)
     with TRACK_OVERRIDES_PATH.open("a", encoding="utf-8", newline="") as handle:
         handle.write(f"# Seeded {dt.datetime.now().strftime('%Y-%m-%d')} via seed_dj_blocklists.py\n")
-        writer = csv.writer(handle)
+        writer = csv.writer(handle, quoting=csv.QUOTE_MINIMAL)
         for row in to_write:
             writer.writerow(row)
     return 0

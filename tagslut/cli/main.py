@@ -30,6 +30,7 @@ from tagslut.cli.runtime import (
 
 from tagslut.cli.commands.auth import register_auth_group
 from tagslut.cli.commands.decide import register_decide_group
+from tagslut.cli.commands.dj import dj_group
 from tagslut.cli.commands.execute import register_execute_group
 from tagslut.cli.commands.index import register_index_group
 from tagslut.cli.commands.intake import register_intake_group
@@ -2804,6 +2805,7 @@ register_execute_group(cli)
 register_verify_group(cli)
 register_report_group(cli)
 register_auth_group(cli)
+cli.add_command(dj_group)
 
 @cli.command()
 @click.argument("paths", nargs=-1, type=click.Path(exists=True))

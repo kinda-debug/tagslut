@@ -8,6 +8,19 @@ import re
 import subprocess
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
+from openpyxl import load_workbook
+
+REQUIRED_COLUMNS = {
+    "Album Artist",
+    "Album",
+    "Track#",
+    "Title",
+    "Track Artist(s)",
+    "External Id",
+    "Source",
+    "Path",
+}
+
 
 def run_checked(command: Sequence[str], timeout: Optional[int] = None) -> subprocess.CompletedProcess[str]:
     """Run a subprocess command and capture output without raising on failure."""
@@ -32,6 +45,21 @@ def sanitize_component(value: Optional[object], fallback: str) -> str:
     text = re.sub(r"\s+", " ", text).strip()
     text = text.rstrip(". ")
     return text or fallback
+
+
+def parse_track_number(value: Optional[object]) -> Optional[int]:
+    """Parse an optional track number field into an integer."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if "/" in text:
+        text = text.split("/", 1)[0]
+    try:
+        return int(float(text))
+    except ValueError:
+        return None
 
 
 @dataclass
@@ -59,6 +87,58 @@ def make_dedupe_key(track: TrackRow) -> Tuple[str, ...]:
     artist = normalize_text(track.track_artist) or normalize_text(track.album_artist)
     title = normalize_text(track.title)
     return ("meta", artist, title)
+
+
+def load_tracks(
+    xlsx_path: Path,
+    sheet_name: Optional[str],
+) -> Tuple[List[TrackRow], List[Dict[str, object]], List[str]]:
+    """Load tracks from XLSX for DJ export."""
+    wb = load_workbook(xlsx_path, data_only=True, read_only=True)
+    ws = wb[sheet_name] if sheet_name else wb[wb.sheetnames[0]]
+
+    headers = [ws.cell(1, c).value for c in range(1, ws.max_column + 1)]
+    header_to_idx = {str(h): i for i, h in enumerate(headers) if h is not None}
+
+    missing_cols = sorted(REQUIRED_COLUMNS - set(header_to_idx.keys()))
+    if missing_cols:
+        raise RuntimeError(f"Missing required columns in worksheet '{ws.title}': {missing_cols}")
+
+    tracks: List[TrackRow] = []
+    dropped_missing_path: List[Dict[str, object]] = []
+
+    for row_num in range(2, ws.max_row + 1):
+        def get(col: str) -> Optional[object]:
+            return ws.cell(row_num, header_to_idx[col] + 1).value
+
+        raw_path = get("Path")
+        if raw_path is None or str(raw_path).strip() == "":
+            dropped_missing_path.append({"row_num": row_num, "reason": "empty_path", "path": ""})
+            continue
+
+        source_path = Path(str(raw_path))
+        if not source_path.exists():
+            dropped_missing_path.append(
+                {"row_num": row_num, "reason": "missing_on_disk", "path": str(source_path)}
+            )
+            continue
+
+        track = TrackRow(
+            row_num=row_num,
+            album_artist=str(get("Album Artist") or ""),
+            album=str(get("Album") or ""),
+            track_number=parse_track_number(get("Track#")),
+            title=str(get("Title") or ""),
+            track_artist=str(get("Track Artist(s)") or ""),
+            external_id=str(get("External Id") or ""),
+            source=str(get("Source") or ""),
+            source_path=source_path,
+            dedupe_key=("",),
+        )
+        track.dedupe_key = make_dedupe_key(track)
+        tracks.append(track)
+
+    return tracks, dropped_missing_path, headers
 
 
 def build_output_path(output_root: Path, track: TrackRow) -> Path:

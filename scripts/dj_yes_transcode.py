@@ -32,42 +32,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
-from openpyxl import load_workbook
 from mutagen import File as MutagenFile
 from tagslut.dj.transcode import (
     TrackRow,
     assign_output_paths,
     dedupe_tracks,
-    make_dedupe_key,
+    load_tracks,
     run_checked,
     transcode_one,
 )
-
-REQUIRED_COLUMNS = {
-    "Album Artist",
-    "Album",
-    "Track#",
-    "Title",
-    "Track Artist(s)",
-    "External Id",
-    "Source",
-    "Path",
-}
-
-
-def parse_track_number(value: Optional[object]) -> Optional[int]:
-    if value is None:
-        return None
-    text = str(value).strip()
-    if not text:
-        return None
-    if "/" in text:
-        text = text.split("/", 1)[0]
-    try:
-        return int(float(text))
-    except ValueError:
-        return None
-
 
 def check_ffmpeg() -> None:
     ffmpeg_path = shutil.which("ffmpeg")
@@ -77,52 +50,6 @@ def check_ffmpeg() -> None:
     probe = run_checked(["ffmpeg", "-version"])
     if probe.returncode != 0:
         raise RuntimeError(f"ffmpeg exists but is not runnable: {probe.stderr.strip()}")
-
-
-def load_tracks(xlsx_path: Path, sheet_name: Optional[str]) -> Tuple[List[TrackRow], List[Dict[str, object]], List[str]]:
-    wb = load_workbook(xlsx_path, data_only=True, read_only=True)
-    ws = wb[sheet_name] if sheet_name else wb[wb.sheetnames[0]]
-
-    headers = [ws.cell(1, c).value for c in range(1, ws.max_column + 1)]
-    header_to_idx = {str(h): i for i, h in enumerate(headers) if h is not None}
-
-    missing_cols = sorted(REQUIRED_COLUMNS - set(header_to_idx.keys()))
-    if missing_cols:
-        raise RuntimeError(f"Missing required columns in worksheet '{ws.title}': {missing_cols}")
-
-    tracks: List[TrackRow] = []
-    dropped_missing_path: List[Dict[str, object]] = []
-
-    for row_num in range(2, ws.max_row + 1):
-        def get(col: str) -> Optional[object]:
-            return ws.cell(row_num, header_to_idx[col] + 1).value
-
-        raw_path = get("Path")
-        if raw_path is None or str(raw_path).strip() == "":
-            dropped_missing_path.append({"row_num": row_num, "reason": "empty_path", "path": ""})
-            continue
-
-        source_path = Path(str(raw_path))
-        if not source_path.exists():
-            dropped_missing_path.append({"row_num": row_num, "reason": "missing_on_disk", "path": str(source_path)})
-            continue
-
-        track = TrackRow(
-            row_num=row_num,
-            album_artist=str(get("Album Artist") or ""),
-            album=str(get("Album") or ""),
-            track_number=parse_track_number(get("Track#")),
-            title=str(get("Title") or ""),
-            track_artist=str(get("Track Artist(s)") or ""),
-            external_id=str(get("External Id") or ""),
-            source=str(get("Source") or ""),
-            source_path=source_path,
-            dedupe_key=("",),
-        )
-        track.dedupe_key = make_dedupe_key(track)
-        tracks.append(track)
-
-    return tracks, dropped_missing_path, headers
 
 
 def ffprobe_duration_seconds(path: Path, timeout_sec: int = 8) -> Optional[float]:

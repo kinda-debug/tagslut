@@ -151,7 +151,19 @@ def _scan_index(rows: list[dict[str, Any]], columns: dict[str, str | None]) -> d
 def _enrich(track: LexiconTrack, scan_index: dict[str, dict[str, Any]], columns: dict[str, str | None]) -> None:
     row = None
     if track.path:
-        row = scan_index["by_path"].get(track.path.lower())
+        raw_path = track.path
+        candidates = [raw_path]
+        if " – " in raw_path:
+            candidates.append(raw_path.replace(" – ", " - "))
+        if " - " in raw_path:
+            candidates.append(raw_path.replace(" - ", " – "))
+        candidates.append(f"{raw_path}.flac")
+        if raw_path.endswith(".flac.flac"):
+            candidates.append(raw_path[:-5])
+        for candidate in candidates:
+            row = scan_index["by_path"].get(candidate.lower())
+            if row is not None:
+                break
     if row is None:
         key = f"{_normalize(track.artist)}|{_normalize(track.title)}"
         row = scan_index["by_artist_title"].get(key)

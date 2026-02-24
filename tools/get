@@ -54,7 +54,68 @@ if [[ "$URL" == *"tidal.com"* ]]; then
         exit 1
     fi
     cd "$REPO_ROOT"
-    exec "$TIDDL_WRAPPER" "$URL" "$@"
+    # Default to missing-only for Tidal to avoid duplicates.
+    MISSING_ONLY=1
+    DB_PATH=""
+    DOWNLOADER_ARGS=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --missing-only)
+                MISSING_ONLY=1
+                shift
+                ;;
+            --allow-duplicates)
+                MISSING_ONLY=0
+                shift
+                ;;
+            --db)
+                [[ $# -ge 2 ]] || { echo "Error: --db requires a value" >&2; exit 2; }
+                DB_PATH="$2"
+                shift 2
+                ;;
+            --)
+                shift
+                DOWNLOADER_ARGS+=("$@")
+                break
+                ;;
+            *)
+                DOWNLOADER_ARGS+=("$1")
+                shift
+                ;;
+        esac
+    done
+
+    if [[ "$MISSING_ONLY" -eq 1 ]]; then
+        PRECHECK_DIR="$REPO_ROOT/output/precheck"
+        mkdir -p "$PRECHECK_DIR"
+        DB_ARG=()
+        if [[ -n "$DB_PATH" ]]; then
+            DB_ARG=(--db "$DB_PATH")
+        elif [[ -n "${TAGSLUT_DB:-}" ]]; then
+            DB_ARG=(--db "$TAGSLUT_DB")
+        fi
+        PYTHONPATH="$REPO_ROOT" python3 "$REPO_ROOT/tools/review/pre_download_check.py" \
+            --input "$URL" \
+            --out-dir "$PRECHECK_DIR" \
+            "${DB_ARG[@]}"
+
+        KEEP_LIST="$(ls -t "$PRECHECK_DIR"/precheck_keep_track_urls_*.txt 2>/dev/null | head -n1 || true)"
+        if [[ -z "$KEEP_LIST" ]]; then
+            echo "Error: keep list not found in $PRECHECK_DIR" >&2
+            exit 1
+        fi
+        if [[ ! -s "$KEEP_LIST" ]]; then
+            echo "No missing tracks to download (keep list empty)."
+            exit 0
+        fi
+        while IFS= read -r track_url; do
+            [[ -n "$track_url" ]] || continue
+            "$TIDDL_WRAPPER" "$track_url" "${DOWNLOADER_ARGS[@]}"
+        done < "$KEEP_LIST"
+        exit 0
+    fi
+
+    exec "$TIDDL_WRAPPER" "$URL" "${DOWNLOADER_ARGS[@]}"
 
 elif [[ "$URL" == *"beatport.com"* ]]; then
     if [[ ! -x "$GET_SYNC" ]]; then

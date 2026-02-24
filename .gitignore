@@ -477,3 +477,7 @@ artifacts/
 # Python cache
 __pycache__/
 *.pyc
+wider_new.m3u8
+config/dj/crates/block.m3u8
+config/dj/crates/review.m3u8
+config/dj/crates/safe.m3u8

@@ -28,3 +28,16 @@ See `docs/` for workflows, operations, architecture, and troubleshooting.
 - `docs/ARCHITECTURE.md`
 - `docs/TROUBLESHOOTING.md`
 - `docs/DJ_WORKFLOW.md`
+- `docs/PROJECT.md`
+- `docs/PROGRESS_REPORT.md`
+
+## Development
+
+```bash
+poetry install
+poetry run pytest tests -x -q
+```
+
+## License
+
+See `LICENSE`.

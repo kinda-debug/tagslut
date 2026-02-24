@@ -10,8 +10,11 @@ Move-only policy:
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sys
+import subprocess
+import sqlite3
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parents[2]))
@@ -88,6 +91,35 @@ def normalize_tags_for_promote(tags):
         else:
             out[k] = [str(v)]
     return out
+
+
+def flac_test_ok(path: Path) -> tuple[bool, str | None]:
+    try:
+        res = subprocess.run(
+            ["flac", "-t", "--silent", str(path)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        return False, "flac binary missing"
+    except Exception as exc:
+        return False, f"{type(exc).__name__}: {exc}"
+
+    if res.returncode == 0:
+        return True, None
+    err = (res.stderr or res.stdout or "").strip()
+    return False, err[:400] or "flac -t failed"
+
+
+def duration_ok(conn: sqlite3.Connection, path: Path) -> tuple[bool, str]:
+    row = conn.execute("SELECT duration_status FROM files WHERE path = ?", (str(path),)).fetchone()
+    if not row:
+        return False, "duration_status=missing"
+    status = (row[0] or "").strip().lower()
+    if status == "ok":
+        return True, "duration_status=ok"
+    return False, f"duration_status={status or 'unknown'}"
 
 
 # ---------------------------
@@ -235,6 +267,21 @@ def main():
                         help="Path to canon rules JSON (default: tools/rules/library_canon.json)")
     parser.add_argument("--dj-only", action="store_true",
                         help="Treat sources as DJ material (use label for compilations)")
+    parser.add_argument(
+        "--skip-flac-test",
+        action="store_true",
+        help="Skip flac -t integrity test (default: run and block corrupt files)",
+    )
+    parser.add_argument(
+        "--db",
+        type=Path,
+        help="SQLite DB path for duration_status checks (defaults to $TAGSLUT_DB if set)",
+    )
+    parser.add_argument(
+        "--allow-non-ok-duration",
+        action="store_true",
+        help="Allow promotion when duration_status is not ok (default: block when DB is available)",
+    )
     parser.add_argument("--execute", action="store_true",
                         help="Actually perform moves (default is dry-run)")
     parser.add_argument(
@@ -273,8 +320,19 @@ def main():
 
     success_count = 0
     skip_count = 0
+    integrity_skip = 0
+    duration_skip = 0
     error_count = 0
     errors = []
+
+    db_conn = None
+    db_path = args.db or Path(os.environ.get("TAGSLUT_DB", "")).expanduser()
+    if db_path and str(db_path) and db_path.exists():
+        db_conn = sqlite3.connect(str(db_path))
+    elif args.db:
+        ui.warning(f"DB path not found for duration checks: {db_path}")
+    else:
+        ui.warning("No DB configured; duration_status checks are skipped.")
 
     canon_rules = None
     if args.canon:
@@ -285,6 +343,24 @@ def main():
 
     for i, src in enumerate(files_to_process, 1):
         try:
+            if not args.skip_flac_test:
+                ok, err = flac_test_ok(src)
+                if not ok:
+                    integrity_skip += 1
+                    skip_count += 1
+                    errors.append((src.name, f"FLAC integrity failed: {err}"))
+                    ui.print(f"[{i:4d}/{total}] SKIP: {src.name[:50]} (corrupt FLAC)")
+                    continue
+
+            if db_conn is not None and not args.allow_non_ok_duration:
+                ok, reason = duration_ok(db_conn, src)
+                if not ok:
+                    duration_skip += 1
+                    skip_count += 1
+                    errors.append((src.name, f"Duration gate failed: {reason}"))
+                    ui.print(f"[{i:4d}/{total}] SKIP: {src.name[:50]} ({reason})")
+                    continue
+
             audio = FLAC(src)
             raw_tags = {k: list(v) if isinstance(v, list) else v for k, v in audio.tags.items()}
             if canon_rules:
@@ -340,6 +416,10 @@ def main():
     ui.print(f"  Processed: {success_count}")
     if skip_count:
         ui.print(f"  Skipped:   {skip_count}")
+    if integrity_skip:
+        ui.print(f"  Integrity blocked: {integrity_skip}")
+    if duration_skip:
+        ui.print(f"  Duration blocked: {duration_skip}")
     if error_count:
         ui.print(f"  Errors:    {error_count}")
 
@@ -357,6 +437,9 @@ def main():
         ui.success("Promotion complete")
     else:
         ui.print("Run with --execute to perform actual moves")
+
+    if db_conn is not None:
+        db_conn.close()
 
 
 if __name__ == "__main__":

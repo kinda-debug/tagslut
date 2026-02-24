@@ -656,6 +656,11 @@ poetry run tagslut verify duration \
 
 ## 7) Promote to Library (Move Workflow)
 
+Notes:
+- Promotion now blocks corrupt FLACs via `flac -t`.
+- If using `promote_replace_merge.py`, promotion also requires `duration_status=ok` unless overridden.
+- `promote_by_tags.py` enforces `duration_status=ok` when TAGSLUT_DB/--db is set (override with `--allow-non-ok-duration`).
+
 ### 7.1 Dry run
 
 ```bash
@@ -1050,6 +1055,9 @@ python3 tools/review/promote_replace_merge.py /Users/georgeskhawam/Music/tiddl \
   --db /Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db \
   --execute
 ```
+Safety gates (default):
+- Corrupt FLACs are blocked (`flac -t`)
+- `duration_status` must be `ok` (override with `--allow-non-ok-duration`)
 
 8) Transcode **new tracks only** (from `MDL_NEW_TRACKS.m3u`) to DJSSD
 ```bash

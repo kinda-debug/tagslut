@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import sqlite3
+import subprocess
 from pathlib import Path
 
 from mutagen.flac import FLAC
@@ -56,6 +57,38 @@ def is_interesting(key: str) -> bool:
     if lk in CORE_TAGS:
         return False
     return lk.startswith(ALWAYS_INTERESTING_PREFIXES) or True
+
+
+def flac_test_ok(path: Path) -> tuple[bool, str | None]:
+    try:
+        res = subprocess.run(
+            ["flac", "-t", "--silent", str(path)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        return False, "flac binary missing"
+    except Exception as exc:
+        return False, f"{type(exc).__name__}: {exc}"
+
+    if res.returncode == 0:
+        return True, None
+    err = (res.stderr or res.stdout or "").strip()
+    return False, err[:400] or "flac -t failed"
+
+
+def duration_ok(conn: sqlite3.Connection, src: Path) -> tuple[bool, str]:
+    row = conn.execute(
+        "SELECT duration_status FROM files WHERE path = ?",
+        (str(src),),
+    ).fetchone()
+    if not row:
+        return False, "duration_status=missing"
+    status = (row[0] or "").strip().lower()
+    if status == "ok":
+        return True, "duration_status=ok"
+    return False, f"duration_status={status or 'unknown'}"
 
 
 def merge_old_metadata_into_new(dest_existing: Path, src_new: Path) -> tuple[int, int]:
@@ -178,6 +211,16 @@ def main() -> int:
         action="store_true",
         help="Allow moving files even if identical hash exists in library",
     )
+    ap.add_argument(
+        "--allow-non-ok-duration",
+        action="store_true",
+        help="Allow promotion when duration_status is not ok (default: block)",
+    )
+    ap.add_argument(
+        "--skip-flac-test",
+        action="store_true",
+        help="Skip flac -t integrity test (default: run and block corrupt files)",
+    )
     ap.add_argument("--execute", action="store_true")
     args = ap.parse_args()
 
@@ -203,6 +246,8 @@ def main() -> int:
     merged_tags = 0
     merged_pictures = 0
     skipped = 0
+    skipped_integrity = 0
+    skipped_duration = 0
     errored = 0
     unresolved = 0
     dup_skipped = 0
@@ -211,6 +256,22 @@ def main() -> int:
     try:
         for i, src in enumerate(files, 1):
             try:
+                if not args.skip_flac_test:
+                    ok, err = flac_test_ok(src)
+                    if not ok:
+                        skipped_integrity += 1
+                        if i % 25 == 0 or i == len(files):
+                            print(f"[{i}/{len(files)}] integrity_skip={skipped_integrity}")
+                        continue
+
+                if not args.allow_non_ok_duration:
+                    ok, reason = duration_ok(conn, src)
+                    if not ok:
+                        skipped_duration += 1
+                        if i % 25 == 0 or i == len(files):
+                            print(f"[{i}/{len(files)}] duration_skip={skipped_duration} ({reason})")
+                        continue
+
                 audio = FLAC(src)
                 raw_tags = {k: list(v) if isinstance(v, list) else v for k, v in audio.tags.items()}
                 canon_tags = apply_canon(raw_tags, canon_rules)
@@ -264,6 +325,10 @@ def main() -> int:
     print(f"db_updated={db_updated}")
     print(f"unresolved_layout={unresolved}")
     print(f"dup_skipped={dup_skipped}")
+    if skipped_integrity:
+        print(f"skipped_integrity={skipped_integrity}")
+    if skipped_duration:
+        print(f"skipped_duration={skipped_duration}")
     print(f"skipped={skipped}")
     print(f"errors={errored}")
     print(f"move_log={args.move_log}")

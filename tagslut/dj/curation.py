@@ -3,22 +3,45 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, field
+import unicodedata
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 
 log = logging.getLogger(__name__)
 _OVERRIDE_CACHE: dict[str, dict[str, dict[str, Any]]] | None = None
 
+DEFAULT_DJ_GENRES: tuple[str, ...] = (
+    "house",
+    "tech house",
+    "techno",
+    "melodic house & techno",
+    "indie dance",
+)
+DEFAULT_ANTI_DJ_GENRES: tuple[str, ...] = (
+    "classical",
+    "spoken word",
+    "ambient",
+    "pop",
+)
+
 
 @dataclass(frozen=True)
 class DjCurationConfig:
     duration_min: int = 180
     duration_max: int = 720
+    bpm_min: int = 100
+    bpm_max: int = 175
+    bpm_optimal_min: int = 120
+    bpm_optimal_max: int = 135
+    score_safe_min: int = 4
+    score_block_max: int = -2
     artist_blocklist: frozenset[str] = field(default_factory=frozenset)
     artist_reviewlist: frozenset[str] = field(default_factory=frozenset)
     genre_filters: tuple[str, ...] = field(default_factory=tuple)
+    dj_genres: tuple[str, ...] = field(default_factory=lambda: DEFAULT_DJ_GENRES)
+    anti_dj_genres: tuple[str, ...] = field(default_factory=lambda: DEFAULT_ANTI_DJ_GENRES)
 
 
 @dataclass
@@ -57,6 +80,11 @@ class CurationResult:
 def _normalize(text: str) -> str:
     """Normalize text for comparison: lowercase, collapse whitespace."""
     return re.sub(r"\s+", " ", text.strip().lower())
+
+
+def _normalize_path(value: str) -> str:
+    """Normalize paths for matching (casefold + unicode normalization)."""
+    return unicodedata.normalize("NFD", value.strip().lower())
 
 
 def _override_key(artist: str, title: str) -> str:
@@ -100,7 +128,7 @@ def _load_track_overrides() -> dict[str, dict[str, dict[str, Any]]]:
                 "crate": crate,
             }
             if path:
-                by_path[path.lower()] = entry
+                by_path[_normalize_path(path)] = entry
             by_artist_title[_override_key(artist, title)] = entry
 
     _OVERRIDE_CACHE = {"by_path": by_path, "by_artist_title": by_artist_title}
@@ -115,7 +143,7 @@ def resolve_track_override(
 ) -> dict[str, Any] | None:
     overrides = _load_track_overrides()
     if path:
-        entry = overrides["by_path"].get(path.lower())
+        entry = overrides["by_path"].get(_normalize_path(path))
         if entry is not None:
             return entry
     if artist and title:
@@ -142,13 +170,39 @@ def load_dj_curation_config(path: str) -> DjCurationConfig:
 
     blocklist_path = rules.get("artist_blocklist_path", "")
     reviewlist_path = rules.get("artist_reviewlist_path", "")
+    bpm_min = int(rules.get("bpm_min", 100))
+    bpm_max = int(rules.get("bpm_max", 175))
+    bpm_optimal_min = int(rules.get("bpm_optimal_min", 120))
+    bpm_optimal_max = int(rules.get("bpm_optimal_max", 135))
+    score_safe_min = int(rules.get("score_safe_min", 4))
+    score_block_max = int(rules.get("score_block_max", -2))
+
+    dj_genres = rules.get("dj_genres")
+    genres_allow = rules.get("genres_allow")
+    if dj_genres is None and genres_allow is not None:
+        merged = list(DEFAULT_DJ_GENRES)
+        for genre in genres_allow:
+            if genre not in merged:
+                merged.append(genre)
+        dj_genres = merged
+    if dj_genres is None:
+        dj_genres = list(DEFAULT_DJ_GENRES)
+    anti_dj_genres = rules.get("anti_dj_genres") or list(DEFAULT_ANTI_DJ_GENRES)
 
     return DjCurationConfig(
         duration_min=int(rules.get("duration_min", 180)),
         duration_max=int(rules.get("duration_max", 720)),
+        bpm_min=bpm_min,
+        bpm_max=bpm_max,
+        bpm_optimal_min=bpm_optimal_min,
+        bpm_optimal_max=bpm_optimal_max,
+        score_safe_min=score_safe_min,
+        score_block_max=score_block_max,
         artist_blocklist=_load_list_file(blocklist_path) if blocklist_path else frozenset(),
         artist_reviewlist=_load_list_file(reviewlist_path) if reviewlist_path else frozenset(),
         genre_filters=tuple(rules.get("genre_filters", [])),
+        dj_genres=tuple(dj_genres),
+        anti_dj_genres=tuple(anti_dj_genres),
     )
 
 
@@ -236,3 +290,74 @@ def filter_candidates(
         result.passed.append(track)
 
     return result
+
+
+@dataclass(frozen=True)
+class DjScoreResult:
+    track: dict[str, Any]
+    score: int
+    reasons: list[str]
+    decision: Literal["safe", "block", "review"]
+
+
+def _normalize_genre(value: str) -> str:
+    return _normalize(value)
+
+
+def calculate_dj_score(
+    track: dict[str, Any],
+    config: DjCurationConfig,
+    library_remixers: set[str],
+) -> DjScoreResult:
+    score = 0
+    reasons: list[str] = []
+
+    title_lower = str(track.get("title") or "").lower()
+    bpm = track.get("bpm") or 0
+    duration = track.get("duration_sec") or 0
+
+    if config.bpm_optimal_min <= bpm <= config.bpm_optimal_max:
+        score += 3
+        reasons.append("optimal BPM")
+    elif config.bpm_min <= bpm <= config.bpm_max:
+        pass
+    else:
+        if bpm:
+            score -= 2
+            reasons.append("BPM out of DJ range")
+
+    if 240 <= duration <= 480:
+        score += 1
+        reasons.append("ideal duration")
+    elif duration and duration < 120:
+        score -= 2
+        reasons.append("too short")
+    elif duration and duration > 720:
+        score -= 2
+        reasons.append("too long")
+
+    remixer = str(track.get("remixer") or "").strip().lower()
+    if any(kw in title_lower for kw in ["remix", "edit", "bootleg"]) and remixer:
+        if remixer in library_remixers:
+            score += 2
+            reasons.append("trusted remix")
+
+    genre = _normalize_genre(str(track.get("genre") or ""))
+    dj_genres = {_normalize_genre(g) for g in config.dj_genres}
+    anti_dj = {_normalize_genre(g) for g in config.anti_dj_genres}
+    if any(g in genre for g in dj_genres):
+        score += 2
+        reasons.append("DJ genre")
+    if any(g in genre for g in anti_dj):
+        score -= 3
+        reasons.append("anti-DJ genre")
+
+    decision: Literal["safe", "block", "review"]
+    if score >= config.score_safe_min:
+        decision = "safe"
+    elif score <= config.score_block_max:
+        decision = "block"
+    else:
+        decision = "review"
+
+    return DjScoreResult(track=track, score=score, reasons=reasons, decision=decision)

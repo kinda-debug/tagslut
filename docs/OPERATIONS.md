@@ -194,6 +194,11 @@ python tools/review/promote_by_tags.py \
   --source /path/to/staging \
   --dest /path/to/library \
   --move-log artifacts/moves.jsonl
+
+# Safety gates:
+# - promote_by_tags runs flac -t and skips corrupt files (override with --skip-flac-test)
+# - promote_by_tags enforces duration_status=ok when TAGSLUT_DB/--db is set (override with --allow-non-ok-duration)
+# - promote_replace_merge also requires duration_status=ok by default (override with --allow-non-ok-duration)
 ```
 
 ### 9. Verify Operations

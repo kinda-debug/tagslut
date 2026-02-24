@@ -122,6 +122,7 @@ def main() -> int:
         maybe_set("ISRC", row["canonical_isrc"])
         maybe_set("LABEL", row["canonical_label"])
         maybe_set("CATALOGNUMBER", row["canonical_catalog_number"])
+        maybe_set("BEATPORT_TRACK_ID", row["beatport_id"])
 
         # Musical metadata
         if row["canonical_bpm"] is not None:

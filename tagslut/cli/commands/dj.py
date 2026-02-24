@@ -19,6 +19,12 @@ from tagslut.dj.lexicon import (
     resolve_location,
     write_lexicon_csv,
 )
+from tagslut.dj.classify import (
+    append_overrides,
+    classify_tracks,
+    promote_safe_tracks,
+    write_m3u,
+)
 from tagslut.dj.transcode import (
     TrackRow,
     assign_output_paths,
@@ -506,6 +512,70 @@ def lexicon_push(dry_run: bool, only_high_confidence: bool, output_root: str) ->
         dry_run=dry_run,
     )
     click.echo(f"Pushed: {result['pushed']} | Skipped: {result['skipped']} | Failed: {result['failed']}")
+
+
+@dj_group.command("classify")
+@click.option("--input", "input_path", required=True, type=click.Path(), help="Input XLSX, folder, or M3U")
+@click.option(
+    "--policy",
+    "policy_path",
+    default=DEFAULT_POLICY,
+    help="DJ curation policy YAML",
+)
+@click.option("--output-crates", is_flag=True, help="Write safe/review crates as M3U")
+@click.option(
+    "--append-overrides/--no-append-overrides",
+    "append_overrides_flag",
+    default=True,
+    help="Append safe/block decisions to track_overrides.csv",
+)
+@click.option("--promote", is_flag=True, help="Promote safe tracks to DJUSB (transcode to MP3)")
+@click.option(
+    "--output-root",
+    type=click.Path(),
+    default=DEFAULT_DJUSB,
+    help="DJUSB output root for promotion",
+)
+@click.option("--jobs", default=4, show_default=True, help="Parallel transcode workers")
+@click.option("--overwrite", is_flag=True, help="Overwrite existing MP3s during promote")
+def dj_classify(
+    input_path: str,
+    policy_path: str,
+    output_crates: bool,
+    append_overrides_flag: bool,
+    promote: bool,
+    output_root: str,
+    jobs: int,
+    overwrite: bool,
+) -> None:
+    """Score tracks and classify into safe/block/review buckets."""
+    config = load_dj_curation_config(policy_path)
+    safe, block, review = classify_tracks(Path(input_path), config)
+
+    if output_crates:
+        crates_dir = Path("config/dj/crates")
+        write_m3u(crates_dir / "safe.m3u8", safe)
+        write_m3u(crates_dir / "review.m3u8", review)
+        write_m3u(crates_dir / "block.m3u8", block)
+
+    appended = 0
+    if append_overrides_flag:
+        appended += append_overrides(Path("config/dj/track_overrides.csv"), safe)
+        appended += append_overrides(Path("config/dj/track_overrides.csv"), block)
+
+    click.echo(f"Safe:   {len(safe)}")
+    click.echo(f"Block:  {len(block)}")
+    click.echo(f"Review: {len(review)}")
+    if append_overrides_flag:
+        click.echo(f"Overrides appended: {appended}")
+    if promote and safe:
+        ok, skipped, failed = promote_safe_tracks(
+            safe,
+            Path(output_root),
+            jobs=jobs,
+            overwrite=overwrite,
+        )
+        click.echo(f"Promoted to DJUSB: {ok} ok, {skipped} skipped, {failed} failed")
 
 
 @dj_group.group("crates")

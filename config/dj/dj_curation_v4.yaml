@@ -1,0 +1,25 @@
+name: dj_curation_v4
+version: 2026-02-24.dj_curation.v4
+description: Aggressive safe policy for DJ rarities.
+lane: dj
+rules:
+  duration_min: 120
+  duration_max: 720
+  bpm_min: 75
+  bpm_max: 200
+  bpm_optimal_min: 120
+  bpm_optimal_max: 135
+  score_safe_min: 1
+  score_block_max: -2
+  artist_blocklist_path: config/blocklists/non_dj_artists.txt
+  artist_reviewlist_path: config/blocklists/borderline_artists.txt
+  genre_filters: []
+  genres_allow:
+    - techno
+    - house
+    - nu disco
+    - electroclash
+    - space disco
+    - indie dance
+    - world
+  anti_dj_genres: []

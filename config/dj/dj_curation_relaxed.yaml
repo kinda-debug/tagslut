@@ -1,0 +1,20 @@
+name: dj_curation_relaxed
+version: 2026-02-23.dj_curation.v2
+description: Relaxed DJ curation rules for rarities and world/experimental selections.
+lane: dj
+rules:
+  duration_min: 150
+  duration_max: 720
+  bpm_min: 90
+  bpm_max: 190
+  bpm_optimal_min: 120
+  bpm_optimal_max: 135
+  score_safe_min: 2
+  artist_blocklist_path: config/blocklists/non_dj_artists.txt
+  artist_reviewlist_path: config/blocklists/borderline_artists.txt
+  genre_filters: []
+  genres_allow:
+    - world
+    - experimental
+    - indie dance
+    - melodic house

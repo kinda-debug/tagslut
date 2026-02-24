@@ -2520,12 +2520,18 @@ def check_duration(path, db, execute, dj_only, source, verbose):
 
         for i, file_path in enumerate(file_paths, start=1):
             try:
-                row = conn.execute("SELECT path FROM files WHERE path = ?", (str(file_path),)).fetchone()
+                row = conn.execute(
+                    "SELECT beatport_id, canonical_isrc, canonical_duration FROM files WHERE path = ?",
+                    (str(file_path),),
+                ).fetchone()
                 if not row:
                     missing += 1
                     if verbose:
                         click.echo(f"  [{i}/{len(file_paths)}] SKIP (not in DB) {file_path.name}")
                     continue
+                db_beatport_id = (row[0] or "").strip() if row[0] is not None else None
+                db_isrc = (row[1] or "").strip() if row[1] is not None else None
+                db_canonical_duration = row[2]
 
                 audio = None
                 try:
@@ -2536,10 +2542,22 @@ def check_duration(path, db, execute, dj_only, source, verbose):
                 tags = audio.tags or {} if audio is not None else {}
                 beatport_id = _extract_tag_value(tags, ["BEATPORT_TRACK_ID", "BP_TRACK_ID", "beatport_track_id"])
                 isrc = _extract_tag_value(tags, ["ISRC", "TSRC"])
+                if not beatport_id and db_beatport_id:
+                    beatport_id = db_beatport_id
+                if not isrc and db_isrc:
+                    isrc = db_isrc
 
                 duration_ref_ms, duration_ref_source, duration_ref_track_id = _lookup_duration_ref_ms(
                     conn, beatport_id, isrc
                 )
+                if duration_ref_ms is None and db_canonical_duration is not None:
+                    try:
+                        duration_ref_ms = int(round(float(db_canonical_duration) * 1000))
+                        duration_ref_source = "canonical_duration:db"
+                        if duration_ref_track_id is None:
+                            duration_ref_track_id = beatport_id or isrc
+                    except Exception:
+                        duration_ref_ms = None
                 duration_measured_ms = _measure_duration_ms(file_path)
                 duration_delta_ms = None
                 if duration_measured_ms is not None and duration_ref_ms is not None:
@@ -2644,7 +2662,8 @@ def check_duration(path, db, execute, dj_only, source, verbose):
 @click.option("--status", "status_filter", help="Comma-separated statuses (warn,fail,unknown)")
 @click.option("--source", help="Filter by download source")
 @click.option("--since", help="Filter by download_date >= YYYY-MM-DD")
-def audit_duration(db, dj_only, status_filter, source, since):
+@click.option("--inactive-exclude", is_flag=True, help="Exclude mgmt_status=inactive")
+def audit_duration(db, dj_only, status_filter, source, since, inactive_exclude):
     """
     Report files with duration_status != ok (or filtered statuses).
     """
@@ -2675,6 +2694,8 @@ def audit_duration(db, dj_only, status_filter, source, since):
             params.extend(statuses)
         else:
             where.append("(duration_status IS NULL OR duration_status != 'ok')")
+        if inactive_exclude:
+            where.append("(mgmt_status IS NULL OR mgmt_status != 'inactive')")
 
         query = (
             "SELECT path, duration_status, duration_ref_ms, duration_measured_ms, "

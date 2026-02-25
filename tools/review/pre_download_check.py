@@ -178,7 +178,7 @@ def get_repo_root() -> Path:
 def main() -> int:
     repo_root = get_repo_root()
     default_extract_script = repo_root / "scripts" / "extract_tracklists_from_links.py"
-    default_db = os.environ.get("TAGSLUT_DB", "") or "/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db"
+    default_db = os.environ.get("TAGSLUT_DB", "") or "/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db"
 
     ap = argparse.ArgumentParser(
         description="Check Beatport/Tidal links against DB before download",

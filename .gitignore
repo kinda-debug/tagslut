@@ -48,7 +48,6 @@ logs/
 **/*.jsonl
 **/*.pid
 **/*.go
-]
 # Python
 __pycache__/
 *.py[cod]
@@ -109,7 +108,7 @@ runs/
 
 # Keep structure placeholders and docs
 !artifacts/
-!artifacts/README.mdßß
+!artifacts/README.md
 !artifacts/db/
 !artifacts/db/.gitkeep
 !artifacts/logs/
@@ -495,3 +494,4 @@ safe_copy.m3u8
 config/dj/crates/block.m3u8
 config/dj/crates/review.m3u8
 config/dj/crates/safe.m3u8
+config/dj/dj_curation_usb_v8.yaml

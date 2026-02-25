@@ -43,6 +43,7 @@ class DjCurationConfig:
     dj_genres: tuple[str, ...] = field(default_factory=lambda: DEFAULT_DJ_GENRES)
     anti_dj_genres: tuple[str, ...] = field(default_factory=lambda: DEFAULT_ANTI_DJ_GENRES)
     genre_demote_mult: dict[str, float] = field(default_factory=dict)
+    genre_boost_mult: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -195,6 +196,11 @@ def load_dj_curation_config(path: str) -> DjCurationConfig:
     genre_demote_mult: dict[str, float] = {
         _normalize(k): float(v) for k, v in raw_demote.items()
     }
+    # Per-genre boost multipliers stack on top of the DJ genre bonus.
+    raw_boost = rules.get("genre_boost_mult") or {}
+    genre_boost_mult: dict[str, float] = {
+        _normalize(k): float(v) for k, v in raw_boost.items()
+    }
 
     return DjCurationConfig(
         duration_min=int(rules.get("duration_min", 180)),
@@ -211,6 +217,7 @@ def load_dj_curation_config(path: str) -> DjCurationConfig:
         dj_genres=tuple(dj_genres),
         anti_dj_genres=tuple(anti_dj_genres),
         genre_demote_mult=genre_demote_mult,
+        genre_boost_mult=genre_boost_mult,
     )
 
 
@@ -356,6 +363,18 @@ def calculate_dj_score(
     if any(g in genre for g in dj_genres):
         score += 2
         reasons.append("DJ genre")
+        if config.genre_boost_mult:
+            matched_boost = [g for g in dj_genres if g in genre]
+            if matched_boost:
+                bonuses = []
+                for g in matched_boost:
+                    bonus = config.genre_boost_mult.get(g)
+                    if bonus is not None:
+                        bonuses.append(bonus)
+                if bonuses:
+                    best_bonus = max(bonuses)
+                    score += int(best_bonus)
+                    reasons.append(f"dj genre boost ({best_bonus:+.1f})")
     if any(g in genre for g in anti_dj):
         # Apply per-genre multiplier if present, else flat -3
         matched_anti = [g for g in anti_dj if g in genre]

@@ -238,9 +238,19 @@ def init_db(
         connection.execute("CREATE INDEX IF NOT EXISTS idx_mgmt_status ON files(mgmt_status);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_fingerprint ON files(fingerprint);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_original_path ON files(original_path);")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_files_path ON files(path);")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_files_mtime ON files(mtime);")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_files_path_mtime ON files(path, mtime);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_is_dj_material ON files(is_dj_material);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_duration_status ON files(duration_status);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_duration_ref_track_id ON files(duration_ref_track_id);")
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_files_duration_mtime ON files(duration_status, mtime);"
+        )
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_files_duration_source_mtime "
+            "ON files(duration_status, download_source, mtime);"
+        )
 
         connection.execute("CREATE INDEX IF NOT EXISTS idx_library_track_key ON files(library_track_key);")
 

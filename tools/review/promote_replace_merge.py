@@ -128,6 +128,25 @@ def choose_destination(tags: dict, src: Path, dest_root: Path) -> tuple[Path, st
         return fallback, f"fallback_unresolved:{exc}"
 
 
+def _file_quality(path: Path) -> tuple[int, int, int, int]:
+    """Return (sample_rate, bit_depth, bitrate, size) for quality comparisons."""
+    try:
+        audio = FLAC(path)
+        info = audio.info
+        sample_rate = int(getattr(info, "sample_rate", 0) or 0)
+        bit_depth = int(getattr(info, "bits_per_sample", 0) or 0)
+        bitrate = int(getattr(info, "bitrate", 0) or 0)
+    except Exception:
+        sample_rate = 0
+        bit_depth = 0
+        bitrate = 0
+    try:
+        size = int(path.stat().st_size)
+    except Exception:
+        size = 0
+    return (sample_rate, bit_depth, bitrate, size)
+
+
 def db_update_path(conn: sqlite3.Connection, src: Path, dest: Path) -> int:
     """Update DB path for moved file and resolve unique-path collisions."""
     src_s = str(src)
@@ -217,6 +236,11 @@ def main() -> int:
         help="Allow promotion when duration_status is not ok (default: block)",
     )
     ap.add_argument(
+        "--replace-if-better",
+        action="store_true",
+        help="Only replace when source quality is better than destination (default: off)",
+    )
+    ap.add_argument(
         "--skip-flac-test",
         action="store_true",
         help="Skip flac -t integrity test (default: run and block corrupt files)",
@@ -246,6 +270,7 @@ def main() -> int:
     merged_tags = 0
     merged_pictures = 0
     skipped = 0
+    kept_existing = 0
     skipped_integrity = 0
     skipped_duration = 0
     errored = 0
@@ -290,6 +315,19 @@ def main() -> int:
                         dup_skipped += 1
                         continue
 
+                if args.replace_if_better and dest.exists() and dest != src:
+                    dest_ok = True
+                    if not args.skip_flac_test:
+                        dest_ok, _ = flac_test_ok(dest)
+                    if dest_ok:
+                        src_q = _file_quality(src)
+                        dest_q = _file_quality(dest)
+                        if src_q <= dest_q:
+                            kept_existing += 1
+                            if i % 25 == 0 or i == len(files):
+                                print(f"[{i}/{len(files)}] kept_existing={kept_existing}")
+                            continue
+
                 if args.execute and dest.exists() and dest != src:
                     tags_added, pics_added = merge_old_metadata_into_new(dest, src)
                     if tags_added or pics_added:
@@ -325,6 +363,8 @@ def main() -> int:
     print(f"db_updated={db_updated}")
     print(f"unresolved_layout={unresolved}")
     print(f"dup_skipped={dup_skipped}")
+    if kept_existing:
+        print(f"kept_existing={kept_existing}")
     if skipped_integrity:
         print(f"skipped_integrity={skipped_integrity}")
     if skipped_duration:

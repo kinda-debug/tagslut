@@ -25,7 +25,7 @@ PROJECT_ROOT = Path(__file__).parents[1]
 VENV_PYTHON = PROJECT_ROOT / ".venv" / "bin" / "python"
 
 # Defaults
-DEFAULT_DB_ROOT = Path.home() / "Projects" / "dedupe_db"
+DEFAULT_DB_ROOT = Path.home() / "Projects" / "tagslut_db"
 DEFAULT_CANONICAL = Path("/Volumes/COMMUNE/M/Library_CANONICAL")
 DEFAULT_QUARANTINE = Path("/Volumes/COMMUNE/M/_quarantine")
 

@@ -43,7 +43,7 @@ def main() -> None:
     )
     args = ap.parse_args()
 
-    default_db = "/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db"
+    default_db = "/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db"
     default_library = "/Volumes/MUSIC/LIBRARY"
 
     db = args.db or input(f"DB path [{default_db}]: ").strip() or default_db

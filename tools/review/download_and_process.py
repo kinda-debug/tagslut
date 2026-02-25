@@ -72,7 +72,7 @@ def main() -> None:
     except Exception:
         default_db = ""
     if not default_db:
-        default_db = "/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db"
+        default_db = "/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db"
     try:
         default_library = str(get_library_volume())
     except Exception:

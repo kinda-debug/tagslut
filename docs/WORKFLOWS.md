@@ -972,7 +972,7 @@ Paths used
 - FLAC master: `/Volumes/MUSIC/LIBRARY`
 - Staging downloads: `/Users/georgeskhawam/Music/tiddl`
 - DJ MP3 library (USB): `/Volumes/DJSSD/DJ_LIBRARY_MP3`
-- Tagslut DB: `/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db`
+- Tagslut DB: `/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db`
 - Tagslut repo: `/Users/georgeskhawam/Projects/tagslut`
 
 ## A) ONLINE STEPS (do these before going offline)
@@ -1004,7 +1004,7 @@ TIDDL_BIN=/Users/georgeskhawam/.local/pipx/venvs/tiddl/bin/tiddl \
 PYTHONPATH=/Users/georgeskhawam/Projects/tagslut \
 python3 -m tagslut index register /Users/georgeskhawam/Music/tiddl \
   --source tidal \
-  --db /Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db \
+  --db /Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
   --dj-only --no-prompt --execute
 ```
 
@@ -1012,7 +1012,7 @@ python3 -m tagslut index register /Users/georgeskhawam/Music/tiddl \
 ```bash
 PYTHONPATH=/Users/georgeskhawam/Projects/tagslut \
 python3 -m tagslut index enrich \
-  --db /Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db \
+  --db /Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
   --hoarding \
   --providers beatport,deezer,apple_music,itunes \
   --path '/Users/georgeskhawam/Music/tiddl/%' \
@@ -1026,7 +1026,7 @@ python3 -m tagslut index enrich \
 ```bash
 PYTHONPATH=/Users/georgeskhawam/Projects/tagslut \
 python3 tools/review/check_integrity_update_db.py /Users/georgeskhawam/Music/tiddl \
-  --db /Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db \
+  --db /Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
   --execute
 ```
 
@@ -1034,7 +1034,7 @@ python3 tools/review/check_integrity_update_db.py /Users/georgeskhawam/Music/tid
 ```bash
 PYTHONPATH=/Users/georgeskhawam/Projects/tagslut \
 python3 tools/review/normalize_genres.py /Users/georgeskhawam/Music/tiddl \
-  --db /Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db \
+  --db /Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
   --rules tools/rules/genre_normalization.json \
   --execute
 ```
@@ -1052,7 +1052,7 @@ python3 tools/review/tag_normalized_genres.py /Users/georgeskhawam/Music/tiddl \
 PYTHONPATH=/Users/georgeskhawam/Projects/tagslut \
 python3 tools/review/promote_replace_merge.py /Users/georgeskhawam/Music/tiddl \
   --dest /Volumes/MUSIC/LIBRARY \
-  --db /Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db \
+  --db /Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
   --execute
 ```
 Safety gates (default):
@@ -1987,7 +1987,7 @@ Paths used
 - FLAC master: `/Volumes/MUSIC/LIBRARY`
 - Staging downloads: `/Users/georgeskhawam/Music/tiddl`
 - DJ MP3 library (USB): `/Volumes/DJSSD/DJ_LIBRARY_MP3`
-- Tagslut DB: `/Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db`
+- Tagslut DB: `/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db`
 - Tagslut repo: `/Users/georgeskhawam/Projects/tagslut`
 
 ## A) ONLINE STEPS (do these before going offline)
@@ -2019,7 +2019,7 @@ TIDDL_BIN=/Users/georgeskhawam/.local/pipx/venvs/tiddl/bin/tiddl \
 PYTHONPATH=/Users/georgeskhawam/Projects/tagslut \
 python3 -m tagslut index register /Users/georgeskhawam/Music/tiddl \
   --source tidal \
-  --db /Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db \
+  --db /Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
   --dj-only --no-prompt --execute
 ```
 
@@ -2027,7 +2027,7 @@ python3 -m tagslut index register /Users/georgeskhawam/Music/tiddl \
 ```bash
 PYTHONPATH=/Users/georgeskhawam/Projects/tagslut \
 python3 -m tagslut index enrich \
-  --db /Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db \
+  --db /Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
   --hoarding \
   --providers beatport,deezer,apple_music,itunes \
   --path '/Users/georgeskhawam/Music/tiddl/%' \
@@ -2041,7 +2041,7 @@ python3 -m tagslut index enrich \
 ```bash
 PYTHONPATH=/Users/georgeskhawam/Projects/tagslut \
 python3 tools/review/check_integrity_update_db.py /Users/georgeskhawam/Music/tiddl \
-  --db /Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db \
+  --db /Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
   --execute
 ```
 
@@ -2049,7 +2049,7 @@ python3 tools/review/check_integrity_update_db.py /Users/georgeskhawam/Music/tid
 ```bash
 PYTHONPATH=/Users/georgeskhawam/Projects/tagslut \
 python3 tools/review/normalize_genres.py /Users/georgeskhawam/Music/tiddl \
-  --db /Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db \
+  --db /Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
   --rules tools/rules/genre_normalization.json \
   --execute
 ```
@@ -2067,7 +2067,7 @@ python3 tools/review/tag_normalized_genres.py /Users/georgeskhawam/Music/tiddl \
 PYTHONPATH=/Users/georgeskhawam/Projects/tagslut \
 python3 tools/review/promote_replace_merge.py /Users/georgeskhawam/Music/tiddl \
   --dest /Volumes/MUSIC/LIBRARY \
-  --db /Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db \
+  --db /Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
   --execute
 ```
 

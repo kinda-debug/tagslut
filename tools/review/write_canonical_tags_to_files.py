@@ -10,7 +10,7 @@ Defaults are conservative:
 Example:
   PYTHONPATH=/Users/georgeskhawam/Projects/tagslut \
   python3 tools/review/write_canonical_tags_to_files.py \
-    --db /Users/georgeskhawam/Projects/dedupe_db/EPOCH_2026-02-10_RELINK/music.db \
+    --db /Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
     --m3u /Volumes/MUSIC/LIBRARY/MDL_NEW_TRACKS.m3u \
     --execute
 """

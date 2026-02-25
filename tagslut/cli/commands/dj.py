@@ -33,6 +33,7 @@ from tagslut.dj.transcode import (
     make_dedupe_key,
     sanitize_component,
 )
+from tagslut.cli.runtime import run_python_script
 
 DEFAULT_POLICY = "config/dj/dj_curation.yaml"
 DEFAULT_OUTPUT = "/Volumes/MUSIC/DJ_YES"
@@ -576,6 +577,34 @@ def dj_classify(
             overwrite=overwrite,
         )
         click.echo(f"Promoted to DJUSB: {ok} ok, {skipped} skipped, {failed} failed")
+
+
+@dj_group.command("review-app")
+@click.option("--db", "db_path", type=click.Path(), default=None, help="SQLite DB path")
+@click.option("--library-prefix", default=None, help="Filter files by path prefix")
+@click.option("--host", default=None, help="Host to bind (default: 127.0.0.1)")
+@click.option("--port", type=int, default=None, help="Port to bind (default: 5055)")
+@click.option("--no-open", is_flag=True, help="Do not open browser on launch")
+def review_app(
+    db_path: str | None,
+    library_prefix: str | None,
+    host: str | None,
+    port: int | None,
+    no_open: bool,
+) -> None:
+    """Launch the DJ review web app."""
+    args: list[str] = []
+    if db_path:
+        args.extend(["--db", db_path])
+    if library_prefix:
+        args.extend(["--library-prefix", library_prefix])
+    if host:
+        args.extend(["--host", host])
+    if port:
+        args.extend(["--port", str(port)])
+    if no_open:
+        args.append("--no-open")
+    run_python_script("tools/dj_review_app.py", tuple(args))
 
 
 @dj_group.group("crates")

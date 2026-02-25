@@ -481,3 +481,13 @@ wider_new.m3u8
 config/dj/crates/block.m3u8
 config/dj/crates/review.m3u8
 config/dj/crates/safe.m3u8
+dj_purge_v7.m3u8
+pyproject.toml
+safe_mp3s.m3u8
+config/dj/dj_curation_usb_v6.yaml
+config/dj/dj_curation_usb_v7.1.yaml
+config/dj/dj_curation_usb_v7.yaml
+config/dj/dj_curation_usb.yaml
+config/dj/crates/block.m3u8
+config/dj/crates/review.m3u8
+config/dj/crates/safe.m3u8

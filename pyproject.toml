@@ -24,6 +24,8 @@ dependencies = [
     "pydantic>=2.0",
     "pydantic-settings>=2.0",
     "typer>=0.9",
+    "rich>=13.7,<14.0",
+    "matplotlib>=3.8,<4.0",
 ]
 
 [project.scripts]

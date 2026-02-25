@@ -42,6 +42,7 @@ class DjCurationConfig:
     genre_filters: tuple[str, ...] = field(default_factory=tuple)
     dj_genres: tuple[str, ...] = field(default_factory=lambda: DEFAULT_DJ_GENRES)
     anti_dj_genres: tuple[str, ...] = field(default_factory=lambda: DEFAULT_ANTI_DJ_GENRES)
+    genre_demote_mult: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -189,6 +190,12 @@ def load_dj_curation_config(path: str) -> DjCurationConfig:
         dj_genres = list(DEFAULT_DJ_GENRES)
     anti_dj_genres = rules.get("anti_dj_genres") or list(DEFAULT_ANTI_DJ_GENRES)
 
+    # Per-genre demotion multipliers override the flat anti-DJ penalty.
+    raw_demote = rules.get("genre_demote_mult") or {}
+    genre_demote_mult: dict[str, float] = {
+        _normalize(k): float(v) for k, v in raw_demote.items()
+    }
+
     return DjCurationConfig(
         duration_min=int(rules.get("duration_min", 180)),
         duration_max=int(rules.get("duration_max", 720)),
@@ -203,6 +210,7 @@ def load_dj_curation_config(path: str) -> DjCurationConfig:
         genre_filters=tuple(rules.get("genre_filters", [])),
         dj_genres=tuple(dj_genres),
         anti_dj_genres=tuple(anti_dj_genres),
+        genre_demote_mult=genre_demote_mult,
     )
 
 
@@ -349,8 +357,25 @@ def calculate_dj_score(
         score += 2
         reasons.append("DJ genre")
     if any(g in genre for g in anti_dj):
-        score -= 3
-        reasons.append("anti-DJ genre")
+        # Apply per-genre multiplier if present, else flat -3
+        matched_anti = [g for g in anti_dj if g in genre]
+        if config.genre_demote_mult and matched_anti:
+            # Use the strongest (most negative) multiplier that matches
+            penalties = []
+            for g in matched_anti:
+                mult = config.genre_demote_mult.get(g)
+                if mult is not None:
+                    penalties.append(mult)
+            if penalties:
+                penalty = min(penalties)  # most negative wins
+                score += int(penalty)
+                reasons.append(f"anti-DJ genre ({penalty:+.1f})")
+            else:
+                score -= 3
+                reasons.append("anti-DJ genre")
+        else:
+            score -= 3
+            reasons.append("anti-DJ genre")
 
     decision: Literal["safe", "block", "review"]
     if score >= config.score_safe_min:

@@ -1,5 +1,5 @@
 name: dj_curation_usb
-version: 2026-02-23.dj_curation.v3
+version: 2026-02-24.dj_curation_usb.v5
 description: Ultra-relaxed DJ curation rules for USB audition material.
 lane: dj
 rules:
@@ -7,19 +7,34 @@ rules:
   duration_max: 720
   bpm_min: 80
   bpm_max: 200
-  bpm_optimal_min: 120
-  bpm_optimal_max: 135
-  score_safe_min: 1
+  bpm_optimal_min: 122
+  bpm_optimal_max: 130
+  score_safe_min: 2
   score_block_max: -2
   artist_blocklist_path: config/blocklists/non_dj_artists.txt
   artist_reviewlist_path: config/blocklists/borderline_artists.txt
-  genre_filters: []
-  genres_allow:
+  genre_filters:
+    - soft rock
+    - pop rock
+    - acoustic
+    - indie folk
+    - rock
+    - alternative rock
+    - blues
     - world
-    - experimental
-    - indie dance
-    - melodic house
+    - jazz
+    - soul
+  genres_allow:
     - techno
+    - tech house
+    - electronic
+    - minimal
+    - deep house
+    - melodic house & techno
+    - melodic house
     - house
     - disco
-  anti_dj_genres: []
+  anti_dj_genres:
+    - alternative
+    - experimental
+    - indie dance

@@ -5,6 +5,7 @@ import argparse
 import csv
 import json
 import os
+import re
 import sqlite3
 import subprocess
 import sys
@@ -16,6 +17,8 @@ from typing import Any
 from urllib.parse import quote_plus
 
 from flask import Flask, jsonify, request, render_template_string
+
+from tagslut.dj.curation import calculate_dj_score, filter_candidates, load_dj_curation_config
 
 _SAFE_ARTIST_DEFAULTS = [
     Path("artifacts/dj_safe_artists_overrides.txt"),
@@ -29,6 +32,7 @@ _TRACK_OVERRIDE_CACHE: dict[str, Any] = {
     "block_paths": set(),
     "safe_artists": set(),
 }
+_AUTO_CACHE: dict[str, Any] = {"path": None, "config": None, "remixers_key": None, "remixers": set()}
 
 
 APP = Flask(__name__)
@@ -67,6 +71,155 @@ def _resolve_policy_path(explicit: str | None) -> Path:
     if v8.exists():
         return v8
     return Path("config/dj/dj_curation.yaml")
+
+
+def _normalize_simple(value: str | None) -> str:
+    if value is None:
+        return ""
+    return re.sub(r"\s+", " ", str(value).strip().lower())
+
+
+def _split_artists(value: str) -> list[str]:
+    return [part.strip() for part in value.split(",") if part.strip()]
+
+
+def _extract_remixer(title: str) -> str | None:
+    text = title.strip()
+    if not text:
+        return None
+    patterns = [
+        r"\(([^)]+)\)",
+        r"\[([^\]]+)\]",
+        r" - ([^-]+)$",
+    ]
+    remix_keywords = [
+        "remix",
+        "edit",
+        "rework",
+        "re-edit",
+        "refix",
+        "dub",
+        "dub mix",
+        "extended",
+        "club mix",
+        "instrumental",
+        "version",
+        "vip",
+        "bootleg",
+    ]
+    for pattern in patterns:
+        for match in re.findall(pattern, text, flags=re.IGNORECASE):
+            lower = match.lower()
+            if any(kw in lower for kw in remix_keywords):
+                for kw in remix_keywords:
+                    if kw in lower:
+                        name = lower.replace(kw, "").strip(" -–_")
+                        return name.strip() if name.strip() else None
+    return None
+
+
+def _get_auto_config() -> Any:
+    policy_path = str(_resolve_policy_path(None))
+    if _AUTO_CACHE["path"] == policy_path and _AUTO_CACHE["config"] is not None:
+        return _AUTO_CACHE["config"]
+    config = load_dj_curation_config(policy_path)
+    _AUTO_CACHE["path"] = policy_path
+    _AUTO_CACHE["config"] = config
+    return config
+
+
+def _get_library_remixers(conn: sqlite3.Connection) -> set[str]:
+    row = conn.execute("SELECT COUNT(*), MAX(mtime) FROM files").fetchone()
+    key = (row[0], row[1]) if row else (None, None)
+    if _AUTO_CACHE["remixers_key"] == key:
+        return _AUTO_CACHE["remixers"]
+
+    remixers: set[str] = set()
+    rows = conn.execute(
+        "SELECT canonical_artist FROM files WHERE canonical_artist IS NOT NULL AND canonical_artist != ''"
+    ).fetchall()
+    for r in rows:
+        artist = str(r[0] or "")
+        for part in _split_artists(artist):
+            norm = _normalize_simple(part)
+            if norm:
+                remixers.add(norm)
+    _AUTO_CACHE["remixers_key"] = key
+    _AUTO_CACHE["remixers"] = remixers
+    return remixers
+
+
+def _auto_verdict_for_row(row: sqlite3.Row, conn: sqlite3.Connection) -> dict[str, Any]:
+    config = _get_auto_config()
+    remixers = _get_library_remixers(conn)
+
+    duration = row["duration"]
+    if duration is None and row["duration_measured_ms"]:
+        duration = float(row["duration_measured_ms"]) / 1000.0
+
+    track = {
+        "path": row["path"],
+        "artist": row["artist"],
+        "title": row["title"],
+        "genre": row["genre"],
+        "bpm": row["bpm"] or 0,
+        "key": row["musical_key"],
+        "duration_sec": duration,
+        "remixer": _extract_remixer(str(row["title"] or "")),
+        "download_source": row["download_source"],
+        "duration_status": row["duration_status"] if "duration_status" in row.keys() else None,
+    }
+
+    reasons: list[str] = []
+    filtered = filter_candidates([track], config)
+    if filtered.rejected_blocklist:
+        reasons.append(filtered.rejected_blocklist[0].get("_rejection_reason", "blocklist"))
+        return {"verdict": "not_ok", "score": None, "reasons": reasons}
+    if filtered.rejected_duration:
+        reasons.append(filtered.rejected_duration[0].get("_rejection_reason", "duration"))
+        return {"verdict": "not_ok", "score": None, "reasons": reasons}
+    if filtered.rejected_genre:
+        reasons.append(filtered.rejected_genre[0].get("_rejection_reason", "genre"))
+        return {"verdict": "not_ok", "score": None, "reasons": reasons}
+
+    if filtered.flagged_reviewlist:
+        reasons.append(filtered.flagged_reviewlist[0].get("_flag_reason", "artist_reviewlist"))
+
+    track_item = filtered.passed[0] if filtered.passed else track
+    override_verdict = track_item.get("_verdict")
+    if override_verdict in {"safe", "block", "review"}:
+        verdict = {"safe": "ok", "block": "not_ok", "review": "review"}[override_verdict]
+        reasons.append(f"track_override:{override_verdict}")
+        score = None
+    else:
+        score_result = calculate_dj_score(track_item, config, remixers)
+        verdict = {"safe": "ok", "block": "not_ok", "review": "review"}[score_result.decision]
+        score = score_result.score
+        reasons.extend(score_result.reasons)
+
+    # Soft demotions for incomplete/mixed metadata
+    genre_value = _normalize_simple(track.get("genre") or "")
+    has_dj = any(_normalize_simple(g) in genre_value for g in config.dj_genres)
+    has_anti = any(_normalize_simple(g) in genre_value for g in config.anti_dj_genres)
+    soft_flags: list[str] = []
+    if has_dj and has_anti:
+        soft_flags.append("mixed genre")
+    if not track.get("bpm"):
+        soft_flags.append("missing BPM")
+    if not track.get("duration_sec"):
+        soft_flags.append("missing duration")
+    duration_status = track.get("duration_status")
+    if duration_status and str(duration_status).lower() != "ok":
+        soft_flags.append(f"duration {duration_status}")
+    if str(track.get("download_source") or "").lower() == "legacy":
+        if not genre_value or not track.get("bpm"):
+            soft_flags.append("legacy + weak metadata")
+
+    if soft_flags and verdict == "ok":
+        verdict = "review"
+        reasons.append("soft demote: " + ", ".join(soft_flags))
+
+    return {"verdict": verdict, "score": score, "reasons": reasons}
 
 
 def _get_conn() -> sqlite3.Connection:
@@ -333,7 +486,21 @@ def _fetch_album_items(bucket: str, query: str, limit: int, offset: int) -> list
         conn.close()
 
 
-def _fetch_track_items(bucket: str, query: str, limit: int, offset: int) -> list[dict[str, Any]]:
+def _fetch_track_items(
+    bucket: str,
+    query: str,
+    limit: int,
+    offset: int,
+    *,
+    auto_filter: str | None = None,
+    genre_filter: str | None = None,
+    source_filter: str | None = None,
+    bpm_min: float | None = None,
+    bpm_max: float | None = None,
+    dur_min: float | None = None,
+    dur_max: float | None = None,
+    mismatch_only: bool = False,
+) -> list[dict[str, Any]]:
     prefix = _library_prefix()
     overrides = _load_track_overrides()
     safe_paths = overrides["safe_paths"]
@@ -379,7 +546,17 @@ def _fetch_track_items(bucket: str, query: str, limit: int, offset: int) -> list
                     SELECT
                         f.path,
                         coalesce(f.canonical_artist, '') AS artist,
-                        coalesce(f.canonical_title, '') AS title
+                        coalesce(f.canonical_album, '') AS album,
+                        coalesce(f.canonical_title, '') AS title,
+                        coalesce(f.canonical_genre, '') AS genre,
+                        f.canonical_bpm AS bpm,
+                        f.canonical_key AS musical_key,
+                        f.canonical_energy AS energy,
+                        f.canonical_danceability AS danceability,
+                        f.duration AS duration,
+                        f.duration_measured_ms AS duration_measured_ms,
+                        f.duration_status AS duration_status,
+                        f.download_source AS download_source
                     FROM files f
                     WHERE f.path IN ({placeholders})
                 """
@@ -390,12 +567,46 @@ def _fetch_track_items(bucket: str, query: str, limit: int, offset: int) -> list
                     text = f"{artist} {label} {row['path']}".lower()
                     if query and query.lower() not in text:
                         continue
+                    auto = _auto_verdict_for_row(row, conn)
+                    if auto_filter and auto.get("verdict") != auto_filter:
+                        continue
+                    if genre_filter:
+                        if genre_filter.lower() not in str(row["genre"] or "").lower():
+                            continue
+                    if source_filter:
+                        if source_filter.lower() != str(row["download_source"] or "").lower():
+                            continue
+                    bpm_val = row["bpm"]
+                    if bpm_min is not None:
+                        if bpm_val is None or bpm_val < bpm_min:
+                            continue
+                    if bpm_max is not None:
+                        if bpm_val is None or bpm_val > bpm_max:
+                            continue
+                    duration = row["duration"]
+                    if duration is None and row["duration_measured_ms"]:
+                        duration = float(row["duration_measured_ms"]) / 1000.0
+                    if dur_min is not None:
+                        if duration is None or duration < dur_min:
+                            continue
+                    if dur_max is not None:
+                        if duration is None or duration > dur_max:
+                            continue
+                    if mismatch_only:
+                        manual_status = "ok"
+                        if manual_status != auto.get("verdict"):
+                            pass
+                        else:
+                            continue
                     items.append(
                         {
                             "key": row["path"],
                             "label": f"{artist} — {label}",
                             "count": None,
                             "status": "ok",
+                            "auto_verdict": auto.get("verdict"),
+                            "auto_score": auto.get("score"),
+                            "auto_reasons": auto.get("reasons"),
                         }
                     )
             items.sort(key=lambda item: item["label"].lower())
@@ -410,8 +621,11 @@ def _fetch_track_items(bucket: str, query: str, limit: int, offset: int) -> list
                 coalesce(f.canonical_genre, '') AS genre,
                 f.canonical_bpm AS bpm,
                 f.canonical_key AS musical_key,
+                f.canonical_energy AS energy,
+                f.canonical_danceability AS danceability,
                 f.duration AS duration,
                 f.duration_measured_ms AS duration_measured_ms,
+                f.duration_status AS duration_status,
                 f.download_source AS download_source,
                 d.status AS status
             FROM files f
@@ -437,12 +651,43 @@ def _fetch_track_items(bucket: str, query: str, limit: int, offset: int) -> list
                 continue
             label = row["title"] or Path(row["path"]).stem
             artist = row["artist"] or "Unknown Artist"
+            auto = _auto_verdict_for_row(row, conn)
+            if auto_filter and auto.get("verdict") != auto_filter:
+                continue
+            if genre_filter:
+                if genre_filter.lower() not in str(row["genre"] or "").lower():
+                    continue
+            if source_filter:
+                if source_filter.lower() != str(row["download_source"] or "").lower():
+                    continue
+            bpm_val = row["bpm"]
+            if bpm_min is not None:
+                if bpm_val is None or bpm_val < bpm_min:
+                    continue
+            if bpm_max is not None:
+                if bpm_val is None or bpm_val > bpm_max:
+                    continue
+            duration = row["duration"]
+            if duration is None and row["duration_measured_ms"]:
+                duration = float(row["duration_measured_ms"]) / 1000.0
+            if dur_min is not None:
+                if duration is None or duration < dur_min:
+                    continue
+            if dur_max is not None:
+                if duration is None or duration > dur_max:
+                    continue
+            if mismatch_only and status in {"ok", "not_ok"}:
+                if status == auto.get("verdict"):
+                    continue
             items.append(
                 {
                     "key": row["path"],
                     "label": f"{artist} — {label}",
                     "count": None,
                     "status": status or "unreviewed",
+                    "auto_verdict": auto.get("verdict"),
+                    "auto_score": auto.get("score"),
+                    "auto_reasons": auto.get("reasons"),
                 }
             )
         return items
@@ -478,8 +723,11 @@ def _evidence_for_track(conn: sqlite3.Connection, path: str) -> dict[str, Any]:
             coalesce(canonical_genre, '') AS genre,
             canonical_bpm AS bpm,
             canonical_key AS musical_key,
+            canonical_energy AS energy,
+            canonical_danceability AS danceability,
             duration,
             duration_measured_ms,
+            duration_status,
             download_source
         FROM files
         WHERE path = ?
@@ -494,6 +742,8 @@ def _evidence_for_track(conn: sqlite3.Connection, path: str) -> dict[str, Any]:
         duration = float(row["duration_measured_ms"]) / 1000.0
 
     query = " ".join(filter(None, [row["artist"], row["title"], row["album"]]))
+    auto = _auto_verdict_for_row(row, conn)
+
     return {
         "title": row["title"],
         "artist": row["artist"],
@@ -501,10 +751,14 @@ def _evidence_for_track(conn: sqlite3.Connection, path: str) -> dict[str, Any]:
         "genre": row["genre"],
         "bpm": row["bpm"],
         "key": row["musical_key"],
+        "energy": row["energy"],
+        "danceability": row["danceability"],
         "duration": duration,
+        "duration_status": row["duration_status"],
         "download_source": row["download_source"],
         "path": row["path"],
         "links": _search_links(query),
+        "auto": auto,
     }
 
 
@@ -576,7 +830,37 @@ def items() -> Any:
     elif level == "album":
         data = _fetch_album_items(bucket, query, limit, offset)
     else:
-        data = _fetch_track_items(bucket, query, limit, offset)
+        auto_filter = (request.args.get("auto") or "").strip().lower() or None
+        genre_filter = (request.args.get("genre") or "").strip() or None
+        source_filter = (request.args.get("source") or "").strip() or None
+        bpm_min = request.args.get("bpm_min")
+        bpm_max = request.args.get("bpm_max")
+        dur_min = request.args.get("dur_min")
+        dur_max = request.args.get("dur_max")
+        mismatch_only = request.args.get("mismatch", "").strip() in {"1", "true", "yes"}
+
+        def _to_float(value: str | None) -> float | None:
+            if value is None or value == "":
+                return None
+            try:
+                return float(value)
+            except Exception:
+                return None
+
+        data = _fetch_track_items(
+            bucket,
+            query,
+            limit,
+            offset,
+            auto_filter=auto_filter,
+            genre_filter=genre_filter,
+            source_filter=source_filter,
+            bpm_min=_to_float(bpm_min),
+            bpm_max=_to_float(bpm_max),
+            dur_min=_to_float(dur_min),
+            dur_max=_to_float(dur_max),
+            mismatch_only=mismatch_only,
+        )
 
     return jsonify({"items": data})
 
@@ -855,6 +1139,41 @@ _HTML = """
       padding: 18px 28px 36px;
       animation: fadeIn 0.4s ease;
     }
+    .filter-bar {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 10px;
+      padding: 12px 28px 0;
+    }
+    .filter-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      padding: 8px 10px;
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+    }
+    .filter-group label {
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .filter-group input,
+    .filter-group select {
+      padding: 6px 8px;
+      border: 1px solid var(--border);
+      background: #fbf9f4;
+      font-size: 12px;
+      border-radius: 8px;
+    }
+    .filter-group.inline {
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+    }
     .panel {
       background: var(--panel);
       border: 1px solid var(--border);
@@ -1041,6 +1360,50 @@ _HTML = """
     <button class="tab" data-level="album">Album</button>
     <button class="tab" data-level="track">Track</button>
   </div>
+  <div class="filter-bar" id="track-filters">
+    <div class="filter-group">
+      <label for="filter-auto">Auto Verdict</label>
+      <select id="filter-auto">
+        <option value="">Any</option>
+        <option value="ok">OK</option>
+        <option value="review">Review</option>
+        <option value="not_ok">Not OK</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label for="filter-genre">Genre Contains</label>
+      <input id="filter-genre" type="text" placeholder="techno, house..." />
+    </div>
+    <div class="filter-group">
+      <label for="filter-source">Source</label>
+      <select id="filter-source">
+        <option value="">Any</option>
+        <option value="beatport">beatport</option>
+        <option value="tidal">tidal</option>
+        <option value="qobuz">qobuz</option>
+        <option value="bpdl">bpdl</option>
+        <option value="legacy">legacy</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label for="filter-bpm-min">BPM Min / Max</label>
+      <div class="export-inline">
+        <input id="filter-bpm-min" type="number" min="0" placeholder="min" />
+        <input id="filter-bpm-max" type="number" min="0" placeholder="max" />
+      </div>
+    </div>
+    <div class="filter-group">
+      <label for="filter-dur-min">Duration (s) Min / Max</label>
+      <div class="export-inline">
+        <input id="filter-dur-min" type="number" min="0" placeholder="min" />
+        <input id="filter-dur-max" type="number" min="0" placeholder="max" />
+      </div>
+    </div>
+    <div class="filter-group inline">
+      <label for="filter-mismatch">Mismatch Only</label>
+      <input id="filter-mismatch" type="checkbox" />
+    </div>
+  </div>
   <div class="layout">
     <div class="panel">
       <div class="filters">
@@ -1121,6 +1484,17 @@ async function fetchItems(bucket, query) {
     limit: '200',
     offset: '0'
   });
+  if (state.level === 'track') {
+    const filters = getFilters();
+    if (filters.auto) params.set('auto', filters.auto);
+    if (filters.genre) params.set('genre', filters.genre);
+    if (filters.source) params.set('source', filters.source);
+    if (filters.bpmMin) params.set('bpm_min', filters.bpmMin);
+    if (filters.bpmMax) params.set('bpm_max', filters.bpmMax);
+    if (filters.durMin) params.set('dur_min', filters.durMin);
+    if (filters.durMax) params.set('dur_max', filters.durMax);
+    if (filters.mismatch) params.set('mismatch', '1');
+  }
   const resp = await fetch(`/api/items?${params.toString()}`);
   const data = await resp.json();
   return data.items || [];
@@ -1177,10 +1551,25 @@ async function showEvidence(key) {
   if (data.genre) lines.push(`<div><strong>Genre:</strong> ${data.genre}</div>`);
   if (data.bpm) lines.push(`<div><strong>BPM:</strong> ${data.bpm}</div>`);
   if (data.key) lines.push(`<div><strong>Key:</strong> ${data.key}</div>`);
+  if (data.energy) lines.push(`<div><strong>Energy:</strong> ${data.energy}</div>`);
+  if (data.danceability) lines.push(`<div><strong>Danceability:</strong> ${data.danceability}</div>`);
   if (data.duration) lines.push(`<div><strong>Duration:</strong> ${data.duration.toFixed(1)}s</div>`);
+  if (data.duration_status) lines.push(`<div><strong>Duration Status:</strong> ${data.duration_status}</div>`);
   if (data.download_source) lines.push(`<div><strong>Source:</strong> ${data.download_source}</div>`);
   if (data.track_count) lines.push(`<div><strong>Tracks:</strong> ${data.track_count}</div>`);
   if (data.path) lines.push(`<div><strong>Path:</strong> ${data.path}</div>`);
+
+  let autoHtml = '';
+  if (data.auto) {
+    const verdict = data.auto.verdict || 'review';
+    const score = (data.auto.score === null || data.auto.score === undefined) ? '' : ` (score ${data.auto.score})`;
+    const reasons = (data.auto.reasons || []).map(r => `<div class="meta">• ${r}</div>`).join('');
+    autoHtml = `
+      <h3>Auto Verdict</h3>
+      <div class="meta"><strong>${verdict.toUpperCase()}</strong>${score}</div>
+      ${reasons || '<div class="meta">No reasons</div>'}
+    `;
+  }
 
   let linksHtml = '';
   if (data.links && data.links.length) {
@@ -1192,6 +1581,7 @@ async function showEvidence(key) {
   evidence.innerHTML = `
     <h3>Details</h3>
     <div class="meta">${lines.join('')}</div>
+    ${autoHtml}
     <h3>Web Reviews</h3>
     ${linksHtml || '<div class="meta">No links</div>'}
   `;
@@ -1258,13 +1648,41 @@ function bindTabs() {
       document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       state.level = btn.dataset.level;
+      toggleFilters();
       await loadLists();
     });
   });
 }
 
+function getFilters() {
+  return {
+    auto: document.getElementById('filter-auto').value.trim(),
+    genre: document.getElementById('filter-genre').value.trim(),
+    source: document.getElementById('filter-source').value.trim(),
+    bpmMin: document.getElementById('filter-bpm-min').value.trim(),
+    bpmMax: document.getElementById('filter-bpm-max').value.trim(),
+    durMin: document.getElementById('filter-dur-min').value.trim(),
+    durMax: document.getElementById('filter-dur-max').value.trim(),
+    mismatch: document.getElementById('filter-mismatch').checked,
+  };
+}
+
+function bindFilters() {
+  const panel = document.getElementById('track-filters');
+  panel.querySelectorAll('input, select').forEach(el => {
+    el.addEventListener('input', loadLists);
+    el.addEventListener('change', loadLists);
+  });
+}
+
+function toggleFilters() {
+  const panel = document.getElementById('track-filters');
+  panel.style.display = state.level === 'track' ? 'grid' : 'none';
+}
+
 window.addEventListener('DOMContentLoaded', async () => {
   bindTabs();
+  bindFilters();
   bindListEvidence('list-ok');
   bindListEvidence('list-not');
   document.getElementById('to-ok').addEventListener('click', () => moveItems('list-not', 'ok'));
@@ -1272,6 +1690,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('reload-ok').addEventListener('click', loadLists);
   document.getElementById('reload-not').addEventListener('click', loadLists);
   document.getElementById('export-usb').addEventListener('click', exportUsb);
+  toggleFilters();
   await loadLists();
 });
 </script>

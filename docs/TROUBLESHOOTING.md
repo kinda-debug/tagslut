@@ -64,6 +64,9 @@ ls -la ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
 
 # Check .env configuration
 cat .env | grep TAGSLUT_DB
+
+# Or config.toml db.path
+cat config.toml | grep -n "db"
 ```
 
 ---
@@ -143,7 +146,7 @@ tagslut verify receipts --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music
 # Review recovery status
 tagslut verify recovery --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
 
-# See PROVENANCE_AND_RECOVERY.md for full recovery procedure
+# See ARCHITECTURE.md for full recovery procedure
 ```
 
 ---
@@ -265,7 +268,7 @@ tail -50 artifacts/moves_*.jsonl 2>/dev/null
 
 ## Getting Help
 
-1. Check `docs/README_OPERATIONS.md` for operation reference
+1. Check `docs/OPERATIONS.md` for operation reference
 2. Check `docs/WORKFLOWS.md` for step-by-step guides
-3. Check `docs/PROVENANCE_AND_RECOVERY.md` for recovery procedures
+3. Check `docs/ARCHITECTURE.md` for recovery procedures
 4. Run `tagslut <command> --help` for command-specific help

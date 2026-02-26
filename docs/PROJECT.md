@@ -1,6 +1,6 @@
 # Tagslut Project Document
 
-Report Date: February 23, 2026
+Report Date: February 26, 2026
 
 ## Table of Contents
 1. Executive Summary
@@ -102,6 +102,9 @@ Historically, the workflow was split across scripts and manual steps, creating i
 - **Export:** `tagslut/dj/export.py` (curate → key detect → transcode)
 - **Classifier:** `tagslut/dj/classify.py` (safe/block/review)
 - **USB Sync:** `tools/dj_usb_sync.py` (classify + promote + report)
+- **Review App:** `tools/dj_review_app.py` (OK/Not OK decisions + auto verdict + USB export)
+- **USB Analyzer:** `tools/dj_usb_analyzer.py` (crate health + ratio checks)
+- **Tag Sync:** `tools/metadata sync-tags` (sync canonical tags from files, Lexicon-friendly)
 
 ---
 
@@ -113,14 +116,15 @@ Historically, the workflow was split across scripts and manual steps, creating i
 - M3U/M3U8 playlists
 
 ### 6.2 Scoring Model
-Signals and weights (current implementation):
+Signals and weights (current implementation, policy-driven):
 - **BPM 120–135** → +3
 - **BPM outside 100–175** → -2
 - **Duration 240–480s** → +1
 - **Duration <120s or >720s** → -2
 - **Trusted remix** (remixer appears in library) → +2
-- **DJ-positive genres** (house, tech house, techno, melodic house & techno, indie dance) → +2
-- **Anti-DJ genres** (classical, spoken word, ambient, pop) → -3
+- **DJ-positive genres** (policy `dj_genres`) → +2
+- **Anti-DJ genres** (policy `anti_dj_genres`) → -3
+- **Per-genre boost/demote** (policy `genre_boost_mult`, `genre_demote_mult`)
 
 Decision thresholds:
 - **Score ≥ 4** → safe
@@ -129,7 +133,7 @@ Decision thresholds:
 
 ### 6.3 Outputs
 - **Overrides:** `config/dj/track_overrides.csv`
-- **Crates:** `config/dj/crates/safe.m3u8`, `review.m3u8`
+- **Crates:** `config/dj/crates/safe.m3u8`, `review.m3u8`, `block.m3u8`
 - **USB Output:** `/Volumes/DJUSB` MP3s
 - **Sync Report:** `/Volumes/DJUSB/sync_report.csv`
 
@@ -138,8 +142,10 @@ Decision thresholds:
 ## 7. Data Model & Artifacts
 
 ### 7.1 Database
+- `files`: canonical track info + provider enrichment + `metadata_json`
 - `tag_hoard_files`: raw per-file tag dump (`tags_json`)
 - Provider enrichment tables (Beatport/Tidal/Deezer)
+- `dj_review_decisions`: OK/Not OK decisions from the review app
 
 ### 7.2 Files
 - `config/dj/track_overrides.csv`
@@ -158,14 +164,17 @@ Decision thresholds:
 1. Add new FLACs to `/Volumes/MUSIC/LIBRARY`.
 2. Optional: `tagslut index register` to update DB inventory.
 3. Optional: `tagslut index enrich --hoarding` for provider metadata.
-4. Run classification:
-   - `tagslut dj classify --input /Volumes/MUSIC/LIBRARY --output-crates --append-overrides`
-5. Promote safe tracks:
-   - `tagslut dj classify --input /Volumes/MUSIC/LIBRARY --promote --output-root /Volumes/DJUSB`
-6. Import into Lexicon/Rekordbox for beatgrid/cue analysis.
+4. If Lexicon updated tags, sync canonical fields from files:
+   - `tools/metadata sync-tags --read-files --execute --path /Volumes/MUSIC/LIBRARY`
+5. Run classification:
+   - `tagslut dj classify --input /Volumes/MUSIC/LIBRARY --policy config/dj/dj_curation_usb_v8.yaml --output-crates`
+6. Promote safe tracks:
+   - `tagslut dj classify --input /Volumes/MUSIC/LIBRARY --policy config/dj/dj_curation_usb_v8.yaml --promote --output-root /Volumes/DJUSB`
+7. Import into Lexicon/Rekordbox for beatgrid/cue analysis.
 
 ### 8.2 Review Loop
 - Review `config/dj/crates/review.m3u8`
+- Or use the review app UI (`tagslut dj review-app`)
 - Promote only after manual confirmation
 
 ---
@@ -184,7 +193,7 @@ poetry run tagslut dj classify --input /Volumes/MUSIC/LIBRARY --promote --output
 
 ### DJ USB Orchestrator
 ```
-python tools/dj_usb_sync.py --source /Volumes/MUSIC/LIBRARY --usb /Volumes/DJUSB --policy config/dj/dj_curation.yaml
+python tools/dj_usb_sync.py --source /Volumes/MUSIC/LIBRARY --usb /Volumes/DJUSB --policy config/dj/dj_curation_usb_v8.yaml
 ```
 
 ### Metadata Enrichment
@@ -195,19 +204,16 @@ poetry run python -m tagslut _metadata enrich --db <db> --path "/Volumes/MUSIC/L
 ---
 
 ## 10. Known Gaps and Risks
-- Pioneer finalize steps not yet automated (ID3v2.3 enforcement, artwork cap, path sanitization, Rekordbox copy).
 - `tagslut dj export` hang still under investigation.
-- Blocklist manager tool not yet implemented.
-- Docs consolidation incomplete.
+- CLI evacuation (Phase 2) remains incomplete.
+- Docs consolidation is ongoing.
 
 ---
 
 ## 11. Roadmap
-1. Pioneer finalize integration in `tools/dj_usb_sync.py`.
-2. Blocklist manager tool (interactive add/analyze/bulk with fuzzy match).
-3. CLI evacuation (Phase 2: reduce `cli/main.py`).
-4. Architecture foundations (zones module, migrations cleanup, dependency trimming).
-5. Docs consolidation to final structure.
+1. CLI evacuation (Phase 2: reduce `cli/main.py`).
+2. Architecture foundations (zones module, migrations cleanup, dependency trimming).
+3. Docs consolidation to final structure.
 
 ---
 

@@ -349,8 +349,8 @@ Raw `shutil.move` / `os.replace` usage outside `tagslut.exec.engine` is prohibit
 Updates to the move execution contract must co-update:
 
 - `docs/ARCHITECTURE.md#move-executor-contract` (this document)
-- `docs/SURFACE_POLICY.md`
-- `docs/SCRIPT_SURFACE.md`
+- `docs/archive/SURFACE_POLICY.md`
+- `docs/archive/SCRIPT_SURFACE.md`
 
 ## Zones and Trust Model
 

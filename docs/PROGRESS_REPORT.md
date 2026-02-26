@@ -1,9 +1,9 @@
 # Tagslut Repository - Progress Report
 
-Report Date: February 23, 2026
+Report Date: February 26, 2026
 
 ## Executive Summary
-Restructuring phases 0/1/3 are complete. DJ workflow integration is functional for classification and MP3 export, with track-level overrides and crates. The primary remaining risks are the unresolved CLI evacuation (Phase 2), architecture foundations (Phase 4), and incomplete Pioneer finalize automation.
+Restructuring phases 0/1/3 are complete. DJ workflow integration is functional for classification and MP3 export, with track-level overrides, crates, and USB finalize automation. Recent work added a DJ review web app with auto‑verdicts, DJ USB analyzer tooling, and tag sync from file metadata (Lexicon-friendly). Remaining risks are CLI evacuation (Phase 2), architecture foundations (Phase 4), and ongoing docs consolidation.
 
 ## Completed Work
 ### Restructuring
@@ -16,6 +16,10 @@ Restructuring phases 0/1/3 are complete. DJ workflow integration is functional f
 - Track overrides + crates.
 - Scoring classifier + `--promote`.
 - `tools/dj_usb_sync.py` orchestrator.
+- Pioneer finalize automation (ID3v2.3, artwork cap, Rekordbox XML) now integrated in `tools/dj_usb_sync.py`.
+- DJ Review App: `tools/dj_review_app.py` (OK/Not OK + auto verdict).
+- DJ USB Analyzer: `tools/dj_usb_analyzer.py`.
+- Tag sync from files: `tools/metadata sync-tags`.
 
 ### Housekeeping
 - `.gitignore` improvements.
@@ -23,30 +27,24 @@ Restructuring phases 0/1/3 are complete. DJ workflow integration is functional f
 - Documentation cleanup.
 
 ## Current State
-- Tests: 85 passed, 7 skipped.
-- Tag hoard: 22,328 rows in `tag_hoard_files` (with `--dump-files`).
-- DJUSB MP3s: 423 tracks (~5 GB).
-- XLSX input: `DJ_YES.xlsx` (2,988 tracks).
+- Tests: not re-run for this report.
+- Tag hoard: varies by scan (see `tag_hoard_files` in DB).
+- DJUSB MP3 count: depends on current policy + overrides.
 
 ## Pending Work
 ### High Priority
 - Phase 2: CLI evacuation (`cli/main.py` → `cli/commands/*`).
 - Phase 4: Architecture foundations (zones module, migrations cleanup, dependency trimming).
-- Pioneer finalize automation (ID3v2.3 enforcement, artwork cap, Rekordbox copy).
 
 ### DJ Pipeline
-- Investigate `dj export` hang.
-- Re-run metadata enrich after registration.
+- Re-run metadata enrich after registration (as needed).
 - Validate genre key mapping in tag hoard data.
-- Implement blocklist manager tool.
 
 ## Known Issues
-- `cli/main.py` still 113KB.
-- `dj export` hang unresolved.
-- Tag hoard sample genre fields appear blank.
+- `cli/main.py` remains large; refactor still pending.
+- Tag hoard sample genre fields can be sparse depending on provider coverage.
 
 ## Recommended Next Actions
 - Re-run enrich: `poetry run python -m tagslut _metadata enrich --db <db> --path "/Volumes/MUSIC/LIBRARY/%" --hoarding --execute`
-- Instrument export for hang analysis.
-- Implement Pioneer finalize in `tools/dj_usb_sync.py`.
-- Build blocklist manager.
+- Continue CLI evacuation into `tagslut/cli/commands/*`.
+- Audit tag completeness with `tools/metadata audit-tags`.

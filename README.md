@@ -27,6 +27,7 @@ See `docs/` for workflows, operations, architecture, and troubleshooting.
 - `docs/OPERATIONS.md`
 - `docs/ARCHITECTURE.md`
 - `docs/TROUBLESHOOTING.md`
+- `docs/DJ_REVIEW_APP.md`
 - `docs/DJ_WORKFLOW.md`
 - `docs/PROJECT.md`
 - `docs/PROGRESS_REPORT.md`

@@ -1,9 +1,5 @@
 # Workflows
 
-# Workflows
-
-# Workflows
-
 Complete step-by-step workflows for common operations.
 
 ## Workflow 1: Pre-Download Check + Beatport Download
@@ -274,6 +270,29 @@ tagslut index enrich \
 
 ---
 
+## Workflow 4b: Sync Lexicon Tag Edits → DB + Missing Tags M3U
+
+**Goal:** If Lexicon (or another tagger) updated file tags, sync canonical fields in the DB and generate an M3U of tracks missing critical tags.
+
+```bash
+# Sync canonical BPM/Key/Genre/Energy/Danceability from file tags
+tools/metadata sync-tags \
+  --read-files \
+  --execute \
+  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
+  --path /Volumes/MUSIC/LIBRARY
+```
+
+The command writes an M3U like:
+
+```
+/Volumes/MUSIC/LIBRARY/missing_tags_YYYYMMDD_HHMMSS.m3u
+```
+
+Use the M3U to batch‑tag the missing fields in Lexicon or another tagger.
+
+---
+
 ## Workflow 5: Direct Promotion by Tags
 
 **Goal:** Move files from staging to library using tag-based destination rules.
@@ -366,7 +385,7 @@ tagslut report recovery \
 
 ### Step 3: Review and Act
 
-See `docs/PROVENANCE_AND_RECOVERY.md` for detailed recovery procedures.
+See `docs/ARCHITECTURE.md` for detailed recovery and provenance procedures.
 
 ---
 

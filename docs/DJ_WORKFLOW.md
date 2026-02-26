@@ -26,7 +26,7 @@ Example:
 
 ```bash
 poetry run tagslut dj curate --input-xlsx /Users/georgeskhawam/Desktop/DJ_YES.xlsx \
-  --policy config/dj/dj_curation.yaml \
+  --policy config/dj/dj_curation_usb_v8.yaml \
   --output-root /Volumes/MUSIC/DJ_YES
 ```
 
@@ -38,26 +38,60 @@ Example:
 
 ```bash
 poetry run tagslut dj export --input-xlsx /Users/georgeskhawam/Desktop/DJ_YES.xlsx \
-  --policy config/dj/dj_curation.yaml \
+  --policy config/dj/dj_curation_usb_v8.yaml \
   --output-root /Volumes/MUSIC/DJ_YES \
   --jobs 4 --detect-keys
 ```
 
 ## DJ Curation Policy Schema
 
-File: `config/dj/dj_curation.yaml`
+Recommended: `config/dj/dj_curation_usb_v8.yaml`
+
+Other policies live in `config/dj/` (v6/v7/relaxed), but v8 is the current tuned default.
 
 ```yaml
-name: dj_curation
-version: 2026-02-22.dj_curation.v1
-description: DJ curation rules for USB export (duration, blocklists, genre filters).
+name: dj_curation_usb_v8
+version: 2026-02-25.dj_curation_usb_v8
+description: Techno boost + rock nuke (per-genre boost/demote).
 lane: dj
 rules:
   duration_min: 180
   duration_max: 720
+  bpm_min: 110
+  bpm_max: 150
+  bpm_optimal_min: 118
+  bpm_optimal_max: 135
+  score_safe_min: 4
+  score_block_max: -2
   artist_blocklist_path: config/blocklists/non_dj_artists.txt
   artist_reviewlist_path: config/blocklists/borderline_artists.txt
-  genre_filters: []
+  genre_filters:
+    - experimental
+    - jazz
+    - blues
+    - acoustic
+    - folk
+  dj_genres:
+    - techno
+    - tech house
+    - melodic house & techno
+    - deep tech
+    - electronic
+    - electronica
+    - minimal
+    - house
+    - deep house
+  anti_dj_genres:
+    - rock
+    - world
+    - nu disco / disco
+    - dance / pop
+    - indie
+    - alternative
+  genre_boost_mult:
+    techno: 2
+  genre_demote_mult:
+    rock: -20
 ```
 
 ## Blocklist Files
@@ -84,3 +118,13 @@ Playlist import as classification source:
 Every track → verdict=safe, crate=<playlist name>
 
 Requires: Spotify/Tidal API auth, Roon local API
+
+## Review App (Manual Control)
+
+If you want a UI for artist/album/track decisions (OK / Not OK), use the review app:
+
+```bash
+tagslut dj review-app --db "/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db"
+```
+
+See `docs/DJ_REVIEW_APP.md` for auto‑verdict, filters, and USB export.

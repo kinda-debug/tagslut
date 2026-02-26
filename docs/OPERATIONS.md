@@ -7,7 +7,7 @@
 # tagslut Operations Manual
 
 **Version:** 2.0.0
-**Last Updated:** 2026-02-14
+**Last Updated:** 2026-02-26
 
 This is the single source of truth for operating the tagslut music library automation toolkit.
 
@@ -165,7 +165,38 @@ tagslut index duration-audit \
   --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
 ```
 
-### 7. Generate Execution Plan
+### 7b. Sync Canonical Tags From Files (Lexicon-Friendly)
+
+If Lexicon or another tagger updated file tags, sync BPM/Key/Genre/Energy/Danceability into the DB and emit an M3U of tracks still missing critical tags:
+
+```bash
+tools/metadata sync-tags \
+  --read-files \
+  --execute \
+  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
+  --path /Volumes/MUSIC/LIBRARY
+```
+
+### 7c. DJ Review App (Manual OK / Not OK)
+
+```bash
+tagslut dj review-app \
+  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
+  --library-prefix /Volumes/MUSIC/LIBRARY
+```
+
+See `docs/DJ_REVIEW_APP.md` for auto‑verdicts, filters, and USB export.
+
+### 7d. DJ USB Health Check
+
+```bash
+python tools/dj_usb_analyzer.py \
+  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
+  --source /Volumes/MUSIC/DJ \
+  --policy config/dj/dj_curation_usb_v8.yaml
+```
+
+### 8. Generate Execution Plan
 
 ```bash
 # List available profiles
@@ -341,8 +372,8 @@ cat docs/OPERATIONS.md#script-surface-and-command-policy
 
 - `docs/WORKFLOWS.md` - Detailed workflow guides
 - `docs/TROUBLESHOOTING.md` - Common issues and fixes
-- `docs/PROVENANCE_AND_RECOVERY.md` - Recovery procedures
-- `docs/ZONES.md` - Zone system explanation
+- `docs/ARCHITECTURE.md` - Recovery + provenance procedures
+- `docs/archive/ZONES.md` - Zone system (archived)
 
 ### Source Registration Matrix
 
@@ -494,7 +525,7 @@ poetry run tagslut show-zone "$VOLUME_STAGING"
 
 - Environment template: `/Users/georgeskhawam/Projects/tagslut/.env.example`
 - Operations guide: `/Users/georgeskhawam/Projects/tagslut/docs/OPERATIONS.md#cli-reference-and-common-operations`
-- Zones details: `/Users/georgeskhawam/Projects/tagslut/docs/ZONES.md`
+- Zones details: `/Users/georgeskhawam/Projects/tagslut/docs/archive/ZONES.md`
 
 ## Script Surface and Command Policy
 
@@ -590,7 +621,7 @@ Use `tagslut intake/index/decide/execute/verify/report/auth` for new work.
   - `tools/review/quarantine_from_plan.py`
   - `tools/review/promote_by_tags.py` (`--move-log` for JSONL move audit output)
 - Compatibility contract for these executors:
-  - `docs/MOVE_EXECUTOR_COMPAT.md`
+  - `docs/archive/MOVE_EXECUTOR_COMPAT.md`
   - `docs/archive/phase-specs-2026-02-09/` (phase runbooks and verification reports)
 
 ### Directory Ownership
@@ -690,7 +721,7 @@ Compatibility wrappers were removed after satisfying these gates:
 9. `poetry run tagslut report --help`
 10. `poetry run tagslut auth --help`
 11. `poetry run tagslut --help` (compatibility alias)
-12. Move executor contract doc: `docs/MOVE_EXECUTOR_COMPAT.md`
+12. Move executor contract doc: `docs/archive/MOVE_EXECUTOR_COMPAT.md`
 13. V3 parity validator: `python scripts/validate_v3_dual_write_parity.py --db <db> --strict`
 14. Policy profile lint: `python scripts/lint_policy_profiles.py`
 15. Phase 3 executor tests: `pytest -q tests/test_exec_engine_phase3.py tests/test_exec_receipts_phase3.py`
@@ -703,7 +734,7 @@ CI integration:
 Any change to canonical or transitional surface must update all of:
 - `docs/OPERATIONS.md#script-surface-and-command-policy`
 - `docs/OPERATIONS.md#script-surface-and-command-policy`
-- `docs/MOVE_EXECUTOR_COMPAT.md` (if move execution contract changes)
+- `docs/archive/MOVE_EXECUTOR_COMPAT.md` (if move execution contract changes)
 - `docs/archive/phase-specs-2026-02-09/` (if phase runbook or decommission contract changes)
 - `docs/archive/REDESIGN_TRACKER.md` (if milestone impact)
 

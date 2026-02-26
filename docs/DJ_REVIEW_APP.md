@@ -17,11 +17,16 @@ CLI wrapper:
 tagslut dj review-app --db "/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db"
 ```
 
-Optional filters:
+Optional filters / defaults:
 
 ```bash
 export DJ_REVIEW_LIBRARY_PREFIX="/Volumes/MUSIC/LIBRARY"
 export DJ_REVIEW_PORT=5055
+export DJ_REVIEW_POLICY="config/dj/dj_curation_usb_v8.yaml"
+export DJ_REVIEW_USB_PATH="/Volumes/MUSIC/DJ"
+export DJ_REVIEW_JOBS=4
+export DJ_REVIEW_ARTWORK_MAX_KB=500
+export DJ_REVIEW_REKORDBOX_XML="rekordbox.xml"
 ```
 
 Safe artist defaults (used to pre-fill **OK** buckets when no manual decisions exist):
@@ -41,6 +46,32 @@ export DJ_REVIEW_SAFE_ARTISTS="/path/one.txt,/path/two.txt"
 - Two tall buckets per tab: **OK** and **Not OK**
 - Select items and move with arrow buttons
 - Evidence panel shows metadata and web review links
+- Track tab includes **auto verdict + reasons** (policy-driven) and quick filters
+
+Note: The UI buckets are still OK / Not OK, but the **auto verdict** can be `review`. Use the Track filters to focus on auto‑review items.
+
+## Auto Verdict (Track Tab)
+
+The app computes an **Auto Verdict** for tracks using `config/dj/dj_curation_usb_v8.yaml`:
+
+- Hard filters: artist blocklist, duration bounds, genre filters
+- Scoring: BPM, duration, remix trust, DJ/anti‑DJ genres
+- Soft demote to **Review** when metadata is mixed or missing
+
+The evidence panel shows:
+- Auto verdict (OK / Review / Not OK)
+- Score (if applicable)
+- Reasons list
+
+### Track Filters
+
+Filters only apply to the **Track** tab:
+- Auto verdict
+- Genre contains
+- Download source
+- BPM min/max
+- Duration min/max
+- Mismatch only (manual vs auto)
 
 ## Database Writes
 

@@ -9,6 +9,7 @@ TAGNORM="$BASE/tag_normalized_genres.py"
 TAGVALS="$BASE/tag_values_audit.py"
 LEX="$BASE/lexicon_export.py"
 LEXCMP="$BASE/lexicon_compare.py"
+SYNC="$BASE/sync_tags_from_files.py"
 
 cmd="${1:-}"
 if [[ -z "$cmd" ]]; then
@@ -48,6 +49,9 @@ case "$cmd" in
     ;;
   compare-lexicon)
     exec python "$LEXCMP" "$@"
+    ;;
+  sync-tags)
+    exec python "$SYNC" "$@"
     ;;
   *)
     echo "Unknown command: $cmd"

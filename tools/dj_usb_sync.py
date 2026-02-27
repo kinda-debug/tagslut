@@ -45,7 +45,11 @@ class SyncReport:
     finalize_artwork_dropped: int = 0
     finalize_errors: int = 0
     rekordbox_xml: str = ""
-    warnings: list[str]
+    warnings: list[str] = None
+
+    def __post_init__(self) -> None:
+        if self.warnings is None:
+            self.warnings = []
 
     def to_rows(self) -> list[list[str]]:
         rows = [

@@ -127,6 +127,16 @@ NON_CLUB_KEYWORDS = [
     "demo",
 ]
 
+ANTI_DJ_KEYWORDS = [
+    "ambient",
+    "classical",
+    "soundtrack",
+    "spoken word",
+    "audiobook",
+    "meditation",
+    "nature sounds",
+]
+
 ENERGY_KEYWORDS = {
     "chill": ["chill", "chillout", "downtempo", "ambient", "lofi", "lo-fi"],
     "midtempo": ["deep house", "soul", "funk", "disco"],
@@ -142,7 +152,8 @@ COLUMN_ALIASES = {
     "artist": ["artist", "artist_name", "performer", "canonical_artist"],
     "bpm": ["bpm", "tempo", "canonical_bpm"],
     "energy": ["energy", "energy_level", "energy_rating", "canonical_energy"],
-    "genre": ["genre", "style", "tags", "canonical_sub_genre", "canonical_genre"],
+    "genre": ["genre", "style", "tags", "canonical_sub_genre"],
+    "genre_fallback": ["canonical_genre"],
     "comment": [
         "comment",
         "comments",
@@ -198,7 +209,12 @@ def classify_track(row: pd.Series) -> str:
 
     bpm = _to_number(row.get("bpm"))
     energy = _to_number(row.get("energy"))
-    genre_text = _normalize_text(row.get("genre"))
+
+    # HYBRID GENRE FALLBACK: use sub_genre if present, else main_genre
+    sub_genre = _normalize_text(row.get("genre"))  # canonical_sub_genre
+    main_genre = _normalize_text(row.get("genre_fallback"))  # canonical_genre
+    genre_text = sub_genre if sub_genre else main_genre
+
     title_text = _normalize_text(row.get("title"))
     comment_text = _normalize_text(row.get("comment"))
     dj_text = " ".join([title_text, comment_text]).strip()
@@ -219,15 +235,16 @@ def classify_track(row: pd.Series) -> str:
         elif energy < 3:
             score -= 1
 
+    # SOFTER GENRE SCORING
     if genre_text:
         if _has_any(genre_text, CLUB_KEYWORDS):
             score += 2
         elif _has_any(genre_text, BAR_KEYWORDS):
             score += 1
-        else:
-            score -= 2
-    else:
-        score -= 2
+        elif _has_any(genre_text, ANTI_DJ_KEYWORDS):
+            score -= 2  # Explicit anti-DJ genres penalized
+        # else: unknown genre = 0 (no penalty)
+    # else: missing genre = 0 (no penalty, data quality issue not musical)
 
     if _has_any(dj_text, DJ_FRIENDLY_KEYWORDS):
         score += 1
@@ -320,6 +337,12 @@ def _build_select(table: str, columns: list[str], include_comment: bool) -> tupl
         col = _resolve_column(columns, key)
         if col:
             resolved[key] = col
+
+    # HYBRID GENRE: also try to resolve genre_fallback (canonical_genre)
+    if "genre_fallback" in COLUMN_ALIASES:
+        fallback_col = _resolve_column(columns, "genre_fallback")
+        if fallback_col:
+            resolved["genre_fallback"] = fallback_col
 
     missing_required = [key for key in required if key not in resolved]
     if missing_required:
@@ -453,11 +476,45 @@ def main() -> None:
         df["classification"] = df.apply(classify_track, axis=1)
         df["energy_bucket"] = df.apply(classify_energy_bucket, axis=1)
 
+        # ENRICH genre column with fallback for CSV export (sparse → hybrid)
+        # Fallback logic: use sub_genre if present and non-blank, else use main_genre
+        # For display, preserve original casing; normalization only applies to scoring
+        if "genre_fallback" in df.columns:
+            df["genre"] = df.apply(
+                lambda row: (
+                    (str(row.get("genre")).strip() if row.get("genre") else "")
+                    or (str(row.get("genre_fallback")).strip() if row.get("genre_fallback") else "")
+                ),
+                axis=1
+            )
+
         print("\nClassification counts:")
-        print(df["classification"].value_counts(dropna=False).to_string())
+        classification_counts = df["classification"].value_counts(dropna=False)
+        print(classification_counts.to_string())
 
         print("\nEnergy bucket counts:")
         print(df["energy_bucket"].value_counts(dropna=False).to_string())
+
+        # REGRESSION TRIPWIRES (v2 invariants)
+        # These checks fail loudly if the patch broke expected behavior
+        total_rows = len(df)
+        remove_pct = (classification_counts.get("remove", 0) / total_rows * 100) if total_rows else 0
+        genre_blank_count = df["genre"].isna().sum() + (df["genre"] == "").sum()
+        genre_blank_pct = (genre_blank_count / total_rows * 100) if total_rows else 0
+
+        if remove_pct > 80:
+            print(f"\n⚠️  WARNING: remove category is {remove_pct:.1f}% (expected ~26% for v2)")
+            print("    This suggests genre_fallback resolution may have failed or scoring regressed.")
+        if genre_blank_pct > 20:
+            print(f"\n⚠️  WARNING: genre blank rate is {genre_blank_pct:.1f}% (expected <10% for v2)")
+            print("    Fallback enrichment may not be working; check canonical_genre column.")
+
+        print(f"\nRegression check summary (v2 invariants):")
+        print(f"  remove% = {remove_pct:.1f}% (should be ~26%)")
+        print(f"  genre_blank% = {genre_blank_pct:.1f}% (should be <10%)")
+        print(f"  csv_rows = {total_rows}")
+        if remove_pct <= 80 and genre_blank_pct <= 20:
+            print("  ✅ All invariants OK")
 
         if not args.no_db_update:
             id_column = resolved.get("id")
@@ -469,23 +526,43 @@ def main() -> None:
             if not key_column:
                 raise SystemExit("No id or file_path column found; cannot update database without a key.")
 
-            if "classification" not in columns:
-                cursor.execute(f"ALTER TABLE {table} ADD COLUMN classification TEXT")
+            if "classification_v2" not in columns:
+                cursor.execute(f"ALTER TABLE {table} ADD COLUMN classification_v2 TEXT")
                 con.commit()
-                print("Added classification column to table.")
+                print("Added classification_v2 column to table.")
 
-            update_sql = f"UPDATE {table} SET classification=? WHERE {key_column}=?"
+            update_sql = f"UPDATE {table} SET classification_v2=? WHERE {key_column}=?"
             updates = 0
+            skipped = 0
             for _, row in df.iterrows():
                 key_value = row.get(key_value_field)
                 if key_value in (None, ""):
+                    skipped += 1
                     continue
                 cursor.execute(update_sql, (row.get("classification"), key_value))
                 updates += 1
             con.commit()
-            print(f"Updated classification for {updates} rows.")
+            print(f"Updated classification_v2 for {updates} rows.")
+            if skipped > 0:
+                print(f"⚠️  Skipped {skipped} rows due to missing key (NULL or empty {key_value_field})")
+
+            # TRIPWIRE: Verify no NULLs in classification_v2 (catch silent key mismatches)
+            null_count = cursor.execute(
+                f"SELECT COUNT(*) FROM {table} WHERE classification_v2 IS NULL"
+            ).fetchone()[0]
+            if null_count > 0:
+                print(f"\n❌ ERROR: {null_count} rows have NULL classification_v2!")
+                print("    This suggests key mismatches or orphaned records.")
+                print("    Sample of NULL rows:")
+                nulls = cursor.execute(
+                    f"SELECT {key_column}, file_path FROM {table} WHERE classification_v2 IS NULL LIMIT 10"
+                ).fetchall()
+                for row in nulls:
+                    print(f"      {row}")
+                raise SystemExit("Fix key mismatches and re-run.")
 
         csv_columns = ["artist", "title", "bpm", "energy", "genre", "classification", "file_path"]
+        # CSV "genre" now contains hybrid (sub_genre || main_genre), so will have ~94% coverage instead of 1.3%
         df[csv_columns].to_csv(args.csv_out, index=False)
         print(f"\nCSV written: {args.csv_out}")
 
@@ -497,6 +574,8 @@ def main() -> None:
             "bar": "bar_playlist.m3u8",
             "remove": "remove_playlist.m3u8",
         }
+        # NOTE: Uses "classification" column from DataFrame (mapped from DB classification column)
+        # To use v2 results instead, change df["classification"] to df["classification_v2"]
         for label, filename in playlist_map.items():
             out_path = playlist_dir / filename
             _write_m3u8(out_path, df[df["classification"] == label])

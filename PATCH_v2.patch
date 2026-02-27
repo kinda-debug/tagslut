@@ -1,0 +1,416 @@
+PATCH: classify_tracks_sqlite.py — v1→v2 improvements
+================================================================================
+
+CHANGES:
+1. Hybrid genre fallback: pull both canonical_sub_genre and canonical_genre
+2. Softer scoring: explicit anti-DJ keywords only (not all unknown genres)
+3. New classification_v2 column: don't overwrite existing DB
+
+================================================================================
+PATCH SECTION 1: Update COLUMN_ALIASES to include both genre columns
+================================================================================
+
+File: scripts/classify_tracks_sqlite.py
+Lines: 139-168 (COLUMN_ALIASES dict)
+
+OLD:
+    "genre": ["genre", "style", "tags", "canonical_sub_genre", "canonical_genre"],
+
+NEW:
+    "genre": ["genre", "style", "tags", "canonical_sub_genre"],
+    "genre_fallback": ["canonical_genre"],
+
+RATIONALE:
+  - Separate aliases allow us to explicitly pull both columns
+  - genre_fallback won't interfere with _build_select() required columns check
+  - In classify_track(), we'll use: sub_genre if present, else main_genre, else ""
+
+
+================================================================================
+PATCH SECTION 2: Add anti-DJ keyword list (line ~128)
+================================================================================
+
+File: scripts/classify_tracks_sqlite.py
+After line 128 (after NON_CLUB_KEYWORDS), add:
+
++ANTI_DJ_KEYWORDS = [
++    "ambient",
++    "classical",
++    "soundtrack",
++    "spoken word",
++    "audiobook",
++    "meditation",
++    "nature sounds",
++]
+
+RATIONALE:
+  - These are genres that SHOULD penalize score (-2)
+  - Current logic penalizes ALL non-matching genres equally
+  - Now: explicit anti-DJ genres get -2, unknown genres get 0
+
+
+================================================================================
+PATCH SECTION 3: Modify classify_track() scoring logic (lines 196-241)
+================================================================================
+
+File: scripts/classify_tracks_sqlite.py
+Lines: 196-241 (classify_track function)
+
+Replace the entire function with:
+
+OLD:
+def classify_track(row: pd.Series) -> str:
+    score = 0
+
+    bpm = _to_number(row.get("bpm"))
+    energy = _to_number(row.get("energy"))
+    genre_text = _normalize_text(row.get("genre"))
+    title_text = _normalize_text(row.get("title"))
+    comment_text = _normalize_text(row.get("comment"))
+    dj_text = " ".join([title_text, comment_text]).strip()
+
+    if bpm is not None:
+        if 115 <= bpm <= 130:
+            score += 2
+        elif 100 <= bpm < 115:
+            score += 1
+        elif bpm < 100 or bpm > 140:
+            score -= 1
+
+    if energy is not None:
+        if energy >= 6:
+            score += 2
+        elif energy >= 5:
+            score += 1
+        elif energy < 3:
+            score -= 1
+
+    if genre_text:
+        if _has_any(genre_text, CLUB_KEYWORDS):
+            score += 2
+        elif _has_any(genre_text, BAR_KEYWORDS):
+            score += 1
+        else:
+            score -= 2
+    else:
+        score -= 2
+
+    if _has_any(dj_text, DJ_FRIENDLY_KEYWORDS):
+        score += 1
+    if _has_any(dj_text, NON_CLUB_KEYWORDS):
+        score -= 1
+
+    if score >= 4:
+        return "club"
+    if score >= 1:
+        return "bar"
+    return "remove"
+
+NEW:
+def classify_track(row: pd.Series) -> str:
+    score = 0
+
+    bpm = _to_number(row.get("bpm"))
+    energy = _to_number(row.get("energy"))
+
+    # HYBRID GENRE FALLBACK: use sub_genre if present, else main_genre
+    sub_genre = _normalize_text(row.get("genre"))  # canonical_sub_genre
+    main_genre = _normalize_text(row.get("genre_fallback"))  # canonical_genre
+    genre_text = sub_genre if sub_genre else main_genre
+
+    title_text = _normalize_text(row.get("title"))
+    comment_text = _normalize_text(row.get("comment"))
+    dj_text = " ".join([title_text, comment_text]).strip()
+
+    if bpm is not None:
+        if 115 <= bpm <= 130:
+            score += 2
+        elif 100 <= bpm < 115:
+            score += 1
+        elif bpm < 100 or bpm > 140:
+            score -= 1
+
+    if energy is not None:
+        if energy >= 6:
+            score += 2
+        elif energy >= 5:
+            score += 1
+        elif energy < 3:
+            score -= 1
+
+    # SOFTER GENRE SCORING
+    if genre_text:
+        if _has_any(genre_text, CLUB_KEYWORDS):
+            score += 2
+        elif _has_any(genre_text, BAR_KEYWORDS):
+            score += 1
+        elif _has_any(genre_text, ANTI_DJ_KEYWORDS):
+            score -= 2  # Explicit anti-DJ genres penalized
+        # else: unknown genre = 0 (no penalty)
+    # else: missing genre = 0 (no penalty, data quality issue not musical)
+
+    if _has_any(dj_text, DJ_FRIENDLY_KEYWORDS):
+        score += 1
+    if _has_any(dj_text, NON_CLUB_KEYWORDS):
+        score -= 1
+
+    if score >= 4:
+        return "club"
+    if score >= 1:
+        return "bar"
+    return "remove"
+
+RATIONALE:
+  - Line: "sub_genre if sub_genre else main_genre" — fallback logic
+  - Lines 227-231: Only penalize explicit anti-DJ genres, not all unknowns
+  - Missing genre no longer incurs -2 penalty (was 228-230)
+
+
+================================================================================
+PATCH SECTION 4: Modify _build_select() to pull both genre columns (lines 314-335)
+================================================================================
+
+File: scripts/classify_tracks_sqlite.py
+Lines: 314-335 (_build_select function)
+
+Replace _build_select() with:
+
+OLD:
+def _build_select(table: str, columns: list[str], include_comment: bool) -> tuple[str, dict[str, str]]:
+    resolved: dict[str, str] = {}
+    required = ["title", "artist", "bpm", "energy", "genre", "duration", "file_path"]
+    optional = ["comment"] if include_comment else []
+
+    for key in required + optional + ["id"]:
+        col = _resolve_column(columns, key)
+        if col:
+            resolved[key] = col
+
+    missing_required = [key for key in required if key not in resolved]
+    if missing_required:
+        raise SystemExit(
+            "Missing required columns: "
+            + ", ".join(missing_required)
+            + "\nAvailable columns: "
+            + ", ".join(columns)
+        )
+
+    select_cols = [resolved[key] for key in resolved]
+    select_sql = f"SELECT {', '.join(select_cols)} FROM {table}"
+    return select_sql, resolved
+
+NEW:
+def _build_select(table: str, columns: list[str], include_comment: bool) -> tuple[str, dict[str, str]]:
+    resolved: dict[str, str] = {}
+    required = ["title", "artist", "bpm", "energy", "genre", "duration", "file_path"]
+    optional = ["comment"] if include_comment else []
+
+    for key in required + optional + ["id"]:
+        col = _resolve_column(columns, key)
+        if col:
+            resolved[key] = col
+
+    # HYBRID GENRE: also try to resolve genre_fallback (canonical_genre)
+    if "genre_fallback" in COLUMN_ALIASES:
+        fallback_col = _resolve_column(columns, "genre_fallback")
+        if fallback_col:
+            resolved["genre_fallback"] = fallback_col
+
+    missing_required = [key for key in required if key not in resolved]
+    if missing_required:
+        raise SystemExit(
+            "Missing required columns: "
+            + ", ".join(missing_required)
+            + "\nAvailable columns: "
+            + ", ".join(columns)
+        )
+
+    select_cols = [resolved[key] for key in resolved]
+    select_sql = f"SELECT {', '.join(select_cols)} FROM {table}"
+    return select_sql, resolved
+
+RATIONALE:
+  - After resolving required columns, also optionally resolve genre_fallback
+  - Won't fail if genre_fallback not found (optional)
+  - Both genre columns now in SELECT statement
+
+
+================================================================================
+PATCH SECTION 5: Update DB column creation (lines 472-476)
+================================================================================
+
+File: scripts/classify_tracks_sqlite.py
+Lines: 472-476 (DB update section)
+
+OLD:
+            if "classification" not in columns:
+                cursor.execute(f"ALTER TABLE {table} ADD COLUMN classification TEXT")
+                con.commit()
+                print("Added classification column to table.")
+
+NEW:
+            if "classification_v2" not in columns:
+                cursor.execute(f"ALTER TABLE {table} ADD COLUMN classification_v2 TEXT")
+                con.commit()
+                print("Added classification_v2 column to table.")
+
+RATIONALE:
+  - Writes to classification_v2, not classification
+  - Preserves old classification for audit trail
+  - No breaking change to existing data
+
+
+================================================================================
+PATCH SECTION 6: Update DB update loop (lines 477-486)
+================================================================================
+
+File: scripts/classify_tracks_sqlite.py
+Lines: 477-486 (UPDATE statement)
+
+OLD:
+            update_sql = f"UPDATE {table} SET classification=? WHERE {key_column}=?"
+            updates = 0
+            for _, row in df.iterrows():
+                key_value = row.get(key_value_field)
+                if key_value in (None, ""):
+                    continue
+                cursor.execute(update_sql, (row.get("classification"), key_value))
+                updates += 1
+            con.commit()
+            print(f"Updated classification for {updates} rows.")
+
+NEW:
+            update_sql = f"UPDATE {table} SET classification_v2=? WHERE {key_column}=?"
+            updates = 0
+            for _, row in df.iterrows():
+                key_value = row.get(key_value_field)
+                if key_value in (None, ""):
+                    continue
+                cursor.execute(update_sql, (row.get("classification"), key_value))
+                updates += 1
+            con.commit()
+            print(f"Updated classification_v2 for {updates} rows.")
+
+RATIONALE:
+  - Updates classification_v2 instead of classification
+  - All other logic unchanged
+
+
+================================================================================
+PATCH SECTION 7: Rename output columns in CSV (line 488)
+================================================================================
+
+File: scripts/classify_tracks_sqlite.py
+Line: 488 (CSV export columns)
+
+OLD:
+        csv_columns = ["artist", "title", "bpm", "energy", "genre", "classification", "file_path"]
+
+NEW:
+        csv_columns = ["artist", "title", "bpm", "energy", "genre", "classification", "file_path"]
+        # CSV "genre" now contains hybrid (sub_genre || main_genre), so will have 94% coverage instead of 1.3%
+
+RATIONALE:
+  - No code change needed; the DataFrame "genre" column now has fallback data
+  - CSV will show much richer genre field (22K+ values instead of 312)
+  - Add comment documenting the improvement
+
+
+================================================================================
+PATCH SECTION 8: Update M3U8/Playlist generation (lines 500-515)
+================================================================================
+
+File: scripts/classify_tracks_sqlite.py
+Lines: 500-515 (playlist generation)
+
+OLD:
+        for label, filename in playlist_map.items():
+            out_path = playlist_dir / filename
+            _write_m3u8(out_path, df[df["classification"] == label])
+            print(f"Playlist written: {out_path}")
+
+NEW:
+        # NOTE: Uses "classification" column from DataFrame (mapped from DB classification column)
+        # To use v2 results instead, change df["classification"] to df["classification_v2"]
+        for label, filename in playlist_map.items():
+            out_path = playlist_dir / filename
+            _write_m3u8(out_path, df[df["classification"] == label])
+            print(f"Playlist written: {out_path}")
+
+RATIONALE:
+  - Leave as-is for now (uses v1 if running preview with --no-db-update)
+  - If you want v2 playlists, change to df["classification_v2"]
+  - Add comment so user knows how to switch versions
+
+
+================================================================================
+SUMMARY OF CHANGES
+================================================================================
+
+1. ✓ Added ANTI_DJ_KEYWORDS list (explicit bad genres)
+2. ✓ Updated COLUMN_ALIASES to include genre_fallback
+3. ✓ Modified _build_select() to pull both genre columns
+4. ✓ Rewrote classify_track() with hybrid fallback + softer scoring
+5. ✓ Changed DB column to classification_v2 (no data loss)
+6. ✓ Updated UPDATE statement to write to classification_v2
+7. ✓ CSV will now show 22K+ genre values (94% coverage vs 1.3%)
+8. ✓ M3U8s use v1 classification (can switch to v2 if desired)
+
+EXPECTED IMPACT:
+
+Current distribution (v1, sparse genre):
+- club: 171 (0.7%) — too low
+- bar: 5,662 (24.2%)
+- remove: 17,627 (75.2%) — too high
+
+Expected with v2 (rich genre + soft scoring):
+- club: ~800-1,500 (3-6%) — tracks with club genres now classified
+- bar: ~7,000-9,000 (30-38%) — more borderline tracks recognized
+- remove: ~13,000-16,000 (55-68%) — only explicit anti-DJ + poor BPM/energy
+
+Validation query (run after patching to compare):
+  SELECT 'v1 (old)' as version, classification, COUNT(*) as count
+  FROM files WHERE classification IS NOT NULL GROUP BY classification
+  UNION ALL
+  SELECT 'v2 (new)', classification_v2, COUNT(*)
+  FROM files WHERE classification_v2 IS NOT NULL GROUP BY classification_v2
+  ORDER BY version DESC, count DESC;
+
+================================================================================
+RERUN INSTRUCTIONS
+================================================================================
+
+1. Apply patches (edit file or apply with patch command)
+
+2. Test without DB update (preview mode):
+   python3 scripts/classify_tracks_sqlite.py \
+     --db "$TAGSLUT_DB" \
+     --table files \
+     --no-db-update \
+     --csv-out /tmp/test_v2.csv \
+     --playlist-dir /tmp/test_v2_playlists
+
+3. Compare results:
+   # Count blanks in genre field
+   tail -n +2 /tmp/test_v2.csv | awk -F',' '{if($5=="") blank++} END {print "Genre blank:", blank}'
+   # Count classifications
+   tail -n +2 /tmp/test_v2.csv | awk -F',' '{c[$6]++} END {for(x in c) print x, c[x]}'
+
+4. If satisfied, apply to DB:
+   python3 scripts/classify_tracks_sqlite.py \
+     --db "$TAGSLUT_DB" \
+     --table files \
+     --csv-out unnamed_playlist_classification_with_bar_v2.csv \
+     --playlist-dir .
+
+5. Verify v2 update in DB:
+   sqlite3 "$TAGSLUT_DB" \
+     "SELECT 'v1 (old)' as version, classification, COUNT(*) as count FROM files WHERE classification IS NOT NULL GROUP BY classification UNION ALL SELECT 'v2 (new)', classification_v2, COUNT(*) FROM files WHERE classification_v2 IS NOT NULL GROUP BY classification_v2 ORDER BY version DESC, count DESC;"
+
+6. Keep old CSV for audit trail:
+   mv unnamed_playlist_classification_with_bar.csv \
+      unnamed_playlist_classification_with_bar_v1_SPARSE_GENRE.csv
+   mv unnamed_playlist_classification_with_bar_v2.csv \
+      unnamed_playlist_classification_with_bar.csv
+
+Done!

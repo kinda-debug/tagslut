@@ -200,3 +200,18 @@ config/dj/dj_curation_usb_v[0-9]*.yaml
 *.wav
 *.aiff
 *.m4a
+
+# -- Artifacts (audit closeout) -----------------------------------
+artifacts/
+!artifacts/
+!artifacts/README.md
+!artifacts/db/
+!artifacts/db/.gitkeep
+!artifacts/logs/
+!artifacts/logs/.gitkeep
+!artifacts/tmp/
+!artifacts/tmp/.gitkeep
+!artifacts/manifests/
+!artifacts/manifests/.gitkeep
+!artifacts/reports/
+!artifacts/reports/.gitkeep

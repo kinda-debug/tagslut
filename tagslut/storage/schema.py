@@ -215,6 +215,11 @@ def init_db(
             "duration_delta_ms": "INTEGER",
             "duration_status": "TEXT",
             "duration_check_version": "TEXT",
+            # DJ pool output tracking
+            "dj_pool_path": "TEXT",
+            "quality_rank": "INTEGER",
+            "rekordbox_id": "INTEGER",
+            "last_exported_usb": "TEXT",
         }
 
         for col_name, col_type in required_columns.items():
@@ -244,6 +249,9 @@ def init_db(
         connection.execute("CREATE INDEX IF NOT EXISTS idx_is_dj_material ON files(is_dj_material);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_duration_status ON files(duration_status);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_duration_ref_track_id ON files(duration_ref_track_id);")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_quality_rank ON files(quality_rank);")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_dj_pool_path ON files(dj_pool_path);")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_last_exported_usb ON files(last_exported_usb);")
         connection.execute(
             "CREATE INDEX IF NOT EXISTS idx_files_duration_mtime ON files(duration_status, mtime);"
         )
@@ -417,6 +425,7 @@ def init_db(
 
         _ensure_scan_tracking_tables(connection)
         _ensure_v3_schema(connection)
+        _ensure_gig_tables(connection)
         _record_schema_version(connection, schema_name="integrity", version=INTEGRITY_SCHEMA_VERSION)
         _record_schema_version(connection, schema_name="v3", version=V3_SCHEMA_VERSION)
 
@@ -757,6 +766,65 @@ def _add_missing_columns(
             continue
         logger.info("Migrating DB: Adding column '%s' to '%s' table.", name, table_name)
         conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {name} {definition}")
+
+
+def _ensure_gig_tables(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS gig_sets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            filter_expr TEXT,
+            usb_path TEXT,
+            manifest_path TEXT,
+            track_count INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            exported_at TEXT
+        );
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_gig_sets_name ON gig_sets(name);")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_gig_sets_exported_at ON gig_sets(exported_at);")
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS gig_set_tracks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            gig_set_id INTEGER NOT NULL,
+            file_path TEXT NOT NULL,
+            mp3_path TEXT,
+            usb_dest_path TEXT,
+            transcoded_at TEXT,
+            exported_at TEXT,
+            rekordbox_id INTEGER,
+            FOREIGN KEY(gig_set_id) REFERENCES gig_sets(id)
+        );
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_gig_set_tracks_set ON gig_set_tracks(gig_set_id);")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_gig_set_tracks_file ON gig_set_tracks(file_path);")
+    _add_missing_columns(
+        conn,
+        "gig_sets",
+        {
+            "filter_expr": "TEXT",
+            "usb_path": "TEXT",
+            "manifest_path": "TEXT",
+            "track_count": "INTEGER DEFAULT 0",
+            "exported_at": "TEXT",
+        },
+    )
+    _add_missing_columns(
+        conn,
+        "gig_set_tracks",
+        {
+            "mp3_path": "TEXT",
+            "usb_dest_path": "TEXT",
+            "transcoded_at": "TEXT",
+            "exported_at": "TEXT",
+            "rekordbox_id": "INTEGER",
+        },
+    )
 
 
 def _ensure_scan_tracking_tables(conn: sqlite3.Connection) -> None:

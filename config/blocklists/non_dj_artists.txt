@@ -1,0 +1,7 @@
+# Artists that should never be promoted to DJ_USB
+# One artist per line
+# added 2026-02-24T00:13:28+00:00 reason: pop
+Coldplay
+Ed Sheeran
+Mariah Carey
+Taylor Swift

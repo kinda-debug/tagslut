@@ -1,0 +1,2 @@
+# Artists that require manual review before DJ_USB export
+# One artist per line

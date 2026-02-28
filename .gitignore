@@ -1,54 +1,4 @@
-# Ignore .state and .ndjson files
-*.state
-*.ndjson
-**/*.state
-**/*.ndjson
-# Ignore all JSON files
-*.json
-**/*.json
-# Ignore all log and txt files
-*.log
-*.txt
-*.out
-*.err
-*.bak
-*.tmp
-*.swp
-*.swo
-*.gz
-*.zip
-*.7z
-*.tar
-*.tar.gz
-*.tar.bz2
-*.tar.xz
-*.csv
-*.tsv
-*.jsonl
-*.pid
-logs/
-**/logs/
-**/*.log
-**/*.txt
-**/*.out
-**/*.err
-**/*.bak
-**/*.tmp
-**/*.swp
-**/*.swo
-**/*.gz
-**/*.zip
-**/*.7z
-**/*.tar
-**/*.tar.gz
-**/*.tar.bz2
-**/*.tar.xz
-**/*.csv
-**/*.tsv
-**/*.jsonl
-**/*.pid
-**/*.go
-# Python
+# -- Python -------------------------------------------------------
 __pycache__/
 *.py[cod]
 *.pyd
@@ -58,36 +8,29 @@ dist/
 .venv/
 venv/
 .env
-beatportdl-config.yml
 .pytest_cache/
 .mypy_cache/
 .ipynb_checkpoints/
+.coverage
+coverage.xml
 
-# Generated output (reports, audits, prechecks)
-output/
-
-# Security — never track keys/certs
-*.key
-*.pem
-*.p12
-*.pfx
-
-# Backup / editor save files
-*.save
-*.bak.*
-
-# OS / editor
+# -- OS / Editor --------------------------------------------------
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
-.claude/settings.local.json
-# Logs / runtime
-*.log
-*.out
-*.pid
+.junie/
+*.swp
+*.swo
 
-# Databases (avoid committing scan/hash outputs)
+# -- Security (never track keys/certs) ----------------------------
+*.key
+*.pem
+*.p12
+*.pfx
+beatportdl-config.yml
+
+# -- Data / Binary / Archive --------------------------------------
 *.sqlite
 *.sqlite3
 *.sqlite-journal
@@ -97,16 +40,43 @@ Thumbs.db
 *.db-journal
 *.db-shm
 *.db-wal
+*.gz
+*.zip
+*.7z
+*.tar
+*.tar.gz
+*.tar.bz2
+*.tar.xz
 
-# Local config
-/config.toml
-/Users/georgeskhawam/Projects/tagslut/legacy
-# Working directories / run outputs
+# -- Logs / Runtime -----------------------------------------------
+*.log
+*.out
+*.err
+*.pid
+*.bak
+*.tmp
+*.save
+logs/
+
+# -- Data files (bulk) --------------------------------------------
+*.state
+*.ndjson
+*.csv
+*.tsv
+*.txt
+*.jsonl
+*.json
+*.xlsx
+*.xls
+
+# -- Allowlisted data files ---------------------------------------
+!tools/rules/library_canon.json
+!tools/baselines/mypy.txt
+!config/blocklists/*.txt
+
+# -- Generated output / runtime artifacts -------------------------
+output/
 artifacts/**
-out/
-runs/
-
-# Keep structure placeholders and docs
 !artifacts/
 !artifacts/README.md
 !artifacts/db/
@@ -120,18 +90,37 @@ runs/
 !artifacts/reports/
 !artifacts/reports/.gitkeep
 
-# Archived run outputs (keep out of git)
-archive/ops_artifacts
-/Users/georgeskhawam/Projects/tagslut/beatportdl
-# Large legacy volumes and exports
-Volumes/
+# -- Working / scratch --------------------------------------------
+out/
+runs/
+tag_hoard_out/
 
-# Known large legacy blobs currently present in history
+# -- Config (local) -----------------------------------------------
+/config.toml
+.claude/settings.local.json
+.postman/config.json
+
+# -- DJ curation runtime crates -----------------------------------
+config/dj/crates/block.m3u8
+config/dj/crates/review.m3u8
+config/dj/crates/safe.m3u8
+dj_purge_*.m3u8
+safe_mp3s.m3u8
+safe_copy.m3u8
+wider_new.m3u8
+
+# -- Playlist working files (root) --------------------------------
+phase_*.m3u8
+
+# -- Large legacy / archived --------------------------------------
+archive/ops_artifacts
 ARCHIVE_DBS/*.db*
 ARCHIVE_SCRIPTS/move_plan.sh
 tagslut/ARCHIVE/archive/**
+Volumes/
+flac_recovery_pipeline/
 
-# Local helper binaries / scratch files sometimes in repo root
+# -- Local helper binaries / scratch in repo root -----------------
 /python3
 /sqlite3
 /SELECT
@@ -139,359 +128,75 @@ tagslut/ARCHIVE/archive/**
 /1
 /2
 /5
+
+# -- Test fixtures (generated) ------------------------------------
 tests/data/corrupt.flac
 tests/data/healthy.flac
-tests/__pycache__/conftest.cpython-312-pytest-9.0.1.pyc
-tools/__pycache__/db_upgrade.cpython-312.pyc
-tools/__pycache__/manual_ingest.cpython-312.pyc
-tagslut/__pycache__/scanner.cpython-312.pyc
-tagslut/__pycache__/rstudio_parser.cpython-312.pyc
-tagslut/__pycache__/__init__.cpython-312.pyc
-Recognized4_APFS Container tree.txt.zip
-music.session.sql
-duplicates_for_decision.csv
-.gitignore
-fs_existence_summary_by_prefix.csv
-fs_existence_Volumes__bad___ALL_FLACS_FLAT.csv
-fs_existence_Volumes__bad___BAD_VS_DOTAD_DISCARDS.csv
-fs_existence_Volumes__bad__.tagslut_db.csv
-fs_existence_Volumes__bad__FINAL_LIBRARY.csv
-fs_existence_Volumes__COMMUNE___PROMOTION_STAGING.csv
-fs_existence_Volumes__COMMUNE__R2.csv
-fs_existence_Volumes__COMMUNE__Root.csv
-fs_existence_Volumes__RECOVERY_TARGET__Root.csv
-fs_existence_Volumes__Vault__RC2.csv
-fs_existence_Volumes__Vault__RECOVERED_TRASH.csv
-fs_existence_Volumes__Vault__Root.csv
-fs_existence_Volumes__Vault__Vault.csv
-missing_paths_RECOVERY_TARGET_checksum_matches.csv
-missing_paths_RECOVERY_TARGET_checksum_twin_summary.csv
-output.zip
-prefix_overlap_matrix.csv
-prefix_summary_Volumes__bad___ALL_FLACS_FLAT.csv
-prefix_summary_Volumes__bad___BAD_VS_DOTAD_DISCARDS.csv
-prefix_summary_Volumes__bad__.tagslut_db.csv
-prefix_summary_Volumes__bad__FINAL_LIBRARY.csv
-prefix_summary_Volumes__COMMUNE___PROMOTION_STAGING.csv
-prefix_summary_Volumes__COMMUNE__R2.csv
-prefix_summary_Volumes__COMMUNE__Root.csv
-prefix_summary_Volumes__RECOVERY_TARGET__Root.csv
-prefix_summary_Volumes__Vault__RC2.csv
-prefix_summary_Volumes__Vault__RECOVERED_TRASH.csv
-prefix_summary_Volumes__Vault__Root.csv
-prefix_summary_Volumes__Vault__Vault.csv
-relative_path_collisions_by_pair.csv
-relative_path_collisions.csv
-missing_paths_checksum_twin_collapse.csv
-missing_paths_checksum_twins_by_prefix.csv
-missing_paths_without_any_checksum_twin.csv
-fs_existence_bad_comparison.csv
-fs_existence_commune_comparison.csv
-fs_existence_ro_Volumes__bad___ALL_FLACS_FLAT.csv
-fs_existence_ro_Volumes__bad___BAD_VS_DOTAD_DISCARDS.csv
-fs_existence_ro_Volumes__bad__.tagslut_db.csv
-fs_existence_ro_Volumes__bad__FINAL_LIBRARY.csv
-fs_existence_ro_Volumes__COMMUNE___PROMOTION_STAGING.csv
-fs_existence_ro_Volumes__COMMUNE__R2.csv
-fs_existence_ro_Volumes__COMMUNE__Root.csv
-fs_existence_ro_Volumes__Vault__RC2.csv
-fs_existence_ro_Volumes__Vault__RECOVERED_TRASH.csv
-fs_existence_ro_Volumes__Vault__Root.csv
-fs_existence_ro_Volumes__Vault__Vault.csv
-fs_existence_summary_by_prefix_ro_bad_commune_vault.csv
-fs_existence_summary_by_prefix_ro_bad_commune.csv
-fs_existence_summary_by_prefix_ro_bad.csv
-fs_existence_vault_comparison.csv
-missing_paths_bucket_bad_present.csv
-missing_paths_bucket_orphans_ro_bad_commune_vault.csv
-missing_paths_bucket_orphans_ro_bad_commune.csv
-missing_paths_bucket_orphans.csv
-missing_paths_bucket_other_twins_ro_bad_commune_vault.csv
-missing_paths_bucket_other_twins_ro_bad_commune.csv
-missing_paths_bucket_other_twins.csv
-missing_paths_bucket_present_bad_commune_vault.csv
-missing_paths_bucket_present_bad_commune.csv
-missing_paths_checksum_twin_collapse_ro_bad_commune_vault.csv
-missing_paths_checksum_twin_collapse_ro_bad_commune.csv
-missing_paths_checksum_twin_collapse_ro_bad.csv
-missing_paths_checksum_twins_by_prefix_ro_bad_commune_vault.csv
-missing_paths_checksum_twins_by_prefix_ro_bad_commune.csv
-missing_paths_checksum_twins_by_prefix_ro_bad.csv
-missing_paths_RECOVERY_TARGET_checksum_matches_ro_bad_commune_vault.csv
-missing_paths_RECOVERY_TARGET_checksum_matches_ro_bad_commune.csv
-missing_paths_RECOVERY_TARGET_checksum_matches_ro_bad.csv
-missing_paths_without_any_checksum_twin_ro_bad_commune_vault.csv
-missing_paths_without_any_checksum_twin_ro_bad_commune.csv
-missing_paths_without_any_checksum_twin_ro_bad.csv
-orphans_in_quarantine_by_basename.csv
-quarantine_inventory.csv
-.vscode/settings.json
-orphans_checksum_no_quarantine_match.csv
-orphans_in_quarantine_by_checksum.csv
-orphans_quarantine_checksum_summary.csv
-quarantine_checksums.csv
-orphans_checksum_no_commune_match.csv
-orphans_commune_checksum_collisions.csv
-orphans_commune_checksum_summary.csv
-orphans_in_commune_by_checksum.csv
-orphans_reconciliation_master.csv
-orphans_reconciliation_quarantine_commune.csv
-orphans_reconciliation_rollup_summary.csv
-orphans_reconciliation_rollup.csv
-orphans_sidecar_reconciliation_summary.csv
-orphans_sidecar_reconciliation.csv
-orphans_unmatched_investigation_list.csv
-orphans_without_quarantine_or_commune_match.csv
-.gitignore
-commune_flac_scan_errors.csv
-commune_flac_sha256.csv
-config.toml
-config.toml
-Terminal Saved Output.txt
-terminaloutput.txt
-commune_delete_list.txt
-dupeguru.csv
 tests/data/truncated.flac
+tests/legacy/test_zone_logic.py.disabled
+
+# -- Vendor / build binaries --------------------------------------
+beatportdl/
+mp3tag_sources/
+
+# -- Historical one-off files -------------------------------------
+music.session.sql
 plan.json
-removal_plan.csv
-removal_plan.csv
-removal_plan.csv
-Recognized4_APFS Container.txt
+plan.csv
 plan_filtered.csv
 removal_plan.csv
-plan.csv
-removal_plan.csv
-removal_plan.csv
+duplicates_for_decision.csv
 CLAUDE.md
-.gitignore
+metadata_add.md
+trackhub.patch
+Terminal Saved Output.txt
+terminaloutput.txt
+Recognized4_APFS Container.txt
 init_flac_recovery_pipeline.sh
 list_unique_files.py
 M.xlsx
-unique_files_by_roon.csv
-unique_files_final.csv
-unique_files_fixed.csv
-unique_files.csv
-flac_recovery_pipeline/.!60096!flac_state.csv
-flac_recovery_pipeline/01_scan.sh
-flac_recovery_pipeline/02_repair.sh
-flac_recovery_pipeline/03_verify.sh
-flac_recovery_pipeline/04_summary.sh
-flac_recovery_pipeline/config.sh
-flac_recovery_pipeline/flac_state.csv
-.gitignore
-init_flac_recovery_pipeline.sh
-list_unique_files.py
-M.xlsx
-unique_files_by_roon.csv
-unique_files_final.csv
-unique_files_fixed.csv
-unique_files.csv
-flac_recovery_pipeline/.!60096!flac_state.csv
-flac_recovery_pipeline/01_scan.sh
-flac_recovery_pipeline/02_repair.sh
-flac_recovery_pipeline/03_verify.sh
-flac_recovery_pipeline/04_summary.sh
-flac_recovery_pipeline/config.sh
-flac_recovery_pipeline/flac_state.csv
-.gitignore
-init_flac_recovery_pipeline.sh
-list_unique_files.py
-M.xlsx
-unique_files_by_roon.csv
-unique_files_final.csv
-unique_files_fixed.csv
-unique_files.csv
-flac_recovery_pipeline/.!60096!flac_state.csv
-flac_recovery_pipeline/01_scan.sh
-flac_recovery_pipeline/02_repair.sh
-flac_recovery_pipeline/03_verify.sh
-flac_recovery_pipeline/04_summary.sh
-flac_recovery_pipeline/config.sh
-flac_recovery_pipeline/flac_state.csv
-/Users/georgeskhawam/Projects/tagslut/flac_recovery_pipeline
-.gitignore
-tests/legacy/test_zone_logic.py.disabled
-.claude/settings.local.json
-acoustic_recommendations.json
-report.json
-poetry.lock
-pyproject.toml
-poetry.lock
-pyproject.toml
-flac_paths.txt
-scanned_files.txt
-pyproject.toml
-.gitignore
-metadata_guide.md
-metadata_token_mgmt.md
+
+# -- Postman working files ----------------------------------------
+postman/chat/
+postman/globals/
+postman/collections/*Copy*
+
+# -- Harvest / recon scratch --------------------------------------
+phase1_harvest/
+
+# -- Epoch write-test markers -------------------------------------
+EPOCH_*/.tagslut_write_test_*
+
+# -- Legacy doc scratch -------------------------------------------
 docs/metadata/Core idea multi-service metadata and summary.md
-.gitignore
 docs/metadata/metadata-extraction-report.md
 docs/metadata/info.txt
-.gitignore
-EPOCH_2026-01-24/.tagslut_write_test_29399
-EPOCH_2026-01-24/.tagslut_write_test_52723
-EPOCH_2026-01-24/.tagslut_write_test_52517
-EPOCH_2026-01-24/.tagslut_write_test_7676
 docs/metadata/metadata_bible.md
-.gitignore
-phase1_harvest/env_exports.sh
-phase1_harvest/harvest_duration.sh
-phase1_harvest/harvest_metadata_full.sh
-phase1_harvest/tracks_input.csv
-phase1_harvest/tracks_raw.csv
-phase1_harvest/tracks.csv
-phase1_harvest/reconnaissance/beatport_isrc_search_test.json
-phase1_harvest/reconnaissance/beatport_reconnaissance_report.txt
-phase1_harvest/reconnaissance/beatport_search_fresh.json
-phase1_harvest/reconnaissance/beatport_test_1_isrc_search.json
-phase1_harvest/reconnaissance/beatport_test_1.json
-phase1_harvest/reconnaissance/decision.txt
-phase1_harvest/reconnaissance/qobuz_isrc_search_test.json
-phase1_harvest/reconnaissance/qobuz_test_1.json
-phase1_harvest/reconnaissance/SERVICE_COMPARISON_REPORT.md
-phase1_harvest/reconnaissance/spotify_audio_features.json
-phase1_harvest/reconnaissance/spotify_client_token.txt
-phase1_harvest/reconnaissance/spotify_isrc_search_client.json
-phase1_harvest/reconnaissance/spotify_isrc_search_test.json
-phase1_harvest/reconnaissance/spotify_test_1.json
-phase1_harvest/reconnaissance/spotify_text_search_test.json
-phase1_harvest/reconnaissance/tidal_isrc_search_test.json
-phase1_harvest/reconnaissance/tidal_test_1.json
-phase1_harvest/reconnaissance/tidal_text_search_test.json
-postman/collections/apple Copy.postman_collection.json
-postman/collections/bp4 Copy.postman_collection.json
-postman/collections/itunes Copy.postman_collection.json
-postman/collections/qob Copy.postman_collection.json
-postman/collections/tid2 Copy.postman_collection.json
-postman/globals/workspace.postman_globals.json
-metadata_add.md
-pyproject.toml
-.claude/settings.local.json
-.postman/config.json
-.claude/settings.local.json
-pyproject.toml
-pyproject.toml
-.claude/settings.local.json
-pyproject.toml
-poetry.lock
-docs/WORKFLOW_METADATA.md
-poetry.lock
-.claude/settings.local.json
-EPOCH_2026-01-27/.tagslut_write_test_59391
-EPOCH_2026-01-28/.tagslut_write_test_13493
-EPOCH_2026-01-27/.tagslut_write_test_82381
-.claude/settings.local.json
-poetry.lock
-.claude/settings.local.json
-poetry.lock
-/Users/georgeskhawam/Projects/tagslut/tools/review/promote_by_tags_versions
-/Users/georgeskhawam/Projects/tagslut/mp3tag_sources
-tools/rules/library_canon.picard.pms
-.gitignore
-tools/review/promote_by_tags_versions/v3-supercharged/2026-01-12__680c986__promote_by_tags.py
-tools/review/promote_by_tags_versions/v3-supercharged/2026-01-13__a8e53c2__promote_by_tags.py
-tools/review/promote_by_tags_versions/v3-supercharged/2026-01-14__92fb9bf__promote_by_tags.py
-tools/review/promote_by_tags_versions/v3-supercharged/2026-01-19__5bcece6__promote_by_tags.py
-tools/review/promote_by_tags_versions/v3-supercharged/2026-01-20__b929f2a__promote_by_tags.py
-tools/review/promote_by_tags_versions/v3-supercharged/2026-01-21__bceeb03__promote_by_tags.py
-tools/review/promote_by_tags_versions/v3-supercharged/2026-01-21__edbb7e7__promote_by_tags.py
-tools/review/promote_by_tags_versions/v3-supercharged/2026-01-22__6c64701__promote_by_tags.py
-tools/review/promote_by_tags_versions/v3-supercharged/2026-01-23__20563d9__promote_by_tags.py
-tools/review/promote_by_tags_versions/v3-supercharged/2026-01-24__8ff7315__promote_by_tags.py
-tools/review/promote_by_tags_versions/v3-supercharged/2026-01-27__a56d990__promote_by_tags.py
-postman/chat/chat 2.md
-postman/chat/chat 3.md
-postman/chat/chat 4.md
-postman/chat/chat 5.md
-postman/chat/chat 6.md
-postman/chat/chat 7.md
-postman/chat/last.md
-trackhub.patch
-docs/metadata_system_report.md
-/Users/georgeskhawam/Projects/tagslut/beatportdl
-beatportdl/vendor/gopkg.in/yaml.v2/yamlprivateh.go
-~/Music/btdl/01. Vlad Caia, Cristi Cons, SIT - Magnetized (Original Mix).flac
-~/Music/btdl/02. Vlad Caia, Cristi Cons, SIT - Roundandround (Original Mix).flac
-.gitignore
-~/Music/btdl/03. Vlad Caia, Cristi Cons, SIT - There Is Love (Original Mix).flac
-postman/chat/20263001/chat 2.md
-postman/chat/20263001/chat 3.md
-postman/chat/20263001/chat 4.md
-postman/chat/20263001/chat 5.md
-postman/chat/20263001/chat 6.md
-postman/chat/20263001/chat 7.md
-postman/chat/20263001/last.md
-postman/chat/29260102/last.md
-~/Music/btdl/44. Global Underground - Global Underground Afterhours #9 (Continuous Mix 2).flac
-mp3tag_sources/Apple Music Web Source 4/localhost.key
-.gitignore
-mp3tag_sources/Apple Music Web Source 4/localhost.sh
-mp3tag_sources/localhost/localhost.key
-mp3tag_sources/localhost/localhost.sh
-.gitignore
-mp3tag_sources/localhost/localhost.pem
-mp3tag_sources/Apple Music Web Source 4/localhost.pem
-poetry.lock
-tools/flacs_inventory_20260202_191907.xlsx
-poetry.lock
-tagslut/storage/migrations/2026_02_03_add_duration_safety.sql
-DJ.xlsx
-output/spreadsheet/ALL_audio_health_report_postcheck.xlsx
-output/spreadsheet/ALL_audio_health_report_precheck.xlsx
-output/spreadsheet/ALL_missing_db_fuzzy_matches_EPOCH_2026-02-08.xlsx
-output/spreadsheet/DJ_NEW_audio_health_report_postcheck.xlsx
-output/spreadsheet/DJ_NEW_audio_health_report_precheck.xlsx
-output/spreadsheet/ALL_audio_health_report_corrected.xlsx
-output/spreadsheet/ALL_missing_db_checksum_matches.xlsx
-output/spreadsheet/ALL_missing_db_unicode_matches.xlsx
-
-!tools/rules/library_canon.json
-!tools/baselines/mypy.txt
 docs/WORKFLOW_CUSTOM.md
-scripts/playlist_finalize_audit.sh
+docs/WORKFLOW_HEALTH_RESCAN.md
+docs/WORKFLOW_OFFLINE_CHEATSHEET.md
+docs/WORKFLOW_METADATA.md
+docs/metadata_system_report.md
 docs/chat.md
 docs/chat-next-steps.md
 docs/db-report.md
-docs/WORKFLOW_CUSTOM.md
-docs/WORKFLOW_CUSTOM.md
-docs/WORKFLOW_CUSTOM.md
+metadata_guide.md
+metadata_token_mgmt.md
+
+# -- Misc scripts / patches ---------------------------------------
+scripts/classify_tracks_sqlite_v2.patch
+scripts/playlist_finalize_audit.sh
 scripts/workflow_health_rescan.py
-docs/WORKFLOW_HEALTH_RESCAN.md
-.coverage
-.junie/
-docs/WORKFLOW_OFFLINE_CHEATSHEET.md
 
-# macOS
-.DS_Store
+# -- Promote-by-tags version archive ------------------------------
+tools/review/promote_by_tags_versions/
 
-# Test coverage
-.coverage
-coverage.xml
+# -- DJ policy versions (track only canonical) --------------------
+config/dj/dj_curation_usb_v[0-9]*.yaml
 
-# Generated output and runtime artifacts
-output/
-artifacts/
-
-# Python cache
-__pycache__/
-*.pyc
-wider_new.m3u8
-config/dj/crates/block.m3u8
-config/dj/crates/review.m3u8
-config/dj/crates/safe.m3u8
-dj_purge_v7.m3u8
-pyproject.toml
-safe_mp3s.m3u8
-config/dj/dj_curation_usb_v6.yaml
-config/dj/dj_curation_usb_v7.1.yaml
-config/dj/dj_curation_usb_v7.yaml
-config/dj/dj_curation_usb.yaml
-config/dj/crates/block.m3u8
-config/dj/crates/review.m3u8
-config/dj/crates/safe.m3u8
-safe_copy.m3u8
-config/dj/crates/block.m3u8
-config/dj/crates/review.m3u8
-config/dj/crates/safe.m3u8
-config/dj/dj_curation_usb_v8.yaml
+# -- Music files (should never be in repo) ------------------------
+*.flac
+*.mp3
+*.wav
+*.aiff
+*.m4a

@@ -84,6 +84,7 @@ import sqlite3
 from pathlib import Path
 from typing import Iterable
 
+import numpy as np
 import pandas as pd
 
 
@@ -298,6 +299,19 @@ def classify_energy_bucket(row: pd.Series) -> str:
     return "midtempo"
 
 
+def _robust_norm(series: pd.Series) -> pd.Series:
+    """Library-relative normalization using IQR (z-score style, clipped to [-2, 2])."""
+    s = series.astype(float)
+    med = s.median(skipna=True)
+    q25 = s.quantile(0.25, interpolation="linear")
+    q75 = s.quantile(0.75, interpolation="linear")
+    iqr = (q75 - q25) if (q75 is not None and q25 is not None and pd.notna(q75) and pd.notna(q25)) else 0.0
+    if not np.isfinite(iqr) or iqr == 0:
+        return pd.Series(np.zeros(len(s)), index=s.index)
+    z = (s - med) / iqr
+    return z.clip(-2, 2).fillna(0.0)
+
+
 def _query_tables(conn: sqlite3.Connection) -> list[str]:
     rows = conn.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").fetchall()
     return [row[0] for row in rows if row[0] != "sqlite_sequence"]
@@ -420,7 +434,7 @@ def main() -> None:
     parser.add_argument(
         "--no-db-update",
         action="store_true",
-        help="Skip adding/updating the classification column in the database.",
+        help="Skip adding/updating the classification columns in the database.",
     )
     parser.add_argument(
         "--no-energy-playlists",
@@ -516,6 +530,64 @@ def main() -> None:
         if remove_pct <= 80 and genre_blank_pct <= 20:
             print("  ✅ All invariants OK")
 
+        # ============================================================================
+        # PHASE_V3: SET ARC CLASSIFICATION (warmup, lift, peak, closing, archive)
+        # ============================================================================
+
+        # Gate archive early (remove classification → archive phase)
+        is_club = df["classification"].astype(str).str.lower().eq("club")
+        is_bar = df["classification"].astype(str).str.lower().eq("bar")
+        is_archive = df["classification"].astype(str).str.lower().eq("remove")
+
+        # Compute intensity score: 65% energy + 35% BPM (library-relative)
+        bpm_norm = _robust_norm(df["bpm"])
+        energy_norm = _robust_norm(df["energy"])
+        df["_intensity_v3"] = 0.65 * energy_norm + 0.35 * bpm_norm
+
+        # Quantile thresholds computed over club tracks only (domain-aware)
+        cal = df.loc[is_club, "_intensity_v3"]
+        q25 = float(cal.quantile(0.25))
+        q60 = float(cal.quantile(0.60))
+        q90 = float(cal.quantile(0.90))
+
+        def _phase_from_intensity(intensity: float) -> str:
+            if intensity < q25:
+                return "warmup"
+            if intensity < q60:
+                return "lift"
+            if intensity < q90:
+                return "peak"
+            return "closing"
+
+        # Assign phase: archive for remove, else intensity-based
+        df["phase_v3"] = "archive"
+        # Club tracks: full arc
+        df.loc[is_club, "phase_v3"] = df.loc[is_club, "_intensity_v3"].map(_phase_from_intensity)
+        # Bar tracks: cap at lift (never peak/closing)
+        bar_phases = df.loc[is_bar, "_intensity_v3"].map(_phase_from_intensity)
+        bar_phases = bar_phases.replace({"peak": "lift", "closing": "lift"})
+        df.loc[is_bar, "phase_v3"] = bar_phases
+
+        # OPTIONAL: Override peak → closing for emotional closers (high energy, low BPM)
+        if is_club.any():
+            e = df.loc[is_club, "energy"].astype(float)
+            b = df.loc[is_club, "bpm"].astype(float)
+            e_q85 = float(e.quantile(0.85))
+            b_med = float(b.median())
+            override = (
+                is_club &
+                (df["phase_v3"].eq("peak")) &
+                (df["energy"].astype(float) >= e_q85) &
+                (df["bpm"].astype(float) <= b_med)
+            )
+            df.loc[override, "phase_v3"] = "closing"
+
+        print("\nPhase v3 distribution:")
+        phase_counts = df["phase_v3"].value_counts(dropna=False)
+        print(phase_counts.to_string())
+        print("\nPhase v3 by classification:")
+        print(df.groupby(["phase_v3", "classification"]).size().unstack(fill_value=0).to_string())
+
         if not args.no_db_update:
             id_column = resolved.get("id")
             key_column = id_column
@@ -526,6 +598,7 @@ def main() -> None:
             if not key_column:
                 raise SystemExit("No id or file_path column found; cannot update database without a key.")
 
+            # Migrate classification_v2 column (non-destructive)
             if "classification_v2" not in columns:
                 cursor.execute(f"ALTER TABLE {table} ADD COLUMN classification_v2 TEXT")
                 con.commit()
@@ -546,7 +619,7 @@ def main() -> None:
             if skipped > 0:
                 print(f"⚠️  Skipped {skipped} rows due to missing key (NULL or empty {key_value_field})")
 
-            # TRIPWIRE: Verify no NULLs in classification_v2 (catch silent key mismatches)
+            # TRIPWIRE: Verify no NULLs in classification_v2
             null_count = cursor.execute(
                 f"SELECT COUNT(*) FROM {table} WHERE classification_v2 IS NULL"
             ).fetchone()[0]
@@ -561,24 +634,61 @@ def main() -> None:
                     print(f"      {row}")
                 raise SystemExit("Fix key mismatches and re-run.")
 
-        csv_columns = ["artist", "title", "bpm", "energy", "genre", "classification", "file_path"]
-        # CSV "genre" now contains hybrid (sub_genre || main_genre), so will have ~94% coverage instead of 1.3%
+            # Migrate phase_v3 column (non-destructive)
+            if "phase_v3" not in columns:
+                cursor.execute(f"ALTER TABLE {table} ADD COLUMN phase_v3 TEXT")
+                con.commit()
+                print("Added phase_v3 column to table.")
+
+            # Writeback phase_v3
+            update_phase_sql = f"UPDATE {table} SET phase_v3=? WHERE {key_column}=?"
+            phase_updates = 0
+            for _, row in df.iterrows():
+                key_value = row.get(key_value_field)
+                if key_value in (None, ""):
+                    continue
+                cursor.execute(update_phase_sql, (row.get("phase_v3"), key_value))
+                phase_updates += 1
+            con.commit()
+            print(f"Updated phase_v3 for {phase_updates} rows.")
+
+            # TRIPWIRE: Verify no NULLs in phase_v3
+            phase_null_count = cursor.execute(
+                f"SELECT COUNT(*) FROM {table} WHERE phase_v3 IS NULL"
+            ).fetchone()[0]
+            if phase_null_count > 0:
+                print(f"\n❌ ERROR: {phase_null_count} rows have NULL phase_v3!")
+                raise SystemExit("Fix phase_v3 key mismatches and re-run.")
+
+        csv_columns = ["artist", "title", "bpm", "energy", "genre", "classification", "phase_v3", "file_path"]
         df[csv_columns].to_csv(args.csv_out, index=False)
         print(f"\nCSV written: {args.csv_out}")
 
         playlist_dir = Path(args.playlist_dir).expanduser()
         playlist_dir.mkdir(parents=True, exist_ok=True)
 
+        # v2 classification playlists
         playlist_map = {
             "club": "club_playlist.m3u8",
             "bar": "bar_playlist.m3u8",
             "remove": "remove_playlist.m3u8",
         }
-        # NOTE: Uses "classification" column from DataFrame (mapped from DB classification column)
-        # To use v2 results instead, change df["classification"] to df["classification_v2"]
         for label, filename in playlist_map.items():
             out_path = playlist_dir / filename
             _write_m3u8(out_path, df[df["classification"] == label])
+            print(f"Playlist written: {out_path}")
+
+        # Phase v3 playlists (set arc)
+        phase_map = {
+            "warmup": "phase_warmup.m3u8",
+            "lift": "phase_lift.m3u8",
+            "peak": "phase_peak.m3u8",
+            "closing": "phase_closing.m3u8",
+            "archive": "phase_archive.m3u8",
+        }
+        for label, filename in phase_map.items():
+            out_path = playlist_dir / filename
+            _write_m3u8(out_path, df[df["phase_v3"] == label])
             print(f"Playlist written: {out_path}")
 
         if not args.no_energy_playlists:
@@ -593,11 +703,16 @@ def main() -> None:
                 _write_m3u8(out_path, df[df["energy_bucket"] == label])
                 print(f"Playlist written: {out_path}")
 
-        print("\nSample rows:")
+        print("\nSample rows (classification v2):")
         for label in ["club", "bar", "remove"]:
             _print_samples(df, "classification", label, args.sample_size)
 
+        print("\nSample rows (phase v3):")
+        for label in ["warmup", "lift", "peak", "closing", "archive"]:
+            _print_samples(df, "phase_v3", label, args.sample_size)
+
         if not args.no_energy_playlists:
+            print("\nSample rows (energy bucket):")
             for label in ["chill", "midtempo", "highenergy", "banger"]:
                 _print_samples(df, "energy_bucket", label, args.sample_size)
     finally:

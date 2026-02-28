@@ -47,6 +47,28 @@ def sanitize_component(value: Optional[object], fallback: str) -> str:
     return text or fallback
 
 
+MAX_REL_PATH_LEN = 240
+
+
+def _truncate(text: str, max_len: int) -> str:
+    if len(text) <= max_len:
+        return text
+    return text[:max_len].rstrip()
+
+
+def _truncate_filename(name: str, max_len: int) -> str:
+    if len(name) <= max_len:
+        return name
+    if "." in name:
+        stem, ext = name.rsplit(".", 1)
+        ext = f".{ext}"
+        avail = max_len - len(ext)
+        if avail <= 1:
+            return name[:max_len]
+        return _truncate(stem, avail) + ext
+    return _truncate(name, max_len)
+
+
 def parse_track_number(value: Optional[object]) -> Optional[int]:
     """Parse an optional track number field into an integer."""
     if value is None:
@@ -158,7 +180,29 @@ def build_output_path(output_root: Path, track: TrackRow) -> Path:
     else:
         file_name = f"{title}.mp3"
 
-    return output_root / artist_dir / album_dir / file_name
+    output = output_root / artist_dir / album_dir / file_name
+    rel = str(output.relative_to(output_root))
+    if len(rel) <= MAX_REL_PATH_LEN:
+        return output
+
+    artist_dir = _truncate(artist_dir, 60)
+    album_dir = _truncate(album_dir, 60)
+    file_name = _truncate_filename(file_name, 120)
+    output = output_root / artist_dir / album_dir / file_name
+    rel = str(output.relative_to(output_root))
+    if len(rel) <= MAX_REL_PATH_LEN:
+        return output
+
+    album_dir = "Misc"
+    avail = max(32, MAX_REL_PATH_LEN - len(artist_dir) - len(album_dir) - 2)
+    file_name = _truncate_filename(file_name, avail)
+    output = output_root / artist_dir / album_dir / file_name
+    rel = str(output.relative_to(output_root))
+    if len(rel) <= MAX_REL_PATH_LEN:
+        return output
+
+    file_name = _truncate_filename(file_name, MAX_REL_PATH_LEN)
+    return output_root / file_name
 
 
 def dedupe_tracks(tracks: Iterable[TrackRow]) -> Tuple[List[TrackRow], List[Dict[str, object]]]:

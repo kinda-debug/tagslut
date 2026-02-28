@@ -38,6 +38,7 @@ from tagslut.cli.commands.index import register_index_group
 from tagslut.cli.commands.intake import register_intake_group
 from tagslut.cli.commands.report import register_report_group
 from tagslut.cli.commands.verify import register_verify_group
+from tagslut.cli.scan import scan_group
 
 # Add project root to path so we can import tools as modules if needed
 sys.path.insert(0, str(Path(__file__).parents[2]))
@@ -2831,6 +2832,7 @@ register_auth_group(cli)
 cli.add_command(dj_group)
 cli.add_command(export_group, name="export")
 cli.add_command(gig_group, name="gig")
+cli.add_command(scan_group, name="scan")
 
 @cli.command()
 @click.argument("paths", nargs=-1, type=click.Path(exists=True))

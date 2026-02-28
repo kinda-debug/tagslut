@@ -159,3 +159,68 @@ class GigSetTrack:
             self.mp3_path = Path(self.mp3_path)
         if isinstance(self.usb_dest_path, str):
             self.usb_dest_path = Path(self.usb_dest_path)
+
+
+@dataclass
+class ScanRun:
+    library_root: Path
+    mode: str = "initial"
+    id: Optional[int] = None
+    created_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    tool_versions_json: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if isinstance(self.library_root, str):
+            self.library_root = Path(self.library_root)
+
+
+@dataclass
+class ScanQueueItem:
+    run_id: int
+    path: Path
+    id: Optional[int] = None
+    size_bytes: Optional[int] = None
+    mtime_ns: Optional[int] = None
+    stage: int = 0
+    state: str = "PENDING"
+    last_error: Optional[str] = None
+    updated_at: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if isinstance(self.path, str):
+            self.path = Path(self.path)
+
+
+@dataclass
+class ScanIssue:
+    run_id: int
+    path: Path
+    issue_code: str
+    severity: str
+    evidence_json: str
+    id: Optional[int] = None
+    checksum: Optional[str] = None
+    created_at: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if isinstance(self.path, str):
+            self.path = Path(self.path)
+
+
+@dataclass
+class FileMetadataArchive:
+    checksum: str
+    first_seen_at: str
+    first_seen_path: Path
+    raw_tags_json: str
+    technical_json: str
+    durations_json: str
+    isrc_candidates_json: str
+    identity_confidence: int
+    fingerprint_json: Optional[str] = None
+    quality_rank: Optional[int] = None
+
+    def __post_init__(self) -> None:
+        if isinstance(self.first_seen_path, str):
+            self.first_seen_path = Path(self.first_seen_path)

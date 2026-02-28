@@ -426,6 +426,7 @@ def init_db(
         _ensure_scan_tracking_tables(connection)
         _ensure_v3_schema(connection)
         _ensure_gig_tables(connection)
+        _ensure_scan_tables(connection)
         _record_schema_version(connection, schema_name="integrity", version=INTEGRITY_SCHEMA_VERSION)
         _record_schema_version(connection, schema_name="v3", version=V3_SCHEMA_VERSION)
 
@@ -766,6 +767,102 @@ def _add_missing_columns(
             continue
         logger.info("Migrating DB: Adding column '%s' to '%s' table.", name, table_name)
         conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {name} {definition}")
+
+
+def _ensure_scan_tables(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS scan_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            library_root TEXT NOT NULL,
+            mode TEXT NOT NULL DEFAULT 'initial',
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            completed_at TEXT,
+            tool_versions_json TEXT
+        );
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS scan_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id INTEGER NOT NULL,
+            path TEXT NOT NULL,
+            size_bytes INTEGER,
+            mtime_ns INTEGER,
+            stage INTEGER DEFAULT 0,
+            state TEXT DEFAULT 'PENDING',
+            last_error TEXT,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(run_id) REFERENCES scan_runs(id)
+        );
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS scan_issues (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id INTEGER NOT NULL,
+            path TEXT NOT NULL,
+            checksum TEXT,
+            issue_code TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            evidence_json TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(run_id) REFERENCES scan_runs(id)
+        );
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS file_metadata_archive (
+            checksum TEXT PRIMARY KEY,
+            first_seen_at TEXT NOT NULL,
+            first_seen_path TEXT NOT NULL,
+            raw_tags_json TEXT NOT NULL,
+            technical_json TEXT NOT NULL,
+            durations_json TEXT NOT NULL,
+            isrc_candidates_json TEXT NOT NULL,
+            fingerprint_json TEXT,
+            identity_confidence INTEGER NOT NULL,
+            quality_rank INTEGER
+        );
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS file_path_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            checksum TEXT NOT NULL,
+            path TEXT NOT NULL,
+            first_seen_at TEXT NOT NULL,
+            last_seen_at TEXT NOT NULL
+        );
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_scan_queue_run_state ON scan_queue(run_id, state);")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_scan_queue_stage ON scan_queue(stage);")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_scan_issues_code ON scan_issues(issue_code);")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_archive_confidence ON file_metadata_archive(identity_confidence);"
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_path_history_checksum ON file_path_history(checksum);")
+
+    _add_missing_columns(
+        conn,
+        "files",
+        {
+            "scan_status": "TEXT",
+            "scan_flags_json": "TEXT",
+            "actual_duration": "REAL",
+            "duration_delta": "REAL",
+            "identity_confidence": "INTEGER",
+            "isrc_candidates_json": "TEXT",
+            "duplicate_of_checksum": "TEXT",
+            "last_scanned_at": "TEXT",
+            "scan_stage_reached": "INTEGER",
+        },
+    )
 
 
 def _ensure_gig_tables(conn: sqlite3.Connection) -> None:

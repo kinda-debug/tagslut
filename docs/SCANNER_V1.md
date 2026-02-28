@@ -1,5 +1,7 @@
 # Scanner v1 (Initial DB Build)
 
+## Status: COMPLETE
+
 This document defines the goals, invariants, and phased implementation outline for the **first-run library scanner**.
 
 ## Why this exists

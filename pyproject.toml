@@ -26,6 +26,7 @@ dependencies = [
     "typer>=0.9",
     "rich>=13.7,<14.0",
     "matplotlib>=3.8,<4.0",
+    "pyrekordbox>=0.3,<1.0",
 ]
 
 [project.scripts]
@@ -33,6 +34,10 @@ tagslut = "tagslut.cli.main:cli"
 
 [tool.poetry]
 packages = [{ include = "tagslut" }]
+
+[tool.poetry.dependencies]
+python = ">=3.11,<4.0"
+pyrekordbox = ">=0.3,<1.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^9.0.2"

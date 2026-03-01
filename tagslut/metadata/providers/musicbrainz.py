@@ -108,12 +108,7 @@ class MusicBrainzProvider(AbstractProvider):
         try:
             data = response.json()
             recordings = data.get("recordings", []) if isinstance(data, dict) else []
-<<<<<<< HEAD
-        except Exception as e:
-            logger.debug("Failed to decode MusicBrainz search payload for query %r: %s", query, e)
-=======
         except Exception:
->>>>>>> 3b6d641 (feat: add MusicBrainz metadata provider)
             return []
         return [self._normalize_track(r) for r in recordings if isinstance(r, dict)]
 
@@ -137,12 +132,7 @@ class MusicBrainzProvider(AbstractProvider):
             return []
         try:
             data = response.json()
-<<<<<<< HEAD
-        except Exception as e:
-            logger.debug("Failed to decode MusicBrainz ISRC payload for %s: %s", isrc, e)
-=======
         except Exception:
->>>>>>> 3b6d641 (feat: add MusicBrainz metadata provider)
             return []
         if not isinstance(data, dict):
             return []

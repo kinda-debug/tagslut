@@ -32,7 +32,7 @@ import sqlite3
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 # Default paths - prefer environment variables for safety
 # MUSIC_DB should be set to avoid accidental writes to wrong database
@@ -42,7 +42,7 @@ DEFAULT_NDJSON_PATH = "beatport_my_tracks.ndjson"
 def get_db_path() -> Path:
     """
     Get database path from environment.
-    
+
     Requires MUSIC_DB environment variable to be set for safety.
     Falls back to ./music.db (relative path) if not set, but warns.
     """
@@ -65,33 +65,33 @@ def get_ndjson_path() -> Path:
 def generate_library_track_key(row: Dict[str, Any]) -> str:
     """
     Generate a library_track_key for the track.
-    
+
     Priority:
     1. ISRC if available (most reliable cross-service identifier)
     2. Fallback to "artist::title" normalized
-    
+
     Matches the strategy in metadata_guide.md Section 5.3.
     """
     isrc = row.get("isrc")
     if isrc and isinstance(isrc, str) and isrc.strip():
         return isrc.strip().upper()  # type: ignore  # TODO: mypy-strict
-    
+
     # Fallback: artist::title
     artists = row.get("artists", [])
     if isinstance(artists, list) and artists:
         artist = ", ".join(str(a) for a in artists if a)
     else:
         artist = row.get("artist", "")
-    
+
     title = row.get("title", "")
     mix_name = row.get("mix_name", "")
-    
+
     # Include mix name in title for uniqueness
     if mix_name and mix_name.lower() not in (title or "").lower():
         full_title = f"{title} ({mix_name})" if title else mix_name
     else:
         full_title = title or ""
-    
+
     if artist and full_title:
         return f"{artist}::{full_title}".lower().strip()
     elif full_title:
@@ -109,36 +109,36 @@ def ensure_library_track(
 ) -> None:
     """
     Ensure a library_tracks row exists for this track key.
-    
+
     Creates if not exists, updates if Beatport data is better.
     """
     cur = conn.cursor()
-    
+
     # Check if exists
     cur.execute(
         "SELECT id FROM library_tracks WHERE library_track_key = ?",
         (library_track_key,)
     )
     existing = cur.fetchone()
-    
+
     # Build canonical fields from Beatport data
     artists = row.get("artists", [])
     if isinstance(artists, list) and artists:
         artist = ", ".join(str(a) for a in artists if a)
     else:
         artist = None
-    
+
     title = row.get("title")
     mix_name = row.get("mix_name")
     if mix_name and title:
         full_title = f"{title} ({mix_name})"
     else:
         full_title = title  # type: ignore  # TODO: mypy-strict
-    
+
     duration_ms = row.get("length_ms")
     if duration_ms is None and row.get("duration_ms"):
         duration_ms = row.get("duration_ms")
-    
+
     if existing:
         # Update with Beatport data (Beatport is high priority for BPM/key/genre)
         cur.execute("""
@@ -189,37 +189,37 @@ def insert_library_track_source(
 ) -> None:
     """
     Insert a library_track_sources row for this Beatport track.
-    
+
     Schema matches metadata_guide.md Section 2.3.
     """
     cur = conn.cursor()
-    
+
     # Build artist name string
     artists = row.get("artists", [])
     if isinstance(artists, list) and artists:
         artist_name = ", ".join(str(a) for a in artists if a)
     else:
         artist_name = None
-    
+
     # Duration in ms
     duration_ms = row.get("length_ms")
     if duration_ms is None and row.get("duration_ms"):
         duration_ms = row.get("duration_ms")
-    
+
     # Raw JSON - get from 'raw' field or serialize the whole row
     raw_json = row.get("raw", {})
     if not raw_json:
         # Create a copy without 'raw' to avoid recursion
         raw_json = {k: v for k, v in row.items() if k != "raw"}
     metadata_json = json.dumps(raw_json, ensure_ascii=False)
-    
+
     # Musical key - prefer key_name, fall back to key
     musical_key = row.get("key_name") or row.get("key")
-    
+
     # Build URL for the track
     track_id = row.get("track_id")
     url = f"https://www.beatport.com/track/-/{track_id}" if track_id else None
-    
+
     cur.execute("""
         INSERT INTO library_track_sources (
             library_track_key,
@@ -259,39 +259,39 @@ def insert_library_track_source(
 def import_ndjson(ndjson_path: Path, db_path: Path, dry_run: bool = False) -> int:
     """
     Import all tracks from NDJSON file into database.
-    
+
     Args:
         ndjson_path: Path to beatport_my_tracks.ndjson
         db_path: Path to SQLite database
         dry_run: If True, don't commit changes
-        
+
     Returns:
         Number of tracks imported
     """
     if not ndjson_path.exists():
         print(f"ERROR: NDJSON file not found: {ndjson_path}", file=sys.stderr)
         return 0
-    
+
     if not db_path.exists():
         print(f"ERROR: Database not found: {db_path}", file=sys.stderr)
         return 0
-    
+
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
-    
+
     # Enable WAL mode for better concurrency
     conn.execute("PRAGMA journal_mode=WAL;")
     conn.execute("PRAGMA synchronous=NORMAL;")
-    
+
     imported = 0
     skipped = 0
     errors = 0
-    
+
     print(f"Importing from: {ndjson_path}")
     print(f"Database: {db_path}")
     print(f"Dry run: {dry_run}")
     print("-" * 60)
-    
+
     # Wrap entire import in a transaction for atomicity
     try:
         with ndjson_path.open("r", encoding="utf-8") as f:
@@ -299,60 +299,60 @@ def import_ndjson(ndjson_path: Path, db_path: Path, dry_run: bool = False) -> in
                 line = line.strip()
                 if not line:
                     continue
-                
+
                 try:
                     row = json.loads(line)
                 except json.JSONDecodeError as e:
                     print(f"  Line {line_num}: JSON parse error: {e}", file=sys.stderr)
                     errors += 1
                     continue
-                
+
                 # Skip if not a beatport track
                 if row.get("service") != "beatport":
                     skipped += 1
                     continue
-                
+
                 track_id = row.get("track_id")
                 title = row.get("title", "Unknown")
-                
+
                 try:
                     library_track_key = generate_library_track_key(row)
-                    
+
                     if not dry_run:
                         ensure_library_track(conn, library_track_key, row)
                         insert_library_track_source(conn, library_track_key, row)
-                    
+
                     imported += 1
-                    
+
                     if imported % 100 == 0:
                         print(f"  Imported {imported} tracks...")
-                            
+
                 except sqlite3.Error as e:
                     print(f"  Line {line_num}: DB error for track {track_id} ({title}): {e}", file=sys.stderr)
                     errors += 1
                     # Continue processing other tracks, but don't commit partial work
                     continue
-        
+
         # Commit only if no critical errors and not dry run
         if not dry_run:
             conn.commit()
             print("Transaction committed successfully.")
-    
+
     except Exception as e:
         # Rollback on any unexpected error
         conn.rollback()
         print(f"ERROR: Import failed, transaction rolled back: {e}", file=sys.stderr)
         conn.close()
         return 0
-    
+
     conn.close()
-    
+
     print("-" * 60)
-    print(f"Import complete:")
+    print("Import complete:")
     print(f"  Imported: {imported}")
     print(f"  Skipped:  {skipped}")
     print(f"  Errors:   {errors}")
-    
+
     return imported
 
 
@@ -377,14 +377,14 @@ def main():  # type: ignore  # TODO: mypy-strict
         action="store_true",
         help="Parse and validate without writing to database"
     )
-    
+
     args = parser.parse_args()
-    
+
     ndjson_path = args.input or get_ndjson_path()
     db_path = args.db or get_db_path()
-    
+
     count = import_ndjson(ndjson_path, db_path, dry_run=args.dry_run)
-    
+
     sys.exit(0 if count > 0 else 1)
 
 

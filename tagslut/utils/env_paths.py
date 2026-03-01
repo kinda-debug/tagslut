@@ -6,7 +6,7 @@ never hardcoded in scripts.
 
 Usage:
     from tagslut.utils.env_paths import get_db_path, get_volume
-    
+
     db = get_db_path()
     library = get_volume("library")
 """
@@ -23,13 +23,13 @@ class PathNotConfiguredError(Exception):
 def _get_env(var: str, default: Optional[str] = None, required: bool = False) -> Optional[str]:
     """Get environment variable with validation"""
     value = os.getenv(var, default)
-    
+
     if value is None and required:
         raise PathNotConfiguredError(
             f"Required environment variable {var} not set.\n"
             f"Copy .env.example to .env and configure your paths."
         )
-    
+
     return value
 
 
@@ -37,9 +37,13 @@ def _expand_path(value: Optional[str]) -> Optional[Path]:
     """Expand environment variables and user home directory in path"""
     if value is None:
         return None
-    
+
     expanded = os.path.expanduser(os.path.expandvars(value))
     return Path(expanded)
+
+
+def _env_flag(name: str, default: str = "true") -> bool:
+    return _get_env(name, default=default).lower() in ("true", "1", "yes")  # type: ignore  # TODO: mypy-strict
 
 
 # ============================================================================
@@ -59,11 +63,11 @@ def get_db_path() -> Optional[Path]:
 def get_volume(name: str, required: bool = False) -> Optional[Path]:
     """
     Get volume path by name.
-    
+
     Args:
         name: Volume name (library, staging, vault, recovery, quarantine)
         required: Raise error if not configured
-    
+
     Returns:
         Path to volume or None if not configured
     """
@@ -135,17 +139,17 @@ def get_scan_progress_interval() -> int:
 
 def get_scan_check_integrity() -> bool:
     """Check if integrity validation is enabled"""
-    return _get_env("SCAN_CHECK_INTEGRITY", default="true").lower() in ("true", "1", "yes")  # type: ignore  # TODO: mypy-strict
+    return _env_flag("SCAN_CHECK_INTEGRITY")
 
 
 def get_scan_check_hash() -> bool:
     """Check if hash calculation is enabled"""
-    return _get_env("SCAN_CHECK_HASH", default="true").lower() in ("true", "1", "yes")  # type: ignore  # TODO: mypy-strict
+    return _env_flag("SCAN_CHECK_HASH")
 
 
 def get_scan_incremental() -> bool:
     """Check if incremental scanning is enabled"""
-    return _get_env("SCAN_INCREMENTAL", default="true").lower() in ("true", "1", "yes")  # type: ignore  # TODO: mypy-strict
+    return _env_flag("SCAN_INCREMENTAL")
 
 
 # ============================================================================
@@ -164,17 +168,17 @@ def get_quarantine_retention_days() -> int:
 
 def get_prefer_high_bitrate() -> bool:
     """Check if high bitrate is preferred"""
-    return _get_env("PREFER_HIGH_BITRATE", default="true").lower() in ("true", "1", "yes")  # type: ignore  # TODO: mypy-strict
+    return _env_flag("PREFER_HIGH_BITRATE")
 
 
 def get_prefer_high_sample_rate() -> bool:
     """Check if high sample rate is preferred"""
-    return _get_env("PREFER_HIGH_SAMPLE_RATE", default="true").lower() in ("true", "1", "yes")  # type: ignore  # TODO: mypy-strict
+    return _env_flag("PREFER_HIGH_SAMPLE_RATE")
 
 
 def get_prefer_valid_integrity() -> bool:
     """Check if valid integrity is preferred"""
-    return _get_env("PREFER_VALID_INTEGRITY", default="true").lower() in ("true", "1", "yes")  # type: ignore  # TODO: mypy-strict
+    return _env_flag("PREFER_VALID_INTEGRITY")
 
 
 # ============================================================================
@@ -184,12 +188,12 @@ def get_prefer_valid_integrity() -> bool:
 def validate_paths() -> list[str]:
     """
     Validate all configured paths exist.
-    
+
     Returns:
         List of error messages (empty if all valid)
     """
     errors = []
-    
+
     # Check required paths
     try:
         db_path = get_db_path()
@@ -197,13 +201,13 @@ def validate_paths() -> list[str]:
             errors.append(f"Database directory does not exist: {db_path.parent}")
     except PathNotConfiguredError as e:
         errors.append(str(e))
-    
+
     # Check optional volume paths
     for vol_name in ["library", "staging", "vault", "recovery", "quarantine"]:
         vol_path = get_volume(vol_name)
         if vol_path and not vol_path.exists():
             errors.append(f"Volume '{vol_name}' does not exist: {vol_path}")
-    
+
     return errors
 
 
@@ -230,7 +234,7 @@ def print_config():  # type: ignore  # TODO: mypy-strict
 if __name__ == "__main__":
     # Test configuration
     print_config()  # type: ignore  # TODO: mypy-strict
-    
+
     errors = validate_paths()
     if errors:
         print("\n⚠️  Configuration Errors:")

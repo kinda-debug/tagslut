@@ -6,7 +6,6 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import httpx
-import pytest
 
 from tagslut.metadata.models.types import MatchConfidence
 from tagslut.metadata.providers.traxsource import TraxsourceProvider

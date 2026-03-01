@@ -3,8 +3,6 @@
 import sqlite3
 from pathlib import Path
 
-import pytest
-
 import tagslut.recovery as recovery_mod
 from tagslut.recovery import Repairer, Reporter, Verifier
 from tagslut.storage.schema import init_db

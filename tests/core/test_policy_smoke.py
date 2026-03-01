@@ -13,7 +13,7 @@ from tagslut.policy import (
     list_policy_profiles,
     load_policy_profile,
 )
-from tagslut.policy.models import DurationRules, ExecutionRules, MatchRules, PolicyProfile
+from tagslut.policy.models import PolicyProfile
 
 CONFIG_POLICIES = Path(__file__).resolve().parents[2] / "config" / "policies"
 

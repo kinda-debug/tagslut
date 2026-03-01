@@ -187,7 +187,11 @@ def register_metadata_group(cli: click.Group) -> None:
     @click.option('--db', type=click.Path(), required=False, help='Database path')
     @click.option('--path', type=str, help='Filter files by path pattern (SQL LIKE) or file/dir in --standalone mode')
     @click.option('--zones', type=str, help='Comma-separated zones to include (e.g. accepted,staging)')
-    @click.option('--providers', default='beatport,tidal,deezer,itunes', help='Comma-separated list of providers (order = priority)')
+    @click.option(
+        '--providers',
+        default='beatport,tidal,deezer,itunes',
+        help='Comma-separated list of providers (order = priority)',
+    )
     @click.option('--limit', type=int, help='Maximum files to process')
     @click.option('--force', is_flag=True, help='Re-process ALL already-processed files')
     @click.option('--retry-no-match', is_flag=True, help='Retry files that had no provider match')
@@ -196,7 +200,20 @@ def register_metadata_group(cli: click.Group) -> None:
     @click.option('--hoarding', is_flag=True, help='Hoarding mode: collect full metadata (BPM, key, genre, etc.)')
     @click.option('-v', '--verbose', is_flag=True, help='Verbose output')
     @click.option('--standalone', is_flag=True, help='Run without a database (read tags directly)')
-    def enrich(db, path, zones, providers, limit, force, retry_no_match, execute, recovery, hoarding, verbose, standalone):
+    def enrich(
+        db,
+        path,
+        zones,
+        providers,
+        limit,
+        force,
+        retry_no_match,
+        execute,
+        recovery,
+        hoarding,
+        verbose,
+        standalone,
+    ):
         """
         Fetch metadata from external providers.
 
@@ -398,9 +415,9 @@ def register_metadata_group(cli: click.Group) -> None:
         if limit:
             click.echo(f"  Limit:      {limit}")
         if force:
-            click.echo(f"  Mode:       Force (re-process ALL)")
+            click.echo("  Mode:       Force (re-process ALL)")
         elif retry_no_match:
-            click.echo(f"  Mode:       Retry (files with no previous match)")
+            click.echo("  Mode:       Retry (files with no previous match)")
 
         click.echo(f"  Log file:   {log_file}")
         click.echo("")

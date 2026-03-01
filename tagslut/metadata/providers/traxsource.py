@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Dict, List, Optional
-from urllib.parse import quote
 
 from tagslut.metadata.models.types import MatchConfidence, ProviderTrack
 from tagslut.metadata.providers.base import AbstractProvider, RateLimitConfig

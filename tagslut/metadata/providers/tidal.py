@@ -49,14 +49,14 @@ class TidalProvider(AbstractProvider):
         if token and token.access_token:
             headers["Authorization"] = f"Bearer {token.access_token}"
         return headers
-    
+
     def _make_request(self, *args, **kwargs):  # type: ignore  # TODO: mypy-strict
         """Add countryCode to all requests."""
         params = kwargs.get("params", {})
         if "countryCode" not in params:
             params["countryCode"] = self.COUNTRY_CODE
         kwargs["params"] = params
-        
+
         return super()._make_request(*args, **kwargs)
 
     def fetch_by_id(self, track_id: str) -> Optional[ProviderTrack]:
@@ -130,7 +130,10 @@ class TidalProvider(AbstractProvider):
             return None
         return f"https://resources.tidal.com/images/{cover_id.replace('-', '/')}/{size}x{size}.jpg"
 
-    def _normalize_track(self, attributes: Dict[str, Any]) -> Optional[ProviderTrack]:  # type: ignore  # TODO: mypy-strict
+    def _normalize_track(
+        self,
+        attributes: Dict[str, Any],
+    ) -> Optional[ProviderTrack]:  # type: ignore  # TODO: mypy-strict
         """
         Normalize Tidal track object to ProviderTrack.
 

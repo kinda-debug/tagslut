@@ -16,19 +16,19 @@ class LogContext:
     error_message: Optional[str] = None
     volume: Optional[str] = None
     status: str = "info"
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
 
 class StructuredLogger:
     """JSON logger for structured logs."""
-    
+
     def __init__(self, name: str, level: int = logging.INFO):
         self.logger = logging.getLogger(name)
         self.logger.setLevel(level)
         self._context_stack: list = []  # type: ignore  # TODO: mypy-strict
-    
+
     def log_operation(self, context: LogContext) -> None:
         """Log operation with structured context."""
         log_data = {
@@ -36,7 +36,7 @@ class StructuredLogger:
             "context": context.to_dict(),
         }
         self.logger.info(json.dumps(log_data))
-    
+
     def log_error(self, error_type: str, message: str, file_path: Optional[str] = None) -> None:
         """Log error with categorization."""
         context = LogContext(
@@ -47,7 +47,7 @@ class StructuredLogger:
             status="error",
         )
         self.log_operation(context)
-    
+
     def extract_failed_files(self, log_file: str) -> list:  # type: ignore  # TODO: mypy-strict
         """Extract failed file paths from log."""
         failed_files = []

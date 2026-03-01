@@ -275,8 +275,12 @@ def _upsert_library_track_source(
     )
 
 
-
-def update_database(db_path, result: EnrichmentResult, dry_run: bool, mode: str) -> bool:  # type: ignore  # TODO: mypy-strict
+def update_database(
+    db_path,
+    result: EnrichmentResult,
+    dry_run: bool,
+    mode: str,
+) -> bool:  # type: ignore  # TODO: mypy-strict
     """
     Write enrichment result to database.
 
@@ -403,7 +407,11 @@ def update_database(db_path, result: EnrichmentResult, dry_run: bool, mode: str)
                 result.canonical_mix_name,
                 result.canonical_year,  # type: ignore  # TODO: mypy-strict
                 result.canonical_release_date,
-                1 if result.canonical_explicit else (0 if result.canonical_explicit is False else None),  # type: ignore  # TODO: mypy-strict
+                (
+                    1
+                    if result.canonical_explicit
+                    else (0 if result.canonical_explicit is False else None)
+                ),  # type: ignore  # TODO: mypy-strict
                 # Spotify audio features
                 result.canonical_energy,  # type: ignore  # TODO: mypy-strict
                 result.canonical_danceability,  # type: ignore  # TODO: mypy-strict

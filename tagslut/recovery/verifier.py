@@ -132,14 +132,20 @@ class Verifier:
             is_degraded = False
 
             # Check for significant duration loss (> 1 second)
-            if result["duration_delta"] is not None and result["duration_delta"] < -1.0:  # type: ignore  # TODO: mypy-strict
+            if (
+                result["duration_delta"] is not None
+                and result["duration_delta"] < -1.0
+            ):  # type: ignore  # TODO: mypy-strict
                 logger.warning(
                     f"Duration loss detected: {result['duration_delta']:.2f}s for {file_path}"
                 )
                 is_degraded = True
 
             # Check for excessive silence events (> 10)
-            if result["silence_events"] is not None and result["silence_events"] > 10:  # type: ignore  # TODO: mypy-strict
+            if (
+                result["silence_events"] is not None
+                and result["silence_events"] > 10
+            ):  # type: ignore  # TODO: mypy-strict
                 logger.warning(
                     f"Excessive silence events: {result['silence_events']} for {file_path}"
                 )

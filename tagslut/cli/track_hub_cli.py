@@ -63,7 +63,7 @@ def _print_row(row: sqlite3.Row, fields: list[str], indent: int = 2) -> None:
 
 def _show_files_row(conn: sqlite3.Connection, path: str) -> str | None:
     """Look up and display the files row for a given path.
-    
+
     Returns the library_track_key if found, else None.
     """
     cursor = conn.execute(
@@ -77,11 +77,11 @@ def _show_files_row(conn: sqlite3.Connection, path: str) -> str | None:
         (path,),
     )
     row = cursor.fetchone()
-    
+
     if row is None:
         print(f"Error: No file found with path: {path}", file=sys.stderr)
         return None
-    
+
     _print_section("FILES ROW")
     fields = [
         "path",
@@ -95,13 +95,13 @@ def _show_files_row(conn: sqlite3.Connection, path: str) -> str | None:
         "enrichment_confidence",
     ]
     _print_row(row, fields)
-    
+
     return row["library_track_key"]  # type: ignore  # TODO: mypy-strict
 
 
 def _show_library_track(conn: sqlite3.Connection, key: str) -> bool:
     """Display the library_tracks row for a given key.
-    
+
     Returns True if found, False otherwise.
     """
     cursor = conn.execute(
@@ -115,11 +115,11 @@ def _show_library_track(conn: sqlite3.Connection, key: str) -> bool:
         (key,),
     )
     row = cursor.fetchone()
-    
+
     if row is None:
         print(f"\n  (No library_tracks row found for key: {key})")
         return False
-    
+
     _print_section("LIBRARY_TRACKS")
     fields = [
         "library_track_key",
@@ -155,13 +155,13 @@ def _show_library_track_sources(conn: sqlite3.Connection, key: str) -> None:
         (key,),
     )
     rows = cursor.fetchall()
-    
+
     _print_section(f"LIBRARY_TRACK_SOURCES ({len(rows)} row(s))")
-    
+
     if not rows:
         print("  (No source rows found)")
         return
-    
+
     for i, row in enumerate(rows, 1):
         print(f"\n  --- Source #{i} ---")
         has_json = row["metadata_json"] is not None
@@ -188,18 +188,18 @@ def _show_library_track_sources(conn: sqlite3.Connection, key: str) -> None:
 def cmd_track_by_path(args: argparse.Namespace) -> None:
     """Handle the track-by-path command."""
     conn = _connect_db(args.db)
-    
+
     try:
         key = _show_files_row(conn, args.path)
-        
+
         if key is None:
             sys.exit(1)
-        
+
         if not key or key.strip() == "":
             print("\n  Note: library_track_key is NULL or empty for this file.")
             print("  The file has not been linked to the track hub yet.")
             return
-        
+
         _show_library_track(conn, key)
         _show_library_track_sources(conn, key)
     finally:
@@ -208,7 +208,7 @@ def cmd_track_by_path(args: argparse.Namespace) -> None:
 
 def _show_track_hub(conn: sqlite3.Connection, key: str) -> bool:
     """Display library_tracks and library_track_sources for a given key.
-    
+
     Returns True if the library_tracks row was found, False otherwise.
     """
     found = _show_library_track(conn, key)
@@ -219,16 +219,16 @@ def _show_track_hub(conn: sqlite3.Connection, key: str) -> bool:
 def cmd_track_by_key(args: argparse.Namespace) -> None:
     """Handle the track-by-key command."""
     conn = _connect_db(args.db)
-    
+
     try:
         key = args.key
         print(f"Looking up library_track_key: {key}")
-        
+
         found = _show_library_track(conn, key)
         if not found:
             print("\n  No track found with this key.", file=sys.stderr)
             sys.exit(1)
-        
+
         _show_library_track_sources(conn, key)
     finally:
         conn.close()
@@ -237,7 +237,7 @@ def cmd_track_by_key(args: argparse.Namespace) -> None:
 def cmd_list_files_for_key(args: argparse.Namespace) -> None:
     """Handle the list-files-for-key command."""
     conn = _connect_db(args.db)
-    
+
     try:
         key = args.key
         cursor = conn.execute(
@@ -250,14 +250,14 @@ def cmd_list_files_for_key(args: argparse.Namespace) -> None:
             (key,),
         )
         rows = cursor.fetchall()
-        
+
         if not rows:
             print(f"No files found for library_track_key: {key}")
             return
-        
+
         _print_section(f"FILES FOR KEY: {key}")
         print(f"  Found {len(rows)} file(s):\n")
-        
+
         for i, row in enumerate(rows, 1):
             print(f"  [{i}] {row['path']}")
             if row["canonical_duration"] is not None:
@@ -273,12 +273,12 @@ def cmd_list_files_for_key(args: argparse.Namespace) -> None:
 def cmd_find_by_isrc(args: argparse.Namespace) -> None:
     """Handle the find-by-isrc command."""
     conn = _connect_db(args.db)
-    
+
     try:
         isrc = args.isrc.strip().upper()
         key = f"isrc:{isrc}"
         print(f"Derived library_track_key: {key}")
-        
+
         found = _show_track_hub(conn, key)
         if not found:
             print(f"\n  No track found for ISRC: {isrc}", file=sys.stderr)
@@ -290,11 +290,11 @@ def cmd_find_by_isrc(args: argparse.Namespace) -> None:
 def cmd_find_by_provider(args: argparse.Namespace) -> None:
     """Handle the find-by-provider command."""
     conn = _connect_db(args.db)
-    
+
     try:
         service = args.service.lower()
         track_id = args.track_id.strip()
-        
+
         cursor = conn.execute(
             """
             SELECT DISTINCT library_track_key, service, service_track_id, fetched_at
@@ -304,19 +304,24 @@ def cmd_find_by_provider(args: argparse.Namespace) -> None:
             (service, track_id),
         )
         rows = cursor.fetchall()
-        
+
         if not rows:
             print(f"No source found for service={service}, track_id={track_id}")
             return
-        
+
         print(f"Found {len(rows)} source row(s) for {service}:{track_id}\n")
-        
+
         seen_keys = set()
         for row in rows:
             key = row["library_track_key"]
-            print(f"  Source: service={row['service']}, service_track_id={row['service_track_id']}, fetched_at={row['fetched_at']}")
+            print(
+                "  Source: "
+                f"service={row['service']}, "
+                f"service_track_id={row['service_track_id']}, "
+                f"fetched_at={row['fetched_at']}"
+            )
             print(f"  library_track_key: {key}")
-            
+
             if key and key not in seen_keys:
                 seen_keys.add(key)
                 _show_track_hub(conn, key)
@@ -327,15 +332,15 @@ def cmd_find_by_provider(args: argparse.Namespace) -> None:
 
 def cmd_diagnose_duplicates(args: argparse.Namespace) -> None:
     """Handle the diagnose-duplicates command.
-    
+
     Find library_track_key values with multiple files and display diagnostic info.
     """
     conn = _connect_db(args.db)
-    
+
     try:
         min_files = args.min_files
         limit = args.limit
-        
+
         # Step 1: Find candidate keys with multiple files
         cursor = conn.execute(
             """
@@ -350,18 +355,18 @@ def cmd_diagnose_duplicates(args: argparse.Namespace) -> None:
             (min_files, limit),
         )
         candidates = cursor.fetchall()
-        
+
         if not candidates:
             print(f"No library_track_key values found with >= {min_files} files.")
             return
-        
+
         print(f"Found {len(candidates)} key(s) with >= {min_files} files:\n")
-        
+
         # Step 2 & 3: For each key, fetch and display details
         for row in candidates:
             key = row["library_track_key"]
             file_count = row["file_count"]
-            
+
             # Fetch provider count
             provider_cursor = conn.execute(
                 """
@@ -373,9 +378,9 @@ def cmd_diagnose_duplicates(args: argparse.Namespace) -> None:
             )
             provider_row = provider_cursor.fetchone()
             provider_count = provider_row["provider_count"] if provider_row else 0
-            
+
             print(f"=== library_track_key={key} (files={file_count}, providers={provider_count}) ===")
-            
+
             # Fetch canonical track info
             track_cursor = conn.execute(
                 """
@@ -386,7 +391,7 @@ def cmd_diagnose_duplicates(args: argparse.Namespace) -> None:
                 (key,),
             )
             track_row = track_cursor.fetchone()
-            
+
             if track_row:
                 artist = track_row["artist"] or "?"
                 title = track_row["title"] or "?"
@@ -395,14 +400,19 @@ def cmd_diagnose_duplicates(args: argparse.Namespace) -> None:
                 isrc = track_row["isrc"] or "?"
                 explicit = track_row["explicit"]
                 genre = track_row["genre"] or "?"
-                
+
                 explicit_str = str(explicit) if explicit is not None else "?"
                 duration_str = str(duration_ms) if duration_ms is not None else "?"
-                
-                print(f"Canonical: {artist} - {title} ({album}), duration_ms={duration_str}, isrc={isrc}, explicit={explicit_str}, genre={genre}")
+
+                print(
+                    "Canonical: "
+                    f"{artist} - {title} ({album}), "
+                    f"duration_ms={duration_str}, isrc={isrc}, "
+                    f"explicit={explicit_str}, genre={genre}"
+                )
             else:
                 print("Canonical: (no library_tracks row)")
-            
+
             # Fetch provider sources
             sources_cursor = conn.execute(
                 """
@@ -414,7 +424,7 @@ def cmd_diagnose_duplicates(args: argparse.Namespace) -> None:
                 (key,),
             )
             sources = sources_cursor.fetchall()
-            
+
             if sources:
                 print("Providers:")
                 for src in sources:
@@ -424,7 +434,7 @@ def cmd_diagnose_duplicates(args: argparse.Namespace) -> None:
                     print(f"  - {service} {track_id} (match={confidence})")
             else:
                 print("Providers: (none)")
-            
+
             # Fetch files
             files_cursor = conn.execute(
                 """
@@ -436,18 +446,18 @@ def cmd_diagnose_duplicates(args: argparse.Namespace) -> None:
                 (key,),
             )
             files = files_cursor.fetchall()
-            
+
             print("Files:")
             for f in files:
                 path = f["path"]
                 health = f["metadata_health"] or "?"
                 reason = f["metadata_health_reason"]
-                
+
                 if reason:
                     print(f"  - {path} [health={health} reason={reason}]")
                 else:
                     print(f"  - {path} [health={health}]")
-            
+
             print()  # Blank line between keys
     finally:
         conn.close()
@@ -472,23 +482,23 @@ def _escape_key_for_path(key: str) -> str:
 def _determine_zone(path: str) -> str:
     """Determine the zone classification from a file path."""
     path_lower = path.lower()
-    
+
     # Check for accepted zone patterns
     if '/library/' in path_lower or '/music/library/' in path_lower:
         return 'accepted'
-    
+
     # Check for staging zone patterns
     if '/staging/' in path_lower or '/_staging/' in path_lower:
         return 'staging'
-    
+
     # Check for suspect zone patterns
     if '/suspect/' in path_lower or '/_suspect/' in path_lower:
         return 'suspect'
-    
+
     # Check for quarantine zone patterns
     if '/quarantine/' in path_lower or '/_quarantine/' in path_lower:
         return 'quarantine'
-    
+
     return 'unknown'
 
 
@@ -524,12 +534,12 @@ def _compute_keeper_scores(
     file_columns: set[str],
 ) -> list[dict[str, Any]]:
     """Compute keeper_score for each file in a group.
-    
+
     Returns files with added 'keeper_score' and 'zone' fields.
     """
     if not files:
         return files
-    
+
     # Compute completeness bonus (same for all files in group)
     completeness_bonus = 0
     if hub_row:
@@ -544,25 +554,25 @@ def _compute_keeper_scores(
         # Album art presence (check for best_cover_url field)
         if hub_row.get('best_cover_url') and str(hub_row.get('best_cover_url', '')).strip():
             completeness_bonus += 5
-    
+
     # Compute max path length for path bonus
     max_len = max(len(f.get('path', '')) for f in files)
-    
+
     # Check for audio quality columns
     has_bitrate = 'bitrate' in file_columns
     has_bit_depth = 'bit_depth' in file_columns
     has_sample_rate = 'sample_rate' in file_columns
-    
+
     # Compute scores for each file
     for f in files:
         path = f.get('path', '')
         zone = _determine_zone(path)
         f['zone'] = zone
-        
+
         zone_sc = _zone_score(zone)
         health_sc = _health_score(f.get('metadata_health'))
         path_bonus = max(0, min(5, max_len - len(path)))
-        
+
         # Audio quality bonus (up to 10 points)
         audio_bonus = 0
         if has_bitrate or has_bit_depth or has_sample_rate:
@@ -600,9 +610,9 @@ def _compute_keeper_scores(
                         audio_bonus += 1
                 except (ValueError, TypeError):
                     pass
-        
+
         f['keeper_score'] = zone_sc + health_sc + completeness_bonus + path_bonus + audio_bonus
-    
+
     return files
 
 
@@ -619,7 +629,7 @@ def _compute_risk_flags(
         'provider_disagreement': False,
         'missing_hub_row': hub_row is None,
     }
-    
+
     # Duration spread
     has_duration = 'canonical_duration' in file_columns
     if has_duration:
@@ -634,7 +644,7 @@ def _compute_risk_flags(
                     pass
         if len(durations_ms) >= 2:
             risk['duration_spread_ms'] = int(max(durations_ms) - min(durations_ms))
-    
+
     # Health mix
     health_values = set()
     for f in files:
@@ -645,7 +655,7 @@ def _compute_risk_flags(
     degraded_warn_present = bool(health_values & {'DEGRADED', 'WARN'})
     if ok_present and degraded_warn_present:
         risk['health_mix'] = True
-    
+
     # Provider disagreement
     if hub_row and hub_row.get('isrc'):
         canonical_isrc = str(hub_row['isrc']).strip().upper()
@@ -656,7 +666,7 @@ def _compute_risk_flags(
                 if src_isrc_upper and src_isrc_upper != canonical_isrc:
                     risk['provider_disagreement'] = True
                     break
-    
+
     return risk
 
 
@@ -698,17 +708,17 @@ def _compute_recommendations(
     high_risk = _is_high_risk(risk)
     risk_flags = _get_risk_flag_list(risk) if high_risk else []
     escaped_key = _escape_key_for_path(key)
-    
+
     for f in files:
         path = f['path']
         zone = f.get('zone', 'unknown')
         health = f.get('metadata_health') or 'UNKNOWN'
         health_upper = health.upper() if health else 'UNKNOWN'
-        
+
         rec: dict[str, Any] = {
             'path': path,
         }
-        
+
         if path == keeper_path:
             # This is the keeper
             rec['action'] = 'KEEP'
@@ -739,9 +749,9 @@ def _compute_recommendations(
                 # Insufficient signals
                 rec['action'] = 'REVIEW'
                 rec['rationale'] = ['insufficient signals', f'zone={zone}', f'metadata_health={health}']
-        
+
         recommendations.append(rec)
-    
+
     return recommendations
 
 
@@ -764,7 +774,7 @@ def _yaml_escape(value: Any) -> str:
         needs_quote = True
     elif s.lower() in ('true', 'false', 'null', 'yes', 'no', 'on', 'off'):
         needs_quote = True
-    
+
     if needs_quote:
         # Use double quotes and escape internal quotes
         escaped = s.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
@@ -778,7 +788,7 @@ def _write_yaml_plan(
 ) -> None:
     """Write the plan to a YAML file using simple formatting."""
     lines: list[str] = []
-    
+
     def write_value(val: Any, indent: int = 0) -> None:
         prefix = '  ' * indent
         if isinstance(val, dict):
@@ -812,25 +822,25 @@ def _write_yaml_plan(
                     lines.append(f'{prefix}- {_yaml_escape(item)}')
         else:
             lines.append(f'{prefix}{_yaml_escape(val)}')
-    
+
     # Write top-level keys in order
     lines.append(f'plan_version: {plan["plan_version"]}')
     lines.append(f'generated_at: {_yaml_escape(plan["generated_at"])}')
     lines.append(f'db: {_yaml_escape(plan["db"])}')
-    
+
     lines.append('scope:')
     for k, v in plan['scope'].items():
         lines.append(f'  {k}: {_yaml_escape(v)}')
-    
+
     lines.append('policy:')
     for k, v in plan['policy'].items():
         lines.append(f'  {k}: {_yaml_escape(v)}')
-    
+
     lines.append('groups:')
     for group in plan['groups']:
         # library_track_key on first line with dash
         lines.append(f'  - library_track_key: {_yaml_escape(group["library_track_key"])}')
-        
+
         # hub
         lines.append('    hub:')
         if group['hub']:
@@ -838,7 +848,7 @@ def _write_yaml_plan(
                 lines.append(f'      {k}: {_yaml_escape(v)}')
         else:
             lines.append('      null')
-        
+
         # sources
         lines.append('    sources:')
         if group['sources']:
@@ -852,12 +862,12 @@ def _write_yaml_plan(
                         lines.append(f'        {k}: {_yaml_escape(v)}')
         else:
             lines.append('      []')
-        
+
         # risk
         lines.append('    risk:')
         for k, v in group['risk'].items():
             lines.append(f'      {k}: {_yaml_escape(v)}')
-        
+
         # files
         lines.append('    files:')
         for f in group['files']:
@@ -868,18 +878,18 @@ def _write_yaml_plan(
                     first = False
                 else:
                     lines.append(f'        {k}: {_yaml_escape(v)}')
-        
+
         # recommendations
         lines.append('    recommendations:')
         for rec in group['recommendations']:
             first = True
             for k, v in rec.items():
                 if k == 'safety' and isinstance(v, dict):
-                    lines.append(f'        safety:')
+                    lines.append('        safety:')
                     for sk, sv in v.items():
                         lines.append(f'          {sk}: {_yaml_escape(sv)}')
                 elif k == 'rationale' and isinstance(v, list):
-                    lines.append(f'        rationale:')
+                    lines.append('        rationale:')
                     for item in v:
                         lines.append(f'          - {_yaml_escape(item)}')
                 elif first:
@@ -887,7 +897,7 @@ def _write_yaml_plan(
                     first = False
                 else:
                     lines.append(f'        {k}: {_yaml_escape(v)}')
-    
+
     # summary
     lines.append('summary:')
     lines.append(f'  groups_total: {plan["summary"]["groups_total"]}')
@@ -895,7 +905,7 @@ def _write_yaml_plan(
     lines.append('  actions:')
     for k, v in plan['summary']['actions'].items():
         lines.append(f'    {k}: {v}')
-    
+
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write('\n'.join(lines))
         f.write('\n')
@@ -919,24 +929,24 @@ def _write_csv_plan(
         'duration_spread_ms',
         'risk_flags',
     ]
-    
+
     with open(output_path, 'w', newline='', encoding='utf-8') as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
-        
+
         for group in groups:
             key = group['library_track_key']
             risk = group['risk']
             duration_spread = risk.get('duration_spread_ms', 0)
             risk_flags = ','.join(_get_risk_flag_list(risk))
-            
+
             # Build a map of path -> recommendation
             rec_map = {r['path']: r for r in group['recommendations']}
-            
+
             for f in group['files']:
                 path = f['path']
                 rec = rec_map.get(path, {})
-                
+
                 row = {
                     'library_track_key': key,
                     'path': path,
@@ -955,20 +965,20 @@ def _write_csv_plan(
 
 def cmd_propose_plan(args: argparse.Namespace) -> None:
     """Handle the propose-plan command.
-    
+
     Generate a YAML (and optional CSV) dedup plan based on duplicate analysis.
     """
     conn = _connect_db(args.db)
-    
+
     try:
         min_copies = args.min_copies
         limit_groups = args.limit_groups
         output_path = args.out
         csv_path = args.csv
-        
+
         # Get file table columns for optional field detection
         file_columns = _get_table_columns(conn, 'files')
-        
+
         # Step 1: Find candidate keys with multiple files
         cursor = conn.execute(
             """
@@ -983,23 +993,23 @@ def cmd_propose_plan(args: argparse.Namespace) -> None:
             (min_copies, limit_groups),
         )
         candidates = cursor.fetchall()
-        
+
         if not candidates:
             print(f"No library_track_key values found with >= {min_copies} files.")
             print("No plan generated.")
             return
-        
+
         print(f"Found {len(candidates)} key(s) with >= {min_copies} files.")
-        print(f"Generating plan...")
-        
+        print("Generating plan...")
+
         # Build the plan structure
         groups: list[dict[str, Any]] = []
         action_counts = {'KEEP': 0, 'ARCHIVE': 0, 'QUARANTINE': 0, 'REVIEW': 0}
         total_files = 0
-        
+
         for candidate in candidates:
             key = candidate['library_track_key']
-            
+
             # Fetch hub row
             hub_cursor = conn.execute(
                 """
@@ -1011,7 +1021,7 @@ def cmd_propose_plan(args: argparse.Namespace) -> None:
             )
             hub_row_raw = hub_cursor.fetchone()
             hub_row = dict(hub_row_raw) if hub_row_raw else None
-            
+
             # Fetch sources
             sources_cursor = conn.execute(
                 """
@@ -1024,7 +1034,7 @@ def cmd_propose_plan(args: argparse.Namespace) -> None:
             )
             sources_raw = sources_cursor.fetchall()
             sources = [dict(row) for row in sources_raw]
-            
+
             # Fetch files
             files_cursor = conn.execute(
                 """
@@ -1037,34 +1047,34 @@ def cmd_propose_plan(args: argparse.Namespace) -> None:
             )
             files_raw = files_cursor.fetchall()
             files = [dict(row) for row in files_raw]
-            
+
             if not files:
                 continue
-            
+
             # Compute keeper scores
             files = _compute_keeper_scores(files, hub_row, file_columns)
-            
+
             # Determine keeper (highest score, tie-break by lexicographically smallest path)
             files_sorted = sorted(files, key=lambda f: (-f['keeper_score'], f['path']))
             keeper_path = files_sorted[0]['path']
-            
+
             # Assign roles
             for f in files:
                 f['role'] = 'KEEPER' if f['path'] == keeper_path else 'NON_KEEPER'
-            
+
             # Compute risk flags
             risk = _compute_risk_flags(files, hub_row, sources, file_columns)
-            
+
             # Compute recommendations
             recommendations = _compute_recommendations(files, keeper_path, key, risk)
-            
+
             # Count actions
             for rec in recommendations:
                 action = rec.get('action', 'REVIEW')
                 action_counts[action] = action_counts.get(action, 0) + 1
-            
+
             total_files += len(files)
-            
+
             # Build hub summary for output
             hub_summary = None
             if hub_row:
@@ -1077,7 +1087,7 @@ def cmd_propose_plan(args: argparse.Namespace) -> None:
                 }
                 if hub_row.get('updated_at'):
                     hub_summary['updated_at'] = hub_row['updated_at']
-            
+
             # Build sources summary for output
             sources_summary = []
             for src in sources:
@@ -1090,7 +1100,7 @@ def cmd_propose_plan(args: argparse.Namespace) -> None:
                 if src.get('fetched_at'):
                     src_entry['fetched_at'] = src['fetched_at']
                 sources_summary.append(src_entry)
-            
+
             # Build files summary for output
             files_summary = []
             for f in files:
@@ -1104,7 +1114,7 @@ def cmd_propose_plan(args: argparse.Namespace) -> None:
                 file_entry['keeper_score'] = f['keeper_score']
                 file_entry['role'] = f['role']
                 files_summary.append(file_entry)
-            
+
             group_entry = {
                 'library_track_key': key,
                 'hub': hub_summary,
@@ -1114,7 +1124,7 @@ def cmd_propose_plan(args: argparse.Namespace) -> None:
                 'recommendations': recommendations,
             }
             groups.append(group_entry)
-        
+
         # Build the full plan
         plan = {
             'plan_version': 1,
@@ -1135,25 +1145,25 @@ def cmd_propose_plan(args: argparse.Namespace) -> None:
                 'actions': action_counts,
             },
         }
-        
+
         # Write YAML output
         _write_yaml_plan(plan, output_path)
         print(f"YAML plan written to: {output_path}")
-        
+
         # Write CSV output if requested
         if csv_path:
             _write_csv_plan(groups, csv_path)
             print(f"CSV plan written to: {csv_path}")
-        
+
         # Print summary
         print()
         print("Summary:")
         print(f"  Groups: {len(groups)}")
         print(f"  Files: {total_files}")
-        print(f"  Actions:")
+        print("  Actions:")
         for action, count in action_counts.items():
             print(f"    {action}: {count}")
-    
+
     finally:
         conn.close()
 
@@ -1175,9 +1185,9 @@ Examples:
     python -m tagslut.cli.track_hub_cli diagnose-duplicates --db ./music.db --min-files 2 --limit 50
         """,
     )
-    
+
     subparsers = parser.add_subparsers(dest="command", required=True)
-    
+
     # track-by-path subcommand
     parser_path = subparsers.add_parser(
         "track-by-path",
@@ -1194,7 +1204,7 @@ Examples:
         help="Path to the SQLite database file.",
     )
     parser_path.set_defaults(func=cmd_track_by_path)
-    
+
     # track-by-key subcommand
     parser_key = subparsers.add_parser(
         "track-by-key",
@@ -1211,7 +1221,7 @@ Examples:
         help="Path to the SQLite database file.",
     )
     parser_key.set_defaults(func=cmd_track_by_key)
-    
+
     # list-files-for-key subcommand
     parser_list_files = subparsers.add_parser(
         "list-files-for-key",
@@ -1228,7 +1238,7 @@ Examples:
         help="Path to the SQLite database file.",
     )
     parser_list_files.set_defaults(func=cmd_list_files_for_key)
-    
+
     # find-by-isrc subcommand
     parser_isrc = subparsers.add_parser(
         "find-by-isrc",
@@ -1245,12 +1255,15 @@ Examples:
         help="Path to the SQLite database file.",
     )
     parser_isrc.set_defaults(func=cmd_find_by_isrc)
-    
+
     # find-by-provider subcommand
     parser_provider = subparsers.add_parser(
         "find-by-provider",
         help="Find a track by provider service and track ID.",
-        description="Look up library_track_sources by service and service_track_id, then display the linked track hub data.",
+        description=(
+            "Look up library_track_sources by service and service_track_id, "
+            "then display the linked track hub data."
+        ),
     )
     parser_provider.add_argument(
         "service",
@@ -1266,7 +1279,7 @@ Examples:
         help="Path to the SQLite database file.",
     )
     parser_provider.set_defaults(func=cmd_find_by_provider)
-    
+
     # diagnose-duplicates subcommand
     parser_diag = subparsers.add_parser(
         "diagnose-duplicates",
@@ -1291,7 +1304,7 @@ Examples:
         help="Maximum number of keys to display (default: 20).",
     )
     parser_diag.set_defaults(func=cmd_diagnose_duplicates)
-    
+
     # propose-plan subcommand
     parser_plan = subparsers.add_parser(
         "propose-plan",
@@ -1326,7 +1339,7 @@ Examples:
         help="Optional path for CSV export. If omitted, no CSV is written.",
     )
     parser_plan.set_defaults(func=cmd_propose_plan)
-    
+
     args = parser.parse_args()
     args.func(args)
 

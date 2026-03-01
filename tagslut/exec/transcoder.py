@@ -147,7 +147,10 @@ def _apply_id3_tags(mp3_path: Path, flac_tags: Optional[FLAC]) -> None:
     if first("title"):
         tags["TIT2"] = TIT2(encoding=3, text=first("title"))  # type: ignore  # TODO: mypy-strict
     if first("artist") or first("albumartist"):
-        tags["TPE1"] = TPE1(encoding=3, text=first("artist") or first("albumartist"))  # type: ignore  # TODO: mypy-strict
+        tags["TPE1"] = TPE1(  # type: ignore  # TODO: mypy-strict
+            encoding=3,
+            text=first("artist") or first("albumartist"),
+        )
     if first("album"):
         tags["TALB"] = TALB(encoding=3, text=first("album"))  # type: ignore  # TODO: mypy-strict
     if first("date") or first("year"):

@@ -165,6 +165,9 @@ class EnrichmentResult:
     tidal_id: Optional[str] = None
     qobuz_id: Optional[str] = None
     itunes_id: Optional[str] = None
+    deezer_id: Optional[str] = None
+    traxsource_id: Optional[str] = None
+    musicbrainz_id: Optional[str] = None
 
     # All provider matches (for auditing)
     matches: List[ProviderTrack] = field(default_factory=list)

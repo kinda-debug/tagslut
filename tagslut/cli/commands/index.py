@@ -917,7 +917,7 @@ def register_index_group(cli: click.Group) -> None:
     @click.option('--zones', type=str, help='Comma-separated zones to include (e.g. accepted,staging)')
     @click.option(
         '--providers',
-        default='beatport,tidal,deezer,itunes',
+        default='beatport,tidal,deezer,traxsource,musicbrainz',
         help='Comma-separated list of providers (order = priority)',
     )
     @click.option('--limit', type=int, help='Maximum files to process')

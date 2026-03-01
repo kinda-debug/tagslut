@@ -93,6 +93,9 @@ def _derive_library_track_key(result: EnrichmentResult) -> str:
         ("tidal", result.tidal_id),
         ("qobuz", result.qobuz_id),
         ("itunes", result.itunes_id),
+        ("deezer", result.deezer_id),
+        ("traxsource", result.traxsource_id),
+        ("musicbrainz", result.musicbrainz_id),
     ):
         if value:
             return f"{prefix}:{str(value).strip()}"
@@ -390,6 +393,9 @@ def update_database(
                 "tidal_id = ?",
                 "qobuz_id = ?",
                 "itunes_id = ?",
+                "deezer_id = ?",
+                "traxsource_id = ?",
+                "musicbrainz_id = ?",
             ])
             values.extend([
                 # Core identity
@@ -428,6 +434,9 @@ def update_database(
                 result.tidal_id,
                 result.qobuz_id,
                 result.itunes_id,
+                result.deezer_id,
+                result.traxsource_id,
+                result.musicbrainz_id,
             ])
 
         # Add path for WHERE clause

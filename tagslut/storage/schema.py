@@ -190,6 +190,9 @@ def init_db(
             "tidal_id": "TEXT",
             "qobuz_id": "TEXT",
             "itunes_id": "TEXT",
+            "deezer_id": "TEXT",
+            "traxsource_id": "TEXT",
+            "musicbrainz_id": "TEXT",
             # Enrichment columns - status
             "enriched_at": "TEXT",
             "enrichment_providers": "TEXT",

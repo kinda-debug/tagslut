@@ -180,6 +180,35 @@ def resolve_file(  # type: ignore  # TODO: mypy-strict
                     matches.append(track)
                     log(f"  {provider_name}: {confidence.value} match -> {track.title} by {track.artist}")
 
+    # Stage 4 (hoarding only): Fill gaps by searching providers that didn't
+    # match in earlier stages.  If ISRC or Beatport-ID matched one provider but
+    # others had no result, text search those remaining providers so we maximise
+    # metadata coverage (e.g. get key from Tidal when Beatport lacked it).
+    if mode in ("hoarding", "both") and matches and file_info.tag_artist and file_info.tag_title:
+        matched_services = {m.service for m in matches}
+        missing_providers = [p for p in provider_names if p not in matched_services]
+        if missing_providers:
+            query = f"{file_info.tag_artist} {file_info.tag_title}"
+            log(f"Hoarding gap-fill: text search on {missing_providers}")
+            for provider_name in missing_providers:
+                provider = provider_getter(provider_name)
+                if provider is None:
+                    continue
+
+                search_results = provider.search(query, limit=5)
+                for track in search_results:
+                    confidence = classify_match_confidence(
+                        file_info.tag_title,
+                        file_info.tag_artist,
+                        file_info.measured_duration_s,
+                        track,
+                    )
+                    track.match_confidence = confidence
+
+                    if confidence != MatchConfidence.NONE:
+                        matches.append(track)
+                        log(f"  {provider_name}: {confidence.value} match -> {track.title} by {track.artist}")
+
     # Store all matches
     result.matches = matches
 
@@ -371,16 +400,24 @@ def apply_cascade(
 
             # Provider IDs for linking
             for m in hoarding_usable:
-                if m.service == "spotify" and m.service_track_id:
+                if not m.service_track_id:
+                    continue
+                if m.service == "spotify":
                     result.spotify_id = m.service_track_id
-                elif m.service == "beatport" and m.service_track_id:
+                elif m.service == "beatport":
                     result.beatport_id = m.service_track_id
-                elif m.service == "tidal" and m.service_track_id:
+                elif m.service == "tidal":
                     result.tidal_id = m.service_track_id
-                elif m.service == "qobuz" and m.service_track_id:
+                elif m.service == "qobuz":
                     result.qobuz_id = m.service_track_id
-                elif m.service == "itunes" and m.service_track_id:
+                elif m.service == "itunes":
                     result.itunes_id = m.service_track_id
+                elif m.service == "deezer":
+                    result.deezer_id = m.service_track_id
+                elif m.service == "traxsource":
+                    result.traxsource_id = m.service_track_id
+                elif m.service == "musicbrainz":
+                    result.musicbrainz_id = m.service_track_id
 
     return result
 

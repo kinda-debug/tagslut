@@ -13,13 +13,13 @@ def export_group() -> None:
 @click.option(
     "--source",
     required=True,
-    type=click.Path(exists=True, path_type=Path),
+    type=click.Path(exists=True, path_type=Path),  # type: ignore  # TODO: mypy-strict
     help="Source directory containing audio files",
 )
 @click.option(
     "--usb",
     required=True,
-    type=click.Path(exists=True, path_type=Path),
+    type=click.Path(exists=True, path_type=Path),  # type: ignore  # TODO: mypy-strict
     help="USB mount point (e.g. /Volumes/PIONEER_USB)",
 )
 @click.option(

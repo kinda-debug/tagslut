@@ -74,9 +74,9 @@ def _format_extinf(file_path: Path) -> tuple[int, str]:
         from mutagen.flac import FLAC
         audio = FLAC(file_path)
         duration = int(audio.info.length) if audio.info.length else -1
-        tags = audio.tags or {}
-        artist = _extract_tag_value(tags, ["artist", "albumartist"]) or "Unknown"
-        title = _extract_tag_value(tags, ["title"]) or file_path.stem
+        tags = audio.tags or {}  # type: ignore  # TODO: mypy-strict
+        artist = _extract_tag_value(tags, ["artist", "albumartist"]) or "Unknown"  # type: ignore  # TODO: mypy-strict
+        title = _extract_tag_value(tags, ["title"]) or file_path.stem  # type: ignore  # TODO: mypy-strict
         return duration, f"{artist} - {title}"
     except Exception:
         return -1, file_path.stem
@@ -137,7 +137,7 @@ def _prompt_duplicate_action(
 
 def _measure_duration_ms(file_path: Path) -> int | None:
     try:
-        from mutagen import File as MutagenFile
+        from mutagen import File as MutagenFile  # type: ignore  # TODO: mypy-strict
         audio = MutagenFile(str(file_path), easy=False)
         if audio is None or not hasattr(audio, "info") or audio.info is None:
             return None
@@ -149,7 +149,7 @@ def _measure_duration_ms(file_path: Path) -> int | None:
         return None
 
 
-def _extract_tag_value(tags: dict, keys: list[str]) -> str | None:
+def _extract_tag_value(tags: dict, keys: list[str]) -> str | None:  # type: ignore  # TODO: mypy-strict
     if not tags:
         return None
     lowered = {str(k).lower(): v for k, v in tags.items()}
@@ -165,7 +165,7 @@ def _extract_tag_value(tags: dict, keys: list[str]) -> str | None:
     return None
 
 
-def _lookup_duration_ref_ms(
+def _lookup_duration_ref_ms(  # type: ignore  # TODO: mypy-strict
     conn,
     beatport_id: str | None,
     isrc: str | None,
@@ -218,7 +218,7 @@ def register_mgmt_group(cli: click.Group) -> None:
     @click.option("--source", help="Source label for playlist naming (bpdl, tidal, etc.)")
     @click.option("--path", "paths", multiple=True, type=click.Path(), help="Input path(s) for --m3u")
     @click.pass_context
-    def mgmt(ctx, m3u_mode, merge, m3u_dir, db, source, paths):
+    def mgmt(ctx, m3u_mode, merge, m3u_dir, db, source, paths):  # type: ignore  # TODO: mypy-strict
         """Internal management mode: inventory tracking and duplicate checking."""
         if ctx.invoked_subcommand is None:
             if not m3u_mode:
@@ -315,7 +315,7 @@ def register_mgmt_group(cli: click.Group) -> None:
     @click.option('--check-duration', is_flag=True, help='Measure duration and compute duration status')
     @click.option('--prompt/--no-prompt', default=True, help='Prompt when similar files exist')
     @click.option('-v', '--verbose', is_flag=True, help='Verbose output')
-    def register(path, source, db, execute, full_hash, limit, dj_only, check_duration, prompt, verbose):
+    def register(path, source, db, execute, full_hash, limit, dj_only, check_duration, prompt, verbose):  # type: ignore  # TODO: mypy-strict
         """
         Register files in inventory.
 
@@ -666,7 +666,7 @@ def register_mgmt_group(cli: click.Group) -> None:
     @click.option('--strict', is_flag=True, help='Strict mode: any match is a conflict')
     @click.option('--prompt/--no-prompt', default=True, help='Prompt when similar files exist')
     @click.option('-v', '--verbose', is_flag=True, help='Verbose output')
-    def check(path, source, db, strict, prompt, verbose):
+    def check(path, source, db, strict, prompt, verbose):  # type: ignore  # TODO: mypy-strict
         """
         Check for duplicate files before downloading.
 
@@ -866,7 +866,7 @@ def register_mgmt_group(cli: click.Group) -> None:
     @click.option("--dj-only", is_flag=True, help="Mark checked files as DJ material")
     @click.option("--source", help="Override source label for logging")
     @click.option("-v", "--verbose", is_flag=True, help="Verbose output")
-    def check_duration(path, db, execute, dj_only, source, verbose):
+    def check_duration(path, db, execute, dj_only, source, verbose):  # type: ignore  # TODO: mypy-strict
         """
         Measure durations and update duration status in the DB.
         """
@@ -929,9 +929,9 @@ def register_mgmt_group(cli: click.Group) -> None:
                     except Exception:
                         audio = None
 
-                    tags = audio.tags or {} if audio is not None else {}
-                    beatport_id = _extract_tag_value(tags, ["BEATPORT_TRACK_ID", "BP_TRACK_ID", "beatport_track_id"])
-                    isrc = _extract_tag_value(tags, ["ISRC", "TSRC"])
+                    tags = audio.tags or {} if audio is not None else {}  # type: ignore  # TODO: mypy-strict
+                    beatport_id = _extract_tag_value(tags, ["BEATPORT_TRACK_ID", "BP_TRACK_ID", "beatport_track_id"])  # type: ignore  # TODO: mypy-strict
+                    isrc = _extract_tag_value(tags, ["ISRC", "TSRC"])  # type: ignore  # TODO: mypy-strict
                     if not beatport_id and db_beatport_id:
                         beatport_id = db_beatport_id
                     if not isrc and db_isrc:
@@ -1052,7 +1052,7 @@ def register_mgmt_group(cli: click.Group) -> None:
     @click.option("--source", help="Filter by download source")
     @click.option("--since", help="Filter by download_date >= YYYY-MM-DD")
     @click.option("--inactive-exclude", is_flag=True, help="Exclude mgmt_status=inactive")
-    def audit_duration(db, dj_only, status_filter, source, since, inactive_exclude):
+    def audit_duration(db, dj_only, status_filter, source, since, inactive_exclude):  # type: ignore  # TODO: mypy-strict
         """
         Report files with duration_status != ok (or filtered statuses).
         """
@@ -1108,7 +1108,7 @@ def register_mgmt_group(cli: click.Group) -> None:
     @click.option("--dj-only", is_flag=True, help="Mark file as DJ material")
     @click.option("--confirm", is_flag=True, help="Confirm manual duration reference override")
     @click.option("--execute", is_flag=True, help="Write updates to the database")
-    def set_duration_ref(path, db, dj_only, confirm, execute):
+    def set_duration_ref(path, db, dj_only, confirm, execute):  # type: ignore  # TODO: mypy-strict
         """
         Manually set a duration reference from a known-good file.
         """

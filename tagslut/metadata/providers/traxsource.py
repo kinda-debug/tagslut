@@ -51,9 +51,9 @@ class TraxsourceProvider(AbstractProvider):
 
     BASE_URL = "https://www.traxsource.com/api/v1/catalog"
 
-    def __init__(self, token_manager=None):
+    def __init__(self, token_manager=None):  # type: ignore  # TODO: mypy-strict
         # No credentials needed.
-        super().__init__(token_manager=None)
+        super().__init__(token_manager=None)  # type: ignore  # TODO: mypy-strict
 
     # ------------------------------------------------------------------
     # AbstractProvider interface
@@ -274,7 +274,7 @@ class TraxsourceProvider(AbstractProvider):
         elif track_id:
             url = f"https://www.traxsource.com/title/{track_id}"
         else:
-            url = data.get("url")
+            url = data.get("url")  # type: ignore  # TODO: mypy-strict
 
         return ProviderTrack(
             service="traxsource",

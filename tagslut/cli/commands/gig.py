@@ -21,12 +21,12 @@ def gig_group() -> None:
 @click.option(
     "--usb",
     required=True,
-    type=click.Path(exists=True, path_type=Path),
+    type=click.Path(exists=True, path_type=Path),  # type: ignore  # TODO: mypy-strict
     help="USB mount point",
 )
 @click.option(
     "--dj-pool",
-    type=click.Path(path_type=Path),
+    type=click.Path(path_type=Path),  # type: ignore  # TODO: mypy-strict
     default=None,
     help="DJ pool directory for MP3s (default: from config)",
 )
@@ -88,7 +88,7 @@ def gig_list(db_path: str) -> None:
 
 
 @gig_group.command("status")
-@click.option("--usb", required=True, type=click.Path(exists=True, path_type=Path))
+@click.option("--usb", required=True, type=click.Path(exists=True, path_type=Path))  # type: ignore  # TODO: mypy-strict
 @click.option("--db", "db_path", required=True, type=click.Path())
 def gig_status(usb: Path, db_path: str) -> None:
     """Show what's on the USB and flag stale tracks vs current inventory."""

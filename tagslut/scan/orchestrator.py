@@ -24,9 +24,9 @@ ChecksumFn = Callable[[Path], str]
 ProbeDurationFn = Callable[[Path], Optional[float]]
 DecodeProbeFn = Callable[[Path, Optional[float]], list[str]]
 RecordIssueFn = Callable[
-    [sqlite3.Connection, int, Path, str, str, dict, Optional[str]],
+    [sqlite3.Connection, int, Path, str, str, dict[str, Any], Optional[str]],
     None,
-]  # type: ignore  # TODO: mypy-strict
+]
 
 
 def _default_read_tags(

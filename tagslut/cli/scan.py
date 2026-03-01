@@ -41,7 +41,7 @@ def get_report_rows(run_id: int) -> tuple[list[dict[str, Any]], int]:
 
 
 @scan_group.command("enqueue")
-@click.option("--root", required=True, type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.option("--root", required=True, type=click.Path(exists=True, file_okay=False, path_type=Path))  # type: ignore  # TODO: mypy-strict
 @click.option("--priority", default=5, show_default=True, type=int)
 def scan_enqueue(root: Path, priority: int) -> None:
     """Enqueue files under ROOT for scanning."""

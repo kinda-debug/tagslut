@@ -92,7 +92,7 @@ class Enricher:
                 self._providers[name] = MusicBrainzProvider()
             elif name == "traxsource":
                 from tagslut.metadata.providers.traxsource import TraxsourceProvider
-                self._providers[name] = TraxsourceProvider()
+                self._providers[name] = TraxsourceProvider()  # type: ignore  # TODO: mypy-strict
             else:
                 logger.warning("Unknown provider: %s", name)
                 return None

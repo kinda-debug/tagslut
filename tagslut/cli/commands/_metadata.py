@@ -13,14 +13,14 @@ from tagslut.cli.runtime import collect_flac_paths as _collect_flac_paths
 logger = logging.getLogger("tagslut")
 
 
-def _local_file_info_from_path(file_path: Path):
+def _local_file_info_from_path(file_path: Path):  # type: ignore  # TODO: mypy-strict
     from tagslut.core.metadata import extract_metadata
     from tagslut.metadata.models.types import LocalFileInfo
 
     audio = extract_metadata(file_path, scan_integrity=False, scan_hash=False)
     tags = audio.metadata or {}
 
-    def get_tag(key: str):
+    def get_tag(key: str):  # type: ignore  # TODO: mypy-strict
         val = tags.get(key)
         if isinstance(val, list) and val:
             return str(val[0])
@@ -49,7 +49,7 @@ def _local_file_info_from_path(file_path: Path):
     )
 
 
-def _print_enrichment_result(result) -> None:
+def _print_enrichment_result(result) -> None:  # type: ignore  # TODO: mypy-strict
     if not result or not result.matches:
         click.echo("No provider match found")
         return
@@ -65,7 +65,7 @@ def _print_enrichment_result(result) -> None:
         click.echo(f"Genre: {result.canonical_genre}")
 
 
-def _tidal_device_login(token_manager) -> None:
+def _tidal_device_login(token_manager) -> None:  # type: ignore  # TODO: mypy-strict
     """Handle Tidal device authorization flow."""
     click.echo("Starting Tidal device authorization...")
 
@@ -104,7 +104,7 @@ def _tidal_device_login(token_manager) -> None:
     click.echo("\nAuthorization timed out. Please try again.")
 
 
-def _qobuz_login(token_manager) -> None:
+def _qobuz_login(token_manager) -> None:  # type: ignore  # TODO: mypy-strict
     """Handle Qobuz email/password login."""
     click.echo("Qobuz Login")
     click.echo("-" * 40)
@@ -121,7 +121,7 @@ def _qobuz_login(token_manager) -> None:
         click.echo("Login failed. Check your email and password.")
 
 
-def _beatport_token_input(token_manager) -> None:
+def _beatport_token_input(token_manager) -> None:  # type: ignore  # TODO: mypy-strict
     """Handle manual Beatport token input."""
     click.echo("Beatport Token Setup")
     click.echo("-" * 40)
@@ -180,7 +180,7 @@ def _beatport_token_input(token_manager) -> None:
 
 def register_metadata_group(cli: click.Group) -> None:
     @cli.group(name="_metadata", hidden=True)
-    def metadata():
+    def metadata():  # type: ignore  # TODO: mypy-strict
         """Internal metadata enrichment commands."""
 
     @metadata.command()
@@ -200,7 +200,7 @@ def register_metadata_group(cli: click.Group) -> None:
     @click.option('--hoarding', is_flag=True, help='Hoarding mode: collect full metadata (BPM, key, genre, etc.)')
     @click.option('-v', '--verbose', is_flag=True, help='Verbose output')
     @click.option('--standalone', is_flag=True, help='Run without a database (read tags directly)')
-    def enrich(
+    def enrich(  # type: ignore[no-untyped-def]  # TODO: mypy-strict
         db,
         path,
         zones,
@@ -427,7 +427,7 @@ def register_metadata_group(cli: click.Group) -> None:
         import shutil
         term_width = shutil.get_terminal_size().columns
 
-        def progress(current, total, filepath):
+        def progress(current, total, filepath):  # type: ignore  # TODO: mypy-strict
             remaining = total - current
             pct = (current / total) * 100 if total > 0 else 0
 
@@ -487,7 +487,7 @@ def register_metadata_group(cli: click.Group) -> None:
     @metadata.command()
     @click.option('--tokens-path', type=click.Path(), help='Path to tokens.json')
     @click.option('--no-refresh', is_flag=True, help='Skip auto-refresh of tokens')
-    def auth_status(tokens_path, no_refresh):
+    def auth_status(tokens_path, no_refresh):  # type: ignore  # TODO: mypy-strict
         """
         Show authentication status for all providers.
 
@@ -510,7 +510,7 @@ def register_metadata_group(cli: click.Group) -> None:
                 token = token_manager.get_token("spotify")
                 if token is None or token.is_expired:
                     click.echo("Refreshing Spotify token...")
-                    token_manager.refresh_spotify_token()
+                    token_manager.refresh_spotify_token()  # type: ignore  # TODO: mypy-strict
 
             # Beatport - client credentials
             if token_manager.is_configured("beatport"):
@@ -561,7 +561,7 @@ def register_metadata_group(cli: click.Group) -> None:
 
     @metadata.command()
     @click.option('--tokens-path', type=click.Path(), help='Path to tokens.json')
-    def auth_init(tokens_path):
+    def auth_init(tokens_path):  # type: ignore  # TODO: mypy-strict
         """
         Initialize tokens.json with template structure.
 
@@ -584,7 +584,7 @@ def register_metadata_group(cli: click.Group) -> None:
     @metadata.command()
     @click.argument('provider')
     @click.option('--tokens-path', type=click.Path(), help='Path to tokens.json')
-    def auth_refresh(provider, tokens_path):
+    def auth_refresh(provider, tokens_path):  # type: ignore  # TODO: mypy-strict
         """
         Refresh access token for a provider.
 
@@ -600,7 +600,7 @@ def register_metadata_group(cli: click.Group) -> None:
 
         if provider == 'spotify':
             click.echo("Refreshing Spotify token...")
-            token = token_manager.refresh_spotify_token()
+            token = token_manager.refresh_spotify_token()  # type: ignore  # TODO: mypy-strict
             if token:
                 click.echo(f"Success! Token expires at: {time.ctime(token.expires_at)}")
             else:
@@ -631,7 +631,7 @@ def register_metadata_group(cli: click.Group) -> None:
     @metadata.command()
     @click.argument('provider')
     @click.option('--tokens-path', type=click.Path(), help='Path to tokens.json')
-    def auth_login(provider, tokens_path):
+    def auth_login(provider, tokens_path):  # type: ignore  # TODO: mypy-strict
         """
         Authenticate with a provider interactively.
 

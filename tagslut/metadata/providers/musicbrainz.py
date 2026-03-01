@@ -44,7 +44,7 @@ class MusicBrainzProvider(AbstractProvider):
 
     def __init__(self, token_manager: Any = None) -> None:
         # MusicBrainz does not require authentication.
-        super().__init__(token_manager=None)
+        super().__init__(token_manager=None)  # type: ignore  # TODO: mypy-strict
 
     def _get_default_headers(self) -> Dict[str, str]:
         return {

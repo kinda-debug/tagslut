@@ -130,24 +130,20 @@ class Verifier:
         # - degraded: integrity OK but quality concerns (duration loss, silence)
         if result["integrity"] == "valid":
             is_degraded = False
+            duration_delta = result.get("duration_delta")
+            silence_events = result.get("silence_events")
 
             # Check for significant duration loss (> 1 second)
-            if (
-                result["duration_delta"] is not None
-                and result["duration_delta"] < -1.0
-            ):  # type: ignore  # TODO: mypy-strict
+            if isinstance(duration_delta, (int, float)) and duration_delta < -1.0:
                 logger.warning(
-                    f"Duration loss detected: {result['duration_delta']:.2f}s for {file_path}"
+                    f"Duration loss detected: {duration_delta:.2f}s for {file_path}"
                 )
                 is_degraded = True
 
             # Check for excessive silence events (> 10)
-            if (
-                result["silence_events"] is not None
-                and result["silence_events"] > 10
-            ):  # type: ignore  # TODO: mypy-strict
+            if isinstance(silence_events, (int, float)) and silence_events > 10:
                 logger.warning(
-                    f"Excessive silence events: {result['silence_events']} for {file_path}"
+                    f"Excessive silence events: {silence_events} for {file_path}"
                 )
                 is_degraded = True
 

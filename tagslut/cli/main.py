@@ -66,7 +66,7 @@ class _TagslutGroup(click.Group):
 
 @click.group(cls=_TagslutGroup)
 @click.version_option(version="2.0.0")
-def cli():
+def cli():  # type: ignore  # TODO: mypy-strict
     """Tagslut CLI."""
 
 

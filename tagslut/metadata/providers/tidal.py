@@ -130,10 +130,10 @@ class TidalProvider(AbstractProvider):
             return None
         return f"https://resources.tidal.com/images/{cover_id.replace('-', '/')}/{size}x{size}.jpg"
 
-    def _normalize_track(
+    def _normalize_track(  # type: ignore[override]  # TODO: mypy-strict
         self,
         attributes: Dict[str, Any],
-    ) -> Optional[ProviderTrack]:  # type: ignore  # TODO: mypy-strict
+    ) -> Optional[ProviderTrack]:
         """
         Normalize Tidal track object to ProviderTrack.
 

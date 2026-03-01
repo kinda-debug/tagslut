@@ -115,7 +115,7 @@ def _backfill_from_metadata_json(conn: sqlite3.Connection) -> None:
     updated = 0
     for path, metadata_json_str in rows:
         try:
-            tags: dict = json.loads(metadata_json_str)
+            tags: dict = json.loads(metadata_json_str)  # type: ignore  # TODO: mypy-strict
         except (json.JSONDecodeError, TypeError):
             continue
 
@@ -138,7 +138,7 @@ def _backfill_from_metadata_json(conn: sqlite3.Connection) -> None:
                 break
 
         if new_bpm is not None or new_key is not None:
-            params: list = []
+            params: list = []  # type: ignore  # TODO: mypy-strict
             sets: list[str] = []
             if new_bpm is not None:
                 sets.append("bpm = ?")

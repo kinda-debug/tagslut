@@ -42,7 +42,7 @@ def _load_dj_fields_migration():
     """Import 0002_add_dj_fields.py (numeric prefix is not a valid module name)."""
     spec = importlib.util.spec_from_file_location(
         "add_dj_fields_0002",
-        _PROJECT_ROOT / "tagslut" / "migrations" / "0002_add_dj_fields.py",
+        _PROJECT_ROOT / "tagslut" / "storage" / "migrations" / "0002_add_dj_fields.py",
     )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)

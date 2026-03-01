@@ -26,7 +26,6 @@ from tagslut.cli.commands.intake import register_intake_group
 from tagslut.cli.commands.report import register_report_group
 from tagslut.cli.commands.verify import register_verify_group
 from tagslut.cli.commands.misc import register_misc_commands
-from tagslut.cli.scan import scan_group
 
 # Add project root to path so we can import tools as modules if needed
 sys.path.insert(0, str(Path(__file__).parents[2]))
@@ -77,11 +76,10 @@ register_verify_group(cli)
 register_report_group(cli)
 register_auth_group(cli)
 
-# Register DJ, export, gig, and scan groups
+# Register DJ, export, and gig groups
 cli.add_command(dj_group)
 cli.add_command(export_group, name="export")
 cli.add_command(gig_group, name="gig")
-cli.add_command(scan_group, name="scan")
 
 # Register standalone misc commands (canonize, show-zone, explain-keeper,
 # enrich-file, init, _recover, recovery)

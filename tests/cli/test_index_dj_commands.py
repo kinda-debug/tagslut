@@ -16,7 +16,7 @@ def _create_db(tmp_path: Path) -> Path:
     conn.row_factory = sqlite3.Row
     init_db(conn)
 
-    migration = importlib.import_module("tagslut.migrations.0002_add_dj_fields")
+    migration = importlib.import_module("tagslut.storage.migrations.0002_add_dj_fields")
     migration.up(conn)
 
     conn.close()

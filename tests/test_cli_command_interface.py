@@ -93,6 +93,10 @@ def test_phase5_removed_top_level_commands_absent() -> None:
         assert removed not in commands
 
 
+def test_scan_not_registered_in_click_command_map() -> None:
+    assert "scan" not in [cmd.name for cmd in cli.commands.values()]
+
+
 def test_internal_replacement_map_targets_canonical_flows() -> None:
     assert _TRANSITIONAL_COMMAND_REPLACEMENTS["tagslut _mgmt"].startswith("tagslut index")
     assert _TRANSITIONAL_COMMAND_REPLACEMENTS["tagslut _metadata"].startswith("tagslut auth")

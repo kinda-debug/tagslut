@@ -387,7 +387,8 @@ def push_to_lexicon_api(
     url = "http://localhost:48624/v1/tracks"
     try:
         import requests  # type: ignore
-    except Exception:
+    except Exception as e:
+        log.debug("requests import unavailable for lexicon push: %s", e)
         requests = None
 
     if requests is None:
@@ -431,7 +432,8 @@ def push_to_lexicon_api(
 
         try:
             r = requests.patch(url, json=payload, timeout=5)
-        except Exception:
+        except Exception as e:
+            log.debug("Failed to push track %s - %s to Lexicon API: %s", track.get("artist"), track.get("title"), e)
             failed += 1
             continue
         if r.status_code >= 400:

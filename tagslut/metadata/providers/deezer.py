@@ -38,7 +38,8 @@ class DeezerProvider(AbstractProvider):
             return None
         try:
             payload = response.json()
-        except Exception:
+        except Exception as e:
+            logger.debug("Failed to decode Deezer fetch_by_id payload for %s: %s", track_id, e)
             return None
         if not isinstance(payload, dict) or payload.get("error"):
             return None
@@ -57,7 +58,8 @@ class DeezerProvider(AbstractProvider):
         try:
             payload = response.json()
             rows = payload.get("data", []) if isinstance(payload, dict) else []
-        except Exception:
+        except Exception as e:
+            logger.debug("Failed to decode Deezer search payload for query %r: %s", query, e)
             return []
         return [self._normalize_track(r) for r in rows if isinstance(r, dict)]
 
@@ -67,7 +69,8 @@ class DeezerProvider(AbstractProvider):
             return []
         try:
             payload = response.json()
-        except Exception:
+        except Exception as e:
+            logger.debug("Failed to decode Deezer ISRC payload for %s: %s", isrc, e)
             return []
         if not isinstance(payload, dict) or payload.get("error"):
             return []
@@ -85,14 +88,16 @@ class DeezerProvider(AbstractProvider):
         if data.get("duration") is not None:
             try:
                 duration_ms = int(float(data.get("duration")) * 1000)  # type: ignore  # TODO: mypy-strict
-            except Exception:
+            except Exception as e:
+                logger.debug("Failed to parse Deezer duration for track %s: %s", data.get("id"), e)
                 duration_ms = None
 
         bpm_val = None
         if data.get("bpm") is not None:
             try:
                 bpm_val = float(data.get("bpm"))  # type: ignore  # TODO: mypy-strict
-            except Exception:
+            except Exception as e:
+                logger.debug("Failed to parse Deezer BPM for track %s: %s", data.get("id"), e)
                 bpm_val = None
 
         release_date = album.get("release_date")  # type: ignore  # TODO: mypy-strict
@@ -100,7 +105,8 @@ class DeezerProvider(AbstractProvider):
         if isinstance(release_date, str) and len(release_date) >= 4:
             try:
                 year = int(release_date[:4])
-            except Exception:
+            except Exception as e:
+                logger.debug("Failed to parse Deezer year for track %s: %s", data.get("id"), e)
                 year = None
 
         return ProviderTrack(

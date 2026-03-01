@@ -12,11 +12,12 @@ This module implements the main enrichment workflow:
 
 import logging
 from pathlib import Path
-from typing import Optional, List, Dict, Iterator
+from types import TracebackType
+from typing import Any, Callable, Dict, Iterator, List, Optional, cast
 
 from tagslut.metadata.models.types import EnrichmentResult, LocalFileInfo
 from tagslut.metadata.auth import TokenManager
-from tagslut.metadata.providers.base import AbstractProvider
+from tagslut.metadata.providers.base import AbstractProvider as BaseProvider
 from tagslut.metadata.pipeline import runner, stages
 from tagslut.metadata.store import db_reader, db_writer
 
@@ -61,9 +62,9 @@ class Enricher:
         self.mode = mode
 
         # Initialize providers
-        self._providers: Dict[str, AbstractProvider] = {}
+        self._providers: Dict[str, BaseProvider] = {}
 
-    def _get_provider(self, name: str) -> Optional[AbstractProvider]:
+    def _get_provider(self, name: str) -> Optional[BaseProvider]:
         """Get or create a provider instance."""
         if name not in self._providers:
             if name == "spotify":
@@ -71,28 +72,40 @@ class Enricher:
                 return None
             elif name == "beatport":
                 from tagslut.metadata.providers.beatport import BeatportProvider
-                self._providers[name] = BeatportProvider(self.token_manager)  # type: ignore  # TODO: mypy-strict
+                self._providers[name] = cast(
+                    BaseProvider,
+                    cast(Any, BeatportProvider)(self.token_manager),
+                )
             elif name == "qobuz":
                 logger.warning("Qobuz provider is disabled by policy.")
                 return None
             elif name == "deezer":
                 from tagslut.metadata.providers.deezer import DeezerProvider
-                self._providers[name] = DeezerProvider()  # type: ignore  # TODO: mypy-strict
+                self._providers[name] = cast(
+                    BaseProvider,
+                    cast(Any, DeezerProvider)(),
+                )
             elif name == "tidal":
                 from tagslut.metadata.providers.tidal import TidalProvider
                 self._providers[name] = TidalProvider(self.token_manager)
             elif name == "itunes":
-                from tagslut.metadata.providers.itunes import iTunesProvider
-                self._providers[name] = iTunesProvider()  # type: ignore  # TODO: mypy-strict
+                logger.warning("iTunes provider is disabled by policy (use Apple Music via MusicBrainz).")
+                return None
             elif name == "apple_music":
                 from tagslut.metadata.providers.apple_music import AppleMusicProvider
-                self._providers[name] = AppleMusicProvider(self.token_manager)  # type: ignore  # TODO: mypy-strict
+                self._providers[name] = cast(
+                    BaseProvider,
+                    cast(Any, AppleMusicProvider)(self.token_manager),
+                )
             elif name == "musicbrainz":
                 from tagslut.metadata.providers.musicbrainz import MusicBrainzProvider
                 self._providers[name] = MusicBrainzProvider()
             elif name == "traxsource":
                 from tagslut.metadata.providers.traxsource import TraxsourceProvider
-                self._providers[name] = TraxsourceProvider()  # type: ignore  # TODO: mypy-strict
+                self._providers[name] = cast(
+                    BaseProvider,
+                    cast(Any, TraxsourceProvider)(),
+                )
             else:
                 logger.warning("Unknown provider: %s", name)
                 return None
@@ -104,10 +117,15 @@ class Enricher:
             provider.close()
         self._providers.clear()
 
-    def __enter__(self):  # type: ignore  # TODO: mypy-strict
+    def __enter__(self) -> "Enricher":
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):  # type: ignore  # TODO: mypy-strict
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
         self.close()
 
     def get_eligible_files(
@@ -188,14 +206,14 @@ class Enricher:
         """Mark a file as processed but with no provider match."""
         db_writer.mark_no_match(self.db_path, path, self.dry_run)
 
-    def enrich_all(  # type: ignore  # TODO: mypy-strict
+    def enrich_all(
         self,
         path_pattern: Optional[str] = None,
         limit: Optional[int] = None,
         force: bool = False,
         retry_no_match: bool = False,
         zones: Optional[List[str]] = None,
-        progress_callback=None,
+        progress_callback: Optional[Callable[[int, int, str], None]] = None,
         checkpoint_interval: int = 50,
     ) -> EnrichmentStats:
         """

@@ -2,7 +2,8 @@
 
 import json
 import sqlite3
-from typing import Optional, List, Any, Iterator
+from pathlib import Path
+from typing import Any, Iterator, Optional, Sequence, cast
 
 from tagslut.metadata.models.types import LocalFileInfo
 
@@ -52,13 +53,13 @@ def row_to_local_file_info(row: sqlite3.Row) -> LocalFileInfo:
     )
 
 
-def get_eligible_files(  # type: ignore  # TODO: mypy-strict
-    db_path,
+def get_eligible_files(
+    db_path: str | Path,
     path_pattern: Optional[str] = None,
     limit: Optional[int] = None,
     force: bool = False,
     retry_no_match: bool = False,
-    zones: Optional[List[str]] = None,
+    zones: Optional[Sequence[str]] = None,
     hoarding_mode: bool = False,
 ) -> Iterator[LocalFileInfo]:
     """
@@ -91,7 +92,7 @@ def get_eligible_files(  # type: ignore  # TODO: mypy-strict
             FROM files
             WHERE flac_ok = 1
         """
-        params: List[Any] = []
+        params: list[Any] = []
 
         if force:
             # Re-process everything
@@ -134,7 +135,7 @@ def get_eligible_files(  # type: ignore  # TODO: mypy-strict
         conn.close()
 
 
-def get_file_row(db_path, path: str) -> Optional[sqlite3.Row]:  # type: ignore  # TODO: mypy-strict
+def get_file_row(db_path: str | Path, path: str) -> Optional[sqlite3.Row]:
     """Fetch a single file row by path."""
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
@@ -144,12 +145,12 @@ def get_file_row(db_path, path: str) -> Optional[sqlite3.Row]:  # type: ignore  
             "FROM files WHERE path = ?",
             (path,),
         ).fetchone()
-        return row  # type: ignore  # TODO: mypy-strict
+        return cast(Optional[sqlite3.Row], row)
     finally:
         conn.close()
 
 
-def get_file_info(db_path, path: str) -> Optional[LocalFileInfo]:  # type: ignore  # TODO: mypy-strict
+def get_file_info(db_path: str | Path, path: str) -> Optional[LocalFileInfo]:
     """Fetch a single file by path and convert to LocalFileInfo."""
     row = get_file_row(db_path, path)
     if not row:

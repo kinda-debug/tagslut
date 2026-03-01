@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,6 +17,8 @@ from tagslut.dj.lexicon import _normalize, _parse_float, load_scan_report
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tagslut.dj.transcode import TrackRow, assign_output_paths, load_tracks, make_dedupe_key, transcode_one
 from mutagen import File as MutagenFile  # type: ignore  # TODO: mypy-strict
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -167,7 +170,8 @@ def _enrich_from_file(track: dict[str, Any]) -> None:
         return
     try:
         audio = MutagenFile(file_path, easy=False)
-    except Exception:
+    except Exception as e:
+        logger.debug("Failed to read audio metadata for %s: %s", file_path, e)
         audio = None
     if audio is None or not hasattr(audio, "info") or audio.info is None:
         return

@@ -29,6 +29,14 @@ from tagslut.metadata.providers.base import classify_match_confidence
 logger = logging.getLogger("tagslut.metadata.enricher")
 
 
+def normalize_title(value: str) -> str:
+    """Normalize a title for matching (e.g. remove common mix suffixes)."""
+    cleaned = value.lower().strip()
+    for suffix in ("(original mix)", "(main mix)"):
+        cleaned = cleaned.replace(suffix, "").strip()
+    return " ".join(cleaned.split())
+
+
 def resolve_file(  # type: ignore  # TODO: mypy-strict
     file_info: LocalFileInfo,
     provider_names: List[str],
@@ -55,12 +63,6 @@ def resolve_file(  # type: ignore  # TODO: mypy-strict
     def log(msg: str) -> None:
         result.log.append(msg)
         logger.debug("[%s] %s", file_info.path, msg)
-
-    def normalize_title(value: str) -> str:
-        cleaned = value.lower().strip()
-        for suffix in ("(original mix)", "(main mix)"):
-            cleaned = cleaned.replace(suffix, "").strip()
-        return " ".join(cleaned.split())
 
     # Stage 0: Beatport track ID (from MP3Tag tags) if available
     beatport_id = None

@@ -74,7 +74,8 @@ class TraxsourceProvider(AbstractProvider):
             return None
         try:
             payload = response.json()
-        except Exception:
+        except Exception as e:
+            logger.debug("Failed to decode Traxsource fetch_by_id payload for %s: %s", track_id, e)
             return None
         if not isinstance(payload, dict):
             return None
@@ -104,7 +105,8 @@ class TraxsourceProvider(AbstractProvider):
             return []
         try:
             payload = response.json()
-        except Exception:
+        except Exception as e:
+            logger.debug("Failed to decode Traxsource search payload for query %r: %s", query, e)
             return []
         rows = self._extract_tracks_from_payload(payload)
         return [self._normalize_track(r) for r in rows[:limit]]

@@ -21,7 +21,7 @@ def _load_migration() -> ModuleType:
     spec = importlib.util.spec_from_file_location(
         "migration_0002",
         Path(__file__).parent.parent.parent
-        / "tagslut" / "migrations" / "0002_add_dj_fields.py",
+        / "tagslut" / "storage" / "migrations" / "0002_add_dj_fields.py",
     )
     assert spec is not None and spec.loader is not None
     mod = importlib.util.module_from_spec(spec)

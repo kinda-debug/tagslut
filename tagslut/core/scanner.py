@@ -471,7 +471,8 @@ def scan_library(
             st = path.stat()
             cur_mtime = float(st.st_mtime)
             cur_size = int(st.st_size)
-        except Exception:
+        except Exception as e:
+            logger.debug("Failed to stat %s during scan planning: %s", path, e)
             cur_mtime = None
             cur_size = None
 

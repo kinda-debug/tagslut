@@ -76,7 +76,8 @@ class MusicBrainzProvider(AbstractProvider):
             return None
         try:
             data = response.json()
-        except Exception:
+        except Exception as e:
+            logger.debug("Failed to decode MusicBrainz fetch_by_id payload for %s: %s", track_id, e)
             return None
         if not isinstance(data, dict) or "id" not in data:
             return None
@@ -106,7 +107,8 @@ class MusicBrainzProvider(AbstractProvider):
         try:
             data = response.json()
             recordings = data.get("recordings", []) if isinstance(data, dict) else []
-        except Exception:
+        except Exception as e:
+            logger.debug("Failed to decode MusicBrainz search payload for query %r: %s", query, e)
             return []
         return [self._normalize_track(r) for r in recordings if isinstance(r, dict)]
 
@@ -130,7 +132,8 @@ class MusicBrainzProvider(AbstractProvider):
             return []
         try:
             data = response.json()
-        except Exception:
+        except Exception as e:
+            logger.debug("Failed to decode MusicBrainz ISRC payload for %s: %s", isrc, e)
             return []
         if not isinstance(data, dict):
             return []

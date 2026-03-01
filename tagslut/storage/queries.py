@@ -46,7 +46,8 @@ def _normalize_text_field(value: object, field_name: str) -> str | None:
     if hasattr(value, "value") and not isinstance(value, (str, bytes, bytearray)):
         try:
             return str(getattr(value, "value"))
-        except Exception:
+        except Exception as e:
+            logger.warning("Failed to coerce %s via .value from %r: %s", field_name, value, e)
             pass
     if isinstance(value, str):
         return value
@@ -790,7 +791,8 @@ def _row_to_audiofile(row: sqlite3.Row) -> AudioFile:
             zone = coerce_zone(row["zone"])
         if "integrity_state" in row.keys():
             integrity_state = row["integrity_state"]
-    except Exception:
+    except Exception as e:
+        logger.warning("Failed to read library/zone/integrity_state fields for %s: %s", row["path"], e)
         library = None
         zone = None
         integrity_state = None
@@ -802,7 +804,8 @@ def _row_to_audiofile(row: sqlite3.Row) -> AudioFile:
             mtime = row["mtime"]
         if "size" in row.keys():
             size = row["size"]
-    except Exception:
+    except Exception as e:
+        logger.warning("Failed to read mtime/size fields for %s: %s", row["path"], e)
         mtime = None
         size = None
 

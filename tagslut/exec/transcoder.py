@@ -91,9 +91,9 @@ def transcode_to_mp3(
 
     try:
         flac_tags: Optional[FLAC] = FLAC(source)
-    except Exception:
+    except Exception as e:
         flac_tags = None
-        logger.warning("Could not read FLAC tags from %s", source)
+        logger.warning("Could not read FLAC tags from %s: %s", source, e)
 
     dest_dir.mkdir(parents=True, exist_ok=True)
     mp3_name = _build_mp3_filename(source, flac_tags)
@@ -137,7 +137,8 @@ def _apply_id3_tags(mp3_path: Path, flac_tags: Optional[FLAC]) -> None:
         return
     try:
         tags = ID3(mp3_path)  # type: ignore  # TODO: mypy-strict
-    except Exception:
+    except Exception as e:
+        logger.warning("Could not load existing ID3 tags from %s: %s", mp3_path, e)
         tags = ID3()  # type: ignore  # TODO: mypy-strict
 
     def first(key: str) -> Optional[str]:

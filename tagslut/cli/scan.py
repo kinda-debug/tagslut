@@ -1,4 +1,8 @@
-"""tagslut scan CLI group."""
+"""tagslut scan CLI group.
+
+Retained for internal/testing use only. The `scan` group is intentionally
+not registered on the operator-facing top-level CLI surface.
+"""
 
 from __future__ import annotations
 

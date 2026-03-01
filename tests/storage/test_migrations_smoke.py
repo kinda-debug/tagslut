@@ -1,9 +1,10 @@
-"""Smoke tests for the tagslut.migrations submodule."""
+"""Smoke tests for checksum provenance migration helpers."""
 
+import importlib
 import sqlite3
 
-import tagslut.migrations.migrate_checksum_provenance as migrations_mod
-from tagslut.migrations.migrate_checksum_provenance import ChecksumProvenanceMigration
+migrations_mod = importlib.import_module("tagslut.storage.migrations.0004_checksum_provenance")
+ChecksumProvenanceMigration = migrations_mod.ChecksumProvenanceMigration
 
 
 def test_migration_module_importable() -> None:

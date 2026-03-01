@@ -213,20 +213,23 @@ def get_audio_duration(path: Path, timeout_sec: int = 8) -> float | None:
     """Return audio duration in seconds, or None if unavailable."""
     try:
         from mutagen import File as MutagenFile  # type: ignore
-    except Exception:
+    except Exception as e:
+        log.debug("mutagen import unavailable while probing duration for %s: %s", path, e)
         MutagenFile = None
 
     if MutagenFile is not None:
         try:
             audio = MutagenFile(path)
-        except Exception:
+        except Exception as e:
+            log.debug("mutagen failed while probing duration for %s: %s", path, e)
             audio = None
         if audio is not None and hasattr(audio, "info") and hasattr(audio.info, "length"):
             try:
                 duration = float(audio.info.length)
                 if duration > 0:
                     return duration
-            except Exception:
+            except Exception as e:
+                log.debug("Failed to parse audio duration for %s: %s", path, e)
                 pass
 
     cmd = [

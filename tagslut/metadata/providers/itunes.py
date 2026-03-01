@@ -1,6 +1,9 @@
 """
 Apple/iTunes Search API provider.
 
+Dormant provider retained for backward compatibility. Current policy disables
+runtime use from the default enrichment flow.
+
 This is a public, unauthenticated API. It's useful for general-purpose
 searches but lacks some of the detailed metadata of other services.
 

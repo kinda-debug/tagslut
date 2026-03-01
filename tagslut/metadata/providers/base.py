@@ -197,7 +197,8 @@ class AbstractProvider(ABC):
                     response_body = ""
                     try:
                         response_body = response.text[:500]  # Limit to 500 chars
-                    except Exception:
+                    except Exception as e:
+                        logger.debug("%s: Failed to read 403 response body: %s", self.name, e)
                         pass
 
                     logger.error(
@@ -248,7 +249,8 @@ class AbstractProvider(ABC):
             if failed_response:
                 try:
                     response_hint = f" API response: {failed_response.text[:200]}"
-                except Exception:
+                except Exception as e:
+                    logger.debug("%s: Failed to read failed response payload hint: %s", self.name, e)
                     pass
 
             logger.error(

@@ -71,5 +71,5 @@ def test_precedence_lists_include_expected_services() -> None:
     assert "beatport" in BPM_PRECEDENCE
     assert "beatport" in KEY_PRECEDENCE
     assert ARTIST_PRECEDENCE[0] == "tidal"
-    assert "itunes" in ALBUM_PRECEDENCE
+    assert "itunes" not in ALBUM_PRECEDENCE
     assert AUDIO_FEATURES_SOURCE == ""

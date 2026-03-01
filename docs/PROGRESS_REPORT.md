@@ -45,6 +45,6 @@ Restructuring phases 0/1/3 are complete. DJ workflow integration is functional f
 - Tag hoard sample genre fields can be sparse depending on provider coverage.
 
 ## Recommended Next Actions
-- Re-run enrich: `poetry run python -m tagslut _metadata enrich --db <db> --path "/Volumes/MUSIC/LIBRARY/%" --hoarding --execute`
+- Re-run enrich: `poetry run tagslut index enrich --db <db> --hoarding --execute`
 - Continue CLI evacuation into `tagslut/cli/commands/*`.
 - Audit tag completeness with `tools/metadata audit-tags`.

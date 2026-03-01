@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import logging
 from collections import Counter
 from pathlib import Path
 from typing import Iterable
@@ -34,6 +35,8 @@ from tagslut.dj.transcode import (
     sanitize_component,
 )
 from tagslut.cli.runtime import run_python_script
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_POLICY = "config/dj/dj_curation.yaml"
 DEFAULT_OUTPUT = "/Volumes/MUSIC/DJ_YES"
@@ -127,12 +130,14 @@ def _iter_override_rows(items: list[tuple[str, object]]) -> Iterable[list[str]]:
 def _read_key_from_file(path: Path) -> str | None:
     try:
         from mutagen import File as MutagenFile  # type: ignore
-    except Exception:
+    except Exception as e:
+        logger.debug("mutagen import unavailable while reading key for %s: %s", path, e)
         return None
 
     try:
         audio = MutagenFile(path, easy=False)
-    except Exception:
+    except Exception as e:
+        logger.debug("Failed to read key tags for %s: %s", path, e)
         return None
     if audio is None:
         return None
@@ -201,7 +206,8 @@ def _format_duration(seconds: float | None) -> str:
 def _prompt_choice() -> str:
     try:
         return click.getchar().upper()
-    except Exception:
+    except Exception as e:
+        logger.debug("Failed to read interactive prompt choice: %s", e)
         return ""
 
 

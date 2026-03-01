@@ -18,7 +18,7 @@ import logging
 import re
 import sqlite3
 import unicodedata
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from tagslut.metadata.models.types import EnrichmentResult, ProviderTrack
@@ -92,6 +92,7 @@ def _derive_library_track_key(result: EnrichmentResult) -> str:
         ("beatport", result.beatport_id),
         ("tidal", result.tidal_id),
         ("qobuz", result.qobuz_id),
+        # Legacy only: retained for historical identity linkage.
         ("itunes", result.itunes_id),
         ("deezer", result.deezer_id),
         ("traxsource", result.traxsource_id),
@@ -337,11 +338,27 @@ def update_database(
             "library_track_key = ?",
         ])
         values.extend([
-            datetime.utcnow().isoformat(),
+            datetime.now(timezone.utc).isoformat(),
             json.dumps(result.enrichment_providers) if result.enrichment_providers else None,
             result.enrichment_confidence.value if result.enrichment_confidence else None,
             library_track_key,
         ])
+
+        # Always write provider IDs (identity linkage, not hoarding-only metadata)
+        provider_id_fields: list[tuple[str, str | None]] = [
+            ("spotify_id", result.spotify_id),
+            ("beatport_id", result.beatport_id),
+            ("tidal_id", result.tidal_id),
+            ("qobuz_id", result.qobuz_id),
+            ("itunes_id", result.itunes_id),
+            ("deezer_id", result.deezer_id),
+            ("traxsource_id", result.traxsource_id),
+            ("musicbrainz_id", result.musicbrainz_id),
+        ]
+        for column, provider_id in provider_id_fields:
+            if provider_id is not None:
+                fields.append(f"{column} = ?")
+                values.append(provider_id)
 
         # RECOVERY fields: duration and health
         if mode in ("recovery", "both"):
@@ -466,7 +483,7 @@ def mark_no_match(db_path, path: str, dry_run: bool) -> None:  # type: ignore  #
                 metadata_health = 'unknown',
                 metadata_health_reason = 'no_provider_match'
             WHERE path = ?""",
-            (datetime.utcnow().isoformat(), path)
+            (datetime.now(timezone.utc).isoformat(), path)
         )
         conn.commit()
     except sqlite3.Error as e:

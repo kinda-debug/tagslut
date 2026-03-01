@@ -5,6 +5,7 @@ from __future__ import annotations
 import errno
 import hashlib
 import json
+import logging
 import os
 import shutil
 from dataclasses import dataclass
@@ -13,6 +14,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 EXECUTOR_CONTRACT_VERSION = "move_exec.v2"
+logger = logging.getLogger(__name__)
 
 MoveStatus = Literal["dry_run", "moved", "skip_missing", "skip_dest_exists", "error"]
 CollisionPolicy = Literal["abort", "dedupe", "skip"]
@@ -34,7 +36,8 @@ def _stable_hash(payload: Any) -> str:
 def _same_filesystem(src: Path, dest: Path) -> bool:
     try:
         return os.stat(src).st_dev == os.stat(dest.parent).st_dev
-    except Exception:
+    except Exception as e:
+        logger.debug("Could not compare filesystem devices for %s -> %s: %s", src, dest, e)
         return False
 
 

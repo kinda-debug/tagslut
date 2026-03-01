@@ -89,7 +89,8 @@ def write_rekordbox_db(
 
     try:
         db = pyrekordbox.Rb6Database(pioneer_dir / "rekordbox.db")
-    except Exception:
+    except Exception as e:
+        logger.warning("Failed to open existing Rekordbox DB at %s: %s", pioneer_dir / "rekordbox.db", e)
         db = pyrekordbox.Rb6Database.create(pioneer_dir / "rekordbox.db")
 
     track_ids = []
@@ -150,5 +151,6 @@ def _read_bpm_key(path: Path) -> tuple[Optional[float], Optional[str]]:
         bpm = float(bpm_raw[0]) if bpm_raw else None
         key = str(key_raw[0]) if key_raw else None
         return bpm, key
-    except Exception:
+    except Exception as e:
+        logger.warning("Failed to read BPM/key from %s: %s", path, e)
         return None, None

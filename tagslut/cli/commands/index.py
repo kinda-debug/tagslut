@@ -965,7 +965,7 @@ def register_index_group(cli: click.Group) -> None:
             tagslut index enrich --db music.db --recovery --execute
 
             # Hoarding mode: collect full metadata for DJ library
-            tagslut index enrich --db music.db --hoarding --providers beatport,tidal,deezer --execute
+            tagslut index enrich --db music.db --hoarding --execute
 
             # Both modes: health check + full metadata
             tagslut index enrich --db music.db --recovery --hoarding --execute

@@ -76,11 +76,9 @@ Role: Run `onetagger-cli` on a symlink batch from M3U and emit summary artifacts
 7. `tools/tag [options]`
 Role: Combined build + run OneTagger workflow with defaults.
 
-## Transitional Wrapper Status
+## Retired Command Groups
 
-No transitional wrappers remain on the top-level `tagslut` CLI surface.
-
-Retired in Phase 5:
+Retired in Phase 5 (not operator-facing):
 - tagslut scan
 - tagslut recommend
 - tagslut apply
@@ -90,8 +88,9 @@ Retired in Phase 5:
 - tagslut metadata ...
 - tagslut recover ...
 
-Canonical groups now call internal hidden commands (`_mgmt`, `_metadata`, `_recover`)
-to preserve implementation reuse without exposing transitional operator entrypoints.
+Internal hidden commands (`_mgmt`, `_metadata`, `_recover`) may exist for
+code-organization compatibility, but they are implementation details only and
+not operator-facing entry points.
 
 Use `tagslut intake/index/decide/execute/verify/report/auth` for new work.
 

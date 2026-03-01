@@ -1,6 +1,9 @@
 """
 Apple Music API provider.
 
+Dormant provider retained for backward compatibility. Current policy defaults
+to MusicBrainz/other providers in operator-facing enrichment flows.
+
 Uses the authenticated Apple Music API (amp-api.music.apple.com) which provides
 richer metadata than the public iTunes Search API, including:
 - ISRC, UPC, copyright

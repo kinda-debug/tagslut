@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from pathlib import Path
 
 import click
@@ -497,10 +498,7 @@ def register_mgmt_group(cli: click.Group) -> None:
                         duration_measured_ms = _measure_duration_ms(file_path)
                         duration_measured_at = now_iso
 
-                        beatport_id = _extract_tag_value(
-                            audio.metadata,
-                            ["BEATPORT_TRACK_ID", "BP_TRACK_ID", "beatport_track_id"],
-                        )
+                        beatport_id = _extract_tag_value(audio.metadata, ["BEATPORT_TRACK_ID", "BP_TRACK_ID", "beatport_track_id"])
                         isrc = _extract_tag_value(audio.metadata, ["ISRC", "TSRC"])
 
                         duration_ref_ms, duration_ref_source, duration_ref_track_id = _lookup_duration_ref_ms(
@@ -517,11 +515,7 @@ def register_mgmt_group(cli: click.Group) -> None:
                             "timestamp": now_iso,
                             "path": str(file_path),
                             "source": source,
-                            "track_id": (
-                                f"beatport:{beatport_id}"
-                                if beatport_id
-                                else (f"isrc:{isrc}" if isrc else None)
-                            ),
+                            "track_id": f"beatport:{beatport_id}" if beatport_id else (f"isrc:{isrc}" if isrc else None),
                             "is_dj_material": bool(dj_only),
                             "duration_ref_ms": duration_ref_ms,
                             "duration_measured_ms": duration_measured_ms,
@@ -560,10 +554,7 @@ def register_mgmt_group(cli: click.Group) -> None:
                                 is_dj_material, duration_ref_ms, duration_ref_source, duration_ref_track_id,
                                 duration_ref_updated_at, duration_measured_ms, duration_measured_at,
                                 duration_delta_ms, duration_status, duration_check_version
-                            )
-                            VALUES (
-                                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-                            )
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             """,
                             (
                                 str(file_path),

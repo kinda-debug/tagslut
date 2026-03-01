@@ -4,6 +4,7 @@ from pathlib import Path
 
 import click
 
+from tagslut.cli.commands._index_helpers import run_audit_duration
 from tagslut.cli.runtime import run_python_script, run_tagslut_wrapper, WRAPPER_CONTEXT
 
 
@@ -12,11 +13,32 @@ def register_verify_group(cli: click.Group) -> None:
     def verify():  # type: ignore  # TODO: mypy-strict
         """Canonical verification commands."""
 
-    @verify.command("duration", context_settings=WRAPPER_CONTEXT)
-    @click.argument("args", nargs=-1, type=click.UNPROCESSED)
-    def verify_duration(args):  # type: ignore  # TODO: mypy-strict
-        """Verify duration health status from inventory."""
-        run_tagslut_wrapper(["_mgmt", "audit-duration", *list(args)])
+    @verify.command("duration")
+    @click.option("--db", type=click.Path(), help="Database path (auto-detect from env if not provided)")
+    @click.option("--dj-only", is_flag=True, help="Only DJ material")
+    @click.option("--status", "status_filter", help="Comma-separated statuses (warn,fail,unknown)")
+    @click.option("--source", help="Filter by download source")
+    @click.option("--since", help="Filter by download_date >= YYYY-MM-DD")
+    @click.option("--inactive-exclude", is_flag=True, help="Exclude mgmt_status=inactive")
+    def verify_duration(  # type: ignore  # TODO: mypy-strict
+        db,
+        dj_only,
+        status_filter,
+        source,
+        since,
+        inactive_exclude,
+    ):
+        """
+        Report files with duration_status != ok (or filtered statuses).
+        """
+        run_audit_duration(
+            db=db,
+            dj_only=dj_only,
+            status_filter=status_filter,
+            source=source,
+            since=since,
+            inactive_exclude=inactive_exclude,
+        )
 
     @verify.command("recovery", context_settings=WRAPPER_CONTEXT)
     @click.argument("args", nargs=-1, type=click.UNPROCESSED)

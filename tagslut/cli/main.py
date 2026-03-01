@@ -25,8 +25,6 @@ from tagslut.cli.commands.index import register_index_group
 from tagslut.cli.commands.intake import register_intake_group
 from tagslut.cli.commands.report import register_report_group
 from tagslut.cli.commands.verify import register_verify_group
-from tagslut.cli.commands._mgmt import register_mgmt_group
-from tagslut.cli.commands._metadata import register_metadata_group
 from tagslut.cli.commands.misc import register_misc_commands
 from tagslut.cli.scan import scan_group
 
@@ -84,10 +82,6 @@ cli.add_command(dj_group)
 cli.add_command(export_group, name="export")
 cli.add_command(gig_group, name="gig")
 cli.add_command(scan_group, name="scan")
-
-# Register internal/legacy groups
-register_mgmt_group(cli)
-register_metadata_group(cli)
 
 # Register standalone misc commands (canonize, show-zone, explain-keeper,
 # enrich-file, init, _recover, recovery)

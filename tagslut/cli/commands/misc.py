@@ -9,14 +9,16 @@ from pathlib import Path
 
 import click
 
-from tagslut.cli.runtime import collect_flac_paths as _collect_flac_paths
-from tagslut.cli.commands._metadata import (
-    _local_file_info_from_path,
-    _print_enrichment_result,
+from tagslut.cli.commands._auth_helpers import (
     _tidal_device_login,
     _qobuz_login,
     _beatport_token_input,
 )
+from tagslut.cli.commands._enrich_helpers import (
+    _local_file_info_from_path,
+    _print_enrichment_result,
+)
+from tagslut.cli.runtime import collect_flac_paths as _collect_flac_paths
 
 logger = logging.getLogger("tagslut")
 

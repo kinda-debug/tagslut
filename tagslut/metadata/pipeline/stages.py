@@ -184,13 +184,15 @@ def resolve_file(  # type: ignore  # TODO: mypy-strict
     result.matches = matches
 
     # Enrich Spotify matches with audio features (BPM, key, energy, etc.)
-    if mode in ("hoarding", "both"):
-        spotify_provider = provider_getter("spotify")
-        if spotify_provider and hasattr(spotify_provider, 'enrich_with_audio_features'):
-            for m in matches:
-                if m.service == "spotify" and m.match_confidence in (MatchConfidence.EXACT, MatchConfidence.STRONG):
-                    spotify_provider.enrich_with_audio_features(m)
-                    log(f"  spotify: enriched with audio features (BPM={m.bpm}, key={m.key})")
+    # NOTE: Spotify audio features API is dead (Nov 2024). Skip entirely.
+    # Kept as commented code for reference if API ever returns.
+    # if mode in ("hoarding", "both"):
+    #     spotify_provider = provider_getter("spotify")
+    #     if spotify_provider and hasattr(spotify_provider, 'enrich_with_audio_features'):
+    #         for m in matches:
+    #             if m.service == "spotify" and m.match_confidence in (MatchConfidence.EXACT, MatchConfidence.STRONG):
+    #                 spotify_provider.enrich_with_audio_features(m)
+    #                 log(f"  spotify: enriched with audio features (BPM={m.bpm}, key={m.key})")
 
     # Apply cascade rules to get canonical values
     if matches:

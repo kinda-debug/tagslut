@@ -60,8 +60,11 @@ def run_enrich_all(  # type: ignore  # TODO: mypy-strict
     stats = EnrichmentStats()
 
     # Get all eligible files
+    hoarding_mode = mode in ("hoarding", "both")
     files = list(db_reader.get_eligible_files(
-        db_path, path_pattern, limit, force, retry_no_match, zones))
+        db_path, path_pattern, limit, force, retry_no_match, zones,
+        hoarding_mode=hoarding_mode,
+    ))
     stats.total = len(files)
 
     if stats.total == 0:

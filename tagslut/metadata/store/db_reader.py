@@ -59,17 +59,23 @@ def get_eligible_files(  # type: ignore  # TODO: mypy-strict
     force: bool = False,
     retry_no_match: bool = False,
     zones: Optional[List[str]] = None,
+    hoarding_mode: bool = False,
 ) -> Iterator[LocalFileInfo]:
     """
     Query database for files eligible for enrichment.
 
     Eligible = healthy (flac_ok=1) AND not already enriched (unless force/retry)
 
+    When hoarding_mode=True, additionally skips files where all critical DJ tags
+    (BPM, key, genre, ISRC) are already populated — no point hitting providers
+    for metadata we already have.
+
     Args:
         path_pattern: Optional SQL LIKE pattern to filter paths
         limit: Maximum files to return
         force: If True, include ALL already-enriched files
         retry_no_match: If True, include files that previously had no match
+        hoarding_mode: If True, skip files with all critical tags already filled
 
     Yields:
         LocalFileInfo objects
@@ -96,6 +102,13 @@ def get_eligible_files(  # type: ignore  # TODO: mypy-strict
         else:
             # Skip all processed files
             query += " AND enriched_at IS NULL"
+
+        # In hoarding mode, skip files that already have all critical DJ tags
+        if hoarding_mode and not force:
+            query += (
+                " AND (canonical_bpm IS NULL OR canonical_key IS NULL"
+                " OR canonical_genre IS NULL OR canonical_isrc IS NULL)"
+            )
 
         if path_pattern:
             query += " AND path LIKE ?"

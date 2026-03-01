@@ -560,6 +560,9 @@ Role: M3U and operational reports (duration, recovery, plan summaries).
 7. `poetry run tagslut auth ...`
 Role: Provider authentication and token lifecycle flows.
 
+8. `poetry run tagslut export usb ...`
+Role: Export a source folder of MP3/FLAC tracks to a Pioneer CDJ-ready USB (writes PIONEER/ database via pyrekordbox, creates crate, outputs manifest).
+
 ### Rebrand Invocation
 
 The preferred command brand is now `tagslut`.
@@ -657,6 +660,7 @@ Define the supported command/script surface during v3 migration so operators and
 5. `poetry run tagslut verify ...`
 6. `poetry run tagslut report ...`
 7. `poetry run tagslut auth ...`
+8. `poetry run tagslut export usb ...`
 
 Reference map:
 - `docs/OPERATIONS.md#script-surface-and-command-policy`

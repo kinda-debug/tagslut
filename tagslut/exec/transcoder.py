@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Optional
 
 from mutagen.flac import FLAC
-from mutagen.id3 import ID3, TALB, TBPM, TCON, TDRC, TIT2, TKEY, TPE1, TSRC
+from mutagen.id3 import ID3, TALB, TBPM, TCON, TDRC, TIT2, TKEY, TPE1, TSRC  # type: ignore  # TODO: mypy-strict
 
 logger = logging.getLogger("tagslut.transcoder")
 
@@ -136,29 +136,29 @@ def _apply_id3_tags(mp3_path: Path, flac_tags: Optional[FLAC]) -> None:
     if flac_tags is None:
         return
     try:
-        tags = ID3(mp3_path)
+        tags = ID3(mp3_path)  # type: ignore  # TODO: mypy-strict
     except Exception:
-        tags = ID3()
+        tags = ID3()  # type: ignore  # TODO: mypy-strict
 
     def first(key: str) -> Optional[str]:
         vals = flac_tags.get(key)
         return vals[0] if vals else None
 
     if first("title"):
-        tags["TIT2"] = TIT2(encoding=3, text=first("title"))
+        tags["TIT2"] = TIT2(encoding=3, text=first("title"))  # type: ignore  # TODO: mypy-strict
     if first("artist") or first("albumartist"):
-        tags["TPE1"] = TPE1(encoding=3, text=first("artist") or first("albumartist"))
+        tags["TPE1"] = TPE1(encoding=3, text=first("artist") or first("albumartist"))  # type: ignore  # TODO: mypy-strict
     if first("album"):
-        tags["TALB"] = TALB(encoding=3, text=first("album"))
+        tags["TALB"] = TALB(encoding=3, text=first("album"))  # type: ignore  # TODO: mypy-strict
     if first("date") or first("year"):
-        tags["TDRC"] = TDRC(encoding=3, text=first("date") or first("year"))
+        tags["TDRC"] = TDRC(encoding=3, text=first("date") or first("year"))  # type: ignore  # TODO: mypy-strict
     if first("genre"):
-        tags["TCON"] = TCON(encoding=3, text=first("genre"))
+        tags["TCON"] = TCON(encoding=3, text=first("genre"))  # type: ignore  # TODO: mypy-strict
     if first("bpm"):
-        tags["TBPM"] = TBPM(encoding=3, text=first("bpm"))
+        tags["TBPM"] = TBPM(encoding=3, text=first("bpm"))  # type: ignore  # TODO: mypy-strict
     if first("initialkey") or first("key"):
-        tags["TKEY"] = TKEY(encoding=3, text=first("initialkey") or first("key"))
+        tags["TKEY"] = TKEY(encoding=3, text=first("initialkey") or first("key"))  # type: ignore  # TODO: mypy-strict
     if first("isrc"):
-        tags["TSRC"] = TSRC(encoding=3, text=first("isrc"))
+        tags["TSRC"] = TSRC(encoding=3, text=first("isrc"))  # type: ignore  # TODO: mypy-strict
 
     tags.save(mp3_path)

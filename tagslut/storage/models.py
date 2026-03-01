@@ -73,7 +73,7 @@ class AudioFile:
         self.duration_status = self._normalize_scalar(self.duration_status)
         self.duration_check_version = self._normalize_scalar(self.duration_check_version)
         if self.zone is not None:
-            self.zone = coerce_zone(self.zone)  # type: ignore[assignment]
+            self.zone = coerce_zone(self.zone)
 
     @staticmethod
     def _normalize_scalar(value: Optional[object]) -> Optional[str]:

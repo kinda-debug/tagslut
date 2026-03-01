@@ -670,6 +670,7 @@ def insert_file_scan_run(
         ),
     )
 
+
 def upsert_file(conn: sqlite3.Connection, file: AudioFile) -> None:
     """
     Inserts or Updates a file record in the database.
@@ -744,6 +745,7 @@ def upsert_file(conn: sqlite3.Connection, file: AudioFile) -> None:
             logger.debug(f"  Param {idx}: {type(param).__name__} = {repr(param)[:100]}")
         raise
 
+
 def get_file(conn: sqlite3.Connection, path: Path) -> Optional[AudioFile]:
     """Retrieve a single file by path."""
     cursor = conn.execute("SELECT * FROM files WHERE path = ?", (str(path),))
@@ -753,15 +755,18 @@ def get_file(conn: sqlite3.Connection, path: Path) -> Optional[AudioFile]:
 
     return _row_to_audiofile(row)
 
+
 def get_files_by_checksum(conn: sqlite3.Connection, checksum: str) -> List[AudioFile]:
     """Retrieve all files matching a specific checksum."""
     cursor = conn.execute("SELECT * FROM files WHERE checksum = ?", (checksum,))
     return [_row_to_audiofile(row) for row in cursor.fetchall()]
 
+
 def get_all_checksums(conn: sqlite3.Connection) -> List[str]:
     """Retrieve all unique checksums present in the DB."""
     cursor = conn.execute("SELECT DISTINCT checksum FROM files WHERE checksum IS NOT NULL")
     return [row["checksum"] for row in cursor.fetchall()]
+
 
 def _row_to_audiofile(row: sqlite3.Row) -> AudioFile:
     """Helper to convert a DB row back to an AudioFile object."""
@@ -824,8 +829,10 @@ def _row_to_audiofile(row: sqlite3.Row) -> AudioFile:
         flac_ok=flac_ok,
         acoustid=row["acoustid"],
         integrity_state=integrity_state,
-        integrity_checked_at=row["integrity_checked_at"] if "integrity_checked_at" in row.keys() else None,
-        streaminfo_checked_at=row["streaminfo_checked_at"] if "streaminfo_checked_at" in row.keys() else None,
+        integrity_checked_at=row["integrity_checked_at"] if "integrity_checked_at" in row.keys(
+        ) else None,
+        streaminfo_checked_at=row["streaminfo_checked_at"] if "streaminfo_checked_at" in row.keys(
+        ) else None,
         sha256_checked_at=row["sha256_checked_at"] if "sha256_checked_at" in row.keys() else None,
         checksum_type=row["checksum_type"] if "checksum_type" in row.keys() else None,
     )

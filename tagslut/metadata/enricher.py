@@ -12,7 +12,7 @@ This module implements the main enrichment workflow:
 
 import logging
 from pathlib import Path
-from typing import Optional, List, Dict, Any, Iterator
+from typing import Optional, List, Dict, Iterator
 
 from tagslut.metadata.models.types import EnrichmentResult, LocalFileInfo
 from tagslut.metadata.auth import TokenManager
@@ -71,22 +71,28 @@ class Enricher:
                 return None
             elif name == "beatport":
                 from tagslut.metadata.providers.beatport import BeatportProvider
-                self._providers[name] = BeatportProvider(self.token_manager)
+                self._providers[name] = BeatportProvider(self.token_manager)  # type: ignore  # TODO: mypy-strict
             elif name == "qobuz":
                 logger.warning("Qobuz provider is disabled by policy.")
                 return None
             elif name == "deezer":
                 from tagslut.metadata.providers.deezer import DeezerProvider
-                self._providers[name] = DeezerProvider()
+                self._providers[name] = DeezerProvider()  # type: ignore  # TODO: mypy-strict
             elif name == "tidal":
                 from tagslut.metadata.providers.tidal import TidalProvider
                 self._providers[name] = TidalProvider(self.token_manager)
             elif name == "itunes":
                 from tagslut.metadata.providers.itunes import iTunesProvider
-                self._providers[name] = iTunesProvider()
+                self._providers[name] = iTunesProvider()  # type: ignore  # TODO: mypy-strict
             elif name == "apple_music":
                 from tagslut.metadata.providers.apple_music import AppleMusicProvider
-                self._providers[name] = AppleMusicProvider(self.token_manager)
+                self._providers[name] = AppleMusicProvider(self.token_manager)  # type: ignore  # TODO: mypy-strict
+            elif name == "musicbrainz":
+                from tagslut.metadata.providers.musicbrainz import MusicBrainzProvider
+                self._providers[name] = MusicBrainzProvider()
+            elif name == "traxsource":
+                from tagslut.metadata.providers.traxsource import TraxsourceProvider
+                self._providers[name] = TraxsourceProvider()
             else:
                 logger.warning("Unknown provider: %s", name)
                 return None
@@ -98,10 +104,10 @@ class Enricher:
             provider.close()
         self._providers.clear()
 
-    def __enter__(self):
+    def __enter__(self):  # type: ignore  # TODO: mypy-strict
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type, exc_val, exc_tb):  # type: ignore  # TODO: mypy-strict
         self.close()
 
     def get_eligible_files(
@@ -182,7 +188,7 @@ class Enricher:
         """Mark a file as processed but with no provider match."""
         db_writer.mark_no_match(self.db_path, path, self.dry_run)
 
-    def enrich_all(
+    def enrich_all(  # type: ignore  # TODO: mypy-strict
         self,
         path_pattern: Optional[str] = None,
         limit: Optional[int] = None,

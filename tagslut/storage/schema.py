@@ -1,7 +1,7 @@
 import sqlite3
 import logging
 from pathlib import Path
-from typing import List, Optional, Iterable
+from typing import List, Optional
 
 from tagslut.utils.db import DbReadOnlyError, DbResolutionError, open_db, resolve_db_path
 
@@ -34,6 +34,7 @@ INTEGRITY_SCHEMA_VERSION = 1
 LIBRARY_SCHEMA_VERSION = 1
 V3_SCHEMA_VERSION = 1
 
+
 def get_connection(
     db_path: Path | str,
     *,
@@ -57,6 +58,7 @@ def get_connection(
     except (DbResolutionError, DbReadOnlyError, sqlite3.Error) as e:
         logger.error("Failed to connect to database at %s: %s", db_path, e)
         raise
+
 
 def init_db(
     conn: sqlite3.Connection | Path | str,
@@ -220,6 +222,13 @@ def init_db(
             "quality_rank": "INTEGER",
             "rekordbox_id": "INTEGER",
             "last_exported_usb": "TEXT",
+            # DJ flag and set-building metadata (0002_add_dj_fields)
+            "dj_flag": "INTEGER DEFAULT 0",
+            "bpm": "REAL",
+            "key_camelot": "TEXT",
+            "energy": "INTEGER",
+            "genre": "TEXT",
+            "isrc": "TEXT",
         }
 
         for col_name, col_type in required_columns.items():
@@ -233,25 +242,38 @@ def init_db(
         # 3. Indices for performance
         connection.execute("CREATE INDEX IF NOT EXISTS idx_checksum ON files(checksum);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_acoustid ON files(acoustid);")
-        connection.execute("CREATE INDEX IF NOT EXISTS idx_streaminfo_md5 ON files(streaminfo_md5);")
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_streaminfo_md5 ON files(streaminfo_md5);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_sha256 ON files(sha256);")
-        connection.execute("CREATE INDEX IF NOT EXISTS idx_recovery_status ON files(recovery_status);")
-        connection.execute("CREATE INDEX IF NOT EXISTS idx_integrity_state ON files(integrity_state);")
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_recovery_status ON files(recovery_status);")
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_integrity_state ON files(integrity_state);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_enriched_at ON files(enriched_at);")
-        connection.execute("CREATE INDEX IF NOT EXISTS idx_canonical_isrc ON files(canonical_isrc);")
-        connection.execute("CREATE INDEX IF NOT EXISTS idx_download_source ON files(download_source);")
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_canonical_isrc ON files(canonical_isrc);")
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_download_source ON files(download_source);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_mgmt_status ON files(mgmt_status);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_fingerprint ON files(fingerprint);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_original_path ON files(original_path);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_files_path ON files(path);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_files_mtime ON files(mtime);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_files_path_mtime ON files(path, mtime);")
-        connection.execute("CREATE INDEX IF NOT EXISTS idx_is_dj_material ON files(is_dj_material);")
-        connection.execute("CREATE INDEX IF NOT EXISTS idx_duration_status ON files(duration_status);")
-        connection.execute("CREATE INDEX IF NOT EXISTS idx_duration_ref_track_id ON files(duration_ref_track_id);")
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_is_dj_material ON files(is_dj_material);")
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_duration_status ON files(duration_status);")
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_duration_ref_track_id ON files(duration_ref_track_id);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_quality_rank ON files(quality_rank);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_dj_pool_path ON files(dj_pool_path);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_last_exported_usb ON files(last_exported_usb);")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_dj_flag ON files(dj_flag);")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_bpm ON files(bpm);")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_key_camelot ON files(key_camelot);")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_isrc ON files(isrc);")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_rekordbox_id ON files(rekordbox_id);")
         connection.execute(
             "CREATE INDEX IF NOT EXISTS idx_files_duration_mtime ON files(duration_status, mtime);"
         )
@@ -260,7 +282,8 @@ def init_db(
             "ON files(duration_status, download_source, mtime);"
         )
 
-        connection.execute("CREATE INDEX IF NOT EXISTS idx_library_track_key ON files(library_track_key);")
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_library_track_key ON files(library_track_key);")
 
         connection.execute(
             f"""
@@ -427,7 +450,8 @@ def init_db(
         _ensure_v3_schema(connection)
         _ensure_gig_tables(connection)
         _ensure_scan_tables(connection)
-        _record_schema_version(connection, schema_name="integrity", version=INTEGRITY_SCHEMA_VERSION)
+        _record_schema_version(connection, schema_name="integrity",
+                               version=INTEGRITY_SCHEMA_VERSION)
         _record_schema_version(connection, schema_name="v3", version=V3_SCHEMA_VERSION)
 
         # Migrate the 'files' table as well
@@ -455,7 +479,8 @@ def init_db(
                 }
                 for col_name, col_type in library_columns.items():
                     if col_name not in existing_library_columns:
-                        connection.execute(f"ALTER TABLE {LIBRARY_TABLE} ADD COLUMN {col_name} {col_type}")
+                        connection.execute(
+                            f"ALTER TABLE {LIBRARY_TABLE} ADD COLUMN {col_name} {col_type}")
         except sqlite3.OperationalError:
             # Table LIBRARY_TABLE might not exist yet
             pass
@@ -743,6 +768,7 @@ def initialise_step0_schema(connection: sqlite3.Connection) -> None:
                 connection.execute(
                     f"ALTER TABLE {STEP0_AUDIO_CONTENT_TABLE} ADD COLUMN {col_name} {col_type}"
                 )
+
 
 def _get_existing_columns(conn: sqlite3.Connection, table_name: str) -> List[str]:
     """Helper to retrieve a list of column names for a table."""

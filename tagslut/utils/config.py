@@ -15,11 +15,13 @@ CONFIG_PATHS = [
     Path.home() / ".config" / "tagslut" / "config.toml",
 ]
 
+
 def _clear_config_instance() -> None:
     """Internal helper to reset the config singleton (primarily for testing)."""
     Config._instance = None
     Config._data = {}
     Config._override_path = None
+
 
 class Config:
     _instance = None
@@ -52,7 +54,7 @@ class Config:
 
                     # Special check for test environment to avoid accidental root changes
                     if "PYTEST_CURRENT_TEST" in os.environ:
-                         pass
+                        pass
                     else:
                         logging.info(f"Loaded configuration from {path}")
 
@@ -91,15 +93,16 @@ class Config:
     def values(self) -> Iterable[Any]:
         return self._data.values()
 
+
 def get_config(config_path: Path | None = None) -> Config:
     """Public accessor for the singleton configuration."""
     if "PYTEST_CURRENT_TEST" in os.environ:
-         # Always clear or force reload in tests to avoid singleton contamination
-         if config_path is not None:
-             _clear_config_instance()
-         elif os.getenv("TAGSLUT_CONFIG"):
-             # If env var changed, we need to reload
-             _clear_config_instance()
+        # Always clear or force reload in tests to avoid singleton contamination
+        if config_path is not None:
+            _clear_config_instance()
+        elif os.getenv("TAGSLUT_CONFIG"):
+            # If env var changed, we need to reload
+            _clear_config_instance()
 
     config = Config()
     if config_path is not None and config_path != config._override_path:

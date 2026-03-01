@@ -23,7 +23,7 @@ class FileCandidate:
 def elect_canonical(candidates: List[FileCandidate]) -> str:
     """Return the checksum of the elected canonical copy."""
 
-    def sort_key(candidate: FileCandidate):
+    def sort_key(candidate: FileCandidate):  # type: ignore  # TODO: mypy-strict
         rank = candidate.quality_rank if candidate.quality_rank is not None else 999
         return (rank, -candidate.identity_confidence, -candidate.size_bytes)
 

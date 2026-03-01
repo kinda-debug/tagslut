@@ -29,7 +29,7 @@ from tagslut.metadata.providers.base import classify_match_confidence
 logger = logging.getLogger("tagslut.metadata.enricher")
 
 
-def resolve_file(
+def resolve_file(  # type: ignore  # TODO: mypy-strict
     file_info: LocalFileInfo,
     provider_names: List[str],
     provider_getter,
@@ -230,7 +230,10 @@ def apply_cascade(
     # For RECOVERY: accept medium/weak matches for duration
     recovery_usable = [
         m for m in matches
-        if m.match_confidence in (MatchConfidence.EXACT, MatchConfidence.STRONG, MatchConfidence.MEDIUM, MatchConfidence.WEAK)
+        if m.match_confidence in (
+            MatchConfidence.EXACT, MatchConfidence.STRONG,
+            MatchConfidence.MEDIUM, MatchConfidence.WEAK,
+        )
     ]
 
     # For HOARDING: require high-confidence matches
@@ -240,7 +243,7 @@ def apply_cascade(
     ]
 
     # Helper to pick value by precedence
-    def pick_by_precedence(
+    def pick_by_precedence(  # type: ignore  # TODO: mypy-strict
         precedence: List[str],
         getter,
         usable_matches: List[ProviderTrack],
@@ -311,14 +314,16 @@ def apply_cascade(
             genre, _ = pick_by_precedence(GENRE_PRECEDENCE, lambda m: m.genre, hoarding_usable)
             result.canonical_genre = genre
 
-            sub_genre, _ = pick_by_precedence(SUB_GENRE_PRECEDENCE, lambda m: m.sub_genre, hoarding_usable)
+            sub_genre, _ = pick_by_precedence(
+                SUB_GENRE_PRECEDENCE, lambda m: m.sub_genre, hoarding_usable)
             result.canonical_sub_genre = sub_genre
 
             # Release info
             label, _ = pick_by_precedence(LABEL_PRECEDENCE, lambda m: m.label, hoarding_usable)
             result.canonical_label = label
 
-            catalog_num, _ = pick_by_precedence(CATALOG_NUMBER_PRECEDENCE, lambda m: m.catalog_number, hoarding_usable)
+            catalog_num, _ = pick_by_precedence(
+                CATALOG_NUMBER_PRECEDENCE, lambda m: m.catalog_number, hoarding_usable)
             result.canonical_catalog_number = catalog_num
 
             # Mix name (Beatport)
@@ -347,11 +352,13 @@ def apply_cascade(
                     break
 
             # Artwork
-            artwork, _ = pick_by_precedence(ARTWORK_PRECEDENCE, lambda m: m.album_art_url, hoarding_usable)
+            artwork, _ = pick_by_precedence(
+                ARTWORK_PRECEDENCE, lambda m: m.album_art_url, hoarding_usable)
             result.canonical_album_art_url = artwork
 
             # Spotify audio features (only from Spotify)
-            spotify_match = next((m for m in hoarding_usable if m.service == AUDIO_FEATURES_SOURCE), None)
+            spotify_match = next((m for m in hoarding_usable if m.service ==
+                                 AUDIO_FEATURES_SOURCE), None)
             if spotify_match:
                 result.canonical_energy = spotify_match.energy
                 result.canonical_danceability = spotify_match.danceability

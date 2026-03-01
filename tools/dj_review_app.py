@@ -16,7 +16,13 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote_plus
 
-from flask import Flask, jsonify, request, render_template_string
+try:
+    from flask import Flask, jsonify, request, render_template_string
+except ImportError as _flask_err:
+    raise ImportError(
+        "flask is required to run dj_review_app. "
+        "Install it with: pip install 'tagslut[web]'"
+    ) from _flask_err
 
 from tagslut.dj.curation import calculate_dj_score, filter_candidates, load_dj_curation_config
 

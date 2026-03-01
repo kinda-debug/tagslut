@@ -11,12 +11,11 @@ This module provides comprehensive test fixtures for:
 from __future__ import annotations
 
 import base64
-import json
 import sqlite3
 import sys
 from pathlib import Path
-from typing import Any, Dict, Generator, List
-from unittest.mock import MagicMock, Mock, patch
+from typing import Any, Dict, Generator
+from unittest.mock import Mock
 
 import pytest
 
@@ -42,17 +41,17 @@ TRUNCATED_FLAC_B64 = "ZkxhQwAA"
 def _ensure_fixture_files() -> None:
     """Create test fixture FLAC files if they don't exist."""
     FIXTURE_DIR.mkdir(exist_ok=True)
-    
+
     # Healthy FLAC
     healthy = FIXTURE_DIR / "healthy.flac"
     if not healthy.exists():
         healthy.write_bytes(base64.b64decode(HEALTHY_FLAC_B64))
-    
+
     # Corrupted FLAC
     corrupt = FIXTURE_DIR / "corrupt.flac"
     if not corrupt.exists():
         corrupt.write_bytes(base64.b64decode(CORRUPT_FLAC_B64))
-    
+
     # Truncated FLAC
     truncated = FIXTURE_DIR / "truncated.flac"
     if not truncated.exists():
@@ -169,7 +168,7 @@ def mock_duplicate_pair() -> tuple[Dict[str, Any], Dict[str, Any]]:
         "integrity_state": "ok",
         "flac_ok": True,
     }
-    
+
     file2 = {
         "file_id": "file_2",
         "path": "/backup/Artist/Album/01_track.flac",
@@ -181,7 +180,7 @@ def mock_duplicate_pair() -> tuple[Dict[str, Any], Dict[str, Any]]:
         "integrity_state": "ok",
         "flac_ok": True,
     }
-    
+
     return (file1, file2)
 
 
@@ -258,7 +257,7 @@ def mock_database() -> sqlite3.Connection:
     """Create an in-memory SQLite database for testing."""
     db = sqlite3.connect(":memory:")
     db.row_factory = sqlite3.Row
-    
+
     # Create minimal schema for testing
     cursor = db.cursor()
     cursor.execute("""
@@ -313,9 +312,9 @@ def interrupt_event() -> Generator[Any, None, None]:
         def __init__(self) -> None:
             self.interrupt_count = 0
             self.max_interrupts = 1
-        
+
         def should_interrupt(self) -> bool:
             self.interrupt_count += 1
             return self.interrupt_count > self.max_interrupts
-    
+
     yield InterruptSimulator()

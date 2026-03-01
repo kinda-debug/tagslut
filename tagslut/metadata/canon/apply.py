@@ -25,7 +25,8 @@ class CanonRules:
 def load_canon_rules(path: Path) -> CanonRules:
     data = json.loads(Path(path).read_text(encoding="utf-8"))
     return CanonRules(
-        fallbacks={k.lower(): [v.lower() for v in vals] for k, vals in (data.get("fallbacks") or {}).items()},
+        fallbacks={k.lower(): [v.lower() for v in vals]
+                   for k, vals in (data.get("fallbacks") or {}).items()},
         numbers={k.lower(): int(v) for k, v in (data.get("numbers") or {}).items()},
         year_only=[k.lower() for k in (data.get("year_only") or [])],
         set_if_present=[k.lower() for k in (data.get("set_if_present") or [])],
@@ -33,7 +34,8 @@ def load_canon_rules(path: Path) -> CanonRules:
         unset_prefixes=[k.lower() for k in (data.get("unset_prefixes") or [])],
         unset_globs=[k.lower() for k in (data.get("unset_globs") or [])],
         keep_exact=[k.lower() for k in (data.get("keep_exact") or [])],
-        aliases={k.lower(): [v.lower() for v in vals] for k, vals in (data.get("aliases") or {}).items()},
+        aliases={k.lower(): [v.lower() for v in vals]
+                 for k, vals in (data.get("aliases") or {}).items()},
     )
 
 
@@ -53,7 +55,7 @@ def _normalize_value(value: Any) -> Any:
 
 def _apply_number(value: Any, width: int) -> Any:
     if isinstance(value, (list, tuple)):
-        return [ _apply_number(v, width) for v in value ]
+        return [_apply_number(v, width) for v in value]
     try:
         num = int(str(value))
     except (TypeError, ValueError):
@@ -63,7 +65,7 @@ def _apply_number(value: Any, width: int) -> Any:
 
 def _apply_year_only(value: Any) -> Any:
     if isinstance(value, (list, tuple)):
-        return [ _apply_year_only(v) for v in value ]
+        return [_apply_year_only(v) for v in value]
     if value is None:
         return value
     text = str(value)

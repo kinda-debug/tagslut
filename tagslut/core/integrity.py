@@ -30,12 +30,12 @@ def classify_flac_integrity(file_path: Path) -> Tuple[IntegrityState, str]:
             ["flac", "-t", "--silent", str(file_path)],
             capture_output=True,
             text=True,
-            check=False 
+            check=False
         )
 
         if result.returncode == 0:
             return "valid", ""
-        
+
         error_msg = result.stderr.strip() or "Unknown FLAC error"
         logger.warning(f"Integrity check failed for {file_path}: {error_msg}")
         if "MD5" in error_msg.upper():

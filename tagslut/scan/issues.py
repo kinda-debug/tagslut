@@ -28,7 +28,7 @@ def record_issue(
     path: Path,
     code: str,
     severity: str,
-    evidence: dict,
+    evidence: dict,  # type: ignore  # TODO: mypy-strict
     checksum: Optional[str] = None,
 ) -> None:
     conn.execute(

@@ -79,3 +79,20 @@ def test_modules_import_cleanly(module_path: str) -> None:
     """Import each core module to validate dependency availability and package wiring."""
 
     importlib.import_module(module_path)
+
+
+def test_integrity_scanner_orphan_absent() -> None:
+    """Ensure the old top-level orphan tagslut/integrity_scanner.py no longer exists.
+
+    Logic must live under tagslut.core.scanner (issue #109).
+    """
+    orphan = PROJECT_ROOT / "tagslut" / "integrity_scanner.py"
+    assert not orphan.exists(), (
+        "tagslut/integrity_scanner.py must not exist; "
+        "scanner logic belongs in tagslut.core.scanner"
+    )
+
+
+def test_scan_library_accessible_from_core_scanner() -> None:
+    """Verify that scan_library is importable from tagslut.core.scanner."""
+    from tagslut.core.scanner import scan_library  # noqa: F401

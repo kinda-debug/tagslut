@@ -1,4 +1,3 @@
-import pytest
 from tagslut.scan.isrc import extract_isrc_candidates
 
 

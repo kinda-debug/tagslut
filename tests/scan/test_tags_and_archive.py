@@ -43,7 +43,8 @@ def test_read_raw_tags_uses_mutagen_file_mock():
 
 
 def test_read_technical_uses_mutagen_file_mock():
-    info = SimpleNamespace(length=240.0, bits_per_sample=24, sample_rate=96000, bitrate=0, channels=2)
+    info = SimpleNamespace(length=240.0, bits_per_sample=24,
+                           sample_rate=96000, bitrate=0, channels=2)
     fake = SimpleNamespace(info=info)
     with patch("tagslut.scan.tags.MutagenFile", return_value=fake):
         technical = read_technical(Path("/fake/track.flac"))

@@ -61,7 +61,8 @@ def test_find_weird_skips(tmp_path: Path) -> None:
 
     rows = [
         SkipRow(exists=False, source=str(existing_source), target=str(target), reason="exists"),
-        SkipRow(exists=True, source=str(tmp_path / "missing.flac"), target=str(target), reason="exists"),
+        SkipRow(exists=True, source=str(tmp_path / "missing.flac"),
+                target=str(target), reason="exists"),
     ]
     weird = find_weird_skips(rows, max_items=10)
     assert len(weird) == 2

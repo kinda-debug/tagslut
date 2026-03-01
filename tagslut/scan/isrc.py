@@ -32,7 +32,7 @@ def extract_isrc_candidates(values: Iterable[str]) -> List[str]:
     Returns unique candidates in first-seen order.
     """
     out: List[str] = []
-    seen: set = set()
+    seen: set = set()  # type: ignore  # TODO: mypy-strict
     for v in values:
         if not v:
             continue

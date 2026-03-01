@@ -32,7 +32,8 @@ def test_run_scan_end_to_end_with_real_wav(tmp_path: Path) -> None:
     try:
         run_id = run_scan(conn, library)
 
-        run_row = conn.execute("SELECT completed_at, tool_versions_json FROM scan_runs WHERE id = ?", (run_id,)).fetchone()
+        run_row = conn.execute(
+            "SELECT completed_at, tool_versions_json FROM scan_runs WHERE id = ?", (run_id,)).fetchone()
         assert run_row is not None
         assert run_row["completed_at"] is not None
         assert "COMPLETE" in run_row["tool_versions_json"]
@@ -66,7 +67,8 @@ def test_run_scan_records_issue_for_corrupt_audio_file(tmp_path: Path) -> None:
         assert issue["issue_code"] == "TAGS_UNREADABLE"
         assert issue["severity"] == "ERROR"
 
-        file_row = conn.execute("SELECT scan_status FROM files WHERE path = ?", (str(bad),)).fetchone()
+        file_row = conn.execute(
+            "SELECT scan_status FROM files WHERE path = ?", (str(bad),)).fetchone()
         assert file_row is not None
         assert file_row["scan_status"] == "CORRUPT"
     finally:
@@ -86,11 +88,13 @@ def test_run_scan_followed_by_dedupe_elects_format_duplicate(tmp_path: Path) -> 
         run_scan(conn, library)
 
         conn.execute(
-            "UPDATE files SET canonical_isrc = ?, identity_confidence = ?, quality_rank = ?, checksum = ? WHERE path = ?",
+            "UPDATE files SET canonical_isrc = ?, identity_confidence = ?,"
+            " quality_rank = ?, checksum = ? WHERE path = ?",
             ("USABC1234567", 70, 4, "checksum_a", str(a)),
         )
         conn.execute(
-            "UPDATE files SET canonical_isrc = ?, identity_confidence = ?, quality_rank = ?, checksum = ? WHERE path = ?",
+            "UPDATE files SET canonical_isrc = ?, identity_confidence = ?,"
+            " quality_rank = ?, checksum = ? WHERE path = ?",
             ("USABC1234567", 85, 2, "checksum_b", str(b)),
         )
         conn.commit()

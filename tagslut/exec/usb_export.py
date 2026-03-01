@@ -77,7 +77,7 @@ def write_rekordbox_db(
         return
 
     try:
-        import pyrekordbox  # type: ignore
+        import pyrekordbox
     except ImportError as e:
         raise ImportError(
             "pyrekordbox is required for USB export. "
@@ -140,7 +140,7 @@ def write_manifest(
 def _read_bpm_key(path: Path) -> tuple[Optional[float], Optional[str]]:
     """Read BPM and key from file tags. Returns (None, None) on failure."""
     try:
-        from mutagen import File as MutagenFile
+        from mutagen import File as MutagenFile  # type: ignore  # TODO: mypy-strict
 
         f = MutagenFile(path, easy=True)
         if f is None:

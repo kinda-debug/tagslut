@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+
 def setup_logger(name: str = "tagslut", level: int = logging.INFO, log_file: Optional[Path] = None) -> logging.Logger:
     """
     Configures a structured logger that outputs to stderr and optionally a file.
@@ -33,6 +34,7 @@ def setup_logger(name: str = "tagslut", level: int = logging.INFO, log_file: Opt
         logger.addHandler(file_handler)
 
     return logger
+
 
 # Default logger instance
 logger = setup_logger()

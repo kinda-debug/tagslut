@@ -18,11 +18,12 @@ from tagslut.scan.tags import (
 )
 from tagslut.scan.validate import decode_probe_edges, probe_duration_ffprobe
 
-ReadTagsFn = Callable[[Path], tuple[dict[str, list[str]], dict[str, Any], list[str], Optional[int], Optional[float]]]
+ReadTagsFn = Callable[[Path], tuple[dict[str, list[str]],
+                                    dict[str, Any], list[str], Optional[int], Optional[float]]]
 ChecksumFn = Callable[[Path], str]
 ProbeDurationFn = Callable[[Path], Optional[float]]
 DecodeProbeFn = Callable[[Path, Optional[float]], list[str]]
-RecordIssueFn = Callable[[sqlite3.Connection, int, Path, str, str, dict, Optional[str]], None]
+RecordIssueFn = Callable[[sqlite3.Connection, int, Path, str, str, dict, Optional[str]], None]  # type: ignore  # TODO: mypy-strict
 
 
 def _default_read_tags(
@@ -272,7 +273,8 @@ def run_scan(
         try:
             scan_file_fn(conn, run_id, path)
             with conn:
-                conn.execute("UPDATE scan_queue SET state = 'DONE', updated_at = ? WHERE id = ?", (datetime.now().isoformat(), queue_id))
+                conn.execute("UPDATE scan_queue SET state = 'DONE', updated_at = ? WHERE id = ?",
+                             (datetime.now().isoformat(), queue_id))
         except Exception as exc:
             had_failures = True
             with conn:

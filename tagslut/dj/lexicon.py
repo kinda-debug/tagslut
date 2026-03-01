@@ -6,7 +6,7 @@ import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from tagslut.dj.transcode import TrackRow, build_output_path, make_dedupe_key
 
@@ -42,7 +42,10 @@ def _parse_float(value: str | None) -> float | None:
 
 def _detect_columns(rows: list[dict[str, Any]]) -> dict[str, str | None]:
     if not rows:
-        return {"path": None, "artist": None, "title": None, "bpm": None, "key": None, "genre": None, "duration": None, "album": None}
+        return {
+            "path": None, "artist": None, "title": None, "bpm": None,
+            "key": None, "genre": None, "duration": None, "album": None,
+        }
     keys = [k for k in rows[0].keys()]
     norm_map = {k: _normalize(k) for k in keys}
 
@@ -79,7 +82,7 @@ def _latest_scan_report() -> Path | None:
             return (1, m.group(1))
         return (2, "")
 
-    def key(p: Path):
+    def key(p: Path):  # type: ignore  # TODO: mypy-strict
         kind, ts = extract_ts(p.name)
         if ts:
             return (kind, ts)
@@ -91,7 +94,10 @@ def _latest_scan_report() -> Path | None:
 def load_scan_report() -> tuple[list[dict[str, Any]], dict[str, str | None]]:
     path = _latest_scan_report()
     if path is None:
-        return [], {"path": None, "artist": None, "title": None, "bpm": None, "key": None, "genre": None, "duration": None, "album": None}
+        return [], {
+            "path": None, "artist": None, "title": None, "bpm": None,
+            "key": None, "genre": None, "duration": None, "album": None,
+        }
     rows: list[dict[str, Any]] = []
     with path.open("r", encoding="utf-8", errors="replace", newline="") as handle:
         reader = csv.DictReader(handle)
@@ -375,7 +381,9 @@ def write_lexicon_csv(tracks: list[dict[str, Any]], output_path: Path, output_ro
     return len(tracks)
 
 
-def push_to_lexicon_api(tracks: list[dict[str, Any]], *, only_high: bool = False, dry_run: bool = False) -> dict[str, int]:
+def push_to_lexicon_api(
+        tracks: list[dict[str, Any]], *, only_high: bool = False, dry_run: bool = False
+) -> dict[str, int]:
     url = "http://localhost:48624/v1/tracks"
     try:
         import requests  # type: ignore

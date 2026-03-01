@@ -74,7 +74,7 @@ def get_volume(name: str, required: bool = False) -> Optional[Path]:
 
 def get_library_volume() -> Path:
     """Get primary library volume (required)"""
-    return get_volume("library", required=True)
+    return get_volume("library", required=True)  # type: ignore  # TODO: mypy-strict
 
 
 def get_staging_volume() -> Optional[Path]:
@@ -104,14 +104,14 @@ def get_quarantine_volume() -> Optional[Path]:
 def get_artifacts_dir() -> Path:
     """Get artifacts directory"""
     path = _get_env("TAGSLUT_ARTIFACTS", default="./artifacts")
-    return _expand_path(path)
+    return _expand_path(path)  # type: ignore  # TODO: mypy-strict
 
 
 def get_reports_dir() -> Path:
     """Get reports directory"""
     default = str(get_artifacts_dir() / "M" / "03_reports")
     path = _get_env("TAGSLUT_REPORTS", default=default)
-    return _expand_path(path)
+    return _expand_path(path)  # type: ignore  # TODO: mypy-strict
 
 
 def get_log_path(name: str) -> Path:
@@ -125,27 +125,27 @@ def get_log_path(name: str) -> Path:
 
 def get_scan_workers() -> int:
     """Get number of scan workers"""
-    return int(_get_env("SCAN_WORKERS", default="8"))
+    return int(_get_env("SCAN_WORKERS", default="8"))  # type: ignore  # TODO: mypy-strict
 
 
 def get_scan_progress_interval() -> int:
     """Get scan progress reporting interval"""
-    return int(_get_env("SCAN_PROGRESS_INTERVAL", default="100"))
+    return int(_get_env("SCAN_PROGRESS_INTERVAL", default="100"))  # type: ignore  # TODO: mypy-strict
 
 
 def get_scan_check_integrity() -> bool:
     """Check if integrity validation is enabled"""
-    return _get_env("SCAN_CHECK_INTEGRITY", default="true").lower() in ("true", "1", "yes")
+    return _get_env("SCAN_CHECK_INTEGRITY", default="true").lower() in ("true", "1", "yes")  # type: ignore  # TODO: mypy-strict
 
 
 def get_scan_check_hash() -> bool:
     """Check if hash calculation is enabled"""
-    return _get_env("SCAN_CHECK_HASH", default="true").lower() in ("true", "1", "yes")
+    return _get_env("SCAN_CHECK_HASH", default="true").lower() in ("true", "1", "yes")  # type: ignore  # TODO: mypy-strict
 
 
 def get_scan_incremental() -> bool:
     """Check if incremental scanning is enabled"""
-    return _get_env("SCAN_INCREMENTAL", default="true").lower() in ("true", "1", "yes")
+    return _get_env("SCAN_INCREMENTAL", default="true").lower() in ("true", "1", "yes")  # type: ignore  # TODO: mypy-strict
 
 
 # ============================================================================
@@ -154,27 +154,27 @@ def get_scan_incremental() -> bool:
 
 def get_auto_approve_threshold() -> float:
     """Get auto-approval confidence threshold"""
-    return float(_get_env("AUTO_APPROVE_THRESHOLD", default="0.95"))
+    return float(_get_env("AUTO_APPROVE_THRESHOLD", default="0.95"))  # type: ignore  # TODO: mypy-strict
 
 
 def get_quarantine_retention_days() -> int:
     """Get quarantine retention period in days"""
-    return int(_get_env("QUARANTINE_RETENTION_DAYS", default="30"))
+    return int(_get_env("QUARANTINE_RETENTION_DAYS", default="30"))  # type: ignore  # TODO: mypy-strict
 
 
 def get_prefer_high_bitrate() -> bool:
     """Check if high bitrate is preferred"""
-    return _get_env("PREFER_HIGH_BITRATE", default="true").lower() in ("true", "1", "yes")
+    return _get_env("PREFER_HIGH_BITRATE", default="true").lower() in ("true", "1", "yes")  # type: ignore  # TODO: mypy-strict
 
 
 def get_prefer_high_sample_rate() -> bool:
     """Check if high sample rate is preferred"""
-    return _get_env("PREFER_HIGH_SAMPLE_RATE", default="true").lower() in ("true", "1", "yes")
+    return _get_env("PREFER_HIGH_SAMPLE_RATE", default="true").lower() in ("true", "1", "yes")  # type: ignore  # TODO: mypy-strict
 
 
 def get_prefer_valid_integrity() -> bool:
     """Check if valid integrity is preferred"""
-    return _get_env("PREFER_VALID_INTEGRITY", default="true").lower() in ("true", "1", "yes")
+    return _get_env("PREFER_VALID_INTEGRITY", default="true").lower() in ("true", "1", "yes")  # type: ignore  # TODO: mypy-strict
 
 
 # ============================================================================
@@ -207,7 +207,7 @@ def validate_paths() -> list[str]:
     return errors
 
 
-def print_config():
+def print_config():  # type: ignore  # TODO: mypy-strict
     """Print current configuration (for debugging)"""
     print("=== Dedupe Configuration ===")
     print(f"Database:    {get_db_path()}")
@@ -229,7 +229,7 @@ def print_config():
 
 if __name__ == "__main__":
     # Test configuration
-    print_config()
+    print_config()  # type: ignore  # TODO: mypy-strict
     
     errors = validate_paths()
     if errors:

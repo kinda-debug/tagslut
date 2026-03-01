@@ -10,13 +10,12 @@ from tagslut.dj.curation import (
     DjCurationConfig,
     DjScoreResult,
     calculate_dj_score,
-    load_dj_curation_config,
     resolve_track_override,
 )
 from tagslut.dj.lexicon import _normalize, _parse_float, load_scan_report
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tagslut.dj.transcode import TrackRow, assign_output_paths, load_tracks, make_dedupe_key, transcode_one
-from mutagen import File as MutagenFile
+from mutagen import File as MutagenFile  # type: ignore  # TODO: mypy-strict
 
 
 @dataclass
@@ -82,7 +81,9 @@ def _build_scan_index(rows: list[dict[str, Any]], columns: dict[str, str | None]
     return {"by_path": by_path, "by_artist_title": by_artist_title}
 
 
-def _lookup_scan_row(track_path: str, artist: str, title: str, scan_index: dict[str, dict[str, Any]]) -> dict[str, Any] | None:
+def _lookup_scan_row(
+        track_path: str, artist: str, title: str, scan_index: dict[str, dict[str, Any]]
+) -> dict[str, Any] | None:
     candidates = [track_path]
     if " – " in track_path:
         candidates.append(track_path.replace(" – ", " - "))
@@ -95,7 +96,7 @@ def _lookup_scan_row(track_path: str, artist: str, title: str, scan_index: dict[
     for candidate in candidates:
         row = scan_index["by_path"].get(candidate.lower())
         if row is not None:
-            return row
+            return row  # type: ignore  # TODO: mypy-strict
 
     key = f"{_normalize(artist)}|{_normalize(title)}"
     return scan_index["by_artist_title"].get(key)
@@ -113,7 +114,9 @@ def _library_remixers_from_scan(rows: list[dict[str, Any]], columns: dict[str, s
     return remixers
 
 
-def _enrich_from_scan(track: dict[str, Any], scan_index: dict[str, dict[str, Any]], columns: dict[str, str | None]) -> None:
+def _enrich_from_scan(
+        track: dict[str, Any], scan_index: dict[str, dict[str, Any]], columns: dict[str, str | None]
+) -> None:
     row = _lookup_scan_row(
         track_path=str(track.get("path") or ""),
         artist=str(track.get("artist") or ""),
@@ -171,7 +174,8 @@ def _enrich_from_file(track: dict[str, Any]) -> None:
     tags = getattr(audio, "tags", None) or {}
 
     if not track.get("artist"):
-        artist_raw = _tag_value(tags, ["ARTIST", "TPE1", "ALBUMARTIST", "TPE2", "artist", "albumartist"])
+        artist_raw = _tag_value(
+            tags, ["ARTIST", "TPE1", "ALBUMARTIST", "TPE2", "artist", "albumartist"])
         if artist_raw:
             track["artist"] = artist_raw
     if not track.get("title"):
@@ -367,7 +371,7 @@ def write_m3u(path: Path, items: Iterable[ClassifiedTrack]) -> None:
             score = item.score
             reasons = ",".join(score.reasons)
             handle.write(f"# score:{score.score} reasons:{reasons}\n")
-            handle.write(f"{track.get('path','')}\n")
+            handle.write(f"{track.get('path', '')}\n")
 
 
 def promote_safe_tracks(

@@ -3,10 +3,10 @@ import argparse
 import time
 from pathlib import Path
 
-# Ensure we can import dedupe from root
+# Ensure we can import tagslut from root
 sys.path.insert(0, str(Path(__file__).parents[2]))
 
-from tagslut.integrity_scanner import scan_library
+from tagslut.core.scanner import scan_library
 from tagslut.core.metadata import extract_metadata
 from tagslut.utils import env_paths
 from tagslut.utils.paths import list_files

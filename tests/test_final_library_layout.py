@@ -17,7 +17,8 @@ def test_final_layout_single_disc() -> None:
         "title": "Plainsong",
     }
     result = build_final_library_destination(tags, dest_root)
-    assert result.dest_path == dest_root / "The Cure" / "(1989) Disintegration" / "The Cure – (1989) Disintegration – 01 Plainsong.flac"
+    assert result.dest_path == dest_root / "The Cure" / \
+        "(1989) Disintegration" / "The Cure – (1989) Disintegration – 01 Plainsong.flac"
 
 
 def test_final_layout_multi_disc_disc_track_format() -> None:
@@ -53,7 +54,8 @@ def test_final_layout_various_artists_uses_track_artist_for_filename() -> None:
 
 def test_final_layout_requires_albumartist_for_non_various() -> None:
     dest_root = Path("/tmp/FINAL_LIBRARY")
-    tags = {"artist": "The Cure", "album": "Disintegration", "date": "1989", "tracknumber": "1", "title": "Plainsong"}
+    tags = {"artist": "The Cure", "album": "Disintegration",
+            "date": "1989", "tracknumber": "1", "title": "Plainsong"}
     with pytest.raises(FinalLibraryLayoutError):
         build_final_library_destination(tags, dest_root)
 

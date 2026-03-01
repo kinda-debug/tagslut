@@ -1,6 +1,6 @@
 """Metadata type validation and schema enforcement."""
 
-from typing import Any, Dict, Union
+from typing import Any, Dict
 import logging
 
 logger = logging.getLogger(__name__)
@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 class SchemaValidator:
     """Validate metadata types and coerce as needed."""
-    
+
     # Known int/bytes problematic fields from mutagen
     MUTAGEN_PROBLEM_FIELDS = {
         'md5signature',
@@ -18,7 +18,7 @@ class SchemaValidator:
         'date',
         'copyright',
     }
-    
+
     @staticmethod
     def coerce_to_string(value: Any) -> str:
         """Coerce value to string, handling bytes/int cases."""
@@ -30,7 +30,7 @@ class SchemaValidator:
             return str(value)
         else:
             return str(value)
-    
+
     @staticmethod
     def coerce_to_int(value: Any) -> int:
         """Coerce value to int."""
@@ -44,21 +44,21 @@ class SchemaValidator:
                 return 0
         else:
             return int(value)
-    
+
     @staticmethod
     def validate_metadata_field(field_name: str, value: Any) -> Any:
         """Validate and coerce metadata field."""
         if value is None:
             return None
-        
+
         if field_name in SchemaValidator.MUTAGEN_PROBLEM_FIELDS:
             if isinstance(value, bytes):
                 return value.hex()
             elif isinstance(value, int):
                 return str(value)
-        
+
         return value
-    
+
     @staticmethod
     def validate_record(record: Dict[str, Any]) -> Dict[str, Any]:
         """Validate entire record for type issues."""

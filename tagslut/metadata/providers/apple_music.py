@@ -53,7 +53,7 @@ class AppleMusicProvider(AbstractProvider):
     # Token caching
     TOKEN_CACHE_DURATION = 3600  # 1 hour
 
-    def __init__(self, token_manager=None):
+    def __init__(self, token_manager=None):  # type: ignore  # TODO: mypy-strict
         super().__init__(token_manager)
         self._cached_token: Optional[str] = None
         self._token_fetched_at: float = 0
@@ -290,15 +290,6 @@ class AppleMusicProvider(AbstractProvider):
 
         # Extract credits/composer info
         composer = attrs.get("composerName")
-        credits_data = relationships.get("credits", {}).get("data", [])
-        credits_text = self._parse_credits(credits_data) if credits_data else None
-
-        # Extract lyrics
-        lyrics_data = relationships.get("lyrics", {}).get("data", [])
-        lyrics = None
-        if lyrics_data:
-            lyrics_attrs = lyrics_data[0].get("attributes", {})
-            lyrics = lyrics_attrs.get("ttml")  # TTML format
 
         return ProviderTrack(
             service="apple_music",
@@ -320,7 +311,8 @@ class AppleMusicProvider(AbstractProvider):
             explicit=explicit,
             album_art_url=artwork_url,
             url=attrs.get("url"),
-            preview_url=attrs.get("previews", [{}])[0].get("url") if attrs.get("previews") else None,
+            preview_url=attrs.get("previews", [{}])[0].get(
+                "url") if attrs.get("previews") else None,
             match_confidence=MatchConfidence.NONE,
             raw=data,
         )
@@ -341,11 +333,11 @@ class AppleMusicProvider(AbstractProvider):
         credits_lines = []
         for credit in credits_data:
             attrs = credit.get("attributes", {})
-            title = attrs.get("title", "")  # e.g., "PERFORMING ARTISTS"
             kind = attrs.get("kind", "")  # e.g., "performer"
 
             # Get credit-artists from nested relationships
-            credit_artists = credit.get("relationships", {}).get("credit-artists", {}).get("data", [])
+            credit_artists = credit.get("relationships", {}).get(
+                "credit-artists", {}).get("data", [])
             for artist in credit_artists:
                 artist_attrs = artist.get("attributes", {})
                 name = artist_attrs.get("name", "")

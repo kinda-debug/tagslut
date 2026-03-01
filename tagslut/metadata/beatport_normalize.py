@@ -26,7 +26,7 @@ from typing import Optional, List, Dict, Any
 class BeatportTrack:
     """
     Normalized Beatport track structure matching ProviderTrack schema.
-    
+
     Fields align with metadata_guide.md Section 10.5.1 ProviderTrack:
     - service: always 'beatport'
     - service_track_id: Beatport track ID
@@ -36,7 +36,7 @@ class BeatportTrack:
     - bpm, key, genre: DJ-relevant metadata
     - match_confidence: for resolution state machine
     - raw: original JSON for re-parsing
-    
+
     Additional Beatport-specific fields:
     - key_camelot: Camelot wheel notation (e.g., "8A")
     - subgenre: Beatport subgenre
@@ -80,26 +80,26 @@ class BeatportTrack:
 def normalize_beatport_track(bp_json: Dict[str, Any]) -> BeatportTrack:
     """
     Convert raw Beatport track JSON to normalized BeatportTrack.
-    
+
     Handles both /v4/catalog/tracks/{id}/ and /v4/my/beatport/tracks/ responses.
-    
+
     Args:
         bp_json: Raw Beatport track JSON object
-        
+
     Returns:
         BeatportTrack with normalized fields
     """
     if not isinstance(bp_json, dict):
         return BeatportTrack(raw=bp_json if bp_json else {})
-    
+
     # Extract track ID
     track_id = bp_json.get("id")
     service_track_id = str(track_id) if track_id is not None else None
-    
+
     # Basic metadata
     title = bp_json.get("name")
     mix_name = bp_json.get("mix_name")
-    
+
     # Artists - can be a list of objects with 'name' field
     artists_raw = bp_json.get("artists", [])
     artists = []
@@ -109,10 +109,10 @@ def normalize_beatport_track(bp_json: Dict[str, Any]) -> BeatportTrack:
                 artists.append(a["name"])
             elif isinstance(a, str):
                 artists.append(a)
-    
+
     # Primary artist string
     artist = ", ".join(artists) if artists else None
-    
+
     # Remixers
     remixers_raw = bp_json.get("remixers", [])
     remixers = []
@@ -122,7 +122,7 @@ def normalize_beatport_track(bp_json: Dict[str, Any]) -> BeatportTrack:
                 remixers.append(r["name"])
             elif isinstance(r, str):
                 remixers.append(r)
-    
+
     # Release info (album equivalent)
     release = bp_json.get("release", {})
     if not isinstance(release, dict):
@@ -130,14 +130,14 @@ def normalize_beatport_track(bp_json: Dict[str, Any]) -> BeatportTrack:
     release_id = release.get("id")
     release_name = release.get("name")
     album = release_name  # Use release name as album
-    
+
     # Label
     label = release.get("label", {}) or bp_json.get("label", {})
     if isinstance(label, dict):
         label_name = label.get("name")
     else:
         label_name = None
-    
+
     # Duration - Beatport uses length_ms
     length_ms = bp_json.get("length_ms")
     duration_ms = None
@@ -148,10 +148,10 @@ def normalize_beatport_track(bp_json: Dict[str, Any]) -> BeatportTrack:
             duration_s = duration_ms / 1000.0
         except (TypeError, ValueError):
             pass
-    
+
     # ISRC
     isrc = bp_json.get("isrc")
-    
+
     # BPM
     bpm = None
     bpm_raw = bp_json.get("bpm")
@@ -160,7 +160,7 @@ def normalize_beatport_track(bp_json: Dict[str, Any]) -> BeatportTrack:
             bpm = float(bpm_raw)
         except (TypeError, ValueError):
             pass
-    
+
     # Key - can be object with 'name' and 'camelot_number' or string
     key_obj = bp_json.get("key")
     key = None
@@ -173,7 +173,7 @@ def normalize_beatport_track(bp_json: Dict[str, Any]) -> BeatportTrack:
             key_camelot = str(camelot)
     elif isinstance(key_obj, str):
         key = key_obj
-    
+
     # Genre - can be object with 'name' or list of genre objects
     genre = None
     genre_obj = bp_json.get("genre")
@@ -190,7 +190,7 @@ def normalize_beatport_track(bp_json: Dict[str, Any]) -> BeatportTrack:
                 genre = first.get("name")
             elif isinstance(first, str):
                 genre = first
-    
+
     # Subgenre
     subgenre = None
     subgenre_obj = bp_json.get("sub_genre")
@@ -206,26 +206,26 @@ def normalize_beatport_track(bp_json: Dict[str, Any]) -> BeatportTrack:
                 subgenre = first.get("name")
             elif isinstance(first, str):
                 subgenre = first
-    
+
     # Sample/preview URL
     sample_url = bp_json.get("sample_url")
     if not sample_url:
         preview = bp_json.get("preview", {})
         if isinstance(preview, dict):
             sample_url = preview.get("sample_url")
-    
+
     # Catalog number
     catalog_number = bp_json.get("catalog_number") or release.get("catalog_number")
-    
+
     # Publish date
     publish_date = bp_json.get("publish_date") or bp_json.get("new_release_date")
-    
+
     # Artwork URL
     artwork_url = None
     image = release.get("image", {}) or bp_json.get("image", {})
     if isinstance(image, dict):
         artwork_url = image.get("uri") or image.get("url")
-    
+
     return BeatportTrack(
         service="beatport",
         service_track_id=service_track_id,
@@ -255,13 +255,13 @@ def normalize_beatport_track(bp_json: Dict[str, Any]) -> BeatportTrack:
     )
 
 
-def extract_beatport_track_info(bp_json: Dict[str, Any]) -> tuple:
+def extract_beatport_track_info(bp_json: Dict[str, Any]) -> tuple:  # type: ignore  # TODO: mypy-strict
     """
     Extract key fields from Beatport JSON for use in aggregate_metadata_full.py.
-    
+
     Returns:
         Tuple of (track_id, bpm, key, genre, duration_s, isrc, label)
-        
+
     This function matches the signature pattern used by other extract_*_track_info
     functions in aggregate_metadata_full.py.
     """
@@ -280,7 +280,7 @@ def extract_beatport_track_info(bp_json: Dict[str, Any]) -> tuple:
 def beatport_track_to_dict(track: BeatportTrack) -> Dict[str, Any]:
     """
     Convert BeatportTrack to dictionary for JSON serialization.
-    
+
     Useful for writing to NDJSON or inserting into database.
     """
     return {
@@ -314,8 +314,7 @@ def beatport_track_to_dict(track: BeatportTrack) -> Dict[str, Any]:
 
 if __name__ == "__main__":
     # Simple test with sample data
-    import json
-    
+
     sample = {
         "id": 12345678,
         "name": "Test Track",
@@ -338,7 +337,7 @@ if __name__ == "__main__":
         "sample_url": "https://example.com/preview.mp3",
         "publish_date": "2024-01-15"
     }
-    
+
     track = normalize_beatport_track(sample)
     print("Normalized BeatportTrack:")
     print(f"  ID: {track.service_track_id}")

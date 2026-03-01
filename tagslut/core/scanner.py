@@ -145,7 +145,7 @@ def _scan_one_file(task: ScanTask) -> ScanResult:
         )
 
         # Show what was extracted
-        print(f"   ✓ Metadata extracted")
+        print("   ✓ Metadata extracted")
         if result.streaminfo_md5:
             print(f"   ✓ STREAMINFO MD5: {result.streaminfo_md5[:8]}...")
         if result.sha256:
@@ -155,7 +155,8 @@ def _scan_one_file(task: ScanTask) -> ScanResult:
             state = result.integrity_state or "unknown"
             print(f"   {status} Integrity: {state}")
         if result.duration:
-            print(f"   ♫ Duration: {result.duration:.1f}s, {result.sample_rate}Hz, {result.bit_depth}bit")
+            print(
+                f"   ♫ Duration: {result.duration:.1f}s, {result.sample_rate}Hz, {result.bit_depth}bit")
 
         return ScanResult(
             path=path,
@@ -175,7 +176,7 @@ def _scan_one_file(task: ScanTask) -> ScanResult:
             error_message=f"{str(e)[:120]}",
         )
     except FileNotFoundError as e:
-        print(f"   ✗ File not found")
+        print("   ✗ File not found")
         logger.error(f"File not found {path}: {e}")
         return ScanResult(
             path=path,
@@ -185,7 +186,7 @@ def _scan_one_file(task: ScanTask) -> ScanResult:
             error_message="File not found",
         )
     except PermissionError as e:
-        print(f"   ✗ Permission denied")
+        print("   ✗ Permission denied")
         logger.error(f"Permission denied {path}: {e}")
         return ScanResult(
             path=path,
@@ -434,7 +435,7 @@ def scan_library(
                 "integrity_checked_at, streaminfo_md5, sha256, streaminfo_checked_at, sha256_checked_at"
             )
             for i in range(0, len(flac_files), chunk_size):
-                chunk = [str(p) for p in flac_files[i : i + chunk_size]]
+                chunk = [str(p) for p in flac_files[i: i + chunk_size]]
                 placeholders = ",".join(["?"] * len(chunk))
                 rows = conn.execute(
                     f"SELECT {columns} FROM files WHERE path IN ({placeholders})",

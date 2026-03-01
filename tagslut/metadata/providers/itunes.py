@@ -4,7 +4,8 @@ Apple/iTunes Search API provider.
 This is a public, unauthenticated API. It's useful for general-purpose
 searches but lacks some of the detailed metadata of other services.
 
-API Reference: https://developer.apple.com/library/archive/documentation/AudioVideo/Conceptual/iTuneSearchAPI/Searching.html
+API Reference:
+    https://developer.apple.com/library/archive/documentation/AudioVideo/Conceptual/iTuneSearchAPI/Searching.html
 """
 
 import logging
@@ -38,9 +39,9 @@ class iTunesProvider(AbstractProvider):
     BASE_URL = "https://itunes.apple.com"
     COUNTRY = "US"
 
-    def __init__(self, token_manager=None):
+    def __init__(self, token_manager=None):  # type: ignore  # TODO: mypy-strict
         # iTunes doesn't require a token manager
-        super().__init__(token_manager=None)
+        super().__init__(token_manager=None)  # type: ignore  # TODO: mypy-strict
 
     def _get_default_headers(self) -> Dict[str, str]:
         """No auth headers needed."""

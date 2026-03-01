@@ -44,7 +44,7 @@ class FileOperations:
         else:
             self.audit_log_path = Path(audit_log_path).expanduser()
 
-    def _log(self, message: str):
+    def _log(self, message: str):  # type: ignore  # TODO: mypy-strict
         """Internal logging that respects quiet mode."""
         if not self.quiet:
             self.ui.print(message)

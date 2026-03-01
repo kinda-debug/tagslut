@@ -12,9 +12,9 @@ def upsert_archive(
     *,
     checksum: str,
     path: Path,
-    raw_tags: Dict,
-    technical: Dict,
-    durations: Dict,
+    raw_tags: Dict,  # type: ignore  # TODO: mypy-strict
+    technical: Dict,  # type: ignore  # TODO: mypy-strict
+    durations: Dict,  # type: ignore  # TODO: mypy-strict
     isrc_candidates: List[str],
     identity_confidence: int,
     quality_rank: Optional[int],

@@ -48,7 +48,8 @@ def test_scan_file_happy_path_with_injected_dependencies(mem_db):
 
     assert result["status"] == "CLEAN"
     assert issues == []
-    row = mem_db.execute("SELECT scan_status, checksum FROM files WHERE path = ?", ("/music/track.flac",)).fetchone()
+    row = mem_db.execute("SELECT scan_status, checksum FROM files WHERE path = ?",
+                         ("/music/track.flac",)).fetchone()
     assert row["scan_status"] == "CLEAN"
     assert row["checksum"] == "abc123"
 
@@ -91,12 +92,14 @@ def test_scan_file_writes_issues_and_file_row_in_one_transaction(mem_db):
         decode_probe=lambda _p, _d: [],
     )
 
-    issues = mem_db.execute("SELECT issue_code FROM scan_issues WHERE path = ?", ("/music/no_meta.flac",)).fetchall()
+    issues = mem_db.execute("SELECT issue_code FROM scan_issues WHERE path = ?",
+                            ("/music/no_meta.flac",)).fetchall()
     codes = {row["issue_code"] for row in issues}
     assert "DURATION_UNVERIFIED" in codes
     assert "ISRC_MISSING" in codes
 
-    row = mem_db.execute("SELECT path, scan_status FROM files WHERE path = ?", ("/music/no_meta.flac",)).fetchone()
+    row = mem_db.execute("SELECT path, scan_status FROM files WHERE path = ?",
+                         ("/music/no_meta.flac",)).fetchone()
     assert row is not None
     assert row["scan_status"] == "CLEAN"
 
@@ -110,7 +113,8 @@ def test_run_scan_completes_and_sets_run_status(mem_db):
         return {"status": "CLEAN", "run_id": run_id}
 
     run_id = run_scan(mem_db, Path("/lib"), discover=discover, scan_file_fn=scan_file_fn)
-    row = mem_db.execute("SELECT tool_versions_json, completed_at FROM scan_runs WHERE id = ?", (run_id,)).fetchone()
+    row = mem_db.execute(
+        "SELECT tool_versions_json, completed_at FROM scan_runs WHERE id = ?", (run_id,)).fetchone()
     status = json.loads(row["tool_versions_json"]).get("status")
     assert status == "COMPLETE"
     assert row["completed_at"] is not None
@@ -128,15 +132,19 @@ def test_run_scan_catches_unexpected_and_marks_failed_and_continues(mem_db):
 
     run_id = run_scan(mem_db, Path("/lib"), discover=discover, scan_file_fn=scan_file_fn)
 
-    failed = mem_db.execute("SELECT COUNT(*) AS n FROM scan_queue WHERE run_id = ? AND state = 'FAILED'", (run_id,)).fetchone()["n"]
-    done = mem_db.execute("SELECT COUNT(*) AS n FROM scan_queue WHERE run_id = ? AND state = 'DONE'", (run_id,)).fetchone()["n"]
+    failed = mem_db.execute(
+        "SELECT COUNT(*) AS n FROM scan_queue WHERE run_id = ? AND state = 'FAILED'", (run_id,)).fetchone()["n"]
+    done = mem_db.execute(
+        "SELECT COUNT(*) AS n FROM scan_queue WHERE run_id = ? AND state = 'DONE'", (run_id,)).fetchone()["n"]
     assert failed == 1
     assert done == 1
 
-    issue = mem_db.execute("SELECT issue_code FROM scan_issues WHERE run_id = ? ORDER BY id DESC LIMIT 1", (run_id,)).fetchone()
+    issue = mem_db.execute(
+        "SELECT issue_code FROM scan_issues WHERE run_id = ? ORDER BY id DESC LIMIT 1", (run_id,)).fetchone()
     assert issue["issue_code"] == "SCAN_ERROR"
 
-    run_row = mem_db.execute("SELECT tool_versions_json FROM scan_runs WHERE id = ?", (run_id,)).fetchone()
+    run_row = mem_db.execute(
+        "SELECT tool_versions_json FROM scan_runs WHERE id = ?", (run_id,)).fetchone()
     status = json.loads(run_row["tool_versions_json"]).get("status")
     assert status == "FAILED"
 

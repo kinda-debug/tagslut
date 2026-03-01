@@ -80,4 +80,3 @@ def detect_key(path: Path, timeout_sec: int = 30) -> str | None:
     except OSError as exc:
         log.warning("keyfinder-cli OS error for %s: %s", path, exc)
         return None
-

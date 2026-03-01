@@ -169,7 +169,7 @@ class GenreNormalizer:
                 depth -= 1
 
             if depth == 0:
-                if value[i : i + 3] == " / ":
+                if value[i: i + 3] == " / ":
                     part = "".join(buf).strip()
                     if part:
                         parts.append(part)

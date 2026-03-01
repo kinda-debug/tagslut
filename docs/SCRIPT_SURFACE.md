@@ -28,11 +28,26 @@ Role: M3U and operational reports (duration, recovery, plan summaries).
 7. `poetry run tagslut auth ...`
 Role: Provider authentication and token lifecycle flows.
 
+8. `poetry run tagslut export usb ...`
+Role: Export a source folder of MP3/FLAC tracks to a Pioneer CDJ-ready USB (writes PIONEER/ database via pyrekordbox, creates crate, outputs manifest).
+
 ## Rebrand Invocation
 
 The preferred command brand is now `tagslut`.
 
 Compatibility aliases:
+
+### `dedupe` — ⚠️ RETIRING June 2026
+
+The `dedupe` entry point is a deprecated alias for `tagslut`. It emits a deprecation warning
+on every invocation and will be removed from `pyproject.toml` on **2026-06-01**.
+
+**Migration:** Replace all uses of `dedupe [args]` with `tagslut [args]`.
+
+Timeline:
+- **Now → May 2026**: `dedupe` emits a deprecation warning to stderr on every invocation.
+- **2026-05-01**: Alias frozen — no new subcommands added under `dedupe`.
+- **2026-06-01**: `dedupe` entry point removed.
 
 ## Operational Wrappers (Active)
 

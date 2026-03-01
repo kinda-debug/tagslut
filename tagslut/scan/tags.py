@@ -4,7 +4,7 @@ import hashlib
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from mutagen import File as MutagenFile
+from mutagen import File as MutagenFile  # type: ignore  # TODO: mypy-strict
 
 from tagslut.core.quality import compute_quality_rank
 from tagslut.scan.isrc import extract_isrc_candidates

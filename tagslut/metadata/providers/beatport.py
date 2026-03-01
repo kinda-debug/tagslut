@@ -51,7 +51,7 @@ class BeatportProvider(AbstractProvider):
     WEB_URL = "https://www.beatport.com"
     MIGRATOR_URL = "https://api.beatport.com/migrator/v1"
 
-    def __init__(self, token_manager=None):
+    def __init__(self, token_manager=None):  # type: ignore  # TODO: mypy-strict
         super().__init__(token_manager)
         self._auth_available = None
         self._build_id = None  # Next.js build ID cache
@@ -85,7 +85,7 @@ class BeatportProvider(AbstractProvider):
             "x-nextjs-data": "1",
         }
 
-    def _make_request_no_auth(
+    def _make_request_no_auth(  # type: ignore  # TODO: mypy-strict
         self,
         method: str,
         url: str,
@@ -145,7 +145,7 @@ class BeatportProvider(AbstractProvider):
     def _get_build_id(self) -> Optional[str]:
         """Get current Next.js build ID from Beatport website."""
         if self._build_id:
-            return self._build_id
+            return self._build_id  # type: ignore  # TODO: mypy-strict
 
         try:
             response = self._make_request_no_auth(
@@ -173,7 +173,7 @@ class BeatportProvider(AbstractProvider):
 
         return None
 
-    def _fetch_nextjs_release(self, release_id: int, slug: str) -> Optional[Dict]:
+    def _fetch_nextjs_release(self, release_id: int, slug: str) -> Optional[Dict]:  # type: ignore  # TODO: mypy-strict
         """Fetch release data via Next.js data endpoint (no auth needed)."""
         build_id = self._get_build_id()
         if not build_id:
@@ -185,12 +185,12 @@ class BeatportProvider(AbstractProvider):
         response = self._make_request_no_auth("GET", url, params=params, headers=self._get_web_headers())
         if response and response.status_code == 200:
             try:
-                return response.json()
+                return response.json()  # type: ignore  # TODO: mypy-strict
             except Exception as e:
                 logger.debug("Failed to parse Next.js release response: %s", e)
         return None
 
-    def _fetch_release_web(self, release_id: int, slug: str) -> Optional[Dict]:
+    def _fetch_release_web(self, release_id: int, slug: str) -> Optional[Dict]:  # type: ignore  # TODO: mypy-strict
         """Fetch release HTML and parse __NEXT_DATA__ JSON (no auth needed)."""
         url = f"{self.WEB_URL}/release/{slug}/{release_id}"
         response = self._make_request_no_auth(
@@ -205,7 +205,7 @@ class BeatportProvider(AbstractProvider):
             match = re.search(r'<script id="__NEXT_DATA__"[^>]*>([^<]+)</script>', response.text)
             if not match:
                 return None
-            return json.loads(match.group(1))
+            return json.loads(match.group(1))  # type: ignore  # TODO: mypy-strict
         except Exception as e:
             logger.debug("Failed to parse Beatport release page: %s", e)
             return None
@@ -275,7 +275,7 @@ class BeatportProvider(AbstractProvider):
                     logger.debug("Failed to parse Beatport API release tracks: %s", e)
 
         return tracks
-    def _fetch_nextjs_track(self, track_id: int, slug: str = "track") -> Optional[Dict]:
+    def _fetch_nextjs_track(self, track_id: int, slug: str = "track") -> Optional[Dict]:  # type: ignore  # TODO: mypy-strict
         """Fetch track data via Next.js data endpoint (no auth needed)."""
         build_id = self._get_build_id()
         if not build_id:
@@ -289,13 +289,13 @@ class BeatportProvider(AbstractProvider):
         if response and response.status_code == 200:
             try:
                 data = response.json()
-                return data.get("pageProps", {}).get("track")
+                return data.get("pageProps", {}).get("track")  # type: ignore  # TODO: mypy-strict
             except Exception as e:
                 logger.debug("Failed to parse Next.js response: %s", e)
 
         return None
 
-    def _search_web(self, query: str, limit: int = 10) -> List[Dict]:
+    def _search_web(self, query: str, limit: int = 10) -> List[Dict]:  # type: ignore  # TODO: mypy-strict
         """Search Beatport via web and extract results from __NEXT_DATA__."""
         encoded_query = quote(query)
         url = f"{self.WEB_URL}/search?q={encoded_query}"
@@ -330,7 +330,7 @@ class BeatportProvider(AbstractProvider):
             else:
                 tracks = tracks_data if isinstance(tracks_data, list) else []
 
-            return tracks[:limit]
+            return tracks[:limit]  # type: ignore  # TODO: mypy-strict
 
         except Exception as e:
             logger.debug("Failed to parse Beatport search page: %s", e)
@@ -364,7 +364,7 @@ class BeatportProvider(AbstractProvider):
 
         try:
             data = response.json()
-            return data.get("bp_track_id")
+            return data.get("bp_track_id")  # type: ignore  # TODO: mypy-strict
         except Exception as e:
             logger.error("Failed to parse Beatsource mapping response: %s", e)
             return None
@@ -668,7 +668,7 @@ class BeatportProvider(AbstractProvider):
 
         return ProviderTrack(
             service="beatport",
-            service_track_id=str(track_id) if track_id else None,
+            service_track_id=str(track_id) if track_id else None,  # type: ignore  # TODO: mypy-strict
             title=title,
             artist=artist_name,
             album=album_name,

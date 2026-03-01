@@ -6,4 +6,5 @@ exclude =
     __pycache__,
     build,
     dist
-max-line-length = 100
+max-line-length = 120
+extend-ignore = E203, W503

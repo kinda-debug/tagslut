@@ -150,7 +150,8 @@ def extract_metadata(
                 # Handle list-like values
                 if isinstance(v, (list, tuple)):
                     # Convert to plain list, and convert each item to str/int/float
-                    plain_list = [str(item) if not isinstance(item, (int, float)) else item for item in v]
+                    plain_list = [str(item) if not isinstance(
+                        item, (int, float)) else item for item in v]
                     if len(plain_list) == 1:
                         tags[k.lower()] = plain_list[0]
                     else:
@@ -169,8 +170,10 @@ def extract_metadata(
             duration_mismatch = check_file_duration(duration, tags)
             if duration_mismatch and duration_mismatch.is_suspicious:
                 logger.warning("Duration mismatch detected: %s", path_obj)
-                logger.warning("  Actual: %.2fs, Expected: %.2fs", duration, duration_mismatch.expected_duration)
-                logger.warning("  Difference: %+0.2fs (%s)", duration_mismatch.difference, duration_mismatch.mismatch_type)
+                logger.warning("  Actual: %.2fs, Expected: %.2fs", duration,
+                               duration_mismatch.expected_duration)
+                logger.warning("  Difference: %+0.2fs (%s)",
+                               duration_mismatch.difference, duration_mismatch.mismatch_type)
                 if duration_mismatch.is_likely_stitched:
                     logger.warning("  ⚠️  LIKELY STITCHED RECOVERY FILE")
                 duration_suspicious = True

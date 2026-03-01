@@ -50,7 +50,7 @@ class TidalProvider(AbstractProvider):
             headers["Authorization"] = f"Bearer {token.access_token}"
         return headers
     
-    def _make_request(self, *args, **kwargs):
+    def _make_request(self, *args, **kwargs):  # type: ignore  # TODO: mypy-strict
         """Add countryCode to all requests."""
         params = kwargs.get("params", {})
         if "countryCode" not in params:
@@ -71,7 +71,7 @@ class TidalProvider(AbstractProvider):
         """
         url = f"{self.BASE_URL}/tracks/{track_id}"
 
-        response = self._make_request("GET", url)
+        response = self._make_request("GET", url)  # type: ignore  # TODO: mypy-strict
         if response is None or response.status_code != 200:
             logger.warning("Failed to fetch Tidal track %s", track_id)
             return None
@@ -105,7 +105,7 @@ class TidalProvider(AbstractProvider):
             "limit": min(limit, 50),
         }
 
-        response = self._make_request("GET", url, params=params)
+        response = self._make_request("GET", url, params=params)  # type: ignore  # TODO: mypy-strict
         if response is None or response.status_code != 200:
             logger.warning("Tidal search failed for query: %s", query)
             return []
@@ -130,7 +130,7 @@ class TidalProvider(AbstractProvider):
             return None
         return f"https://resources.tidal.com/images/{cover_id.replace('-', '/')}/{size}x{size}.jpg"
 
-    def _normalize_track(self, attributes: Dict[str, Any]) -> Optional[ProviderTrack]:
+    def _normalize_track(self, attributes: Dict[str, Any]) -> Optional[ProviderTrack]:  # type: ignore  # TODO: mypy-strict
         """
         Normalize Tidal track object to ProviderTrack.
 

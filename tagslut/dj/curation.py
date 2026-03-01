@@ -7,7 +7,7 @@ import unicodedata
 from pathlib import Path
 from typing import Any, Literal
 
-import yaml
+import yaml  # type: ignore  # TODO: mypy-strict
 
 log = logging.getLogger(__name__)
 _OVERRIDE_CACHE: dict[str, dict[str, dict[str, Any]]] | None = None

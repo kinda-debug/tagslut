@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-import yaml
+import yaml  # type: ignore  # TODO: mypy-strict
 
 from tagslut.policy.models import (
     ALLOWED_ACTIONS,

@@ -19,7 +19,7 @@ import base64
 import hashlib
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 import httpx
 
 logger = logging.getLogger("tagslut.metadata.auth")
@@ -38,10 +38,11 @@ DEFAULT_TOKENS_PATH = Path.home() / ".config" / "tagslut" / "tokens.json"
 # with different client IDs or if the defaults become invalid).
 # =============================================================================
 
+
 def _get_tidal_credentials() -> Tuple[str, str]:
     """
     Get Tidal client credentials.
-    
+
     These are PUBLIC credentials from the tiddl project, embedded in the official
     Tidal desktop app. They are NOT secrets and are safe to include in source.
     Override via TIDAL_CLIENT_ID and TIDAL_CLIENT_SECRET env vars if needed.
@@ -49,7 +50,7 @@ def _get_tidal_credentials() -> Tuple[str, str]:
     # Default: base64-encoded public credentials from tiddl/Tidal desktop app
     default_encoded = "ZlgySnhkbW50WldLMGl4VDsxTm45QWZEQWp4cmdKRkpiS05XTGVBeUtHVkdtSU51WFBQTEhWWEF2eEFnPQ=="
     default_id, default_secret = base64.b64decode(default_encoded).decode().split(";")
-    
+
     client_id = os.getenv("TIDAL_CLIENT_ID", default_id)
     client_secret = os.getenv("TIDAL_CLIENT_SECRET", default_secret)
     return client_id, client_secret
@@ -58,7 +59,7 @@ def _get_tidal_credentials() -> Tuple[str, str]:
 def _get_beatport_client_id() -> str:
     """
     Get Beatport DJ app client ID.
-    
+
     This is a PUBLIC client ID extracted from dj.beatport.com. It is NOT a secret
     and is safe to include in source code.
     Override via BEATPORT_DJ_CLIENT_ID env var if needed.
@@ -106,12 +107,12 @@ class TokenManager:
         "beatport": { ... },
         ...
     }
-    
+
     Switching Accounts (e.g., Tidal):
     ---------------------------------
     To use a different account for any provider, simply edit the corresponding
     section in tokens.json. No code changes are required.
-    
+
     For Tidal specifically:
     1. Run 'tagslut auth login tidal' to authenticate a new account, OR
     2. Manually update the 'tidal' section in tokens.json with:
@@ -119,7 +120,7 @@ class TokenManager:
        - user_id: Optional. The Tidal user ID.
        - country_code: Optional. Defaults to "US".
     3. Re-run your CLI command. The new credentials will be used automatically.
-    
+
     The TokenManager reads tokens.json on initialization and uses whatever
     credentials are present. It does not hardcode any particular account.
     """
@@ -235,7 +236,8 @@ class TokenManager:
             self.set_token(
                 "tidal",
                 access_token=data["access_token"],
-                refresh_token=data.get("refresh_token", refresh_token),  # May return new refresh token
+                # May return new refresh token
+                refresh_token=data.get("refresh_token", refresh_token),
                 expires_at=expires_at,
                 token_type=data.get("token_type", "Bearer"),
             )
@@ -268,7 +270,7 @@ class TokenManager:
                 timeout=30.0,
             )
             response.raise_for_status()
-            return response.json()
+            return response.json()  # type: ignore  # TODO: mypy-strict
 
         except httpx.HTTPError as e:
             logger.error("Failed to start Tidal device auth: %s", e)
@@ -304,7 +306,8 @@ class TokenManager:
                 elif error == "slow_down":
                     return None  # Need to slow down polling
                 else:
-                    raise Exception(f"Tidal auth failed: {error} - {data.get('error_description', '')}")
+                    raise Exception(
+                        f"Tidal auth failed: {error} - {data.get('error_description', '')}")
 
             expires_at = time.time() + data.get("expires_in", 86400)
 
@@ -365,7 +368,8 @@ class TokenManager:
                     token_type=data.get("token_type", "Bearer"),
                 )
 
-                logger.info("Refreshed Beatport token (expires in %ds)", data.get("expires_in", 3600))
+                logger.info("Refreshed Beatport token (expires in %ds)",
+                            data.get("expires_in", 3600))
                 return self.get_token("beatport")
 
             except httpx.HTTPError as e:
@@ -378,7 +382,8 @@ class TokenManager:
             if access_token:
                 token = TokenInfo(access_token=access_token, expires_at=expires_at)
                 if token.is_expired:
-                    logger.warning("Beatport token expired. Get a fresh one from dj.beatport.com DevTools.")
+                    logger.warning(
+                        "Beatport token expired. Get a fresh one from dj.beatport.com DevTools.")
                 else:
                     logger.debug("Using existing Beatport access token")
                 return token
@@ -532,7 +537,7 @@ class TokenManager:
                     "configured": True,
                     "has_token": has_auth,
                     "expired": bp_token.is_expired if bp_token else False,
-                    "expires_at": bp_token.expires_at if bp_token else None,
+                    "expires_at": bp_token.expires_at if bp_token else None,  # type: ignore  # TODO: mypy-strict
                     "auth_type": "bearer token (API)" if has_auth else "web scraping",
                 }
                 continue
@@ -541,7 +546,7 @@ class TokenManager:
                 "configured": configured,
                 "has_token": token is not None and bool(token.access_token),
                 "expired": token.is_expired if token else None,
-                "expires_at": token.expires_at if token else None,
+                "expires_at": token.expires_at if token else None,  # type: ignore  # TODO: mypy-strict
             }
 
             # Add auth type info
@@ -557,10 +562,10 @@ class TokenManager:
     def init_template(self) -> None:
         """
         Initialize tokens file with template structure.
-        
+
         The tokens.json file stores credentials for all providers. Each provider
         section can be edited directly to switch accounts without code changes.
-        
+
         For Tidal specifically:
         - To switch Tidal accounts, update the 'tidal' section with new credentials
         - Required fields: refresh_token (from device auth flow)
@@ -579,8 +584,8 @@ class TokenManager:
             },
             "tidal": {
                 "_comment": "Run 'tagslut auth login tidal' to authenticate via browser. "
-                           "To switch accounts: update refresh_token (and optionally user_id, country_code) "
-                           "in this section, then re-run the CLI. No code changes needed.",
+                "To switch accounts: update refresh_token (and optionally user_id, country_code) "
+                "in this section, then re-run the CLI. No code changes needed.",
                 "refresh_token": "",
                 "user_id": "",
                 "country_code": "US",
@@ -589,7 +594,8 @@ class TokenManager:
                 "_comment": "No authentication required - iTunes Search API is public",
             },
             "apple_music": {
-                "_comment": "No configuration required - bearer token is extracted dynamically from Apple Music web app",
+                "_comment": "No configuration required - bearer token is extracted"
+                            " dynamically from Apple Music web app",
             },
         }
 

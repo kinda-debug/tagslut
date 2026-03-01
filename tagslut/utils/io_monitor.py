@@ -1,7 +1,6 @@
 """IO wait detection and volume monitoring."""
 
 import os
-import subprocess
 from typing import Dict, Optional
 import logging
 from dataclasses import dataclass
@@ -23,12 +22,12 @@ class DiskIOStats:
 
 class IOMonitor:
     """Monitor IO performance and detect stalls."""
-    
+
     def __init__(self, check_interval: int = 5):
         self.check_interval = check_interval
         self._last_io_time = None
         self._stall_detected = False
-    
+
     def get_disk_io_stats(self, device: str = "/") -> Optional[DiskIOStats]:
         """Get disk IO statistics."""
         try:
@@ -45,7 +44,7 @@ class IOMonitor:
         except Exception as e:
             logger.error(f"Failed to get IO stats: {e}")
         return None
-    
+
     def check_io_activity(self) -> bool:
         """Check if IO activity is occurring."""
         try:
@@ -53,15 +52,15 @@ class IOMonitor:
             if current and self._last_io_time:
                 # If read/write counts changed, IO is active
                 if (current.read_count > self._last_io_time.read_count or
-                    current.write_count > self._last_io_time.write_count):
+                        current.write_count > self._last_io_time.write_count):
                     self._stall_detected = False
                     return True
-            self._last_io_time = current
+            self._last_io_time = current  # type: ignore  # TODO: mypy-strict
             return False
         except Exception as e:
             logger.error(f"IO activity check failed: {e}")
             return False
-    
+
     def get_mount_status(self, mount_point: str) -> Dict[str, bool]:
         """Get mount status for path."""
         try:

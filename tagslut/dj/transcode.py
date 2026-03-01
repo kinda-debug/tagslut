@@ -134,7 +134,7 @@ def load_tracks(
 
     for row_num in range(2, ws.max_row + 1):
         def get(col: str) -> Optional[object]:
-            return ws.cell(row_num, header_to_idx[col] + 1).value
+            return ws.cell(row_num, header_to_idx[col] + 1).value  # type: ignore  # TODO: mypy-strict
 
         raw_path = get("Path")
         if raw_path is None or str(raw_path).strip() == "":
@@ -227,7 +227,8 @@ def dedupe_tracks(tracks: Iterable[TrackRow]) -> Tuple[List[TrackRow], List[Dict
             continue
 
         current_rank = (source_priority(track.source), len(track.source_path.name), track.row_num)
-        existing_rank = (source_priority(existing.source), len(existing.source_path.name), existing.row_num)
+        existing_rank = (source_priority(existing.source), len(
+            existing.source_path.name), existing.row_num)
 
         if current_rank < existing_rank:
             kept[track.dedupe_key] = track

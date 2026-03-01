@@ -3,7 +3,6 @@
 import time
 import os
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Optional, Dict
 import threading
 import logging
@@ -17,16 +16,16 @@ class ThroughputMetrics:
     files_processed: int = 0
     bytes_processed: int = 0
     start_time: float = field(default_factory=time.time)
-    
+
     @property
     def elapsed_seconds(self) -> float:
         return time.time() - self.start_time
-    
+
     @property
     def files_per_second(self) -> float:
         elapsed = self.elapsed_seconds
         return self.files_processed / elapsed if elapsed > 0 else 0
-    
+
     @property
     def mb_per_second(self) -> float:
         elapsed = self.elapsed_seconds
@@ -47,7 +46,7 @@ class ProgressSnapshot:
 
 class ProgressTracker:
     """Real-time progress tracking for file operations."""
-    
+
     def __init__(self, total_files: int, total_bytes: int = 0, timeout_seconds: int = 3600):
         self.total_files = total_files
         self.total_bytes = total_bytes
@@ -58,7 +57,7 @@ class ProgressTracker:
         self._current_file: Optional[str] = None
         self._start_time = time.time()
         self._io_stalls = 0
-    
+
     def update(self, file_path: str, bytes_processed: int = 0) -> None:
         """Update progress."""
         with self._lock:
@@ -66,12 +65,12 @@ class ProgressTracker:
             self._last_activity = time.time()
             self.metrics.files_processed += 1
             self.metrics.bytes_processed += bytes_processed
-    
+
     def check_timeout(self) -> bool:
         """Check if timeout exceeded."""
         elapsed = time.time() - self._start_time
         return elapsed > self.timeout_seconds
-    
+
     def check_io_stall(self, threshold: int = 30) -> bool:
         """Detect IO stall (no activity > threshold seconds)."""
         idle = time.time() - self._last_activity
@@ -80,7 +79,7 @@ class ProgressTracker:
             logger.warning(f"IO stall detected: {idle:.1f}s at {self._current_file}")
             return True
         return False
-    
+
     def get_snapshot(self) -> ProgressSnapshot:
         """Get progress snapshot."""
         with self._lock:
@@ -88,7 +87,7 @@ class ProgressTracker:
             if self.metrics.files_per_second > 0:
                 remaining = self.total_files - self.metrics.files_processed
                 eta_seconds = remaining / self.metrics.files_per_second
-            
+
             return ProgressSnapshot(
                 current_file=self._current_file or "init",
                 files_completed=self.metrics.files_processed,
@@ -101,7 +100,7 @@ class ProgressTracker:
 
 class VolumeStateValidator:
     """Validate volume mount state."""
-    
+
     @staticmethod
     def check_volume_mounted(volume_path: str) -> bool:
         """Check if volume is mounted."""
@@ -110,7 +109,7 @@ class VolumeStateValidator:
         except (OSError, IOError) as e:
             logger.error(f"Mount check failed for {volume_path}: {e}")
             return False
-    
+
     @staticmethod
     def check_write_sanity(volume_path: str, min_free_gb: int = 1) -> bool:
         """Check write capability and free space."""
@@ -124,7 +123,7 @@ class VolumeStateValidator:
         except (OSError, IOError) as e:
             logger.error(f"Write sanity check failed: {e}")
             return False
-    
+
     @staticmethod
     def preflight_check(source_root: str, dest_root: Optional[str] = None) -> Dict[str, bool]:
         """Run preflight validation checks."""

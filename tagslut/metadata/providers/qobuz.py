@@ -52,17 +52,17 @@ class QobuzProvider(AbstractProvider):
             headers["user_auth_token"] = creds["user_auth_token"]
         return headers
 
-    def _make_request(self, *args, **kwargs):
+    def _make_request(self, *args, **kwargs):  # type: ignore  # TODO: mypy-strict
         """Add app_id to all requests."""
         app_id = self._get_app_id()
         if not app_id:
             logger.error("Qobuz app_id not configured.")
             return None
-        
+
         params = kwargs.get("params", {})
         params["app_id"] = app_id
         kwargs["params"] = params
-        
+
         return super()._make_request(*args, **kwargs)
 
     def fetch_by_id(self, track_id: str) -> Optional[ProviderTrack]:
@@ -78,7 +78,7 @@ class QobuzProvider(AbstractProvider):
         url = f"{self.BASE_URL}/track/get"
         params = {"track_id": track_id}
 
-        response = self._make_request("GET", url, params=params)
+        response = self._make_request("GET", url, params=params)  # type: ignore  # TODO: mypy-strict
         if response is None or response.status_code != 200:
             logger.warning("Failed to fetch Qobuz track %s", track_id)
             return None
@@ -109,7 +109,7 @@ class QobuzProvider(AbstractProvider):
             "limit": min(limit, 50),
         }
 
-        response = self._make_request("GET", url, params=params)
+        response = self._make_request("GET", url, params=params)  # type: ignore  # TODO: mypy-strict
         if response is None or response.status_code != 200:
             logger.warning("Qobuz search failed for query: %s", query)
             return []

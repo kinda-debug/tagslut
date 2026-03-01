@@ -24,7 +24,8 @@ def test_confidence_full_score():
 def test_confidence_multi_isrc_no_bonus():
     raw = {"ARTIST": ["A"], "TITLE": ["T"]}
     score_single = compute_identity_confidence(raw, ["USABC1234567"], duration_delta=0.5)
-    score_multi = compute_identity_confidence(raw, ["USABC1234567", "GBXYZ9876543"], duration_delta=0.5)
+    score_multi = compute_identity_confidence(
+        raw, ["USABC1234567", "GBXYZ9876543"], duration_delta=0.5)
     assert score_single > score_multi
 
 

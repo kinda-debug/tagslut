@@ -276,7 +276,8 @@ def _load_yaml(path: Path) -> Mapping[str, Any]:
 
 def _zone_manager_from_mapping(data: Mapping[str, Any], *, source: str) -> ZoneManager:
     zones_data = data.get("zones", {}) if isinstance(data, Mapping) else {}
-    default_zone = coerce_zone(data.get("defaults", {}).get("zone")) if isinstance(data.get("defaults"), Mapping) else None
+    default_zone = coerce_zone(data.get("defaults", {}).get(
+        "zone")) if isinstance(data.get("defaults"), Mapping) else None
     default_zone = default_zone or Zone.SUSPECT
 
     base_root = None
@@ -313,7 +314,8 @@ def _zone_manager_from_mapping(data: Mapping[str, Any], *, source: str) -> ZoneM
                 priority_int = int(priority)
             except (TypeError, ValueError):
                 priority_int = DEFAULT_ZONE_PRIORITY.get(zone, DEFAULT_PATH_PRIORITY)
-            description = payload.get("description") if isinstance(payload.get("description"), str) else None
+            description = payload.get("description") if isinstance(
+                payload.get("description"), str) else None
             zone_configs.append(
                 ZoneConfig(
                     zone=zone,
@@ -400,7 +402,8 @@ def _zone_manager_from_env() -> ZoneManager:
         # Default to empty config; map everything to suspect
         logger.warning("No zone configuration found; defaulting all paths to suspect")
         zone_configs = [
-            ZoneConfig(zone=Zone.SUSPECT, paths=tuple(), priority=DEFAULT_ZONE_PRIORITY[Zone.SUSPECT])
+            ZoneConfig(zone=Zone.SUSPECT, paths=tuple(),
+                       priority=DEFAULT_ZONE_PRIORITY[Zone.SUSPECT])
         ]
 
     return ZoneManager(

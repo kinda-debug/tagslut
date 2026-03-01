@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
+import io
 import re
+import sys
 
 from click.testing import CliRunner
 
 from tagslut.cli.main import (
     _TRANSITIONAL_COMMAND_REPLACEMENTS,
     cli,
+)
+from tagslut.cli.runtime import (
+    _DEDUPE_DEPRECATION_MESSAGE,
+    emit_dedupe_deprecation_warning,
 )
 
 
@@ -100,3 +106,32 @@ def test_removed_compat_command_returns_no_such_command() -> None:
     result = runner.invoke(cli, ["mgmt"])
     assert result.exit_code != 0
     assert "No such command 'mgmt'" in result.output
+
+
+def test_dedupe_deprecation_warning_emitted_to_stderr() -> None:
+    buf = io.StringIO()
+    original_stderr = sys.stderr
+    sys.stderr = buf
+    try:
+        emit_dedupe_deprecation_warning()
+    finally:
+        sys.stderr = original_stderr
+
+    output = buf.getvalue()
+    assert "dedupe" in output
+    assert "deprecated" in output
+    assert "June 2026" in output
+    assert "tagslut" in output
+
+
+def test_dedupe_deprecation_message_contains_migration_hint() -> None:
+    assert "dedupe" in _DEDUPE_DEPRECATION_MESSAGE
+    assert "June 2026" in _DEDUPE_DEPRECATION_MESSAGE
+    assert "tagslut" in _DEDUPE_DEPRECATION_MESSAGE
+
+
+def test_tagslut_help_has_no_deprecation_warning() -> None:
+    runner = CliRunner()
+    result = runner.invoke(cli, ["--help"])
+    assert result.exit_code == 0
+    assert "deprecated" not in (result.output or "")

@@ -7,6 +7,7 @@ import csv
 from dataclasses import dataclass
 from pathlib import Path
 
+
 @dataclass(frozen=True)
 class PlanRow:
     plan_id: str
@@ -17,6 +18,7 @@ class PlanRow:
     path: str
     source_zone: str
     keeper_path: str
+
 
 def load_plan_rows(plan_path: Path) -> list[PlanRow]:
     rows: list[PlanRow] = []

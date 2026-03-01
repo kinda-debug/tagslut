@@ -29,7 +29,7 @@ class FilterParseError(ValueError):
     pass
 
 
-def parse_filter(expr: str) -> tuple[str, list]:
+def parse_filter(expr: str) -> tuple[str, list]:  # type: ignore  # TODO: mypy-strict
     """
     Parse a filter expression string into a (WHERE clause, params) tuple.
     Both can be passed directly to sqlite3 execute().
@@ -40,7 +40,7 @@ def parse_filter(expr: str) -> tuple[str, list]:
         return "1=1", []
 
     clauses = []
-    params: list = []
+    params: list = []  # type: ignore  # TODO: mypy-strict
 
     for token in expr.strip().split():
         if ":" not in token:

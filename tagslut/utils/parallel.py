@@ -16,6 +16,7 @@ class ProcessMapResult(Generic[R]):
     results: List[R]
     interrupted: bool
 
+
 def process_map(
     func: Callable[[T], R],
     items: Iterable[T],
@@ -42,8 +43,8 @@ def process_map(
 
     results: List[R] = []
     interrupted = False
-    
-    item_list = list(items) 
+
+    item_list = list(items)
     if not item_list:
         if return_interrupt_status:
             return ProcessMapResult(results=[], interrupted=False)

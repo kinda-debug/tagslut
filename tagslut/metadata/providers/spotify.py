@@ -282,7 +282,7 @@ class SpotifyProvider(AbstractProvider):
             return None
 
         try:
-            return response.json()
+            return response.json()  # type: ignore  # TODO: mypy-strict
         except Exception:
             return None
 

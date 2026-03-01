@@ -1,6 +1,7 @@
 from pathlib import Path
 from tagslut.core.metadata import extract_metadata
 
+
 def test_checksum_provenance_streaminfo(tmp_path: Path) -> None:
     # This requires a real FLAC file to test STREAMINFO.
     # For unit test purposes, we'll mock the internal dependencies if needed,
@@ -14,6 +15,7 @@ def test_checksum_provenance_streaminfo(tmp_path: Path) -> None:
     audio_file = extract_metadata(flac_path, scan_hash=False)
     assert audio_file.checksum.startswith("streaminfo:")
     assert audio_file.checksum_type == "STREAMINFO_MD5"
+
 
 def test_checksum_provenance_sha256(tmp_path: Path) -> None:
     flac_path = Path("tests/data/healthy.flac")

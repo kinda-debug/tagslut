@@ -1,6 +1,7 @@
 from __future__ import annotations
 from tagslut.utils.console_ui import ConsoleUI
 
+
 class SafetyGates:
     """
     A centralized class for handling safety checks, such as user confirmations.

@@ -14,7 +14,6 @@ Features:
 from __future__ import annotations
 
 import csv
-import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
@@ -227,7 +226,10 @@ def auto_mark_plan(
                 if rf.path == best.path:
                     action = "KEEP"
                     confidence = "HIGH"
-                    reason = f"Keep best-ranked path; zone={rf.zone}, integrity={rf.integrity_state}, flac_ok={rf.flac_ok}"
+                    reason = (
+                        f"Keep best-ranked path; zone={rf.zone},"
+                        f" integrity={rf.integrity_state}, flac_ok={rf.flac_ok}"
+                    )
                 else:
                     action = "DROP"
                     confidence = "MEDIUM"

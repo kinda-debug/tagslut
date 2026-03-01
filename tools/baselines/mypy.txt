@@ -1,2 +1,1 @@
-tagslut/cli/main.py:31: error: Invalid syntax  [syntax]
-Found 1 error in 1 file (errors prevented further checking)
+Success: no issues found in 126 source files

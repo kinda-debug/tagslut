@@ -3,6 +3,10 @@
 Tagslut is a recovery-first music library deduplication and metadata orchestration toolkit.
 It focuses on safe ingest, deterministic decisioning, and audit-friendly execution for large FLAC libraries.
 
+> ⚠️ **`dedupe` alias retiring June 2026** — If you use the `dedupe` command, migrate to `tagslut` now.
+> Replace `dedupe [args]` with `tagslut [args]`. The alias emits a deprecation warning on every
+> invocation and will be removed on **2026-06-01**.
+
 ## Install
 
 ```bash
@@ -21,7 +25,9 @@ poetry run tagslut execute --help
 
 ## Documentation
 
-See `docs/` for workflows, operations, architecture, and troubleshooting.
+See `docs/README.md` for the full documentation index.
+
+Key docs:
 
 - `docs/WORKFLOWS.md`
 - `docs/OPERATIONS.md`

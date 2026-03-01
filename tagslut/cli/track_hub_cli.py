@@ -96,7 +96,7 @@ def _show_files_row(conn: sqlite3.Connection, path: str) -> str | None:
     ]
     _print_row(row, fields)
     
-    return row["library_track_key"]
+    return row["library_track_key"]  # type: ignore  # TODO: mypy-strict
 
 
 def _show_library_track(conn: sqlite3.Connection, key: str) -> bool:

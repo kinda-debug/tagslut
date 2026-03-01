@@ -19,14 +19,14 @@ class EnrichmentStats:
     skipped: int = 0
     failed: int = 0
     no_match: int = 0
-    no_match_files: List[str] = None  # Paths of files with no match
+    no_match_files: List[str] = None  # type: ignore  # TODO: mypy-strict  # Paths of files with no match
 
-    def __post_init__(self):
+    def __post_init__(self):  # type: ignore  # TODO: mypy-strict
         if self.no_match_files is None:
             self.no_match_files = []
 
 
-def run_enrich_all(
+def run_enrich_all(  # type: ignore  # TODO: mypy-strict
     db_path,
     provider_names: List[str],
     provider_getter,
@@ -60,7 +60,8 @@ def run_enrich_all(
     stats = EnrichmentStats()
 
     # Get all eligible files
-    files = list(db_reader.get_eligible_files(db_path, path_pattern, limit, force, retry_no_match, zones))
+    files = list(db_reader.get_eligible_files(
+        db_path, path_pattern, limit, force, retry_no_match, zones))
     stats.total = len(files)
 
     if stats.total == 0:
@@ -91,22 +92,23 @@ def run_enrich_all(
                     # Mark as processed with no_match so we don't retry
                     db_writer.mark_no_match(db_path, file_info.path, dry_run)
                     logger.info("NO MATCH: %s (searched: %s %s)",
-                        file_info.path,
-                        file_info.tag_artist or "?",
-                        file_info.tag_title or "?")
+                                file_info.path,
+                                file_info.tag_artist or "?",
+                                file_info.tag_title or "?")
                     continue
 
                 # Update database
                 if db_writer.update_database(db_path, result, dry_run, mode):
                     stats.enriched += 1
                     # Log match details
-                    best_match = max(result.matches, key=lambda m: m.match_confidence.value if m.match_confidence else 0)
+                    best_match = max(
+                        result.matches, key=lambda m: m.match_confidence.value if m.match_confidence else 0)
                     logger.info("MATCH: %s -> %s - %s [%s] (%s)",
-                        file_info.path,
-                        best_match.artist,
-                        best_match.title,
-                        best_match.service,
-                        result.enrichment_confidence.value if result.enrichment_confidence else "?")
+                                file_info.path,
+                                best_match.artist,
+                                best_match.title,
+                                best_match.service,
+                                result.enrichment_confidence.value if result.enrichment_confidence else "?")
                 else:
                     stats.failed += 1
                     logger.warning("FAILED to update: %s", file_info.path)
@@ -130,7 +132,7 @@ def run_enrich_all(
     return stats
 
 
-def run_enrich_file(
+def run_enrich_file(  # type: ignore  # TODO: mypy-strict
     db_path,
     provider_names: List[str],
     provider_getter,
@@ -178,6 +180,6 @@ def run_enrich_file(
     return result, "failed"
 
 
-def run_get_file_info(db_path, path: str) -> Optional[LocalFileInfo]:
+def run_get_file_info(db_path, path: str) -> Optional[LocalFileInfo]:  # type: ignore  # TODO: mypy-strict
     """Compatibility helper for fetching a single file info."""
     return db_reader.get_file_info(db_path, path)

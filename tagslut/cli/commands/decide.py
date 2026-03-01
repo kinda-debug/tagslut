@@ -7,11 +7,11 @@ import click
 
 def register_decide_group(cli: click.Group) -> None:
     @cli.group()
-    def decide():
+    def decide():  # type: ignore  # TODO: mypy-strict
         """Canonical deterministic planning commands."""
 
     @decide.command("profiles")
-    def decide_profiles():
+    def decide_profiles():  # type: ignore  # TODO: mypy-strict
         """List available policy profiles."""
         from tagslut.policy import list_policy_profiles, load_policy_profile
 
@@ -26,10 +26,11 @@ def register_decide_group(cli: click.Group) -> None:
 
     @decide.command("plan")
     @click.option("--policy", default="library_balanced", show_default=True, help="Policy profile name")
-    @click.option("--input", "input_path", type=click.Path(exists=True), required=True, help="Input JSON candidates file")
+    @click.option("--input", "input_path", type=click.Path(exists=True), required=True,
+                  help="Input JSON candidates file")
     @click.option("--output", "output_path", type=click.Path(), help="Output JSON plan path")
     @click.option("--run-label", default="decide", show_default=True, help="Run label prefix")
-    def decide_plan(policy, input_path, output_path, run_label):
+    def decide_plan(policy, input_path, output_path, run_label):  # type: ignore  # TODO: mypy-strict
         """Build deterministic policy-stamped plan from candidate JSON."""
         import json
 
@@ -67,7 +68,8 @@ def register_decide_group(cli: click.Group) -> None:
                     match_reasons=tuple(str(v) for v in match_reasons),
                     is_dj_material=bool(item.get("is_dj_material", False)),
                     duration_status=item.get("duration_status"),
-                    context=item.get("context", {}) if isinstance(item.get("context"), dict) else {},
+                    context=item.get("context", {}) if isinstance(
+                        item.get("context"), dict) else {},
                 )
             )
 

@@ -80,7 +80,8 @@ def test_init_db_is_idempotent(mem_db):
 
 def test_scan_queue_item_path_coercion():
     _ = ScanRun(library_root="/music")
-    _ = ScanIssue(run_id=1, path="/music/track.flac", issue_code="X", severity="INFO", evidence_json="{}")
+    _ = ScanIssue(run_id=1, path="/music/track.flac", issue_code="X",
+                  severity="INFO", evidence_json="{}")
     item = ScanQueueItem(run_id=1, path="/music/track.flac")
     assert isinstance(item.path, Path)
 

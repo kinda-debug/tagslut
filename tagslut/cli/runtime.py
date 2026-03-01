@@ -39,6 +39,24 @@ def run_executable(script_rel_path: str, args: tuple[str, ...]) -> None:
     run_subprocess([str(script_path), *list(args)], internal=True)
 
 
+_DEDUPE_DEPRECATION_MESSAGE = (
+    "WARNING: 'dedupe' is deprecated and will be removed June 2026. "
+    "Use 'tagslut' instead.\n"
+)
+
+
+def emit_dedupe_deprecation_warning() -> None:
+    sys.stderr.write(_DEDUPE_DEPRECATION_MESSAGE)
+
+
+def dedupe_entry_point() -> None:
+    """Entry point for the deprecated 'dedupe' CLI alias."""
+    emit_dedupe_deprecation_warning()
+    from tagslut.cli.main import cli
+
+    cli()
+
+
 def collect_flac_paths(input_path: str) -> list[Path]:
     path = Path(input_path).expanduser().resolve()
     if path.is_dir():

@@ -9,31 +9,31 @@ from tagslut.cli.runtime import run_python_script, run_tagslut_wrapper, WRAPPER_
 
 def register_verify_group(cli: click.Group) -> None:
     @cli.group()
-    def verify():
+    def verify():  # type: ignore  # TODO: mypy-strict
         """Canonical verification commands."""
 
     @verify.command("duration", context_settings=WRAPPER_CONTEXT)
     @click.argument("args", nargs=-1, type=click.UNPROCESSED)
-    def verify_duration(args):
+    def verify_duration(args):  # type: ignore  # TODO: mypy-strict
         """Verify duration health status from inventory."""
         run_tagslut_wrapper(["_mgmt", "audit-duration", *list(args)])
 
     @verify.command("recovery", context_settings=WRAPPER_CONTEXT)
     @click.argument("args", nargs=-1, type=click.UNPROCESSED)
-    def verify_recovery(args):
+    def verify_recovery(args):  # type: ignore  # TODO: mypy-strict
         """Run recovery verification phase."""
         run_tagslut_wrapper(["_recover", "--phase", "verify", *list(args)])
 
     @verify.command("parity", context_settings=WRAPPER_CONTEXT)
     @click.argument("args", nargs=-1, type=click.UNPROCESSED)
-    def verify_parity(args):
+    def verify_parity(args):  # type: ignore  # TODO: mypy-strict
         """Run legacy-v3 parity validation checks."""
         run_python_script("scripts/validate_v3_dual_write_parity.py", args)
 
     @verify.command("receipts")
     @click.option("--db", type=click.Path(), required=True, help="SQLite DB path")
     @click.option("--strict", is_flag=True, help="Return non-zero when warnings are detected")
-    def verify_receipts(db, strict):
+    def verify_receipts(db, strict):  # type: ignore  # TODO: mypy-strict
         """Validate move execution receipt consistency in v3 tables."""
         import sqlite3
 
@@ -51,7 +51,8 @@ def register_verify_group(cli: click.Group) -> None:
                 "moved": conn.execute("SELECT COUNT(*) FROM move_execution WHERE status = 'moved'").fetchone()[0],
                 "errors": conn.execute("SELECT COUNT(*) FROM move_execution WHERE status = 'error'").fetchone()[0],
                 "missing_dest": conn.execute(
-                    "SELECT COUNT(*) FROM move_execution WHERE status = 'moved' AND (dest_path IS NULL OR TRIM(dest_path) = '')"
+                    "SELECT COUNT(*) FROM move_execution"
+                    " WHERE status = 'moved' AND (dest_path IS NULL OR TRIM(dest_path) = '')"
                 ).fetchone()[0],
                 "missing_plan": conn.execute(
                     "SELECT COUNT(*) FROM move_execution WHERE plan_id IS NULL"

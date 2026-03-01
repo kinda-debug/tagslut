@@ -1,6 +1,8 @@
+from typing import Iterator, Set, Union
 import logging
 import os
 from pathlib import Path
+
 
 def sanitize_path_part(part: str, max_length: int = 140) -> str:
     """
@@ -25,12 +27,13 @@ def sanitize_path_part(part: str, max_length: int = 140) -> str:
             sanitized = sanitized[:max_length].strip()
 
     return sanitized or "Unknown"
-from typing import Iterator, Set, Union
+
 
 logger = logging.getLogger("tagslut")
 
 SKIP_BASENAMES = {".DS_Store", "Thumbs.db"}
 SKIP_PREFIXES = ("._",)
+
 
 def list_files(root: Union[str, Path], extensions: Set[str], recursive: bool = True) -> Iterator[Path]:
     """
@@ -69,6 +72,7 @@ def list_files(root: Union[str, Path], extensions: Set[str], recursive: bool = T
                     yield item
     except OSError as e:
         logger.error(f"Error traversing {root_path}: {e}")
+
 
 def sanitize_path(path: Union[str, Path]) -> Path:
     """Returns a resolved, absolute Path object."""

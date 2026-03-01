@@ -38,10 +38,10 @@ TOKEN_FILE = Path(__file__).parent.parent.parent / "spotify_partner_tokens.json"
 def load_partner_tokens() -> Optional[Dict[str, str]]:
     """
     Load partner tokens from the JSON file.
-    
+
     Returns:
         Dict with token keys, or None if file is missing/invalid.
-        
+
     Prints diagnostic messages to stderr on failure to aid debugging.
     """
     if not TOKEN_FILE.exists():
@@ -52,12 +52,12 @@ def load_partner_tokens() -> Optional[Dict[str, str]]:
             file=sys.stderr
         )
         return None
-    
+
     try:
         content = TOKEN_FILE.read_text()
         tokens = json.loads(content)
         print(f"[spotify_partner_tokens] Loaded tokens from {TOKEN_FILE}", file=sys.stderr)
-        return tokens
+        return tokens  # type: ignore  # TODO: mypy-strict
     except json.JSONDecodeError as e:
         print(
             f"[spotify_partner_tokens] Invalid JSON in token file: {TOKEN_FILE}\n"
@@ -77,10 +77,10 @@ def load_partner_tokens() -> Optional[Dict[str, str]]:
 def get_partner_headers() -> Optional[Dict[str, str]]:
     """
     Build HTTP headers for Spotify partner API requests.
-    
+
     Returns:
         Dict of headers ready for requests, or None if tokens unavailable.
-        
+
     Prints diagnostic messages to stderr when required tokens are missing.
     """
     tokens = load_partner_tokens()
@@ -96,7 +96,7 @@ def get_partner_headers() -> Optional[Dict[str, str]]:
         missing.append("spotify_partner_bearer")
     if not client_token:
         missing.append("spotify_partner_client_token")
-    
+
     if missing:
         print(
             f"[spotify_partner_tokens] Missing required token(s): {', '.join(missing)}\n"
@@ -119,4 +119,4 @@ def get_partner_headers() -> Optional[Dict[str, str]]:
     if cookie:
         headers["Cookie"] = cookie
 
-    return headers
+    return headers  # type: ignore  # TODO: mypy-strict

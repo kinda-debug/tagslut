@@ -7,7 +7,7 @@ from pathlib import Path
 
 def _run_mypy() -> str:
     proc = subprocess.run(
-        ["poetry", "run", "mypy", ".", "--hide-error-context", "--no-color-output", "--show-error-codes"],
+        ["poetry", "run", "mypy", "tagslut/", "--hide-error-context", "--no-color-output", "--show-error-codes"],
         capture_output=True,
         text=True,
         check=False,

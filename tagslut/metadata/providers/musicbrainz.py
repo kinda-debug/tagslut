@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Optional
 from tagslut.metadata.models.types import MatchConfidence, ProviderTrack
 from tagslut.metadata.providers.base import AbstractProvider, RateLimitConfig
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("tagslut.metadata.providers.musicbrainz")
 
 # User-Agent required by MusicBrainz policy: https://musicbrainz.org/doc/MusicBrainz_API/Rate_Limiting
 _USER_AGENT = "tagslut/2.0 ( https://github.com/tagslut/tagslut )"
@@ -44,7 +44,7 @@ class MusicBrainzProvider(AbstractProvider):
 
     def __init__(self, token_manager: Any = None) -> None:
         # MusicBrainz does not require authentication.
-        super().__init__(token_manager=None)  # type: ignore  # TODO: mypy-strict
+    super().__init__(token_manager=None)
 
     def _get_default_headers(self) -> Dict[str, str]:
         return {
@@ -76,8 +76,9 @@ class MusicBrainzProvider(AbstractProvider):
             return None
         try:
             data = response.json()
-        except Exception as e:
-            logger.debug("Failed to decode MusicBrainz fetch_by_id payload for %s: %s", track_id, e)
+<<<<<<< HEAD
+        except Exception:
+            return None
             return None
         if not isinstance(data, dict) or "id" not in data:
             return None
@@ -107,8 +108,12 @@ class MusicBrainzProvider(AbstractProvider):
         try:
             data = response.json()
             recordings = data.get("recordings", []) if isinstance(data, dict) else []
+<<<<<<< HEAD
         except Exception as e:
             logger.debug("Failed to decode MusicBrainz search payload for query %r: %s", query, e)
+=======
+        except Exception:
+>>>>>>> 3b6d641 (feat: add MusicBrainz metadata provider)
             return []
         return [self._normalize_track(r) for r in recordings if isinstance(r, dict)]
 
@@ -132,8 +137,12 @@ class MusicBrainzProvider(AbstractProvider):
             return []
         try:
             data = response.json()
+<<<<<<< HEAD
         except Exception as e:
             logger.debug("Failed to decode MusicBrainz ISRC payload for %s: %s", isrc, e)
+=======
+        except Exception:
+>>>>>>> 3b6d641 (feat: add MusicBrainz metadata provider)
             return []
         if not isinstance(data, dict):
             return []

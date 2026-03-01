@@ -23,9 +23,8 @@ ReadTagsFn = Callable[[Path], tuple[dict[str, list[str]],
 ChecksumFn = Callable[[Path], str]
 ProbeDurationFn = Callable[[Path], Optional[float]]
 DecodeProbeFn = Callable[[Path, Optional[float]], list[str]]
-RecordIssueFn = Callable[
-    [sqlite3.Connection, int, Path, str, str, dict[str, Any], Optional[str]],
-    None,
+RecordIssueFn = Callable[  # type: ignore  # TODO: mypy-strict
+    [sqlite3.Connection, int, Path, str, str, dict, Optional[str]], None
 ]
 
 

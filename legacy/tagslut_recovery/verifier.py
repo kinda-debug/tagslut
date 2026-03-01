@@ -134,14 +134,16 @@ class Verifier:
             silence_events = result.get("silence_events")
 
             # Check for significant duration loss (> 1 second)
-            if isinstance(duration_delta, (int, float)) and duration_delta < -1.0:
+            if (result["duration_delta"] is not None  # type: ignore  # TODO: mypy-strict
+                    and result["duration_delta"] < -1.0):
                 logger.warning(
                     f"Duration loss detected: {duration_delta:.2f}s for {file_path}"
                 )
                 is_degraded = True
 
             # Check for excessive silence events (> 10)
-            if isinstance(silence_events, (int, float)) and silence_events > 10:
+            if (result["silence_events"] is not None  # type: ignore  # TODO: mypy-strict
+                    and result["silence_events"] > 10):
                 logger.warning(
                     f"Excessive silence events: {silence_events} for {file_path}"
                 )

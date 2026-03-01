@@ -78,10 +78,9 @@ class Reporter:
             # Calculate percentages
             if total > 0:
                 results["valid_pct"] = round(100 * results["valid"] / total, 1)  # type: ignore  # TODO: mypy-strict
-                results["salvaged_pct"] = round(
-                    100 * results["salvaged"] / total,
-                    1,
-                )  # type: ignore  # TODO: mypy-strict
+                results["salvaged_pct"] = round(  # type: ignore  # TODO: mypy-strict
+                    100 * results["salvaged"] / total, 1
+                )
                 results["unrecoverable_pct"] = round(  # type: ignore  # TODO: mypy-strict
                     100 * results["unrecoverable"] / total, 1
                 )

@@ -82,9 +82,8 @@ class BeatportProvider(AbstractProvider):
         return {
             "Accept": "*/*",
             "User-Agent": (
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                "AppleWebKit/605.1.15 (KHTML, like Gecko) "
-                "Version/18.0 Safari/605.1.15"
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
+                " AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"
             ),
             "x-nextjs-data": "1",
         }
@@ -280,11 +279,8 @@ class BeatportProvider(AbstractProvider):
 
         return tracks
 
-    def _fetch_nextjs_track(
-        self,
-        track_id: int,
-        slug: str = "track",
-    ) -> Optional[Dict]:  # type: ignore  # TODO: mypy-strict
+    def _fetch_nextjs_track(  # type: ignore  # TODO: mypy-strict
+            self, track_id: int, slug: str = "track") -> Optional[Dict]:
         """Fetch track data via Next.js data endpoint (no auth needed)."""
         build_id = self._get_build_id()
         if not build_id:
@@ -397,10 +393,7 @@ class BeatportProvider(AbstractProvider):
         url = f"{self.MIGRATOR_URL}/track/bulk"
 
         response = self._make_request_no_auth(
-            "GET",
-            url,
-            params={"id": ids_csv},
-            headers={"Accept": "application/json"},
+            "GET", url, params={"id": ids_csv}, headers={"Accept": "application/json"}
         )
         if response is None or response.status_code != 200:
             logger.warning("Bulk Beatsource mapping failed")

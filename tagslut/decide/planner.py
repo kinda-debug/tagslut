@@ -259,6 +259,8 @@ def build_deterministic_plan(
 
 # Legacy duplicate-group assessment helpers (migrated from tagslut.core.decisions).
 # Keep these here to consolidate decision logic in the decide/ module.
+# Note: the old tagslut.utils.plan_filter module was removed as dead code;
+# any future ranking/filter heuristics should be implemented here.
 DEFAULT_ZONE_PRIORITY = ["accepted", "staging"]
 
 

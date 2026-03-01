@@ -21,7 +21,7 @@ from tagslut.utils.parallel import process_map, ProcessMapResult
 from tagslut.utils.config import get_config
 from tagslut.utils.zones import ZoneManager, load_zone_manager
 
-logger = logging.getLogger("tagslut")
+logger = logging.getLogger("tagslut.core.scanner")
 
 
 @dataclass(frozen=True)
@@ -54,7 +54,7 @@ class ScanOutcome:
     skipped: int
 
 
-def _print_scan_summary(
+def _log_scan_summary(
     *,
     session_id: int,
     status: str,
@@ -72,55 +72,55 @@ def _print_scan_summary(
     failure_reasons: dict[str, int] | None = None,
     skip_reasons: dict[str, int] | None = None,
 ) -> None:
-    """Print a human-readable summary of the scan results."""
+    """Log a human-readable summary of the scan results."""
 
-    print("\n" + "=" * 70)
+    logger.info("\n%s", "=" * 70)
     status_line = {
         "completed": "✓ SCAN COMPLETE",
         "aborted": "⚠️  SCAN ABORTED",
         "failed": "✗ SCAN FAILED",
     }.get(status, status.upper())
-    print(status_line)
-    print("=" * 70)
+    logger.info("%s", status_line)
+    logger.info("%s", "=" * 70)
 
-    print(f"\nSession: {session_id}")
-    print(f"Library: {library_name} / Zone: {zone_name} (auto-assigned)")
-    print(f"Database: {db_path}")
-    print(f"\nDiscovered: {discovered:,}")
-    print(f"Queued:     {queued:,}")
-    print(f"Skipped:    {skipped:,}")
+    logger.info("\nSession: %s", session_id)
+    logger.info("Library: %s / Zone: %s (auto-assigned)", library_name, zone_name)
+    logger.info("Database: %s", db_path)
+    logger.info("\nDiscovered: %s", f"{discovered:,}")
+    logger.info("Queued:     %s", f"{queued:,}")
+    logger.info("Skipped:    %s", f"{skipped:,}")
     if skip_reasons:
-        print("\nSkip breakdown:")
+        logger.info("\nSkip breakdown:")
         for reason, count in sorted(skip_reasons.items(), key=lambda x: (-x[1], x[0])):
-            print(f"  • {reason}: {count}")
+            logger.info("  * %s: %s", reason, count)
 
-    print(f"\nSucceeded:  {succeeded:,}")
-    print(f"Failed:     {failed:,}")
+    logger.info("\nSucceeded:  %s", f"{succeeded:,}")
+    logger.info("Failed:     %s", f"{failed:,}")
     if failure_reasons:
-        print("\nFailure breakdown:")
+        logger.info("\nFailure breakdown:")
         for reason, count in sorted(failure_reasons.items(), key=lambda x: (-x[1], x[0])):
-            print(f"  • {reason}: {count}")
+            logger.warning("  * %s: %s", reason, count)
 
     if duration > 0 and succeeded > 0:
-        print(f"\nTime:       {duration:.1f}s ({succeeded/duration:.1f} files/sec)")
+        logger.info("\nTime:       %.1fs (%.1f files/sec)", duration, succeeded / duration)
     else:
-        print(f"\nTime:       {duration:.1f}s")
+        logger.info("\nTime:       %.1fs", duration)
 
-    print("\nChecks performed:")
-    print("  • Metadata extraction: ✓")
-    print("  • STREAMINFO MD5:      ✓ (fast hash)")
-    print(f"  • Full-file SHA256:    {'✓' if scan_hash else '✗'}")
-    print(f"  • Integrity (flac -t): {'✓' if scan_integrity else '✗'}")
+    logger.info("\nChecks performed:")
+    logger.info("  * Metadata extraction: yes")
+    logger.info("  * STREAMINFO MD5:      yes (fast hash)")
+    logger.info("  * Full-file SHA256:    %s", "yes" if scan_hash else "no")
+    logger.info("  * Integrity (flac -t): %s", "yes" if scan_integrity else "no")
 
     if status == "aborted":
-        print("\n⚠️  Partial results were committed in batches before interruption")
-        print("Re-run with --incremental to resume from where you left off")
+        logger.warning("\nPartial results were committed in batches before interruption")
+        logger.warning("Re-run with --incremental to resume from where you left off")
     elif status == "completed":
-        print("\n✓ All changes committed to database")
+        logger.info("\nAll changes committed to database")
         if failed > 0:
-            print("\n⚠️  Some files failed to process - check logs for details")
+            logger.warning("\nSome files failed to process - check logs for details")
 
-    print("=" * 70 + "\n")
+    logger.info("%s\n", "=" * 70)
 
 
 def _scan_one_file(task: ScanTask) -> ScanResult:
@@ -130,10 +130,10 @@ def _scan_one_file(task: ScanTask) -> ScanResult:
     index = task.index
     total = task.total
 
-    # Print visual separator and file info with progress
-    print("\n" + "─" * 70)
-    print(f"📁 [{index}/{total}] {path.name}")
-    print(f"   {path.parent}")
+    # Per-file progress logging
+    logger.debug("\n%s", "-" * 70)
+    logger.debug("[%s/%s] %s", index, total, path.name)
+    logger.debug("  %s", path.parent)
 
     try:
         result = extract_metadata(
@@ -145,18 +145,22 @@ def _scan_one_file(task: ScanTask) -> ScanResult:
         )
 
         # Show what was extracted
-        print("   ✓ Metadata extracted")
+        logger.debug("  Metadata extracted")
         if result.streaminfo_md5:
-            print(f"   ✓ STREAMINFO MD5: {result.streaminfo_md5[:8]}...")
+            logger.debug("  STREAMINFO MD5: %s...", result.streaminfo_md5[:8])
         if result.sha256:
-            print(f"   ✓ Full hash: {result.sha256[:8]}...")
+            logger.debug("  Full hash: %s...", result.sha256[:8])
         if scan_integrity:
-            status = "✓" if result.flac_ok else "✗"
+            status = "ok" if result.flac_ok else "failed"
             state = result.integrity_state or "unknown"
-            print(f"   {status} Integrity: {state}")
+            logger.debug("  Integrity: %s (%s)", state, status)
         if result.duration:
-            print(
-                f"   ♫ Duration: {result.duration:.1f}s, {result.sample_rate}Hz, {result.bit_depth}bit")
+            logger.debug(
+                "  Duration: %.1fs, %sHz, %sbit",
+                result.duration,
+                result.sample_rate,
+                result.bit_depth,
+            )
 
         return ScanResult(
             path=path,
@@ -166,8 +170,7 @@ def _scan_one_file(task: ScanTask) -> ScanResult:
         )
 
     except ValueError as e:
-        print(f"   ✗ Invalid FLAC: {e}")
-        logger.error(f"Failed to process {path}: {e}")
+        logger.warning("Invalid FLAC for %s: %s", path, e)
         return ScanResult(
             path=path,
             run_integrity=scan_integrity,
@@ -176,8 +179,7 @@ def _scan_one_file(task: ScanTask) -> ScanResult:
             error_message=f"{str(e)[:120]}",
         )
     except FileNotFoundError as e:
-        print("   ✗ File not found")
-        logger.error(f"File not found {path}: {e}")
+        logger.warning("File not found %s: %s", path, e)
         return ScanResult(
             path=path,
             run_integrity=scan_integrity,
@@ -186,8 +188,7 @@ def _scan_one_file(task: ScanTask) -> ScanResult:
             error_message="File not found",
         )
     except PermissionError as e:
-        print("   ✗ Permission denied")
-        logger.error(f"Permission denied {path}: {e}")
+        logger.warning("Permission denied %s: %s", path, e)
         return ScanResult(
             path=path,
             run_integrity=scan_integrity,
@@ -196,8 +197,7 @@ def _scan_one_file(task: ScanTask) -> ScanResult:
             error_message="Permission denied",
         )
     except Exception as e:
-        print(f"   ✗ Error: {type(e).__name__}: {str(e)[:50]}")
-        logger.error(f"Failed to process {path}: {e}")
+        logger.warning("Failed to process %s: %s: %s", path, type(e).__name__, str(e)[:50])
         return ScanResult(
             path=path,
             run_integrity=scan_integrity,
@@ -348,7 +348,7 @@ def scan_library(
             conn.commit()
         finally:
             conn.close()
-        _print_scan_summary(
+        _log_scan_summary(
             session_id=session_id,
             status="completed",
             discovered=0,
@@ -579,20 +579,20 @@ def scan_library(
     finally:
         conn.close()
 
-    print("\n" + "=" * 70)
-    print("SCAN PLAN")
-    print("=" * 70)
-    print(f"Database: {db_path} (source={db_source})")
-    print(f"Session:  {session_id}")
-    print(f"Discovered: {total_discovered:,}")
-    print(f"Queued:     {queued:,}")
-    print(f"Skipped:    {skipped:,}")
+    logger.info("\n%s", "=" * 70)
+    logger.info("SCAN PLAN")
+    logger.info("%s", "=" * 70)
+    logger.info("Database: %s (source=%s)", db_path, db_source)
+    logger.info("Session:  %s", session_id)
+    logger.info("Discovered: %s", f"{total_discovered:,}")
+    logger.info("Queued:     %s", f"{queued:,}")
+    logger.info("Skipped:    %s", f"{skipped:,}")
     for reason, count in sorted(skip_reasons.items(), key=lambda x: (-x[1], x[0])):
         if count:
-            print(f"  • {reason}: {count}")
+            logger.info("  * %s: %s", reason, count)
     if limit:
-        print(f"Limit:      {limit}")
-    print("=" * 70 + "\n")
+        logger.info("Limit:      %s", limit)
+    logger.info("%s\n", "=" * 70)
 
     if not scan_tasks:
         ended_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -614,7 +614,7 @@ def scan_library(
             conn.commit()
         finally:
             conn.close()
-        _print_scan_summary(
+        _log_scan_summary(
             session_id=session_id,
             status="completed",
             discovered=total_discovered,
@@ -770,7 +770,7 @@ def scan_library(
     finally:
         conn.close()
 
-    _print_scan_summary(
+    _log_scan_summary(
         session_id=session_id,
         status=status,
         discovered=total_discovered,

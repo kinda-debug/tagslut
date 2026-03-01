@@ -208,8 +208,7 @@ def register_misc_commands(cli: click.Group) -> None:
     @click.option("--limit", type=int, help="Maximum files to process")
     def canonize(path, canon, canon_rules, canon_dry_run, execute, limit):  # type: ignore  # TODO: mypy-strict
         """Apply canonical tag rules to FLAC tags using library_canon.json."""
-        from mutagen.flac import FLAC
-        from tagslut.metadata.canon import load_canon_rules, apply_canon, canon_diff
+        from tagslut.metadata.canon import load_canon_rules, write_canon_to_file
 
         rules_path = Path(canon_rules) if canon_rules else _default_canon_rules_path()
         rules = load_canon_rules(rules_path)
@@ -223,28 +222,23 @@ def register_misc_commands(cli: click.Group) -> None:
 
         if canon_dry_run:
             target = file_paths[0]
-            audio = FLAC(target)
-            before = {k: list(v) if isinstance(v, list) else v for k, v in audio.tags.items()}  # type: ignore  # TODO: mypy-strict
-            after = apply_canon(before, rules) if canon else before
-            diff = canon_diff(before, after)
-            click.echo(diff or "(no changes)")
+            if not canon:
+                click.echo("(canon disabled)")
+                return
+            diff = write_canon_to_file(target, rules, dry_run=True)
+            if not diff:
+                click.echo("(no changes)")
+            else:
+                for field, (old_value, new_value) in diff.items():
+                    click.echo(f"{field}: {old_value!r} -> {new_value!r}")
             return
 
         if not execute:
             click.echo("DRY-RUN: use --execute to write tags")
 
         for idx, file_path in enumerate(file_paths, start=1):
-            audio = FLAC(file_path)
-            before = {k: list(v) if isinstance(v, list) else v for k, v in audio.tags.items()}  # type: ignore  # TODO: mypy-strict
-            after = apply_canon(before, rules) if canon else before
-            if execute:
-                audio.clear()
-                for key, value in after.items():
-                    if isinstance(value, (list, tuple)):
-                        audio[key] = [str(v) for v in value]
-                    else:
-                        audio[key] = str(value)
-                audio.save()
+            if canon:
+                write_canon_to_file(file_path, rules, dry_run=not execute)
             if idx % 250 == 0 or idx == len(file_paths):
                 click.echo(f"Processed {idx}/{len(file_paths)}")
 

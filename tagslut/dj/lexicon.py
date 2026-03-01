@@ -102,6 +102,8 @@ def load_scan_report() -> tuple[list[dict[str, Any]], dict[str, str | None]]:
     with path.open("r", encoding="utf-8", errors="replace", newline="") as handle:
         reader = csv.DictReader(handle)
         for row in reader:
+            if None in row:
+                raise csv.Error("Malformed CSV row: field count does not match header")
             rows.append({k.strip(): v for k, v in row.items()})
     columns = _detect_columns(rows)
     return rows, columns

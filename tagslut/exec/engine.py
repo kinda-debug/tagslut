@@ -142,6 +142,14 @@ class MoveReceipt:
         return payload
 
 
+@dataclass(frozen=True)
+class MovePlanItem:
+    """One move-plan row to execute via the engine."""
+
+    src: Path
+    dest: Path
+
+
 def _build_receipt(
     *,
     status: MoveStatus,
@@ -397,3 +405,21 @@ def execute_move(
         verification_errors=issues,
         error=f"verification_failed:{','.join(issues)}",
     )
+
+
+def execute_move_plan(
+    plan_items: list[MovePlanItem],
+    *,
+    execute: bool,
+    collision_policy: CollisionPolicy = "skip",
+) -> list[MoveReceipt]:
+    """Execute a list of move-plan items and return per-row receipts."""
+    return [
+        execute_move(
+            item.src,
+            item.dest,
+            execute=execute,
+            collision_policy=collision_policy,
+        )
+        for item in plan_items
+    ]

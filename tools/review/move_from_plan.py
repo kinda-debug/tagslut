@@ -23,6 +23,7 @@ import argparse
 import csv
 import json
 import sqlite3
+import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -182,6 +183,11 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    print(
+        "DEPRECATION NOTICE: tools/review/move_from_plan.py is deprecated; "
+        "use 'tagslut execute move-plan --plan ...' instead.",
+        file=sys.stderr,
+    )
     args = parse_args()
     plan_csv = args.plan_csv.expanduser().resolve()
     source_root = args.source_root.expanduser().resolve()

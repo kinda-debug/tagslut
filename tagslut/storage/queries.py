@@ -771,8 +771,13 @@ def get_all_checksums(conn: sqlite3.Connection) -> List[str]:
 
 def _row_to_audiofile(row: sqlite3.Row) -> AudioFile:
     """Helper to convert a DB row back to an AudioFile object."""
+    row_keys = set(row.keys())
+
+    def _get(key: str, default: Any = None) -> Any:
+        return row[key] if key in row_keys else default
+
     # Handle JSON deserialization safely
-    meta_json = row["metadata_json"]
+    meta_json = _get("metadata_json")
     metadata: Dict[str, Any] = {}
     if meta_json:
         try:
@@ -781,35 +786,13 @@ def _row_to_audiofile(row: sqlite3.Row) -> AudioFile:
             logger.warning(f"Corrupt metadata JSON for {row['path']}")
             metadata = {}
 
-    library = None
-    zone = None
-    integrity_state = None
-    try:
-        if "library" in row.keys():
-            library = row["library"]
-        if "zone" in row.keys():
-            zone = coerce_zone(row["zone"])
-        if "integrity_state" in row.keys():
-            integrity_state = row["integrity_state"]
-    except Exception as e:
-        logger.warning("Failed to read library/zone/integrity_state fields for %s: %s", row["path"], e)
-        library = None
-        zone = None
-        integrity_state = None
+    library = _get("library")
+    zone = coerce_zone(_get("zone"))
+    integrity_state = _get("integrity_state")
+    mtime = _get("mtime")
+    size = _get("size")
 
-    mtime = None
-    size = None
-    try:
-        if "mtime" in row.keys():
-            mtime = row["mtime"]
-        if "size" in row.keys():
-            size = row["size"]
-    except Exception as e:
-        logger.warning("Failed to read mtime/size fields for %s: %s", row["path"], e)
-        mtime = None
-        size = None
-
-    flac_ok = row["flac_ok"]
+    flac_ok = _get("flac_ok")
     if flac_ok is not None:
         flac_ok = bool(flac_ok)
     if not integrity_state and flac_ok is not None:
@@ -821,21 +804,19 @@ def _row_to_audiofile(row: sqlite3.Row) -> AudioFile:
         zone=zone,
         mtime=mtime,
         size=size,
-        checksum=row["checksum"],
-        streaminfo_md5=row["streaminfo_md5"] if "streaminfo_md5" in row.keys() else None,
-        sha256=row["sha256"] if "sha256" in row.keys() else None,
-        duration=row["duration"],
-        bit_depth=row["bit_depth"],
-        sample_rate=row["sample_rate"],
-        bitrate=row["bitrate"],
+        checksum=_get("checksum", ""),
+        streaminfo_md5=_get("streaminfo_md5"),
+        sha256=_get("sha256"),
+        duration=_get("duration"),
+        bit_depth=_get("bit_depth"),
+        sample_rate=_get("sample_rate"),
+        bitrate=_get("bitrate"),
         metadata=metadata,
         flac_ok=flac_ok,
-        acoustid=row["acoustid"],
+        acoustid=_get("acoustid"),
         integrity_state=integrity_state,
-        integrity_checked_at=row["integrity_checked_at"] if "integrity_checked_at" in row.keys(
-        ) else None,
-        streaminfo_checked_at=row["streaminfo_checked_at"] if "streaminfo_checked_at" in row.keys(
-        ) else None,
-        sha256_checked_at=row["sha256_checked_at"] if "sha256_checked_at" in row.keys() else None,
-        checksum_type=row["checksum_type"] if "checksum_type" in row.keys() else None,
+        integrity_checked_at=_get("integrity_checked_at"),
+        streaminfo_checked_at=_get("streaminfo_checked_at"),
+        sha256_checked_at=_get("sha256_checked_at"),
+        checksum_type=_get("checksum_type"),
     )

@@ -193,3 +193,48 @@ def canon_diff(before: MutableMapping[str, Any], after: MutableMapping[str, Any]
         lineterm="",
     )
     return "\n".join(diff)
+
+
+def write_canon_to_file(path: Path, rules: CanonRules, *, dry_run: bool = True) -> dict[str, tuple[Any, Any]]:
+    """
+    Apply canon rules to a FLAC/MP3 file and optionally write transformed tags.
+
+    Returns a field-level diff: {field: (old_value, new_value)} for changed fields.
+    """
+    from mutagen import File as MutagenFile  # type: ignore  # TODO: mypy-strict
+
+    suffix = path.suffix.lower()
+    if suffix not in {".flac", ".mp3"}:
+        raise ValueError(f"Unsupported file format for canon writeback: {path}")
+
+    audio = MutagenFile(path, easy=True)
+    if audio is None:
+        raise ValueError(f"Unsupported or unreadable audio file: {path}")
+
+    before: dict[str, Any] = {}
+    if audio.tags is not None:
+        before = {
+            key: list(value) if isinstance(value, (list, tuple)) else value
+            for key, value in audio.items()  # type: ignore[attr-defined]
+        }
+
+    after = apply_canon(before, rules)
+    diff: dict[str, tuple[Any, Any]] = {}
+    all_keys = set(before.keys()) | set(after.keys())
+    for key in sorted(all_keys):
+        old_value = before.get(key)
+        new_value = after.get(key)
+        if old_value != new_value:
+            diff[key] = (old_value, new_value)
+
+    if dry_run or not diff:
+        return diff
+
+    audio.clear()  # type: ignore[attr-defined]
+    for key, value in after.items():
+        if isinstance(value, (list, tuple)):
+            audio[key] = [str(v) for v in value]  # type: ignore[index]
+        else:
+            audio[key] = [str(value)]  # type: ignore[index]
+    audio.save()  # type: ignore[attr-defined]
+    return diff

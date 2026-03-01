@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from tagslut.exec.engine import execute_move, verify_receipt
+from tagslut.exec.engine import MovePlanItem, execute_move, execute_move_plan, verify_receipt
 
 
 def test_move_plan_execution_moves_file(tmp_path: Path) -> None:
@@ -49,3 +49,28 @@ def test_successful_move_receipt_verification(tmp_path: Path) -> None:
     assert receipt.status == "moved"
     assert ok is True
     assert issues == []
+
+
+def test_execute_move_plan_full_flow(tmp_path: Path) -> None:
+    src1 = tmp_path / "incoming" / "a.flac"
+    src2 = tmp_path / "incoming" / "b.flac"
+    dest1 = tmp_path / "library" / "a.flac"
+    dest2 = tmp_path / "library" / "b.flac"
+    src1.parent.mkdir(parents=True)
+    src1.write_text("a", encoding="utf-8")
+    src2.write_text("b", encoding="utf-8")
+
+    receipts = execute_move_plan(
+        [
+            MovePlanItem(src=src1, dest=dest1),
+            MovePlanItem(src=src2, dest=dest2),
+        ],
+        execute=True,
+    )
+
+    assert len(receipts) == 2
+    assert all(r.status == "moved" for r in receipts)
+    assert dest1.exists()
+    assert dest2.exists()
+    assert not src1.exists()
+    assert not src2.exists()

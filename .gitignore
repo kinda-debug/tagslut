@@ -215,3 +215,4 @@ artifacts/
 !artifacts/manifests/.gitkeep
 !artifacts/reports/
 !artifacts/reports/.gitkeep
+docs/archive/20260301_perplexity_chat_log.md

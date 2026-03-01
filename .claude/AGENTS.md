@@ -28,9 +28,11 @@ This repository manages a **music library deduplication and rebuild effort** aft
 7. `tagslut auth ...`
 
 Compatibility aliases:
+
 - `dedupe ...`
 
 Reference map:
+
 - `docs/SCRIPT_SURFACE.md`
 - `docs/SURFACE_POLICY.md`
 

@@ -22,6 +22,8 @@ from pathlib import Path
 
 import numpy as np
 
+from _progress import ProgressTracker
+
 
 @dataclass(frozen=True)
 class ScanRow:
@@ -267,6 +269,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--delete-source", action="store_true", help="Delete AIFF source after successful conversion")
     parser.add_argument("--execute", action="store_true", help="Perform conversion actions (default: dry-run)")
     parser.add_argument("--report-prefix", type=Path, help="Custom output prefix (without extension)")
+    parser.add_argument("--progress-interval", type=int, default=25, help="Progress print interval")
     return parser.parse_args()
 
 
@@ -298,13 +301,14 @@ def main() -> int:
 
     print(f"Scanning {len(files)} AIFF file(s)...")
     rows: list[ScanRow] = []
+    scan_progress = ProgressTracker(total=len(files), interval=int(args.progress_interval), label="Scan")
     for index, file_path in enumerate(files, start=1):
         row = _scan_file(file_path, max_seconds=float(args.sample_seconds))
         rows.append(row)
-        if index % 25 == 0 or index == len(files):
+        if scan_progress.should_print(index):
             confirmed = sum(1 for r in rows if r.status == "confirmed_suspect_transcode")
             suspect = sum(1 for r in rows if r.status in {"confirmed_suspect_transcode", "suspect_transcode"})
-            print(f"Processed {index}/{len(files)} | confirmed={confirmed} suspect={suspect}")
+            print(scan_progress.line(index, extra=f"confirmed={confirmed} suspect={suspect}"))
 
     _write_scan_outputs(rows, out_csv=out_csv, out_confirmed=out_confirmed, out_suspect=out_suspect)
 
@@ -342,6 +346,7 @@ def main() -> int:
         converted = 0
         skipped = 0
         failed = 0
+        convert_progress = ProgressTracker(total=len(selected), interval=int(args.progress_interval), label="Convert")
         for source_path in selected:
             if args.dest_root:
                 rel = source_path.relative_to(root if root.is_dir() else source_path.parent)
@@ -362,6 +367,15 @@ def main() -> int:
                 skipped += 1
             else:
                 failed += 1
+
+            completed = converted + skipped + failed
+            if convert_progress.should_print(completed):
+                print(
+                    convert_progress.line(
+                        completed,
+                        extra=f"converted={converted} skipped={skipped} failed={failed}",
+                    )
+                )
 
         print("--- Convert Summary ---")
         print(f"Planned/attempted: {len(selected)}")

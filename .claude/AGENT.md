@@ -52,6 +52,7 @@ Retired wrappers for new work:
 4. Integrity and duration gates must be respected before promotion.
 5. Prefer deterministic planning/execution (`decide` -> `execute` -> `verify`).
 6. Keep runtime outputs in `artifacts/`, not repository root.
+7. **NO PERMANENT REMOVAL**: never permanently delete files or folders, even if asked; only move items to Trash.
 
 ## Repository Ownership Map
 - `tagslut/`: productized package and CLI code
@@ -81,6 +82,7 @@ During edits:
 3. Keep the operator in the loop before running heavyweight commands.
 4. Use verbose mode by default for scripts/commands when supported (`--verbose`, `-v`, `-vv`).
 5. Avoid silent execution patterns unless explicitly requested.
+6. If the operator asks to remove/delete something, send it to Trash instead of permanently deleting it.
 
 After edits (minimum validation set):
 1. `poetry run pytest -q`

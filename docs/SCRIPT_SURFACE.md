@@ -79,7 +79,7 @@ Role: Combined build + run OneTagger workflow with defaults.
 ## Retired Command Groups
 
 Retired in Phase 5 (not operator-facing):
-- tagslut scan
+- tagslut scan ...
 - tagslut recommend
 - tagslut apply
 - tagslut promote
@@ -89,8 +89,8 @@ Retired in Phase 5 (not operator-facing):
 - tagslut recover ...
 
 Internal hidden commands (`_mgmt`, `_metadata`, `_recover`) may exist for
-code-organization compatibility, but they are implementation details only and
-not operator-facing entry points.
+code-organization compatibility only. They are implementation details, not
+operator-facing commands.
 
 Use `tagslut intake/index/decide/execute/verify/report/auth` for new work.
 

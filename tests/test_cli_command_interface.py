@@ -93,6 +93,11 @@ def test_phase5_removed_top_level_commands_absent() -> None:
         assert removed not in commands
 
 
+def test_scan_not_in_cli():
+    from tagslut.cli.main import cli
+    assert "scan" not in cli.commands
+
+
 def test_scan_not_registered_in_click_command_map() -> None:
     assert "scan" not in [cmd.name for cmd in cli.commands.values()]
 

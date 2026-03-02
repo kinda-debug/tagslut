@@ -51,15 +51,28 @@ def test_load_track_overrides_skips_comments_invalid_and_short_rows(tmp_path: Pa
 
 
 def test_enrich_prefers_path_then_artist_title_match() -> None:
-    columns = {"path": "path", "artist": "artist", "title": "title", "bpm": "bpm", "key": "key", "genre": "genre", "duration": "duration"}
+    columns = {
+        "path": "path", "artist": "artist", "title": "title",
+        "bpm": "bpm", "key": "key", "genre": "genre", "duration": "duration",
+    }
     rows = [
-        {"path": "known.flac", "artist": "X", "title": "Y", "bpm": "124", "key": "8A", "genre": "Techno", "duration": "372"},
-        {"path": "other.flac", "artist": "Artist Name", "title": "Track Name", "bpm": "126", "key": "9B", "genre": "House", "duration": "401"},
+        {
+            "path": "known.flac", "artist": "X", "title": "Y",
+            "bpm": "124", "key": "8A", "genre": "Techno", "duration": "372",
+        },
+        {
+            "path": "other.flac", "artist": "Artist Name", "title": "Track Name",
+            "bpm": "126", "key": "9B", "genre": "House", "duration": "401",
+        },
     ]
     index = lexicon._scan_index(rows, columns)
 
-    by_path = LexiconTrack(path="known.flac", artist="Nope", title="Nope", verdict="safe", reason="", crate="")
-    by_artist_title = LexiconTrack(path="", artist="  artist  name ", title="track   name", verdict="safe", reason="", crate="")
+    by_path = LexiconTrack(
+        path="known.flac", artist="Nope", title="Nope", verdict="safe", reason="", crate=""
+    )
+    by_artist_title = LexiconTrack(
+        path="", artist="  artist  name ", title="track   name", verdict="safe", reason="", crate=""
+    )
 
     lexicon._enrich(by_path, index, columns)
     lexicon._enrich(by_artist_title, index, columns)

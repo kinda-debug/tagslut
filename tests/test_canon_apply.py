@@ -72,7 +72,9 @@ def test_removes_underscore_prefixed_keys():
     assert out["artist"] == "Daft Punk"
 
 
-def test_write_canon_to_file_dry_run_returns_diff_without_saving(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_write_canon_to_file_dry_run_returns_diff_without_saving(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     rules = load_canon_rules(RULES_PATH)
     audio_path = tmp_path / "sample.flac"
     audio_path.write_text("stub", encoding="utf-8")
@@ -104,7 +106,9 @@ def test_write_canon_to_file_dry_run_returns_diff_without_saving(monkeypatch: py
     assert fake_audio.saved is False
 
 
-def test_write_canon_to_file_execute_with_mock_mutagen_object(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_write_canon_to_file_execute_with_mock_mutagen_object(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     rules = load_canon_rules(RULES_PATH)
     audio_path = tmp_path / "sample.mp3"
     audio_path.write_text("stub", encoding="utf-8")

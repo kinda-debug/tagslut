@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
-logger = logging.getLogger("tagslut.usb_export")
+logger = logging.getLogger(__name__)
 
 SUPPORTED_EXTENSIONS = {".mp3", ".flac", ".aif", ".aiff", ".wav", ".m4a"}
 

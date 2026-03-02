@@ -10,7 +10,8 @@ from typing import Any
 
 from tagslut.dj.transcode import TrackRow, build_output_path, make_dedupe_key
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
+log = logger
 
 
 @dataclass
@@ -390,7 +391,7 @@ def push_to_lexicon_api(
     try:
         import requests  # type: ignore
     except Exception as e:
-        log.debug("requests import unavailable for lexicon push: %s", e)
+        logger.debug("requests import unavailable for lexicon push: %s", e)
         requests = None
 
     if requests is None:
@@ -435,7 +436,12 @@ def push_to_lexicon_api(
         try:
             r = requests.patch(url, json=payload, timeout=5)
         except Exception as e:
-            log.debug("Failed to push track %s - %s to Lexicon API: %s", track.get("artist"), track.get("title"), e)
+            logger.debug(
+                "Failed to push track %s - %s to Lexicon API: %s",
+                track.get("artist"),
+                track.get("title"),
+                e,
+            )
             failed += 1
             continue
         if r.status_code >= 400:

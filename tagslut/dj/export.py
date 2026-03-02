@@ -13,7 +13,8 @@ from tagslut.dj.curation import CurationResult, DjCurationConfig, filter_candida
 from tagslut.dj.key_detection import detect_key, is_keyfinder_available
 from tagslut.dj.transcode import TrackRow, transcode_one
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
+log = logger
 
 
 @dataclass
@@ -214,14 +215,14 @@ def get_audio_duration(path: Path, timeout_sec: int = 8) -> float | None:
     try:
         from mutagen import File as MutagenFile  # type: ignore
     except Exception as e:
-        log.debug("mutagen import unavailable while probing duration for %s: %s", path, e)
+        logger.debug("mutagen import unavailable while probing duration for %s: %s", path, e)
         MutagenFile = None
 
     if MutagenFile is not None:
         try:
             audio = MutagenFile(path)
         except Exception as e:
-            log.debug("mutagen failed while probing duration for %s: %s", path, e)
+            logger.debug("mutagen failed while probing duration for %s: %s", path, e)
             audio = None
         if audio is not None and hasattr(audio, "info") and hasattr(audio.info, "length"):
             try:
@@ -229,7 +230,7 @@ def get_audio_duration(path: Path, timeout_sec: int = 8) -> float | None:
                 if duration > 0:
                     return duration
             except Exception as e:
-                log.debug("Failed to parse audio duration for %s: %s", path, e)
+                logger.debug("Failed to parse audio duration for %s: %s", path, e)
                 pass
 
     cmd = [

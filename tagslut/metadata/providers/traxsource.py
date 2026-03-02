@@ -20,7 +20,7 @@ from typing import Any, Dict, List, Optional
 from tagslut.metadata.models.types import MatchConfidence, ProviderTrack
 from tagslut.metadata.providers.base import AbstractProvider, RateLimitConfig
 
-logger = logging.getLogger("tagslut.metadata.providers.traxsource")
+logger = logging.getLogger(__name__)
 
 # Browser-like UA avoids aggressive bot filtering
 _USER_AGENT = (

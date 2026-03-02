@@ -12,7 +12,7 @@ import httpx
 from tagslut.metadata.models.types import ProviderTrack, MatchConfidence
 from tagslut.metadata.auth import TokenManager, TokenInfo
 
-logger = logging.getLogger("tagslut.metadata.providers")
+logger = logging.getLogger(__name__)
 
 
 @dataclass

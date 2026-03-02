@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Optional
 from tagslut.metadata.models.types import MatchConfidence, ProviderTrack
 from tagslut.metadata.providers.base import AbstractProvider, RateLimitConfig
 
-logger = logging.getLogger("tagslut.metadata.providers.musicbrainz")
+logger = logging.getLogger(__name__)
 
 # User-Agent required by MusicBrainz policy: https://musicbrainz.org/doc/MusicBrainz_API/Rate_Limiting
 _USER_AGENT = "tagslut/2.0 ( https://github.com/tagslut/tagslut )"

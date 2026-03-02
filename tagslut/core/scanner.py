@@ -21,7 +21,7 @@ from tagslut.utils.parallel import process_map, ProcessMapResult
 from tagslut.utils.config import get_config
 from tagslut.utils.zones import ZoneManager, load_zone_manager
 
-logger = logging.getLogger("tagslut.core.scanner")
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -472,7 +472,7 @@ def scan_library(
             cur_mtime = float(st.st_mtime)
             cur_size = int(st.st_size)
         except Exception as e:
-            logger.debug("Failed to stat %s during scan planning: %s", path, e)
+            logger.warning("Failed to stat %s during scan planning: %s", path, e)
             cur_mtime = None
             cur_size = None
 

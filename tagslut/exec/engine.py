@@ -37,7 +37,7 @@ def _same_filesystem(src: Path, dest: Path) -> bool:
     try:
         return os.stat(src).st_dev == os.stat(dest.parent).st_dev
     except Exception as e:
-        logger.debug("Could not compare filesystem devices for %s -> %s: %s", src, dest, e)
+        logger.warning("Could not compare filesystem devices for %s -> %s: %s", src, dest, e)
         return False
 
 

@@ -21,7 +21,7 @@ from tagslut.storage.schema import (
     STEP0_SCAN_TABLE,
 )
 
-logger = logging.getLogger("tagslut")
+logger = logging.getLogger(__name__)
 
 
 def _normalize_metadata_value(value: object) -> object:

@@ -26,6 +26,7 @@ from tagslut.dj.classify import (
     promote_safe_tracks,
     write_m3u,
 )
+from tagslut.dj.rekordbox_prep import run_rekordbox_prep
 from tagslut.dj.transcode import (
     TrackRow,
     assign_output_paths,
@@ -410,6 +411,66 @@ def export(
 
     if safe_only:
         click.echo(f"Exported {len(deduped)} tracks. {skipped} skipped (not yet classified).")
+
+
+@dj_group.command("prep-rekordbox")
+@click.option(
+    "--root",
+    "root_path",
+    required=True,
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    help="Curated DJ source folder to scan recursively.",
+)
+@click.option(
+    "--out",
+    "out_path",
+    required=True,
+    type=click.Path(file_okay=False, path_type=Path),
+    help="Output mirror folder (MP3 CBR 320, 44.1kHz, ID3v2.3, embedded cover).",
+)
+@click.option(
+    "--quarantine",
+    "quarantine_path",
+    required=True,
+    type=click.Path(file_okay=False, path_type=Path),
+    help="Quarantine folder for replaced originals.",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Plan only; recommended first run for safety.",
+)
+def prep_rekordbox(
+    root_path: Path,
+    out_path: Path,
+    quarantine_path: Path,
+    dry_run: bool,
+) -> None:
+    """Prepare a curated folder for Rekordbox. Use --dry-run first (recommended)."""
+    try:
+        result = run_rekordbox_prep(
+            root=root_path.expanduser().resolve(),
+            out=out_path.expanduser().resolve(),
+            quarantine=quarantine_path.expanduser().resolve(),
+            dry_run=dry_run,
+        )
+    except (FileNotFoundError, RuntimeError) as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    if result.stdout.strip():
+        click.echo(result.stdout.rstrip())
+    if result.stderr.strip():
+        click.echo(result.stderr.rstrip(), err=True)
+
+    summary = result.summary
+    click.echo("")
+    click.echo("Rekordbox prep summary:")
+    click.echo(f"Tracks processed:   {summary.tracks_processed}")
+    click.echo(f"SUSPECT_UPSCALE:   {summary.suspect_upscale_count}")
+    click.echo(f"Files quarantined: {summary.files_quarantined}")
+    click.echo(f"CSV report:        {summary.report_path}")
+    if dry_run and not summary.report_path.exists():
+        click.echo("Dry run: upstream script does not write the CSV report file.")
 
 
 @dj_group.group("lexicon")

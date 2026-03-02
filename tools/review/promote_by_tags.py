@@ -282,6 +282,8 @@ def main():
         action="store_true",
         help="Allow promotion when duration_status is not ok (default: block when DB is available)",
     )
+    parser.add_argument("--force", action="store_true",
+                        help="Overwrite existing destination files")
     parser.add_argument("--execute", action="store_true",
                         help="Actually perform moves (default is dry-run)")
     parser.add_argument(
@@ -384,7 +386,7 @@ def main():
             title = first_tag(promo_tags, ["title"]) or src.name
 
             ui.print(f"[{i:4d}/{total}] {artist[:25]:<25} │ {album[:30]:<30} │ {title[:30]}")
-            moved = ops.safe_move(src, dest, skip_confirmation=True)
+            moved = ops.safe_move(src, dest, skip_confirmation=True, allow_overwrite=args.force)
             if not moved:
                 skip_count += 1
                 continue

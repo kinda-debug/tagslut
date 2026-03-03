@@ -20,6 +20,7 @@ Define the supported command/script surface during v3 migration so operators and
 
 Reference map:
 - `docs/SCRIPT_SURFACE.md`
+- `docs/MOVE_EXECUTOR_COMPAT.md` (single canonical move executor contract)
 
 Branding note:
 - `tagslut` is the preferred CLI brand.

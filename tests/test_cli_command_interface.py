@@ -93,6 +93,22 @@ def test_phase5_removed_top_level_commands_absent() -> None:
         assert removed not in commands
 
 
+def test_no_retired_commands_in_cli() -> None:
+    retired = {
+        "scan",
+        "recommend",
+        "apply",
+        "promote",
+        "quarantine",
+        "mgmt",
+        "metadata",
+        "recover",
+        "dedupe",
+    }
+    registered = set(cli.commands.keys())
+    assert registered.isdisjoint(retired), f"Retired commands still registered: {registered & retired}"
+
+
 def test_scan_not_in_cli():
     from tagslut.cli.main import cli
     assert "scan" not in cli.commands

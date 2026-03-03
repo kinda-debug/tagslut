@@ -1,7 +1,7 @@
 [project]
 name = "tagslut"
-version = "2.0.0"
-description = "Tagslut: recovery-first music library deduplication and metadata orchestration toolkit."
+version = "3.0.0"
+description = "Tagslut: hi-res music library management and DJ pool orchestration toolkit for audiophile DJs."
 readme = "README.md"
 requires-python = ">=3.11,<4.0"
 authors = [

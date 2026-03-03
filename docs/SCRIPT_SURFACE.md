@@ -28,8 +28,17 @@ Role: M3U and operational reports (duration, recovery, plan summaries).
 7. `poetry run tagslut auth ...`
 Role: Provider authentication and token lifecycle flows.
 
-8. `poetry run tagslut export usb ...`
-Role: Export a source folder of MP3/FLAC tracks to a Pioneer CDJ-ready USB (writes PIONEER/ database via pyrekordbox, creates crate, outputs manifest).
+8. `poetry run tagslut dj ...`
+Role: DJ library curation and USB export workflows.
+
+9. `poetry run tagslut gig ...`
+Role: Build and manage DJ gig sets.
+
+10. `poetry run tagslut export ...`
+Role: Export tracks to USB or DJ pools.
+
+11. `poetry run tagslut init ...`
+Role: First-run interactive initialization wizard.
 
 ## Rebrand Invocation
 
@@ -92,11 +101,18 @@ Internal hidden commands (`_mgmt`, `_metadata`, `_recover`) may exist for
 code-organization compatibility only. They are implementation details, not
 operator-facing commands.
 
-Use `tagslut intake/index/decide/execute/verify/report/auth` for new work.
+Hidden top-level commands by policy:
+- `tagslut canonize ...`
+- `tagslut enrich-file ...`
+- `tagslut explain-keeper ...`
+- `tagslut show-zone ...`
+- `tagslut recovery ...`
+
+Use `tagslut intake/index/decide/execute/verify/report/auth/dj/gig/export/init` for new work.
 
 ## Recovery Command Status
 
-- `tagslut recovery` is currently a minimal stub logger and does not implement the full move pipeline described in some historical docs.
+- `tagslut recovery` is a hidden minimal stub logger and does not implement the full move pipeline described in some historical docs.
 - For move execution today, use:
   - Plan generation scripts in `tools/review/`
   - `tools/review/move_from_plan.py`

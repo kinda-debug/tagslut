@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import re
 from pathlib import Path
 
 import tomllib
@@ -96,3 +97,58 @@ def test_integrity_scanner_orphan_absent() -> None:
 def test_scan_library_accessible_from_core_scanner() -> None:
     """Verify that scan_library is importable from tagslut.core.scanner."""
     from tagslut.core.scanner import scan_library  # noqa: F401
+
+
+def test_docs_readme_exists() -> None:
+    """Ensure docs index referenced by root README exists."""
+    assert (PROJECT_ROOT / "docs" / "README.md").exists()
+
+
+def test_docs_readme_links_resolve_to_repo_files() -> None:
+    """Ensure all local markdown links in docs/README.md point to existing files."""
+    docs_readme = PROJECT_ROOT / "docs" / "README.md"
+    text = docs_readme.read_text(encoding="utf-8")
+    links = re.findall(r"\[[^\]]+\]\(([^)]+)\)", text)
+
+    assert links, "docs/README.md should contain markdown links"
+    for link in links:
+        if link.startswith(("http://", "https://", "mailto:", "#")):
+            continue
+        target = (docs_readme.parent / link).resolve()
+        assert target.exists(), f"Broken docs link in docs/README.md: {link}"
+
+
+def test_archived_classifier_changelog_exists() -> None:
+    """Ensure classifier-specific changelog was archived out of project root."""
+    archived = PROJECT_ROOT / "docs" / "archive" / "CLASSIFY_V2_CHANGELOG.md"
+    assert archived.exists(), "Expected archived classifier changelog at docs/archive/CLASSIFY_V2_CHANGELOG.md"
+
+
+def test_recovery_package_absent_or_stubbed() -> None:
+    """Ensure `tagslut.recovery` implementation is archived from live package."""
+    recovery_dir = PROJECT_ROOT / "tagslut" / "recovery"
+    if not recovery_dir.exists():
+        return
+
+    init_file = recovery_dir / "__init__.py"
+    assert init_file.exists(), "tagslut/recovery must be absent or contain a stub __init__.py"
+    live_modules = sorted(path.name for path in recovery_dir.glob("*.py") if path.name != "__init__.py")
+    assert not live_modules, f"Unexpected live recovery modules remain: {live_modules}"
+    init_text = init_file.read_text(encoding="utf-8")
+    assert "DeprecatedModule" in init_text
+    assert "ImportError" in init_text
+
+
+def test_scan_package_absent_or_stubbed() -> None:
+    """Ensure `tagslut.scan` implementation is archived from live package."""
+    scan_dir = PROJECT_ROOT / "tagslut" / "scan"
+    if not scan_dir.exists():
+        return
+
+    init_file = scan_dir / "__init__.py"
+    assert init_file.exists(), "tagslut/scan must be absent or contain a stub __init__.py"
+    live_modules = sorted(path.name for path in scan_dir.glob("*.py") if path.name != "__init__.py")
+    assert not live_modules, f"Unexpected live scan modules remain: {live_modules}"
+    init_text = init_file.read_text(encoding="utf-8")
+    assert "DeprecatedModule" in init_text
+    assert "ImportError" in init_text

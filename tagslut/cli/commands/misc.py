@@ -199,7 +199,7 @@ def _write_toml_file(config: dict, path: Path) -> None:  # type: ignore  # TODO:
 
 
 def register_misc_commands(cli: click.Group) -> None:
-    @cli.command("canonize")
+    @cli.command("canonize", hidden=True)
     @click.argument("path", type=click.Path(exists=True))
     @click.option("--canon/--no-canon", default=True, help="Enable canonical tag rules")
     @click.option("--canon-rules", type=click.Path(exists=True), help="Path to canon rules JSON")
@@ -242,7 +242,7 @@ def register_misc_commands(cli: click.Group) -> None:
             if idx % 250 == 0 or idx == len(file_paths):
                 click.echo(f"Processed {idx}/{len(file_paths)}")
 
-    @cli.command("show-zone")
+    @cli.command("show-zone", hidden=True)
     @click.argument("path", type=click.Path())
     @click.option("--zones-config", type=click.Path(exists=True), help="Path to zones YAML config")
     @click.option("--config", "-c", type=click.Path(exists=True), help="Path to config.toml")
@@ -265,7 +265,7 @@ def register_misc_commands(cli: click.Group) -> None:
         click.echo(f"Matched root: {match.matched_path or '(none)'}")
         click.echo(f"Config source: {match.source}")
 
-    @cli.command("explain-keeper")
+    @cli.command("explain-keeper", hidden=True)
     @click.option("--db", type=click.Path(), required=True, help="Database path")
     @click.option("--group-id", required=True, help="Duplicate group id (checksum)")
     @click.option("--zones-config", type=click.Path(exists=True), help="Path to zones YAML config")
@@ -314,7 +314,7 @@ def register_misc_commands(cli: click.Group) -> None:
         for line in selection.explanations:
             click.echo(line)
 
-    @cli.command("enrich-file")
+    @cli.command("enrich-file", hidden=True)
     @click.option("--db", type=click.Path(), required=False, help="Database path")
     @click.option("--file", "file_path", type=click.Path(), required=True, help="Exact file path in DB (or on disk in --standalone mode)")
     @click.option("--providers", default="beatport,tidal,deezer,itunes", help="Comma-separated providers")
@@ -925,7 +925,7 @@ def register_misc_commands(cli: click.Group) -> None:
                     rows = reporter.export_csv(output_path, include_valid=include_valid)
                 click.echo(f"Exported {rows} records to {output_path}")
 
-    @cli.command()
+    @cli.command("recovery", hidden=True)
     @click.argument("paths", nargs=-1, type=click.Path(exists=True))
     @click.option("--db", type=click.Path(), help="Database path (auto-detect from env if not provided)")
     @click.option("--zone", help="Target zone (accepted, staging, etc.)")

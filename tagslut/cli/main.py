@@ -62,7 +62,7 @@ class _TagslutGroup(click.Group):
 
 
 @click.group(cls=_TagslutGroup)
-@click.version_option(version="2.0.0")
+@click.version_option(version="3.0.0")
 def cli():  # type: ignore  # TODO: mypy-strict
     """Tagslut CLI."""
 
@@ -81,8 +81,8 @@ cli.add_command(dj_group)
 cli.add_command(export_group, name="export")
 cli.add_command(gig_group, name="gig")
 
-# Register standalone misc commands (canonize, show-zone, explain-keeper,
-# enrich-file, init, _recover, recovery)
+# Register standalone misc commands (`init` is operator-facing; debug/stub
+# helpers are hidden from top-level help).
 register_misc_commands(cli)
 
 

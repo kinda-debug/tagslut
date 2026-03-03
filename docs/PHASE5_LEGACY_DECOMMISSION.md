@@ -115,7 +115,7 @@ wrappers because they were documented as operator-facing.
 
 Before declaring Phase 5 complete, all of the following must pass:
 
-- [ ] `tagslut --help` output contains no references to retired wrappers
+- [x] `tagslut --help` output contains no references to retired wrappers
 - [ ] `scripts/check_cli_docs_consistency.py` passes in CI
 - [x] All P5-LEG-* and P5-COMP-* tickets reach **Archived** status
 - [x] `docs/SCRIPT_SURFACE.md` updated — no retired commands in active surface

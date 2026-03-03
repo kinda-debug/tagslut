@@ -52,6 +52,7 @@ EXPECTED_V2_FILES_COLUMNS_STRICT = {
     "download_source",
     "download_date",
     "mgmt_status",
+    "enriched_at",
     "canonical_isrc",
     "isrc",
     "beatport_id",
@@ -296,6 +297,7 @@ def _upsert_track_identity(
         "canonical_bpm": _to_float(row.get("canonical_bpm")),
         "canonical_key": _norm_text(row.get("canonical_key")),
         "canonical_payload_json": _json_dump(canonical_payload) if canonical_payload else None,
+        "enriched_at": _norm_text(row.get("enriched_at")),
         "duration_ref_ms": _duration_measured_ms(row),
         "ref_source": "v2_migration",
     }
@@ -882,6 +884,7 @@ def migrate_v2_to_v3(
             "download_source",
             "download_date",
             "mgmt_status",
+            "enriched_at",
             "flac_ok",
             "integrity_state",
             "integrity_checked_at",

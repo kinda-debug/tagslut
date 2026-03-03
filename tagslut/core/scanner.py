@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from tagslut.core.metadata import extract_metadata
+from tagslut.policy.v3.staleness import is_hash_stale, is_integrity_stale
 from tagslut.storage.models import AudioFile
 from tagslut.storage.queries import (
     finalize_scan_session,
@@ -22,6 +23,14 @@ from tagslut.utils.config import get_config
 from tagslut.utils.zones import ZoneManager, load_zone_manager
 
 logger = logging.getLogger(__name__)
+
+
+def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+        (table,),
+    ).fetchone()
+    return row is not None
 
 
 @dataclass(frozen=True)
@@ -427,8 +436,10 @@ def scan_library(
         allow_repo_db=allow_repo_db,
     )
     try:
+        has_v3_asset_table = _table_exists(conn, "asset_file")
         if specific_paths:
             existing_rows = {}
+            existing_v3_rows = {}
             chunk_size = 900
             columns = (
                 "path, mtime, size, library, zone, checksum, flac_ok, integrity_state, "
@@ -442,6 +453,15 @@ def scan_library(
                     chunk,
                 ).fetchall()
                 existing_rows.update({row["path"]: row for row in rows})
+                if has_v3_asset_table:
+                    v3_rows = conn.execute(
+                        f"""
+                        SELECT path, mtime, size_bytes, integrity_checked_at, sha256_checked_at
+                        FROM asset_file WHERE path IN ({placeholders})
+                        """,
+                        chunk,
+                    ).fetchall()
+                    existing_v3_rows.update({row["path"]: row for row in v3_rows})
         else:
             prefix = str(library_path)
             if not prefix.endswith("/"):
@@ -456,6 +476,17 @@ def scan_library(
                 (prefix + "%",),
             ).fetchall()
             existing_rows = {row["path"]: row for row in rows}
+            if has_v3_asset_table:
+                v3_rows = conn.execute(
+                    """
+                    SELECT path, mtime, size_bytes, integrity_checked_at, sha256_checked_at
+                    FROM asset_file WHERE path LIKE ?
+                    """,
+                    (prefix + "%",),
+                ).fetchall()
+                existing_v3_rows = {row["path"]: row for row in v3_rows}
+            else:
+                existing_v3_rows = {}
     finally:
         conn.close()
 
@@ -466,6 +497,7 @@ def scan_library(
     for idx, path in enumerate(flac_files, start=1):
         key = str(path)
         row = existing_rows.get(key)
+        v3_row = existing_v3_rows.get(key)
 
         try:
             st = path.stat()
@@ -490,12 +522,24 @@ def scan_library(
         integrity_stale = _is_stale_by_time(row["integrity_checked_at"] if row else None)
         streaminfo_md5, sha256 = _infer_checksums(row) if row else (None, None)
         hash_stale = _is_stale_by_time(row["sha256_checked_at"] if row else None)
+        v3_asset = None
+        if v3_row is not None:
+            v3_asset = {
+                "mtime": v3_row["mtime"],
+                "size_bytes": v3_row["size_bytes"],
+                "integrity_checked_at": v3_row["integrity_checked_at"],
+                "sha256_checked_at": v3_row["sha256_checked_at"],
+                "current_mtime": cur_mtime,
+                "current_size_bytes": cur_size,
+            }
 
         needs_metadata = force_all or (not incremental) or file_changed or _metadata_missing(row)
         needs_integrity = False
         if scan_integrity:
             if force_all:
                 needs_integrity = True
+            elif v3_asset is not None:
+                needs_integrity = is_integrity_stale(v3_asset)
             else:
                 needs_integrity = (not _integrity_done(row)) or file_changed
                 if recheck:
@@ -505,6 +549,8 @@ def scan_library(
         if scan_hash:
             if force_all:
                 needs_hash = True
+            elif v3_asset is not None:
+                needs_hash = is_hash_stale(v3_asset)
             else:
                 needs_hash = (sha256 is None) or file_changed
                 if recheck:

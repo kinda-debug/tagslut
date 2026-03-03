@@ -74,6 +74,7 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
             canonical_bpm REAL,
             canonical_key TEXT,
             canonical_payload_json TEXT,
+            enriched_at TEXT,
             duration_ref_ms INTEGER,
             ref_source TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,

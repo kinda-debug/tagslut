@@ -23,7 +23,8 @@ Reference map:
 
 Branding note:
 - `tagslut` is the preferred CLI brand.
-- No legacy aliases are supported during migration.
+- `dedupe` is a deprecated alias for `tagslut` and is still shipped.
+- `dedupe` remains supported as a compatibility alias until 2026-06-01.
 
 ## Transitional Surface
 

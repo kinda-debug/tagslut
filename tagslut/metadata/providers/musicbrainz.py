@@ -44,7 +44,7 @@ class MusicBrainzProvider(AbstractProvider):
 
     def __init__(self, token_manager: Any = None) -> None:
         # MusicBrainz does not require authentication.
-    super().__init__(token_manager=None)
+        super().__init__(token_manager=None)
 
     def _get_default_headers(self) -> Dict[str, str]:
         return {
@@ -76,9 +76,7 @@ class MusicBrainzProvider(AbstractProvider):
             return None
         try:
             data = response.json()
-<<<<<<< HEAD
         except Exception:
-            return None
             return None
         if not isinstance(data, dict) or "id" not in data:
             return None

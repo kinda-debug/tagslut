@@ -29,6 +29,7 @@ def _insert_file(
     checksum: str,
     quality_rank: int | None,
     canonical_isrc: str | None = None,
+    isrc: str | None = None,
     beatport_id: str | None = None,
     canonical_artist: str | None = None,
     canonical_title: str | None = None,
@@ -38,9 +39,9 @@ def _insert_file(
         """
         INSERT INTO files (
             path, checksum, metadata_json, quality_rank,
-            canonical_isrc, beatport_id,
+            canonical_isrc, isrc, beatport_id,
             canonical_artist, canonical_title, duration
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             path,
@@ -48,6 +49,7 @@ def _insert_file(
             "{}",
             quality_rank,
             canonical_isrc,
+            isrc or canonical_isrc,
             beatport_id,
             canonical_artist,
             canonical_title,
@@ -68,7 +70,7 @@ def test_resolve_isrc_exact_match_returns_existing_path(mem_db: sqlite3.Connecti
         path="/music/isrc.flac",
         checksum="a1",
         quality_rank=5,
-        canonical_isrc="USABC1234567",
+        isrc="USABC1234567",
     )
 
     result = IdentityResolver(mem_db).resolve(
@@ -137,7 +139,7 @@ def test_resolve_quality_upgrade_when_candidate_is_better(mem_db: sqlite3.Connec
         path="/music/upgrade.flac",
         checksum="u1",
         quality_rank=5,
-        canonical_isrc="USUPGRADE123",
+        isrc="USUPGRADE123",
     )
 
     result = IdentityResolver(mem_db).resolve(
@@ -155,7 +157,7 @@ def test_resolve_quality_skip_when_candidate_not_better(mem_db: sqlite3.Connecti
         path="/music/skip.flac",
         checksum="s1",
         quality_rank=2,
-        canonical_isrc="USSKIP123",
+        isrc="USSKIP123",
     )
 
     result = IdentityResolver(mem_db).resolve(

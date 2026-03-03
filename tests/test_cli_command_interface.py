@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import re
 import sys
+import types
 
 from click.testing import CliRunner
 
@@ -61,7 +62,7 @@ def test_phase4_group_subcommands_present() -> None:
         "decide": {"profiles", "plan"},
         "execute": {"move-plan", "quarantine-plan", "promote-tags"},
         "verify": {"duration", "recovery", "parity", "receipts"},
-        "report": {"m3u", "duration", "recovery", "plan-summary"},
+        "report": {"m3u", "duration", "recovery", "plan-summary", "dj-review"},
         "auth": {"status", "init", "refresh", "login"},
     }
 
@@ -131,6 +132,67 @@ def test_removed_compat_command_returns_no_such_command() -> None:
     result = runner.invoke(cli, ["mgmt"])
     assert result.exit_code != 0
     assert "No such command 'mgmt'" in result.output
+
+
+def test_report_dj_review_help_available_without_flask_import() -> None:
+    runner = CliRunner()
+    result = runner.invoke(cli, ["report", "dj-review", "--help"])
+    assert result.exit_code == 0, result.output
+    assert "--db PATH" in result.output
+    assert "--port INTEGER" in result.output
+    assert "--open-browser / --no-open-browser" in result.output
+
+
+def test_report_dj_review_import_error_has_install_hint(monkeypatch) -> None:
+    fake_module = types.ModuleType("tagslut._web.review_app")
+    monkeypatch.setitem(sys.modules, "tagslut._web.review_app", fake_module)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["report", "dj-review", "--db", "music.db", "--no-open-browser"],
+    )
+    assert result.exit_code != 0
+    assert "Flask is required. Install with: pip install tagslut[web]" in result.output
+    assert "Traceback" not in result.output
+
+
+def test_report_dj_review_invokes_run_review_app(monkeypatch) -> None:
+    calls: list[dict[str, object]] = []
+
+    fake_module = types.ModuleType("tagslut._web.review_app")
+
+    def _fake_run_review_app(**kwargs) -> None:  # type: ignore[no-untyped-def]
+        calls.append(kwargs)
+
+    fake_module.run_review_app = _fake_run_review_app  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "tagslut._web.review_app", fake_module)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "report",
+            "dj-review",
+            "--db",
+            "music.db",
+            "--port",
+            "5051",
+            "--host",
+            "0.0.0.0",
+            "--no-open-browser",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert calls == [
+        {
+            "db": "music.db",
+            "port": 5051,
+            "host": "0.0.0.0",
+            "open_browser": False,
+        }
+    ]
 
 
 def test_dedupe_deprecation_warning_emitted_to_stderr() -> None:

@@ -946,6 +946,27 @@ def register_index_group(cli: click.Group) -> None:
 
         click.echo(f"Duration reference set: {manual_id} ({duration_measured_ms} ms)")
 
+    @index.command("promote-classification")
+    @click.option("--db", required=True, type=click.Path(exists=True), help="Path to inventory DB")
+    @click.option("--dry-run", is_flag=True, default=False)
+    def index_promote_classification(db, dry_run):  # type: ignore  # TODO: mypy-strict
+        """Promote classification_v2 to primary classification column."""
+        from tagslut.storage.classification_promotion import (
+            PromotionError,
+            format_promotion_result,
+            promote_classification_v2,
+        )
+
+        try:
+            result = promote_classification_v2(Path(db), dry_run=dry_run)
+        except PromotionError as exc:
+            raise click.ClickException(str(exc)) from exc
+
+        for line in format_promotion_result(result):
+            click.echo(line)
+        if result.status == "dry_run":
+            click.echo("Dry-run only: no database changes were made.")
+
     @index.command("enrich")
     @click.option('--db', type=click.Path(), required=False, help='Database path')
     @click.option('--path', type=str, help='Filter files by path pattern (SQL LIKE) or file/dir in --standalone mode')

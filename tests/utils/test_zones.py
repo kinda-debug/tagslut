@@ -78,6 +78,11 @@ def test_zone_priority_ordering_library_staging_quarantine() -> None:
 def test_coerce_zone_valid_invalid_and_none() -> None:
     assert coerce_zone("accepted") == Zone.ACCEPTED
     assert coerce_zone("ACCEPTED") == Zone.ACCEPTED
+    assert coerce_zone("library") == Zone.ACCEPTED
+    assert coerce_zone("GOOD") == Zone.ACCEPTED
+    assert coerce_zone("archive") == Zone.ARCHIVE
+    assert coerce_zone("BAD") == Zone.ARCHIVE
+    assert coerce_zone("djpool") == Zone.DJ_USB
     assert coerce_zone(Zone.STAGING) == Zone.STAGING
     assert coerce_zone("not-a-zone") is None
     assert coerce_zone(None) is None

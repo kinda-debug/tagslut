@@ -1732,23 +1732,39 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> None:
-    args = _parse_args()
-    if args.db_path:
-        APP.config["DB_PATH"] = args.db_path
-    if args.library_prefix:
-        APP.config["LIBRARY_PREFIX"] = args.library_prefix
-    host = args.host
-    port = args.port
+def run_review_app(
+    *,
+    db: str | None = None,
+    port: int = 5055,
+    host: str = "127.0.0.1",
+    open_browser: bool = True,
+    library_prefix: str | None = None,
+) -> None:
+    """Run the DJ review Flask app with explicit runtime options."""
+    if db:
+        APP.config["DB_PATH"] = db
+    if library_prefix:
+        APP.config["LIBRARY_PREFIX"] = library_prefix
 
-    if not args.no_open:
+    if open_browser:
         open_host = host
         if open_host in {"0.0.0.0", "::"}:
             open_host = "127.0.0.1"
-        url = f"http://{open_host}:{port}"
+        url = f"http://{open_host}:{int(port)}"
         threading.Timer(0.5, lambda: webbrowser.open(url)).start()
 
-    APP.run(host=host, port=port, debug=False, use_reloader=False)
+    APP.run(host=host, port=int(port), debug=False, use_reloader=False)
+
+
+def main() -> None:
+    args = _parse_args()
+    run_review_app(
+        db=args.db_path,
+        library_prefix=args.library_prefix,
+        host=args.host,
+        port=args.port,
+        open_browser=not args.no_open,
+    )
 
 
 if __name__ == "__main__":

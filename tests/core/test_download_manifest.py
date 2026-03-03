@@ -25,6 +25,7 @@ def _insert_file(
     checksum: str,
     quality_rank: int,
     canonical_isrc: str | None = None,
+    isrc: str | None = None,
     beatport_id: str | None = None,
     canonical_artist: str | None = None,
     canonical_title: str | None = None,
@@ -34,8 +35,8 @@ def _insert_file(
         """
         INSERT INTO files (
             path, checksum, metadata_json, quality_rank,
-            canonical_isrc, beatport_id, canonical_artist, canonical_title, duration
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            canonical_isrc, isrc, beatport_id, canonical_artist, canonical_title, duration
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             path,
@@ -43,6 +44,7 @@ def _insert_file(
             "{}",
             quality_rank,
             canonical_isrc,
+            isrc or canonical_isrc,
             beatport_id,
             canonical_artist,
             canonical_title,
@@ -61,7 +63,7 @@ def test_build_manifest_marks_new_when_no_match(mem_db: sqlite3.Connection) -> N
 
 
 def test_build_manifest_marks_skip_when_existing_is_equal_or_better(mem_db: sqlite3.Connection) -> None:
-    _insert_file(mem_db, path="/music/a.flac", checksum="a", quality_rank=3, canonical_isrc="ISRC1")
+    _insert_file(mem_db, path="/music/a.flac", checksum="a", quality_rank=3, isrc="ISRC1")
     intent = TrackIntent(isrc="ISRC1", bit_depth=24, sample_rate=44100, bitrate=0)  # rank 3
     manifest = build_manifest([intent], mem_db)
     assert len(manifest.skipped) == 1
@@ -70,7 +72,7 @@ def test_build_manifest_marks_skip_when_existing_is_equal_or_better(mem_db: sqli
 
 
 def test_build_manifest_marks_upgrade_when_candidate_is_better(mem_db: sqlite3.Connection) -> None:
-    _insert_file(mem_db, path="/music/a.flac", checksum="a", quality_rank=4, canonical_isrc="ISRC1")
+    _insert_file(mem_db, path="/music/a.flac", checksum="a", quality_rank=4, isrc="ISRC1")
     intent = TrackIntent(isrc="ISRC1", bit_depth=24, sample_rate=96000, bitrate=0)  # rank 2
     manifest = build_manifest([intent], mem_db)
     assert len(manifest.upgrades) == 1
@@ -87,7 +89,7 @@ def test_build_manifest_uses_identity_chain_method_in_reason(mem_db: sqlite3.Con
 
 
 def test_build_manifest_honors_explicit_candidate_quality_rank(mem_db: sqlite3.Connection) -> None:
-    _insert_file(mem_db, path="/music/c.flac", checksum="c", quality_rank=4, canonical_isrc="ISRC2")
+    _insert_file(mem_db, path="/music/c.flac", checksum="c", quality_rank=4, isrc="ISRC2")
     intent = TrackIntent(isrc="ISRC2")
     setattr(intent, "candidate_quality_rank", 2)
     manifest = build_manifest([intent], mem_db)
@@ -143,7 +145,16 @@ def test_build_manifest_fuzzy_skip_with_duration_gate(mem_db: sqlite3.Connection
         duration=240.0,
     )
     manifest = build_manifest(
-        [TrackIntent(artist="Test Artist", title="Great Track", duration_s=241.0, bit_depth=16, sample_rate=44100, bitrate=0)],
+        [
+            TrackIntent(
+                artist="Test Artist",
+                title="Great Track",
+                duration_s=241.0,
+                bit_depth=16,
+                sample_rate=44100,
+                bitrate=0,
+            )
+        ],
         mem_db,
     )
     assert len(manifest.skipped) == 1

@@ -2,7 +2,7 @@ import sqlite3
 import json
 import logging
 from pathlib import Path
-from typing import Optional, List, Dict, Any, Iterable
+from typing import Optional, List, Dict, Any, Iterable, cast
 
 from tagslut.storage.models import AudioFile
 from tagslut.utils.zones import coerce_zone
@@ -755,6 +755,20 @@ def get_file(conn: sqlite3.Connection, path: Path) -> Optional[AudioFile]:
         return None
 
     return _row_to_audiofile(row)
+
+
+def get_file_by_isrc(conn: sqlite3.Connection, isrc: str | None) -> Optional[sqlite3.Row]:
+    """Primary identity lookup — use this before any other lookup."""
+    if isrc is None:
+        return None
+    normalized = str(isrc).strip()
+    if not normalized:
+        return None
+    row = conn.execute(
+        "SELECT path, quality_rank, isrc FROM files WHERE isrc = ? LIMIT 1",
+        (normalized,),
+    ).fetchone()
+    return cast(Optional[sqlite3.Row], row)
 
 
 def get_files_by_checksum(conn: sqlite3.Connection, checksum: str) -> List[AudioFile]:

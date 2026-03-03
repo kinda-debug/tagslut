@@ -30,6 +30,26 @@ class Zone(StrEnum):
     REJECTED = "rejected"
 
 
+# Zone model v2 canonical labels used by migration/interop layers.
+ZONE_LIBRARY = "library"
+ZONE_DJPOOL = "djpool"
+ZONE_ARCHIVE = "archive"
+
+# Deprecated aliases kept for old callers.
+ZONE_GOOD = ZONE_LIBRARY
+ZONE_BAD = ZONE_ARCHIVE
+ZONE_QUARANTINE = ZONE_ARCHIVE
+
+_ZONE_LABEL_ALIASES: dict[str, Zone] = {
+    "good": Zone.ACCEPTED,
+    "library": Zone.ACCEPTED,
+    "bad": Zone.ARCHIVE,
+    "archive": Zone.ARCHIVE,
+    "djpool": Zone.DJ_USB,
+    "dj_pool": Zone.DJ_USB,
+}
+
+
 DEFAULT_ZONE_PRIORITY: dict[Zone, int] = {
     Zone.ACCEPTED: 10,
     Zone.ARCHIVE: 20,
@@ -214,8 +234,11 @@ def coerce_zone(value: Zone | str | None) -> Zone | None:
         return None
     if isinstance(value, Zone):
         return value
+    normalized = str(value).strip().lower()
+    if normalized in _ZONE_LABEL_ALIASES:
+        return _ZONE_LABEL_ALIASES[normalized]
     try:
-        return Zone(str(value).lower())
+        return Zone(normalized)
     except ValueError:
         return None
 

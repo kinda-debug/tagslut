@@ -2,7 +2,7 @@
 Track identity resolution chain.
 
 Resolution priority:
-  1. ISRC              (canonical_isrc column)
+  1. ISRC              (isrc column; canonical_isrc fallback for legacy rows)
   2. Beatport ID       (beatport_id column)
   3. Tidal ID          (tidal_id column)
   4. Qobuz ID          (qobuz_id column)
@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from typing import Optional
 
 from rapidfuzz import fuzz
+
+from tagslut.storage.queries import get_file_by_isrc
 
 
 @dataclass
@@ -107,6 +109,10 @@ class IdentityResolver:
         """
         # 1. ISRC
         if intent.isrc:
+            row = get_file_by_isrc(self._conn, intent.isrc)
+            if row and row[1] is not None:
+                return (row[0], row[1], "isrc", 100.0)
+            # Compatibility fallback for older rows that only populated canonical_isrc.
             row = self._conn.execute(
                 "SELECT path, quality_rank FROM files WHERE canonical_isrc = ? LIMIT 1",
                 (intent.isrc,),

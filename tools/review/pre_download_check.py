@@ -15,7 +15,7 @@ Match strategy (in priority order):
 Usage:
     python tools/review/pre_download_check.py \\
         --input ~/links.txt \\
-        --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \\
+        --db /path/to/music.db \\
         --out-dir output/precheck
 
 Outputs:
@@ -32,11 +32,18 @@ import json
 import os
 import sqlite3
 import subprocess
+import sys
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
 
 # Confidence levels for match methods
 CONFIDENCE_LEVELS = {
@@ -178,7 +185,6 @@ def get_repo_root() -> Path:
 def main() -> int:
     repo_root = get_repo_root()
     default_extract_script = repo_root / "scripts" / "extract_tracklists_from_links.py"
-    default_db = os.environ.get("TAGSLUT_DB", "") or "/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db"
 
     ap = argparse.ArgumentParser(
         description="Check Beatport/Tidal links against DB before download",
@@ -199,8 +205,6 @@ Match Methods (in priority order):
     ap.add_argument("--input", help="Text file with links (one URL per line)")
     ap.add_argument(
         "--db",
-        default=default_db,
-        required=not default_db,
         help="Path to music.db (or set TAGSLUT_DB env var)",
     )
     ap.add_argument("--out-dir", default="output/precheck", help="Output directory (default: output/precheck)")
@@ -222,14 +226,17 @@ Match Methods (in priority order):
         input_path = tmp
     else:
         input_path = Path(input_val).expanduser().resolve()
-    db_path = Path(args.db).expanduser().resolve()
+    try:
+        db_resolution = resolve_cli_env_db_path(args.db, purpose="read", source_label="--db")
+    except DbResolutionError as exc:
+        raise SystemExit(f"ERROR: {exc}") from exc
+    db_path = db_resolution.path
+    print(f"Resolved DB path: {db_path}")
     out_dir = Path(args.out_dir).expanduser().resolve()
     extract_script = Path(args.extract_script).expanduser().resolve()
 
     if not input_path.exists():
         raise SystemExit(f"Input not found: {input_path}")
-    if not db_path.exists():
-        raise SystemExit(f"DB not found: {db_path}")
     if not extract_script.exists():
         raise SystemExit(f"Extract script not found: {extract_script}\n(Tip: Run from repository root or set --extract-script)")
 

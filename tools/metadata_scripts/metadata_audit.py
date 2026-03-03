@@ -12,10 +12,9 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import os
 import re
 import sqlite3
-import tomllib
+import sys
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
@@ -24,38 +23,11 @@ from typing import Iterable
 
 
 _REPO = Path(__file__).resolve().parents[2]
-DEFAULT_DB_FALLBACK = "/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db"
-CONFIG_TOML = _REPO / "config.toml"
+if str(_REPO) not in sys.path:
+    sys.path.insert(0, str(_REPO))
 
+from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
 
-def _load_config_db_path() -> str:
-    if not CONFIG_TOML.exists():
-        return ""
-    try:
-        data = tomllib.loads(CONFIG_TOML.read_text(encoding="utf-8"))
-    except Exception:
-        return ""
-    path = data.get("db", {}).get("path")
-    if not path:
-        return ""
-    return str(path)
-
-
-def _resolve_default_db() -> str:
-    env_value = os.environ.get("TAGSLUT_DB", "").strip()
-    if env_value:
-        env_path = Path(env_value).expanduser().resolve()
-        if env_path.exists():
-            return str(env_path)
-    config_value = _load_config_db_path()
-    if config_value:
-        config_path = Path(config_value).expanduser().resolve()
-        if config_path.exists():
-            return str(config_path)
-    return DEFAULT_DB_FALLBACK
-
-
-DEFAULT_DB = _resolve_default_db()
 DEFAULT_OUT_DIR = Path(__file__).resolve().parents[2] / "artifacts" / "audit"
 
 CAM_KEY_RE = re.compile(r"^(1[0-2]|[1-9])[AB]$", re.IGNORECASE)
@@ -127,16 +99,19 @@ def _iter_rows(conn: sqlite3.Connection) -> Iterable[Row]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Audit canonical BPM/Key/Genre quality.")
-    parser.add_argument("--db", default=DEFAULT_DB, help="Path to tagslut SQLite DB.")
+    parser.add_argument("--db", help="Path to tagslut SQLite DB.")
     parser.add_argument("--out-dir", default=str(DEFAULT_OUT_DIR), help="Output directory.")
     parser.add_argument("--min-bpm", type=float, default=60.0, help="Minimum expected BPM.")
     parser.add_argument("--max-bpm", type=float, default=190.0, help="Maximum expected BPM.")
     parser.add_argument("--limit", type=int, default=0, help="Limit rows (0 = all).")
     args = parser.parse_args()
 
-    db_path = Path(args.db).expanduser().resolve()
-    if not db_path.exists():
-        raise SystemExit(f"DB not found: {db_path}")
+    try:
+        db_resolution = resolve_cli_env_db_path(args.db, purpose="read", source_label="--db")
+    except DbResolutionError as exc:
+        raise SystemExit(f"ERROR: {exc}") from exc
+    db_path = db_resolution.path
+    print(f"Resolved DB path: {db_path}")
 
     out_dir = Path(args.out_dir).expanduser().resolve()
     out_dir.mkdir(parents=True, exist_ok=True)

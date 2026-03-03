@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Interactive end-to-end processing for a single root folder.
+"""End-to-end processing for a single root folder.
 
 Pipeline:
   1) scan_with_trust
@@ -11,13 +11,20 @@ Pipeline:
   7) embed_cover_art (from DB) scoped to move log or paths list
   8) promote_replace_merge (execute)
 
-This script prompts for required paths and runs the pipeline in-order.
+This script runs the pipeline in-order for a provided root folder.
 """
 from __future__ import annotations
 
 import argparse
 import subprocess
+import sys
 from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
 
 
 def run(cmd: list[str]) -> None:
@@ -26,10 +33,10 @@ def run(cmd: list[str]) -> None:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Interactive processing for a root folder")
-    ap.add_argument("--db", help="DB path (default: prompt)")
-    ap.add_argument("--root", help="Root folder to process (default: prompt)")
-    ap.add_argument("--library", help="Library destination (default: prompt)")
+    ap = argparse.ArgumentParser(description="Processing pipeline for a root folder")
+    ap.add_argument("--db", help="DB path")
+    ap.add_argument("--root", help="Root folder to process")
+    ap.add_argument("--library", help="Library destination")
     ap.add_argument("--providers", default="beatport,deezer,apple_music,itunes")
     ap.add_argument("--force", action="store_true", help="Force re-enrichment")
     ap.add_argument("--no-art", action="store_true", help="Skip cover art embedding")
@@ -43,26 +50,26 @@ def main() -> None:
     )
     args = ap.parse_args()
 
-    default_db = "/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db"
     default_library = "/Volumes/MUSIC/LIBRARY"
 
-    db = args.db or input(f"DB path [{default_db}]: ").strip() or default_db
-    root = args.root or input("Root folder to process: ").strip()
-    library = args.library or input(f"Library destination [{default_library}]: ").strip() or default_library
+    try:
+        db_resolution = resolve_cli_env_db_path(args.db, purpose="write", source_label="--db")
+    except DbResolutionError as exc:
+        raise SystemExit(f"ERROR: {exc}") from exc
+    db = str(db_resolution.path)
+    print(f"Resolved DB path: {db}")
+    root = args.root or ""
+    library = args.library or default_library
 
-    if not db or not root or not library:
-        raise SystemExit("db, root, and library are required")
+    if not root:
+        raise SystemExit("root is required (pass --root)")
 
     db_path = Path(db)
     root_path = Path(root)
     if root_path.exists() and not list(root_path.rglob("*.flac")):
-        prompt = input(f"No FLAC files found under {root_path}. Enter correct root: ").strip()
-        if prompt:
-            root_path = Path(prompt)
+        print(f"Warning: no FLAC files found under {root_path}")
     library_path = Path(library)
 
-    if not db_path.exists():
-        raise SystemExit(f"DB not found: {db_path}")
     if not root_path.exists():
         raise SystemExit(f"Root not found: {root_path}")
     if not library_path.exists():

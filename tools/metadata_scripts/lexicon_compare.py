@@ -8,18 +8,19 @@ from __future__ import annotations
 
 import argparse
 import csv
-import os
 import sqlite3
+import sys
 from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Tuple
 
 from mutagen import File as MutagenFile
 
-DEFAULT_DB = os.environ.get(
-    "TAGSLUT_DB",
-    "/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db",
-)
+_REPO = Path(__file__).resolve().parents[2]
+if str(_REPO) not in sys.path:
+    sys.path.insert(0, str(_REPO))
+
+from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
 
 
 def _norm(value: str | None) -> str:
@@ -51,7 +52,7 @@ def _first(tags: Dict[str, List[str]], *keys: str) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Compare Lexicon CSV tags with current tags and DB.")
     parser.add_argument("--csv", required=True, help="Lexicon CSV path.")
-    parser.add_argument("--db", default=DEFAULT_DB, help="tagslut DB path.")
+    parser.add_argument("--db", help="tagslut DB path.")
     parser.add_argument("--output", default="", help="Output CSV path.")
     args = parser.parse_args()
 
@@ -59,9 +60,12 @@ def main() -> int:
     if not csv_path.exists():
         raise SystemExit(f"CSV not found: {csv_path}")
 
-    db_path = Path(args.db).expanduser().resolve()
-    if not db_path.exists():
-        raise SystemExit(f"DB not found: {db_path}")
+    try:
+        db_resolution = resolve_cli_env_db_path(args.db, purpose="read", source_label="--db")
+    except DbResolutionError as exc:
+        raise SystemExit(f"ERROR: {exc}") from exc
+    db_path = db_resolution.path
+    print(f"Resolved DB path: {db_path}")
 
     out_path = Path(args.output).expanduser().resolve() if args.output else csv_path.with_name(csv_path.stem + "_compare.csv")
 

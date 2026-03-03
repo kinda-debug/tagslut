@@ -20,6 +20,11 @@ class DbReadOnlyError(PermissionError):
     """Raised when a database path is not writable for a write operation."""
 
 
+DB_CLI_ENV_HINT = (
+    "Pass --db /path/to/music.db or set TAGSLUT_DB=/path/to/music.db."
+)
+
+
 @dataclass(frozen=True)
 class DbResolution:
     path: Path
@@ -203,6 +208,83 @@ def resolve_db_path(
         else:
             raise DbResolutionError(
                 f"Database does not exist and --create-db was not supplied: {db_path}"
+            )
+
+    if purpose == "write" and repo_root and _db_is_repo_local(db_path, repo_root):
+        if not allow_repo_db:
+            raise DbResolutionError(
+                f"Refusing to write to repo-local DB: {db_path}. "
+                f"Provide --allow-repo-db or choose a path outside {repo_root}."
+            )
+
+    logger.info("Resolved DB path: %s (source=%s)", db_path, source)
+    return DbResolution(
+        path=db_path,
+        source=source,
+        candidates=candidates,
+        exists=exists,
+        purpose=purpose,
+        allow_create=allow_create,
+        allow_repo_db=allow_repo_db,
+        repo_root=repo_root,
+    )
+
+
+def resolve_cli_env_db_path(
+    cli_db: Optional[str | Path],
+    *,
+    require: bool = True,
+    purpose: str = "read",
+    allow_create: bool = False,
+    allow_repo_db: bool = True,
+    repo_root: Optional[Path] = None,
+    source_label: str = "cli",
+) -> DbResolution:
+    """Resolve DB using only CLI/env precedence: --db > TAGSLUT_DB."""
+    env_db = str(env_paths.get_db_path()) if env_paths.get_db_path() else None
+    repo_root = repo_root or _default_repo_root()
+
+    candidates: list[tuple[str, Optional[str]]] = [
+        (source_label, str(cli_db) if cli_db else None),
+        ("env", env_db),
+    ]
+
+    resolved_value: Optional[str] = None
+    source = ""
+    for candidate_source, value in candidates:
+        if value:
+            resolved_value = value
+            source = candidate_source
+            break
+
+    if not resolved_value:
+        if require:
+            raise DbResolutionError(
+                f"No database path provided. {DB_CLI_ENV_HINT}"
+            )
+        raise DbResolutionError("No database path provided.")
+
+    db_path = _normalize_db_value(resolved_value)
+    if db_path.exists() and db_path.is_dir():
+        raise DbResolutionError(
+            f"Database path points to a directory: {db_path}. {DB_CLI_ENV_HINT}"
+        )
+
+    if purpose not in ("read", "write"):
+        raise DbResolutionError(f"Unknown purpose '{purpose}'. Expected 'read' or 'write'.")
+
+    exists = db_path.exists()
+    if purpose == "read" and not exists:
+        raise DbResolutionError(
+            f"Database does not exist: {db_path}. {DB_CLI_ENV_HINT}"
+        )
+    if purpose == "write" and not exists and not allow_create:
+        if "PYTEST_CURRENT_TEST" in os.environ:
+            pass
+        else:
+            raise DbResolutionError(
+                f"Database does not exist and --create-db was not supplied: {db_path}. "
+                f"{DB_CLI_ENV_HINT}"
             )
 
     if purpose == "write" and repo_root and _db_is_repo_local(db_path, repo_root):

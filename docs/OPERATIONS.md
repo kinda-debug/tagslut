@@ -22,11 +22,15 @@ source .venv/bin/activate
 tagslut --help
 ```
 
-### Current Database
+### Database Setup
 
+Set `TAGSLUT_DB` in `.env`.
+
+```bash
+TAGSLUT_DB=/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-28/music_v2.db
 ```
-/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
-```
+
+WARNING: Never rely on doc defaults. Always set `TAGSLUT_DB` explicitly before running commands.
 
 ### Canonical CLI Commands
 

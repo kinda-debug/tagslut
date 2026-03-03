@@ -8,9 +8,9 @@ Defaults are conservative:
 - Supports --path (root) or --m3u list of paths.
 
 Example:
-  PYTHONPATH=/Users/georgeskhawam/Projects/tagslut \
+  PYTHONPATH=/path/to/tagslut \
   python3 tools/review/write_canonical_tags_to_files.py \
-    --db /Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
+    --db /path/to/music.db \
     --m3u /Volumes/MUSIC/LIBRARY/MDL_NEW_TRACKS.m3u \
     --execute
 """

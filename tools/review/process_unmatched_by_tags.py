@@ -20,10 +20,10 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import os
 import shlex
 import sqlite3
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -33,8 +33,12 @@ from collections import Counter
 
 from mutagen import File as MutagenFile
 
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
-DEFAULT_DB = "/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db"
+from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
+
 DURATION_TOLERANCE_S = 2.0
 TRACKER_SCHEMA = "tag_triage_tracker_v1"
 
@@ -454,8 +458,7 @@ def main() -> int:
     parser.add_argument("folder", help="Folder to scan")
     parser.add_argument(
         "--db",
-        default="",
-        help="Path to music.db (default: TAGSLUT_DB env var or project default DB)",
+        help="Path to music.db (or set TAGSLUT_DB)",
     )
     parser.add_argument("--out-dir", default="artifacts/tag_triage", help="Output directory")
     parser.add_argument("--extensions", default=".flac", help="Comma-separated extensions (default: .flac)")
@@ -501,13 +504,16 @@ def main() -> int:
     args = parser.parse_args()
     run_started_at = time.time()
 
-    db_path = Path(args.db or os.environ.get("TAGSLUT_DB", DEFAULT_DB)).expanduser().resolve()
+    try:
+        db_resolution = resolve_cli_env_db_path(args.db, purpose="read", source_label="--db")
+    except DbResolutionError as exc:
+        raise SystemExit(f"ERROR: {exc}") from exc
+    db_path = db_resolution.path
+    print(f"Resolved DB path: {db_path}")
     folder = Path(args.folder).expanduser().resolve()
     out_dir = Path(args.out_dir).expanduser().resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    if not db_path.exists():
-        raise SystemExit(f"DB not found: {db_path}")
     if not folder.exists() or not folder.is_dir():
         raise SystemExit(f"Folder not found or not a directory: {folder}")
 

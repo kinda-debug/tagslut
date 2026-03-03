@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """End-to-end processing for a single root folder.
 
+Supported operator entrypoint:
+  tagslut intake process-root --root <folder> [--db <db>] [options]
+
+This script remains a thin backend implementation invoked by the canonical CLI.
+
 Pipeline:
   1) scan_with_trust
   2) check_integrity_update_db
@@ -75,9 +80,12 @@ def main() -> None:
     if not library_path.exists():
         print(f"Warning: library path does not exist yet: {library_path}")
 
+    # No public CLI command exists yet for the trust scan/integrity/tag-normalization/promote
+    # operational scripts below; they remain script invocations for now.
+
     # 1) scan_with_trust
     run([
-        "python3",
+        sys.executable,
         "tools/review/scan_with_trust.py",
         "--db",
         str(db_path),
@@ -89,23 +97,23 @@ def main() -> None:
     ])
 
     # 2) integrity (write flac_ok to DB)
-    run(["python3", "tools/review/check_integrity_update_db.py", "--db", str(db_path), "--execute", str(root_path)])
+    run([sys.executable, "tools/review/check_integrity_update_db.py", "--db", str(db_path), "--execute", str(root_path)])
 
     # 3) hoard tags
-    run(["python3", "tools/review/hoard_tags.py", "--db", str(db_path), "--db-add", str(root_path)])
+    run([sys.executable, "tools/review/hoard_tags.py", "--db", str(db_path), "--db-add", str(root_path)])
 
     # 4) normalize genres
-    run(["python3", "tools/review/normalize_genres.py", "--db", str(db_path), "--execute", str(root_path)])
+    run([sys.executable, "tools/review/normalize_genres.py", "--db", str(db_path), "--execute", str(root_path)])
 
     # 5) tag normalized genres
-    run(["python3", "tools/review/tag_normalized_genres.py", "--execute", str(root_path)])
+    run([sys.executable, "tools/review/tag_normalized_genres.py", "--execute", str(root_path)])
 
-    # 6) metadata enrichment (hoarding)
+    # 6) metadata enrichment (hoarding) via public CLI surface
     enrich_cmd = [
-        "python3",
+        sys.executable,
         "-m",
-        "tagslut.cli.main",
-        "_metadata",
+        "tagslut",
+        "index",
         "enrich",
         "--db",
         str(db_path),
@@ -123,7 +131,7 @@ def main() -> None:
     # 7) embed cover art (optional)
     if not args.no_art:
         embed_cmd = [
-            "python3",
+            sys.executable,
             "tools/review/embed_cover_art.py",
             "--db",
             str(db_path),
@@ -137,7 +145,7 @@ def main() -> None:
 
     # 8) promote/replace into library
     promote_cmd = [
-        "python3",
+        sys.executable,
         "tools/review/promote_replace_merge.py",
         "--db",
         str(db_path),

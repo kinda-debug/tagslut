@@ -8,7 +8,7 @@ Policy and deprecation rules are defined in:
 ## Canonical Entry Points
 
 1. `poetry run tagslut intake ...`
-Role: Download/intake orchestration and prefilter operations.
+Role: Download/intake orchestration, prefilter operations, and root processing (`tagslut intake process-root`).
 
 2. `poetry run tagslut index ...`
 Role: Inventory registration, duplicate checks, duration checks, and metadata enrichment for indexed files.
@@ -113,6 +113,8 @@ Use `tagslut intake/index/decide/execute/verify/report/auth/dj/gig/export/init` 
 ## Recovery Command Status
 
 - `tagslut recovery` is a hidden minimal stub logger and does not implement the full move pipeline described in some historical docs.
+- Canonical operator path for end-to-end root processing:
+  - `tagslut intake process-root --root <folder> [--db <db>]`
 - For move execution today, use:
   - Plan generation scripts in `tools/review/`
   - `tools/review/move_from_plan.py`

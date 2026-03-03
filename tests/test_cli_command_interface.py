@@ -50,7 +50,7 @@ def test_phase4_top_level_groups_present() -> None:
 def test_phase4_group_subcommands_present() -> None:
     runner = CliRunner()
     required = {
-        "intake": {"run", "prefilter"},
+        "intake": {"run", "prefilter", "process-root"},
         "index": {
             "register",
             "check",
@@ -141,6 +141,15 @@ def test_report_dj_review_help_available_without_flask_import() -> None:
     assert "--db PATH" in result.output
     assert "--port INTEGER" in result.output
     assert "--open-browser / --no-open-browser" in result.output
+
+
+def test_intake_process_root_help_available() -> None:
+    runner = CliRunner()
+    result = runner.invoke(cli, ["intake", "process-root", "--help"])
+    assert result.exit_code == 0, result.output
+    assert "--db PATH" in result.output
+    assert "--root DIRECTORY" in result.output
+    assert "--providers TEXT" in result.output
 
 
 def test_report_dj_review_import_error_has_install_hint(monkeypatch) -> None:

@@ -19,7 +19,7 @@ DOCS_DIR = PROJECT_ROOT / "docs"
 TOP_CANONICAL_COMMANDS = {"intake", "index", "decide", "execute", "verify", "report", "auth"}
 REMOVED_LEGACY_COMMANDS = {"scan", "recommend", "apply", "promote", "quarantine"}
 REMOVED_COMPAT_COMMANDS = {"mgmt", "metadata", "recover", "m"}
-INTAKE_REQUIRED_COMMANDS = {"run", "prefilter"}
+INTAKE_REQUIRED_COMMANDS = {"run", "prefilter", "process-root"}
 INDEX_REQUIRED_COMMANDS = {
     "register",
     "check",

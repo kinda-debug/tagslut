@@ -12,6 +12,7 @@ from tagslut.cli.runtime import run_python_script, WRAPPER_CONTEXT
 from tagslut.core.download_manifest import DownloadManifest, build_manifest
 from tagslut.filters.identity_resolver import TrackIntent
 from tagslut.storage.schema import get_connection
+from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
 from tagslut.utils.env_paths import get_artifacts_dir
 
 
@@ -189,3 +190,66 @@ def register_intake_group(cli: click.Group) -> None:
     def intake_prefilter(args):  # type: ignore  # TODO: mypy-strict
         """Run Beatport prefilter against inventory DB."""
         run_python_script("tools/review/beatport_prefilter.py", args)
+
+    @intake.command("process-root")
+    @click.option("--db", "db_path", type=click.Path(), help="DB path (or set TAGSLUT_DB)")
+    @click.option(
+        "--root",
+        required=True,
+        type=click.Path(exists=True, file_okay=False, path_type=Path),
+        help="Root folder to process",
+    )
+    @click.option("--library", type=click.Path(path_type=Path), help="Library destination")
+    @click.option("--providers", default="beatport,deezer,apple_music,itunes")
+    @click.option("--force", is_flag=True, help="Force re-enrichment")
+    @click.option("--no-art", is_flag=True, help="Skip cover art embedding")
+    @click.option("--art-force", is_flag=True, help="Force replace embedded art")
+    @click.option("--trust", type=int, default=3, help="Pre-scan trust (0-3). Default: 3")
+    @click.option("--trust-post", type=int, default=3, help="Post-scan trust (0-3). Default: 3")
+    @click.option(
+        "--allow-duplicate-hash",
+        is_flag=True,
+        help="Allow moving files even if identical hash exists in library",
+    )
+    def intake_process_root(  # type: ignore[no-untyped-def]  # TODO: mypy-strict
+        db_path,
+        root,
+        library,
+        providers,
+        force,
+        no_art,
+        art_force,
+        trust,
+        trust_post,
+        allow_duplicate_hash,
+    ):
+        """Run end-to-end root processing pipeline (canonical wrapper for tools/review/process_root.py)."""
+        try:
+            resolution = resolve_cli_env_db_path(db_path, purpose="write", source_label="--db")
+        except DbResolutionError as exc:
+            raise click.ClickException(str(exc)) from exc
+
+        args: list[str] = [
+            "--db",
+            str(resolution.path),
+            "--root",
+            str(root),
+            "--providers",
+            str(providers),
+            "--trust",
+            str(trust),
+            "--trust-post",
+            str(trust_post),
+        ]
+        if library:
+            args.extend(["--library", str(library)])
+        if force:
+            args.append("--force")
+        if no_art:
+            args.append("--no-art")
+        if art_force:
+            args.append("--art-force")
+        if allow_duplicate_hash:
+            args.append("--allow-duplicate-hash")
+
+        run_python_script("tools/review/process_root.py", tuple(args))

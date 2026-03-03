@@ -26,11 +26,20 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
             size_bytes INTEGER,
             mtime REAL,
             duration_s REAL,
+            duration_measured_ms INTEGER,
             sample_rate INTEGER,
             bit_depth INTEGER,
             bitrate INTEGER,
             library TEXT,
             zone TEXT,
+            download_source TEXT,
+            download_date TEXT,
+            mgmt_status TEXT,
+            flac_ok INTEGER,
+            integrity_state TEXT,
+            integrity_checked_at TEXT,
+            sha256_checked_at TEXT,
+            streaminfo_checked_at TEXT,
             first_seen_at TEXT DEFAULT CURRENT_TIMESTAMP,
             last_seen_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
@@ -47,9 +56,24 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
             deezer_id TEXT,
             traxsource_id TEXT,
             itunes_id TEXT,
+            musicbrainz_id TEXT,
             artist_norm TEXT,
             title_norm TEXT,
             album_norm TEXT,
+            canonical_title TEXT,
+            canonical_artist TEXT,
+            canonical_album TEXT,
+            canonical_genre TEXT,
+            canonical_sub_genre TEXT,
+            canonical_label TEXT,
+            canonical_catalog_number TEXT,
+            canonical_mix_name TEXT,
+            canonical_duration REAL,
+            canonical_year INTEGER,
+            canonical_release_date TEXT,
+            canonical_bpm REAL,
+            canonical_key TEXT,
+            canonical_payload_json TEXT,
             duration_ref_ms INTEGER,
             ref_source TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -78,6 +102,7 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
             source_url TEXT,
             match_confidence TEXT,
             raw_payload_json TEXT,
+            metadata_json TEXT,
             fetched_at TEXT DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(identity_key, provider, provider_track_id),
             FOREIGN KEY(identity_key) REFERENCES track_identity(identity_key) ON DELETE CASCADE
@@ -179,6 +204,7 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_asset_file_sha256 ON asset_file(content_sha256);
         CREATE INDEX IF NOT EXISTS idx_asset_file_streaminfo_md5 ON asset_file(streaminfo_md5);
         CREATE INDEX IF NOT EXISTS idx_asset_file_checksum ON asset_file(checksum);
+        CREATE INDEX IF NOT EXISTS idx_asset_file_integrity_state ON asset_file(integrity_state);
 
         CREATE INDEX IF NOT EXISTS idx_track_identity_key ON track_identity(identity_key);
         CREATE INDEX IF NOT EXISTS idx_track_identity_isrc ON track_identity(isrc);
@@ -190,6 +216,7 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_track_identity_deezer ON track_identity(deezer_id);
         CREATE INDEX IF NOT EXISTS idx_track_identity_traxsource ON track_identity(traxsource_id);
         CREATE INDEX IF NOT EXISTS idx_track_identity_itunes ON track_identity(itunes_id);
+        CREATE INDEX IF NOT EXISTS idx_track_identity_musicbrainz ON track_identity(musicbrainz_id);
 
         CREATE INDEX IF NOT EXISTS idx_asset_link_identity ON asset_link(identity_id);
         CREATE INDEX IF NOT EXISTS idx_library_track_sources_identity_key

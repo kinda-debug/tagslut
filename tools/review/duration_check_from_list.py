@@ -11,17 +11,17 @@ from pathlib import Path
 
 from mutagen.flac import FLAC
 
-from tagslut.storage.schema import get_connection, init_db
-from tagslut.utils.db import resolve_db_path
-from tagslut.utils.audit_log import append_jsonl, resolve_log_path
-from tagslut.cli.main import (
-    _duration_thresholds_from_config,
-    _duration_check_version,
-    _lookup_duration_ref_ms,
-    _measure_duration_ms,
-    _duration_status,
-    _extract_tag_value,
+from tagslut.cli.commands._index_helpers import (
+    duration_check_version,
+    duration_status,
+    duration_thresholds_from_config,
+    extract_tag_value,
+    lookup_duration_ref_ms,
+    measure_duration_ms,
 )
+from tagslut.storage.schema import get_connection, init_db
+from tagslut.utils.audit_log import append_jsonl, resolve_log_path
+from tagslut.utils.db import resolve_db_path
 
 
 def load_paths(path_file: Path) -> list[Path]:
@@ -44,8 +44,8 @@ def main() -> int:
         print("No files in list")
         return 0
 
-    ok_max_ms, warn_max_ms = _duration_thresholds_from_config()
-    duration_version = _duration_check_version(ok_max_ms, warn_max_ms)
+    ok_max_ms, warn_max_ms = duration_thresholds_from_config()
+    duration_version = duration_check_version(ok_max_ms, warn_max_ms)
     now_iso = datetime.now(timezone.utc).isoformat()
 
     resolution = resolve_db_path(args.db, purpose="write" if args.execute else "read", allow_create=bool(args.execute))
@@ -76,17 +76,17 @@ def main() -> int:
                     audio = None
 
                 tags = audio.tags or {} if audio is not None else {}
-                beatport_id = _extract_tag_value(tags, ["BEATPORT_TRACK_ID", "BP_TRACK_ID", "beatport_track_id"])
-                isrc = _extract_tag_value(tags, ["ISRC", "TSRC"])
+                beatport_id = extract_tag_value(tags, ["BEATPORT_TRACK_ID", "BP_TRACK_ID", "beatport_track_id"])
+                isrc = extract_tag_value(tags, ["ISRC", "TSRC"])
 
-                duration_ref_ms, duration_ref_source, duration_ref_track_id = _lookup_duration_ref_ms(
+                duration_ref_ms, duration_ref_source, duration_ref_track_id = lookup_duration_ref_ms(
                     conn, beatport_id, isrc
                 )
-                duration_measured_ms = _measure_duration_ms(file_path)
+                duration_measured_ms = measure_duration_ms(file_path)
                 duration_delta_ms = None
                 if duration_measured_ms is not None and duration_ref_ms is not None:
                     duration_delta_ms = duration_measured_ms - duration_ref_ms
-                duration_status = _duration_status(duration_delta_ms, ok_max_ms, warn_max_ms)
+                duration_status_value = duration_status(duration_delta_ms, ok_max_ms, warn_max_ms)
 
                 log_payload = {
                     "event": "duration_check",
@@ -98,20 +98,20 @@ def main() -> int:
                     "duration_ref_ms": duration_ref_ms,
                     "duration_measured_ms": duration_measured_ms,
                     "duration_delta_ms": duration_delta_ms,
-                    "duration_status": duration_status,
+                    "duration_status": duration_status_value,
                     "thresholds_ms": {"ok": ok_max_ms, "warn": warn_max_ms},
                     "check_version": duration_version,
                 }
                 append_jsonl(resolve_log_path("mgmt_duration"), log_payload)
 
-                if args.dj_only and duration_status in ("warn", "fail", "unknown"):
+                if args.dj_only and duration_status_value in ("warn", "fail", "unknown"):
                     anomaly_payload = {
                         "event": "duration_anomaly",
                         "timestamp": now_iso,
                         "path": str(file_path),
                         "track_id": log_payload["track_id"],
                         "is_dj_material": True,
-                        "duration_status": duration_status,
+                        "duration_status": duration_status_value,
                         "duration_ref_ms": duration_ref_ms,
                         "duration_measured_ms": duration_measured_ms,
                         "duration_delta_ms": duration_delta_ms,
@@ -148,10 +148,10 @@ def main() -> int:
                             duration_measured_ms,
                             now_iso if duration_measured_ms is not None else None,
                             duration_delta_ms,
-                            duration_status,
+                            duration_status_value,
                             duration_version,
                             1 if args.dj_only else 0,
-                            duration_status,
+                            duration_status_value,
                             str(file_path),
                         ),
                     )

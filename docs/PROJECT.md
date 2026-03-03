@@ -152,7 +152,12 @@ Decision thresholds:
 - `config/dj/crates/*.m3u8`
 - `output/` and `artifacts/` (generated outputs)
 
-### 7.3 Metadata Preservation
+### 7.3 Post-release snapshots
+- v3.0.0 operational snapshots are stored under `artifacts/v3.0.0/`.
+- Regenerate snapshots with:
+  - `poetry run python scripts/capture_post_release_snapshot.py`
+
+### 7.4 Metadata Preservation
 - MP3 transcode uses `-map_metadata 0` and ID3v2.3.
 - Output paths mirror artist/album structure.
 

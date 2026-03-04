@@ -52,6 +52,26 @@ Generate an identity QA summary and CSV from your v3 DB:
 make report-identity-qa V3="$V3_DB" OUT=output/identity_qa_v3.csv LIMIT=200
 ```
 
+### Merge Duplicate Beatport Identities
+
+Plan duplicate `beatport_id` merges (read-only):
+
+```bash
+make plan-merge-beatport-dupes V3="$V3_DB" OUT=output/merge_plan_beatport_v3.csv LIMIT=200
+```
+
+Execute merges (DB-only) after reviewing the plan:
+
+```bash
+make merge-beatport-dupes V3="$V3_DB" OUT=output/merge_plan_beatport_v3.csv EXECUTE=1
+```
+
+Then rerun identity QA and confirm duplicate Beatport groups are zero:
+
+```bash
+make report-identity-qa V3="$V3_DB" OUT=output/identity_qa_v3_post_merge.csv LIMIT=200
+```
+
 ### Canonical CLI Commands
 
 All operations use these 7 command groups:

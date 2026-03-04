@@ -9,7 +9,17 @@ from __future__ import annotations
 import sqlite3
 
 V3_SCHEMA_NAME = "v3"
-V3_SCHEMA_VERSION = 1
+V3_SCHEMA_VERSION = 2
+V3_SCHEMA_VERSION_INITIAL = 1
+V3_SCHEMA_VERSION_IDENTITY_MERGE = 2
+
+
+def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    try:
+        rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    except sqlite3.OperationalError:
+        return False
+    return any(str(row[1]) == column for row in rows)
 
 
 def create_schema_v3(conn: sqlite3.Connection) -> None:
@@ -77,6 +87,7 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
             enriched_at TEXT,
             duration_ref_ms INTEGER,
             ref_source TEXT,
+            merged_into_id INTEGER REFERENCES track_identity(id),
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
@@ -153,6 +164,20 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
             FOREIGN KEY(move_execution_id) REFERENCES move_execution(id)
         );
 
+        CREATE TABLE IF NOT EXISTS identity_merge_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            merged_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            merge_type TEXT NOT NULL,
+            key_value TEXT NOT NULL,
+            winner_identity_id INTEGER NOT NULL,
+            loser_identity_ids TEXT NOT NULL,
+            assets_moved INTEGER NOT NULL,
+            fields_copied_json TEXT,
+            rationale_json TEXT,
+            dry_run INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY(winner_identity_id) REFERENCES track_identity(id)
+        );
+
         CREATE TABLE IF NOT EXISTS scan_runs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             mode TEXT NOT NULL DEFAULT 'queue' CHECK (mode = 'queue'),
@@ -220,6 +245,7 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_track_identity_musicbrainz ON track_identity(musicbrainz_id);
 
         CREATE INDEX IF NOT EXISTS idx_asset_link_identity ON asset_link(identity_id);
+        CREATE INDEX IF NOT EXISTS idx_identity_merge_log_key_value ON identity_merge_log(key_value);
         CREATE INDEX IF NOT EXISTS idx_library_track_sources_identity_key
             ON library_track_sources(identity_key);
         CREATE INDEX IF NOT EXISTS idx_library_track_sources_provider_id
@@ -238,11 +264,25 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_scan_issues_code ON scan_issues(issue_code);
         """
     )
+    if not _column_exists(conn, "track_identity", "merged_into_id"):
+        conn.execute(
+            "ALTER TABLE track_identity ADD COLUMN merged_into_id INTEGER REFERENCES track_identity(id)"
+        )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_track_identity_merged_into ON track_identity(merged_into_id)"
+    )
     conn.execute(
         """
         INSERT OR IGNORE INTO schema_migrations (schema_name, version, note)
         VALUES (?, ?, ?)
         """,
-        (V3_SCHEMA_NAME, V3_SCHEMA_VERSION, "initial v3 schema"),
+        (V3_SCHEMA_NAME, V3_SCHEMA_VERSION_INITIAL, "initial v3 schema"),
+    )
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO schema_migrations (schema_name, version, note)
+        VALUES (?, ?, ?)
+        """,
+        (V3_SCHEMA_NAME, V3_SCHEMA_VERSION_IDENTITY_MERGE, "identity merge support"),
     )
     conn.commit()

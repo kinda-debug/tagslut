@@ -31,6 +31,7 @@ def test_create_schema_v3_creates_required_tables_without_v2_files() -> None:
         "asset_file",
         "track_identity",
         "asset_link",
+        "preferred_asset",
         "library_track_sources",
         "move_plan",
         "move_execution",
@@ -158,6 +159,7 @@ def test_create_schema_v3_creates_expected_indexes() -> None:
         "idx_track_identity_deezer",
         "idx_track_identity_traxsource",
         "idx_track_identity_itunes",
+        "idx_preferred_asset_asset_id",
         "idx_library_track_sources_provider_id",
         "idx_move_execution_status",
     }

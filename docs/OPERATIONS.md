@@ -72,6 +72,22 @@ Then rerun identity QA and confirm duplicate Beatport groups are zero:
 make report-identity-qa V3="$V3_DB" OUT=output/identity_qa_v3_post_merge.csv LIMIT=200
 ```
 
+### Preferred Asset Selection
+
+Plan preferred-asset selection (read-only):
+
+```bash
+make plan-preferred-asset V3="$V3_DB" OUT=output/preferred_asset_plan.csv LIMIT=500
+```
+
+Execute preferred-asset materialization:
+
+```bash
+make compute-preferred-asset V3="$V3_DB" OUT=output/preferred_asset_plan.csv VERSION=1 EXECUTE=1
+```
+
+Recommended cadence: run after identity merges, after major promotions/import batches, or weekly as a deterministic refresh.
+
 ### Canonical CLI Commands
 
 All operations use these 7 command groups:

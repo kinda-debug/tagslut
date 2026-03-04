@@ -1,8 +1,5 @@
 # DJ Workflow
 
-DJ pool contract: see `docs/DJ_POOL.md` for the downstream-only boundary and defaults.
-
-
 ## Quick Export (Safe Mode)
 
 Once tracks have been classified, just run:

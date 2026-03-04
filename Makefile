@@ -8,7 +8,7 @@
 	verify-v3 doctor-v3 report-identity-qa plan-merge-beatport-dupes merge-beatport-dupes \
 	plan-preferred-asset compute-preferred-asset plan-identity-status compute-identity-status \
 	archive-orphans check-promote-invariant run-move-plan check-hardcoded-paths dj-candidates \
-	dj-profile-get dj-profile-set dj-export-ready dj-ready dj-export-plan dj-export-run dj-pool-plan dj-pool-run
+	dj-profile-get dj-profile-set dj-export-ready
 
 help: ## Show this help message
 	@echo "Tagslut - available targets:"
@@ -139,8 +139,6 @@ dj-profile-set: ## Set DJ profile fields for one identity (set V3 and ID; option
 		$(if $(RATING),--rating "$(RATING)",) \
 		$(if $(ENERGY),--energy "$(ENERGY)",) \
 		$(if $(ROLE),--set-role "$(ROLE)",) \
-		$(if $(ADD_TAG),--add-tag "$(ADD_TAG)",) \
-		$(if $(REMOVE_TAG),--remove-tag "$(REMOVE_TAG)",) \
 		$(if $(TAG),--add-tag "$(TAG)",) \
 		$(if $(NOTES),--notes "$(NOTES)",) \
 		$(if $(LAST_PLAYED_AT),--last-played-at "$(LAST_PLAYED_AT)",)
@@ -154,61 +152,6 @@ dj-export-ready: ## Export DJ-ready list with profile fields (set V3 and OUT; op
 		$(if $(MIN_ENERGY),--min-energy "$(MIN_ENERGY)",) \
 		$(if $(LIMIT),--limit "$(LIMIT)",) \
 		$(if $(filter 1,$(ONLY_PROFILED)),--only-profiled,)
-
-dj-ready: ## Alias of dj-export-ready
-	@$(MAKE) dj-export-ready V3="$$V3" OUT="$$OUT" MIN_RATING="$$MIN_RATING" MIN_ENERGY="$$MIN_ENERGY" ROLE="$$ROLE" ONLY_PROFILED="$$ONLY_PROFILED" LIMIT="$$LIMIT"
-
-dj-export-plan: ## Plan DJ export build (set V3 and OUTDIR; optional MANIFEST/MIN_RATING/ROLE/MIN_ENERGY/LIMIT)
-	@test -n "$$V3" || (echo "Usage: make dj-export-plan V3=/path/music_v3.db OUTDIR=/tmp/dj_export [MANIFEST=...] [MIN_RATING=] [ROLE=] [MIN_ENERGY=] [LIMIT=]"; exit 1)
-	@test -n "$$OUTDIR" || (echo "Usage: make dj-export-plan V3=/path/music_v3.db OUTDIR=/tmp/dj_export [MANIFEST=...] [MIN_RATING=] [ROLE=] [MIN_ENERGY=] [LIMIT=]"; exit 1)
-	poetry run python scripts/dj/build_export_v3.py --db "$$V3" --out-dir "$$OUTDIR" \
-		$(if $(MANIFEST),--manifest "$$MANIFEST",) \
-		$(if $(MIN_RATING),--min-rating "$(MIN_RATING)",) \
-		$(if $(ROLE),--set-role "$(ROLE)",) \
-		$(if $(MIN_ENERGY),--min-energy "$(MIN_ENERGY)",) \
-		$(if $(LIMIT),--limit "$(LIMIT)",)
-
-dj-export-run: ## Execute DJ export build (set V3 OUTDIR EXECUTE=1; optional OVERWRITE/FORMAT/LAYOUT/MANIFEST/MIN_RATING/ROLE/MIN_ENERGY/LIMIT)
-	@test -n "$$V3" || (echo "Usage: make dj-export-run V3=/path/music_v3.db OUTDIR=/tmp/dj_export EXECUTE=1 [OVERWRITE=if_same_hash] [FORMAT=copy]"; exit 1)
-	@test -n "$$OUTDIR" || (echo "Usage: make dj-export-run V3=/path/music_v3.db OUTDIR=/tmp/dj_export EXECUTE=1 [OVERWRITE=if_same_hash] [FORMAT=copy]"; exit 1)
-	@test "$$EXECUTE" = "1" || (echo "Refusing dj-export-run without EXECUTE=1"; exit 1)
-	poetry run python scripts/dj/build_export_v3.py --db "$$V3" --out-dir "$$OUTDIR" --execute \
-		--overwrite "$(if $(OVERWRITE),$(OVERWRITE),if_same_hash)" \
-		--format "$(if $(FORMAT),$(FORMAT),copy)" \
-		--layout "$(if $(LAYOUT),$(LAYOUT),by_role)" \
-		$(if $(MANIFEST),--manifest "$$MANIFEST",) \
-		$(if $(MIN_RATING),--min-rating "$(MIN_RATING)",) \
-		$(if $(ROLE),--set-role "$(ROLE)",) \
-		$(if $(MIN_ENERGY),--min-energy "$(MIN_ENERGY)",) \
-		$(if $(LIMIT),--limit "$(LIMIT)",)
-
-dj-pool-plan: ## Plan DJ pool export build (set V3 and OUTDIR; optional MANIFEST/RECEIPTS/MIN_RATING/MIN_ENERGY/ROLE/ONLY_PROFILED/LIMIT)
-	@test -n "$$V3" || (echo "Usage: make dj-pool-plan V3=/path/music_v3.db OUTDIR=/tmp/dj_pool [MANIFEST=...] [RECEIPTS=...]"; exit 1)
-	@test -n "$$OUTDIR" || (echo "Usage: make dj-pool-plan V3=/path/music_v3.db OUTDIR=/tmp/dj_pool [MANIFEST=...] [RECEIPTS=...]"; exit 1)
-	poetry run python scripts/dj/build_pool_v3.py --db "$$V3" --out-dir "$$OUTDIR" \
-		$(if $(MANIFEST),--manifest "$$MANIFEST",) \
-		$(if $(RECEIPTS),--receipts "$$RECEIPTS",) \
-		$(if $(MIN_RATING),--min-rating "$(MIN_RATING)",) \
-		$(if $(MIN_ENERGY),--min-energy "$(MIN_ENERGY)",) \
-		$(if $(ROLE),--set-role "$(ROLE)",) \
-		$(if $(filter 1,$(ONLY_PROFILED)),--only-profiled,) \
-		$(if $(LIMIT),--limit "$(LIMIT)",)
-
-dj-pool-run: ## Execute DJ pool export build (set V3 OUTDIR EXECUTE=1; optional OVERWRITE/FORMAT/LAYOUT/MANIFEST/RECEIPTS/MIN_RATING/ROLE/MIN_ENERGY/LIMIT)
-	@test -n "$$V3" || (echo "Usage: make dj-pool-run V3=/path/music_v3.db OUTDIR=/tmp/dj_pool EXECUTE=1"; exit 1)
-	@test -n "$$OUTDIR" || (echo "Usage: make dj-pool-run V3=/path/music_v3.db OUTDIR=/tmp/dj_pool EXECUTE=1"; exit 1)
-	@test "$$EXECUTE" = "1" || (echo "Refusing dj-pool-run without EXECUTE=1"; exit 1)
-	poetry run python scripts/dj/build_pool_v3.py --db "$$V3" --out-dir "$$OUTDIR" --execute \
-		--overwrite "$(if $(OVERWRITE),$(OVERWRITE),if_same_hash)" \
-		--format "$(if $(FORMAT),$(FORMAT),copy)" \
-		--layout "$(if $(LAYOUT),$(LAYOUT),by_role)" \
-		$(if $(MANIFEST),--manifest "$$MANIFEST",) \
-		$(if $(RECEIPTS),--receipts "$$RECEIPTS",) \
-		$(if $(MIN_RATING),--min-rating "$(MIN_RATING)",) \
-		$(if $(ROLE),--set-role "$(ROLE)",) \
-		$(if $(MIN_ENERGY),--min-energy "$(MIN_ENERGY)",) \
-		$(if $(filter 1,$(ONLY_PROFILED)),--only-profiled,) \
-		$(if $(LIMIT),--limit "$(LIMIT)",)
 
 run-move-plan: ## Safely run move-plan cycle (set PLAN and V3; optional STRICT=1 DRY_RUN=1)
 	@test -n "$$PLAN" || (echo "Usage: make run-move-plan PLAN=plans/<file>.csv V3=/path/music_v3.db [STRICT=1] [DRY_RUN=1]"; exit 1)

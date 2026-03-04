@@ -1,9 +1,5 @@
-# ARCHIVED
+ARCHIVED DOCUMENT
+This document describes pre-v3 architecture and is retained for historical reference.
 
-This document is historical and retained for reference only.
-
-Moved to: `docs/archive/legacy-root-docs-2026-03-04/PHASE5_LEGACY_DECOMMISSION.md`
-
-Canonical current documentation (if applicable):
-- `docs/OPERATIONS.md`
-- `docs/ARCHITECTURE_V3.md`
+Moved to:
+- docs/archive/PHASE5_LEGACY_DECOMMISSION.md

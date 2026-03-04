@@ -62,11 +62,13 @@ def test_set_get_and_tag_mutations(tmp_path: Path) -> None:
         upsert_profile(
             conn,
             1,
-            rating=4,
-            energy=7,
-            set_role="builder",
-            fields_dict={"dj_tags_json": json.dumps(["groovy", "warm"], separators=(",", ":"))},
-            notes="candidate",
+            {
+                "rating": 4,
+                "energy": 7,
+                "set_role": "builder",
+                "dj_tags_json": json.dumps(["groovy", "warm"], separators=(",", ":")),
+                "notes": "candidate",
+            },
         )
         profile = get_profile(conn, 1)
         assert profile is not None
@@ -79,7 +81,7 @@ def test_set_get_and_tag_mutations(tmp_path: Path) -> None:
         upsert_profile(
             conn,
             1,
-            fields_dict={"dj_tags_json": json.dumps(["groovy", "peak"], separators=(",", ":"))},
+            {"dj_tags_json": json.dumps(["groovy", "peak"], separators=(",", ":"))},
         )
         updated = get_profile(conn, 1)
         assert updated is not None
@@ -94,12 +96,12 @@ def test_rejects_nonexistent_and_merged_identity(tmp_path: Path) -> None:
     try:
         ensure_schema(conn)
         try:
-            upsert_profile(conn, 999, rating=1)
+            upsert_profile(conn, 999, {"rating": 1})
             assert False, "expected failure for missing identity"
         except RuntimeError:
             pass
         try:
-            upsert_profile(conn, 3, rating=1)
+            upsert_profile(conn, 3, {"rating": 1})
             assert False, "expected failure for merged identity"
         except RuntimeError:
             pass
@@ -132,21 +134,3 @@ def test_cli_rejects_archived_without_override(tmp_path: Path) -> None:
         check=False,
     )
     assert proc_override.returncode == 0, f"STDOUT:\n{proc_override.stdout}\nSTDERR:\n{proc_override.stderr}"
-
-
-def test_rejects_archived_unless_override(tmp_path: Path) -> None:
-    db = _create_db(tmp_path)
-    conn = sqlite3.connect(str(db))
-    try:
-        ensure_schema(conn)
-        try:
-            upsert_profile(conn, 2, rating=3)
-            assert False, "expected archived rejection without override"
-        except RuntimeError:
-            pass
-        upsert_profile(conn, 2, rating=3, allow_archived=True)
-        profile = get_profile(conn, 2)
-        assert profile is not None
-        assert profile["rating"] == 3
-    finally:
-        conn.close()

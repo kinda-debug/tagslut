@@ -27,6 +27,24 @@ def _connect_rw(path: Path) -> sqlite3.Connection:
     return conn
 
 
+def _merge_tags(existing_json: str | None, add_tags: list[str], remove_tags: list[str]) -> str:
+    tags = []
+    if existing_json:
+        try:
+            parsed = json.loads(existing_json)
+            if isinstance(parsed, list):
+                tags = [str(item) for item in parsed if str(item).strip()]
+        except json.JSONDecodeError:
+            tags = []
+    normalized = {tag.strip() for tag in tags if tag.strip()}
+    for tag in add_tags:
+        if tag.strip():
+            normalized.add(tag.strip())
+    for tag in remove_tags:
+        normalized.discard(tag.strip())
+    return json.dumps(sorted(normalized), separators=(",", ":"))
+
+
 def _cmd_get(args: argparse.Namespace) -> int:
     try:
         conn = _connect_rw(args.db)
@@ -54,27 +72,28 @@ def _cmd_set(args: argparse.Namespace) -> int:
         return 2
     try:
         ensure_schema(conn)
-        if (
-            args.rating is None
-            and args.energy is None
-            and args.set_role is None
-            and args.notes is None
-            and args.last_played_at is None
-            and not args.add_tag
-            and not args.remove_tag
-        ):
+        current = get_profile(conn, int(args.identity))
+        fields: dict[str, object] = {}
+        if args.rating is not None:
+            fields["rating"] = int(args.rating)
+        if args.energy is not None:
+            fields["energy"] = int(args.energy)
+        if args.set_role is not None:
+            fields["set_role"] = args.set_role
+        if args.notes is not None:
+            fields["notes"] = args.notes
+        if args.last_played_at is not None:
+            fields["last_played_at"] = args.last_played_at
+        if args.add_tag or args.remove_tag:
+            existing_json = current["dj_tags_json"] if current else "[]"
+            fields["dj_tags_json"] = _merge_tags(existing_json, args.add_tag, args.remove_tag)
+        if not fields:
             print("no changes requested")
             return 2
         upsert_profile(
             conn,
             int(args.identity),
-            rating=args.rating,
-            energy=args.energy,
-            set_role=args.set_role,
-            notes=args.notes,
-            add_tags=list(args.add_tag),
-            remove_tags=list(args.remove_tag),
-            last_played_at=args.last_played_at,
+            fields,
             allow_archived=bool(args.allow_archived),
         )
         updated = get_profile(conn, int(args.identity))
@@ -127,8 +146,6 @@ def _cmd_bulk_set(args: argparse.Namespace) -> int:
                 fields["set_role"] = str(row["set_role"]).strip()
             if (row.get("notes") or "").strip() != "":
                 fields["notes"] = str(row["notes"])
-            if (row.get("last_played_at") or "").strip() != "":
-                fields["last_played_at"] = str(row["last_played_at"]).strip()
             tags_raw = (row.get("tags") or "").strip()
             if tags_raw:
                 tags = [tag.strip() for tag in tags_raw.split(",") if tag.strip()]
@@ -145,12 +162,7 @@ def _cmd_bulk_set(args: argparse.Namespace) -> int:
                 upsert_profile(
                     conn,
                     identity_id,
-                    rating=fields.get("rating"),
-                    energy=fields.get("energy"),
-                    set_role=fields.get("set_role"),
-                    notes=fields.get("notes"),
-                    last_played_at=fields.get("last_played_at"),
-                    fields_dict={"dj_tags_json": fields["dj_tags_json"]} if "dj_tags_json" in fields else {},
+                    fields,
                     allow_archived=bool(args.allow_archived),
                 )
                 applied += 1

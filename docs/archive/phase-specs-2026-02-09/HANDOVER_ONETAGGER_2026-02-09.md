@@ -13,10 +13,10 @@ All wrappers call:
 
 ## Defaults
 
-- DB: `TAGSLUT_DB` env var, fallback to `/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-08/music.db`
+- DB: `TAGSLUT_DB` env var, fallback to `<TAGSLLUT_REPO>_db/EPOCH_2026-02-08/music.db`
 - Library root: `/Volumes/MUSIC/LIBRARY`
-- OneTagger binary: `/Users/georgeskhawam/Downloads/onetagger-cli`
-- OneTagger config output: `/Users/georgeskhawam/.config/onetagger/config.tagslut-missing-isrc.json`
+- OneTagger binary: `<USER_HOME>/Downloads/onetagger-cli`
+- OneTagger config output: `<USER_HOME>/.config/onetagger/config.tagslut-missing-isrc.json`
 - Work links root: `/Volumes/MUSIC/_work`
 - Artifacts output: `artifacts/compare/`
 - Tag write scope: `ISRC` only

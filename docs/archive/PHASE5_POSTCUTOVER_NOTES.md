@@ -1,10 +1,13 @@
+ARCHIVED DOCUMENT
+This document describes pre-v3 architecture and is retained for historical reference.
+
 # Phase 5 Post-Cutover Notes
 
 Date: 2026-03-03  
 Release: `v3.0.0 @ ac377f0`  
 Rehearsal environment:
 - Clone DB: `~/tmp/tagslut_clone/music_clone.db`
-- Clone library subset: `~/tmp/tagslut_clone/lib` (500 FLAC files copied from `/Volumes/MUSIC/LIBRARY`)
+- Clone library subset: `~/tmp/tagslut_clone/lib` (500 FLAC files copied from `$LIBRARY_ROOT`)
 - USB rehearsal root: `~/tmp/tagslut_clone/usb`
 
 ## 1. Classification Promotion on Clone

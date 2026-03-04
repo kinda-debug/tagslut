@@ -28,8 +28,8 @@ This document consolidates goals, constraints, architecture, current capabilitie
 ## 2. System Architecture & Constraints
 
 ### 2.1 Hardware & Software Stack
-- Master library: `/Volumes/MUSIC/LIBRARY` (FLAC, 25k+ tracks)
-- DJ USB target: `/Volumes/DJUSB` (MP3 320 CBR, Pioneer compatible)
+- Master library: `$LIBRARY_ROOT` (FLAC, 25k+ tracks)
+- DJ USB target: `$DJ_USB_ROOT` (MP3 320 CBR, Pioneer compatible)
 - DJ analysis tools: Lexicon + Rekordbox
 - Primary hardware: Pioneer XDJ (FLAC unsupported)
 - OS context: macOS (volumes mounted locally)
@@ -111,8 +111,8 @@ Historically, the workflow was split across scripts and manual steps, creating i
 ## 6. DJ Pipeline Details
 
 ### 6.1 Input Sources
-- XLSX manifests (e.g., `/Users/georgeskhawam/Desktop/DJ_YES.xlsx`)
-- Folder scans (e.g., `/Volumes/MUSIC/LIBRARY`)
+- XLSX manifests (e.g., `$DJ_XLSX`)
+- Folder scans (e.g., `$LIBRARY_ROOT`)
 - M3U/M3U8 playlists
 
 ### 6.2 Scoring Model
@@ -134,8 +134,8 @@ Decision thresholds:
 ### 6.3 Outputs
 - **Overrides:** `config/dj/track_overrides.csv`
 - **Crates:** `config/dj/crates/safe.m3u8`, `review.m3u8`, `block.m3u8`
-- **USB Output:** `/Volumes/DJUSB` MP3s
-- **Sync Report:** `/Volumes/DJUSB/sync_report.csv`
+- **USB Output:** `$DJ_USB_ROOT` MP3s
+- **Sync Report:** `$DJ_USB_ROOT/sync_report.csv`
 
 ---
 
@@ -166,15 +166,15 @@ Decision thresholds:
 ## 8. Operational Workflow (Step-by-Step)
 
 ### 8.1 Daily/Weekly Sync
-1. Add new FLACs to `/Volumes/MUSIC/LIBRARY`.
+1. Add new FLACs to `$LIBRARY_ROOT`.
 2. Optional: `tagslut index register` to update DB inventory.
 3. Optional: `tagslut index enrich --hoarding` for provider metadata.
 4. If Lexicon updated tags, sync canonical fields from files:
-   - `tools/metadata sync-tags --read-files --execute --path /Volumes/MUSIC/LIBRARY`
+   - `tools/metadata sync-tags --read-files --execute --path $LIBRARY_ROOT`
 5. Run classification:
-   - `tagslut dj classify --input /Volumes/MUSIC/LIBRARY --policy config/dj/dj_curation_usb_v8.yaml --output-crates`
+   - `tagslut dj classify --input $LIBRARY_ROOT --policy config/dj/dj_curation_usb_v8.yaml --output-crates`
 6. Promote safe tracks:
-   - `tagslut dj classify --input /Volumes/MUSIC/LIBRARY --policy config/dj/dj_curation_usb_v8.yaml --promote --output-root /Volumes/DJUSB`
+   - `tagslut dj classify --input $LIBRARY_ROOT --policy config/dj/dj_curation_usb_v8.yaml --promote --output-root $DJ_USB_ROOT`
 7. Import into Lexicon/Rekordbox for beatgrid/cue analysis.
 
 ### 8.2 Review Loop
@@ -188,22 +188,22 @@ Decision thresholds:
 
 ### Classification
 ```
-poetry run tagslut dj classify --input /Volumes/MUSIC/LIBRARY --output-crates --append-overrides
+poetry run tagslut dj classify --input $LIBRARY_ROOT --output-crates --append-overrides
 ```
 
 ### Promotion (Transcode)
 ```
-poetry run tagslut dj classify --input /Volumes/MUSIC/LIBRARY --promote --output-root /Volumes/DJUSB --jobs 4
+poetry run tagslut dj classify --input $LIBRARY_ROOT --promote --output-root $DJ_USB_ROOT --jobs 4
 ```
 
 ### DJ USB Orchestrator
 ```
-python tools/dj_usb_sync.py --source /Volumes/MUSIC/LIBRARY --usb /Volumes/DJUSB --policy config/dj/dj_curation_usb_v8.yaml
+python tools/dj_usb_sync.py --source $LIBRARY_ROOT --usb $DJ_USB_ROOT --policy config/dj/dj_curation_usb_v8.yaml
 ```
 
 ### Metadata Enrichment
 ```
-poetry run python -m tagslut _metadata enrich --db <db> --path "/Volumes/MUSIC/LIBRARY/%" --hoarding --execute
+poetry run python -m tagslut _metadata enrich --db <db> --path "$LIBRARY_ROOT/%" --hoarding --execute
 ```
 
 ---

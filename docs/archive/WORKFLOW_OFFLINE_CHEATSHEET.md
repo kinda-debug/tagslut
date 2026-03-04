@@ -4,17 +4,17 @@ This is the exact, minimal workflow you can run while offline. Items that requir
 
 Paths used
 - FLAC master: `/Volumes/MUSIC/LIBRARY`
-- Staging downloads: `/Users/georgeskhawam/Music/tiddl`
+- Staging downloads: `<USER_HOME>/Music/tiddl`
 - DJ MP3 library (USB): `/Volumes/DJSSD/DJ_LIBRARY_MP3`
-- Tagslut DB: `/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db`
-- Tagslut repo: `/Users/georgeskhawam/Projects/tagslut`
+- Tagslut DB: `<TAGSLLUT_REPO>_db/EPOCH_2026-02-10_RELINK/music.db`
+- Tagslut repo: `<TAGSLLUT_REPO>`
 
 ## A) ONLINE STEPS (do these before going offline)
 
 ### Quick interactive pipeline (recommended)
 If you want a single command that prompts for the root folder and runs the full pipeline:
 ```bash
-cd /Users/georgeskhawam/Projects/tagslut
+cd <TAGSLLUT_REPO>
 export PYTHONPATH=.
 tools/review/process_root.py
 ```
@@ -26,30 +26,30 @@ Notes:
 
 1) Download from Tidal (online)
 ```bash
-TIDDL_BIN=/Users/georgeskhawam/.local/pipx/venvs/tiddl/bin/tiddl \
-/Users/georgeskhawam/Projects/tagslut/tools/tiddl download \
-  --path /Users/georgeskhawam/Music/tiddl \
-  --scan-path /Users/georgeskhawam/Music/tiddl \
+TIDDL_BIN=<USER_HOME>/.local/pipx/venvs/tiddl/bin/tiddl \
+<TAGSLLUT_REPO>/tools/tiddl download \
+  --path <USER_HOME>/Music/tiddl \
+  --scan-path <USER_HOME>/Music/tiddl \
   url https://tidal.com/album/XXXX/u
 ```
 
 2) Register into DB (can be offline, but usually run immediately after download)
 ```bash
-PYTHONPATH=/Users/georgeskhawam/Projects/tagslut \
-python3 -m tagslut index register /Users/georgeskhawam/Music/tiddl \
+PYTHONPATH=<TAGSLLUT_REPO> \
+python3 -m tagslut index register <USER_HOME>/Music/tiddl \
   --source tidal \
-  --db /Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
+  --db <TAGSLLUT_REPO>_db/EPOCH_2026-02-10_RELINK/music.db \
   --dj-only --no-prompt --execute
 ```
 
 3) Enrich metadata from providers (online)
 ```bash
-PYTHONPATH=/Users/georgeskhawam/Projects/tagslut \
+PYTHONPATH=<TAGSLLUT_REPO> \
 python3 -m tagslut index enrich \
-  --db /Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
+  --db <TAGSLLUT_REPO>_db/EPOCH_2026-02-10_RELINK/music.db \
   --hoarding \
   --providers beatport,deezer,apple_music,itunes \
-  --path '/Users/georgeskhawam/Music/tiddl/%' \
+  --path '<USER_HOME>/Music/tiddl/%' \
   --zones staging \
   --execute
 ```
@@ -58,35 +58,35 @@ python3 -m tagslut index enrich \
 
 4) Integrity check (writes `flac_ok`)
 ```bash
-PYTHONPATH=/Users/georgeskhawam/Projects/tagslut \
-python3 tools/review/check_integrity_update_db.py /Users/georgeskhawam/Music/tiddl \
-  --db /Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
+PYTHONPATH=<TAGSLLUT_REPO> \
+python3 tools/review/check_integrity_update_db.py <USER_HOME>/Music/tiddl \
+  --db <TAGSLLUT_REPO>_db/EPOCH_2026-02-10_RELINK/music.db \
   --execute
 ```
 
 5) Normalize genres (DB backfill)
 ```bash
-PYTHONPATH=/Users/georgeskhawam/Projects/tagslut \
-python3 tools/review/normalize_genres.py /Users/georgeskhawam/Music/tiddl \
-  --db /Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
+PYTHONPATH=<TAGSLLUT_REPO> \
+python3 tools/review/normalize_genres.py <USER_HOME>/Music/tiddl \
+  --db <TAGSLLUT_REPO>_db/EPOCH_2026-02-10_RELINK/music.db \
   --rules tools/rules/genre_normalization.json \
   --execute
 ```
 
 6) Write normalized genre tags into FLAC files
 ```bash
-PYTHONPATH=/Users/georgeskhawam/Projects/tagslut \
-python3 tools/review/tag_normalized_genres.py /Users/georgeskhawam/Music/tiddl \
+PYTHONPATH=<TAGSLLUT_REPO> \
+python3 tools/review/tag_normalized_genres.py <USER_HOME>/Music/tiddl \
   --rules tools/rules/genre_normalization.json \
   --execute
 ```
 
 7) Promote FLAC to master library (replace+merge)
 ```bash
-PYTHONPATH=/Users/georgeskhawam/Projects/tagslut \
-python3 tools/review/promote_replace_merge.py /Users/georgeskhawam/Music/tiddl \
+PYTHONPATH=<TAGSLLUT_REPO> \
+python3 tools/review/promote_replace_merge.py <USER_HOME>/Music/tiddl \
   --dest /Volumes/MUSIC/LIBRARY \
-  --db /Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
+  --db <TAGSLLUT_REPO>_db/EPOCH_2026-02-10_RELINK/music.db \
   --execute
 ```
 

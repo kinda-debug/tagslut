@@ -1,3 +1,6 @@
+ARCHIVED DOCUMENT
+This document describes pre-v3 architecture and is retained for historical reference.
+
 # Phase 5: v3.0.0 CUTOVER COMPLETE ✓
 **Date:** 2026-03-03 09:27 EET
 **DB:** music_v2.db (23,460 files)
@@ -10,7 +13,7 @@
 
 ## Safety Artifacts
 - Backup: music_v2.db.backup (2026-03-03)
-- Rehearsal baseline: EPOCH_2026-02-28/music_v2.db
+- Rehearsal baseline: `$V2_DB`
 - Rollback: cp music_v2.db.backup music_v2.db
 
 ## KPIs Achieved

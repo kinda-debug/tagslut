@@ -46,7 +46,7 @@ Beatport uses web scraping with fallback to API. If scraping fails:
 **Solution:**
 ```bash
 # Find processes using the database
-lsof +D ~/Projects/tagslut_db/
+lsof +D $REPO_ROOT_db/
 
 # Kill any stale processes
 # Then retry operation
@@ -60,7 +60,7 @@ lsof +D ~/Projects/tagslut_db/
 **Solution:**
 ```bash
 # Check the path exists
-ls -la ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
+ls -la $TAGSLUT_DB
 
 # Check .env configuration
 cat .env | grep TAGSLUT_DB
@@ -81,7 +81,7 @@ cat config.toml | grep -n "db"
 **Solution:**
 ```bash
 # Run from repo root
-cd ~/Projects/tagslut
+cd $REPO_ROOT
 source .venv/bin/activate
 
 # The script is at:
@@ -141,10 +141,10 @@ This is by design - tagslut uses move-only semantics and won't overwrite.
 **Solution:**
 ```bash
 # Check move receipts
-tagslut verify receipts --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
+tagslut verify receipts --db $TAGSLUT_DB
 
 # Review recovery status
-tagslut verify recovery --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
+tagslut verify recovery --db $TAGSLUT_DB
 
 # See ARCHITECTURE.md for full recovery procedure
 ```
@@ -162,10 +162,10 @@ tagslut verify recovery --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music
 **Solution:**
 ```bash
 # Get detailed audit
-tagslut index duration-audit --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
+tagslut index duration-audit --db $TAGSLUT_DB
 
 # If file duration is correct but reference is wrong:
-tagslut index set-duration-ref --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
+tagslut index set-duration-ref --db $TAGSLUT_DB
 
 # If file is corrupted:
 # - Quarantine the file
@@ -184,7 +184,7 @@ tagslut index set-duration-ref --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELIN
 **Solution:**
 ```bash
 # Activate virtual environment
-cd ~/Projects/tagslut
+cd $REPO_ROOT
 source .venv/bin/activate
 
 # Verify installation
@@ -251,7 +251,7 @@ tagslut index register --zone library --recursive /path/to/files
 env | grep -E "(TAGSLUT|VOLUME)"
 
 # Check database
-sqlite3 ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db "SELECT COUNT(*) FROM files;"
+sqlite3 $TAGSLUT_DB "SELECT COUNT(*) FROM files;"
 
 # Check token status
 tagslut auth status

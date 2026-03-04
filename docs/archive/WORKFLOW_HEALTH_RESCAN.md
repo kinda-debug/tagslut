@@ -24,7 +24,7 @@ Metadata hoarding:
 ### Option A: Current relink DB
 ```bash
 scripts/workflow_health_rescan.py \
-  --db /Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
+  --db <TAGSLLUT_REPO>_db/EPOCH_2026-02-10_RELINK/music.db \
   --root /Volumes/MUSIC \
   --workers 8 \
   --electronic-only \
@@ -35,7 +35,7 @@ scripts/workflow_health_rescan.py \
 ### Option B: Larger accepted snapshot DB
 ```bash
 scripts/workflow_health_rescan.py \
-  --db /Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-08/music.db \
+  --db <TAGSLLUT_REPO>_db/EPOCH_2026-02-08/music.db \
   --root /Volumes/MUSIC \
   --workers 8 \
   --electronic-only \

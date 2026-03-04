@@ -5,7 +5,7 @@ Local web app to classify Artist / Album / Track as **OK** vs **Not OK**, with w
 ## Run
 
 ```bash
-export TAGSLUT_DB="/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db"
+export TAGSLUT_DB="$TAGSLUT_DB"
 tagslut report dj-review --db "$TAGSLUT_DB"
 ```
 
@@ -14,16 +14,16 @@ Open: `http://127.0.0.1:5000`
 Compatibility launcher (still supported):
 
 ```bash
-python /Users/georgeskhawam/Projects/tagslut/tools/dj_review_app.py --db "$TAGSLUT_DB"
+python $REPO_ROOT/tools/dj_review_app.py --db "$TAGSLUT_DB"
 ```
 
 Optional filters / defaults:
 
 ```bash
-export DJ_REVIEW_LIBRARY_PREFIX="/Volumes/MUSIC/LIBRARY"
+export DJ_REVIEW_LIBRARY_PREFIX="$LIBRARY_ROOT"
 export DJ_REVIEW_PORT=5055
 export DJ_REVIEW_POLICY="config/dj/dj_curation_usb_v8.yaml"
-export DJ_REVIEW_USB_PATH="/Volumes/MUSIC/DJ"
+export DJ_REVIEW_USB_PATH="$DJ_USB_ROOT"
 export DJ_REVIEW_JOBS=4
 export DJ_REVIEW_ARTWORK_MAX_KB=500
 export DJ_REVIEW_REKORDBOX_XML="rekordbox.xml"
@@ -103,10 +103,10 @@ Use the **Export OK → USB** button inside the UI.
 Or run manually:
 
 ```bash
-python /Users/georgeskhawam/Projects/tagslut/tools/dj_usb_sync.py \
-  --source /Users/georgeskhawam/Projects/tagslut/artifacts/dj_review_ok.m3u8 \
-  --usb /Volumes/MUSIC/DJ \
-  --policy /Users/georgeskhawam/Projects/tagslut/config/dj/dj_curation_usb_v8.yaml
+python $REPO_ROOT/tools/dj_usb_sync.py \
+  --source $REPO_ROOT/artifacts/dj_review_ok.m3u8 \
+  --usb $DJ_USB_ROOT \
+  --policy $REPO_ROOT/config/dj/dj_curation_usb_v8.yaml
 ```
 
 Pioneer finalize runs by default in `dj_usb_sync.py` (ID3v2.3, artwork cap, Rekordbox XML).

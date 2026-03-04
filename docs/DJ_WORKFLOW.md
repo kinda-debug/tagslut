@@ -5,7 +5,7 @@
 Once tracks have been classified, just run:
 
 ```bash
-tagslut dj export --safe --output-root /Volumes/DJUSB
+tagslut dj export --safe --output-root $DJ_USB_ROOT
 ```
 
 Nothing else needed. No prompts.
@@ -13,7 +13,7 @@ Nothing else needed. No prompts.
 To export a specific crate:
 
 ```bash
-tagslut dj export --safe --crate peak-time --output-root /Volumes/DJUSB
+tagslut dj export --safe --crate peak-time --output-root $DJ_USB_ROOT
 ```
 
 ## Commands
@@ -25,9 +25,9 @@ Preview which tracks pass DJ curation filters (dry run).
 Example:
 
 ```bash
-poetry run tagslut dj curate --input-xlsx /Users/georgeskhawam/Desktop/DJ_YES.xlsx \
+poetry run tagslut dj curate --input-xlsx $DJ_XLSX \
   --policy config/dj/dj_curation_usb_v8.yaml \
-  --output-root /Volumes/MUSIC/DJ_YES
+  --output-root $DJ_USB_ROOT_YES
 ```
 
 ### tagslut dj export
@@ -37,9 +37,9 @@ Curate and transcode DJ library to USB output root.
 Example:
 
 ```bash
-poetry run tagslut dj export --input-xlsx /Users/georgeskhawam/Desktop/DJ_YES.xlsx \
+poetry run tagslut dj export --input-xlsx $DJ_XLSX \
   --policy config/dj/dj_curation_usb_v8.yaml \
-  --output-root /Volumes/MUSIC/DJ_YES \
+  --output-root $DJ_USB_ROOT_YES \
   --jobs 4 --detect-keys
 ```
 
@@ -124,7 +124,7 @@ Requires: Spotify/Tidal API auth, Roon local API
 If you want a UI for artist/album/track decisions (OK / Not OK), use the review app:
 
 ```bash
-tagslut dj review-app --db "/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db"
+tagslut dj review-app --db "$TAGSLUT_DB"
 ```
 
 See `docs/DJ_REVIEW_APP.md` for auto‑verdict, filters, and USB export.

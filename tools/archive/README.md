@@ -7,7 +7,7 @@ This directory contains archived scripts that have been superseded or are no lon
 ### delete_flac_with_mp3_match.py
 
 One-off script to delete FLAC files that have matching MP3 versions.
-- Contains hardcoded paths (`/Users/georgeskhawam/Music/yesflac`, `/Users/georgeskhawam/Music/yesmp3`)
+- Contains hardcoded paths (`<USER_HOME>/Music/yesflac`, `<USER_HOME>/Music/yesmp3`)
 - Not part of standard workflow
 - Kept for reference only
 

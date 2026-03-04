@@ -986,7 +986,7 @@ If the token expires mid‑session and you start getting 401/403:
 1. Run in terminal:
 
    ```
-   cd /Users/georgeskhawam/Projects/tagslut
+   cd <TAGSLLUT_REPO>
    python3 auth_manager.py refresh 
        beatport  # once you implement it
    source ./env_exports.
@@ -2214,7 +2214,7 @@ Job completed successfully
 
 I’ve created the concrete files and wired them into your project, following the patterns from `metadata_guide.md`.
 
-Where they are (relative to your project root `/Users/georgeskhawam/Projects/tagslut`):
+Where they are (relative to your project root `<TAGSLLUT_REPO>`):
 
 - `phase1_harvest/beatport_harvest_my_tracks.sh`
 - `phase1_harvest/beatport_normalize.py`
@@ -2275,12 +2275,12 @@ Config in `phase1_harvest/env_exports.sh`:
 - `BEATPORT_MY_TRACKS_STATE="beatport_my_tracks.state"`
 - `BEATPORT_PER_PAGE` (e.g. 50)
 - `BEATPORT_MAX_PAGES` (safety upper bound)
-- `MUSIC_DB="/Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-24/music.db"`
+- `MUSIC_DB="<TAGSLLUT_REPO>/EPOCH_2026-01-24/music.db"`
 
 How to run:
 
 ```
-cd /Users/georgeskhawam/Projects/tagslut/
+cd <TAGSLLUT_REPO>/
     phase1_harvest
 
 # Load env (will also set 
@@ -2354,7 +2354,7 @@ Behavior:
 How to run:
 
 ```
-cd /Users/georgeskhawam/Projects/tagslut/
+cd <TAGSLLUT_REPO>/
     phase1_harvest
 source ./env_exports.sh
 
@@ -2384,7 +2384,7 @@ Purpose:
 Usage sketch:
 
 ```
-cd /Users/georgeskhawam/Projects/tagslut/
+cd <TAGSLLUT_REPO>/
     phase1_harvest
 source ./env_exports.sh
 chmod +x beatport_harvest_catalog_track.sh
@@ -2423,7 +2423,7 @@ Suggested order:
 
 1. Get `BEATPORT_ACCESS_TOKEN` fresh (as you did for your curl examples).
 
-2. `cd /Users/georgeskhawam/Projects/tagslut/phase1_harvest && source ./env_exports.sh`.
+2. `cd <TAGSLLUT_REPO>/phase1_harvest && source ./env_exports.sh`.
 
 3. Run `./beatport_harvest_my_tracks.sh` and confirm `beatport_my_tracks.ndjson` looks sane.
 
@@ -2475,8 +2475,8 @@ If you prefer everything to live alongside `metadata_guide.md` / `metadata_add.m
 I need one bit of clarification from you before I move things:
 
 - Do you want these scripts under:
-  - `tagslut/metadata/` (i.e., `/Users/georgeskhawam/Projects/tagslut/tagslut/metadata/…`), or
-  - Directly in the project root `/Users/georgeskhawam/Projects/tagslut/` (next to `metadata_guide.md` and `metadata_add.md`)?
+  - `tagslut/metadata/` (i.e., `<TAGSLLUT_REPO>/tagslut/metadata/…`), or
+  - Directly in the project root `<TAGSLLUT_REPO>/` (next to `metadata_guide.md` and `metadata_add.md`)?
 
 Once you pick one, I’ll:
 
@@ -2510,7 +2510,7 @@ Here’s what I’ll do and what you should expect.
 Under:
 
 ```
-/Users/georgeskhawam/Projects/tagslut/tagslut/metadata/
+<TAGSLLUT_REPO>/tagslut/metadata/
 ```
 
 I’ll place:
@@ -2534,7 +2534,7 @@ I’ll also:
 From your project root:
 
 ```
-cd /Users/georgeskhawam/Projects/tagslut
+cd <TAGSLLUT_REPO>
 
 # Load env (same env_exports.sh as before)
 source ./env_exports.sh
@@ -2554,7 +2554,7 @@ python3 tagslut/metadata/
 
 Everything else (DB path, token usage) stays as in `metadata_guide.md`:
 
-- `MUSIC_DB` from `env_exports.sh` → `/Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-24/music.db`
+- `MUSIC_DB` from `env_exports.sh` → `<TAGSLLUT_REPO>/EPOCH_2026-01-24/music.db`
 - `BEATPORT_ACCESS_TOKEN` from your manual/managed token.
 
 ------
@@ -2688,15 +2688,15 @@ Yes—they’re in `tagslut/metadata` now.
 
 Here’s what exists and where:
 
-- `/Users/georgeskhawam/Projects/tagslut/tagslut/metadata/beatport_harvest_catalog_track.sh`
-- `/Users/georgeskhawam/Projects/tagslut/tagslut/metadata/beatport_harvest_my_tracks.sh`
-- `/Users/georgeskhawam/Projects/tagslut/tagslut/metadata/beatport_import_my_tracks.py`
-- `/Users/georgeskhawam/Projects/tagslut/tagslut/metadata/beatport_normalize.py`
-- Existing provider: `/Users/georgeskhawam/Projects/tagslut/tagslut/metadata/providers/beatport.py`
+- `<TAGSLLUT_REPO>/tagslut/metadata/beatport_harvest_catalog_track.sh`
+- `<TAGSLLUT_REPO>/tagslut/metadata/beatport_harvest_my_tracks.sh`
+- `<TAGSLLUT_REPO>/tagslut/metadata/beatport_import_my_tracks.py`
+- `<TAGSLLUT_REPO>/tagslut/metadata/beatport_normalize.py`
+- Existing provider: `<TAGSLLUT_REPO>/tagslut/metadata/providers/beatport.py`
 
 And your shared env file is at:
 
-- `/Users/georgeskhawam/Projects/tagslut/env_exports.sh`
+- `<TAGSLLUT_REPO>/env_exports.sh`
 
 Both shell scripts now:
 
@@ -2826,7 +2826,7 @@ From your `metadata_guide.md`, the intention is:
 - You edit only on your local machine:
 
 ```
-cd /Users/georgeskhawam/Projects/tagslut
+cd <TAGSLLUT_REPO>
 
 # If you want, re-init (this overwrites if 
     you delete existing tokens.json first):
@@ -3352,7 +3352,7 @@ Given that `auth_manager.py` does a clean `grant_type=client_credentials` call, 
 
 2. **Re‑init and test `auth_manager.py` manually**
 
-   From `/Users/georgeskhawam/Projects/tagslut`:
+   From `<TAGSLLUT_REPO>`:
 
    ```
    # See what Spotify thinks the status is

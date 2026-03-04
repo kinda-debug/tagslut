@@ -268,7 +268,7 @@ Roon allows periodic exports:
 # Import MusicBrainz IDs from Roon
 python legacy/tools/integrity/import_roon.py \
   --roon-export roon.xlsx \
-  --db /Users/georgeskhawam/Projects/tagslut_db/EPOCH_20260119/music.db \
+  --db <TAGSLLUT_REPO>_db/EPOCH_20260119/music.db \
   --update-musicbrainz \
   --execute \
   -v

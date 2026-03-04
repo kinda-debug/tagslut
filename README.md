@@ -1,50 +1,61 @@
 # tagslut
 
-Tagslut is a recovery-first music library deduplication and metadata orchestration toolkit.
-It focuses on safe ingest, deterministic decisioning, and audit-friendly execution for large FLAC libraries.
+## Project Overview
+`tagslut` is a v3 music library operations system built around a deterministic database model.
+It separates physical files from logical track identities, then applies deterministic selection and guarded promotion workflows.
 
-> ⚠️ **`dedupe` alias retiring June 2026** — If you use the `dedupe` command, migrate to `tagslut` now.
-> Replace `dedupe [args]` with `tagslut [args]`. The alias emits a deprecation warning on every
-> invocation and will be removed on **2026-06-01**.
+## Core Concepts
+- `asset`: a concrete file row (`asset_file`) with path and technical facts.
+- `identity`: canonical track truth (`track_identity`) linked from assets via `asset_link`.
+- `preferred asset`: one deterministic best asset per active identity (`preferred_asset`).
+- `lifecycle status`: non-merged identities classified as `active`, `orphan`, or `archived` (`identity_status`).
 
-## Install
+## Operational Model
+- Intake and scan update asset-level state.
+- Identity linking and enrichment update identity-level state.
+- Preferred asset computation materializes deterministic playback/promotion choices.
+- Promotion moves files with post-run invariant checks.
 
+## Quick Start
 ```bash
-poetry install
+cd <TAGSLLUT_REPO>
+source .venv/bin/activate
+
+export V2_DB=<V3_DB>
+export V3_DB=<V3_DB>
+export TAGSLUT_DB="$V3_DB"
+export LIBRARY_ROOT=<LIBRARY_ROOT>
+export PROMOTE_ROOT=<PROMOTE_ROOT>
 ```
 
-## Most Useful Commands
-
+## Standard Operations
 ```bash
-poetry run tagslut --help
-poetry run tagslut intake --help
-poetry run tagslut index --help
-poetry run tagslut decide --help
-poetry run tagslut execute --help
+# Scan-only (asset-level)
+python -m tagslut intake process-root \
+  --db <V3_DB> \
+  --root <PROMOTE_ROOT> \
+  --scan-only
+
+# Full pipeline
+python -m tagslut intake process-root \
+  --db <V3_DB> \
+  --root <PROMOTE_ROOT>
 ```
 
-## Documentation
+## Safety Gates
+- v3 doctor: schema and invariants
+- migration verification: aggregate preservation checks
+- promotion invariant guardrail: preferred-under-root must be selected when available
 
-See `docs/README.md` for the full documentation index.
-
-Key docs:
-
-- `docs/WORKFLOWS.md`
-- `docs/OPERATIONS.md`
-- `docs/ARCHITECTURE.md`
-- `docs/TROUBLESHOOTING.md`
-- `docs/DJ_REVIEW_APP.md`
-- `docs/DJ_WORKFLOW.md`
-- `docs/PROJECT.md`
-- `docs/PROGRESS_REPORT.md`
-
-## Development
-
+Safe promotion command:
 ```bash
-poetry install
-poetry run pytest tests -x -q
+make promote-safe V3=<V3_DB> ROOT=<PROMOTE_ROOT> LIB=<LIBRARY_ROOT>
 ```
 
-## License
-
-See `LICENSE`.
+## Repository Structure
+- `tagslut/`: runtime packages and CLI
+- `tools/`: operational wrappers and scripts
+- `scripts/db/`: DB verification, reporting, lifecycle and guardrail scripts
+- `docs/`: active documentation
+- `docs/archive/`: historical and pre-v3 documents
+- `tests/`: regression and invariant tests

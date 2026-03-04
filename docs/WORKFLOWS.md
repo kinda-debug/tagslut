@@ -2,12 +2,18 @@
 
 Operator reference for tagslut. Start here.
 
-> **Canonical DB path** (update once, use everywhere):
+> **Environment bootstrap** (update once, use everywhere):
 > ```bash
-> export TAGSLUT_DB="/path/to/tagslut_db/EPOCH_2026-02-10_RELINK/music.db"
-> export LIBRARY_ROOT="/Volumes/MUSIC/LIBRARY"
-> export STAGING_ROOT="$HOME/Music/mdl"
 > export REPO_ROOT="/path/to/tagslut"
+> export V3_DB="<V3_DB>"
+> export TAGSLUT_DB="$V3_DB"
+> export LIBRARY_ROOT="/path/to/music_library"
+> export STAGING_ROOT="$HOME/Music/mdl"
+> export ROOT_BP="$STAGING_ROOT/bpdl"
+> export ROOT_TD="$STAGING_ROOT/tiddl"
+> export DJ_USB_ROOT="/path/to/dj_usb"
+> export DJ_MP3_ROOT="/path/to/dj_mp3"
+> export DROPBOX_ROOT="/path/to/dropbox"
 > ```
 
 ---
@@ -177,9 +183,9 @@ python3 - <<'PY'
 import os, subprocess
 from pathlib import Path
 
-SRC_ROOT = Path('/Volumes/MUSIC/LIBRARY')
-DST_ROOT = Path('/Volumes/DJSSD/DJ_LIBRARY_MP3')
-M3U      = Path('/Volumes/MUSIC/LIBRARY/MDL_NEW_TRACKS.m3u')
+SRC_ROOT = Path('$LIBRARY_ROOT')
+DST_ROOT = Path('$DJ_MP3_ROOT')
+M3U      = Path('$LIBRARY_ROOT/MDL_NEW_TRACKS.m3u')
 
 lines = [l.strip() for l in M3U.read_text(encoding='utf-8', errors='replace').splitlines()]
 seen, paths = set(), []
@@ -224,10 +230,10 @@ PY
 python3 - <<'PY'
 from pathlib import Path
 
-src_m3u  = Path('/Volumes/MUSIC/LIBRARY/DJ_SET_POOL_4TO12.m3u')
-dst_m3u  = Path('/Volumes/DJSSD/DJ_SET_POOL_4TO12.m3u')
-src_root = '/Volumes/MUSIC/LIBRARY/'
-dst_root = '/Volumes/DJSSD/DJ_LIBRARY_MP3/'
+src_m3u  = Path('$LIBRARY_ROOT/DJ_SET_POOL_4TO12.m3u')
+dst_m3u  = Path('$DJ_USB_ROOT/DJ_SET_POOL_4TO12.m3u')
+src_root = '$LIBRARY_ROOT/'
+dst_root = '$DJ_MP3_ROOT/'
 
 lines = [l.strip() for l in src_m3u.read_text(encoding='utf-8', errors='replace').splitlines()]
 paths = [l for l in lines if l and not l.startswith('#')]
@@ -238,10 +244,10 @@ PY
 
 ### Rekordbox import
 
-1. Lexicon: import folder `/Volumes/DJSSD/DJ_LIBRARY_MP3`
+1. Lexicon: import folder `$DJ_MP3_ROOT`
 2. Rekordbox: import MP3 library root → Analyze BPM/beatgrid/phrase
 3. Disable **Preferences → Advanced → Write tags to file**
-4. Export to USB: Rekordbox Export Mode → `/Volumes/DJSSD`
+4. Export to USB: Rekordbox Export Mode → `$DJ_USB_ROOT`
 
 ---
 
@@ -296,7 +302,7 @@ poetry run tagslut index enrich --db "$TAGSLUT_DB"
 ```bash
 scripts/workflow_health_rescan.py \
   --db "$TAGSLUT_DB" \
-  --root /Volumes/MUSIC \
+  --root $MUSIC_VOLUME_ROOT \
   --workers 8 \
   --electronic-only \
   --hoard-metadata \
@@ -365,11 +371,11 @@ python scripts/embed_artwork_from_sources.py \
 
 ```bash
 # 1) Verify FLAC health
-python scripts/scan_dropbox_audio_health.py --root /Volumes/bad/dbx/Dropbox
+python scripts/scan_dropbox_audio_health.py --root "$DROPBOX_ROOT"
 
 # 2) Promote valid files
 poetry run tagslut execute promote-tags \
-  "/Volumes/bad/dbx/Dropbox/Music Hi-Res" \
+  "$DROPBOX_ROOT/Music Hi-Res" \
   --dest "$LIBRARY_ROOT" --execute
 
 # 3) Cloud delete (requires files.content.write scope)
@@ -382,11 +388,11 @@ python scripts/delete_dropbox_cloud_paths.py \
 
 ```bash
 python scripts/bootstrap_relink_db.py \
-  --from-db "/path/to/tagslut_db/EPOCH_2026-02-08/music.db" \
-  --to-db   "/path/to/tagslut_db/EPOCH_2026-02-10_RELINK/music.db"
+  --from-db "$V2_DB" \
+  --to-db "$V3_DB"
 
 poetry run tagslut index register "$LIBRARY_ROOT" \
-  --db "/path/to/tagslut_db/EPOCH_2026-02-10_RELINK/music.db" \
+  --db "$V3_DB" \
   --source relink --execute
 ```
 

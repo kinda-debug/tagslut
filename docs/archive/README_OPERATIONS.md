@@ -19,7 +19,7 @@ tagslut --help
 ## Current Database
 
 ```
-/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
+<TAGSLLUT_REPO>_db/EPOCH_2026-02-10_RELINK/music.db
 ```
 
 ## Canonical CLI Commands
@@ -77,14 +77,14 @@ EOF
 # Run pre-download check
 python tools/review/pre_download_check.py \
   --input ~/links.txt \
-  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
+  --db <V3_DB> \
   --out-dir output/precheck
 
 ### Clean Claude Export Files
 
 ```bash
-tools/claude-clean /Users/georgeskhawam/Documents/StarredClaude.md \
-  /Users/georgeskhawam/Documents/claude2.md \
+tools/claude-clean <USER_HOME>/Documents/StarredClaude.md \
+  <USER_HOME>/Documents/claude2.md \
   --out-dir output/claude_clean
 ```
 ```
@@ -143,7 +143,7 @@ tagslut index register \
 
 ```bash
 tagslut index check \
-  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
+  --db <V3_DB>
 ```
 
 ### 7. Duration Check (DJ Safety)
@@ -152,11 +152,11 @@ tagslut index check \
 # Quick check
 tagslut index duration-check \
   /path/to/downloads \
-  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
+  --db <V3_DB>
 
 # Full audit
 tagslut index duration-audit \
-  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
+  --db <V3_DB>
 ```
 
 ### 7. Generate Execution Plan
@@ -179,14 +179,14 @@ tagslut decide plan \
 tagslut execute move-plan \
   output/move_plan.csv \
   --source-root /path/to/staging \
-  --dest-root /path/to/library \
-  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
+  --dest-root <LIBRARY_ROOT> \
+  --db <V3_DB> \
   --execute
 
 # Or use direct script
 python tools/review/promote_by_tags.py \
   --source /path/to/staging \
-  --dest /path/to/library \
+  --dest <LIBRARY_ROOT> \
   --move-log artifacts/moves.jsonl
 ```
 
@@ -194,9 +194,9 @@ python tools/review/promote_by_tags.py \
 
 ```bash
 # All verifications
-tagslut verify duration --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
-tagslut verify recovery --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
-tagslut verify receipts --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
+tagslut verify duration --db <V3_DB>
+tagslut verify recovery --db <V3_DB>
+tagslut verify receipts --db <V3_DB>
 ```
 
 ### 10. Generate Reports
@@ -204,12 +204,12 @@ tagslut verify receipts --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music
 ```bash
 # M3U playlist
 tagslut report m3u /Volumes/MUSIC/LIBRARY \
-  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
+  --db <V3_DB> \
   --source library \
   --m3u-dir /Volumes/MUSIC/LIBRARY
 
 # Duration report
-tagslut report duration --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
+tagslut report duration --db <V3_DB>
 ```
 
 ## What Each Command Writes

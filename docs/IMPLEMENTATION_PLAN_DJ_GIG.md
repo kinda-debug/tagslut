@@ -1094,7 +1094,7 @@ def export_group() -> None:
 @click.option("--source", required=True, type=click.Path(exists=True, path_type=Path),
               help="Source directory containing audio files")
 @click.option("--usb", required=True, type=click.Path(exists=True, path_type=Path),
-              help="USB mount point (e.g. /Volumes/PIONEER_USB)")
+              help="USB mount point (e.g. $DJ_USB_ROOT)")
 @click.option("--crate", default="tagslut export", show_default=True,
               help="Crate/playlist name in Rekordbox")
 @click.option("--dry-run", is_flag=True, help="Print what would happen without writing anything")
@@ -1366,7 +1366,7 @@ class GigBuilder:
         result = builder.build(
             name="Techno Set",
             filter_expr="genre:techno bpm:128-145 dj_flag:true",
-            usb_path=Path("/Volumes/PIONEER_USB"),
+            usb_path=Path("$DJ_USB_ROOT"),
             dry_run=True,
         )
         print(result.summary())

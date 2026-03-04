@@ -44,7 +44,7 @@ Thanks — I can help debug token refresh. A few quick clarifying questions so I
 2. Which script did you run when it failed? (e.g., auth_manager.py get spotify, auth_manager.py refresh spotify, or the env_exports.sh / harvest script that calls auth_manager)
 3. Exact error/output you see when you try to refresh (copy-paste the terminal output). If there’s an HTTP status (401/403/400/429) include it and any response body snippet.
 4. Did you initialize tokens.json per the guide and populate client_id / client_secret (for Spotify/Beatport) or the required refresh_token for Tidal? Confirm which fields you filled.
-5. Are you running these from the project directory /Users/georgeskhawam/Projects/tagslut and using the Python environment there? Which Python version (python3 --version)?
+5. Are you running these from the project directory <TAGSLLUT_REPO> and using the Python environment there? Which Python version (python3 --version)?
 
 While you reply I’ll list the most common causes and quick checks you can run now:
 
@@ -1821,7 +1821,7 @@ Create a tiny local HTTP collector in your project (so Postman can `POST` to it)
 
 ### 2.1. Python collector script
 
-Create `partner_token_collector.py` in `/Users/georgeskhawam/Projects/tagslut`:
+Create `partner_token_collector.py` in `<TAGSLLUT_REPO>`:
 
 ```
 #!/usr/bin/env python3
@@ -1906,7 +1906,7 @@ if __name__ == "__main__":
 Run it in a terminal:
 
 ```
-cd /Users/georgeskhawam/Projects/tagslut
+cd <TAGSLLUT_REPO>
 python3 partner_token_collector.py
 ```
 
@@ -2109,7 +2109,7 @@ Job completed successfully
 
 Here’s what I’ve set up for you in the repo; you just have to run it.
 
-New files created under `/Users/georgeskhawam/Projects/tagslut`:
+New files created under `<TAGSLLUT_REPO>`:
 
 1. `partner_token_collector.py` (project root)
 
@@ -2128,7 +2128,7 @@ New files created under `/Users/georgeskhawam/Projects/tagslut`:
 - You run it with:
 
 ```
-cd /Users/georgeskhawam/Projects/tagslut
+cd <TAGSLLUT_REPO>
 python3 partner_token_collector.py
 ```
 
@@ -2173,7 +2173,7 @@ https://api-partner.spotify.com/pathfinder/v1/query
 You run it with:
 
 ```
-cd /Users/georgeskhawam/Projects/tagslut
+cd <TAGSLLUT_REPO>
 python3 test_spotify_partner_query.py
 ```
 
@@ -2232,7 +2232,7 @@ Here’s exactly what to do, step by step, using what’s already in your projec
 From your project root:
 
 ```
-cd /Users/georgeskhawam/Projects/tagslut
+cd <TAGSLLUT_REPO>
 python3 partner_token_collector.py
 ```
 
@@ -2275,7 +2275,7 @@ Then click **Send**.
 If the collector is running, this will create/overwrite:
 
 ```
-/Users/georgeskhawam/Projects/tagslut/spotify_partner_tokens.json
+<TAGSLLUT_REPO>/spotify_partner_tokens.json
 ```
 
 1. Re-run your test script
@@ -2617,7 +2617,7 @@ Given your context, here’s the minimal, repeatable loop:
 A. Start your local token collector (once per dev session)
 
 ```
-cd /Users/georgeskhawam/Projects/tagslut
+cd <TAGSLLUT_REPO>
 python3 partner_token_collector.py
 ```
 
@@ -2736,7 +2736,7 @@ If you’d like, paste the JSON body from your 200 OK Postman call (redact any p
 
 Untitled Request
 
-POST http://127.0.0.1:5005/spotify-partner-tokens: { "Network": { "addresses": { "local": { "address": "127.0.0.1", "family": "IPv4", "port": 54283 }, "remote": { "address": "127.0.0.1", "family": "IPv4", "port": 5005 } } }, "Request Headers": { "authorization": "Bearer BQDfUA6ymflowDfDKiJHhsXtDd0dIWT4Ty1BfgLF7l_xyipufQtXZhmA3mr9fayOYS9h6kl1C7-zjYjpjmfWdEt_-XlqxVPXd27SiHfj7GCr8TyvRKjS3aP2B6gnJgTNZSJN1kW9XYRYSfFiKpif36GC4-fQjS1uQsuiwYUwa_yCrnruP-_QLdteqeNl9Yi_qDcbCzK3pF0EgJrrEwfmiIONq-yB6YoY1e_aXx24WbybAO6F68_PS9e2sL4THWKMWHUu8u_I0n_eYxQp1RbZ-QPvZb1rueDw6M-BLG7pJnX7A9c2tQvU1WJ8TSf5yXHPBTD-gESJW7cuSwQ82s2XCMYo5Ji7jnstK6VIToTdPgGvUu64yKWdJ-mc", "client-token": "AABHSaI3IJoGU36g3eHC3mTcxeakVeT3+VexhYY7OvvYEbN2394Z0KRTDs2fKOZog4ja26w666gweGsannIFH/ZKfGlrQV7HXpVCYrlZ2ds79fRIETIHVhOijaWeYy+iimdOzIQErvKVKm7XyG9xXmhWcppnOnjYNrzb+bxlgCKhp86uPNvLg8f9qyg/d5YaTukQpP6LyJqbV0DlPX5repgXKdxob70Syn8oEwrVn5TeI5uspP/4pp2Xk7D9ogzR35kLyTFe6277ROUYpjG/mYBnu7OuCiPBZZ4w30ol3vptk+X0aazwhHN+qbGeQiPgReQBFMY6PaaKPY03Ty8haGsEh6I=", "cookie": "sp_landing=https%3A%2F%2Fwww.spotify.com%2Fapi%2Fmasthead%2Fv1%2Fmasthead; sp_new=1; sp_t=3f0cd36f-8b75-43e9-b621-cbe2740700c6", "content-type": "application/json", "user-agent": "PostmanRuntime/7.51.0", "accept": "*/*", "postman-token": "7250aaad-8b01-40b5-abd4-e6941d30749a", "host": "127.0.0.1:5005", "accept-encoding": "gzip, deflate, br", "connection": "keep-alive", "content-length": "954" }, "Request Body": "{\n \"spotify_partner_bearer\": \"BQDfUA6ymflowDfDKiJHhsXtDd0dIWT4Ty1BfgLF7l_xyipufQtXZhmA3mr9fayOYS9h6kl1C7-zjYjpjmfWdEt_-XlqxVPXd27SiHfj7GCr8TyvRKjS3aP2B6gnJgTNZSJN1kW9XYRYSfFiKpif36GC4-fQjS1uQsuiwYUwa_yCrnruP-_QLdteqeNl9Yi_qDcbCzK3pF0EgJrrEwfmiIONq-yB6YoY1e_aXx24WbybAO6F68_PS9e2sL4THWKMWHUu8u_I0n_eYxQp1RbZ-QPvZb1rueDw6M-BLG7pJnX7A9c2tQvU1WJ8TSf5yXHPBTD-gESJW7cuSwQ82s2XCMYo5Ji7jnstK6VIToTdPgGvUu64yKWdJ-mc\",\n \"spotify_partner_client_token\": \"AABHSaI3IJoGU36g3eHC3mTcxeakVeT3+VexhYY7OvvYEbN2394Z0KRTDs2fKOZog4ja26w666gweGsannIFH/ZKfGlrQV7HXpVCYrlZ2ds79fRIETIHVhOijaWeYy+iimdOzIQErvKVKm7XyG9xXmhWcppnOnjYNrzb+bxlgCKhp86uPNvLg8f9qyg/d5YaTukQpP6LyJqbV0DlPX5repgXKdxob70Syn8oEwrVn5TeI5uspP/4pp2Xk7D9ogzR35kLyTFe6277ROUYpjG/mYBnu7OuCiPBZZ4w30ol3vptk+X0aazwhHN+qbGeQiPgReQBFMY6PaaKPY03Ty8haGsEh6I=\",\n \"spotify_partner_cookie\": \"sp_landing=https%3A%2F%2Fwww.spotify.com%2Fapi%2Fmasthead%2Fv1%2Fmasthead; sp_new=1; sp_t=3f0cd36f-8b75-43e9-b621-cbe2740700c6\"\n}", "Response Headers": { "server": "BaseHTTP/0.6 Python/3.12.12", "date": "Tue, 27 Jan 2026 21:03:56 GMT", "content-type": "application/json" }, "Response Body": "{\"status\": \"ok\", \"file\": \"/Users/georgeskhawam/Projects/tagslut/spotify_partner_tokens.json\"}" }
+POST http://127.0.0.1:5005/spotify-partner-tokens: { "Network": { "addresses": { "local": { "address": "127.0.0.1", "family": "IPv4", "port": 54283 }, "remote": { "address": "127.0.0.1", "family": "IPv4", "port": 5005 } } }, "Request Headers": { "authorization": "Bearer BQDfUA6ymflowDfDKiJHhsXtDd0dIWT4Ty1BfgLF7l_xyipufQtXZhmA3mr9fayOYS9h6kl1C7-zjYjpjmfWdEt_-XlqxVPXd27SiHfj7GCr8TyvRKjS3aP2B6gnJgTNZSJN1kW9XYRYSfFiKpif36GC4-fQjS1uQsuiwYUwa_yCrnruP-_QLdteqeNl9Yi_qDcbCzK3pF0EgJrrEwfmiIONq-yB6YoY1e_aXx24WbybAO6F68_PS9e2sL4THWKMWHUu8u_I0n_eYxQp1RbZ-QPvZb1rueDw6M-BLG7pJnX7A9c2tQvU1WJ8TSf5yXHPBTD-gESJW7cuSwQ82s2XCMYo5Ji7jnstK6VIToTdPgGvUu64yKWdJ-mc", "client-token": "AABHSaI3IJoGU36g3eHC3mTcxeakVeT3+VexhYY7OvvYEbN2394Z0KRTDs2fKOZog4ja26w666gweGsannIFH/ZKfGlrQV7HXpVCYrlZ2ds79fRIETIHVhOijaWeYy+iimdOzIQErvKVKm7XyG9xXmhWcppnOnjYNrzb+bxlgCKhp86uPNvLg8f9qyg/d5YaTukQpP6LyJqbV0DlPX5repgXKdxob70Syn8oEwrVn5TeI5uspP/4pp2Xk7D9ogzR35kLyTFe6277ROUYpjG/mYBnu7OuCiPBZZ4w30ol3vptk+X0aazwhHN+qbGeQiPgReQBFMY6PaaKPY03Ty8haGsEh6I=", "cookie": "sp_landing=https%3A%2F%2Fwww.spotify.com%2Fapi%2Fmasthead%2Fv1%2Fmasthead; sp_new=1; sp_t=3f0cd36f-8b75-43e9-b621-cbe2740700c6", "content-type": "application/json", "user-agent": "PostmanRuntime/7.51.0", "accept": "*/*", "postman-token": "7250aaad-8b01-40b5-abd4-e6941d30749a", "host": "127.0.0.1:5005", "accept-encoding": "gzip, deflate, br", "connection": "keep-alive", "content-length": "954" }, "Request Body": "{\n \"spotify_partner_bearer\": \"BQDfUA6ymflowDfDKiJHhsXtDd0dIWT4Ty1BfgLF7l_xyipufQtXZhmA3mr9fayOYS9h6kl1C7-zjYjpjmfWdEt_-XlqxVPXd27SiHfj7GCr8TyvRKjS3aP2B6gnJgTNZSJN1kW9XYRYSfFiKpif36GC4-fQjS1uQsuiwYUwa_yCrnruP-_QLdteqeNl9Yi_qDcbCzK3pF0EgJrrEwfmiIONq-yB6YoY1e_aXx24WbybAO6F68_PS9e2sL4THWKMWHUu8u_I0n_eYxQp1RbZ-QPvZb1rueDw6M-BLG7pJnX7A9c2tQvU1WJ8TSf5yXHPBTD-gESJW7cuSwQ82s2XCMYo5Ji7jnstK6VIToTdPgGvUu64yKWdJ-mc\",\n \"spotify_partner_client_token\": \"AABHSaI3IJoGU36g3eHC3mTcxeakVeT3+VexhYY7OvvYEbN2394Z0KRTDs2fKOZog4ja26w666gweGsannIFH/ZKfGlrQV7HXpVCYrlZ2ds79fRIETIHVhOijaWeYy+iimdOzIQErvKVKm7XyG9xXmhWcppnOnjYNrzb+bxlgCKhp86uPNvLg8f9qyg/d5YaTukQpP6LyJqbV0DlPX5repgXKdxob70Syn8oEwrVn5TeI5uspP/4pp2Xk7D9ogzR35kLyTFe6277ROUYpjG/mYBnu7OuCiPBZZ4w30ol3vptk+X0aazwhHN+qbGeQiPgReQBFMY6PaaKPY03Ty8haGsEh6I=\",\n \"spotify_partner_cookie\": \"sp_landing=https%3A%2F%2Fwww.spotify.com%2Fapi%2Fmasthead%2Fv1%2Fmasthead; sp_new=1; sp_t=3f0cd36f-8b75-43e9-b621-cbe2740700c6\"\n}", "Response Headers": { "server": "BaseHTTP/0.6 Python/3.12.12", "date": "Tue, 27 Jan 2026 21:03:56 GMT", "content-type": "application/json" }, "Response Body": "{\"status\": \"ok\", \"file\": \"<TAGSLLUT_REPO>/spotify_partner_tokens.json\"}" }
 
 Good news: this log proves the bridge is working exactly as intended.
 
@@ -2747,7 +2747,7 @@ Good news: this log proves the bridge is working exactly as intended.
 ```
 {
     "status": "ok",
-    "file": "/Users/georgeskhawam/Projects/tagslut/spotify_partner_tokens.json"
+    "file": "<TAGSLLUT_REPO>/spotify_partner_tokens.json"
 }
 ```
 
@@ -2772,7 +2772,7 @@ Here’s the minimal checklist to get a working Python call.
 From the project root:
 
 ```
-cd /Users/georgeskhawam/Projects/tagslut
+cd <TAGSLLUT_REPO>
 cat spotify_partner_tokens.json
 ```
 
@@ -2899,7 +2899,7 @@ If this still gives 401 and the response headers again say `"error_description" 
 
 Untitled Request
 
-~/Pr/tagslut v3-supercharged !12 ?16 ❯ cd /Users/georgeskhawam/Projects/tagslut cat spotify_partner_tokens.json { "spotify_partner_bearer": "BQDfUA6ymflowDfDKiJHhsXtDd0dIWT4Ty1BfgLF7l_xyipufQtXZhmA3mr9fayOYS9h6kl1C7-zjYjpjmfWdEt_-XlqxVPXd27SiHfj7GCr8TyvRKjS3aP2B6gnJgTNZSJN1kW9XYRYSfFiKpif36GC4-fQjS1uQsuiwYUwa_yCrnruP-_QLdteqeNl9Yi_qDcbCzK3pF0EgJrrEwfmiIONq-yB6YoY1e_aXx24WbybAO6F68_PS9e2sL4THWKMWHUu8u_I0n_eYxQp1RbZ-QPvZb1rueDw6M-BLG7pJnX7A9c2tQvU1WJ8TSf5yXHPBTD-gESJW7cuSwQ82s2XCMYo5Ji7jnstK6VIToTdPgGvUu64yKWdJ-mc", "spotify_partner_client_token": "AABHSaI3IJoGU36g3eHC3mTcxeakVeT3+VexhYY7OvvYEbN2394Z0KRTDs2fKOZog4ja26w666gweGsannIFH/ZKfGlrQV7HXpVCYrlZ2ds79fRIETIHVhOijaWeYy+iimdOzIQErvKVKm7XyG9xXmhWcppnOnjYNrzb+bxlgCKhp86uPNvLg8f9qyg/d5YaTukQpP6LyJqbV0DlPX5repgXKdxob70Syn8oEwrVn5TeI5uspP/4pp2Xk7D9ogzR35kLyTFe6277ROUYpjG/mYBnu7OuCiPBZZ4w30ol3vptk+X0aazwhHN+qbGeQiPgReQBFMY6PaaKPY03Ty8haGsEh6I=", "spotify_partner_cookie": "sp_landing=https%3A%2F%2Fwww.spotify.com%2Fapi%2Fmasthead%2Fv1%2Fmasthead; sp_new=1; sp_t=3f0cd36f-8b75-43e9-b621-cbe2740700c6" }% ~/Pr/tagslut v3-supercharged !12 ?16 ❯ Py tagslut 23:04:36
+~/Pr/tagslut v3-supercharged !12 ?16 ❯ cd <TAGSLLUT_REPO> cat spotify_partner_tokens.json { "spotify_partner_bearer": "BQDfUA6ymflowDfDKiJHhsXtDd0dIWT4Ty1BfgLF7l_xyipufQtXZhmA3mr9fayOYS9h6kl1C7-zjYjpjmfWdEt_-XlqxVPXd27SiHfj7GCr8TyvRKjS3aP2B6gnJgTNZSJN1kW9XYRYSfFiKpif36GC4-fQjS1uQsuiwYUwa_yCrnruP-_QLdteqeNl9Yi_qDcbCzK3pF0EgJrrEwfmiIONq-yB6YoY1e_aXx24WbybAO6F68_PS9e2sL4THWKMWHUu8u_I0n_eYxQp1RbZ-QPvZb1rueDw6M-BLG7pJnX7A9c2tQvU1WJ8TSf5yXHPBTD-gESJW7cuSwQ82s2XCMYo5Ji7jnstK6VIToTdPgGvUu64yKWdJ-mc", "spotify_partner_client_token": "AABHSaI3IJoGU36g3eHC3mTcxeakVeT3+VexhYY7OvvYEbN2394Z0KRTDs2fKOZog4ja26w666gweGsannIFH/ZKfGlrQV7HXpVCYrlZ2ds79fRIETIHVhOijaWeYy+iimdOzIQErvKVKm7XyG9xXmhWcppnOnjYNrzb+bxlgCKhp86uPNvLg8f9qyg/d5YaTukQpP6LyJqbV0DlPX5repgXKdxob70Syn8oEwrVn5TeI5uspP/4pp2Xk7D9ogzR35kLyTFe6277ROUYpjG/mYBnu7OuCiPBZZ4w30ol3vptk+X0aazwhHN+qbGeQiPgReQBFMY6PaaKPY03Ty8haGsEh6I=", "spotify_partner_cookie": "sp_landing=https%3A%2F%2Fwww.spotify.com%2Fapi%2Fmasthead%2Fv1%2Fmasthead; sp_new=1; sp_t=3f0cd36f-8b75-43e9-b621-cbe2740700c6" }% ~/Pr/tagslut v3-supercharged !12 ?16 ❯ Py tagslut 23:04:36
 
 You now have exactly what we wanted in `spotify_partner_tokens.json`:
 
@@ -3111,7 +3111,7 @@ GET
 
 Untitled Request
 
-POST http://127.0.0.1:5005/spotify-partner-tokens 200 24 ms Network Request Headers Authorization: Bearer BQDfUA6ymflowDfDKiJHhsXtDd0dIWT4Ty1BfgLF7l_xyipufQtXZhmA3mr9fayOYS9h6kl1C7-zjYjpjmfWdEt_-XlqxVPXd27SiHfj7GCr8TyvRKjS3aP2B6gnJgTNZSJN1kW9XYRYSfFiKpif36GC4-fQjS1uQsuiwYUwa_yCrnruP-_QLdteqeNl9Yi_qDcbCzK3pF0EgJrrEwfmiIONq-yB6YoY1e_aXx24WbybAO6F68_PS9e2sL4THWKMWHUu8u_I0n_eYxQp1RbZ-QPvZb1rueDw6M-BLG7pJnX7A9c2tQvU1WJ8TSf5yXHPBTD-gESJW7cuSwQ82s2XCMYo5Ji7jnstK6VIToTdPgGvUu64yKWdJ-mc client-token: AABHSaI3IJoGU36g3eHC3mTcxeakVeT3+VexhYY7OvvYEbN2394Z0KRTDs2fKOZog4ja26w666gweGsannIFH/ZKfGlrQV7HXpVCYrlZ2ds79fRIETIHVhOijaWeYy+iimdOzIQErvKVKm7XyG9xXmhWcppnOnjYNrzb+bxlgCKhp86uPNvLg8f9qyg/d5YaTukQpP6LyJqbV0DlPX5repgXKdxob70Syn8oEwrVn5TeI5uspP/4pp2Xk7D9ogzR35kLyTFe6277ROUYpjG/mYBnu7OuCiPBZZ4w30ol3vptk+X0aazwhHN+qbGeQiPgReQBFMY6PaaKPY03Ty8haGsEh6I= Cookie: sp_landing=https%3A%2F%2Fwww.spotify.com%2Fapi%2Fmasthead%2Fv1%2Fmasthead; sp_new=1; sp_t=3f0cd36f-8b75-43e9-b621-cbe2740700c6 Content-Type: application/json User-Agent: PostmanRuntime/7.51.0 Accept: */* Postman-Token: 7c6ef5fa-04ab-429e-95f3-e87f9f94a1a6 Host: 127.0.0.1:5005 Accept-Encoding: gzip, deflate, br Connection: keep-alive Content-Length: 954 Request Body Response Headers Server: BaseHTTP/0.6 Python/3.12.12 Date: Tue, 27 Jan 2026 21:56:50 GMT Content-Type: application/json Response Body {"status": "ok", "file": "/Users/georgeskhawam/Projects/tagslut/spotify_partner_tokens.json"} i cant be any faster ~/Pr/tagslut v3-supercharged !12 ?16 ❯ python3 test_spotify_partner_query.py POST https://api-partner.spotify.com/pathfinder/v1/query Headers: { "Authorization": "Bearer BQDfUA6ymflow...", "client-token": "AABHSaI3IJoGU36g3eHC...", "Accept": "application/json", "Content-Type": "application/json", "Origin": "https://open.spotify...", "Referer": "https://open.spotify...", "Cookie": "sp_landing=https%3A%..." } Body: { "operationName": "placeholder", "variables": {}, "extensions": {} } ---------------------------------------- Status: 401 ---------------------------------------- ~/Pr/tagslut v3-supercharged !12 ?16 ❯ Py tagslut 23:57:01 ~/Pr/tagslut v3-supercharged !12 ?15 ❯ cd /Users/georgeskhawam/Projects/tagslut python3 partner_token_collector.py Token collector listening on http://127.0.0.1:5005/spotify-partner-tokens POST your Postman environment variables here to save them. [+] Tokens written to /Users/georgeskhawam/Projects/tagslut/spotify_partner_tokens.json [127.0.0.1] "POST /spotify-partner-tokens HTTP/1.1" 200 - [+] Tokens written to /Users/georgeskhawam/Projects/tagslut/spotify_partner_tokens.json [127.0.0.1] "POST /spotify-partner-tokens HTTP/1.1" 200 - [+] Tokens written to /Users/georgeskhawam/Projects/tagslut/spotify_partner_tokens.json [127.0.0.1] "POST /spotify-partner-tokens HTTP/1.1" 200 - [+] Tokens written to /Users/georgeskhawam/Projects/tagslut/spotify_partner_tokens.json [127.0.0.1] "POST /spotify-partner-tokens HTTP/1.1" 200 -
+POST http://127.0.0.1:5005/spotify-partner-tokens 200 24 ms Network Request Headers Authorization: Bearer BQDfUA6ymflowDfDKiJHhsXtDd0dIWT4Ty1BfgLF7l_xyipufQtXZhmA3mr9fayOYS9h6kl1C7-zjYjpjmfWdEt_-XlqxVPXd27SiHfj7GCr8TyvRKjS3aP2B6gnJgTNZSJN1kW9XYRYSfFiKpif36GC4-fQjS1uQsuiwYUwa_yCrnruP-_QLdteqeNl9Yi_qDcbCzK3pF0EgJrrEwfmiIONq-yB6YoY1e_aXx24WbybAO6F68_PS9e2sL4THWKMWHUu8u_I0n_eYxQp1RbZ-QPvZb1rueDw6M-BLG7pJnX7A9c2tQvU1WJ8TSf5yXHPBTD-gESJW7cuSwQ82s2XCMYo5Ji7jnstK6VIToTdPgGvUu64yKWdJ-mc client-token: AABHSaI3IJoGU36g3eHC3mTcxeakVeT3+VexhYY7OvvYEbN2394Z0KRTDs2fKOZog4ja26w666gweGsannIFH/ZKfGlrQV7HXpVCYrlZ2ds79fRIETIHVhOijaWeYy+iimdOzIQErvKVKm7XyG9xXmhWcppnOnjYNrzb+bxlgCKhp86uPNvLg8f9qyg/d5YaTukQpP6LyJqbV0DlPX5repgXKdxob70Syn8oEwrVn5TeI5uspP/4pp2Xk7D9ogzR35kLyTFe6277ROUYpjG/mYBnu7OuCiPBZZ4w30ol3vptk+X0aazwhHN+qbGeQiPgReQBFMY6PaaKPY03Ty8haGsEh6I= Cookie: sp_landing=https%3A%2F%2Fwww.spotify.com%2Fapi%2Fmasthead%2Fv1%2Fmasthead; sp_new=1; sp_t=3f0cd36f-8b75-43e9-b621-cbe2740700c6 Content-Type: application/json User-Agent: PostmanRuntime/7.51.0 Accept: */* Postman-Token: 7c6ef5fa-04ab-429e-95f3-e87f9f94a1a6 Host: 127.0.0.1:5005 Accept-Encoding: gzip, deflate, br Connection: keep-alive Content-Length: 954 Request Body Response Headers Server: BaseHTTP/0.6 Python/3.12.12 Date: Tue, 27 Jan 2026 21:56:50 GMT Content-Type: application/json Response Body {"status": "ok", "file": "<TAGSLLUT_REPO>/spotify_partner_tokens.json"} i cant be any faster ~/Pr/tagslut v3-supercharged !12 ?16 ❯ python3 test_spotify_partner_query.py POST https://api-partner.spotify.com/pathfinder/v1/query Headers: { "Authorization": "Bearer BQDfUA6ymflow...", "client-token": "AABHSaI3IJoGU36g3eHC...", "Accept": "application/json", "Content-Type": "application/json", "Origin": "https://open.spotify...", "Referer": "https://open.spotify...", "Cookie": "sp_landing=https%3A%..." } Body: { "operationName": "placeholder", "variables": {}, "extensions": {} } ---------------------------------------- Status: 401 ---------------------------------------- ~/Pr/tagslut v3-supercharged !12 ?16 ❯ Py tagslut 23:57:01 ~/Pr/tagslut v3-supercharged !12 ?15 ❯ cd <TAGSLLUT_REPO> python3 partner_token_collector.py Token collector listening on http://127.0.0.1:5005/spotify-partner-tokens POST your Postman environment variables here to save them. [+] Tokens written to <TAGSLLUT_REPO>/spotify_partner_tokens.json [127.0.0.1] "POST /spotify-partner-tokens HTTP/1.1" 200 - [+] Tokens written to <TAGSLLUT_REPO>/spotify_partner_tokens.json [127.0.0.1] "POST /spotify-partner-tokens HTTP/1.1" 200 - [+] Tokens written to <TAGSLLUT_REPO>/spotify_partner_tokens.json [127.0.0.1] "POST /spotify-partner-tokens HTTP/1.1" 200 - [+] Tokens written to <TAGSLLUT_REPO>/spotify_partner_tokens.json [127.0.0.1] "POST /spotify-partner-tokens HTTP/1.1" 200 -
 
 You’re not doing anything wrong or “too slow.” The 401 is happening because:
 
@@ -3228,7 +3228,7 @@ Your sequence is already good:
 3. Immediately:
 
 ```
-cd /Users/georgeskhawam/Projects/tagslut
+cd <TAGSLLUT_REPO>
 python3 test_spotify_partner_query.py
 ```
 
@@ -3244,7 +3244,7 @@ GET
 
 Untitled Request
 
-~/Pr/tagslut v3-supercharged !12 ?16 ❯ cat /Users/georgeskhawam/Projects/tagslut/partner_token_collector.py import httpx from tagslut.metadata.spotify_partner_tokens import get_partner_headers def main(): url = "https://api-partner.spotify.com/pathfinder/v1/query" headers = get_partner_headers() body = {"variables":{"uris":["spotify:track:1xYsgHPHiR3IIdpRzkfKcE","spotify:track:00xBwgnA5bj9UG0GwR3IcM","spotify:track:4hl0xxnnQ2QNjZYVwizQaw","spotify:track:3nM8DUmkWDLpdnu0UH0a4M","spotify:track:5EhlQgSiQeoB2tnbzw5X5m"]},"extensions":{"persistedQuery":{"version":1,"sha256Hash":"697706196617419cd713ed01a204a312876b51fba591b70bf961ddc0eccd5e8e"}}} print("POST", url) print("Headers:", headers) print("Body:", body) with httpx.Client(timeout=10) as client: resp = client.post(url, headers=headers, json=body) print("-" * 40) print("Status:", resp.status_code) print("-" * 40) try: print(resp.json()) except Exception: print(resp.text) if __name__ == "__main__": main()y ~/Pr/tagslut v3-supercharged !12 ?16 ❯ python3 test_spotify_partner_query.py POST https://api-partner.spotify.com/pathfinder/v1/query Headers: { "Authorization": "Bearer BQDfUA6ymflow...", "client-token": "AABHSaI3IJoGU36g3eHC...", "Accept": "application/json", "Content-Type": "application/json", "Origin": "https://open.spotify...", "Referer": "https://open.spotify...", "Cookie": "sp_landing=https%3A%..." } Body: { "operationName": "placeholder", "variables": {}, "extensions": {} } ---------------------------------------- Status: 401 ---------------------------------------- POST http://127.0.0.1:5005/spotify-partner-tokens: { "Network": { "addresses": { "local": { "address": "127.0.0.1", "family": "IPv4", "port": 59303 }, "remote": { "address": "127.0.0.1", "family": "IPv4", "port": 5005 } } }, "Request Headers": { "authorization": "Bearer BQDfUA6ymflowDfDKiJHhsXtDd0dIWT4Ty1BfgLF7l_xyipufQtXZhmA3mr9fayOYS9h6kl1C7-zjYjpjmfWdEt_-XlqxVPXd27SiHfj7GCr8TyvRKjS3aP2B6gnJgTNZSJN1kW9XYRYSfFiKpif36GC4-fQjS1uQsuiwYUwa_yCrnruP-_QLdteqeNl9Yi_qDcbCzK3pF0EgJrrEwfmiIONq-yB6YoY1e_aXx24WbybAO6F68_PS9e2sL4THWKMWHUu8u_I0n_eYxQp1RbZ-QPvZb1rueDw6M-BLG7pJnX7A9c2tQvU1WJ8TSf5yXHPBTD-gESJW7cuSwQ82s2XCMYo5Ji7jnstK6VIToTdPgGvUu64yKWdJ-mc", "client-token": "AABHSaI3IJoGU36g3eHC3mTcxeakVeT3+VexhYY7OvvYEbN2394Z0KRTDs2fKOZog4ja26w666gweGsannIFH/ZKfGlrQV7HXpVCYrlZ2ds79fRIETIHVhOijaWeYy+iimdOzIQErvKVKm7XyG9xXmhWcppnOnjYNrzb+bxlgCKhp86uPNvLg8f9qyg/d5YaTukQpP6LyJqbV0DlPX5repgXKdxob70Syn8oEwrVn5TeI5uspP/4pp2Xk7D9ogzR35kLyTFe6277ROUYpjG/mYBnu7OuCiPBZZ4w30ol3vptk+X0aazwhHN+qbGeQiPgReQBFMY6PaaKPY03Ty8haGsEh6I=", "cookie": "sp_landing=https%3A%2F%2Fwww.spotify.com%2Fapi%2Fmasthead%2Fv1%2Fmasthead; sp_new=1; sp_t=3f0cd36f-8b75-43e9-b621-cbe2740700c6", "content-type": "application/json", "user-agent": "PostmanRuntime/7.51.0", "accept": "*/*", "postman-token": "4307f043-efc8-4dd7-bcff-14ca579d48df", "host": "127.0.0.1:5005", "accept-encoding": "gzip, deflate, br", "connection": "keep-alive", "content-length": "954" }, "Request Body": "{\n \"spotify_partner_bearer\": \"BQDfUA6ymflowDfDKiJHhsXtDd0dIWT4Ty1BfgLF7l_xyipufQtXZhmA3mr9fayOYS9h6kl1C7-zjYjpjmfWdEt_-XlqxVPXd27SiHfj7GCr8TyvRKjS3aP2B6gnJgTNZSJN1kW9XYRYSfFiKpif36GC4-fQjS1uQsuiwYUwa_yCrnruP-_QLdteqeNl9Yi_qDcbCzK3pF0EgJrrEwfmiIONq-yB6YoY1e_aXx24WbybAO6F68_PS9e2sL4THWKMWHUu8u_I0n_eYxQp1RbZ-QPvZb1rueDw6M-BLG7pJnX7A9c2tQvU1WJ8TSf5yXHPBTD-gESJW7cuSwQ82s2XCMYo5Ji7jnstK6VIToTdPgGvUu64yKWdJ-mc\",\n \"spotify_partner_client_token\": \"AABHSaI3IJoGU36g3eHC3mTcxeakVeT3+VexhYY7OvvYEbN2394Z0KRTDs2fKOZog4ja26w666gweGsannIFH/ZKfGlrQV7HXpVCYrlZ2ds79fRIETIHVhOijaWeYy+iimdOzIQErvKVKm7XyG9xXmhWcppnOnjYNrzb+bxlgCKhp86uPNvLg8f9qyg/d5YaTukQpP6LyJqbV0DlPX5repgXKdxob70Syn8oEwrVn5TeI5uspP/4pp2Xk7D9ogzR35kLyTFe6277ROUYpjG/mYBnu7OuCiPBZZ4w30ol3vptk+X0aazwhHN+qbGeQiPgReQBFMY6PaaKPY03Ty8haGsEh6I=\",\n \"spotify_partner_cookie\": \"sp_landing=https%3A%2F%2Fwww.spotify.com%2Fapi%2Fmasthead%2Fv1%2Fmasthead; sp_new=1; sp_t=3f0cd36f-8b75-43e9-b621-cbe2740700c6\"\n}", "Response Headers": { "server": "BaseHTTP/0.6 Python/3.12.12", "date": "Tue, 27 Jan 2026 22:04:44 GMT", "content-type": "application/json" }, "Response Body": "{\"status\": \"ok\", \"file\": \"/Users/georgeskhawam/Projects/tagslut/spotify_partner_tokens.json\"}" }
+~/Pr/tagslut v3-supercharged !12 ?16 ❯ cat <TAGSLLUT_REPO>/partner_token_collector.py import httpx from tagslut.metadata.spotify_partner_tokens import get_partner_headers def main(): url = "https://api-partner.spotify.com/pathfinder/v1/query" headers = get_partner_headers() body = {"variables":{"uris":["spotify:track:1xYsgHPHiR3IIdpRzkfKcE","spotify:track:00xBwgnA5bj9UG0GwR3IcM","spotify:track:4hl0xxnnQ2QNjZYVwizQaw","spotify:track:3nM8DUmkWDLpdnu0UH0a4M","spotify:track:5EhlQgSiQeoB2tnbzw5X5m"]},"extensions":{"persistedQuery":{"version":1,"sha256Hash":"697706196617419cd713ed01a204a312876b51fba591b70bf961ddc0eccd5e8e"}}} print("POST", url) print("Headers:", headers) print("Body:", body) with httpx.Client(timeout=10) as client: resp = client.post(url, headers=headers, json=body) print("-" * 40) print("Status:", resp.status_code) print("-" * 40) try: print(resp.json()) except Exception: print(resp.text) if __name__ == "__main__": main()y ~/Pr/tagslut v3-supercharged !12 ?16 ❯ python3 test_spotify_partner_query.py POST https://api-partner.spotify.com/pathfinder/v1/query Headers: { "Authorization": "Bearer BQDfUA6ymflow...", "client-token": "AABHSaI3IJoGU36g3eHC...", "Accept": "application/json", "Content-Type": "application/json", "Origin": "https://open.spotify...", "Referer": "https://open.spotify...", "Cookie": "sp_landing=https%3A%..." } Body: { "operationName": "placeholder", "variables": {}, "extensions": {} } ---------------------------------------- Status: 401 ---------------------------------------- POST http://127.0.0.1:5005/spotify-partner-tokens: { "Network": { "addresses": { "local": { "address": "127.0.0.1", "family": "IPv4", "port": 59303 }, "remote": { "address": "127.0.0.1", "family": "IPv4", "port": 5005 } } }, "Request Headers": { "authorization": "Bearer BQDfUA6ymflowDfDKiJHhsXtDd0dIWT4Ty1BfgLF7l_xyipufQtXZhmA3mr9fayOYS9h6kl1C7-zjYjpjmfWdEt_-XlqxVPXd27SiHfj7GCr8TyvRKjS3aP2B6gnJgTNZSJN1kW9XYRYSfFiKpif36GC4-fQjS1uQsuiwYUwa_yCrnruP-_QLdteqeNl9Yi_qDcbCzK3pF0EgJrrEwfmiIONq-yB6YoY1e_aXx24WbybAO6F68_PS9e2sL4THWKMWHUu8u_I0n_eYxQp1RbZ-QPvZb1rueDw6M-BLG7pJnX7A9c2tQvU1WJ8TSf5yXHPBTD-gESJW7cuSwQ82s2XCMYo5Ji7jnstK6VIToTdPgGvUu64yKWdJ-mc", "client-token": "AABHSaI3IJoGU36g3eHC3mTcxeakVeT3+VexhYY7OvvYEbN2394Z0KRTDs2fKOZog4ja26w666gweGsannIFH/ZKfGlrQV7HXpVCYrlZ2ds79fRIETIHVhOijaWeYy+iimdOzIQErvKVKm7XyG9xXmhWcppnOnjYNrzb+bxlgCKhp86uPNvLg8f9qyg/d5YaTukQpP6LyJqbV0DlPX5repgXKdxob70Syn8oEwrVn5TeI5uspP/4pp2Xk7D9ogzR35kLyTFe6277ROUYpjG/mYBnu7OuCiPBZZ4w30ol3vptk+X0aazwhHN+qbGeQiPgReQBFMY6PaaKPY03Ty8haGsEh6I=", "cookie": "sp_landing=https%3A%2F%2Fwww.spotify.com%2Fapi%2Fmasthead%2Fv1%2Fmasthead; sp_new=1; sp_t=3f0cd36f-8b75-43e9-b621-cbe2740700c6", "content-type": "application/json", "user-agent": "PostmanRuntime/7.51.0", "accept": "*/*", "postman-token": "4307f043-efc8-4dd7-bcff-14ca579d48df", "host": "127.0.0.1:5005", "accept-encoding": "gzip, deflate, br", "connection": "keep-alive", "content-length": "954" }, "Request Body": "{\n \"spotify_partner_bearer\": \"BQDfUA6ymflowDfDKiJHhsXtDd0dIWT4Ty1BfgLF7l_xyipufQtXZhmA3mr9fayOYS9h6kl1C7-zjYjpjmfWdEt_-XlqxVPXd27SiHfj7GCr8TyvRKjS3aP2B6gnJgTNZSJN1kW9XYRYSfFiKpif36GC4-fQjS1uQsuiwYUwa_yCrnruP-_QLdteqeNl9Yi_qDcbCzK3pF0EgJrrEwfmiIONq-yB6YoY1e_aXx24WbybAO6F68_PS9e2sL4THWKMWHUu8u_I0n_eYxQp1RbZ-QPvZb1rueDw6M-BLG7pJnX7A9c2tQvU1WJ8TSf5yXHPBTD-gESJW7cuSwQ82s2XCMYo5Ji7jnstK6VIToTdPgGvUu64yKWdJ-mc\",\n \"spotify_partner_client_token\": \"AABHSaI3IJoGU36g3eHC3mTcxeakVeT3+VexhYY7OvvYEbN2394Z0KRTDs2fKOZog4ja26w666gweGsannIFH/ZKfGlrQV7HXpVCYrlZ2ds79fRIETIHVhOijaWeYy+iimdOzIQErvKVKm7XyG9xXmhWcppnOnjYNrzb+bxlgCKhp86uPNvLg8f9qyg/d5YaTukQpP6LyJqbV0DlPX5repgXKdxob70Syn8oEwrVn5TeI5uspP/4pp2Xk7D9ogzR35kLyTFe6277ROUYpjG/mYBnu7OuCiPBZZ4w30ol3vptk+X0aazwhHN+qbGeQiPgReQBFMY6PaaKPY03Ty8haGsEh6I=\",\n \"spotify_partner_cookie\": \"sp_landing=https%3A%2F%2Fwww.spotify.com%2Fapi%2Fmasthead%2Fv1%2Fmasthead; sp_new=1; sp_t=3f0cd36f-8b75-43e9-b621-cbe2740700c6\"\n}", "Response Headers": { "server": "BaseHTTP/0.6 Python/3.12.12", "date": "Tue, 27 Jan 2026 22:04:44 GMT", "content-type": "application/json" }, "Response Body": "{\"status\": \"ok\", \"file\": \"<TAGSLLUT_REPO>/spotify_partner_tokens.json\"}" }
 
 You’ve got two different Python scripts mixed up:
 
@@ -3288,7 +3288,7 @@ Below is a clean, minimal setup you can copy over.
 
 ### 1. Restore `partner_token_collector.py` to be ONLY the server
 
-Replace `/Users/georgeskhawam/Projects/tagslut/partner_token_collector.py` with:
+Replace `<TAGSLLUT_REPO>/partner_token_collector.py` with:
 
 ```
 import json
@@ -3419,7 +3419,7 @@ if __name__ == "__main__":
 After saving, run:
 
 ```
-cd /Users/georgeskhawam/Projects/tagslut
+cd <TAGSLLUT_REPO>
 python3 test_spotify_partner_query.py
 ```
 
@@ -3569,7 +3569,7 @@ if __name__ == "__main__":
 Run this in one terminal:
 
 ```
-cd /Users/georgeskhawam/Projects/tagslut
+cd <TAGSLLUT_REPO>
 python3 partner_token_collector.py
 ```
 
@@ -3631,7 +3631,7 @@ In order:
 1. Start the collector:
 
    ```
-   cd /Users/georgeskhawam/Projects/tagslut
+   cd <TAGSLLUT_REPO>
    python3 partner_token_collector.py
    ```
 
@@ -3654,7 +3654,7 @@ In order:
 3. In another terminal:
 
    ```
-   cd /Users/georgeskhawam/Projects/tagslut
+   cd <TAGSLLUT_REPO>
    python3 test_spotify_partner_query.py
    ```
 
@@ -3664,7 +3664,7 @@ GET
 
 Untitled Request
 
-~/Pr/tagslut v3-supercharged !12 ?16 ❯ cd /Users/georgeskhawam/Projects/tagslut python3 partner_token_collector.py Traceback (most recent call last): File "/Users/georgeskhawam/Projects/tagslut/partner_token_collector.py", line 38, in <module> server = HTTPServer(("127.0.0.1", 5005), TokenHandler) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ File "/opt/homebrew/Cellar/python@3.12/3.12.12_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/socketserver.py", line 457, in __init__ self.server_bind() File "/opt/homebrew/Cellar/python@3.12/3.12.12_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/http/server.py", line 136, in server_bind socketserver.TCPServer.server_bind(self) File "/opt/homebrew/Cellar/python@3.12/3.12.12_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/socketserver.py", line 478, in server_bind self.socket.bind(self.server_address) OSError: [Errno 48] Address already in use
+~/Pr/tagslut v3-supercharged !12 ?16 ❯ cd <TAGSLLUT_REPO> python3 partner_token_collector.py Traceback (most recent call last): File "<TAGSLLUT_REPO>/partner_token_collector.py", line 38, in <module> server = HTTPServer(("127.0.0.1", 5005), TokenHandler) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ File "/opt/homebrew/Cellar/python@3.12/3.12.12_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/socketserver.py", line 457, in __init__ self.server_bind() File "/opt/homebrew/Cellar/python@3.12/3.12.12_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/http/server.py", line 136, in server_bind socketserver.TCPServer.server_bind(self) File "/opt/homebrew/Cellar/python@3.12/3.12.12_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/socketserver.py", line 478, in server_bind self.socket.bind(self.server_address) OSError: [Errno 48] Address already in use
 
 Port 5005 is already in use, which means you still have an old `partner_token_collector.py` (or something else) running on that port.
 
@@ -3697,7 +3697,7 @@ Run `lsof -i :5005` again to confirm nothing is listening.
 1. Start the collector again
 
 ```
-cd /Users/georgeskhawam/Projects/tagslut
+cd <TAGSLLUT_REPO>
 python3 partner_token_collector.py
 ```
 
@@ -3764,7 +3764,7 @@ GET
 
 Untitled Request
 
-~/Pr/tagslut v3-supercharged !12 ?16 ❯ cd /Users/georgeskhawam/Projects/tagslut python3 partner_token_collector.py Listening on http://127.0.0.1:5005/spotify-partner-tokens 127.0.0.1 - - [28/Jan/2026 00:25:39] "POST /spotify-partner-tokens HTTP/1.1" 200 - Saved tokens to spotify_partner_tokens.json
+~/Pr/tagslut v3-supercharged !12 ?16 ❯ cd <TAGSLLUT_REPO> python3 partner_token_collector.py Listening on http://127.0.0.1:5005/spotify-partner-tokens 127.0.0.1 - - [28/Jan/2026 00:25:39] "POST /spotify-partner-tokens HTTP/1.1" 200 - Saved tokens to spotify_partner_tokens.json
 
 You’ve got everything wired correctly now:
 
@@ -3889,7 +3889,7 @@ GET
 
 Untitled Request
 
-/Pr/tagslut v3-supercharged !12 ?16 ❯ python3 test_spotify_partner_query.py POST https://api-partner.spotify.com/pathfinder/v1/query Headers: { "Authorization": "Bearer BQDfUA6ymflow...", "client-token": "AABHSaI3IJoGU36g3eHC...", "Accept": "application/json", "Content-Type": "application/json", "Origin": "https://open.spotify...", "Referer": "https://open.spotify...", "Cookie": "sp_landing=https%3A%..." } Body: { "variables": { "uris": [ "spotify:track:1xYsgHPHiR3IIdpRzkfKcE", "spotify:track:00xBwgnA5bj9UG0GwR3IcM", "spotify:track:4hl0xxnnQ2QNjZYVwizQaw", "spotify:track:3nM8DUmkWDLpdnu0UH0a4M", "spotify:track:5EhlQgSiQeoB2tnbzw5X5m" ] }, "extensions": { "persistedQuery": { "version": 1, "sha256Hash": "697706196617419cd713ed01a204a312876b51fba591b70bf961ddc0eccd5e8e" } } } ---------------------------------------- Status: 401 ---------------------------------------- ~/Pr/tagslut v3-supercharged !12 ?16 ❯ Py tagslut 00:31:23 /Pr/tagslut v3-supercharged !12 ?16 ❯ cd /Users/georgeskhawam/Projects/tagslut python3 partner_token_collector.py Listening on http://127.0.0.1:5005/spotify-partner-tokens 127.0.0.1 - - [28/Jan/2026 00:31:12] "POST /spotify-partner-tokens HTTP/1.1" 200 - Saved tokens to spotify_partner_tokens.json 127.0.0.1 - - [28/Jan/2026 00:31:12] "POST /spotify-partner-tokens HTTP/1.1" 200 - Saved tokens to spotify_partner_tokens.json
+/Pr/tagslut v3-supercharged !12 ?16 ❯ python3 test_spotify_partner_query.py POST https://api-partner.spotify.com/pathfinder/v1/query Headers: { "Authorization": "Bearer BQDfUA6ymflow...", "client-token": "AABHSaI3IJoGU36g3eHC...", "Accept": "application/json", "Content-Type": "application/json", "Origin": "https://open.spotify...", "Referer": "https://open.spotify...", "Cookie": "sp_landing=https%3A%..." } Body: { "variables": { "uris": [ "spotify:track:1xYsgHPHiR3IIdpRzkfKcE", "spotify:track:00xBwgnA5bj9UG0GwR3IcM", "spotify:track:4hl0xxnnQ2QNjZYVwizQaw", "spotify:track:3nM8DUmkWDLpdnu0UH0a4M", "spotify:track:5EhlQgSiQeoB2tnbzw5X5m" ] }, "extensions": { "persistedQuery": { "version": 1, "sha256Hash": "697706196617419cd713ed01a204a312876b51fba591b70bf961ddc0eccd5e8e" } } } ---------------------------------------- Status: 401 ---------------------------------------- ~/Pr/tagslut v3-supercharged !12 ?16 ❯ Py tagslut 00:31:23 /Pr/tagslut v3-supercharged !12 ?16 ❯ cd <TAGSLLUT_REPO> python3 partner_token_collector.py Listening on http://127.0.0.1:5005/spotify-partner-tokens 127.0.0.1 - - [28/Jan/2026 00:31:12] "POST /spotify-partner-tokens HTTP/1.1" 200 - Saved tokens to spotify_partner_tokens.json 127.0.0.1 - - [28/Jan/2026 00:31:12] "POST /spotify-partner-tokens HTTP/1.1" 200 - Saved tokens to spotify_partner_tokens.json
 
 The Postman side is now doing everything it should:
 
@@ -4252,7 +4252,7 @@ Sequence:
 1. Start collector (if not already):
 
    ```
-   cd /Users/georgeskhawam/Projects/tagslut
+   cd <TAGSLLUT_REPO>
    python3 partner_token_collector.py
    ```
 
@@ -4347,12 +4347,12 @@ If you tell me which one you prefer (Deezer vs Apple/iTunes), I can:
 
 Untitled Request
 
-/Users/georgeskhawam/Projects/tagslut/postman/environments/New_Environment.postman_environment.json/Users/georgeskhawam/Projects/tagslut/postman/environments/New_Environment.postman_environment.json
+<TAGSLLUT_REPO>/postman/environments/New_Environment.postman_environment.json<TAGSLLUT_REPO>/postman/environments/New_Environment.postman_environment.json
 
 You’ve pasted the same path twice:
 
 ```
-/Users/georgeskhawam/Projects/tagslut/postman/environments/New_Environment.postman_environment.json/Users/georgeskhawam/Projects/tagslut/postman/environments/New_Environment.postman_environment.json
+<TAGSLLUT_REPO>/postman/environments/New_Environment.postman_environment.json<TAGSLLUT_REPO>/postman/environments/New_Environment.postman_environment.json
 ```
 
 So there are two likely interpretations:
@@ -4567,7 +4567,7 @@ Issues:
 - Hard‑coded absolute DB path with your username:
 
   ```
-  DEFAULT_DB_PATH = "/Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-24/music.db"
+  DEFAULT_DB_PATH = "<TAGSLLUT_REPO>/EPOCH_2026-01-24/music.db"
   ```
 
 - Import process isn’t fully wrapped in a transaction; partial import is possible on error.
@@ -4896,7 +4896,7 @@ Changes:
 
   ```
   # OLD (removed)
-  DEFAULT_DB_PATH = "/Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-24/music.db"
+  DEFAULT_DB_PATH = "<TAGSLLUT_REPO>/EPOCH_2026-01-24/music.db"
   ```
 
 - Replaced with a safer pattern:
@@ -5147,7 +5147,7 @@ Untitled Request
 
 metadata
 
-/Pr/tagslut v3-supercharged !13 ?16 ❯ python -m tagslut.metadata.beatport_import_my_tracks --db /Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-27/music.db Traceback (most recent call last): File "<frozen runpy>", line 189, in _run_module_as_main File "<frozen runpy>", line 112, in _get_module_details File "/Users/georgeskhawam/Projects/tagslut/tagslut/metadata/__init__.py", line 12, in <module> from tagslut.metadata.auth import TokenManager File "/Users/georgeskhawam/Projects/tagslut/tagslut/metadata/auth.py", line 71, in <module> TIDAL_CLIENT_ID, TIDAL_CLIENT_SECRET = _get_tidal_credentials() ^^^^^^^^^^^^^^^^^^^^^^^^ File "/Users/georgeskhawam/Projects/tagslut/tagslut/metadata/auth.py", line 52, in _get_tidal_credentials client_id = os.environ.get("TIDAL_CLIENT_ID", default_id) ^^ NameError: name 'os' is not defined. Did you forget to import 'os'? ~/Pr/tagslut v3-supercharged !13 ?16 ❯ Py tagslut 01:33:00
+/Pr/tagslut v3-supercharged !13 ?16 ❯ python -m tagslut.metadata.beatport_import_my_tracks --db <TAGSLLUT_REPO>/EPOCH_2026-01-27/music.db Traceback (most recent call last): File "<frozen runpy>", line 189, in _run_module_as_main File "<frozen runpy>", line 112, in _get_module_details File "<TAGSLLUT_REPO>/tagslut/metadata/__init__.py", line 12, in <module> from tagslut.metadata.auth import TokenManager File "<TAGSLLUT_REPO>/tagslut/metadata/auth.py", line 71, in <module> TIDAL_CLIENT_ID, TIDAL_CLIENT_SECRET = _get_tidal_credentials() ^^^^^^^^^^^^^^^^^^^^^^^^ File "<TAGSLLUT_REPO>/tagslut/metadata/auth.py", line 52, in _get_tidal_credentials client_id = os.environ.get("TIDAL_CLIENT_ID", default_id) ^^ NameError: name 'os' is not defined. Did you forget to import 'os'? ~/Pr/tagslut v3-supercharged !13 ?16 ❯ Py tagslut 01:33:00
 
 
 
@@ -5230,7 +5230,7 @@ python3 -c "import tagslut.metadata.auth"
 You can now safely rerun:
 
 ```
-python -m tagslut.metadata.beatport_import_my_tracks --db /Users/georgeskhawam/Projects/tagslut/
+python -m tagslut.metadata.beatport_import_my_tracks --db <TAGSLLUT_REPO>/
     EPOCH_2026-01-27/music.db
 ```
 
@@ -5242,7 +5242,7 @@ Untitled Request
 
 metadata
 
-~/Pr/tagslut v3-supercharged !13 ?16 ❯ python -m tagslut.metadata.beatport_import_my_tracks --db /Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-27/music.db ERROR: NDJSON file not found: beatport_my_tracks.ndjson
+~/Pr/tagslut v3-supercharged !13 ?16 ❯ python -m tagslut.metadata.beatport_import_my_tracks --db <TAGSLLUT_REPO>/EPOCH_2026-01-27/music.db ERROR: NDJSON file not found: beatport_my_tracks.ndjson
 
 The Beatport import script is now running far enough to hit its *intended* guard: it can’t find the source NDJSON file it expects.
 
@@ -5252,7 +5252,7 @@ Right now it’s looking for:
 beatport_my_tracks.ndjson
 ```
 
-in the current working directory (`/Users/georgeskhawam/Projects/tagslut` based on your prompt).
+in the current working directory (`<TAGSLLUT_REPO>` based on your prompt).
 
 Nothing is “broken” in the code at this point; it just has no input file to import.
 
@@ -5268,13 +5268,13 @@ A. Copy / move it to the project root:
 
 ```
 cp /path/to/your/beatport_my_tracks.ndjson \
-   /Users/georgeskhawam/Projects/tagslut/beatport_my_tracks.ndjson
+   <TAGSLLUT_REPO>/beatport_my_tracks.ndjson
 ```
 
 then rerun:
 
 ```
-cd /Users/georgeskhawam/Projects/tagslut
+cd <TAGSLLUT_REPO>
 python -m tagslut.metadata.beatport_import_my_tracks --db EPOCH_2026-01-27/music.db
 ```
 
@@ -5284,7 +5284,7 @@ B. Or, if the script supports a CLI option for the NDJSON path (for example `--f
 
 ```
 python -m tagslut.metadata.beatport_import_my_tracks \
-  --db /Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-27/music.db \
+  --db <TAGSLLUT_REPO>/EPOCH_2026-01-27/music.db \
   --file /path/to/beatport_my_tracks.ndjson
 ```
 
@@ -5364,7 +5364,7 @@ There is currently **no** `beatport_my_tracks.ndjson` file anywhere in your repo
 
 From the inspection:
 
-- Searched under: `/Users/georgeskhawam/Projects/tagslut`
+- Searched under: `<TAGSLLUT_REPO>`
 - File searched: `beatport_my_tracks.ndjson`
 - Result: **not found**
 
@@ -5384,7 +5384,7 @@ You have two choices:
    ```
    # Example if you find it at ~/Downloads/beatport_my_tracks.ndjson
    python -m tagslut.metadata.beatport_import_my_tracks \
-     --db /Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-27/music.db \
+     --db <TAGSLLUT_REPO>/EPOCH_2026-01-27/music.db \
      --input ~/Downloads/beatport_my_tracks.ndjson
    ```
 
@@ -5449,7 +5449,7 @@ From the script header:
 So:
 
 ```
-cd /Users/georgeskhawam/Projects/tagslut
+cd <TAGSLLUT_REPO>
 
 # Edit env_exports.sh (or create if needed) and add:
 # export BEATPORT_ACCESS_TOKEN='your-real-token-here'
@@ -5471,7 +5471,7 @@ The harvester already defaults to the filename we’re missing:
 So in the project root:
 
 ```
-cd /Users/georgeskhawam/Projects/tagslut
+cd <TAGSLLUT_REPO>
 chmod +x tagslut/metadata/beatport_harvest_my_tracks.sh  # if not already
 ./tagslut/metadata/beatport_harvest_my_tracks.sh
 ```
@@ -5495,14 +5495,14 @@ Now that the NDJSON exists, run the importer again:
 
 ```
 python -m tagslut.metadata.beatport_import_my_tracks \
-  --db /Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-27/music.db
+  --db <TAGSLLUT_REPO>/EPOCH_2026-01-27/music.db
 ```
 
 Or, if you ever change the output path, you can use the `--input` flag explicitly:
 
 ```
 python -m tagslut.metadata.beatport_import_my_tracks \
-  --db /Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-27/music.db \
+  --db <TAGSLLUT_REPO>/EPOCH_2026-01-27/music.db \
   --input /full/path/to/beatport_my_tracks.ndjson
 ```
 
@@ -5556,7 +5556,7 @@ Save this as, for example, `beatport_harvest_and_import.sh` in your project root
 #
 # Example:
 #   ./beatport_harvest_and_import.sh \
-#     /Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-27/music.db
+#     <TAGSLLUT_REPO>/EPOCH_2026-01-27/music.db
 
 set -euo pipefail
 
@@ -5679,11 +5679,11 @@ exit "$IMPORT_STATUS"
 How to use:
 
 ```
-cd /Users/georgeskhawam/Projects/tagslut
+cd <TAGSLLUT_REPO>
 chmod +x beatport_harvest_and_import.sh
 
 ./beatport_harvest_and_import.sh \
-  /Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-27/music.db
+  <TAGSLLUT_REPO>/EPOCH_2026-01-27/music.db
 ```
 
 If you want, I can also add a small `--dry-run` toggle and extra logging, but this is the minimal full pipeline.
@@ -5702,7 +5702,7 @@ beatport_harvest_my_tracks.sh
 
 beatport_harvest_catalog_track.sh
 
-Project root: /Users/georgeskhawam/Projects/tagslut Database path: /Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-27/music.db ---------------------------------------- Sourcing env_exports.sh... ---------------------------------------- Running Beatport harvester... Script: /Users/georgeskhawam/Projects/tagslut/tagslut/metadata/beatport_harvest_my_tracks.sh [2026-01-28T02:06:04+0200] ========================================== [2026-01-28T02:06:04+0200] BEATPORT MY TRACKS HARVEST [2026-01-28T02:06:04+0200] ========================================== [2026-01-28T02:06:04+0200] CONFIG: [2026-01-28T02:06:04+0200] OUTPUT: beatport_my_tracks.ndjson [2026-01-28T02:06:04+0200] PER_PAGE: 100 [2026-01-28T02:06:04+0200] MAX_PAGES: 1000 [2026-01-28T02:06:04+0200] RATE_LIMIT_DELAY: 3 [2026-01-28T02:06:04+0200] ========================================== [2026-01-28T02:06:04+0200] Resuming from page > 0 [2026-01-28T02:06:04+0200] Fetching page 1... ~/Pr/tagslut v3-supercharged !13 ?19 ❯ Py tagslut 02:06:04
+Project root: <TAGSLLUT_REPO> Database path: <TAGSLLUT_REPO>/EPOCH_2026-01-27/music.db ---------------------------------------- Sourcing env_exports.sh... ---------------------------------------- Running Beatport harvester... Script: <TAGSLLUT_REPO>/tagslut/metadata/beatport_harvest_my_tracks.sh [2026-01-28T02:06:04+0200] ========================================== [2026-01-28T02:06:04+0200] BEATPORT MY TRACKS HARVEST [2026-01-28T02:06:04+0200] ========================================== [2026-01-28T02:06:04+0200] CONFIG: [2026-01-28T02:06:04+0200] OUTPUT: beatport_my_tracks.ndjson [2026-01-28T02:06:04+0200] PER_PAGE: 100 [2026-01-28T02:06:04+0200] MAX_PAGES: 1000 [2026-01-28T02:06:04+0200] RATE_LIMIT_DELAY: 3 [2026-01-28T02:06:04+0200] ========================================== [2026-01-28T02:06:04+0200] Resuming from page > 0 [2026-01-28T02:06:04+0200] Fetching page 1... ~/Pr/tagslut v3-supercharged !13 ?19 ❯ Py tagslut 02:06:04
 
 The harvester started correctly and is now busy fetching page 1 (and then subsequent pages) from Beatport. It’s running under `set -euo pipefail`, so if anything goes wrong you’ll see an error and it will exit; otherwise it will keep paginating until it finishes or hits `MAX_PAGES`.
 
@@ -5720,7 +5720,7 @@ What to check now
    In another terminal:
 
    ```
-   cd /Users/georgeskhawam/Projects/tagslut
+   cd <TAGSLLUT_REPO>
    ls -lh beatport_my_tracks.ndjson
    wc -l beatport_my_tracks.ndjson
    ```
@@ -5735,8 +5735,8 @@ What to check now
 
      ```
      python -m tagslut.metadata.beatport_import_my_tracks \
-       --db /Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-27/music.db \
-       --input /Users/georgeskhawam/Projects/tagslut/beatport_my_tracks.ndjson
+       --db <TAGSLLUT_REPO>/EPOCH_2026-01-27/music.db \
+       --input <TAGSLLUT_REPO>/beatport_my_tracks.ndjson
      ```
 
    And you’ll see its own summary:
@@ -5759,7 +5759,7 @@ beatport_harvest_my_tracks.sh
 
 beatport_harvest_catalog_track.sh
 
-~/Projects/tagslut v3-supercharged !13 ?16 ❯ cd /Users/georgeskhawam/Projects/tagslut 01:53:13 ls -lh beatport_my_tracks.ndjson wc -l beatport_my_tracks.ndjson -rw-r--r--@ 1 georgeskhawam staff 0B Jan 28 02:06 beatport_my_tracks.ndjson 0 beatport_my_tracks.ndjson
+~/Projects/tagslut v3-supercharged !13 ?16 ❯ cd <TAGSLLUT_REPO> 01:53:13 ls -lh beatport_my_tracks.ndjson wc -l beatport_my_tracks.ndjson -rw-r--r--@ 1 georgeskhawam staff 0B Jan 28 02:06 beatport_my_tracks.ndjson 0 beatport_my_tracks.ndjson
 
 
 
@@ -5914,7 +5914,7 @@ You can confirm what Beatport actually returned for page 1:
 
 ```
 # Re-run just the harvester, but capture its raw JSON once
-cd /Users/georgeskhawam/Projects/tagslut
+cd <TAGSLLUT_REPO>
 BEATPORT_MAX_PAGES=1 \
 BEATPORT_PER_PAGE=1 \
 BEATPORT_MY_TRACKS_LOG=beatport_debug.log \
@@ -6252,7 +6252,7 @@ You should see the “Rate limiting: sleeping …s” lines drop to around `0.5s
 
 If it still feels too slow or you start hitting errors (e.g. 429s), we can tune further or make the delay configurable via an env var.
 
-~/Pr/tagslut v3-supercharged !13 ?20 ❯ tagslut metadata enrich \ --db "$DB_PATH" \ --recovery \ --path "/Volumes/DJSSD/DRPBX" \ --providers itunes,tidal \ --execute \ --verbose DEBUG: Loaded tokens from /Users/georgeskhawam/.config/tagslut/tokens.json ┌──────────────────────────────────────────────────┐ │ METADATA ENRICHMENT - Recovery Mode │ └──────────────────────────────────────────────────┘ Database: /Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-28/music.db Providers: itunes → tidal Path: /Volumes/DJSSD/DRPBX Log file: /Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-28/enrich_20260128_200018.log Resumable: Ctrl+C to pause, run again to continue INFO: No eligible files found ================================================== RESULTS ================================================== Total: 0 Enriched: 0 ✓ No match: 0 Failed: 0 Full log: /Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-28/enrich_20260128_200018.log ~/Pr/tagslut v3-supercharged !13 ?20 ❯ Py tagslut 20:00:18 an you fiox the script so it is applicable as a standalne tool and not part of a process? the project is a mess a needs arefactoring
+~/Pr/tagslut v3-supercharged !13 ?20 ❯ tagslut metadata enrich \ --db "$DB_PATH" \ --recovery \ --path "/Volumes/DJSSD/DRPBX" \ --providers itunes,tidal \ --execute \ --verbose DEBUG: Loaded tokens from <USER_HOME>/.config/tagslut/tokens.json ┌──────────────────────────────────────────────────┐ │ METADATA ENRICHMENT - Recovery Mode │ └──────────────────────────────────────────────────┘ Database: <TAGSLLUT_REPO>/EPOCH_2026-01-28/music.db Providers: itunes → tidal Path: /Volumes/DJSSD/DRPBX Log file: <TAGSLLUT_REPO>/EPOCH_2026-01-28/enrich_20260128_200018.log Resumable: Ctrl+C to pause, run again to continue INFO: No eligible files found ================================================== RESULTS ================================================== Total: 0 Enriched: 0 ✓ No match: 0 Failed: 0 Full log: <TAGSLLUT_REPO>/EPOCH_2026-01-28/enrich_20260128_200018.log ~/Pr/tagslut v3-supercharged !13 ?20 ❯ Py tagslut 20:00:18 an you fiox the script so it is applicable as a standalne tool and not part of a process? the project is a mess a needs arefactoring
 
 Right now the enrich command is doing exactly what it’s coded to do: it’s only looking for “eligible” rows in the DB, and in your current snapshots that’s often zero. That makes it feel like a dead tool unless you happen to be in the right stage of the bigger pipeline.
 
@@ -6287,7 +6287,7 @@ So for your 2026‑01‑28 DB:
 To verify that this is still the case on the new DB, you can run:
 
 ```
-sqlite3 /Users/georgeskhawam/Projects/tagslut/EPOCH_2026-01-28/music.db \
+sqlite3 <TAGSLLUT_REPO>/EPOCH_2026-01-28/music.db \
   "SELECT 
       COUNT(*) AS total,
       SUM(CASE WHEN flac_ok = 1 THEN 1 ELSE 0 END) AS flac_ok,
@@ -10164,7 +10164,7 @@ Codex didn’t actually run the CLI. You can:
 A. Run a quick enrichment smoke test on one of your EPOCH DBs:
 
 ```
-cd /Users/georgeskhawam/Projects/tagslut
+cd <TAGSLLUT_REPO>
 
 # Pick a DB you know is valid
 DB=EPOCH_2026-01-28/music.db  # or your latest

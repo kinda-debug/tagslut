@@ -7,7 +7,7 @@ This is a distilled, "just the commands I need" version of `docs/WORKFLOW_MASTER
 Every run begins by refreshing `.env` with the latest epoch, artifacts, and report paths:
 
 ```bash
-cd /Users/georgeskhawam/Projects/tagslut
+cd <TAGSLLUT_REPO>
 python3 scripts/auto_env.py      # updates .env with newest EPOCH_* DB + artifact/report dirs
 source .env                     # exports TAGSLUT_DB, TAGSLUT_ZONES_CONFIG, etc.
 mkdir -p "$(dirname "$TAGSLUT_DB")"  # ensures the epoch folder exists

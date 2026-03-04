@@ -740,13 +740,13 @@ POST
 
 https://api-partner.spotify.com/pathfinder/v2/query
 
-postman request POST 'https://api-partner.spotify.com/pathfinder/v2/query' \ --header 'Content-Type: application/json;charset=UTF-8' \ --header 'Authorization: Bearer BQAeYWlUb7QnLRqfqVhKlQa6HqSyATiZad-VfTRXB5o_1XQN6AypWKjEtIOvjUlsOAmV40kgXhvAUbzM8GlGjkWAsbf4_WdYkvVjG9jAOQWCI7KIsTG4EX4tGlsmvXvCfl0Slzmca1pGU-kbIe6KAcOEq85FHDloroQDKVLbJJm5Cn9Xms7-5rLl50CScqjeY2CL4eQ0v3ziNLer6LR8Ez-Zl4Pq-k-YHMKbiI3opGVcbPgNDjry8Ny3DenVJ2OwqnyMxqisOuvQL3UlOLiIExqgECm4wJiSRWfKWYJVSa5GYNfpwiKEjPsRpCZDCC1lfkfcD7QGbgH-DQfM_4g6tbG7mC0K_089pOpMUQD8yjpxQZ9Z7jzTeC7x' \ --header 'Accept: application/json' \ --header 'Sec-Fetch-Site: same-site' \ --header 'Accept-Language: en' \ --header 'Sec-Fetch-Mode: cors' \ --header 'Origin: https://open.spotify.com' \ --header 'Referer: https://open.spotify.com/' \ --header 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.2 Safari/605.1.15' \ --header 'Sec-Fetch-Dest: empty' \ --header 'spotify-app-version: 896000000' \ --header 'app-platform: WebPlayer' \ --header 'client-token: AADD5dT2HVjPyawMfVQGieluLTfB0j24zNTHyPVF0PSrPZqG8Uepk7nzJncuN4PSBMYGzLxDsqcnLsa7Ar/cQhphLoQ+FWI+zC8A+Y9dPQiFrT76pjgzgEvqg8k3AzUlw7aNAtLd5y/f5CWyHZVNOnnWZZTt4Q6aIi7QOSAR3GqsvsuKX406wm9VLRuZpH/UeWqI9HTxZqXCVh6XI/qFBBURvhQvWrRN7LO0YkSb/enK8iJlRN3ZqQgrznOJUdsKyufQlQkWml/8LcRQBl7yrlLCzvoxjMu41qtJ6djpmp7lYKkAhDxr7YfO6NCOw0DC9QyYikM/d/ijbcrFIMm34l81NiG1jll6' \ --header 'host: api-partner.spotify.com' \ --header 'Cookie: sp_t=3f0cd36f-8b75-43e9-b621-cbe2740700c6' \ --body '{"variables":{"uri":"spotify:album:1R7RsN6kHsfi3Z5ZvB5z9f","locale":"","offset":0,"limit":50},"operationName":"getAlbum","extensions":{"pers ion":1,"sha256Hash":"b9bfabef66ed756e5e13f68a942deb60bd4125ec1f1be8cc42769dc0259b4b10"}}}' /Users/georgeskhawam/Projects/tagslut/album.json
+postman request POST 'https://api-partner.spotify.com/pathfinder/v2/query' \ --header 'Content-Type: application/json;charset=UTF-8' \ --header 'Authorization: Bearer BQAeYWlUb7QnLRqfqVhKlQa6HqSyATiZad-VfTRXB5o_1XQN6AypWKjEtIOvjUlsOAmV40kgXhvAUbzM8GlGjkWAsbf4_WdYkvVjG9jAOQWCI7KIsTG4EX4tGlsmvXvCfl0Slzmca1pGU-kbIe6KAcOEq85FHDloroQDKVLbJJm5Cn9Xms7-5rLl50CScqjeY2CL4eQ0v3ziNLer6LR8Ez-Zl4Pq-k-YHMKbiI3opGVcbPgNDjry8Ny3DenVJ2OwqnyMxqisOuvQL3UlOLiIExqgECm4wJiSRWfKWYJVSa5GYNfpwiKEjPsRpCZDCC1lfkfcD7QGbgH-DQfM_4g6tbG7mC0K_089pOpMUQD8yjpxQZ9Z7jzTeC7x' \ --header 'Accept: application/json' \ --header 'Sec-Fetch-Site: same-site' \ --header 'Accept-Language: en' \ --header 'Sec-Fetch-Mode: cors' \ --header 'Origin: https://open.spotify.com' \ --header 'Referer: https://open.spotify.com/' \ --header 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.2 Safari/605.1.15' \ --header 'Sec-Fetch-Dest: empty' \ --header 'spotify-app-version: 896000000' \ --header 'app-platform: WebPlayer' \ --header 'client-token: AADD5dT2HVjPyawMfVQGieluLTfB0j24zNTHyPVF0PSrPZqG8Uepk7nzJncuN4PSBMYGzLxDsqcnLsa7Ar/cQhphLoQ+FWI+zC8A+Y9dPQiFrT76pjgzgEvqg8k3AzUlw7aNAtLd5y/f5CWyHZVNOnnWZZTt4Q6aIi7QOSAR3GqsvsuKX406wm9VLRuZpH/UeWqI9HTxZqXCVh6XI/qFBBURvhQvWrRN7LO0YkSb/enK8iJlRN3ZqQgrznOJUdsKyufQlQkWml/8LcRQBl7yrlLCzvoxjMu41qtJ6djpmp7lYKkAhDxr7YfO6NCOw0DC9QyYikM/d/ijbcrFIMm34l81NiG1jll6' \ --header 'host: api-partner.spotify.com' \ --header 'Cookie: sp_t=3f0cd36f-8b75-43e9-b621-cbe2740700c6' \ --body '{"variables":{"uri":"spotify:album:1R7RsN6kHsfi3Z5ZvB5z9f","locale":"","offset":0,"limit":50},"operationName":"getAlbum","extensions":{"pers ion":1,"sha256Hash":"b9bfabef66ed756e5e13f68a942deb60bd4125ec1f1be8cc42769dc0259b4b10"}}}' <TAGSLLUT_REPO>/album.json
 
 You already have this request open in Postman (the unsaved POST to `https://api-partner.spotify.com/pathfinder/v2/query` with the album URI in the body). Let’s wire everything together so that:
 
 - The request hits Spotify’s album endpoint (as in your curl),
 - The response is visualized as a chart (e.g., track durations),
-- And you can reuse the JSON you saved at `/Users/georgeskhawam/Projects/tagslut/album.json` as a sample.
+- And you can reuse the JSON you saved at `<TAGSLLUT_REPO>/album.json` as a sample.
 
 You don’t need a collection; you can work right in the current request tab.
 
@@ -1038,7 +1038,7 @@ pm.visualizer.set(template,
 
 ### 3. Use your saved `album.json` for testing (optional)
 
-Since you have `/Users/georgeskhawam/Projects/tagslut/album.json`:
+Since you have `<TAGSLLUT_REPO>/album.json`:
 
 - Open that file and confirm it matches a real response body.
 - In Postman, instead of calling Spotify every time, you can:

@@ -2129,9 +2129,9 @@ If you copy just that one line (the full URL or path), I’ll give you:
 
 recommendation.json
 
-/Users/georgeskhawam/Projects/tagslut/recommendation.json
+<TAGSLLUT_REPO>/recommendation.json
 
-Got it—that file you selected (`/Users/georgeskhawam/Projects/tagslut/recommendation.json`) is the Beatport recommendations endpoint docs/trace, including that big parameter list you pasted.
+Got it—that file you selected (`<TAGSLLUT_REPO>/recommendation.json`) is the Beatport recommendations endpoint docs/trace, including that big parameter list you pasted.
 
 From what’s in that file and your previous context, here’s what I recommend you do in Postman to actually call the “recommended” endpoint:
 
@@ -2622,7 +2622,7 @@ GET
 
 https://api.beatport.com/v4/catalog/tracks/
 
-lets drop tidal for now but take a look at these: /Users/georgeskhawam/Projects/tagslut/mp3tag_sources
+lets drop tidal for now but take a look at these: <TAGSLLUT_REPO>/mp3tag_sources
 
 
 
@@ -4059,7 +4059,7 @@ Here are a few good options you can use and then paste here:
 
     Then paste the output (even if messy / multilingual).
 
-- If you have them in a file under `/Users/georgeskhawam/Projects/tagslut`:
+- If you have them in a file under `<TAGSLLUT_REPO>`:
 
   - Tell me the path (e.g. `genres.json`, `tags.csv`, etc.), and paste the content or at least a sizeable chunk.
 
@@ -4626,7 +4626,7 @@ if __name__ == '__main__':
 You run it like:
 
 ```
-cd /Users/georgeskhawam/Projects/tagslut
+cd <TAGSLLUT_REPO>
 python scripts/library_export.py "/Volumes/
     Music"
 ```
@@ -4721,7 +4721,7 @@ This script already implements the “hoard everything so we can analyze later�
 From your `tagslut` project root:
 
 ```
-cd /Users/georgeskhawam/Projects/tagslut
+cd <TAGSLLUT_REPO>
 
 # Example
 python tools/review/hoard_tags.py "/path/to/
@@ -4877,7 +4877,7 @@ This is not overkill; it’s exactly right for a careful, reversible process:
 1. **Run a hoard to see your genres and tags:**
 
    ```
-   cd /Users/georgeskhawam/Projects/tagslut
+   cd <TAGSLLUT_REPO>
    python tools/review/hoard_tags.py "/
        path/to/your/music" \
      --out tag_hoard_out \
@@ -5705,7 +5705,7 @@ Usage, step by step:
 1. Run your existing hoard:
 
 ```
-cd /Users/georgeskhawam/Projects/tagslut
+cd <TAGSLLUT_REPO>
 
 python tools/review/hoard_tags.py "/path/to/
     your/music" \

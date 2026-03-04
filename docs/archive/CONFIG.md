@@ -63,11 +63,11 @@ PREFER_VALID_INTEGRITY=true
 Create `.env` from example:
 
 ```bash
-cd /Users/georgeskhawam/Projects/tagslut
+cd <TAGSLLUT_REPO>
 cp .env.example .env
 ```
 
-Then edit values in `/Users/georgeskhawam/Projects/tagslut/.env`.
+Then edit values in `<TAGSLLUT_REPO>/.env`.
 
 ## zones.yaml Integration
 
@@ -75,7 +75,7 @@ Then edit values in `/Users/georgeskhawam/Projects/tagslut/.env`.
 
 Example file:
 
-`/Users/georgeskhawam/Projects/tagslut/config/zones.yaml.example`
+`<TAGSLLUT_REPO>/config/zones.yaml.example`
 
 Default user location expected by tooling:
 
@@ -100,7 +100,7 @@ zones:
 Verify effective setup before heavy operations:
 
 ```bash
-cd /Users/georgeskhawam/Projects/tagslut
+cd <TAGSLLUT_REPO>
 
 # Confirm env values are visible
 printenv TAGSLUT_DB
@@ -132,6 +132,6 @@ poetry run tagslut show-zone "$VOLUME_STAGING"
 
 ## Canonical References
 
-- Environment template: `/Users/georgeskhawam/Projects/tagslut/.env.example`
-- Operations guide: `/Users/georgeskhawam/Projects/tagslut/docs/README_OPERATIONS.md`
-- Zones details: `/Users/georgeskhawam/Projects/tagslut/docs/ZONES.md`
+- Environment template: `<TAGSLLUT_REPO>/.env.example`
+- Operations guide: `<TAGSLLUT_REPO>/docs/README_OPERATIONS.md`
+- Zones details: `<TAGSLLUT_REPO>/docs/ZONES.md`

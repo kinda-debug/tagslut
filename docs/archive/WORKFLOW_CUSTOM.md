@@ -9,7 +9,7 @@ Set these once per shell session.
 ```bash
 # Core paths
 export REPO_ROOT="/path/to/your/tagslut"
-export TAGSLUT_DB="/path/to/your/tagslut_db/EPOCH_PLACEHOLDER/music.db"
+export TAGSLUT_DB="/path/to/your/<V3_DB>"
 export LIBRARY_ROOT="/Volumes/MUSIC/LIBRARY"
 export STAGING_ROOT="$HOME/Music/mdl"
 
@@ -330,10 +330,10 @@ python scripts/embed_artwork_from_sources.py \
 ## 18) Relink After Picard Renames (Lightweight New DB Flow)
 
 ```bash
-export RELINK_DB="/path/to/your/tagslut_db/EPOCH_2026-02-10_RELINK/music.db"
+export RELINK_DB="/path/to/your/<V3_DB>"
 
 python scripts/bootstrap_relink_db.py \
-  --from-db "/path/to/your/tagslut_db/EPOCH_2026-02-08/music.db" \
+  --from-db "/path/to/your/<V3_DB>" \
   --to-db "$RELINK_DB"
 
 poetry run tagslut index register \

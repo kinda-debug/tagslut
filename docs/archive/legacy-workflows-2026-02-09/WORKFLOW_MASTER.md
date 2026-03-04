@@ -16,20 +16,20 @@ Link it from `docs/WORKFLOW_METADATA.md`, `docs/WORKFLOW_PERSONAL.md`, or wherev
 
 1. Copy `.env.example` → `.env` once, then edit the values (DB path, volume aliases, artifacts). Example shortcuts:
    ```bash
-   cd /Users/georgeskhawam/Projects/tagslut
+   cd <TAGSLLUT_REPO>
    cp .env.example .env
    mkdir -p "$(dirname "$(jq -r '.TAGSLUT_DB' .env)")"  # ensures epoch folder exists
    ```
    (You can also set `TAGSLUT_DB` explicitly per epoch before running.)
 2. Set the two key vars:
-   - `TAGSLUT_DB` → `/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-01-29/music.db` (change the date for each run).
+   - `TAGSLUT_DB` → `<TAGSLLUT_REPO>_db/EPOCH_2026-01-29/music.db` (change the date for each run).
    - `TAGSLUT_ZONES_CONFIG` → `~/.config/tagslut/zones.yaml`.
 3. Source the file before every session:
    ```bash
-   cd /Users/georgeskhawam/Projects/tagslut
+   cd <TAGSLLUT_REPO>
    source .env
    ```
-4. Optional: add `source /Users/georgeskhawam/Projects/tagslut/.env` to your shell profile for convenience.
+4. Optional: add `source <TAGSLLUT_REPO>/.env` to your shell profile for convenience.
 
 > `.env` > `config.toml` for CLI defaults. Every command uses the `.env` path first.
 

@@ -8,7 +8,7 @@ It uses a **trust score before scanning**, lets **scan results override it**, th
 ## 0) Environment (always first)
 
 ```bash
-cd /Users/georgeskhawam/Projects/tagslut
+cd <TAGSLLUT_REPO>
 python3 scripts/auto_env.py   # refreshes .env with latest EPOCH_* DB
 source .env
 mkdir -p "$(dirname "$TAGSLUT_DB")"
@@ -109,7 +109,7 @@ sqlite3 -header -csv "$TAGSLUT_DB" \
  FROM files
  WHERE canonical_duration IS NOT NULL
  ORDER BY delta_s DESC;" \
-> /Users/georgeskhawam/Projects/tagslut/duration_mismatches.csv
+> <TAGSLLUT_REPO>/duration_mismatches.csv
 ```
 
 ---

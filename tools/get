@@ -7,7 +7,7 @@
 #   - deezer.com   → tools/deemix (Deezer wrapper + auto-register)
 #
 # Usage:
-#   tools/get <url> [extra-args...]
+#   tools/get [--sync|--synch|--simple] <url> [extra-args...]
 #
 # Examples:
 #   tools/get https://tidal.com/browse/playlist/12345
@@ -35,10 +35,25 @@ usage() {
     echo "  tools/get-sync <beatport-url>    same flow (explicit sync)"
     echo "  tools/get-report <beatport-url>  report only, no download"
     echo ""
-    echo "General usage: tools/get <url> [extra-args...]"
+    echo "General usage: tools/get [--sync|--synch|--simple] <url> [extra-args...]"
+    echo "  --sync/--synch: provider sync workflow"
+    echo "  --simple: downloader-only behavior"
     echo "Use tools/get-help for the tiny version of this help."
     exit 1
 }
+
+if [[ $# -lt 1 ]]; then
+    usage
+fi
+
+MODE="auto"
+if [[ "$1" == "--sync" || "$1" == "--synch" ]]; then
+    MODE="sync"
+    shift
+elif [[ "$1" == "--simple" ]]; then
+    MODE="simple"
+    shift
+fi
 
 if [[ $# -lt 1 ]]; then
     usage
@@ -54,8 +69,13 @@ if [[ "$URL" == *"tidal.com"* ]]; then
         exit 1
     fi
     cd "$REPO_ROOT"
-    # Default to missing-only for Tidal to avoid duplicates.
+    # Tidal "sync" => missing-only; "simple" => downloader-only.
     MISSING_ONLY=1
+    if [[ "$MODE" == "simple" ]]; then
+        MISSING_ONLY=0
+    elif [[ "$MODE" == "sync" ]]; then
+        MISSING_ONLY=1
+    fi
     DB_PATH=""
     DOWNLOADER_ARGS=()
     while [[ $# -gt 0 ]]; do
@@ -130,6 +150,14 @@ elif [[ "$URL" == *"beatport.com"* ]]; then
         exit 1
     fi
     cd "$REPO_ROOT"
+    if [[ "$MODE" == "simple" ]]; then
+        if [[ ! -x "$BPDL_BIN" ]]; then
+            echo "Error: BeatportDL binary not found or not executable at: $BPDL_BIN" >&2
+            exit 1
+        fi
+        exec "$BPDL_BIN" "$URL" "$@"
+    fi
+
     if [[ $# -eq 0 ]]; then
         exec "$GET_SYNC" "$URL"
     fi

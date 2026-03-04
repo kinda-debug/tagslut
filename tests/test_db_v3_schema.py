@@ -7,6 +7,7 @@ import pytest
 
 from tagslut.db.v3.db import open_db_v3
 from tagslut.db.v3.schema import create_schema_v3
+from tagslut.storage.schema import init_db
 
 
 def _table_names(conn: sqlite3.Connection) -> set[str]:
@@ -178,3 +179,12 @@ def test_create_schema_v3_creates_active_identity_view() -> None:
     finally:
         conn.close()
     assert row is not None
+
+
+def test_init_db_is_compatible_with_v3_library_track_sources_shape() -> None:
+    conn = sqlite3.connect(":memory:")
+    try:
+        create_schema_v3(conn)
+        init_db(conn)
+    finally:
+        conn.close()

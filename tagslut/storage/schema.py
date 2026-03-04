@@ -429,25 +429,36 @@ def init_db(
             );
             """
         )
-        connection.execute(
-            "CREATE INDEX IF NOT EXISTS idx_library_track_sources_key "
-            "ON library_track_sources(library_track_key);"
+        library_track_sources_columns = set(
+            _get_existing_columns(connection, "library_track_sources")
         )
-        connection.execute(
-            "CREATE INDEX IF NOT EXISTS idx_library_track_sources_service "
-            "ON library_track_sources(service);"
-        )
-        connection.execute(
-            "CREATE INDEX IF NOT EXISTS idx_library_track_sources_isrc "
-            "ON library_track_sources(isrc);"
-        )
+        if "library_track_key" in library_track_sources_columns:
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_library_track_sources_key "
+                "ON library_track_sources(library_track_key);"
+            )
+        if "service" in library_track_sources_columns:
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_library_track_sources_service "
+                "ON library_track_sources(service);"
+            )
+        if "isrc" in library_track_sources_columns:
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_library_track_sources_isrc "
+                "ON library_track_sources(isrc);"
+            )
 
         # Helpful for deduping repeated upserts without requiring a unique constraint.
         # (We delete-then-insert in code to avoid index creation failures on existing DBs.)
-        connection.execute(
-            "CREATE INDEX IF NOT EXISTS idx_library_track_sources_triplet "
-            "ON library_track_sources(library_track_key, service, service_track_id);"
-        )
+        if {
+            "library_track_key",
+            "service",
+            "service_track_id",
+        }.issubset(library_track_sources_columns):
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_library_track_sources_triplet "
+                "ON library_track_sources(library_track_key, service, service_track_id);"
+            )
 
         _ensure_scan_tracking_tables(connection)
         _ensure_v3_schema(connection)

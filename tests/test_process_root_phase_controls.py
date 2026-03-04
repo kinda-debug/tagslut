@@ -6,6 +6,8 @@ import importlib.util as _ilu
 import sys
 from pathlib import Path
 
+from tagslut.db.v3.schema import create_schema_v3
+
 
 _SCRIPT = Path(__file__).resolve().parent.parent / "tools" / "review" / "process_root.py"
 _SPEC = _ilu.spec_from_file_location("process_root", _SCRIPT)
@@ -17,6 +19,8 @@ parse_phases = _MOD.parse_phases
 planned_table_touches = _MOD.planned_table_touches
 build_pipeline_steps = _MOD.build_pipeline_steps
 IDENTITY_TABLES = _MOD.IDENTITY_TABLES
+validate_phase_compatibility = _MOD.validate_phase_compatibility
+is_v3_db = _MOD.is_v3_db
 
 
 def _build_steps(phases: tuple[str, ...]) -> list[object]:
@@ -76,3 +80,34 @@ def test_register_only_runs_registration_without_hash() -> None:
     assert len(steps) == 1
     assert steps[0].label == "scan_with_trust"
     assert "--check-hash" not in steps[0].command
+
+
+def test_detects_v3_db_shape(tmp_path: Path) -> None:
+    db_path = tmp_path / "music_v3.db"
+    import sqlite3
+
+    conn = sqlite3.connect(str(db_path))
+    try:
+        create_schema_v3(conn)
+    finally:
+        conn.close()
+
+    assert is_v3_db(db_path) is True
+
+
+def test_blocks_legacy_scan_phases_on_v3_db(tmp_path: Path) -> None:
+    db_path = tmp_path / "music_v3.db"
+    import sqlite3
+
+    conn = sqlite3.connect(str(db_path))
+    try:
+        create_schema_v3(conn)
+    finally:
+        conn.close()
+
+    err = validate_phase_compatibility(
+        db_path=db_path,
+        phases=("register", "integrity", "hash"),
+    )
+    assert err is not None
+    assert "v3 DB guard" in err

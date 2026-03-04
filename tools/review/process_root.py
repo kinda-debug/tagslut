@@ -21,6 +21,7 @@ This script runs the pipeline in-order for a provided root folder.
 from __future__ import annotations
 
 import argparse
+import sqlite3
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -99,6 +100,43 @@ def planned_table_touches(phases: tuple[str, ...]) -> set[str]:
     for phase in phases:
         tables.update(PHASE_TABLE_TOUCHES.get(phase, set()))
     return tables
+
+
+def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name = ? LIMIT 1",
+        (table_name,),
+    ).fetchone()
+    return row is not None
+
+
+def is_v3_db(db_path: Path) -> bool:
+    conn = sqlite3.connect(str(db_path))
+    try:
+        if not _table_exists(conn, "asset_file"):
+            return False
+        if not _table_exists(conn, "track_identity"):
+            return False
+        if not _table_exists(conn, "asset_link"):
+            return False
+        return True
+    finally:
+        conn.close()
+
+
+def validate_phase_compatibility(*, db_path: Path, phases: tuple[str, ...]) -> str | None:
+    legacy_scan_phases = {"register", "integrity", "hash"}
+    requested_legacy = sorted(legacy_scan_phases & set(phases))
+    if not requested_legacy:
+        return None
+    if not is_v3_db(db_path):
+        return None
+    requested = ",".join(requested_legacy)
+    return (
+        f"v3 DB guard: phases [{requested}] are not allowed in process-root because they invoke "
+        "legacy scan scripts that create/modify v2 tables (including files). "
+        "Use process-root for identity/enrich/art/promote phases only."
+    )
 
 
 def build_pipeline_steps(
@@ -336,6 +374,9 @@ def main() -> None:
         print(f"Warning: library path does not exist yet: {library_path}")
 
     phases = parse_phases(phases_arg=args.phases, scan_only=bool(args.scan_only))
+    compatibility_error = validate_phase_compatibility(db_path=db_path, phases=phases)
+    if compatibility_error:
+        raise SystemExit(compatibility_error)
     if args.scan_only:
         forbidden = planned_table_touches(phases) & IDENTITY_TABLES
         if forbidden:

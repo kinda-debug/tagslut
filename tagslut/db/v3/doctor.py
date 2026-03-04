@@ -99,4 +99,3 @@ def doctor_v3(conn: sqlite3.Connection) -> dict[str, Any]:
         "missing_tables": missing_tables,
         "missing_columns": missing_columns,
     }
-

@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import json
 import os
 import re
 import sqlite3
@@ -948,7 +947,11 @@ def _collect_ok_paths(conn: sqlite3.Connection, *, limit: int, prefix: str | Non
             ON d_track.level = 'track' AND d_track.key = f.path
         LEFT JOIN dj_review_decisions d_album
             ON d_album.level = 'album'
-            AND d_album.key = (lower(trim(coalesce(f.canonical_artist, ''))) || '|' || lower(trim(coalesce(f.canonical_album, ''))))
+            AND d_album.key = (
+                lower(trim(coalesce(f.canonical_artist, '')))
+                || '|'
+                || lower(trim(coalesce(f.canonical_album, '')))
+            )
         LEFT JOIN dj_review_decisions d_artist
             ON d_artist.level = 'artist'
             AND d_artist.key = lower(trim(coalesce(f.canonical_artist, '')))
@@ -1068,7 +1071,9 @@ _HTML = """
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Tagslut DJ Review</title>
   <style>
-    @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,600;9..144,800&display=swap");
+    @import url(
+      "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap"
+    );
     :root {
       color-scheme: light;
       --bg: #f2efe7;

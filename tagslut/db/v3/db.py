@@ -29,4 +29,3 @@ def open_db_v3(path: str | Path, create: bool = True) -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
     return conn
-

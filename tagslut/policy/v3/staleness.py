@@ -121,4 +121,3 @@ def is_enrichment_stale(
         now_utc = now_utc.replace(tzinfo=timezone.utc)
     age_seconds = (now_utc - newest_snapshot).total_seconds()
     return age_seconds > max_snapshot_age_seconds
-

@@ -131,7 +131,11 @@ def register_intake_group(cli: click.Group) -> None:
     @click.option("--db", "db_path", required=True, type=click.Path(), help="Path to tagslut DB")
     @click.option("--input", "input_path", type=click.Path(), help="Input JSONL file with track metadata")
     @click.option("--url", help="URL to JSONL track metadata")
-    @click.option("--output", type=click.Path(), help="Manifest output path (default: artifacts/intake_manifest_*.json)")
+    @click.option(
+        "--output",
+        type=click.Path(),
+        help="Manifest output path (default: artifacts/intake_manifest_*.json)",
+    )
     def intake_resolve(db_path, input_path, url, output):  # type: ignore  # TODO: mypy-strict
         """Resolve playlist intents against inventory and build NEW/UPGRADE/SKIP manifest."""
         manifest, output_path = _build_and_write_manifest(

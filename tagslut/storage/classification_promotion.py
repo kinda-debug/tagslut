@@ -30,7 +30,8 @@ class PromotionResult:
 
 
 def _quote_ident(name: str) -> str:
-    return f"\"{name.replace('\"', '\"\"')}\""
+    escaped = name.replace('"', '""')
+    return f'"{escaped}"'
 
 
 def _sqlite_version_tuple(version: str) -> tuple[int, int, int]:
@@ -125,7 +126,10 @@ def _genre_blank_metrics(conn: sqlite3.Connection) -> tuple[int, float]:
     return blank_rows, blank_pct
 
 
-def _collect_metrics(conn: sqlite3.Connection, classification_column: str) -> tuple[int, int, float, int, float, dict[str, int]]:
+def _collect_metrics(
+    conn: sqlite3.Connection,
+    classification_column: str,
+) -> tuple[int, int, float, int, float, dict[str, int]]:
     distribution = _distribution_for_column(conn, classification_column)
     total_rows, remove_rows, remove_pct = _remove_metrics(conn, classification_column)
     genre_blank_rows, genre_blank_pct = _genre_blank_metrics(conn)

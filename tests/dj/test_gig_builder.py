@@ -99,17 +99,24 @@ def test_build_full_flow_transcode_copy_record(tmp_path: Path) -> None:
         mock_rb.assert_called_once()
         mock_manifest.assert_called_once()
 
-        row = conn.execute("SELECT dj_pool_path, last_exported_usb FROM files WHERE path = ?", (str(flac_a),)).fetchone()
+        row = conn.execute(
+            "SELECT dj_pool_path, last_exported_usb FROM files WHERE path = ?",
+            (str(flac_a),),
+        ).fetchone()
         assert row[0] == str(transcoded_mp3)
         assert row[1] is not None
 
-        gig_row = conn.execute("SELECT name, track_count, usb_path, filter_expr FROM gig_sets ORDER BY id DESC LIMIT 1").fetchone()
+        gig_row = conn.execute(
+            "SELECT name, track_count, usb_path, filter_expr FROM gig_sets ORDER BY id DESC LIMIT 1"
+        ).fetchone()
         assert gig_row[0] == "Test Set"
         assert gig_row[1] == 2
         assert gig_row[2] == str(usb)
         assert "genre:techno" in gig_row[3]
 
-        track_rows = conn.execute("SELECT file_path, mp3_path, usb_dest_path FROM gig_set_tracks ORDER BY id").fetchall()
+        track_rows = conn.execute(
+            "SELECT file_path, mp3_path, usb_dest_path FROM gig_set_tracks ORDER BY id"
+        ).fetchall()
         assert len(track_rows) == 2
         assert track_rows[0][0] == str(flac_a)
         assert track_rows[0][1] == str(transcoded_mp3)
@@ -131,11 +138,15 @@ def test_build_dry_run_plans_without_writes(tmp_path: Path) -> None:
         _insert_file(conn, path=flac, checksum="sha-1", genre="techno", bpm=128.0)
         conn.commit()
 
-        with patch("tagslut.exec.gig_builder.copy_to_usb", return_value=[usb / "MUSIC" / "Dry" / "track.mp3"]) as mock_copy, patch(
-            "tagslut.exec.gig_builder.write_rekordbox_db"
-        ) as mock_rb, patch("tagslut.exec.gig_builder.write_manifest") as mock_manifest, patch(
-            "tagslut.exec.gig_builder.transcode_to_mp3"
-        ) as mock_transcode:
+        with (
+            patch(
+                "tagslut.exec.gig_builder.copy_to_usb",
+                return_value=[usb / "MUSIC" / "Dry" / "track.mp3"],
+            ) as mock_copy,
+            patch("tagslut.exec.gig_builder.write_rekordbox_db") as mock_rb,
+            patch("tagslut.exec.gig_builder.write_manifest") as mock_manifest,
+            patch("tagslut.exec.gig_builder.transcode_to_mp3") as mock_transcode,
+        ):
             result = GigBuilder(conn, dj_pool_dir=pool).build("Dry", "dj_flag:true", usb, dry_run=True)
 
         assert result.tracks_found == 1
@@ -150,7 +161,10 @@ def test_build_dry_run_plans_without_writes(tmp_path: Path) -> None:
 
         gig_rows = conn.execute("SELECT COUNT(*) FROM gig_sets").fetchone()[0]
         assert gig_rows == 0
-        db_row = conn.execute("SELECT dj_pool_path, last_exported_usb FROM files WHERE path = ?", (str(flac),)).fetchone()
+        db_row = conn.execute(
+            "SELECT dj_pool_path, last_exported_usb FROM files WHERE path = ?",
+            (str(flac),),
+        ).fetchone()
         assert db_row[0] is None
         assert db_row[1] is None
     finally:

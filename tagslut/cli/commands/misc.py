@@ -77,7 +77,11 @@ def _interactive_init() -> dict:  # type: ignore  # TODO: mypy-strict
 
     # Workers
     click.echo("\n5. PARALLEL WORKERS")
-    workers = click.prompt("   Number of parallel scan workers", default=4, type=int)  # type: ignore  # TODO: mypy-strict
+    workers = click.prompt(  # type: ignore  # TODO: mypy-strict
+        "   Number of parallel scan workers",
+        default=4,
+        type=int,
+    )
     config["workers"] = workers
     click.echo(f"   -> {workers} workers")
 
@@ -273,7 +277,15 @@ def register_misc_commands(cli: click.Group) -> None:
     @click.option("--priority", "-p", multiple=True, help="Zone priority override order")
     @click.option("--metadata-tiebreaker", is_flag=True, help="Enable metadata tiebreaker")
     @click.option("--metadata-fields", default="artist,album,title", help="Comma-separated metadata fields")
-    def explain_keeper(db, group_id, zones_config, config, priority, metadata_tiebreaker, metadata_fields):  # type: ignore  # TODO: mypy-strict
+    def explain_keeper(  # type: ignore  # TODO: mypy-strict
+        db,
+        group_id,
+        zones_config,
+        config,
+        priority,
+        metadata_tiebreaker,
+        metadata_fields,
+    ):
         """Explain keeper selection for a single duplicate group."""
         from tagslut.storage.schema import get_connection
         from tagslut.storage.queries import get_files_by_checksum
@@ -330,7 +342,17 @@ def register_misc_commands(cli: click.Group) -> None:
     @click.option("--recovery", is_flag=True, help="Recovery mode (duration health validation)")
     @click.option("--hoarding", is_flag=True, help="Hoarding mode (full metadata)")
     @click.option("--standalone", is_flag=True, help="Run without a database (read tags directly)")
-    def enrich_file(db, file_path, providers, force, retry_no_match, execute, recovery, hoarding, standalone):  # type: ignore  # TODO: mypy-strict
+    def enrich_file(  # type: ignore  # TODO: mypy-strict
+        db,
+        file_path,
+        providers,
+        force,
+        retry_no_match,
+        execute,
+        recovery,
+        hoarding,
+        standalone,
+    ):
         """Enrich a single file by exact path."""
         from tagslut.metadata.enricher import Enricher
         from tagslut.metadata.auth import TokenManager
@@ -951,7 +973,16 @@ def register_misc_commands(cli: click.Group) -> None:
     @click.option("--allow-duration-warn", is_flag=True, help="Allow warn status for manual override")
     @click.option("--dj-only", is_flag=True, help="Treat all paths as DJ material")
     @click.option("--log", type=click.Path(), help="Log file path (JSONL)")
-    def recovery(paths, db, zone, move, require_duration_ok, allow_duration_warn, dj_only, log):  # type: ignore  # TODO: mypy-strict
+    def recovery(  # type: ignore  # TODO: mypy-strict
+        paths,
+        db,
+        zone,
+        move,
+        require_duration_ok,
+        allow_duration_warn,
+        dj_only,
+        log,
+    ):
         """
         Stub for DJ-safe promotion (duration-aware recovery mode).
         """

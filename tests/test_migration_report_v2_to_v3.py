@@ -199,4 +199,3 @@ def test_build_report_writes_expected_summary_and_deterministic_sample(tmp_path:
     assert sampled_2 == 2
     second_sample_rows = _read_csv_rows(sample_2)
     assert first_sample_rows == second_sample_rows
-

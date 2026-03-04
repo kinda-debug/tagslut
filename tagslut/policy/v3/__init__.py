@@ -13,4 +13,3 @@ __all__ = [
     "is_hash_stale",
     "is_integrity_stale",
 ]
-

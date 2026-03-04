@@ -19,7 +19,7 @@ import re
 import sqlite3
 import unicodedata
 from datetime import datetime, timezone
-## from pathlib import Path  # unused
+# from pathlib import Path  # unused
 
 from tagslut.metadata.models.types import EnrichmentResult, ProviderTrack
 

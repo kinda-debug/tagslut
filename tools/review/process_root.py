@@ -23,18 +23,226 @@ from __future__ import annotations
 import argparse
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
+from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path  # noqa: E402
+
+ALLOWED_PHASES = (
+    "register",
+    "integrity",
+    "hash",
+    "identify",
+    "enrich",
+    "art",
+    "promote",
+    "dj",
+)
+DEFAULT_PHASES = ("register", "integrity", "identify", "enrich", "art", "promote", "dj")
+SCAN_ONLY_PHASES = ("register", "integrity", "hash")
+IDENTITY_TABLES = {"track_identity", "asset_link", "library_track_sources"}
+ASSET_SCAN_TABLES = {"asset_file", "scan_runs", "scan_queue", "scan_issues", "scan_sessions", "file_scan_runs"}
+PHASE_TABLE_TOUCHES: dict[str, set[str]] = {
+    "register": set(ASSET_SCAN_TABLES),
+    "integrity": {"asset_file"},
+    "hash": {"asset_file"},
+    "identify": set(IDENTITY_TABLES),
+    "enrich": set(IDENTITY_TABLES),
+    "art": set(),
+    "promote": {"move_plan", "move_execution", "provenance_event"},
+    "dj": set(),
+}
+
+
+@dataclass(frozen=True)
+class PipelineStep:
+    phase: str
+    label: str
+    command: list[str]
 
 
 def run(cmd: list[str]) -> None:
     print("\n$ " + " ".join(cmd))
     subprocess.check_call(cmd)
+
+
+def parse_phases(*, phases_arg: str | None, scan_only: bool) -> tuple[str, ...]:
+    if scan_only:
+        return SCAN_ONLY_PHASES
+    if not phases_arg:
+        return DEFAULT_PHASES
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in phases_arg.split(","):
+        phase = raw.strip().lower()
+        if not phase:
+            continue
+        if phase not in ALLOWED_PHASES:
+            allowed = ", ".join(ALLOWED_PHASES)
+            raise SystemExit(f"Invalid phase '{phase}'. Allowed phases: {allowed}")
+        if phase not in seen:
+            out.append(phase)
+            seen.add(phase)
+    if not out:
+        allowed = ", ".join(ALLOWED_PHASES)
+        raise SystemExit(f"No valid phases provided. Allowed phases: {allowed}")
+    return tuple(out)
+
+
+def planned_table_touches(phases: tuple[str, ...]) -> set[str]:
+    tables: set[str] = set()
+    for phase in phases:
+        tables.update(PHASE_TABLE_TOUCHES.get(phase, set()))
+    return tables
+
+
+def build_pipeline_steps(
+    *,
+    db_path: Path,
+    root_path: Path,
+    library_path: Path,
+    providers: str,
+    force: bool,
+    no_art: bool,
+    art_force: bool,
+    trust: int,
+    trust_post: int,
+    allow_duplicate_hash: bool,
+    phases: tuple[str, ...],
+) -> list[PipelineStep]:
+    steps: list[PipelineStep] = []
+
+    if "register" in phases or "hash" in phases:
+        scan_cmd = [
+            sys.executable,
+            "tools/review/scan_with_trust.py",
+            "--db",
+            str(db_path),
+            "--trust",
+            str(trust),
+            "--trust-post",
+            str(trust_post),
+        ]
+        if "hash" in phases:
+            scan_cmd.append("--check-hash")
+        scan_cmd.append(str(root_path))
+        steps.append(PipelineStep(phase="register", label="scan_with_trust", command=scan_cmd))
+
+    if "integrity" in phases:
+        steps.append(
+            PipelineStep(
+                phase="integrity",
+                label="check_integrity_update_db",
+                command=[
+                    sys.executable,
+                    "tools/review/check_integrity_update_db.py",
+                    "--db",
+                    str(db_path),
+                    "--execute",
+                    str(root_path),
+                ],
+            )
+        )
+
+    if "identify" in phases:
+        steps.extend(
+            [
+                PipelineStep(
+                    phase="identify",
+                    label="hoard_tags",
+                    command=[
+                        sys.executable,
+                        "tools/review/hoard_tags.py",
+                        "--db",
+                        str(db_path),
+                        "--db-add",
+                        str(root_path),
+                    ],
+                ),
+                PipelineStep(
+                    phase="identify",
+                    label="normalize_genres",
+                    command=[
+                        sys.executable,
+                        "tools/review/normalize_genres.py",
+                        "--db",
+                        str(db_path),
+                        "--execute",
+                        str(root_path),
+                    ],
+                ),
+                PipelineStep(
+                    phase="identify",
+                    label="tag_normalized_genres",
+                    command=[
+                        sys.executable,
+                        "tools/review/tag_normalized_genres.py",
+                        "--execute",
+                        str(root_path),
+                    ],
+                ),
+            ]
+        )
+
+    if "enrich" in phases:
+        enrich_cmd = [
+            sys.executable,
+            "-m",
+            "tagslut",
+            "index",
+            "enrich",
+            "--db",
+            str(db_path),
+            "--hoarding",
+            "--providers",
+            providers,
+            "--execute",
+            "--path",
+            f"{root_path}%",
+        ]
+        if force:
+            enrich_cmd.append("--force")
+        steps.append(PipelineStep(phase="enrich", label="index_enrich", command=enrich_cmd))
+
+    if "art" in phases and not no_art:
+        embed_cmd = [
+            sys.executable,
+            "tools/review/embed_cover_art.py",
+            "--db",
+            str(db_path),
+            "--root",
+            str(root_path),
+            "--execute",
+        ]
+        if art_force:
+            embed_cmd.append("--force")
+        steps.append(PipelineStep(phase="art", label="embed_cover_art", command=embed_cmd))
+
+    if "promote" in phases:
+        promote_cmd = [
+            sys.executable,
+            "tools/review/promote_replace_merge.py",
+            "--db",
+            str(db_path),
+            "--dest",
+            str(library_path),
+            "--execute",
+            str(root_path),
+        ]
+        if allow_duplicate_hash:
+            promote_cmd.append("--allow-duplicate-hash")
+        steps.append(PipelineStep(phase="promote", label="promote_replace_merge", command=promote_cmd))
+
+    # Reserved phase for future DJ pipeline hooks.
+    if "dj" in phases:
+        pass
+
+    return steps
 
 
 def main() -> None:
@@ -48,6 +256,19 @@ def main() -> None:
     ap.add_argument("--art-force", action="store_true", help="Force replace embedded art")
     ap.add_argument("--trust", type=int, default=3, help="Pre-scan trust (0-3). Default: 3")
     ap.add_argument("--trust-post", type=int, default=3, help="Post-scan trust (0-3). Default: 3")
+    ap.add_argument(
+        "--phases",
+        help=(
+            "Comma-separated phases to run. Allowed: "
+            + ", ".join(ALLOWED_PHASES)
+            + ". Default is full pipeline."
+        ),
+    )
+    ap.add_argument(
+        "--scan-only",
+        action="store_true",
+        help="Shortcut for --phases=register,integrity,hash",
+    )
     ap.add_argument(
         "--allow-duplicate-hash",
         action="store_true",
@@ -80,83 +301,32 @@ def main() -> None:
     if not library_path.exists():
         print(f"Warning: library path does not exist yet: {library_path}")
 
-    # No public CLI command exists yet for the trust scan/integrity/tag-normalization/promote
-    # operational scripts below; they remain script invocations for now.
+    phases = parse_phases(phases_arg=args.phases, scan_only=bool(args.scan_only))
+    if args.scan_only:
+        forbidden = planned_table_touches(phases) & IDENTITY_TABLES
+        if forbidden:
+            joined = ", ".join(sorted(forbidden))
+            raise SystemExit(f"scan-only safety violation: identity tables would be touched: {joined}")
 
-    # 1) scan_with_trust
-    run([
-        sys.executable,
-        "tools/review/scan_with_trust.py",
-        "--db",
-        str(db_path),
-        "--trust",
-        str(args.trust),
-        "--trust-post",
-        str(args.trust_post),
-        str(root_path),
-    ])
+    steps = build_pipeline_steps(
+        db_path=db_path,
+        root_path=root_path,
+        library_path=library_path,
+        providers=args.providers,
+        force=bool(args.force),
+        no_art=bool(args.no_art),
+        art_force=bool(args.art_force),
+        trust=int(args.trust),
+        trust_post=int(args.trust_post),
+        allow_duplicate_hash=bool(args.allow_duplicate_hash),
+        phases=phases,
+    )
 
-    # 2) integrity (write flac_ok to DB)
-    run([sys.executable, "tools/review/check_integrity_update_db.py", "--db", str(db_path), "--execute", str(root_path)])
-
-    # 3) hoard tags
-    run([sys.executable, "tools/review/hoard_tags.py", "--db", str(db_path), "--db-add", str(root_path)])
-
-    # 4) normalize genres
-    run([sys.executable, "tools/review/normalize_genres.py", "--db", str(db_path), "--execute", str(root_path)])
-
-    # 5) tag normalized genres
-    run([sys.executable, "tools/review/tag_normalized_genres.py", "--execute", str(root_path)])
-
-    # 6) metadata enrichment (hoarding) via public CLI surface
-    enrich_cmd = [
-        sys.executable,
-        "-m",
-        "tagslut",
-        "index",
-        "enrich",
-        "--db",
-        str(db_path),
-        "--hoarding",
-        "--providers",
-        args.providers,
-        "--execute",
-        "--path",
-        f"{root_path}%",
-    ]
-    if args.force:
-        enrich_cmd.append("--force")
-    run(enrich_cmd)
-
-    # 7) embed cover art (optional)
-    if not args.no_art:
-        embed_cmd = [
-            sys.executable,
-            "tools/review/embed_cover_art.py",
-            "--db",
-            str(db_path),
-            "--root",
-            str(root_path),
-            "--execute",
-        ]
-        if args.art_force:
-            embed_cmd.append("--force")
-        run(embed_cmd)
-
-    # 8) promote/replace into library
-    promote_cmd = [
-        sys.executable,
-        "tools/review/promote_replace_merge.py",
-        "--db",
-        str(db_path),
-        "--dest",
-        str(library_path),
-        "--execute",
-        str(root_path),
-    ]
-    if args.allow_duplicate_hash:
-        promote_cmd.append("--allow-duplicate-hash")
-    run(promote_cmd)
+    print("Phases: " + ",".join(phases))
+    if args.scan_only:
+        print("Mode: scan-only")
+    for step in steps:
+        run(step.command)
 
 
 if __name__ == "__main__":

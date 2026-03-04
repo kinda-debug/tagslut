@@ -211,6 +211,15 @@ def register_intake_group(cli: click.Group) -> None:
     @click.option("--trust", type=int, default=3, help="Pre-scan trust (0-3). Default: 3")
     @click.option("--trust-post", type=int, default=3, help="Post-scan trust (0-3). Default: 3")
     @click.option(
+        "--phases",
+        help="Comma-separated phases: register,integrity,hash,identify,enrich,art,promote,dj",
+    )
+    @click.option(
+        "--scan-only",
+        is_flag=True,
+        help="Shortcut for --phases=register,integrity,hash",
+    )
+    @click.option(
         "--allow-duplicate-hash",
         is_flag=True,
         help="Allow moving files even if identical hash exists in library",
@@ -225,6 +234,8 @@ def register_intake_group(cli: click.Group) -> None:
         art_force,
         trust,
         trust_post,
+        phases,
+        scan_only,
         allow_duplicate_hash,
     ):
         """Run end-to-end root processing pipeline (canonical wrapper for tools/review/process_root.py)."""
@@ -253,6 +264,10 @@ def register_intake_group(cli: click.Group) -> None:
             args.append("--no-art")
         if art_force:
             args.append("--art-force")
+        if phases:
+            args.extend(["--phases", str(phases)])
+        if scan_only:
+            args.append("--scan-only")
         if allow_duplicate_hash:
             args.append("--allow-duplicate-hash")
 

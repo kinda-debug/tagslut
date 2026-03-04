@@ -150,6 +150,8 @@ def test_intake_process_root_help_available() -> None:
     assert "--db PATH" in result.output
     assert "--root DIRECTORY" in result.output
     assert "--providers TEXT" in result.output
+    assert "--phases TEXT" in result.output
+    assert "--scan-only" in result.output
 
 
 def test_report_dj_review_import_error_has_install_hint(monkeypatch) -> None:

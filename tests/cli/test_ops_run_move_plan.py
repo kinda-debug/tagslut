@@ -227,4 +227,3 @@ def test_ops_run_move_plan_writes_receipt_with_expected_keys(tmp_path, monkeypat
     assert payload["doctor_post_counts"]
     assert payload["sample_moves"]
     assert payload["git_commit_hash"] == "deadbeef"
-

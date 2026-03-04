@@ -44,6 +44,14 @@ make verify-v3 V2="$V2_DB" V3="$V3_DB" STRICT=1
 
 Treat this as the canonical preflight gate before destructive moves, epoch promotions, or enrichment passes.
 
+### Identity QA Report
+
+Generate an identity QA summary and CSV from your v3 DB:
+
+```bash
+make report-identity-qa V3="$V3_DB" OUT=output/identity_qa_v3.csv LIMIT=200
+```
+
 ### Canonical CLI Commands
 
 All operations use these 7 command groups:
@@ -60,30 +68,35 @@ All operations use these 7 command groups:
 
 ### Most Common Operations
 
-### 0. One-Command Interactive Processing (Recommended)
+### 0. Process Root (Phase-Controlled)
 
-Use this when you already downloaded files and want the **entire pipeline** with minimal prompts.
+Use the canonical command:
 
 ```bash
-cd ~/Projects/tagslut
-export PYTHONPATH=.
-tools/review/process_root.py
+tagslut intake process-root --db /path/to/music_v3.db --root /path/to/folder
 ```
 
-What it does, in order:
-1. Scans the folder and writes `flac_ok` (integrity)
-2. Hoards tags into the DB
-3. Normalizes genres and writes tags to files
-4. Enriches metadata (BPM/key/ISRC/label/artwork) in the DB
-5. Embeds cover art from the DB
-6. Promotes into `/Volumes/MUSIC/LIBRARY`
+Examples:
 
-What it asks you for:
-- Only the **root folder** to process
+```bash
+# Register only (discovery/asset registration)
+tagslut intake process-root \
+  --db /path/to/music_v3.db \
+  --root /path/to/folder \
+  --phases register
 
-What it assumes:
-- Trust pre/post = 3 (no prompts)
-- Providers: beatport, deezer, apple_music, itunes
+# Scan-only (register + integrity + hash; no identify/enrich/art/promote)
+tagslut intake process-root \
+  --db /path/to/music_v3.db \
+  --root /path/to/folder \
+  --scan-only
+
+# Full pipeline (default behavior)
+tagslut intake process-root \
+  --db /path/to/music_v3.db \
+  --root /path/to/folder \
+  --providers beatport,deezer,apple_music,itunes
+```
 
 ### 1. Check Links Before Download
 

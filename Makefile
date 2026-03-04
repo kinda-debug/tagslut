@@ -5,7 +5,7 @@
 	run intake-help index-help decide-help execute-help verify-help report-help auth-help \
 	index-register-dry index-check-dry promote-dry promote audit-layout audit-cli-docs \
 	backfill-v3-identities backfill-v3-provenance validate-v3-parity lint-policies test-phase3-exec \
-	verify-v3 doctor-v3 run-move-plan
+	verify-v3 doctor-v3 report-identity-qa run-move-plan
 
 help: ## Show this help message
 	@echo "Tagslut - available targets:"
@@ -69,6 +69,10 @@ verify-v3: ## Verify v2->v3 migration preservation (set V2 and V3; optional STRI
 doctor-v3: ## Run read-only v3 doctor checks (set V3)
 	@test -n "$$V3" || (echo "Usage: make doctor-v3 V3=/path/music_v3.db"; exit 1)
 	poetry run python scripts/db/doctor_v3.py --v3 "$$V3"
+
+report-identity-qa: ## Generate identity QA summary/CSV for v3 (set V3; optional OUT and LIMIT)
+	@test -n "$$V3" || (echo "Usage: make report-identity-qa V3=/path/music_v3.db [OUT=output/identity_qa.csv] [LIMIT=200]"; exit 1)
+	poetry run python scripts/db/report_identity_qa_v3.py --db "$$V3" $(if $(OUT),--out "$$OUT",) $(if $(LIMIT),--limit "$(LIMIT)",)
 
 run-move-plan: ## Safely run move-plan cycle (set PLAN and V3; optional STRICT=1 DRY_RUN=1)
 	@test -n "$$PLAN" || (echo "Usage: make run-move-plan PLAN=plans/<file>.csv V3=/path/music_v3.db [STRICT=1] [DRY_RUN=1]"; exit 1)

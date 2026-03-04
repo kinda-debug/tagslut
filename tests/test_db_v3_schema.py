@@ -31,6 +31,8 @@ def test_create_schema_v3_creates_required_tables_without_v2_files() -> None:
         "asset_file",
         "track_identity",
         "asset_link",
+        "preferred_asset",
+        "identity_status",
         "library_track_sources",
         "move_plan",
         "move_execution",
@@ -158,7 +160,21 @@ def test_create_schema_v3_creates_expected_indexes() -> None:
         "idx_track_identity_deezer",
         "idx_track_identity_traxsource",
         "idx_track_identity_itunes",
+        "idx_preferred_asset_asset_id",
+        "idx_identity_status_status",
         "idx_library_track_sources_provider_id",
         "idx_move_execution_status",
     }
     assert expected.issubset(names)
+
+
+def test_create_schema_v3_creates_active_identity_view() -> None:
+    conn = sqlite3.connect(":memory:")
+    try:
+        create_schema_v3(conn)
+        row = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='view' AND name='v_active_identity'"
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row is not None

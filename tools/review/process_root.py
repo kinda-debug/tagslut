@@ -113,6 +113,9 @@ def build_pipeline_steps(
     trust: int,
     trust_post: int,
     allow_duplicate_hash: bool,
+    use_preferred_asset: bool | None,
+    require_preferred_asset: bool,
+    allow_multiple_per_identity: bool,
     phases: tuple[str, ...],
 ) -> list[PipelineStep]:
     steps: list[PipelineStep] = []
@@ -236,6 +239,14 @@ def build_pipeline_steps(
         ]
         if allow_duplicate_hash:
             promote_cmd.append("--allow-duplicate-hash")
+        if use_preferred_asset is True:
+            promote_cmd.append("--use-preferred-asset")
+        elif use_preferred_asset is False:
+            promote_cmd.append("--no-use-preferred-asset")
+        if require_preferred_asset:
+            promote_cmd.append("--require-preferred-asset")
+        if allow_multiple_per_identity:
+            promote_cmd.append("--allow-multiple-per-identity")
         steps.append(PipelineStep(phase="promote", label="promote_replace_merge", command=promote_cmd))
 
     # Reserved phase for future DJ pipeline hooks.
@@ -273,6 +284,29 @@ def main() -> None:
         "--allow-duplicate-hash",
         action="store_true",
         help="Allow moving files even if identical hash exists in library",
+    )
+    ap.add_argument(
+        "--use-preferred-asset",
+        dest="use_preferred_asset",
+        action="store_true",
+        default=None,
+        help="Use preferred_asset during promote phase",
+    )
+    ap.add_argument(
+        "--no-use-preferred-asset",
+        dest="use_preferred_asset",
+        action="store_false",
+        help="Disable preferred_asset during promote phase",
+    )
+    ap.add_argument(
+        "--require-preferred-asset",
+        action="store_true",
+        help="Skip identities without preferred asset under root during promote phase",
+    )
+    ap.add_argument(
+        "--allow-multiple-per-identity",
+        action="store_true",
+        help="Allow promoting multiple assets per identity during promote phase",
     )
     args = ap.parse_args()
 
@@ -319,6 +353,9 @@ def main() -> None:
         trust=int(args.trust),
         trust_post=int(args.trust_post),
         allow_duplicate_hash=bool(args.allow_duplicate_hash),
+        use_preferred_asset=args.use_preferred_asset,
+        require_preferred_asset=bool(args.require_preferred_asset),
+        allow_multiple_per_identity=bool(args.allow_multiple_per_identity),
         phases=phases,
     )
 

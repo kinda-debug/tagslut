@@ -52,6 +52,8 @@ Generate an identity QA summary and CSV from your v3 DB:
 make report-identity-qa V3="$V3_DB" OUT=output/identity_qa_v3.csv LIMIT=200
 ```
 
+By default, inconsistency examples are scoped to active identities; add `--include-orphans` to include orphan rows in that section.
+
 ### Merge Duplicate Beatport Identities
 
 Plan duplicate `beatport_id` merges (read-only):
@@ -71,6 +73,50 @@ Then rerun identity QA and confirm duplicate Beatport groups are zero:
 ```bash
 make report-identity-qa V3="$V3_DB" OUT=output/identity_qa_v3_post_merge.csv LIMIT=200
 ```
+
+### Preferred Asset Selection
+
+Plan preferred-asset selection (read-only):
+
+```bash
+make plan-preferred-asset V3="$V3_DB" OUT=output/preferred_asset_plan.csv LIMIT=500
+```
+
+Execute preferred-asset materialization:
+
+```bash
+make compute-preferred-asset V3="$V3_DB" OUT=output/preferred_asset_plan.csv VERSION=1 EXECUTE=1
+```
+
+Recommended cadence: run after identity merges, after major promotions/import batches, or weekly as a deterministic refresh.
+
+### Identity Status Lifecycle (active / orphan / archived)
+
+Statuses are materialized in `identity_status` and are computed for non-merged identities:
+- `active`: has at least one linked asset
+- `orphan`: no linked assets
+- `archived`: explicitly parked identity (non-merged, excluded from normal workflows)
+- `merged`: represented by `track_identity.merged_into_id IS NOT NULL` (not lifecycle-managed in `identity_status`)
+
+Plan status recompute (read-only):
+
+```bash
+make plan-identity-status V3="$V3_DB" OUT=output/identity_status_plan.csv LIMIT=200
+```
+
+Compute/write statuses:
+
+```bash
+make compute-identity-status V3="$V3_DB" OUT=output/identity_status_plan.csv VERSION=1 EXECUTE=1
+```
+
+Optional conservative orphan archiving (refuses when timestamp fields are unavailable unless explicitly overridden):
+
+```bash
+make archive-orphans V3="$V3_DB" EXECUTE=1 THRESHOLD_DAYS=90
+```
+
+Downstream recommendation: default workflows and QA should filter to active identities (`identity_status.status='active'` and `track_identity.merged_into_id IS NULL`) unless explicitly auditing orphans.
 
 ### Canonical CLI Commands
 
@@ -116,6 +162,17 @@ tagslut intake process-root \
   --db /path/to/music_v3.db \
   --root /path/to/folder \
   --providers beatport,deezer,apple_music,itunes
+```
+
+Promotion behavior for `process-root --phases promote` (or full pipeline):
+- By default, promotion uses `preferred_asset` when available to choose one asset per identity deterministically.
+- `--no-use-preferred-asset` disables preferred selection.
+- `--require-preferred-asset` skips identities without a preferred asset under the current root.
+
+Post-promote guardrail (expected: `OK` / `violation_count: 0`):
+
+```bash
+make check-promote-invariant V3="$V3_DB" ROOT="/path/to/promoted/root" MINUTES=240
 ```
 
 ### 1. Check Links Before Download

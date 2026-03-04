@@ -31,6 +31,9 @@ def _build_steps(phases: tuple[str, ...]) -> list[object]:
         trust=3,
         trust_post=3,
         allow_duplicate_hash=False,
+        use_preferred_asset=None,
+        require_preferred_asset=False,
+        allow_multiple_per_identity=False,
         phases=phases,
     )
 

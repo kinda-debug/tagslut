@@ -224,6 +224,21 @@ def register_intake_group(cli: click.Group) -> None:
         is_flag=True,
         help="Allow moving files even if identical hash exists in library",
     )
+    @click.option(
+        "--use-preferred-asset/--no-use-preferred-asset",
+        default=None,
+        help="Use preferred_asset during promote phase (auto when omitted).",
+    )
+    @click.option(
+        "--require-preferred-asset",
+        is_flag=True,
+        help="Skip identities without preferred asset under root during promote phase.",
+    )
+    @click.option(
+        "--allow-multiple-per-identity",
+        is_flag=True,
+        help="Allow promoting multiple assets per identity during promote phase.",
+    )
     def intake_process_root(  # type: ignore[no-untyped-def]  # TODO: mypy-strict
         db_path,
         root,
@@ -237,6 +252,9 @@ def register_intake_group(cli: click.Group) -> None:
         phases,
         scan_only,
         allow_duplicate_hash,
+        use_preferred_asset,
+        require_preferred_asset,
+        allow_multiple_per_identity,
     ):
         """Run end-to-end root processing pipeline (canonical wrapper for tools/review/process_root.py)."""
         try:
@@ -270,5 +288,13 @@ def register_intake_group(cli: click.Group) -> None:
             args.append("--scan-only")
         if allow_duplicate_hash:
             args.append("--allow-duplicate-hash")
+        if use_preferred_asset is True:
+            args.append("--use-preferred-asset")
+        elif use_preferred_asset is False:
+            args.append("--no-use-preferred-asset")
+        if require_preferred_asset:
+            args.append("--require-preferred-asset")
+        if allow_multiple_per_identity:
+            args.append("--allow-multiple-per-identity")
 
         run_python_script("tools/review/process_root.py", tuple(args))

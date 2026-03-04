@@ -9,9 +9,11 @@ from __future__ import annotations
 import sqlite3
 
 V3_SCHEMA_NAME = "v3"
-V3_SCHEMA_VERSION = 2
+V3_SCHEMA_VERSION = 4
 V3_SCHEMA_VERSION_INITIAL = 1
 V3_SCHEMA_VERSION_IDENTITY_MERGE = 2
+V3_SCHEMA_VERSION_PREFERRED_ASSET = 3
+V3_SCHEMA_VERSION_IDENTITY_STATUS = 4
 
 
 def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
@@ -178,6 +180,23 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
             FOREIGN KEY(winner_identity_id) REFERENCES track_identity(id)
         );
 
+        CREATE TABLE IF NOT EXISTS preferred_asset (
+            identity_id INTEGER PRIMARY KEY REFERENCES track_identity(id),
+            asset_id INTEGER NOT NULL REFERENCES asset_file(id),
+            score REAL NOT NULL,
+            reason_json TEXT NOT NULL,
+            version INTEGER NOT NULL,
+            computed_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS identity_status (
+            identity_id INTEGER PRIMARY KEY REFERENCES track_identity(id),
+            status TEXT NOT NULL CHECK(status IN ('active', 'orphan', 'archived')),
+            reason_json TEXT NOT NULL DEFAULT '{}',
+            version INTEGER NOT NULL,
+            computed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE TABLE IF NOT EXISTS scan_runs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             mode TEXT NOT NULL DEFAULT 'queue' CHECK (mode = 'queue'),
@@ -246,6 +265,10 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_asset_link_identity ON asset_link(identity_id);
         CREATE INDEX IF NOT EXISTS idx_identity_merge_log_key_value ON identity_merge_log(key_value);
+        CREATE INDEX IF NOT EXISTS idx_preferred_asset_asset_id ON preferred_asset(asset_id);
+        CREATE INDEX IF NOT EXISTS idx_preferred_asset_version ON preferred_asset(version);
+        CREATE INDEX IF NOT EXISTS idx_identity_status_status ON identity_status(status);
+        CREATE INDEX IF NOT EXISTS idx_identity_status_version ON identity_status(version);
         CREATE INDEX IF NOT EXISTS idx_library_track_sources_identity_key
             ON library_track_sources(identity_key);
         CREATE INDEX IF NOT EXISTS idx_library_track_sources_provider_id
@@ -262,6 +285,13 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_scan_queue_run_state ON scan_queue(run_id, state);
         CREATE INDEX IF NOT EXISTS idx_scan_queue_stage ON scan_queue(stage);
         CREATE INDEX IF NOT EXISTS idx_scan_issues_code ON scan_issues(issue_code);
+
+        CREATE VIEW IF NOT EXISTS v_active_identity AS
+        SELECT ti.*
+        FROM track_identity ti
+        JOIN identity_status ist ON ist.identity_id = ti.id
+        WHERE ti.merged_into_id IS NULL
+          AND ist.status = 'active';
         """
     )
     if not _column_exists(conn, "track_identity", "merged_into_id"):
@@ -284,5 +314,19 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
         VALUES (?, ?, ?)
         """,
         (V3_SCHEMA_NAME, V3_SCHEMA_VERSION_IDENTITY_MERGE, "identity merge support"),
+    )
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO schema_migrations (schema_name, version, note)
+        VALUES (?, ?, ?)
+        """,
+        (V3_SCHEMA_NAME, V3_SCHEMA_VERSION_PREFERRED_ASSET, "preferred asset support"),
+    )
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO schema_migrations (schema_name, version, note)
+        VALUES (?, ?, ?)
+        """,
+        (V3_SCHEMA_NAME, V3_SCHEMA_VERSION_IDENTITY_STATUS, "identity lifecycle status support"),
     )
     conn.commit()

@@ -7,7 +7,7 @@
 	backfill-v3-identities backfill-v3-provenance validate-v3-parity lint-policies test-phase3-exec \
 	verify-v3 doctor-v3 report-identity-qa plan-merge-beatport-dupes merge-beatport-dupes \
 	plan-preferred-asset compute-preferred-asset plan-identity-status compute-identity-status \
-	archive-orphans run-move-plan
+	archive-orphans check-promote-invariant run-move-plan
 
 help: ## Show this help message
 	@echo "Tagslut - available targets:"
@@ -104,6 +104,11 @@ archive-orphans: ## Archive eligible orphan identities (set V3 and EXECUTE=1; op
 	@test -n "$$V3" || (echo "Usage: make archive-orphans V3=/path/music_v3.db EXECUTE=1 [THRESHOLD_DAYS=90] [VERSION=1] [ARCHIVE_NO_TIMESTAMP_OK=1]"; exit 1)
 	@test "$$EXECUTE" = "1" || (echo "Refusing archive-orphans without EXECUTE=1"; exit 1)
 	poetry run python scripts/db/compute_identity_status_v3.py --db "$$V3" --execute --archive-orphans --archive-orphans-threshold-days "$(if $(THRESHOLD_DAYS),$(THRESHOLD_DAYS),90)" --version "$(if $(VERSION),$(VERSION),1)" $(if $(OUT),--out "$$OUT",) $(if $(LIMIT),--limit "$(LIMIT)",) $(if $(ARCHIVE_NO_TIMESTAMP_OK),--archive-orphans-no-timestamp-ok,)
+
+check-promote-invariant: ## Check post-promote preferred-asset invariant (set V3 and ROOT; optional MINUTES/LIMIT/STRICT)
+	@test -n "$$V3" || (echo "Usage: make check-promote-invariant V3=/path/music_v3.db ROOT=/promoted/root [MINUTES=240] [LIMIT=200] [STRICT=1]"; exit 1)
+	@test -n "$$ROOT" || (echo "Usage: make check-promote-invariant V3=/path/music_v3.db ROOT=/promoted/root [MINUTES=240] [LIMIT=200] [STRICT=1]"; exit 1)
+	poetry run python scripts/db/check_promotion_preferred_invariant_v3.py --db "$$V3" --root "$$ROOT" --minutes "$(if $(MINUTES),$(MINUTES),240)" --limit "$(if $(LIMIT),$(LIMIT),200)" $(if $(filter 0,$(STRICT)),--no-strict,--strict)
 
 run-move-plan: ## Safely run move-plan cycle (set PLAN and V3; optional STRICT=1 DRY_RUN=1)
 	@test -n "$$PLAN" || (echo "Usage: make run-move-plan PLAN=plans/<file>.csv V3=/path/music_v3.db [STRICT=1] [DRY_RUN=1]"; exit 1)

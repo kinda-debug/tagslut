@@ -7,7 +7,7 @@
 	backfill-v3-identities backfill-v3-provenance validate-v3-parity lint-policies test-phase3-exec \
 	verify-v3 doctor-v3 report-identity-qa plan-merge-beatport-dupes merge-beatport-dupes \
 	plan-preferred-asset compute-preferred-asset plan-identity-status compute-identity-status \
-	archive-orphans check-promote-invariant run-move-plan check-hardcoded-paths
+	archive-orphans check-promote-invariant run-move-plan check-hardcoded-paths dj-candidates
 
 help: ## Show this help message
 	@echo "Tagslut - available targets:"
@@ -112,6 +112,19 @@ check-promote-invariant: ## Check post-promote preferred-asset invariant (set V3
 
 check-hardcoded-paths: ## Fail if tracked files contain hardcoded machine path patterns
 	./scripts/check_hardcoded_paths.sh
+
+dj-candidates: ## Export DJ candidate CSV from v3 (set V3 and OUT; optional LIMIT/MIN_BPM/MAX_BPM/MIN_DUR/MAX_DUR)
+	@test -n "$$V3" || (echo "Usage: make dj-candidates V3=/path/music_v3.db OUT=output/dj_candidates.csv [LIMIT=200] [MIN_BPM=] [MAX_BPM=] [MIN_DUR=] [MAX_DUR=] [INCLUDE_ORPHANS=0] [REQUIRE_PREFERRED=1] [STRICT=1]"; exit 1)
+	@test -n "$$OUT" || (echo "Usage: make dj-candidates V3=/path/music_v3.db OUT=output/dj_candidates.csv [LIMIT=200] [MIN_BPM=] [MAX_BPM=] [MIN_DUR=] [MAX_DUR=] [INCLUDE_ORPHANS=0] [REQUIRE_PREFERRED=1] [STRICT=1]"; exit 1)
+	poetry run python scripts/dj/export_candidates_v3.py --db "$$V3" --out "$$OUT" \
+		$(if $(LIMIT),--limit "$(LIMIT)",) \
+		$(if $(MIN_BPM),--min-bpm "$(MIN_BPM)",) \
+		$(if $(MAX_BPM),--max-bpm "$(MAX_BPM)",) \
+		$(if $(MIN_DUR),--min-duration "$(MIN_DUR)",) \
+		$(if $(MAX_DUR),--max-duration "$(MAX_DUR)",) \
+		$(if $(filter 1,$(INCLUDE_ORPHANS)),--include-orphans,) \
+		$(if $(filter 0,$(REQUIRE_PREFERRED)),--no-require-preferred,) \
+		$(if $(filter 0,$(STRICT)),--no-strict,)
 
 run-move-plan: ## Safely run move-plan cycle (set PLAN and V3; optional STRICT=1 DRY_RUN=1)
 	@test -n "$$PLAN" || (echo "Usage: make run-move-plan PLAN=plans/<file>.csv V3=/path/music_v3.db [STRICT=1] [DRY_RUN=1]"; exit 1)

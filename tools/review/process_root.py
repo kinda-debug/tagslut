@@ -21,6 +21,7 @@ This script runs the pipeline in-order for a provided root folder.
 from __future__ import annotations
 
 import argparse
+import os
 import sqlite3
 import subprocess
 import sys
@@ -348,7 +349,7 @@ def main() -> None:
     )
     args = ap.parse_args()
 
-    default_library = "/Volumes/MUSIC/LIBRARY"
+    default_library = os.environ.get("LIBRARY_ROOT", "./library")
 
     try:
         db_resolution = resolve_cli_env_db_path(args.db, purpose="write", source_label="--db")

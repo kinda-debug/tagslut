@@ -60,3 +60,15 @@ Promotion must select the preferred asset whenever a preferred asset exists unde
 make doctor-v3 V3=<V3_DB>
 make check-promote-invariant V3=<V3_DB> ROOT=<PROMOTE_ROOT> MINUTES=240 STRICT=1
 ```
+
+## DJ Candidates (Read-Only CSV)
+Generate downstream DJ candidates from v3 identities without modifying files:
+
+```bash
+make dj-candidates V3=<V3_DB> OUT=output/dj_candidates.csv LIMIT=200
+```
+
+Recommended defaults:
+- keep `REQUIRE_PREFERRED=1`
+- keep `STRICT=1`
+- use `INCLUDE_ORPHANS=0` unless you explicitly need orphan review.

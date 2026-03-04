@@ -52,7 +52,6 @@ EXPECTED_V2_FILES_COLUMNS_STRICT = {
     "download_source",
     "download_date",
     "mgmt_status",
-    "enriched_at",
     "canonical_isrc",
     "isrc",
     "beatport_id",

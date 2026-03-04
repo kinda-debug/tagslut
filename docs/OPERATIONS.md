@@ -32,6 +32,18 @@ TAGSLUT_DB=/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-28/music_v2.db
 
 WARNING: Never rely on doc defaults. Always set `TAGSLUT_DB` explicitly before running commands.
 
+### Verify Migration
+
+Use environment variables for the source/target DB paths, then run one verification command:
+
+```bash
+export V2_DB=/absolute/path/to/music_v2.db
+export V3_DB=/absolute/path/to/music_v3.db
+make verify-v3 V2="$V2_DB" V3="$V3_DB" STRICT=1
+```
+
+Treat this as the canonical preflight gate before destructive moves, epoch promotions, or enrichment passes.
+
 ### Canonical CLI Commands
 
 All operations use these 7 command groups:

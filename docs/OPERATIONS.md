@@ -164,6 +164,11 @@ tagslut intake process-root \
   --providers beatport,deezer,apple_music,itunes
 ```
 
+Promotion behavior for `process-root --phases promote` (or full pipeline):
+- By default, promotion uses `preferred_asset` when available to choose one asset per identity deterministically.
+- `--no-use-preferred-asset` disables preferred selection.
+- `--require-preferred-asset` skips identities without a preferred asset under the current root.
+
 ### 1. Check Links Before Download
 
 Check if tracks from Beatport/Tidal links already exist in your library:

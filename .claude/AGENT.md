@@ -54,6 +54,37 @@ Retired wrappers for new work:
 6. Keep runtime outputs in `artifacts/`, not repository root.
 7. **NO PERMANENT REMOVAL**: never permanently delete files or folders, even if asked; only move items to Trash.
 
+## DJ Workflow (v3)
+Operator-level DJ path (downstream only):
+1. Candidates export (read-only) from v3 identities.
+2. DJ profile curation (B1) in `dj_track_profile`, then DJ-ready export if present.
+3. DJ pool builder (B2) with plan-first defaults; execute must be explicit.
+
+Policy defaults:
+- Preferred-asset principle: DJ pool and promotion must use preferred assets when available.
+- Identity status: exclude orphans by default unless the operator opts in.
+
+## DJ Pool Builder (B2) — Branch/PR Hygiene
+- PRs must be minimal scope and limited to the intended layer (docs, B1, or B2).
+- Never mix docs archive churn with DJ code or DJ docs.
+- If the worktree gets contaminated:
+  - `git stash push -u -m "wip: contaminated worktree"`
+  - `git fetch origin && git reset --hard origin/dev && git clean -fd`
+  - Restore only required paths from the stash using `git restore --source=<stash> -- <paths>`
+- For PR splitting, stage exact paths (non-interactive preferred). If using `git add -p Makefile`, stage only the targeted block and reject help-list churn.
+
+## Commands
+Prefer Make targets if present; otherwise call the scripts directly.
+
+- Run tests:
+  - `poetry run python -m pytest -q`
+- DJ pool plan:
+  - `V3_DB=<path> POOL_OUT=<path> make dj-pool-plan`
+  - `python scripts/dj/build_pool_v3.py --db <path> --out-dir <path>`
+- DJ pool execute (explicit):
+  - `V3_DB=<path> POOL_OUT=<path> make dj-pool-run EXECUTE=1`
+  - `python scripts/dj/build_pool_v3.py --db <path> --out-dir <path> --execute`
+
 ## Repository Ownership Map
 - `tagslut/`: productized package and CLI code
 - `tools/review/`: active operational scripts

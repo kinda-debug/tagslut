@@ -333,6 +333,49 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
         LEFT JOIN asset_file af ON af.id = pa.asset_id
         LEFT JOIN dj_track_profile dj ON dj.identity_id = ti.id
         WHERE ti.merged_into_id IS NULL;
+
+        CREATE VIEW IF NOT EXISTS v_dj_pool_candidates_v3 AS
+        SELECT
+            ti.id AS identity_id,
+            ti.identity_key AS identity_key,
+            ti.isrc AS isrc,
+            ti.beatport_id AS beatport_id,
+            ti.canonical_artist AS artist,
+            ti.canonical_title AS title,
+            ti.canonical_mix_name AS mix_name,
+            ti.canonical_genre AS genre,
+            ti.canonical_sub_genre AS sub_genre,
+            ti.canonical_bpm AS bpm,
+            ti.canonical_key AS musical_key,
+            COALESCE(ti.canonical_duration, af.duration_s) AS duration_s,
+            ist.status AS identity_status,
+            pa.asset_id AS preferred_asset_id,
+            af.path AS asset_path,
+            af.content_sha256 AS sha256,
+            af.sample_rate AS sample_rate,
+            af.bit_depth AS bit_depth,
+            af.bitrate AS bitrate,
+            af.integrity_state AS integrity_state,
+            af.integrity_checked_at AS integrity_checked_at,
+            af.first_seen_at AS first_seen_at,
+            af.last_seen_at AS last_seen_at,
+            dj.rating AS dj_rating,
+            dj.energy AS dj_energy,
+            dj.set_role AS dj_set_role,
+            dj.dj_tags_json AS dj_tags_json,
+            dj.last_played_at AS dj_last_played_at,
+            dj.notes AS dj_notes,
+            dj.updated_at AS dj_updated_at,
+            ti.enriched_at AS identity_enriched_at,
+            ti.created_at AS identity_created_at,
+            ti.updated_at AS identity_updated_at,
+            ti.merged_into_id AS merged_into_id
+        FROM track_identity ti
+        LEFT JOIN identity_status ist ON ist.identity_id = ti.id
+        LEFT JOIN preferred_asset pa ON pa.identity_id = ti.id
+        LEFT JOIN asset_file af ON af.id = pa.asset_id
+        LEFT JOIN dj_track_profile dj ON dj.identity_id = ti.id
+        WHERE ti.merged_into_id IS NULL;
         """
     )
     if not _column_exists(conn, "track_identity", "merged_into_id"):

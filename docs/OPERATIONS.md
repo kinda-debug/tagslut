@@ -227,25 +227,10 @@ tagslut decide plan \
 
 ### 8. Execute Plan
 
+#### Move execution (v3 safe mode)
+
 ```bash
-# Execute move plan
-tagslut execute move-plan \
-  output/move_plan.csv \
-  --source-root /path/to/staging \
-  --dest-root /path/to/library \
-  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
-  --execute
-
-# Or use direct script
-python tools/review/promote_by_tags.py \
-  --source /path/to/staging \
-  --dest /path/to/library \
-  --move-log artifacts/moves.jsonl
-
-# Safety gates:
-# - promote_by_tags runs flac -t and skips corrupt files (override with --skip-flac-test)
-# - promote_by_tags enforces duration_status=ok when TAGSLUT_DB/--db is set (override with --allow-non-ok-duration)
-# - promote_replace_merge also requires duration_status=ok by default (override with --allow-non-ok-duration)
+tagslut ops run-move-plan plans/<file>.csv --strict
 ```
 
 ### 9. Verify Operations
@@ -279,6 +264,7 @@ tagslut report duration --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music
 | `tagslut index duration-check` | Console output only |
 | `tagslut index enrich` | `metadata_json` column in DB |
 | `tagslut decide plan` | JSON file (--output) |
+| `tagslut ops run-move-plan` | Preflight doctor + execute + postflight doctor + receipt JSON + archived plan CSV |
 | `tagslut execute move-plan` | Moves files from plan CSV + updates DB path + JSONL log |
 | `tagslut verify *` | Console output only |
 | `tagslut report *` | Output files (M3U, CSV, MD) |
@@ -306,6 +292,7 @@ tagslut report duration --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music
 
 ### Moves Files + Modifies Database
 
+- `tagslut ops run-move-plan`
 - `tagslut execute move-plan`
 - `tagslut execute quarantine-plan`
 - `tagslut execute promote-tags`

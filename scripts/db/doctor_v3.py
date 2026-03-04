@@ -29,21 +29,30 @@ def _connect_ro(path: Path) -> sqlite3.Connection:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run v3 DB doctor checks")
-    parser.add_argument("--v3", required=True, type=Path, help="Path to v3 DB")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--db", type=Path, help="Path to v3 DB")
+    group.add_argument("--v3", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Reserved strict mode; currently runs the same doctor checks.",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    db_path = (args.db or args.v3).expanduser().resolve()
     try:
-        with _connect_ro(args.v3) as conn:
+        with _connect_ro(db_path) as conn:
             result = doctor_v3(conn)
     except FileNotFoundError as exc:
         print(str(exc))
         return 2
 
     counts = result["counts"]
-    print(f"v3 db: {args.v3.expanduser().resolve()}")
+    print(f"v3 db: {db_path}")
+    print(f"strict_mode: {1 if args.strict else 0}")
     print(f"foreign_keys: {result['foreign_keys']}")
     print(f"asset_file_total: {counts['asset_file_total']}")
     print(f"asset_link_total: {counts['asset_link_total']}")
@@ -64,4 +73,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

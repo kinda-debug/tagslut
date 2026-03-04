@@ -5,7 +5,7 @@
 	run intake-help index-help decide-help execute-help verify-help report-help auth-help \
 	index-register-dry index-check-dry promote-dry promote audit-layout audit-cli-docs \
 	backfill-v3-identities backfill-v3-provenance validate-v3-parity lint-policies test-phase3-exec \
-	verify-v3 doctor-v3
+	verify-v3 doctor-v3 run-move-plan
 
 help: ## Show this help message
 	@echo "Tagslut - available targets:"
@@ -69,6 +69,11 @@ verify-v3: ## Verify v2->v3 migration preservation (set V2 and V3; optional STRI
 doctor-v3: ## Run read-only v3 doctor checks (set V3)
 	@test -n "$$V3" || (echo "Usage: make doctor-v3 V3=/path/music_v3.db"; exit 1)
 	poetry run python scripts/db/doctor_v3.py --v3 "$$V3"
+
+run-move-plan: ## Safely run move-plan cycle (set PLAN and V3; optional STRICT=1 DRY_RUN=1)
+	@test -n "$$PLAN" || (echo "Usage: make run-move-plan PLAN=plans/<file>.csv V3=/path/music_v3.db [STRICT=1] [DRY_RUN=1]"; exit 1)
+	@test -n "$$V3" || (echo "Usage: make run-move-plan PLAN=plans/<file>.csv V3=/path/music_v3.db [STRICT=1] [DRY_RUN=1]"; exit 1)
+	TAGSLUT_DB="$$V3" poetry run python -m tagslut ops run-move-plan "$$PLAN" $(if $(STRICT),--strict,) $(if $(DRY_RUN),--dry-run,)
 
 lint-policies: ## Lint policy profiles in config/policies
 	poetry run python scripts/lint_policy_profiles.py

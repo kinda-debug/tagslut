@@ -24,6 +24,7 @@ from tagslut.cli.commands.gig import gig_group
 from tagslut.cli.commands.index import register_index_group
 from tagslut.cli.commands.intake import register_intake_group
 from tagslut.cli.commands.report import register_report_group
+from tagslut.cli.commands.ops import register_ops_group
 from tagslut.cli.commands.verify import register_verify_group
 from tagslut.cli.commands.misc import register_misc_commands
 
@@ -75,6 +76,7 @@ register_execute_group(cli)
 register_verify_group(cli)
 register_report_group(cli)
 register_auth_group(cli)
+register_ops_group(cli)
 
 # Register DJ, export, and gig groups
 cli.add_command(dj_group)

@@ -74,13 +74,15 @@ Recommended defaults:
 - use `INCLUDE_ORPHANS=0` unless you explicitly need orphan review.
 
 ## DJ Profiles (Write DJ Layer Only)
+Contract reference: `docs/DJ_POOL.md` (downstream-only DJ pool boundary).
+
 Mark one identity as DJ-ready without changing canonical metadata:
 
 ```bash
 make dj-profile-set \
   V3=<V3_DB> \
   ID=<IDENTITY_ID> \
-  RATING=4 ENERGY=7 ROLE=builder TAG=groovy NOTES="set A candidate"
+  RATING=4 ENERGY=7 ROLE=builder ADD_TAG=groovy NOTES="set A candidate"
 ```
 
 Inspect one profile:
@@ -92,5 +94,22 @@ make dj-profile-get V3=<V3_DB> ID=<IDENTITY_ID>
 Export ready list (candidates + DJ profile fields):
 
 ```bash
-make dj-export-ready V3=<V3_DB> OUT=output/dj_ready.csv ONLY_PROFILED=1
+make dj-ready V3=<V3_DB> OUT=output/dj_ready.csv ONLY_PROFILED=1
 ```
+
+Build deterministic DJ pool tree (safe plan by default):
+
+```bash
+make dj-pool-plan V3=<V3_DB> OUTDIR=<DJ_EXPORT_ROOT> MANIFEST=output/dj_export_manifest.csv
+```
+
+Execute copy export:
+
+```bash
+make dj-pool-run V3=<V3_DB> OUTDIR=<DJ_EXPORT_ROOT> EXECUTE=1 OVERWRITE=if_same_hash FORMAT=copy
+```
+
+Recommended layout:
+- `LAYOUT=by_role` for set programming
+- use a separate export root (never inside `LIBRARY_ROOT`)
+- review manifest before execute.

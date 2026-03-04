@@ -1,7 +1,9 @@
-# REDESIGN_TRACKER
+# ARCHIVED
 
-ARCHIVED DOCUMENT
-This document describes pre-v3 architecture and is retained for historical reference.
+This document is historical and retained for reference only.
 
-The redesign tracker moved to:
-- `docs/archive/REDESIGN_TRACKER.md`
+Moved to: `docs/archive/legacy-root-docs-2026-03-04/REDESIGN_TRACKER.md`
+
+Canonical current documentation (if applicable):
+- `docs/OPERATIONS.md`
+- `docs/ARCHITECTURE_V3.md`

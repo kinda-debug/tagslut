@@ -106,13 +106,55 @@ def _identity_is_editable(conn: sqlite3.Connection, identity_id: int, *, allow_a
 def upsert_profile(
     conn: sqlite3.Connection,
     identity_id: int,
-    fields_dict: dict[str, Any],
+    rating: int | None = None,
+    energy: int | None = None,
+    set_role: str | None = None,
+    notes: str | None = None,
+    add_tags: list[str] | None = None,
+    remove_tags: list[str] | None = None,
+    last_played_at: str | None = None,
     *,
     allow_archived: bool = False,
+    fields_dict: dict[str, Any] | None = None,
 ) -> None:
     ensure_schema(conn)
     if not _identity_is_editable(conn, int(identity_id), allow_archived=allow_archived):
         raise RuntimeError("identity is missing, merged, or archived")
+
+    if fields_dict is None:
+        fields_dict = {}
+    # Backwards-compatible bridge for existing callers that set fields directly.
+    if rating is not None:
+        fields_dict["rating"] = rating
+    if energy is not None:
+        fields_dict["energy"] = energy
+    if set_role is not None:
+        fields_dict["set_role"] = set_role
+    if notes is not None:
+        fields_dict["notes"] = notes
+    if last_played_at is not None:
+        fields_dict["last_played_at"] = last_played_at
+
+    add_tags = add_tags or []
+    remove_tags = remove_tags or []
+    if add_tags or remove_tags:
+        existing = get_profile(conn, int(identity_id))
+        existing_tags: list[str] = []
+        if existing and existing.get("dj_tags_json"):
+            try:
+                parsed = json.loads(str(existing["dj_tags_json"]))
+                if isinstance(parsed, list):
+                    existing_tags = [str(item).strip() for item in parsed if str(item).strip()]
+            except json.JSONDecodeError:
+                existing_tags = []
+        merged = {tag for tag in existing_tags if tag}
+        for tag in add_tags:
+            clean = str(tag).strip()
+            if clean:
+                merged.add(clean)
+        for tag in remove_tags:
+            merged.discard(str(tag).strip())
+        fields_dict["dj_tags_json"] = json.dumps(sorted(merged), separators=(",", ":"))
 
     allowed_fields = {"rating", "energy", "set_role", "dj_tags_json", "notes", "last_played_at"}
     unknown = sorted(set(fields_dict) - allowed_fields)
@@ -178,6 +220,7 @@ def list_profiles(
     *,
     min_rating: int | None = None,
     set_role: str | None = None,
+    set_roles: list[str] | None = None,
     min_energy: int | None = None,
     only_profiled: bool = True,
 ) -> list[sqlite3.Row]:
@@ -189,9 +232,14 @@ def list_profiles(
     if min_rating is not None:
         where.append("rating >= ?")
         params.append(int(min_rating))
+    roles = list(set_roles or [])
     if set_role:
-        where.append("set_role = ?")
-        params.append(str(set_role).strip().lower())
+        roles.append(set_role)
+    clean_roles = [str(role).strip().lower() for role in roles if str(role).strip()]
+    if clean_roles:
+        placeholders = ",".join("?" for _ in clean_roles)
+        where.append(f"set_role IN ({placeholders})")
+        params.extend(clean_roles)
     if min_energy is not None:
         where.append("energy >= ?")
         params.append(int(min_energy))

@@ -22,10 +22,54 @@ source .venv/bin/activate
 tagslut --help
 ```
 
-### Current Database
+### Database Setup
 
+Set `TAGSLUT_DB` in `.env`.
+
+```bash
+TAGSLUT_DB=/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-28/music_v2.db
 ```
-/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
+
+WARNING: Never rely on doc defaults. Always set `TAGSLUT_DB` explicitly before running commands.
+
+### Verify Migration
+
+Use environment variables for the source/target DB paths, then run one verification command:
+
+```bash
+export V2_DB=/absolute/path/to/music_v2.db
+export V3_DB=/absolute/path/to/music_v3.db
+make verify-v3 V2="$V2_DB" V3="$V3_DB" STRICT=1
+```
+
+Treat this as the canonical preflight gate before destructive moves, epoch promotions, or enrichment passes.
+
+### Identity QA Report
+
+Generate an identity QA summary and CSV from your v3 DB:
+
+```bash
+make report-identity-qa V3="$V3_DB" OUT=output/identity_qa_v3.csv LIMIT=200
+```
+
+### Merge Duplicate Beatport Identities
+
+Plan duplicate `beatport_id` merges (read-only):
+
+```bash
+make plan-merge-beatport-dupes V3="$V3_DB" OUT=output/merge_plan_beatport_v3.csv LIMIT=200
+```
+
+Execute merges (DB-only) after reviewing the plan:
+
+```bash
+make merge-beatport-dupes V3="$V3_DB" OUT=output/merge_plan_beatport_v3.csv EXECUTE=1
+```
+
+Then rerun identity QA and confirm duplicate Beatport groups are zero:
+
+```bash
+make report-identity-qa V3="$V3_DB" OUT=output/identity_qa_v3_post_merge.csv LIMIT=200
 ```
 
 ### Canonical CLI Commands
@@ -44,30 +88,35 @@ All operations use these 7 command groups:
 
 ### Most Common Operations
 
-### 0. One-Command Interactive Processing (Recommended)
+### 0. Process Root (Phase-Controlled)
 
-Use this when you already downloaded files and want the **entire pipeline** with minimal prompts.
+Use the canonical command:
 
 ```bash
-cd ~/Projects/tagslut
-export PYTHONPATH=.
-tools/review/process_root.py
+tagslut intake process-root --db /path/to/music_v3.db --root /path/to/folder
 ```
 
-What it does, in order:
-1. Scans the folder and writes `flac_ok` (integrity)
-2. Hoards tags into the DB
-3. Normalizes genres and writes tags to files
-4. Enriches metadata (BPM/key/ISRC/label/artwork) in the DB
-5. Embeds cover art from the DB
-6. Promotes into `/Volumes/MUSIC/LIBRARY`
+Examples:
 
-What it asks you for:
-- Only the **root folder** to process
+```bash
+# Register only (discovery/asset registration)
+tagslut intake process-root \
+  --db /path/to/music_v3.db \
+  --root /path/to/folder \
+  --phases register
 
-What it assumes:
-- Trust pre/post = 3 (no prompts)
-- Providers: beatport, deezer, apple_music, itunes
+# Scan-only (register + integrity + hash; no identify/enrich/art/promote)
+tagslut intake process-root \
+  --db /path/to/music_v3.db \
+  --root /path/to/folder \
+  --scan-only
+
+# Full pipeline (default behavior)
+tagslut intake process-root \
+  --db /path/to/music_v3.db \
+  --root /path/to/folder \
+  --providers beatport,deezer,apple_music,itunes
+```
 
 ### 1. Check Links Before Download
 
@@ -211,25 +260,10 @@ tagslut decide plan \
 
 ### 8. Execute Plan
 
+#### Move execution (v3 safe mode)
+
 ```bash
-# Execute move plan
-tagslut execute move-plan \
-  output/move_plan.csv \
-  --source-root /path/to/staging \
-  --dest-root /path/to/library \
-  --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
-  --execute
-
-# Or use direct script
-python tools/review/promote_by_tags.py \
-  --source /path/to/staging \
-  --dest /path/to/library \
-  --move-log artifacts/moves.jsonl
-
-# Safety gates:
-# - promote_by_tags runs flac -t and skips corrupt files (override with --skip-flac-test)
-# - promote_by_tags enforces duration_status=ok when TAGSLUT_DB/--db is set (override with --allow-non-ok-duration)
-# - promote_replace_merge also requires duration_status=ok by default (override with --allow-non-ok-duration)
+tagslut ops run-move-plan plans/<file>.csv --strict
 ```
 
 ### 9. Verify Operations
@@ -263,6 +297,7 @@ tagslut report duration --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music
 | `tagslut index duration-check` | Console output only |
 | `tagslut index enrich` | `metadata_json` column in DB |
 | `tagslut decide plan` | JSON file (--output) |
+| `tagslut ops run-move-plan` | Preflight doctor + execute + postflight doctor + receipt JSON + archived plan CSV |
 | `tagslut execute move-plan` | Moves files from plan CSV + updates DB path + JSONL log |
 | `tagslut verify *` | Console output only |
 | `tagslut report *` | Output files (M3U, CSV, MD) |
@@ -290,6 +325,7 @@ tagslut report duration --db ~/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music
 
 ### Moves Files + Modifies Database
 
+- `tagslut ops run-move-plan`
 - `tagslut execute move-plan`
 - `tagslut execute quarantine-plan`
 - `tagslut execute promote-tags`

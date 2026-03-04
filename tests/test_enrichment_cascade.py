@@ -6,12 +6,10 @@ Covers:
 - Provider ID extraction
 """
 
-import pytest
 from tagslut.metadata.models.types import (
     EnrichmentResult,
     LocalFileInfo,
     MatchConfidence,
-    MetadataHealth,
     ProviderTrack,
 )
 from tagslut.metadata.pipeline.stages import resolve_file, apply_cascade

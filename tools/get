@@ -88,16 +88,23 @@ if [[ "$URL" == *"tidal.com"* ]]; then
     if [[ "$MISSING_ONLY" -eq 1 ]]; then
         PRECHECK_DIR="$REPO_ROOT/output/precheck"
         mkdir -p "$PRECHECK_DIR"
-        DB_ARG=()
+        RESOLVED_DB_PATH=""
         if [[ -n "$DB_PATH" ]]; then
-            DB_ARG=(--db "$DB_PATH")
+            RESOLVED_DB_PATH="$DB_PATH"
         elif [[ -n "${TAGSLUT_DB:-}" ]]; then
-            DB_ARG=(--db "$TAGSLUT_DB")
+            RESOLVED_DB_PATH="$TAGSLUT_DB"
         fi
-        PYTHONPATH="$REPO_ROOT" python3 "$REPO_ROOT/tools/review/pre_download_check.py" \
-            --input "$URL" \
-            --out-dir "$PRECHECK_DIR" \
-            "${DB_ARG[@]}"
+
+        if [[ -n "$RESOLVED_DB_PATH" ]]; then
+            PYTHONPATH="$REPO_ROOT" python3 "$REPO_ROOT/tools/review/pre_download_check.py" \
+                --input "$URL" \
+                --out-dir "$PRECHECK_DIR" \
+                --db "$RESOLVED_DB_PATH"
+        else
+            PYTHONPATH="$REPO_ROOT" python3 "$REPO_ROOT/tools/review/pre_download_check.py" \
+                --input "$URL" \
+                --out-dir "$PRECHECK_DIR"
+        fi
 
         KEEP_LIST="$(ls -t "$PRECHECK_DIR"/precheck_keep_track_urls_*.txt 2>/dev/null | head -n1 || true)"
         if [[ -z "$KEEP_LIST" ]]; then
@@ -110,12 +117,12 @@ if [[ "$URL" == *"tidal.com"* ]]; then
         fi
         while IFS= read -r track_url; do
             [[ -n "$track_url" ]] || continue
-            "$TIDDL_WRAPPER" "$track_url" "${DOWNLOADER_ARGS[@]}"
+                "$TIDDL_WRAPPER" "$track_url" "${DOWNLOADER_ARGS[@]+"${DOWNLOADER_ARGS[@]}"}"
         done < "$KEEP_LIST"
         exit 0
     fi
 
-    exec "$TIDDL_WRAPPER" "$URL" "${DOWNLOADER_ARGS[@]}"
+    exec "$TIDDL_WRAPPER" "$URL" "${DOWNLOADER_ARGS[@]+"${DOWNLOADER_ARGS[@]}"}"
 
 elif [[ "$URL" == *"beatport.com"* ]]; then
     if [[ ! -x "$GET_SYNC" ]]; then

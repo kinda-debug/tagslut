@@ -200,11 +200,11 @@ This tracker is the working control plane for milestones, ownership, acceptance 
 ## KPI Baselines and Targets
 
 Baselines (to fill before end of Phase 0):
-- duplicate avoidance rate pre-download: `TBD`
-- promotion success rate: `TBD`
-- DJ duration gate fail count per run: `TBD`
-- manual review backlog: `TBD`
-- move rollback incidence: `TBD`
+- duplicate avoidance rate pre-download: `0.00%` (sample baseline from `artifacts/intake_manifest_20260301_154843.json`: `0 skipped / 1 total intent`)
+- promotion success rate: `99.52%` (`209 moved / 210 total` in `move_execution`; `1 skip_missing`)
+- DJ duration gate fail count per run: `13,761` files currently flagged with `duration_status != 'ok'` out of `21,585` DJ-flagged rows (`is_dj_material=1`)
+- manual review backlog: `0` rows with `classification_v2='review'` (current `classification_v2` distribution: `bar=8,732`, `club=8,691`, `remove=6,037`)
+- move rollback incidence: `0` explicit rollback rows observed; non-moved execution incidence is `1/210` (`0.48%`, `skip_missing`)
 
 Targets (Phase 4/5):
 - >=90% routine operations through canonical v3 commands

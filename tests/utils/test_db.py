@@ -4,7 +4,14 @@ from pathlib import Path
 import pytest
 
 from tagslut.storage.schema import init_db
-from tagslut.utils.db import DbResolution, DbResolutionError, open_db, resolve_db_path
+from tagslut.utils.db import (
+    DB_CLI_ENV_HINT,
+    DbResolution,
+    DbResolutionError,
+    open_db,
+    resolve_cli_env_db_path,
+    resolve_db_path,
+)
 
 
 class DummyConfig:
@@ -32,6 +39,40 @@ def test_resolve_db_path_prefers_cli_over_env_and_config(tmp_path: Path, monkeyp
 
     assert resolution.source == "cli"
     assert resolution.path == cli_db
+
+
+def test_resolve_cli_env_db_path_prefers_cli_over_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    cli_db = tmp_path / "cli.db"
+    env_db = tmp_path / "env.db"
+    cli_db.write_text("", encoding="utf-8")
+    env_db.write_text("", encoding="utf-8")
+    monkeypatch.setenv("TAGSLUT_DB", str(env_db))
+
+    resolution = resolve_cli_env_db_path(cli_db=cli_db, purpose="read")
+
+    assert resolution.source == "cli"
+    assert resolution.path == cli_db
+
+
+def test_resolve_cli_env_db_path_uses_env_when_cli_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    env_db = tmp_path / "env.db"
+    env_db.write_text("", encoding="utf-8")
+    monkeypatch.setenv("TAGSLUT_DB", str(env_db))
+
+    resolution = resolve_cli_env_db_path(cli_db=None, purpose="read")
+
+    assert resolution.source == "env"
+    assert resolution.path == env_db
+
+
+def test_resolve_cli_env_db_path_fails_when_cli_and_env_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("TAGSLUT_DB", raising=False)
+
+    with pytest.raises(DbResolutionError, match="No database path provided"):
+        resolve_cli_env_db_path(cli_db=None, purpose="read")
+
+    with pytest.raises(DbResolutionError, match=DB_CLI_ENV_HINT):
+        resolve_cli_env_db_path(cli_db=None, purpose="read")
 
 
 def test_resolve_db_path_read_mode_requires_existing_db(tmp_path: Path) -> None:

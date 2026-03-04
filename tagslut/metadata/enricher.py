@@ -93,19 +93,13 @@ class Enricher:
                 return None
             elif name == "apple_music":
                 from tagslut.metadata.providers.apple_music import AppleMusicProvider
-                self._providers[name] = cast(
-                    BaseProvider,
-                    cast(Any, AppleMusicProvider)(self.token_manager),
-                )
+                self._providers[name] = AppleMusicProvider(self.token_manager)
             elif name == "musicbrainz":
                 from tagslut.metadata.providers.musicbrainz import MusicBrainzProvider
                 self._providers[name] = MusicBrainzProvider()
             elif name == "traxsource":
                 from tagslut.metadata.providers.traxsource import TraxsourceProvider
-                self._providers[name] = cast(
-                    BaseProvider,
-                    cast(Any, TraxsourceProvider)(),
-                )
+                self._providers[name] = TraxsourceProvider()
             else:
                 logger.warning("Unknown provider: %s", name)
                 return None

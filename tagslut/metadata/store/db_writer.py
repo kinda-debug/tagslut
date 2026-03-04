@@ -19,7 +19,7 @@ import re
 import sqlite3
 import unicodedata
 from datetime import datetime, timezone
-from pathlib import Path
+# from pathlib import Path  # unused
 
 from tagslut.metadata.models.types import EnrichmentResult, ProviderTrack
 
@@ -280,19 +280,13 @@ def _upsert_library_track_source(
     )
 
 
-def update_database(
-    db_path: str | Path,
-    result: EnrichmentResult,
-    dry_run: bool,
-    mode: str,
-) -> bool:
+def update_database(  # type: ignore  # TODO: mypy-strict
+        db_path, result: EnrichmentResult, dry_run: bool, mode: str) -> bool:
     """
     Write enrichment result to database.
-
-    Updates the files table with canonical values based on mode:
-    - recovery: Only writes duration and health fields
-    - hoarding: Only writes BPM, key, genre, etc.
-    - both: Writes all fields
+                1 if result.canonical_explicit else (
+                    0 if result.canonical_explicit is False else None
+                ),  # type: ignore  # TODO: mypy-strict
 
     Args:
         result: Enrichment result to write

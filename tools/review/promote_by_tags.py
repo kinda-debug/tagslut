@@ -28,8 +28,10 @@ from tagslut.utils.final_library_layout import (  # noqa: E402
     FinalLibraryLayoutError,
     build_final_library_destination,
 )
+from _progress import ProgressTracker  # noqa: E402
 
 TRUTHY = {"1", "true", "yes", "y", "t"}
+_AUDIO_EXT_RE = re.compile(r"\.(flac|aiff?|wav|mp3|m4a)$", re.IGNORECASE)
 
 
 # ---------------------------
@@ -82,6 +84,15 @@ def limit_filename(name, limit=240):
     return name[:limit]
 
 
+def strip_audio_ext(value: str) -> str:
+    text = (value or "").strip()
+    while True:
+        stripped = _AUDIO_EXT_RE.sub("", text).strip()
+        if stripped == text:
+            return stripped
+        text = stripped
+
+
 def normalize_tags_for_promote(tags):
     """Ensure tag values are lists (mutagen-style) for downstream helpers."""
     out = {}
@@ -115,11 +126,16 @@ def flac_test_ok(path: Path) -> tuple[bool, str | None]:
 def duration_ok(conn: sqlite3.Connection, path: Path) -> tuple[bool, str]:
     row = conn.execute("SELECT duration_status FROM files WHERE path = ?", (str(path),)).fetchone()
     if not row:
-        return False, "duration_status=missing"
+        return False, "db_entry=missing"
     status = (row[0] or "").strip().lower()
     if status == "ok":
         return True, "duration_status=ok"
-    return False, f"duration_status={status or 'unknown'}"
+    return False, f"duration_status={status or 'missing'}"
+
+
+def db_entry_exists(conn: sqlite3.Connection, path: Path) -> bool:
+    row = conn.execute("SELECT 1 FROM files WHERE path = ?", (str(path),)).fetchone()
+    return bool(row)
 
 
 # ---------------------------
@@ -216,6 +232,10 @@ def build_destination(tags, dest_root, is_dj=False):
     year = extract_year(date, originaldate)
     album = sanitize_component(album or "Unknown Album", "Unknown Album")
     title = sanitize_component(title or "Unknown Title", "Unknown Title")
+    artist = sanitize_component(artist or "Unknown Artist", "Unknown Artist")
+
+    title = strip_audio_ext(title)
+    artist = strip_audio_ext(artist)
 
     # Release-type suffixes.
     type_suffix = {
@@ -282,6 +302,13 @@ def main():
         action="store_true",
         help="Allow promotion when duration_status is not ok (default: block when DB is available)",
     )
+    parser.add_argument(
+        "--require-db-entry",
+        action="store_true",
+        help="Skip files that do not exist in DB (recommended with --allow-non-ok-duration)",
+    )
+    parser.add_argument("--force", action="store_true",
+                        help="Overwrite existing destination files")
     parser.add_argument("--execute", action="store_true",
                         help="Actually perform moves (default is dry-run)")
     parser.add_argument(
@@ -289,6 +316,8 @@ def main():
         type=Path,
         help="JSONL move audit log path (default: artifacts/logs/file_move.jsonl)",
     )
+    parser.add_argument("--progress-interval", type=int, default=50,
+                        help="Progress print interval with remaining/ETA")
     args = parser.parse_args()
 
     ui = ConsoleUI()
@@ -317,9 +346,11 @@ def main():
     mode = "EXECUTE" if args.execute else "DRY-RUN"
     ui.print(f"\n[{mode}] Processing {total} files → {args.dest}\n")
     ui.print("-" * 70)
+    progress = ProgressTracker(total=total, interval=int(args.progress_interval), label="Promote")
 
     success_count = 0
     skip_count = 0
+    db_skip = 0
     integrity_skip = 0
     duration_skip = 0
     error_count = 0
@@ -343,6 +374,54 @@ def main():
 
     for i, src in enumerate(files_to_process, 1):
         try:
+            if db_conn is not None:
+                has_db_entry = db_entry_exists(db_conn, src)
+                if args.require_db_entry and not has_db_entry:
+                    db_skip += 1
+                    skip_count += 1
+                    errors.append((src.name, "DB gate failed: missing DB row"))
+                    ui.print(f"[{i:4d}/{total}] SKIP: {src.name[:50]} (db_entry=missing)")
+                    if progress.should_print(i):
+                        ui.print(
+                            progress.line(
+                                i,
+                                extra=f"moved={success_count} skipped={skip_count} errors={error_count}",
+                            )
+                        )
+                    continue
+
+                # Duration gate requires an existing DB row with duration_status=ok.
+                # Skip quickly before flac -t when the DB gate is guaranteed to fail.
+                if not args.allow_non_ok_duration:
+                    if not has_db_entry:
+                        db_skip += 1
+                        skip_count += 1
+                        errors.append((src.name, "DB gate failed: missing DB row"))
+                        ui.print(f"[{i:4d}/{total}] SKIP: {src.name[:50]} (db_entry=missing)")
+                        if progress.should_print(i):
+                            ui.print(
+                                progress.line(
+                                    i,
+                                    extra=f"moved={success_count} skipped={skip_count} errors={error_count}",
+                                )
+                            )
+                        continue
+
+                    ok, reason = duration_ok(db_conn, src)
+                    if not ok:
+                        duration_skip += 1
+                        skip_count += 1
+                        errors.append((src.name, f"Duration gate failed: {reason}"))
+                        ui.print(f"[{i:4d}/{total}] SKIP: {src.name[:50]} ({reason})")
+                        if progress.should_print(i):
+                            ui.print(
+                                progress.line(
+                                    i,
+                                    extra=f"moved={success_count} skipped={skip_count} errors={error_count}",
+                                )
+                            )
+                        continue
+
             if not args.skip_flac_test:
                 ok, err = flac_test_ok(src)
                 if not ok:
@@ -350,15 +429,13 @@ def main():
                     skip_count += 1
                     errors.append((src.name, f"FLAC integrity failed: {err}"))
                     ui.print(f"[{i:4d}/{total}] SKIP: {src.name[:50]} (corrupt FLAC)")
-                    continue
-
-            if db_conn is not None and not args.allow_non_ok_duration:
-                ok, reason = duration_ok(db_conn, src)
-                if not ok:
-                    duration_skip += 1
-                    skip_count += 1
-                    errors.append((src.name, f"Duration gate failed: {reason}"))
-                    ui.print(f"[{i:4d}/{total}] SKIP: {src.name[:50]} ({reason})")
+                    if progress.should_print(i):
+                        ui.print(
+                            progress.line(
+                                i,
+                                extra=f"moved={success_count} skipped={skip_count} errors={error_count}",
+                            )
+                        )
                     continue
 
             audio = FLAC(src)
@@ -384,9 +461,11 @@ def main():
             title = first_tag(promo_tags, ["title"]) or src.name
 
             ui.print(f"[{i:4d}/{total}] {artist[:25]:<25} │ {album[:30]:<30} │ {title[:30]}")
-            moved = ops.safe_move(src, dest, skip_confirmation=True)
+            moved = ops.safe_move(src, dest, skip_confirmation=True, allow_overwrite=args.force)
             if not moved:
                 skip_count += 1
+                if progress.should_print(i):
+                    ui.print(progress.line(i, extra=f"moved={success_count} skipped={skip_count} errors={error_count}"))
                 continue
 
             if args.execute and canon_rules:
@@ -400,6 +479,9 @@ def main():
                 dest_audio.save()
             success_count += 1
 
+            if progress.should_print(i):
+                ui.print(progress.line(i, extra=f"moved={success_count} skipped={skip_count} errors={error_count}"))
+
         except Exception as e:
             error_count += 1
             error_msg = str(e)
@@ -409,6 +491,8 @@ def main():
                 error_msg = f"Final layout error: {error_msg}"
             errors.append((src.name, error_msg))
             ui.print(f"[{i:4d}/{total}] SKIP: {src.name[:50]} ({error_msg})")
+            if progress.should_print(i):
+                ui.print(progress.line(i, extra=f"moved={success_count} skipped={skip_count} errors={error_count}"))
 
     # Summary
     ui.print("-" * 70)
@@ -416,6 +500,8 @@ def main():
     ui.print(f"  Processed: {success_count}")
     if skip_count:
         ui.print(f"  Skipped:   {skip_count}")
+    if db_skip:
+        ui.print(f"  DB gate blocked: {db_skip}")
     if integrity_skip:
         ui.print(f"  Integrity blocked: {integrity_skip}")
     if duration_skip:

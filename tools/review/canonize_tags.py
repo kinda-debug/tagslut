@@ -12,6 +12,7 @@ from mutagen.flac import FLAC
 
 from tagslut.metadata.canon import load_canon_rules, apply_canon, canon_diff
 from tagslut.utils.paths import list_files
+from _progress import ProgressTracker
 
 
 def collect_flacs(path: Path) -> list[Path]:
@@ -29,6 +30,7 @@ def main() -> int:
     parser.add_argument("--canon-dry-run", action="store_true", help="Print before/after diff for one file and exit")
     parser.add_argument("--execute", action="store_true", help="Write tags (default: dry-run)")
     parser.add_argument("--limit", type=int, help="Maximum files to process")
+    parser.add_argument("--progress-interval", type=int, default=50, help="Progress print interval")
     args = parser.parse_args()
 
     rules_path = args.canon_rules or (Path(__file__).parents[2] / "tools" / "rules" / "library_canon.json")
@@ -52,6 +54,7 @@ def main() -> int:
     if not args.execute:
         print("DRY-RUN: use --execute to write tags")
 
+    progress = ProgressTracker(total=len(files), interval=int(args.progress_interval), label="Canonize")
     for idx, path in enumerate(files, start=1):
         audio = FLAC(path)
         before = {k: list(v) if isinstance(v, list) else v for k, v in audio.tags.items()}
@@ -64,8 +67,8 @@ def main() -> int:
                 else:
                     audio[key] = str(value)
             audio.save()
-        if idx % 250 == 0 or idx == len(files):
-            print(f"Processed {idx}/{len(files)}")
+        if progress.should_print(idx):
+            print(progress.line(idx))
     return 0
 
 

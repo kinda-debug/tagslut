@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 from tagslut.metadata.models.types import MatchConfidence, ProviderTrack
 from tagslut.metadata.providers.base import AbstractProvider, RateLimitConfig
 
-logger = logging.getLogger("tagslut.metadata.providers.deezer")
+logger = logging.getLogger(__name__)
 
 
 class DeezerProvider(AbstractProvider):

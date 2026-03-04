@@ -10,7 +10,8 @@ from typing import Any
 
 from tagslut.dj.transcode import TrackRow, build_output_path, make_dedupe_key
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
+log = logger
 
 
 @dataclass
@@ -102,6 +103,8 @@ def load_scan_report() -> tuple[list[dict[str, Any]], dict[str, str | None]]:
     with path.open("r", encoding="utf-8", errors="replace", newline="") as handle:
         reader = csv.DictReader(handle)
         for row in reader:
+            if None in row:
+                raise csv.Error("Malformed CSV row: field count does not match header")
             rows.append({k.strip(): v for k, v in row.items()})
     columns = _detect_columns(rows)
     return rows, columns
@@ -388,7 +391,7 @@ def push_to_lexicon_api(
     try:
         import requests  # type: ignore
     except Exception as e:
-        log.debug("requests import unavailable for lexicon push: %s", e)
+        logger.debug("requests import unavailable for lexicon push: %s", e)
         requests = None
 
     if requests is None:
@@ -433,7 +436,12 @@ def push_to_lexicon_api(
         try:
             r = requests.patch(url, json=payload, timeout=5)
         except Exception as e:
-            log.debug("Failed to push track %s - %s to Lexicon API: %s", track.get("artist"), track.get("title"), e)
+            logger.debug(
+                "Failed to push track %s - %s to Lexicon API: %s",
+                track.get("artist"),
+                track.get("title"),
+                e,
+            )
             failed += 1
             continue
         if r.status_code >= 400:

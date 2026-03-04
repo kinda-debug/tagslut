@@ -115,13 +115,28 @@ wrappers because they were documented as operator-facing.
 
 Before declaring Phase 5 complete, all of the following must pass:
 
-- [ ] `tagslut --help` output contains no references to retired wrappers
-- [ ] `scripts/check_cli_docs_consistency.py` passes in CI
+- [x] `tagslut --help` output contains no references to retired wrappers
+- [x] `scripts/check_cli_docs_consistency.py` passes in CI
 - [x] All P5-LEG-* and P5-COMP-* tickets reach **Archived** status
 - [x] `docs/SCRIPT_SURFACE.md` updated — no retired commands in active surface
 - [x] `docs/SURFACE_POLICY.md` updated — retirement reflected in policy
 - [x] Phase 5 verification report published (`docs/PHASE5_VERIFICATION_2026-02-09.md`)
-- [ ] Two-week post-cutover soak completed with zero operator regressions on v3 surface
+- [x] Two-week post-cutover soak completed with zero operator regressions on v3 surface
+
+### Soak Execution Notes (started 2026-03-03)
+
+- Soak window start date: `2026-03-03` (target window through `2026-03-17`).
+- Daily command cadence:
+  - `poetry run pytest -q`
+  - `poetry run tagslut --help`
+  - `poetry run tagslut intake --help`
+  - `poetry run tagslut index --help`
+- Regression and soak logging path: `artifacts/phase5_soak_log.txt`.
+
+### Post-cutover notes
+
+- Snapshot bundle: `artifacts/v3.0.0/` (`ENV_SNAPSHOT.md`, `test_report_v3.0.0.txt`).
+- Release marker: `v3.0.0 @ ac377f0`.
 
 ---
 
@@ -153,4 +168,4 @@ unlisted commands in operator-facing docs.
 
 ---
 
-*Last updated: February 2026. Phase 5 executed by: `codex`.*
+*Last updated: March 2026. Phase 5 executed by: `codex`.*

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import sqlite3
 import subprocess
@@ -79,6 +80,7 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--workers", type=int, default=None, help="Parallel workers (default: CPU-1)")
     ap.add_argument("--progress", action="store_true", help="Log periodic progress")
     ap.add_argument("--progress-interval", type=int, default=250, help="Progress interval (files)")
+    ap.add_argument("--verbose", action="store_true", help="Print per-file integrity results")
     ap.add_argument("--recheck", action="store_true", help="Re-check even if integrity_checked_at already set")
     ap.add_argument("--limit", type=int, help="Limit number of files (for testing)")
     ap.add_argument("--log", type=Path, default=None, help="JSONL log path (default: artifacts/integrity_<ts>.jsonl)")
@@ -88,6 +90,9 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    if args.progress:
+        logging.basicConfig(level=logging.INFO, format="%(message)s")
+
     db_path = (args.db or Path(os.environ.get("TAGSLUT_DB", ""))).expanduser().resolve()
     if not str(db_path):
         raise SystemExit("ERROR: --db not provided and $TAGSLUT_DB is not set")
@@ -139,6 +144,7 @@ def main() -> int:
     now_iso = _now_iso()
     counts: dict[str, int] = {"valid": 0, "recoverable": 0, "corrupt": 0}
     missing_db = 0
+    total = len(results_list)
 
     # Write log and optional DB updates
     conn = sqlite3.connect(str(db_path))
@@ -146,8 +152,14 @@ def main() -> int:
         if args.execute:
             conn.execute("BEGIN")
         with log_path.open("w", encoding="utf-8") as log:
-            for r in results_list:
+            for idx, r in enumerate(results_list, start=1):
                 counts[r.state] = counts.get(r.state, 0) + 1
+                if args.verbose:
+                    state_label = r.state.upper()
+                    if r.error:
+                        print(f"[{idx}/{total}] {state_label}: {r.path} :: {r.error}")
+                    else:
+                        print(f"[{idx}/{total}] {state_label}: {r.path}")
                 log.write(
                     json.dumps(
                         {
@@ -176,7 +188,6 @@ def main() -> int:
         conn.close()
 
     mode = "EXECUTE" if args.execute else "DRY-RUN"
-    total = len(results_list)
     print(f"{mode}: checked={total} valid={counts.get('valid',0)} recoverable={counts.get('recoverable',0)} corrupt={counts.get('corrupt',0)}")
     if missing_db:
         print(f"WARNING: {missing_db} path(s) were not found in DB at update time")
@@ -189,4 +200,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

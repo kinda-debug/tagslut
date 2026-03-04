@@ -1,6 +1,8 @@
 from pathlib import Path
 
-from tagslut.metadata.canon import apply_canon, load_canon_rules
+import pytest
+
+from tagslut.metadata.canon import apply_canon, load_canon_rules, write_canon_to_file
 
 
 RULES_PATH = Path(__file__).resolve().parents[1] / "tools" / "rules" / "library_canon.json"
@@ -68,3 +70,80 @@ def test_removes_underscore_prefixed_keys():
     out = apply_canon(tags, rules)
     assert "_something" not in out
     assert out["artist"] == "Daft Punk"
+
+
+def test_write_canon_to_file_dry_run_returns_diff_without_saving(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    rules = load_canon_rules(RULES_PATH)
+    audio_path = tmp_path / "sample.flac"
+    audio_path.write_text("stub", encoding="utf-8")
+
+    class FakeAudio:
+        def __init__(self) -> None:
+            self.tags = {"date": ["2020-05-17"]}
+            self.saved = False
+
+        def items(self):  # type: ignore[no-untyped-def]
+            return self.tags.items()
+
+        def clear(self) -> None:
+            self.tags = {}
+
+        def __setitem__(self, key: str, value):  # type: ignore[no-untyped-def]
+            self.tags[key] = value
+
+        def save(self) -> None:
+            self.saved = True
+
+    fake_audio = FakeAudio()
+    monkeypatch.setattr("mutagen.File", lambda *_args, **_kwargs: fake_audio)
+
+    diff = write_canon_to_file(audio_path, rules, dry_run=True)
+
+    assert "date" in diff
+    assert diff["date"] == (["2020-05-17"], ["2020"])
+    assert fake_audio.saved is False
+
+
+def test_write_canon_to_file_execute_with_mock_mutagen_object(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    rules = load_canon_rules(RULES_PATH)
+    audio_path = tmp_path / "sample.mp3"
+    audio_path.write_text("stub", encoding="utf-8")
+
+    class FakeAudio:
+        def __init__(self) -> None:
+            self.tags = {"date": ["2020-05-17"], "artist": ["Alice"]}
+            self.saved = False
+
+        def items(self):  # type: ignore[no-untyped-def]
+            return self.tags.items()
+
+        def clear(self) -> None:
+            self.tags = {}
+
+        def __setitem__(self, key: str, value):  # type: ignore[no-untyped-def]
+            self.tags[key] = value
+
+        def save(self) -> None:
+            self.saved = True
+
+    fake_audio = FakeAudio()
+    monkeypatch.setattr("mutagen.File", lambda *_args, **_kwargs: fake_audio)
+
+    diff = write_canon_to_file(audio_path, rules, dry_run=False)
+
+    assert "date" in diff
+    assert fake_audio.saved is True
+    assert fake_audio.tags["date"] == ["2020"]
+
+
+def test_write_canon_to_file_unsupported_format_raises(tmp_path: Path) -> None:
+    rules = load_canon_rules(RULES_PATH)
+    unsupported = tmp_path / "sample.wav"
+    unsupported.write_text("stub", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Unsupported file format"):
+        write_canon_to_file(unsupported, rules, dry_run=True)

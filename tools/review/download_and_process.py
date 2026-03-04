@@ -18,7 +18,8 @@ _repo_root = Path(__file__).resolve().parents[2]
 if str(_repo_root) not in sys.path:
     sys.path.insert(0, str(_repo_root))
 
-from tagslut.utils.env_paths import get_library_volume, get_db_path
+from tagslut.utils.env_paths import get_library_volume
+from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
 
 
 def _infer_source(url: str) -> str:
@@ -58,36 +59,29 @@ def main() -> None:
     if args.urls_file:
         url = Path(args.urls_file).expanduser().read_text(encoding="utf-8", errors="replace")
     else:
-        url = args.url or args.url_arg or input("Download URL or path to .txt with URLs: ").strip()
-        if Path(url).expanduser().exists() and not url.startswith("http"):
+        url = args.url or args.url_arg or ""
+        if url and Path(url).expanduser().exists() and not url.startswith("http"):
             url = Path(url).expanduser().read_text(encoding="utf-8", errors="replace")
     if not url:
-        raise SystemExit("url is required")
+        raise SystemExit("url is required (pass --url, a positional URL, or --urls-file)")
     source = args.source or _infer_source(url)
     if source not in {"tidal", "beatport"}:
         raise SystemExit("source must be tidal or beatport")
 
     try:
-        default_db = str(get_db_path() or "")
-    except Exception:
-        default_db = ""
-    if not default_db:
-        default_db = "/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db"
+        db_resolution = resolve_cli_env_db_path(args.db, purpose="write", source_label="--db")
+    except DbResolutionError as exc:
+        raise SystemExit(f"ERROR: {exc}") from exc
+    db = str(db_resolution.path)
+    print(f"Resolved DB path: {db}")
     try:
         default_library = str(get_library_volume())
     except Exception:
         default_library = "/Volumes/MUSIC/LIBRARY"
     default_root = "/Users/georgeskhawam/Music/tiddl" if source == "tidal" else "/Users/georgeskhawam/Music/bpdl"
 
-    db = args.db or default_db or input("DB path: ").strip()
-    library = args.library or default_library or input("Library destination: ").strip()
-    if args.root:
-        root = args.root
-    elif sys.stdin.isatty():
-        prompt_root = input(f"Download folder [{default_root}]: ").strip()
-        root = prompt_root or default_root
-    else:
-        root = default_root
+    library = args.library or default_library
+    root = args.root or default_root
 
     root_path = Path(root)
     root_path.mkdir(parents=True, exist_ok=True)
@@ -132,9 +126,7 @@ def main() -> None:
         if found:
             root_path = found
         else:
-            prompt = input(f"Download root not found or empty [{root}]: ").strip()
-            if prompt:
-                root_path = Path(prompt)
+            print(f"Warning: download root has no FLAC files: {root_path}")
 
     # Process downloaded files
     proc_cmd = [

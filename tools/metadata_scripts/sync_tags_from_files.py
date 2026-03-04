@@ -12,18 +12,18 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import sqlite3
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
 
+_REPO = Path(__file__).resolve().parents[2]
+if str(_REPO) not in sys.path:
+    sys.path.insert(0, str(_REPO))
 
-DEFAULT_DB = os.environ.get(
-    "TAGSLUT_DB",
-    "/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db",
-)
+from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
 
 
 def _now_stamp() -> str:
@@ -102,7 +102,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(
         description="Sync canonical BPM/Key/Genre/Energy/Danceability from file tags and emit M3U for missing tags."
     )
-    ap.add_argument("--db", default=DEFAULT_DB, help="SQLite DB path")
+    ap.add_argument("--db", help="SQLite DB path")
     ap.add_argument(
         "--path",
         default="/Volumes/MUSIC/LIBRARY",
@@ -122,9 +122,13 @@ def main() -> int:
     )
     args = ap.parse_args()
 
-    db_path = Path(args.db).expanduser().resolve()
-    if not db_path.exists():
-        raise SystemExit(f"DB not found: {db_path}")
+    purpose = "write" if args.execute else "read"
+    try:
+        db_resolution = resolve_cli_env_db_path(args.db, purpose=purpose, source_label="--db")
+    except DbResolutionError as exc:
+        raise SystemExit(f"ERROR: {exc}") from exc
+    db_path = db_resolution.path
+    print(f"Resolved DB path: {db_path}")
 
     prefix = str(Path(args.path).expanduser().resolve())
     if not prefix.endswith("/"):

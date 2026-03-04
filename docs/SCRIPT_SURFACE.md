@@ -8,7 +8,7 @@ Policy and deprecation rules are defined in:
 ## Canonical Entry Points
 
 1. `poetry run tagslut intake ...`
-Role: Download/intake orchestration and prefilter operations.
+Role: Download/intake orchestration, prefilter operations, and root processing (`tagslut intake process-root`).
 
 2. `poetry run tagslut index ...`
 Role: Inventory registration, duplicate checks, duration checks, and metadata enrichment for indexed files.
@@ -28,8 +28,17 @@ Role: M3U and operational reports (duration, recovery, plan summaries).
 7. `poetry run tagslut auth ...`
 Role: Provider authentication and token lifecycle flows.
 
-8. `poetry run tagslut export usb ...`
-Role: Export a source folder of MP3/FLAC tracks to a Pioneer CDJ-ready USB (writes PIONEER/ database via pyrekordbox, creates crate, outputs manifest).
+8. `poetry run tagslut dj ...`
+Role: DJ library curation and USB export workflows.
+
+9. `poetry run tagslut gig ...`
+Role: Build and manage DJ gig sets.
+
+10. `poetry run tagslut export ...`
+Role: Export tracks to USB or DJ pools.
+
+11. `poetry run tagslut init ...`
+Role: First-run interactive initialization wizard.
 
 ## Rebrand Invocation
 
@@ -79,7 +88,7 @@ Role: Combined build + run OneTagger workflow with defaults.
 ## Retired Command Groups
 
 Retired in Phase 5 (not operator-facing):
-- tagslut scan
+- tagslut scan ...
 - tagslut recommend
 - tagslut apply
 - tagslut promote
@@ -89,22 +98,32 @@ Retired in Phase 5 (not operator-facing):
 - tagslut recover ...
 
 Internal hidden commands (`_mgmt`, `_metadata`, `_recover`) may exist for
-code-organization compatibility, but they are implementation details only and
-not operator-facing entry points.
+code-organization compatibility only. They are implementation details, not
+operator-facing commands.
 
-Use `tagslut intake/index/decide/execute/verify/report/auth` for new work.
+Hidden top-level commands by policy:
+- `tagslut canonize ...`
+- `tagslut enrich-file ...`
+- `tagslut explain-keeper ...`
+- `tagslut show-zone ...`
+- `tagslut recovery ...`
+
+Use `tagslut intake/index/decide/execute/verify/report/auth/dj/gig/export/init` for new work.
 
 ## Recovery Command Status
 
-- `tagslut recovery` is currently a minimal stub logger and does not implement the full move pipeline described in some historical docs.
+- `tagslut recovery` is a hidden minimal stub logger and does not implement the full move pipeline described in some historical docs.
+- Canonical operator path for end-to-end root processing:
+  - `tagslut intake process-root --root <folder> [--db <db>]`
 - For move execution today, use:
   - Plan generation scripts in `tools/review/`
   - `tools/review/move_from_plan.py`
   - `tools/review/quarantine_from_plan.py`
   - `tools/review/promote_by_tags.py` (`--move-log` for JSONL move audit output)
-- Compatibility contract for these executors:
+- Single canonical compatibility contract:
   - `docs/MOVE_EXECUTOR_COMPAT.md`
-  - `docs/archive/phase-specs-2026-02-09/` (phase runbooks and verification reports)
+- Historical phase runbooks and verification reports:
+  - `docs/archive/phase-specs-2026-02-09/`
 
 ## Directory Ownership
 

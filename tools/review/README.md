@@ -29,6 +29,7 @@ Active operational scripts for tagslut planning, analysis, and move execution.
 - `scan_with_trust.py`
 - `hoard_tags.py`
 - `canonize_tags.py`
+- `process_unmatched_by_tags.py` — fast tag-only folder triage against DB; outputs matched/unmatched lists, writes a resumable tracker, and can run a processing command only for unmatched files
 - **Genre Normalization (synergistic):**
   - `normalize_genres.py` — Normalize genre/style tags and backfill DB with canonical values
   - `tag_normalized_genres.py` — Apply normalized genre/style tags in-place to FLAC files
@@ -46,3 +47,40 @@ Active operational scripts for tagslut planning, analysis, and move execution.
 
 - Keep operations move-only unless a script is explicitly analysis-only.
 - New scripts should include a short usage header and write outputs to `artifacts/`.
+
+## Quick Usage: Process Unmatched By Tags
+
+```bash
+# Scan folder quickly by tags and write matched/unmatched manifests
+python tools/review/process_unmatched_by_tags.py \
+  /path/to/incoming \
+  --db "$TAGSLUT_DB" \
+  --out-dir artifacts/tag_triage
+
+# Process only unmatched files (foreground, visible output, resumable)
+python tools/review/process_unmatched_by_tags.py \
+  /path/to/incoming \
+  --db "$TAGSLUT_DB" \
+  --process-cmd 'poetry run tagslut index register "{path}" --source staging --execute -v' \
+  --tracker-file artifacts/tag_triage/my_run_tracker.json
+
+# Force a clean run (ignore previous tracker cache)
+python tools/review/process_unmatched_by_tags.py \
+  /path/to/incoming \
+  --db "$TAGSLUT_DB" \
+  --process-cmd 'poetry run tagslut index register "{path}" --source staging --execute -v' \
+  --reset-tracker
+
+# Add promotion eligibility diagnostics for unmatched files
+python tools/review/process_unmatched_by_tags.py \
+  /path/to/incoming \
+  --db "$TAGSLUT_DB" \
+  --promotion-report \
+  --promotion-verify-flac
+```
+
+Notes:
+- Output is split into clear stages: DB index load, triage, processing, and promotion report.
+- A tracker JSON is written by default to `<out-dir>/tag_triage_tracker.json`.
+- Resume is enabled by default; already-triaged and already-processed files are skipped when file `size` and `mtime` are unchanged.
+- Use `--no-resume` to disable cache/resume behavior for a run.

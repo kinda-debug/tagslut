@@ -11,16 +11,18 @@ from __future__ import annotations
 
 import argparse
 import csv
-import os
 import re
 import sqlite3
+import sys
 from datetime import datetime
 from pathlib import Path
 
-DEFAULT_DB = os.environ.get(
-    "TAGSLUT_DB",
-    "/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db",
-)
+_REPO = Path(__file__).resolve().parents[2]
+if str(_REPO) not in sys.path:
+    sys.path.insert(0, str(_REPO))
+
+from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
+
 DEFAULT_OUT_DIR = Path(__file__).resolve().parents[2] / "artifacts" / "exports"
 DEFAULT_MIN_DURATION_SEC = 240
 DEFAULT_MAX_DURATION_SEC = 900
@@ -74,7 +76,7 @@ def _title_blocked(title: str, album: str, keywords: list[str]) -> bool:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Export Lexicon DJ CSV for DJ-eligible tracks.")
-    parser.add_argument("--db", default=DEFAULT_DB, help="Path to tagslut SQLite DB.")
+    parser.add_argument("--db", help="Path to tagslut SQLite DB.")
     parser.add_argument("--output", default="", help="Output path (CSV or M3U).")
     parser.add_argument("--format", choices=["m3u", "csv"], default="m3u", help="Export format.")
     parser.add_argument("--min-duration", type=int, default=DEFAULT_MIN_DURATION_SEC)
@@ -86,9 +88,12 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=0)
     args = parser.parse_args()
 
-    db_path = Path(args.db).expanduser().resolve()
-    if not db_path.exists():
-        raise SystemExit(f"DB not found: {db_path}")
+    try:
+        db_resolution = resolve_cli_env_db_path(args.db, purpose="read", source_label="--db")
+    except DbResolutionError as exc:
+        raise SystemExit(f"ERROR: {exc}") from exc
+    db_path = db_resolution.path
+    print(f"Resolved DB path: {db_path}")
 
     suffix = "m3u" if args.format == "m3u" else "csv"
     out_path = Path(args.output).expanduser().resolve() if args.output else (DEFAULT_OUT_DIR / f"lexicon_export_{_now_stamp()}.{suffix}")

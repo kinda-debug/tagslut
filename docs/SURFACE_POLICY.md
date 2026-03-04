@@ -1,4 +1,4 @@
-# Surface Policy - tagslut (2026-02-09)
+# Surface Policy - tagslut (2026-03-02)
 
 ## Purpose
 
@@ -6,20 +6,26 @@ Define the supported command/script surface during v3 migration so operators and
 
 ## Canonical Surface (Use For New Work)
 
-1. `poetry run tagslut intake ...`
-2. `poetry run tagslut index ...`
-3. `poetry run tagslut decide ...`
-4. `poetry run tagslut execute ...`
-5. `poetry run tagslut verify ...`
-6. `poetry run tagslut report ...`
-7. `poetry run tagslut auth ...`
+1. `poetry run tagslut intake ...` - pre-check + download orchestration
+2. `poetry run tagslut index ...` - inventory management
+3. `poetry run tagslut decide ...` - quality-based planning
+4. `poetry run tagslut execute ...` - move-only plan execution
+5. `poetry run tagslut verify ...` - receipt and parity checks
+6. `poetry run tagslut report ...` - M3U, duration, and DJ pool diff reports
+7. `poetry run tagslut auth ...` - provider credential management
+8. `poetry run tagslut dj ...` - DJ library curation and USB export
+9. `poetry run tagslut gig ...` - gig set build and management
+10. `poetry run tagslut export ...` - USB / DJ pool export
+11. `poetry run tagslut init ...` - first-run initialization wizard
 
 Reference map:
 - `docs/SCRIPT_SURFACE.md`
+- `docs/MOVE_EXECUTOR_COMPAT.md` (single canonical move executor contract)
 
 Branding note:
 - `tagslut` is the preferred CLI brand.
-- No legacy aliases are supported during migration.
+- `dedupe` is a deprecated alias for `tagslut` and is still shipped.
+- `dedupe` remains supported as a compatibility alias until 2026-06-01.
 
 ## Transitional Surface
 
@@ -34,6 +40,13 @@ Retired in Phase 5:
 6. `tagslut mgmt ...`
 7. `tagslut metadata ...`
 8. `tagslut recover ...`
+
+Top-level commands hidden by policy until promoted:
+1. `tagslut canonize ...`
+2. `tagslut enrich-file ...`
+3. `tagslut explain-keeper ...`
+4. `tagslut show-zone ...`
+5. `tagslut recovery ...`
 
 ## Removal Horizon
 
@@ -76,11 +89,14 @@ Compatibility wrappers were removed after satisfying these gates:
 8. `poetry run tagslut verify --help`
 9. `poetry run tagslut report --help`
 10. `poetry run tagslut auth --help`
-11. `poetry run tagslut --help` (compatibility alias)
-12. Move executor contract doc: `docs/MOVE_EXECUTOR_COMPAT.md`
-13. V3 parity validator: `python scripts/validate_v3_dual_write_parity.py --db <db> --strict`
-14. Policy profile lint: `python scripts/lint_policy_profiles.py`
-15. Phase 3 executor tests: `pytest -q tests/test_exec_engine_phase3.py tests/test_exec_receipts_phase3.py`
+11. `poetry run tagslut dj --help`
+12. `poetry run tagslut gig --help`
+13. `poetry run tagslut export --help`
+14. `poetry run tagslut init --help`
+15. Move executor contract doc: `docs/MOVE_EXECUTOR_COMPAT.md`
+16. V3 parity validator: `python scripts/validate_v3_dual_write_parity.py --db <db> --strict`
+17. Policy profile lint: `python scripts/lint_policy_profiles.py`
+18. Phase 3 executor tests: `pytest -q tests/test_exec_engine_phase3.py tests/test_exec_receipts_phase3.py`
 
 CI integration:
 - `.github/workflows/test.yml` runs `scripts/audit_repo_layout.py` on push/PR.

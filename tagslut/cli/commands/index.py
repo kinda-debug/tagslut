@@ -101,7 +101,14 @@ def register_index_group(cli: click.Group) -> None:
         if not path_obj.exists():
             raise click.ClickException(f"Path not found: {path}")
 
-        flac_iter = list_files(path_obj, {".flac"})
+        if path_obj.is_file():
+            if path_obj.suffix.lower() != ".flac":
+                raise click.ClickException(
+                    f"File is not FLAC: {path_obj} (expected .flac)"
+                )
+            flac_iter = [path_obj]
+        else:
+            flac_iter = list_files(path_obj, {".flac"})
         if limit:
             flac_iter = itertools.islice(flac_iter, int(limit))
 
@@ -242,11 +249,27 @@ def register_index_group(cli: click.Group) -> None:
                         duration_ref_ms, duration_ref_source, duration_ref_track_id = lookup_duration_ref_ms(
                             conn, beatport_id, isrc
                         )
-                        if duration_ref_ms is not None:
+                        if duration_measured_ms is None:
+                            # Treat unreadable/unmeasurable files as failed safety gate.
+                            duration_status_value = "fail"
+                            duration_delta_ms = None
+                        elif duration_ref_ms is None:
+                            # Global fallback: seed reference from local measured duration
+                            # so healthy files do not remain perpetually "unknown".
+                            duration_ref_ms = duration_measured_ms
+                            duration_ref_source = "measured_fallback"
+                            duration_ref_track_id = (
+                                beatport_id
+                                or isrc
+                                or f"path:{file_path}"
+                            )
                             duration_ref_updated_at = now_iso
-                        if duration_measured_ms is not None and duration_ref_ms is not None:
+                            duration_delta_ms = 0
+                            duration_status_value = "ok"
+                        else:
+                            duration_ref_updated_at = now_iso
                             duration_delta_ms = duration_measured_ms - duration_ref_ms
-                        duration_status_value = duration_status(duration_delta_ms, ok_max_ms, warn_max_ms)
+                            duration_status_value = duration_status(duration_delta_ms, ok_max_ms, warn_max_ms)
 
                         log_payload = {
                             "event": "duration_check",
@@ -683,10 +706,22 @@ def register_index_group(cli: click.Group) -> None:
                         except Exception:
                             duration_ref_ms = None
                     duration_measured_ms = measure_duration_ms(file_path)
-                    duration_delta_ms = None
-                    if duration_measured_ms is not None and duration_ref_ms is not None:
+                    if duration_measured_ms is None:
+                        duration_delta_ms = None
+                        duration_status_value = "fail"
+                    elif duration_ref_ms is None:
+                        duration_ref_ms = duration_measured_ms
+                        duration_ref_source = "measured_fallback"
+                        duration_ref_track_id = (
+                            beatport_id
+                            or isrc
+                            or f"path:{file_path}"
+                        )
+                        duration_delta_ms = 0
+                        duration_status_value = "ok"
+                    else:
                         duration_delta_ms = duration_measured_ms - duration_ref_ms
-                    duration_status_value = duration_status(duration_delta_ms, ok_max_ms, warn_max_ms)
+                        duration_status_value = duration_status(duration_delta_ms, ok_max_ms, warn_max_ms)
 
                     log_payload = {
                         "event": "duration_check",
@@ -910,6 +945,27 @@ def register_index_group(cli: click.Group) -> None:
             conn.close()
 
         click.echo(f"Duration reference set: {manual_id} ({duration_measured_ms} ms)")
+
+    @index.command("promote-classification")
+    @click.option("--db", required=True, type=click.Path(exists=True), help="Path to inventory DB")
+    @click.option("--dry-run", is_flag=True, default=False)
+    def index_promote_classification(db, dry_run):  # type: ignore  # TODO: mypy-strict
+        """Promote classification_v2 to primary classification column."""
+        from tagslut.storage.classification_promotion import (
+            PromotionError,
+            format_promotion_result,
+            promote_classification_v2,
+        )
+
+        try:
+            result = promote_classification_v2(Path(db), dry_run=dry_run)
+        except PromotionError as exc:
+            raise click.ClickException(str(exc)) from exc
+
+        for line in format_promotion_result(result):
+            click.echo(line)
+        if result.status == "dry_run":
+            click.echo("Dry-run only: no database changes were made.")
 
     @index.command("enrich")
     @click.option('--db', type=click.Path(), required=False, help='Database path')

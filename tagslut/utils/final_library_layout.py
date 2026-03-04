@@ -12,6 +12,7 @@ _TRUTHY = {"1", "true", "yes", "y", "t"}
 _CTRL_CHARS_RE = re.compile(r"[\x00-\x1F\x7F]")
 _YEAR_RE = re.compile(r"^(\d{4})")
 _INT_RE = re.compile(r"(\d+)")
+_AUDIO_EXT_RE = re.compile(r"\.(flac|aiff?|wav|mp3|m4a)$", re.IGNORECASE)
 
 
 class FinalLibraryLayoutError(ValueError):
@@ -91,6 +92,15 @@ def strip_square_brackets(value: str) -> str:
     # Deterministic and conservative: remove bracket chars but keep content.
     s = value.replace("[", "").replace("]", "").replace("{", "").replace("}", "")
     return re.sub(r"\s+", " ", s).strip()
+
+
+def strip_audio_extension(value: str) -> str:
+    text = (value or "").strip()
+    while True:
+        stripped = _AUDIO_EXT_RE.sub("", text).strip()
+        if stripped == text:
+            return stripped
+        text = stripped
 
 
 def _looks_like_artist_list(value: str, *, min_commas: int = 3) -> bool:
@@ -183,6 +193,9 @@ def build_final_library_destination(
     album_s = sanitize_component(album)
     title_s = sanitize_component(title)
     filename_artist = sanitize_component(filename_artist_raw)
+
+    title_s = strip_audio_extension(title_s)
+    filename_artist = strip_audio_extension(filename_artist)
 
     if strip_brackets:
         folder_artist = strip_square_brackets(folder_artist)

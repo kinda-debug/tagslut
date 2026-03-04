@@ -7,12 +7,13 @@ PIONEER/ database using pyrekordbox.
 Master FLAC files in the source library are never modified.
 """
 import logging
+import sqlite3
 import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
-logger = logging.getLogger("tagslut.usb_export")
+logger = logging.getLogger(__name__)
 
 SUPPORTED_EXTENSIONS = {".mp3", ".flac", ".aif", ".aiff", ".wav", ".m4a"}
 
@@ -86,12 +87,35 @@ def write_rekordbox_db(
 
     pioneer_dir = usb_path / "PIONEER"
     pioneer_dir.mkdir(parents=True, exist_ok=True)
+    db_path = pioneer_dir / "rekordbox.db"
+
+    # pyrekordbox has divergent APIs across versions. Prefer native bindings,
+    # and fall back to a lightweight local DB if creation/open is unavailable.
+    if hasattr(pyrekordbox, "Rb6Database"):
+        _write_rekordbox_db_legacy(pyrekordbox, tracks, db_path, crate_name)
+    elif hasattr(pyrekordbox, "Rekordbox6Database"):
+        _write_rekordbox_db_modern(pyrekordbox, tracks, db_path, crate_name)
+    else:
+        logger.warning(
+            "Unsupported pyrekordbox API surface; writing fallback DB at %s",
+            db_path,
+        )
+        _write_fallback_rekordbox_db(tracks, db_path, crate_name)
+
+
+def _write_rekordbox_db_legacy(
+    pyrekordbox_module: object,
+    tracks: List[Path],
+    db_path: Path,
+    crate_name: str,
+) -> None:
+    db_cls = getattr(pyrekordbox_module, "Rb6Database")
 
     try:
-        db = pyrekordbox.Rb6Database(pioneer_dir / "rekordbox.db")
+        db = db_cls(db_path)
     except Exception as e:
-        logger.warning("Failed to open existing Rekordbox DB at %s: %s", pioneer_dir / "rekordbox.db", e)
-        db = pyrekordbox.Rb6Database.create(pioneer_dir / "rekordbox.db")
+        logger.warning("Failed to open existing Rekordbox DB at %s: %s", db_path, e)
+        db = db_cls.create(db_path)
 
     track_ids = []
     for track_path in tracks:
@@ -110,7 +134,84 @@ def write_rekordbox_db(
         db.create_playlist(name=crate_name, track_ids=track_ids)
 
     db.save()
-    logger.info("Rekordbox DB written: %s (%d tracks)", pioneer_dir, len(track_ids))
+    logger.info("Rekordbox DB written: %s (%d tracks)", db_path.parent, len(track_ids))
+
+
+def _write_rekordbox_db_modern(
+    pyrekordbox_module: object,
+    tracks: List[Path],
+    db_path: Path,
+    crate_name: str,
+) -> None:
+    db_cls = getattr(pyrekordbox_module, "Rekordbox6Database")
+    if not db_path.exists():
+        logger.warning(
+            "Rekordbox6Database cannot create new DB at %s; writing fallback DB.",
+            db_path,
+        )
+        _write_fallback_rekordbox_db(tracks, db_path, crate_name)
+        return
+
+    try:
+        db = db_cls(db_path, unlock=False)
+    except Exception as exc:
+        logger.warning("Failed to open Rekordbox6 DB at %s: %s", db_path, exc)
+        _write_fallback_rekordbox_db(tracks, db_path, crate_name)
+        return
+
+    written = 0
+    try:
+        playlist = db.create_playlist(crate_name)
+        for track_path in tracks:
+            try:
+                content = db.add_content(path=str(track_path))
+                db.add_to_playlist(playlist, content)
+                written += 1
+            except Exception as exc:
+                logger.warning("Failed to add track %s to Rekordbox6 DB: %s", track_path, exc)
+        db.commit()
+        logger.info("Rekordbox6 DB updated: %s (%d tracks)", db_path.parent, written)
+    finally:
+        db.close()
+
+
+def _write_fallback_rekordbox_db(
+    tracks: List[Path],
+    db_path: Path,
+    crate_name: str,
+) -> None:
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(db_path)
+    try:
+        with conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS exported_tracks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    crate_name TEXT NOT NULL,
+                    track_path TEXT NOT NULL,
+                    bpm REAL,
+                    musical_key TEXT,
+                    exported_at TEXT NOT NULL
+                )
+                """
+            )
+            now = datetime.now().isoformat(timespec="seconds")
+            rows = []
+            for track_path in tracks:
+                bpm, key = _read_bpm_key(track_path)
+                rows.append((crate_name, str(track_path), bpm, key, now))
+            conn.executemany(
+                """
+                INSERT INTO exported_tracks (
+                    crate_name, track_path, bpm, musical_key, exported_at
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                rows,
+            )
+    finally:
+        conn.close()
+    logger.info("Fallback Rekordbox DB written: %s (%d tracks)", db_path.parent, len(tracks))
 
 
 def write_manifest(

@@ -1,3 +1,6 @@
+> ARCHIVE - DO NOT EDIT
+> Historical snapshot only. Canonical contract: `docs/MOVE_EXECUTOR_COMPAT.md`.
+
 # Move Executor Compatibility Contract
 
 Canonical reference for the centralized move execution engine and its compatibility adapter.

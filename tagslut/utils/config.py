@@ -1,5 +1,6 @@
 import logging
 import os
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable
 
@@ -14,6 +15,34 @@ CONFIG_PATHS = [
     Path("config.toml"),
     Path.home() / ".config" / "tagslut" / "config.toml",
 ]
+
+
+@dataclass(frozen=True)
+class ConfigKeySpec:
+    expected_type: type | tuple[type, ...]
+    default: Any
+    required: bool = False
+
+
+CONFIG_SCHEMA: dict[str, ConfigKeySpec] = {
+    "db.path": ConfigKeySpec(str, None, required=True),
+    "db.min_disk_space_mb": ConfigKeySpec(int, 50),
+    "db.write_sanity_check": ConfigKeySpec(bool, True),
+    "dj_pool_dir": ConfigKeySpec(str, "~/Music/DJPool"),
+    "integrity.db_flush_interval": ConfigKeySpec(int, 60),
+    "integrity.db_flush_interval_seconds": ConfigKeySpec(int, 60),
+    "integrity.db_write_batch_size": ConfigKeySpec(int, 500),
+    "integrity.min_disk_space_mb": ConfigKeySpec(int, 50),
+    "integrity.parallel_workers": ConfigKeySpec((int, type(None)), None),
+    "integrity.write_sanity_check": ConfigKeySpec(bool, True),
+    "library.name": ConfigKeySpec(str, "COMMUNE"),
+    "mgmt.audit_log_dir": ConfigKeySpec(str, None),
+    "mgmt.duration.ok_max_delta_ms": ConfigKeySpec(int, 2000),
+    "mgmt.duration.warn_max_delta_ms": ConfigKeySpec(int, 8000),
+    "mgmt.m3u_dir": ConfigKeySpec(str, None),
+    "tagslut.v3.dual_write": ConfigKeySpec(bool, False),
+    "v3.dual_write": ConfigKeySpec(bool, False),
+}
 
 
 def _clear_config_instance() -> None:
@@ -67,6 +96,9 @@ class Config:
             logging.warning("No configuration file found. Using defaults.")
             self._data = {}
 
+        if os.getenv("TAGSLUT_STRICT_CONFIG") == "1":
+            self.validate()
+
     def get(self, key: str, default: Any = None) -> Any:
         """Retrieve a configuration value by key (dot notation supported)."""
         keys = key.split(".")
@@ -92,6 +124,45 @@ class Config:
 
     def values(self) -> Iterable[Any]:
         return self._data.values()
+
+    def validate(self) -> list[str]:
+        """Validate known keys, key types, and required-key presence."""
+        issues: list[str] = []
+
+        def _flatten(data: dict[str, Any], prefix: str = "") -> Iterable[tuple[str, Any]]:
+            for key, value in data.items():
+                full_key = f"{prefix}.{key}" if prefix else key
+                if isinstance(value, dict):
+                    yield from _flatten(value, full_key)
+                else:
+                    yield full_key, value
+
+        actual_keys = dict(_flatten(self._data))
+
+        for key in sorted(actual_keys.keys()):
+            if key not in CONFIG_SCHEMA:
+                issues.append(f"Unknown config key: {key}")
+
+        for key, spec in CONFIG_SCHEMA.items():
+            value = self.get(key)
+            if value is None:
+                if spec.required:
+                    issues.append(f"Missing required config key: {key}")
+                continue
+            if not isinstance(value, spec.expected_type):
+                expected = (
+                    ", ".join(t.__name__ for t in spec.expected_type)
+                    if isinstance(spec.expected_type, tuple)
+                    else spec.expected_type.__name__
+                )
+                issues.append(
+                    f"Type mismatch for {key}: expected {expected}, got {type(value).__name__}"
+                )
+
+        for issue in issues:
+            logging.warning(issue)
+
+        return issues
 
 
 def get_config(config_path: Path | None = None) -> Config:

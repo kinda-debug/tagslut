@@ -12,7 +12,7 @@ import httpx
 from tagslut.metadata.models.types import ProviderTrack, MatchConfidence
 from tagslut.metadata.auth import TokenManager, TokenInfo
 
-logger = logging.getLogger("tagslut.metadata.providers")
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -192,14 +192,25 @@ class AbstractProvider(ABC):
                     return None
 
                 if response.status_code == 403:
-                    # 403 Forbidden - credentials rejected, likely bad client_id/secret
-                    # Log the response body for debugging and mark as permanent failure
+                    # 403 handling differs by provider type:
+                    # - Auth providers: treat as permanent credential failure.
+                    # - Public/no-auth providers: fail this request only.
                     response_body = ""
                     try:
                         response_body = response.text[:500]  # Limit to 500 chars
                     except Exception as e:
                         logger.debug("%s: Failed to read 403 response body: %s", self.name, e)
                         pass
+
+                    if self.token_manager is None:
+                        logger.warning(
+                            "%s: Access forbidden (403) on public endpoint. Response: %s. "
+                            "Skipping this request only.",
+                            self.name,
+                            response_body or "(empty)",
+                        )
+                        self.rate_limiter.record_error()
+                        return None
 
                     logger.error(
                         "%s: Access forbidden (403) - credentials may be invalid or lack required scope. "

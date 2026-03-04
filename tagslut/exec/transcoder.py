@@ -14,7 +14,7 @@ from typing import Optional
 from mutagen.flac import FLAC
 from mutagen.id3 import ID3, TALB, TBPM, TCON, TDRC, TIT2, TKEY, TPE1, TSRC  # type: ignore  # TODO: mypy-strict
 
-logger = logging.getLogger("tagslut.transcoder")
+logger = logging.getLogger(__name__)
 
 
 class TranscodeError(Exception):

@@ -1,3 +1,4 @@
+# Retained for internal use only — not registered on CLI surface per SURFACE_POLICY.md
 """tagslut scan CLI group.
 
 Retained for internal/testing use only. The `scan` group is intentionally

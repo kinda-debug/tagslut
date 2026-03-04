@@ -90,16 +90,85 @@ def gig_list(db_path: str) -> None:
 @gig_group.command("status")
 @click.option("--usb", required=True, type=click.Path(exists=True, path_type=Path))  # type: ignore  # TODO: mypy-strict
 @click.option("--db", "db_path", required=True, type=click.Path())
-def gig_status(usb: Path, db_path: str) -> None:
+@click.option("--verbose", is_flag=True, help="Show per-file diff details")
+def gig_status(usb: Path, db_path: str, verbose: bool) -> None:
     """Show what's on the USB and flag stale tracks vs current inventory."""
     from tagslut.exec.usb_export import scan_source
     from tagslut.storage.schema import get_connection
 
-    with get_connection(db_path, purpose="read"):
-        pass
+    with get_connection(db_path, purpose="read") as conn:
+        gig_set = conn.execute(
+            """
+            SELECT id, name
+            FROM gig_sets
+            WHERE usb_path = ?
+            ORDER BY COALESCE(exported_at, created_at) DESC, id DESC
+            LIMIT 1
+            """,
+            (str(usb),),
+        ).fetchone()
+        if gig_set is None:
+            gig_set = conn.execute(
+                """
+                SELECT id, name
+                FROM gig_sets
+                ORDER BY COALESCE(exported_at, created_at) DESC, id DESC
+                LIMIT 1
+                """
+            ).fetchone()
+        if gig_set is None:
+            raise click.ClickException("No gig sets found in DB.")
+
+        rows = conn.execute(
+            """
+            SELECT file_path, mp3_path, usb_dest_path
+            FROM gig_set_tracks
+            WHERE gig_set_id = ?
+            """,
+            (int(gig_set["id"]),),
+        ).fetchall()
+
+    expected_names: set[str] = set()
+    expected_by_name: dict[str, str] = {}
+    for row in rows:
+        candidates = [row["usb_dest_path"], row["mp3_path"], row["file_path"]]
+        chosen = next((str(value) for value in candidates if value), None)
+        if not chosen:
+            continue
+        name = Path(chosen).name
+        key = name.lower()
+        expected_names.add(key)
+        expected_by_name[key] = name
 
     usb_tracks = scan_source(usb / "MUSIC") if (usb / "MUSIC").exists() else []
+    usb_by_name = {track.name.lower(): track.name for track in usb_tracks}
+    actual_names = set(usb_by_name.keys())
+
+    current = sorted(expected_names & actual_names)
+    missing = sorted(expected_names - actual_names)
+    stale = sorted(actual_names - expected_names)
+
     click.echo(f"USB: {usb}")
-    click.echo(f"Tracks on USB: {len(usb_tracks)}")
-    for track in usb_tracks:
-        click.echo(f"  {track.name}")
+    click.echo(f"Gig set: {gig_set['name']} (id={gig_set['id']})")
+    click.echo(f"Expected tracks: {len(expected_names)}")
+    click.echo(f"Tracks on USB:   {len(actual_names)}")
+    click.echo(f"Current:         {len(current)}")
+    click.echo(f"Stale:           {len(stale)}")
+    click.echo(f"Missing:         {len(missing)}")
+
+    if verbose:
+        if current:
+            click.echo("\nCurrent tracks:")
+            for key in current:
+                click.echo(f"  {expected_by_name.get(key, key)}")
+        if stale:
+            click.echo("\nStale tracks:")
+            for key in stale:
+                click.echo(f"  {usb_by_name.get(key, key)}")
+        if missing:
+            click.echo("\nMissing tracks:")
+            for key in missing:
+                click.echo(f"  {expected_by_name.get(key, key)}")
+
+    if missing:
+        raise click.exceptions.Exit(1)

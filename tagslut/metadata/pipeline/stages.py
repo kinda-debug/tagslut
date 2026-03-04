@@ -1,6 +1,7 @@
 """Pipeline stages for metadata enrichment."""
 
 import logging
+import re
 from typing import List
 
 from tagslut.metadata.models.types import (
@@ -27,6 +28,7 @@ from tagslut.metadata.models.precedence import (
 from tagslut.metadata.providers.base import classify_match_confidence
 
 logger = logging.getLogger("tagslut.metadata.enricher")
+ISRC_PATTERN = re.compile(r"^[A-Z]{2}[A-Z0-9]{3}[0-9]{7}$")
 
 
 def normalize_title(value: str) -> str:
@@ -35,6 +37,22 @@ def normalize_title(value: str) -> str:
     for suffix in ("(original mix)", "(main mix)"):
         cleaned = cleaned.replace(suffix, "").strip()
     return " ".join(cleaned.split())
+
+
+def normalize_isrc(value: str) -> str | None:
+    """
+    Extract the first valid ISRC from a tag value.
+
+    Some files carry multiple ISRCs in one tag, separated by ';', ',' or spaces.
+    Providers expect a single 12-character ISRC token.
+    """
+    if not value:
+        return None
+    for token in re.split(r"[;,|\s/]+", value):
+        candidate = token.strip().upper()
+        if candidate and ISRC_PATTERN.match(candidate):
+            return candidate
+    return None
 
 
 def resolve_file(  # type: ignore  # TODO: mypy-strict
@@ -119,18 +137,21 @@ def resolve_file(  # type: ignore  # TODO: mypy-strict
                             break
 
     # Stage 1: Try ISRC if available
-    if file_info.tag_isrc:
-        log(f"Trying ISRC: {file_info.tag_isrc}")
+    normalized_isrc = normalize_isrc(file_info.tag_isrc) if file_info.tag_isrc else None
+    if normalized_isrc:
+        log(f"Trying ISRC: {normalized_isrc}")
         for provider_name in provider_names:
             provider = provider_getter(provider_name)
             if provider is None:
                 continue
 
-            isrc_matches = provider.search_by_isrc(file_info.tag_isrc)
+            isrc_matches = provider.search_by_isrc(normalized_isrc)
             for m in isrc_matches:
                 m.match_confidence = MatchConfidence.EXACT
                 matches.append(m)
                 log(f"  {provider_name}: ISRC match -> {m.title} by {m.artist}")
+    elif file_info.tag_isrc:
+        log(f"Skipping malformed ISRC tag: {file_info.tag_isrc}")
 
     # Stage 2: Try artist + title search if no ISRC matches
     if not matches and file_info.tag_artist and file_info.tag_title:
@@ -330,7 +351,7 @@ def apply_cascade(
 
             # ISRC (prefer exact from tags, then from providers)
             if file_info.tag_isrc:
-                result.canonical_isrc = file_info.tag_isrc
+                result.canonical_isrc = normalize_isrc(file_info.tag_isrc) or file_info.tag_isrc
             else:
                 for m in hoarding_usable:
                     if m.isrc:

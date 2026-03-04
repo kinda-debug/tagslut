@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
+import importlib.util as _ilu
 import sqlite3
 from pathlib import Path
-
-import pytest
 
 from tagslut.storage.schema import init_db
 
@@ -13,8 +12,6 @@ from tagslut.storage.schema import init_db
 _SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "migrate_legacy_db.py"
 
 # We test the individual helper functions by importing the script as a module
-import importlib.util as _ilu
-
 _spec = _ilu.spec_from_file_location("migrate_legacy_db", _SCRIPT)
 _mod = _ilu.module_from_spec(_spec)
 _spec.loader.exec_module(_mod)

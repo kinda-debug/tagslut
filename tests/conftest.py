@@ -25,6 +25,9 @@ if str(ROOT) not in sys.path:
 
 FIXTURE_DIR = ROOT / "tests" / "data"
 
+# Archived suites are preserved for history but excluded from active CI runs.
+collect_ignore = ["archive"]
+
 # FLAC Header Fixtures (base64 encoded valid FLAC headers)
 HEALTHY_FLAC_B64 = (
     "ZkxhQwAAACIQABAAAAALAAALAfQAcAAAAIBQrUjBixKWAtMFoSiyRdNEhAAAKCAAAAByZWZlcmVu"

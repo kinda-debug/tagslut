@@ -65,3 +65,19 @@ def register_report_group(cli: click.Group) -> None:
     def report_plan_summary(args):  # type: ignore  # TODO: mypy-strict
         """Summarize decide plan JSON into table/csv/json views."""
         run_python_script("tools/review/plan_summary.py", args)
+
+    @report.command("dj-review")
+    @click.option("--db", required=True, type=click.Path(), help="Inventory DB path")
+    @click.option("--port", default=5000, show_default=True, type=int, help="Port to listen on")
+    @click.option("--host", default="127.0.0.1", show_default=True, help="Host to bind")
+    @click.option("--open-browser/--no-open-browser", default=True, help="Open browser on launch")
+    def report_dj_review(db, port, host, open_browser):  # type: ignore  # TODO: mypy-strict
+        """Launch local DJ track review web app."""
+        try:
+            from tagslut._web.review_app import run_review_app
+        except ImportError as exc:
+            raise click.ClickException(
+                "Flask is required. Install with: pip install tagslut[web]"
+            ) from exc
+
+        run_review_app(db=db, port=port, host=host, open_browser=open_browser)

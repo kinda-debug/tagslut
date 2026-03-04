@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -18,7 +19,7 @@ DOCS_DIR = PROJECT_ROOT / "docs"
 TOP_CANONICAL_COMMANDS = {"intake", "index", "decide", "execute", "verify", "report", "auth"}
 REMOVED_LEGACY_COMMANDS = {"scan", "recommend", "apply", "promote", "quarantine"}
 REMOVED_COMPAT_COMMANDS = {"mgmt", "metadata", "recover", "m"}
-INTAKE_REQUIRED_COMMANDS = {"run", "prefilter"}
+INTAKE_REQUIRED_COMMANDS = {"run", "prefilter", "process-root"}
 INDEX_REQUIRED_COMMANDS = {
     "register",
     "check",
@@ -108,6 +109,53 @@ def ensure_regex(text: str, pattern: str, errors: list[str], context: str) -> No
         errors.append(f"Missing pattern /{pattern}/ in {context}")
 
 
+def load_project_scripts(pyproject_path: Path) -> set[str]:
+    if not pyproject_path.is_file():
+        return set()
+    data = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+    scripts = data.get("project", {}).get("scripts", {})
+    if not isinstance(scripts, dict):
+        return set()
+    return {str(name) for name in scripts.keys()}
+
+
+def has_dedupe_deprecation_marker(surface_policy_text: str) -> bool:
+    return re.search(
+        r"(?is)`dedupe`.*deprecated alias for `tagslut`.*still shipped",
+        surface_policy_text,
+    ) is not None
+
+
+def check_dedupe_docs_alignment(
+    *,
+    surface_policy_text: str,
+    project_scripts: set[str],
+    errors: list[str],
+) -> None:
+    dedupe_exists = "dedupe" in project_scripts
+    docs_mark_deprecated = has_dedupe_deprecation_marker(surface_policy_text)
+    docs_has_horizon = "2026-06-01" in surface_policy_text
+
+    if dedupe_exists:
+        if not docs_mark_deprecated:
+            errors.append(
+                "`dedupe` console script exists, but docs/SURFACE_POLICY.md does not mark it as "
+                "a deprecated alias for `tagslut` that is still shipped."
+            )
+        if not docs_has_horizon:
+            errors.append(
+                "`dedupe` console script exists, but docs/SURFACE_POLICY.md does not mention "
+                "the deprecation horizon date (2026-06-01)."
+            )
+        return
+
+    if docs_mark_deprecated or docs_has_horizon:
+        errors.append(
+            "docs/SURFACE_POLICY.md describes shipped/deprecated `dedupe`, "
+            "but pyproject.toml has no `dedupe` console script."
+        )
+
+
 def main() -> int:
     errors: list[str] = []
 
@@ -136,7 +184,6 @@ def main() -> int:
         errors.append(
             "Removed top-level commands still present: " + ", ".join(stale_top)
         )
-    # Note: dedupe alias removed — no legacy entrypoint should remain after rebrand.
 
     missing_intake = sorted(INTAKE_REQUIRED_COMMANDS - intake_commands)
     if missing_intake:
@@ -167,6 +214,8 @@ def main() -> int:
         errors.append("Missing expected auth subcommands: " + ", ".join(missing_auth))
 
     operations_doc = (DOCS_DIR / "OPERATIONS.md").read_text(encoding="utf-8", errors="replace")
+    surface_policy_doc = (DOCS_DIR / "SURFACE_POLICY.md").read_text(encoding="utf-8", errors="replace")
+    project_scripts = load_project_scripts(PROJECT_ROOT / "pyproject.toml")
     # Phase runbook docs have been archived — read if present, skip checks otherwise
     def _read_optional(name: str) -> str:
         p = DOCS_DIR / name
@@ -221,6 +270,11 @@ def main() -> int:
         "lint_policy_profiles.py",
         errors,
         "docs/OPERATIONS.md",
+    )
+    check_dedupe_docs_alignment(
+        surface_policy_text=surface_policy_doc,
+        project_scripts=project_scripts,
+        errors=errors,
     )
     # Phase runbook doc cross-references removed — docs archived during decommission
 

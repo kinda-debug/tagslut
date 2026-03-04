@@ -37,7 +37,7 @@ def _same_filesystem(src: Path, dest: Path) -> bool:
     try:
         return os.stat(src).st_dev == os.stat(dest.parent).st_dev
     except Exception as e:
-        logger.debug("Could not compare filesystem devices for %s -> %s: %s", src, dest, e)
+        logger.warning("Could not compare filesystem devices for %s -> %s: %s", src, dest, e)
         return False
 
 
@@ -140,6 +140,14 @@ class MoveReceipt:
         if self.error is not None:
             payload["error"] = self.error
         return payload
+
+
+@dataclass(frozen=True)
+class MovePlanItem:
+    """One move-plan row to execute via the engine."""
+
+    src: Path
+    dest: Path
 
 
 def _build_receipt(
@@ -397,3 +405,21 @@ def execute_move(
         verification_errors=issues,
         error=f"verification_failed:{','.join(issues)}",
     )
+
+
+def execute_move_plan(
+    plan_items: list[MovePlanItem],
+    *,
+    execute: bool,
+    collision_policy: CollisionPolicy = "skip",
+) -> list[MoveReceipt]:
+    """Execute a list of move-plan items and return per-row receipts."""
+    return [
+        execute_move(
+            item.src,
+            item.dest,
+            execute=execute,
+            collision_policy=collision_policy,
+        )
+        for item in plan_items
+    ]

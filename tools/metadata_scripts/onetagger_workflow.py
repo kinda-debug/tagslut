@@ -16,7 +16,6 @@ import os
 import sqlite3
 import subprocess
 import sys
-import tomllib
 import re
 from dataclasses import dataclass
 from datetime import datetime
@@ -37,38 +36,8 @@ except Exception as exc:  # pragma: no cover
 _REPO = Path(__file__).resolve().parents[2]
 if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
-DEFAULT_DB_FALLBACK = "/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db"
-CONFIG_TOML = _REPO / "config.toml"
+from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
 
-
-def _load_config_db_path() -> str:
-    if not CONFIG_TOML.exists():
-        return ""
-    try:
-        data = tomllib.loads(CONFIG_TOML.read_text(encoding="utf-8"))
-    except Exception:
-        return ""
-    path = data.get("db", {}).get("path")
-    if not path:
-        return ""
-    return str(path)
-
-
-def _resolve_default_db() -> str:
-    env_value = os.environ.get("TAGSLUT_DB", "").strip()
-    if env_value:
-        env_path = Path(env_value).expanduser().resolve()
-        if env_path.exists():
-            return str(env_path)
-    config_value = _load_config_db_path()
-    if config_value:
-        config_path = Path(config_value).expanduser().resolve()
-        if config_path.exists():
-            return str(config_path)
-    return DEFAULT_DB_FALLBACK
-
-
-DEFAULT_DB = _resolve_default_db()
 DEFAULT_LIBRARY_ROOT = Path("/Volumes/MUSIC/LIBRARY")
 DEFAULT_WORK_ROOT = Path("/Volumes/MUSIC/_work")
 DEFAULT_OUT_DIR = _REPO / "artifacts/compare"
@@ -122,11 +91,13 @@ def _now_stamp() -> str:
     return datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
-def _resolve_db(path: str) -> Path:
-    db = Path(path).expanduser().resolve()
-    if not db.exists():
-        raise SystemExit(f"DB not found: {db}")
-    return db
+def _resolve_db(path: str | None, *, purpose: str = "read") -> Path:
+    try:
+        resolution = resolve_cli_env_db_path(path, purpose=purpose, source_label="--db")
+    except DbResolutionError as exc:
+        raise SystemExit(f"ERROR: {exc}") from exc
+    print(f"Resolved DB path: {resolution.path}")
+    return resolution.path
 
 
 def _normalize_path_line(line: str) -> str:
@@ -1209,7 +1180,7 @@ def _build_default_m3u_path(library_root: Path) -> Path:
 
 
 def cmd_build(args: argparse.Namespace) -> int:
-    db_path = _resolve_db(args.db)
+    db_path = _resolve_db(args.db, purpose="read")
     library_root = Path(args.library_root).expanduser()
     output_path = Path(args.output).expanduser() if args.output else _build_default_m3u_path(library_root)
     result = build_missing_isrc_m3u(
@@ -1238,7 +1209,8 @@ def cmd_run(args: argparse.Namespace) -> int:
     onetagger_bin = Path(args.onetagger_bin).expanduser().resolve()
     if not onetagger_bin.exists():
         raise SystemExit(f"OneTagger binary not found: {onetagger_bin}")
-    db_path = _resolve_db(args.db)
+    db_purpose = "write" if (args.db_refresh or args.db_refresh_only) else "read"
+    db_path = _resolve_db(args.db, purpose=db_purpose)
 
     run_onetagger(
         m3u_path=m3u_path,
@@ -1261,7 +1233,8 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 
 def cmd_sync(args: argparse.Namespace) -> int:
-    db_path = _resolve_db(args.db)
+    db_purpose = "write" if (args.db_refresh or args.db_refresh_only) else "read"
+    db_path = _resolve_db(args.db, purpose=db_purpose)
     library_root = Path(args.library_root).expanduser()
     output_path = Path(args.output).expanduser() if args.output else _build_default_m3u_path(library_root)
     build_result = build_missing_isrc_m3u(
@@ -1329,6 +1302,7 @@ def cmd_sync(args: argparse.Namespace) -> int:
 
 
 def cmd_audiofeatures(args: argparse.Namespace) -> int:
+    db_path: Path | None = None
     if args.mode == "spotify":
         onetagger_bin = Path(args.onetagger_bin).expanduser().resolve()
         audio_config = Path(args.audiofeatures_config).expanduser()
@@ -1348,10 +1322,10 @@ def cmd_audiofeatures(args: argparse.Namespace) -> int:
             out_dir=out_dir,
         )
     else:
-        db_path = Path(args.db).expanduser().resolve() if args.db else None
+        db_path = _resolve_db(args.db, purpose="read")
     summary = run_lexicon_audiofeatures(
         path=Path(args.path).expanduser().resolve(),
-        db_path=db_path if db_path and db_path.exists() else None,
+        db_path=db_path,
         write_tags=not args.no_write_tags,
         overwrite_tags=args.overwrite_tags,
         require_bpm_or_genre=not args.no_require_bpm_or_genre,
@@ -1400,7 +1374,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     def add_common(parser_obj: argparse.ArgumentParser) -> None:
-        parser_obj.add_argument("--db", default=str(DEFAULT_DB), help="Path to tagslut SQLite DB.")
+        parser_obj.add_argument("--db", help="Path to tagslut SQLite DB.")
         parser_obj.add_argument(
             "--library-root",
             default=str(DEFAULT_LIBRARY_ROOT),
@@ -1429,7 +1403,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     run_cmd = sub.add_parser("run", help="Run OneTagger for an existing M3U via symlink batch.")
     run_cmd.add_argument("--m3u", required=True, help="Input M3U path.")
-    run_cmd.add_argument("--db", default=str(DEFAULT_DB), help="Path to tagslut SQLite DB.")
+    run_cmd.add_argument("--db", help="Path to tagslut SQLite DB.")
     run_cmd.add_argument("--onetagger-bin", default=str(DEFAULT_ONETAGGER_BIN), help="OneTagger CLI binary path.")
     run_cmd.add_argument("--config", default=str(DEFAULT_CONFIG_PATH), help="Generated OneTagger config path.")
     run_cmd.add_argument("--base-config", default=str(DEFAULT_BASE_CONFIG_PATH), help="Base OneTagger config path to copy/merge.")
@@ -1545,7 +1519,7 @@ def build_parser() -> argparse.ArgumentParser:
     audio_cmd.add_argument("--path", default=str(DEFAULT_AUDIOFEATURES_PATH), help="Path to music files or M3U.")
     audio_cmd.add_argument("--mode", choices=["lexicon", "spotify"], default="lexicon", help="Audio features source.")
     audio_cmd.add_argument("--limit", type=int, default=0, help="Limit number of files (0 = all).")
-    audio_cmd.add_argument("--db", default=str(DEFAULT_DB), help="Path to tagslut SQLite DB (lexicon mode).")
+    audio_cmd.add_argument("--db", help="Path to tagslut SQLite DB (lexicon mode).")
     audio_cmd.add_argument("--no-write-tags", action="store_true", help="Do not write tags (lexicon mode).")
     audio_cmd.add_argument("--overwrite-tags", action="store_true", help="Overwrite existing 1T_* tags (lexicon mode).")
     audio_cmd.add_argument("--no-require-bpm-or-genre", action="store_true", help="Allow lexicon even without BPM/genre.")

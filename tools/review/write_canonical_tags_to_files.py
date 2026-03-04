@@ -8,9 +8,9 @@ Defaults are conservative:
 - Supports --path (root) or --m3u list of paths.
 
 Example:
-  PYTHONPATH=/Users/georgeskhawam/Projects/tagslut \
+  PYTHONPATH=/path/to/tagslut \
   python3 tools/review/write_canonical_tags_to_files.py \
-    --db /Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db \
+    --db /path/to/music.db \
     --m3u /Volumes/MUSIC/LIBRARY/MDL_NEW_TRACKS.m3u \
     --execute
 """
@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Iterable
 
 from mutagen.flac import FLAC
+from _progress import ProgressTracker
 
 
 def iter_flacs_from_root(root: Path) -> Iterable[Path]:
@@ -64,6 +65,7 @@ def main() -> int:
     ap.add_argument("--m3u", type=Path, help="M3U file listing FLAC paths")
     ap.add_argument("--force", action="store_true", help="Overwrite existing tags")
     ap.add_argument("--execute", action="store_true", help="Write tags to files")
+    ap.add_argument("--progress-interval", type=int, default=100, help="Progress print interval")
     args = ap.parse_args()
 
     if not args.path and not args.m3u:
@@ -87,13 +89,18 @@ def main() -> int:
     updated = 0
     skipped = 0
     missing = 0
-    for p in sources:
+    progress = ProgressTracker(total=len(sources), interval=int(args.progress_interval), label="Writeback")
+    for idx, p in enumerate(sources, start=1):
         if not p.exists():
             missing += 1
+            if progress.should_print(idx):
+                print(progress.line(idx, extra=f"updated={updated} skipped={skipped} missing={missing}"))
             continue
         row = get_row(conn, p)
         if not row:
             skipped += 1
+            if progress.should_print(idx):
+                print(progress.line(idx, extra=f"updated={updated} skipped={skipped} missing={missing}"))
             continue
 
         audio = FLAC(p)
@@ -148,6 +155,9 @@ def main() -> int:
             updated += 1
         else:
             skipped += 1
+
+        if progress.should_print(idx):
+            print(progress.line(idx, extra=f"updated={updated} skipped={skipped} missing={missing}"))
 
     conn.close()
 

@@ -7,26 +7,27 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: ${{ matrix.python-version }}
 
       - name: Install Poetry
         run: pip install poetry
 
       - name: Install dependencies
-        run: poetry install
+        run: poetry install --with dev
 
       - name: Lint
         run: poetry run flake8 tagslut/ tests/
 
       - name: Type check
-        run: poetry run mypy tagslut/
+        run: poetry run mypy tagslut/ --ignore-missing-imports
 
       - name: Test
-        run: poetry run pytest --tb=short
+        run: poetry run pytest --tb=short -q

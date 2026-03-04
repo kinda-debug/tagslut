@@ -6,15 +6,15 @@ Local web app to classify Artist / Album / Track as **OK** vs **Not OK**, with w
 
 ```bash
 export TAGSLUT_DB="/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db"
-python /Users/georgeskhawam/Projects/tagslut/tools/dj_review_app.py
+tagslut report dj-review --db "$TAGSLUT_DB"
 ```
 
-Open: `http://127.0.0.1:5055`
+Open: `http://127.0.0.1:5000`
 
-CLI wrapper:
+Compatibility launcher (still supported):
 
 ```bash
-tagslut dj review-app --db "/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db"
+python /Users/georgeskhawam/Projects/tagslut/tools/dj_review_app.py --db "$TAGSLUT_DB"
 ```
 
 Optional filters / defaults:

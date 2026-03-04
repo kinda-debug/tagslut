@@ -4,7 +4,8 @@
 .PHONY: help install update lock test lint format type-check clean check \
 	run intake-help index-help decide-help execute-help verify-help report-help auth-help \
 	index-register-dry index-check-dry promote-dry promote audit-layout audit-cli-docs \
-	backfill-v3-identities backfill-v3-provenance validate-v3-parity lint-policies test-phase3-exec
+	backfill-v3-identities backfill-v3-provenance validate-v3-parity lint-policies test-phase3-exec \
+	verify-v3 doctor-v3 report-identity-qa plan-merge-beatport-dupes merge-beatport-dupes run-move-plan
 
 help: ## Show this help message
 	@echo "Tagslut - available targets:"
@@ -59,6 +60,32 @@ backfill-v3-provenance: ## Backfill v3 provenance/move rows from logs (set DB, o
 validate-v3-parity: ## Validate legacy<->v3 dual-write parity (set DB and optional STRICT=1)
 	@test -n "$$DB" || (echo "Usage: make validate-v3-parity DB=/path/to/db.sqlite [STRICT=1]"; exit 1)
 	poetry run python scripts/validate_v3_dual_write_parity.py --db "$$DB" $(if $(STRICT),--strict,)
+
+verify-v3: ## Verify v2->v3 migration preservation (set V2 and V3; optional STRICT=1)
+	@test -n "$$V2" || (echo "Usage: make verify-v3 V2=/path/music_v2.db V3=/path/music_v3.db [STRICT=1]"; exit 1)
+	@test -n "$$V3" || (echo "Usage: make verify-v3 V2=/path/music_v2.db V3=/path/music_v3.db [STRICT=1]"; exit 1)
+	poetry run python scripts/db/verify_v3_migration.py --v2 "$$V2" --v3 "$$V3" $(if $(STRICT),--strict,)
+
+doctor-v3: ## Run read-only v3 doctor checks (set V3)
+	@test -n "$$V3" || (echo "Usage: make doctor-v3 V3=/path/music_v3.db"; exit 1)
+	poetry run python scripts/db/doctor_v3.py --v3 "$$V3"
+
+report-identity-qa: ## Generate identity QA summary/CSV for v3 (set V3; optional OUT and LIMIT)
+	@test -n "$$V3" || (echo "Usage: make report-identity-qa V3=/path/music_v3.db [OUT=output/identity_qa.csv] [LIMIT=200]"; exit 1)
+	poetry run python scripts/db/report_identity_qa_v3.py --db "$$V3" $(if $(OUT),--out "$$OUT",) $(if $(LIMIT),--limit "$(LIMIT)",)
+
+plan-merge-beatport-dupes: ## Plan duplicate beatport identity merges (set V3; optional OUT and LIMIT)
+	@test -n "$$V3" || (echo "Usage: make plan-merge-beatport-dupes V3=/path/music_v3.db [OUT=output/merge_plan_beatport_v3.csv] [LIMIT=200]"; exit 1)
+	poetry run python scripts/db/merge_identities_by_beatport_v3.py --db "$$V3" $(if $(OUT),--out "$$OUT",) $(if $(LIMIT),--limit "$(LIMIT)",)
+
+merge-beatport-dupes: ## Plan/execute beatport duplicate merges (set V3; EXECUTE=1 required to write)
+	@test -n "$$V3" || (echo "Usage: make merge-beatport-dupes V3=/path/music_v3.db [OUT=output/merge_plan_beatport_v3.csv] [LIMIT=200] [EXECUTE=1]"; exit 1)
+	poetry run python scripts/db/merge_identities_by_beatport_v3.py --db "$$V3" $(if $(OUT),--out "$$OUT",) $(if $(LIMIT),--limit "$(LIMIT)",) $(if $(EXECUTE),--execute,)
+
+run-move-plan: ## Safely run move-plan cycle (set PLAN and V3; optional STRICT=1 DRY_RUN=1)
+	@test -n "$$PLAN" || (echo "Usage: make run-move-plan PLAN=plans/<file>.csv V3=/path/music_v3.db [STRICT=1] [DRY_RUN=1]"; exit 1)
+	@test -n "$$V3" || (echo "Usage: make run-move-plan PLAN=plans/<file>.csv V3=/path/music_v3.db [STRICT=1] [DRY_RUN=1]"; exit 1)
+	TAGSLUT_DB="$$V3" poetry run python -m tagslut ops run-move-plan "$$PLAN" $(if $(STRICT),--strict,) $(if $(DRY_RUN),--dry-run,)
 
 lint-policies: ## Lint policy profiles in config/policies
 	poetry run python scripts/lint_policy_profiles.py

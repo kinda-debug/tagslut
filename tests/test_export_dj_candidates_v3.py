@@ -46,37 +46,39 @@ def _create_fixture_db(tmp_path: Path) -> Path:
         conn.executemany(
             """
             INSERT INTO track_identity (
-                id, identity_key, canonical_artist, canonical_title, canonical_bpm, canonical_duration, merged_into_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                id,
+                identity_key,
+                canonical_artist,
+                canonical_title,
+                canonical_album,
+                canonical_genre,
+                canonical_sub_genre,
+                canonical_bpm,
+                canonical_duration,
+                canonical_key,
+                merged_into_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
-                (1, "id:alpha", "Alpha", "Tune", 124.0, 320.0, None),
-                (2, "id:orphan", "Orphan", "Lost", 122.0, 300.0, None),
-                (3, "id:missing_bpm", "No", "BPM", None, 280.0, None),
-                (4, "id:beta", "beta", "anthem", 126.0, 310.0, None),
+                (1, "id:alpha", "Alpha", "Tune", "Alpha EP", "House", "Deep", 124.0, 320.0, "8A", None),
+                (2, "id:orphan", "Orphan", "Lost", "Lost EP", "Techno", "Peak", 122.0, 300.0, "9A", None),
+                (3, "id:missing_bpm", "No", "BPM", "Silent EP", "Ambient", "Drone", None, 280.0, "10A", None),
+                (4, "id:beta", "beta", "anthem", "Beta EP", "Techno", "Peak", 126.0, 310.0, "9A", None),
             ],
         )
         conn.executemany(
             "INSERT INTO asset_file (id, path, duration_s, sample_rate, bit_depth, integrity_state) VALUES (?, ?, ?, ?, ?, ?)",
             [
                 (11, "/root/a.flac", 320.0, 44100, 16, "ok"),
-                (31, "/root/c.flac", 280.0, 48000, 24, "ok"),
+                (21, "/root/b.flac", 300.0, 44100, 16, "ok"),
                 (41, "/root/d.flac", 310.0, 44100, 16, "ok"),
-            ],
-        )
-        conn.executemany(
-            "INSERT INTO asset_link (asset_id, identity_id, active) VALUES (?, ?, 1)",
-            [
-                (11, 1),
-                (31, 3),
-                (41, 4),
             ],
         )
         conn.executemany(
             "INSERT INTO preferred_asset (identity_id, asset_id, score, reason_json, version) VALUES (?, ?, ?, ?, ?)",
             [
                 (1, 11, 1.0, "{}", 1),
-                (3, 31, 1.0, "{}", 1),
+                (2, 21, 1.0, "{}", 1),
                 (4, 41, 1.0, "{}", 1),
             ],
         )
@@ -89,80 +91,76 @@ def _create_fixture_db(tmp_path: Path) -> Path:
                 (4, "active"),
             ],
         )
+        conn.executemany(
+            "INSERT INTO dj_track_profile (identity_id, set_role, rating, energy, dj_tags_json) VALUES (?, ?, ?, ?, ?)",
+            [
+                (1, "builder", 4, 7, '["groovy"]'),
+                (4, "peak", 2, 5, '["hard"]'),
+            ],
+        )
         conn.commit()
     finally:
         conn.close()
     return db
 
 
-def test_active_identity_with_preferred_asset_exports_row(tmp_path: Path) -> None:
+def test_scope_switches_views_and_rows(tmp_path: Path) -> None:
     db = _create_fixture_db(tmp_path)
-    out = tmp_path / "candidates.csv"
 
-    proc = _run_export(db=db, out=out)
-    assert proc.returncode == 0, f"STDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+    out_active = tmp_path / "active.csv"
+    proc_active = _run_export(db=db, out=out_active, extra_args=["--scope", "active"])
+    assert proc_active.returncode == 0, f"STDOUT:\n{proc_active.stdout}\nSTDERR:\n{proc_active.stderr}"
+    assert "view: v_dj_pool_candidates_active_v3" in proc_active.stdout
+    rows_active = _read_csv(out_active)
+    assert [row["identity_id"] for row in rows_active] == ["1", "4"]
 
-    rows = _read_csv(out)
-    alpha = next((row for row in rows if row["identity_id"] == "1"), None)
-    assert alpha is not None
-    assert alpha["preferred_asset_id"] == "11"
-    assert alpha["preferred_path"] == "/root/a.flac"
+    out_orphan = tmp_path / "orphan.csv"
+    proc_orphan = _run_export(db=db, out=out_orphan, extra_args=["--scope", "active+orphan"])
+    assert proc_orphan.returncode == 0, f"STDOUT:\n{proc_orphan.stdout}\nSTDERR:\n{proc_orphan.stderr}"
+    assert "view: v_dj_pool_candidates_active_orphan_v3" in proc_orphan.stdout
+    rows_orphan = _read_csv(out_orphan)
+    assert [row["identity_id"] for row in rows_orphan] == ["1", "4", "2"]
+
+    out_all = tmp_path / "all.csv"
+    proc_all = _run_export(db=db, out=out_all, extra_args=["--scope", "all"])
+    assert proc_all.returncode == 0, f"STDOUT:\n{proc_all.stdout}\nSTDERR:\n{proc_all.stderr}"
+    assert "view: v_dj_pool_candidates_v3" in proc_all.stdout
+    rows_all = _read_csv(out_all)
+    assert [row["identity_id"] for row in rows_all] == ["1", "4", "3", "2"]
 
 
-def test_orphan_excluded_by_default_and_included_with_flag(tmp_path: Path) -> None:
+def test_operational_filters_apply(tmp_path: Path) -> None:
     db = _create_fixture_db(tmp_path)
-    out_default = tmp_path / "default.csv"
-    proc_default = _run_export(db=db, out=out_default, extra_args=["--no-require-preferred"])
-    assert proc_default.returncode == 0, f"STDOUT:\n{proc_default.stdout}\nSTDERR:\n{proc_default.stderr}"
-    rows_default = _read_csv(out_default)
-    assert all(row["identity_id"] != "2" for row in rows_default)
 
-    out_with_orphans = tmp_path / "with_orphans.csv"
-    proc_with_orphans = _run_export(
+    out_filtered = tmp_path / "filtered.csv"
+    proc_filtered = _run_export(
         db=db,
-        out=out_with_orphans,
-        extra_args=["--include-orphans", "--no-require-preferred"],
+        out=out_filtered,
+        extra_args=[
+            "--scope",
+            "all",
+            "--only-profiled",
+            "--min-rating",
+            "3",
+            "--min-energy",
+            "6",
+            "--key",
+            "8A",
+        ],
     )
-    assert proc_with_orphans.returncode == 0, (
-        f"STDOUT:\n{proc_with_orphans.stdout}\nSTDERR:\n{proc_with_orphans.stderr}"
-    )
-    rows_with_orphans = _read_csv(out_with_orphans)
-    assert any(row["identity_id"] == "2" for row in rows_with_orphans)
+    assert proc_filtered.returncode == 0, f"STDOUT:\n{proc_filtered.stdout}\nSTDERR:\n{proc_filtered.stderr}"
+    rows_filtered = _read_csv(out_filtered)
+    assert [row["identity_id"] for row in rows_filtered] == ["1"]
 
 
-def test_missing_preferred_asset_table_strict_and_non_required_modes(tmp_path: Path) -> None:
-    db = _create_fixture_db(tmp_path)
-    conn = sqlite3.connect(str(db))
-    try:
-        conn.execute("DROP TABLE preferred_asset")
-        conn.commit()
-    finally:
-        conn.close()
-
-    out_strict = tmp_path / "strict.csv"
-    proc_strict = _run_export(db=db, out=out_strict)
-    assert proc_strict.returncode == 2
-    assert "missing required table: preferred_asset" in proc_strict.stdout
-
-    out_non_required = tmp_path / "non_required.csv"
-    proc_non_required = _run_export(db=db, out=out_non_required, extra_args=["--no-require-preferred"])
-    assert proc_non_required.returncode == 0, (
-        f"STDOUT:\n{proc_non_required.stdout}\nSTDERR:\n{proc_non_required.stderr}"
-    )
-    rows = _read_csv(out_non_required)
-    assert len(rows) >= 1
-    assert all(row["preferred_asset_id"] == "" for row in rows)
-    assert all(row["preferred_path"] == "" for row in rows)
-
-
-def test_min_bpm_filter_strict_and_non_strict_behavior(tmp_path: Path) -> None:
+def test_min_bpm_strict_and_non_strict_behavior(tmp_path: Path) -> None:
     db = _create_fixture_db(tmp_path)
 
     out_strict = tmp_path / "strict.csv"
     proc_strict = _run_export(
         db=db,
         out=out_strict,
-        extra_args=["--min-bpm", "123", "--where", "artist='No'"],
+        extra_args=["--scope", "all", "--min-bpm", "123", "--genre", "Ambient"],
     )
     assert proc_strict.returncode == 0, f"STDOUT:\n{proc_strict.stdout}\nSTDERR:\n{proc_strict.stderr}"
     rows_strict = _read_csv(out_strict)
@@ -172,7 +170,7 @@ def test_min_bpm_filter_strict_and_non_strict_behavior(tmp_path: Path) -> None:
     proc_non_strict = _run_export(
         db=db,
         out=out_non_strict,
-        extra_args=["--min-bpm", "123", "--where", "artist='No'", "--no-strict"],
+        extra_args=["--scope", "all", "--min-bpm", "123", "--genre", "Ambient", "--no-strict"],
     )
     assert proc_non_strict.returncode == 0, (
         f"STDOUT:\n{proc_non_strict.stdout}\nSTDERR:\n{proc_non_strict.stderr}"
@@ -182,13 +180,16 @@ def test_min_bpm_filter_strict_and_non_strict_behavior(tmp_path: Path) -> None:
     assert '"missing_bpm":true' in rows_non_strict[0]["flags_json"]
 
 
-def test_export_ordering_is_deterministic(tmp_path: Path) -> None:
+def test_missing_view_returns_error(tmp_path: Path) -> None:
     db = _create_fixture_db(tmp_path)
-    out = tmp_path / "ordered.csv"
+    conn = sqlite3.connect(str(db))
+    try:
+        conn.execute("DROP VIEW v_dj_pool_candidates_active_v3")
+        conn.commit()
+    finally:
+        conn.close()
 
-    proc = _run_export(db=db, out=out)
-    assert proc.returncode == 0, f"STDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
-
-    rows = _read_csv(out)
-    exported_ids = [row["identity_id"] for row in rows]
-    assert exported_ids == ["1", "4", "3"]
+    out = tmp_path / "missing_view.csv"
+    proc = _run_export(db=db, out=out, extra_args=["--scope", "active"])
+    assert proc.returncode == 2
+    assert "missing required view: v_dj_pool_candidates_active_v3" in proc.stdout

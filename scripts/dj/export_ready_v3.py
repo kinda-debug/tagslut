@@ -1,21 +1,13 @@
 #!/usr/bin/env python3
-"""Export DJ-ready rows by joining candidates with dj profile fields."""
+"""Export DJ-ready rows from the policy view."""
 
 from __future__ import annotations
 
 import argparse
 import csv
-import json
 import sqlite3
-import sys
 from pathlib import Path
 from urllib.parse import quote
-
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-from scripts.dj.export_candidates_v3 import _build_rows, _parse_where_clause, _table_exists  # noqa: E402
 
 CSV_COLUMNS = [
     "identity_id",
@@ -53,9 +45,90 @@ def _write_csv(path: Path, rows: list[dict[str, object]]) -> Path:
     with resolved.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=CSV_COLUMNS)
         writer.writeheader()
-        for row in rows:
-            writer.writerow(row)
+        writer.writerows(rows)
     return resolved
+
+
+def _fetch_rows(
+    conn: sqlite3.Connection,
+    *,
+    min_rating: int | None,
+    min_energy: int | None,
+    set_roles: list[str],
+    only_profiled: bool,
+    limit: int | None,
+) -> list[dict[str, object]]:
+    where: list[str] = []
+    params: list[object] = []
+
+    if only_profiled:
+        where.append("dj_updated_at IS NOT NULL")
+    if min_rating is not None:
+        where.append("dj_rating >= ?")
+        params.append(int(min_rating))
+    if min_energy is not None:
+        where.append("dj_energy >= ?")
+        params.append(int(min_energy))
+
+    clean_roles = [role.strip().lower() for role in set_roles if role.strip()]
+    if clean_roles:
+        placeholders = ",".join("?" for _ in clean_roles)
+        where.append(f"dj_set_role IN ({placeholders})")
+        params.extend(clean_roles)
+
+    where_sql = ""
+    if where:
+        where_sql = "WHERE " + " AND ".join(where)
+
+    limit_sql = ""
+    if limit is not None:
+        limit_sql = " LIMIT ?"
+        params.append(int(limit))
+
+    query = f"""
+        SELECT
+            identity_id,
+            artist,
+            title,
+            bpm,
+            musical_key AS key,
+            genre,
+            duration_s,
+            asset_path AS preferred_path,
+            dj_rating AS rating,
+            dj_energy AS energy,
+            dj_set_role AS set_role,
+            dj_tags_json,
+            dj_notes AS notes,
+            dj_last_played_at AS last_played_at
+        FROM v_dj_pool_candidates_active_v3
+        {where_sql}
+        ORDER BY LOWER(COALESCE(artist, '')), LOWER(COALESCE(title, '')), identity_id ASC
+        {limit_sql}
+    """
+
+    rows = conn.execute(query, tuple(params)).fetchall()
+    out: list[dict[str, object]] = []
+    for row in rows:
+        out.append(
+            {
+                "identity_id": int(row["identity_id"]),
+                "artist": row["artist"] or "",
+                "title": row["title"] or "",
+                "bpm": "" if row["bpm"] is None else row["bpm"],
+                "key": row["key"] or "",
+                "genre": row["genre"] or "",
+                "duration_s": "" if row["duration_s"] is None else row["duration_s"],
+                "preferred_path": row["preferred_path"] or "",
+                "rating": "" if row["rating"] is None else row["rating"],
+                "energy": "" if row["energy"] is None else row["energy"],
+                "set_role": row["set_role"] or "",
+                "dj_tags_json": row["dj_tags_json"] or "[]",
+                "notes": row["notes"] or "",
+                "last_played_at": row["last_played_at"] or "",
+            }
+        )
+    return out
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -63,11 +136,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--db", required=True, type=Path)
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--min-rating", type=int)
-    parser.add_argument("--set-role")
     parser.add_argument("--min-energy", type=int)
+    parser.add_argument("--set-role", action="append", default=[])
     parser.add_argument("--only-profiled", action="store_true")
-    parser.add_argument("--include-orphans", action="store_true")
-    parser.add_argument("--no-require-preferred", action="store_true")
     parser.add_argument("--limit", type=int)
     return parser.parse_args(argv)
 
@@ -81,88 +152,21 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     try:
-        where_predicates = _parse_where_clause(None)
-        candidates, _ = _build_rows(
+        rows = _fetch_rows(
             conn,
-            include_orphans=bool(args.include_orphans),
-            require_preferred=not bool(args.no_require_preferred),
-            min_bpm=None,
-            max_bpm=None,
-            min_duration=None,
-            max_duration=None,
-            where_predicates=where_predicates,
-            strict=True,
+            min_rating=args.min_rating,
+            min_energy=args.min_energy,
+            set_roles=args.set_role,
+            only_profiled=bool(args.only_profiled),
+            limit=args.limit,
         )
-
-        profiles_by_id: dict[int, dict[str, object]] = {}
-        if _table_exists(conn, "dj_track_profile"):
-            for row in conn.execute(
-                """
-                SELECT identity_id, rating, energy, set_role, dj_tags_json, notes, last_played_at
-                FROM dj_track_profile
-                ORDER BY identity_id ASC
-                """
-            ).fetchall():
-                profiles_by_id[int(row["identity_id"])] = {
-                    "rating": row["rating"],
-                    "energy": row["energy"],
-                    "set_role": row["set_role"],
-                    "dj_tags_json": row["dj_tags_json"] or "[]",
-                    "notes": row["notes"] or "",
-                    "last_played_at": row["last_played_at"] or "",
-                }
-
-        out_rows: list[dict[str, object]] = []
-        for cand in candidates:
-            identity_id = int(cand["identity_id"])
-            profile = profiles_by_id.get(identity_id)
-            if bool(args.only_profiled) and profile is None:
-                continue
-
-            rating = profile.get("rating") if profile else None
-            energy = profile.get("energy") if profile else None
-            set_role = (profile.get("set_role") if profile else "") or ""
-            dj_tags_json = (profile.get("dj_tags_json") if profile else "[]") or "[]"
-            notes = (profile.get("notes") if profile else "") or ""
-            last_played_at = (profile.get("last_played_at") if profile else "") or ""
-
-            if args.min_rating is not None and (rating is None or int(rating) < int(args.min_rating)):
-                continue
-            if args.min_energy is not None and (energy is None or int(energy) < int(args.min_energy)):
-                continue
-            if args.set_role and set_role != str(args.set_role).strip().lower():
-                continue
-
-            out_rows.append(
-                {
-                    "identity_id": identity_id,
-                    "artist": cand["artist"],
-                    "title": cand["title"],
-                    "bpm": "" if cand["bpm"] is None else cand["bpm"],
-                    "key": cand["key"],
-                    "genre": cand["genre"],
-                    "duration_s": "" if cand["duration_s"] is None else cand["duration_s"],
-                    "preferred_path": cand["preferred_path"],
-                    "rating": "" if rating is None else rating,
-                    "energy": "" if energy is None else energy,
-                    "set_role": set_role,
-                    "dj_tags_json": dj_tags_json,
-                    "notes": notes,
-                    "last_played_at": last_played_at,
-                }
-            )
-
-        out_rows.sort(key=lambda item: (str(item["artist"]).casefold(), str(item["title"]).casefold(), int(item["identity_id"])))
-        if args.limit is not None:
-            out_rows = out_rows[: int(args.limit)]
-
-        out_path = _write_csv(args.out, out_rows)
+        out_path = _write_csv(args.out, rows)
     finally:
         conn.close()
 
     print(f"v3 db: {args.db.expanduser().resolve()}")
     print(f"out: {out_path}")
-    print(f"rows_exported: {len(out_rows)}")
+    print(f"rows_exported: {len(rows)}")
     return 0
 
 

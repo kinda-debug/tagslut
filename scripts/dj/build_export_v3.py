@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build deterministic DJ export tree from v3 preferred assets."""
+"""Build deterministic DJ export tree from v3 policy view."""
 
 from __future__ import annotations
 
@@ -43,19 +43,6 @@ def _connect_ro(path: Path) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA query_only=ON")
     return conn
-
-
-def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
-    row = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone()
-    return row is not None
-
-
-def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
-    try:
-        rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
-    except sqlite3.OperationalError:
-        return False
-    return any(str(r[1]) == column for r in rows)
 
 
 def _sanitize_component(value: str, fallback: str) -> str:
@@ -106,72 +93,51 @@ def _select_rows(
     min_energy: int | None,
     limit: int | None,
 ) -> list[sqlite3.Row]:
-    if not _table_exists(conn, "preferred_asset"):
-        raise RuntimeError("missing required table: preferred_asset")
-    if not _table_exists(conn, "identity_status"):
-        raise RuntimeError("missing required table: identity_status")
-    has_dj_profile = _table_exists(conn, "dj_track_profile")
+    view_name = (
+        "v_dj_pool_candidates_active_v3"
+        if scope == "active"
+        else "v_dj_pool_candidates_active_orphan_v3"
+    )
 
-    merged_where = "ti.merged_into_id IS NULL" if _column_exists(conn, "track_identity", "merged_into_id") else "1=1"
-    status_values = ["active"] if scope == "active" else ["active", "orphan"]
-    status_placeholders = ",".join("?" for _ in status_values)
-
-    where = [
-        merged_where,
-        f"ist.status IN ({status_placeholders})",
-        "pa.asset_id IS NOT NULL",
-    ]
-    params: list[object] = list(status_values)
+    where: list[str] = []
+    params: list[object] = []
 
     if min_rating is not None:
-        if not has_dj_profile:
-            return []
-        where.append("dj.rating >= ?")
+        where.append("dj_rating >= ?")
         params.append(int(min_rating))
     if min_energy is not None:
-        if not has_dj_profile:
-            return []
-        where.append("dj.energy >= ?")
+        where.append("dj_energy >= ?")
         params.append(int(min_energy))
     if set_roles:
         clean_roles = [role.strip().lower() for role in set_roles if role.strip()]
         if clean_roles:
-            if not has_dj_profile:
-                return []
             placeholders = ",".join("?" for _ in clean_roles)
-            where.append(f"dj.set_role IN ({placeholders})")
+            where.append(f"dj_set_role IN ({placeholders})")
             params.extend(clean_roles)
+
+    where_sql = ""
+    if where:
+        where_sql = "WHERE " + " AND ".join(where)
 
     limit_sql = ""
     if limit is not None:
         limit_sql = " LIMIT ?"
         params.append(int(limit))
 
-    dj_join = "LEFT JOIN dj_track_profile dj ON dj.identity_id = ti.id" if has_dj_profile else ""
-    dj_set_role_select = "dj.set_role AS set_role" if has_dj_profile else "NULL AS set_role"
-    dj_rating_select = "dj.rating AS rating" if has_dj_profile else "NULL AS rating"
-    dj_energy_select = "dj.energy AS energy" if has_dj_profile else "NULL AS energy"
-
     query = f"""
         SELECT
-            ti.id AS identity_id,
-            ti.canonical_artist AS artist,
-            ti.canonical_title AS title,
-            ti.canonical_genre AS genre,
-            pa.asset_id AS preferred_asset_id,
-            af.path AS source_path,
-            af.content_sha256 AS source_sha256,
-            af.mtime AS source_mtime,
-            {dj_set_role_select},
-            {dj_rating_select},
-            {dj_energy_select}
-        FROM track_identity ti
-        JOIN identity_status ist ON ist.identity_id = ti.id
-        JOIN preferred_asset pa ON pa.identity_id = ti.id
-        JOIN asset_file af ON af.id = pa.asset_id
-        {dj_join}
-        WHERE {' AND '.join(where)}
-        ORDER BY LOWER(COALESCE(ti.canonical_artist, '')), LOWER(COALESCE(ti.canonical_title, '')), ti.id ASC
+            identity_id,
+            artist,
+            title,
+            genre,
+            preferred_asset_id,
+            asset_path AS source_path,
+            sha256 AS source_sha256,
+            asset_mtime AS source_mtime,
+            dj_set_role AS set_role
+        FROM {view_name}
+        {where_sql}
+        ORDER BY LOWER(COALESCE(artist, '')), LOWER(COALESCE(title, '')), identity_id ASC
         {limit_sql}
     """
     return conn.execute(query, tuple(params)).fetchall()

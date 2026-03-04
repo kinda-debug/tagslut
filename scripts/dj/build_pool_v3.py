@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build deterministic downstream DJ pool export tree from v3 preferred assets."""
+"""Build deterministic downstream DJ pool export tree from v3 policy view."""
 
 from __future__ import annotations
 
@@ -89,23 +89,7 @@ def _roles_clause(roles: list[str]) -> tuple[str, list[str]]:
     if not clean:
         return "", []
     placeholders = ",".join("?" for _ in clean)
-    return f" AND dj.set_role IN ({placeholders})", clean
-
-
-def _check_preferred_required(conn: sqlite3.Connection, scope: str) -> int:
-    status_clause = "ist.status = 'active'" if scope == "active" else "ist.status IN ('active','orphan')"
-    row = conn.execute(
-        f"""
-        SELECT COUNT(*)
-        FROM track_identity ti
-        JOIN identity_status ist ON ist.identity_id = ti.id
-        LEFT JOIN preferred_asset pa ON pa.identity_id = ti.id
-        WHERE ti.merged_into_id IS NULL
-          AND {status_clause}
-          AND pa.asset_id IS NULL
-        """
-    ).fetchone()
-    return int(row[0]) if row else 0
+    return f"dj_set_role IN ({placeholders})", clean
 
 
 def _select_rows(
@@ -118,27 +102,33 @@ def _select_rows(
     only_profiled: bool,
     limit: int | None,
 ) -> list[sqlite3.Row]:
-    status_clause = "ist.status = 'active'" if scope == "active" else "ist.status IN ('active','orphan')"
     role_sql, role_params = _roles_clause(set_roles)
+    view_name = (
+        "v_dj_pool_candidates_active_v3"
+        if scope == "active"
+        else "v_dj_pool_candidates_active_orphan_v3"
+    )
 
-    where = [
-        "ti.merged_into_id IS NULL",
-        status_clause,
-        "pa.asset_id IS NOT NULL",
-    ]
+    where: list[str] = []
     params: list[object] = []
 
     if only_profiled:
-        where.append("dj.identity_id IS NOT NULL")
+        where.append("dj_updated_at IS NOT NULL")
     if min_rating is not None:
-        where.append("dj.rating >= ?")
+        where.append("dj_rating >= ?")
         params.append(int(min_rating))
     if min_energy is not None:
-        where.append("dj.energy >= ?")
+        where.append("dj_energy >= ?")
         params.append(int(min_energy))
+    if role_sql:
+        where.append(role_sql)
+        params.extend(role_params)
 
-    where_sql = " AND ".join(where) + role_sql
-    params.extend(role_params)
+    where_sql = " AND ".join(where)
+
+    where_prefix = ""
+    if where_sql:
+        where_prefix = f"WHERE {where_sql}"
 
     limit_sql = ""
     if limit is not None:
@@ -147,21 +137,17 @@ def _select_rows(
 
     query = f"""
         SELECT
-            ti.id AS identity_id,
-            pa.asset_id AS preferred_asset_id,
-            af.path AS source_path,
-            af.content_sha256 AS source_sha256,
-            ti.canonical_artist AS artist,
-            ti.canonical_title AS title,
-            ti.canonical_genre AS genre,
-            dj.set_role AS set_role
-        FROM track_identity ti
-        JOIN identity_status ist ON ist.identity_id = ti.id
-        JOIN preferred_asset pa ON pa.identity_id = ti.id
-        JOIN asset_file af ON af.id = pa.asset_id
-        LEFT JOIN dj_track_profile dj ON dj.identity_id = ti.id
-        WHERE {where_sql}
-        ORDER BY LOWER(COALESCE(ti.canonical_artist,'')), LOWER(COALESCE(ti.canonical_title,'')), ti.id ASC
+            identity_id,
+            preferred_asset_id,
+            asset_path AS source_path,
+            sha256 AS source_sha256,
+            artist,
+            title,
+            genre,
+            dj_set_role AS set_role
+        FROM {view_name}
+        {where_prefix}
+        ORDER BY LOWER(COALESCE(artist,'')), LOWER(COALESCE(title,'')), identity_id ASC
         {limit_sql}
     """
     return conn.execute(query, tuple(params)).fetchall()
@@ -267,11 +253,6 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     try:
-        missing_preferred = _check_preferred_required(conn, args.scope)
-        if missing_preferred > 0:
-            print(f"preferred asset required but missing for {missing_preferred} identities")
-            return 2
-
         rows = _select_rows(
             conn,
             scope=args.scope,

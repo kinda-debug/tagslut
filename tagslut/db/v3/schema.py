@@ -278,12 +278,15 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_asset_link_identity ON asset_link(identity_id);
         CREATE INDEX IF NOT EXISTS idx_identity_merge_log_key_value ON identity_merge_log(key_value);
         CREATE INDEX IF NOT EXISTS idx_preferred_asset_asset_id ON preferred_asset(asset_id);
+        CREATE INDEX IF NOT EXISTS idx_preferred_asset_identity ON preferred_asset(identity_id);
         CREATE INDEX IF NOT EXISTS idx_preferred_asset_version ON preferred_asset(version);
         CREATE INDEX IF NOT EXISTS idx_identity_status_status ON identity_status(status);
+        CREATE INDEX IF NOT EXISTS idx_identity_status_identity ON identity_status(identity_id);
         CREATE INDEX IF NOT EXISTS idx_identity_status_version ON identity_status(version);
         CREATE INDEX IF NOT EXISTS idx_dj_track_profile_set_role ON dj_track_profile(set_role);
         CREATE INDEX IF NOT EXISTS idx_dj_track_profile_energy ON dj_track_profile(energy);
         CREATE INDEX IF NOT EXISTS idx_dj_track_profile_last_played_at ON dj_track_profile(last_played_at);
+        CREATE INDEX IF NOT EXISTS idx_dj_profile_identity ON dj_track_profile(identity_id);
         CREATE INDEX IF NOT EXISTS idx_library_track_sources_identity_key
             ON library_track_sources(identity_key);
         CREATE INDEX IF NOT EXISTS idx_library_track_sources_provider_id
@@ -342,6 +345,7 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
             ti.beatport_id AS beatport_id,
             ti.canonical_artist AS artist,
             ti.canonical_title AS title,
+            ti.canonical_album AS album,
             ti.canonical_mix_name AS mix_name,
             ti.canonical_genre AS genre,
             ti.canonical_sub_genre AS sub_genre,
@@ -351,6 +355,7 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
             ist.status AS identity_status,
             pa.asset_id AS preferred_asset_id,
             af.path AS asset_path,
+            af.mtime AS asset_mtime,
             af.content_sha256 AS sha256,
             af.sample_rate AS sample_rate,
             af.bit_depth AS bit_depth,
@@ -376,6 +381,20 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
         LEFT JOIN asset_file af ON af.id = pa.asset_id
         LEFT JOIN dj_track_profile dj ON dj.identity_id = ti.id
         WHERE ti.merged_into_id IS NULL;
+
+        CREATE VIEW IF NOT EXISTS v_dj_pool_candidates_active_v3 AS
+        SELECT *
+        FROM v_dj_pool_candidates_v3
+        WHERE
+            preferred_asset_id IS NOT NULL
+            AND identity_status IN ('curated', 'active');
+
+        CREATE VIEW IF NOT EXISTS v_dj_pool_candidates_active_orphan_v3 AS
+        SELECT *
+        FROM v_dj_pool_candidates_v3
+        WHERE
+            preferred_asset_id IS NOT NULL
+            AND identity_status IN ('curated', 'active', 'orphan');
         """
     )
     if not _column_exists(conn, "track_identity", "merged_into_id"):

@@ -7,7 +7,7 @@
 	backfill-v3-identities backfill-v3-provenance validate-v3-parity lint-policies test-phase3-exec \
 	verify-v3 doctor-v3 report-identity-qa plan-merge-beatport-dupes merge-beatport-dupes \
 	plan-preferred-asset compute-preferred-asset plan-identity-status compute-identity-status \
-	archive-orphans check-promote-invariant run-move-plan
+	archive-orphans check-promote-invariant run-move-plan check-hardcoded-paths
 
 help: ## Show this help message
 	@echo "Tagslut - available targets:"
@@ -109,6 +109,9 @@ check-promote-invariant: ## Check post-promote preferred-asset invariant (set V3
 	@test -n "$$V3" || (echo "Usage: make check-promote-invariant V3=/path/music_v3.db ROOT=/promoted/root [MINUTES=240] [LIMIT=200] [STRICT=1]"; exit 1)
 	@test -n "$$ROOT" || (echo "Usage: make check-promote-invariant V3=/path/music_v3.db ROOT=/promoted/root [MINUTES=240] [LIMIT=200] [STRICT=1]"; exit 1)
 	poetry run python scripts/db/check_promotion_preferred_invariant_v3.py --db "$$V3" --root "$$ROOT" --minutes "$(if $(MINUTES),$(MINUTES),240)" --limit "$(if $(LIMIT),$(LIMIT),200)" $(if $(filter 0,$(STRICT)),--no-strict,--strict)
+
+check-hardcoded-paths: ## Fail if tracked files contain hardcoded machine path patterns
+	./scripts/check_hardcoded_paths.sh
 
 run-move-plan: ## Safely run move-plan cycle (set PLAN and V3; optional STRICT=1 DRY_RUN=1)
 	@test -n "$$PLAN" || (echo "Usage: make run-move-plan PLAN=plans/<file>.csv V3=/path/music_v3.db [STRICT=1] [DRY_RUN=1]"; exit 1)

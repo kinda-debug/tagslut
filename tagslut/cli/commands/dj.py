@@ -4,6 +4,7 @@ import csv
 import io
 import json
 import logging
+import os
 from collections import Counter
 from pathlib import Path
 from typing import Iterable
@@ -40,9 +41,9 @@ from tagslut.cli.runtime import run_python_script
 logger = logging.getLogger(__name__)
 
 DEFAULT_POLICY = "config/dj/dj_curation.yaml"
-DEFAULT_OUTPUT = "/Volumes/MUSIC/DJ_YES"
-DEFAULT_INPUT = "/Users/georgeskhawam/Desktop/DJ_YES.xlsx"
-DEFAULT_DJUSB = "/Volumes/DJUSB"
+DEFAULT_OUTPUT = os.environ.get("DJ_OUTPUT_ROOT", "./output/dj_yes")
+DEFAULT_INPUT = os.environ.get("DJ_XLSX", "./input/DJ_YES.xlsx")
+DEFAULT_DJUSB = os.environ.get("DJ_USB_ROOT", "./output/dj_usb")
 TRACK_OVERRIDES_PATH = Path("config/dj/track_overrides.csv")
 
 

@@ -1,0 +1,11 @@
+{
+    "postman.settings.dotenv-detection-notification-visibility": false,
+    "sqltools.connections": [
+        {
+            "previewLimit": 50,
+            "driver": "SQLite",
+            "name": "music",
+            "database": "${env:TAGSLUT_DB}"
+        }
+    ]
+}

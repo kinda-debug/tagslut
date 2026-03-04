@@ -38,28 +38,28 @@ if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
 
-DEFAULT_LIBRARY_ROOT = Path("/Volumes/MUSIC/LIBRARY")
-DEFAULT_WORK_ROOT = Path("/Volumes/MUSIC/_work")
+DEFAULT_LIBRARY_ROOT = Path(os.environ.get("LIBRARY_ROOT", "./library"))
+DEFAULT_WORK_ROOT = Path(os.environ.get("ONETAGGER_WORK_ROOT", "./work"))
 DEFAULT_OUT_DIR = _REPO / "artifacts/compare"
 DEFAULT_ONETAGGER_BIN = Path(
     os.environ.get(
         "ONETAGGER_BIN",
-        "/Users/georgeskhawam/Projects/onetagger/target/release/onetagger-cli",
+        "./tools/onetagger/onetagger-cli",
     )
 )
 DEFAULT_CONFIG_PATH = Path.home() / ".config/onetagger/config.tagslut-missing-isrc.json"
 DEFAULT_BASE_CONFIG_PATH = Path.home() / ".config/onetagger/config.json"
 DEFAULT_RUNS_DIR = Path.home() / "Library/Preferences/com.OneTagger.OneTagger/runs"
-DEFAULT_AUDIOFEATURES_PATH = Path("/Volumes/MUSIC/DJ_LIBRARY_MP3")
+DEFAULT_AUDIOFEATURES_PATH = Path(os.environ.get("DJ_LIBRARY_ROOT", "./dj_library_mp3"))
 DEFAULT_AUDIOFEATURES_CONFIG_PATH = Path.home() / ".config/onetagger/audiofeatures.json"
-DEFAULT_METADATA_PATH = Path("/Volumes/MUSIC/DJ_LIBRARY_MP3")
+DEFAULT_METADATA_PATH = Path(os.environ.get("DJ_LIBRARY_ROOT", "./dj_library_mp3"))
 DEFAULT_METADATA_CONFIG_PATH = Path.home() / ".config/onetagger/config.tagslut-metadata.json"
 DEFAULT_METADATA_TAGS = "genre,style,bpm,key,remixer,label,releaseDate,version,isrc"
 DEFAULT_METADATA_PLATFORMS = "beatport,tidal,traxsource,deezer"
 DEFAULT_METADATA_STRICTNESS = 0.92
 DEFAULT_METADATA_MAX_DURATION_DIFF = 3
 PRETTY_OUTPUT = os.environ.get("TAGSLUT_PRETTY", "1").strip() != "0"
-_LINK_PREFIX_RE = re.compile(r"^/Volumes/MUSIC/_work/onetagger_links_[^/]+/\\d+__")
+_LINK_PREFIX_RE = re.compile(rf"^{re.escape(str(DEFAULT_WORK_ROOT))}/onetagger_links_[^/]+/\\d+__")
 DEFAULT_MIN_DURATION_SEC = 240
 DEFAULT_MAX_DURATION_SEC = 900
 DEFAULT_MIN_BPM = 90.0

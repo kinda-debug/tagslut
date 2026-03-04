@@ -3,13 +3,13 @@
     Build a DJ_YES manifest from XLSX, removing duplicates, and transcode tracks to MP3 LAME 320 CBR.
 
 Default workflow:
-1) Read `/Users/georgeskhawam/Desktop/DJ_YES.xlsx`
+1) Read `DJ_XLSX` env var or `./input/DJ_YES.xlsx`
 2) Keep rows with a valid on-disk `Path`
 3) Deduplicate by:
    - normalized `External Id` when present
    - otherwise normalized (`Track Artist(s)` or `Album Artist`) + `Title`
 4) Estimate runtime and output volume
-5) Optionally transcode into `/Volumes/MUSIC/DJ_YES`
+5) Optionally transcode into `DJ_OUTPUT_ROOT` env var or `./output/dj_yes`
 
 Usage examples:
   python scripts/dj_yes_transcode.py --estimate-only
@@ -248,9 +248,17 @@ def write_csv(path: Path, rows: List[Dict[str, object]], fieldnames: Sequence[st
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Deduplicate DJ_YES.xlsx and transcode to MP3 LAME 320 CBR")
-    parser.add_argument("--input-xlsx", type=Path, default=Path("/Users/georgeskhawam/Desktop/DJ_YES.xlsx"))
+    parser.add_argument(
+        "--input-xlsx",
+        type=Path,
+        default=Path(os.environ.get("DJ_XLSX", "./input/DJ_YES.xlsx")),
+    )
     parser.add_argument("--sheet", type=str, default=None, help="Worksheet name (default: first sheet)")
-    parser.add_argument("--output-root", type=Path, default=Path("/Volumes/MUSIC/DJ_YES"))
+    parser.add_argument(
+        "--output-root",
+        type=Path,
+        default=Path(os.environ.get("DJ_OUTPUT_ROOT", "./output/dj_yes")),
+    )
     parser.add_argument("--manifest-dir", type=Path, default=None, help="Directory for CSV/JSON manifests")
     parser.add_argument("--jobs", type=int, default=max(1, (os.cpu_count() or 4) // 2))
     parser.add_argument("--estimate-sample", type=int, default=160, help="Sample size for duration/size estimate")

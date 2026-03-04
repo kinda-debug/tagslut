@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import os
 import re
 import shutil
 import subprocess
@@ -38,15 +39,16 @@ class Row:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Quarantine low-quality AIFF (I8) files")
+    default_roots = os.environ.get("AIFF_SOURCE_ROOTS", "./input/aiff_sources").split(":")
     parser.add_argument(
         "--roots",
         nargs="+",
-        default=["/Users/georgeskhawam/Music/AIFF", "/Volumes/RKRDBX/Contents/Music"],
+        default=default_roots,
         help="One or more roots to scan for AIFF files",
     )
     parser.add_argument(
         "--quarantine-root",
-        default="/Volumes/MUSIC/AIFF/_SEVERELY_REDUCED_QUALITY_I8",
+        default=os.environ.get("AIFF_QUARANTINE_ROOT", "./output/aiff_quarantine"),
         help="Destination root for quarantined files",
     )
     parser.add_argument("--limit", type=int, help="Optional max files to scan per root")

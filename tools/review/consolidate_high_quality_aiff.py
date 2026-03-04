@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import os
 import re
 import shutil
 import subprocess
@@ -40,13 +41,18 @@ class MoveRow:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Move high-quality AIFF to destination and purge destination I8")
+    default_roots = os.environ.get("AIFF_SOURCE_ROOTS", "./input/aiff_sources").split(":")
     parser.add_argument(
         "--roots",
         nargs="+",
-        default=["/Users/georgeskhawam/Music/AIFF", "/Volumes/RKRDBX/Contents/Music"],
+        default=default_roots,
         help="Source roots to consolidate from",
     )
-    parser.add_argument("--dest-root", default="/Volumes/MUSIC/AIFF", help="Destination root for high-quality AIFF")
+    parser.add_argument(
+        "--dest-root",
+        default=os.environ.get("AIFF_DEST_ROOT", "./output/aiff"),
+        help="Destination root for high-quality AIFF",
+    )
     parser.add_argument(
         "--strip-root-label",
         action="store_true",

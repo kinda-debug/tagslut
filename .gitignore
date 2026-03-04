@@ -18,6 +18,9 @@ coverage.xml
 .DS_Store
 Thumbs.db
 .vscode/
+!.vscode/
+.vscode/*
+!.vscode/settings.json.example
 .idea/
 .junie/
 *.swp

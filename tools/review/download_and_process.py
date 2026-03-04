@@ -52,7 +52,17 @@ def main() -> None:
     ap.add_argument("--allow-duplicate-hash", action="store_true", default=True, help="Allow duplicate hash on promote (default: true)")
     ap.add_argument("--no-allow-duplicate-hash", action="store_true", help="Disallow duplicate hash on promote")
     ap.add_argument("--tiddl-bin", default="tools/tiddl", help="Path to tiddl wrapper")
-    ap.add_argument("--beatport-bin", default="/Users/georgeskhawam/Projects/beatportdl/beatportdl-darwin-arm64", help="Path to beatport downloader")
+    ap.add_argument(
+        "--beatport-bin",
+        default=(
+            Path(
+                __import__("os").environ.get("BEATPORTDL_BIN")
+                or __import__("os").environ.get("BEATPORT_BIN")
+                or "tools/beatportdl/bpdl/bpdl"
+            )
+        ),
+        help="Path to beatport downloader",
+    )
     ap.add_argument("--bpdl-timeout", type=int, default=180, help="Seconds to wait before killing beatportdl after download")
     args = ap.parse_args()
 
@@ -77,8 +87,12 @@ def main() -> None:
     try:
         default_library = str(get_library_volume())
     except Exception:
-        default_library = "/Volumes/MUSIC/LIBRARY"
-    default_root = "/Users/georgeskhawam/Music/tiddl" if source == "tidal" else "/Users/georgeskhawam/Music/bpdl"
+        import os
+
+        default_library = os.environ.get("LIBRARY_ROOT", "./library")
+    import os
+
+    default_root = os.environ.get("ROOT_TD", "./downloads/tiddl") if source == "tidal" else os.environ.get("ROOT_BP", "./downloads/bpdl")
 
     library = args.library or default_library
     root = args.root or default_root
@@ -114,9 +128,9 @@ def main() -> None:
     root_path = Path(root)
     if not list(root_path.rglob("*.flac")):
         candidates = [
-            Path("/Users/georgeskhawam/Music/bpdl"),
-            Path("/Users/georgeskhawam/Music/tiddl"),
-            Path("/Volumes/MUSIC/CLEAN"),
+            Path(os.environ.get("ROOT_BP", "./downloads/bpdl")),
+            Path(os.environ.get("ROOT_TD", "./downloads/tiddl")),
+            Path(os.environ.get("STAGING_ROOT", "./downloads")),
         ]
         found = None
         for c in candidates:

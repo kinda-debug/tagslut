@@ -118,7 +118,13 @@ def _create_v3_fixture(tmp_path: Path) -> Path:
     return db
 
 
-def _run_report(*, db_path: Path, out_path: Path | None = None, limit: int = 200) -> subprocess.CompletedProcess[str]:
+def _run_report(
+    *,
+    db_path: Path,
+    out_path: Path | None = None,
+    limit: int = 200,
+    include_orphans: bool = False,
+) -> subprocess.CompletedProcess[str]:
     cmd = [
         sys.executable,
         "scripts/db/report_identity_qa_v3.py",
@@ -127,6 +133,8 @@ def _run_report(*, db_path: Path, out_path: Path | None = None, limit: int = 200
         "--limit",
         str(limit),
     ]
+    if include_orphans:
+        cmd.append("--include-orphans")
     if out_path is not None:
         cmd.extend(["--out", str(out_path)])
     return subprocess.run(
@@ -181,6 +189,34 @@ def test_report_identity_qa_v3_summary_only_mode(tmp_path: Path) -> None:
     assert "Counts:" in proc.stdout
     assert "Top identities by asset_count (limit=5):" in proc.stdout
     assert "csv_out:" not in proc.stdout
+
+
+def test_report_identity_qa_v3_inconsistency_scope_defaults_to_active(tmp_path: Path) -> None:
+    db = _create_v3_fixture(tmp_path)
+    conn = sqlite3.connect(str(db))
+    try:
+        conn.execute(
+            """
+            INSERT INTO identity_status (identity_id, status, reason_json, version)
+            VALUES (?, ?, ?, ?)
+            """,
+            (1, "orphan", '{"forced":1}', 1),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    default_scope = _run_report(db_path=db, limit=10)
+    include_orphan_scope = _run_report(db_path=db, limit=10, include_orphans=True)
+
+    assert default_scope.returncode == 0, f"STDOUT:\n{default_scope.stdout}\nSTDERR:\n{default_scope.stderr}"
+    assert include_orphan_scope.returncode == 0, (
+        f"STDOUT:\n{include_orphan_scope.stdout}\nSTDERR:\n{include_orphan_scope.stderr}"
+    )
+    assert "scope=active" in default_scope.stdout
+    assert "duration_spread_ms=3500 mixed_quality=1" not in default_scope.stdout
+    assert "scope=active+orphan" in include_orphan_scope.stdout
+    assert "duration_spread_ms=3500 mixed_quality=1" in include_orphan_scope.stdout
 
 
 def test_report_identity_qa_v3_fails_when_db_missing(tmp_path: Path) -> None:

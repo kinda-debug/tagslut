@@ -2,6 +2,12 @@
 
 from tagslut.db.v3.db import open_db_v3
 from tagslut.db.v3.doctor import doctor_v3
+from tagslut.db.v3.identity_status import (
+    IdentityStatusRow,
+    compute_identity_statuses,
+    summary_counts,
+    upsert_identity_statuses,
+)
 from tagslut.db.v3.preferred_asset import (
     PreferredChoice,
     choose_preferred_asset_for_identity,
@@ -20,4 +26,8 @@ __all__ = [
     "choose_preferred_asset_for_identity",
     "compute_preferred_assets",
     "upsert_preferred_assets",
+    "IdentityStatusRow",
+    "compute_identity_statuses",
+    "upsert_identity_statuses",
+    "summary_counts",
 ]

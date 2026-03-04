@@ -53,6 +53,14 @@ def _connect_ro(path: Path) -> sqlite3.Connection:
     return conn
 
 
+def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+        (table,),
+    ).fetchone()
+    return row is not None
+
+
 def _get_columns(conn: sqlite3.Connection, table: str) -> set[str]:
     try:
         rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
@@ -79,8 +87,14 @@ def _is_blank(value: object) -> bool:
 
 
 def _load_identity_rows(conn: sqlite3.Connection) -> list[dict[str, object]]:
+    has_merged_into = "merged_into_id" in _get_columns(conn, "track_identity")
+    has_identity_status = _table_exists(conn, "identity_status")
+    status_join = "LEFT JOIN identity_status ist ON ist.identity_id = ti.id" if has_identity_status else ""
+    status_select = "ist.status AS status_row" if has_identity_status else "'' AS status_row"
+    merged_select = "ti.merged_into_id AS merged_into_id" if has_merged_into else "NULL AS merged_into_id"
+
     rows = conn.execute(
-        """
+        f"""
         SELECT
             ti.id AS identity_id,
             ti.identity_key AS identity_key,
@@ -92,6 +106,8 @@ def _load_identity_rows(conn: sqlite3.Connection) -> list[dict[str, object]]:
             ti.canonical_artist AS canonical_artist,
             ti.canonical_title AS canonical_title,
             ti.enriched_at AS enriched_at,
+            {status_select},
+            {merged_select},
             COUNT(DISTINCT al.asset_id) AS asset_count,
             MIN(af.duration_measured_ms) AS min_duration_ms,
             MAX(af.duration_measured_ms) AS max_duration_ms,
@@ -110,6 +126,7 @@ def _load_identity_rows(conn: sqlite3.Connection) -> list[dict[str, object]]:
         FROM track_identity ti
         LEFT JOIN asset_link al ON al.identity_id = ti.id
         LEFT JOIN asset_file af ON af.id = al.asset_id
+        {status_join}
         GROUP BY
             ti.id,
             ti.identity_key,
@@ -120,7 +137,9 @@ def _load_identity_rows(conn: sqlite3.Connection) -> list[dict[str, object]]:
             ti.spotify_id,
             ti.canonical_artist,
             ti.canonical_title,
-            ti.enriched_at
+            ti.enriched_at,
+            status_row,
+            merged_into_id
         ORDER BY ti.id ASC
         """
     ).fetchall()
@@ -146,6 +165,18 @@ def _load_identity_rows(conn: sqlite3.Connection) -> list[dict[str, object]]:
         sample_rate_variants = int(row["sample_rate_variants"] or 0)
         bit_depth_variants = int(row["bit_depth_variants"] or 0)
 
+        merged_into_raw = row["merged_into_id"]
+        merged_into_id = int(merged_into_raw) if merged_into_raw is not None else None
+        status_row = str(row["status_row"] or "").strip().lower()
+        if merged_into_id is not None:
+            lifecycle_status = "merged"
+        elif status_row == "archived":
+            lifecycle_status = "archived"
+        elif status_row in {"active", "orphan"}:
+            lifecycle_status = status_row
+        else:
+            lifecycle_status = "active" if int(row["asset_count"] or 0) > 0 else "orphan"
+
         out.append(
             {
                 "identity_id": int(row["identity_id"]),
@@ -168,6 +199,7 @@ def _load_identity_rows(conn: sqlite3.Connection) -> list[dict[str, object]]:
                     sample_rate_variants > 1 or bit_depth_variants > 1
                 ),
                 "duration_spread_ms": duration_spread_ms,
+                "lifecycle_status": lifecycle_status,
             }
         )
     return out
@@ -253,6 +285,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=DEFAULT_LIMIT,
         help=f"Example row limit for summary sections (default: {DEFAULT_LIMIT})",
     )
+    parser.add_argument(
+        "--include-orphans",
+        action="store_true",
+        help="Include orphan identities in inconsistency listing (default is active identities only).",
+    )
     return parser.parse_args(argv)
 
 
@@ -274,12 +311,30 @@ def main(argv: list[str] | None = None) -> int:
                 return 1
 
             rows = _load_identity_rows(conn)
+            has_identity_status = _table_exists(conn, "identity_status")
+            status_rows = 0
+            if has_identity_status:
+                status_rows = int(conn.execute("SELECT COUNT(*) FROM identity_status").fetchone()[0])
             counts = {
                 "identities_total": len(rows),
                 "enriched_identities": sum(0 if _is_blank(r["enriched_at"]) else 1 for r in rows),
                 "unidentified_identities": sum(int(r["has_unidentified_key"]) for r in rows),
                 "identities_missing_core_fields": sum(int(r["missing_core_fields"]) for r in rows),
                 "identities_missing_strong_keys": sum(int(r["missing_strong_keys"]) for r in rows),
+            }
+            lifecycle_counts = {
+                "active_identities": sum(
+                    1 for row in rows if str(row["lifecycle_status"]) == "active"
+                ),
+                "orphan_identities": sum(
+                    1 for row in rows if str(row["lifecycle_status"]) == "orphan"
+                ),
+                "archived_identities": sum(
+                    1 for row in rows if str(row["lifecycle_status"]) == "archived"
+                ),
+                "merged_identities": sum(
+                    1 for row in rows if str(row["lifecycle_status"]) == "merged"
+                ),
             }
             top_identities = sorted(
                 rows,
@@ -294,11 +349,15 @@ def main(argv: list[str] | None = None) -> int:
                 label="beatport_id",
                 limit=int(args.limit),
             )
+            inconsistency_scope = {"active", "orphan"} if args.include_orphans else {"active"}
             inconsistent_identities = [
                 r
                 for r in rows
-                if int(r["duration_spread_ms"]) > DURATION_SPREAD_THRESHOLD_MS
-                or int(r["mixed_quality"]) == 1
+                if str(r["lifecycle_status"]) in inconsistency_scope
+                and (
+                    int(r["duration_spread_ms"]) > DURATION_SPREAD_THRESHOLD_MS
+                    or int(r["mixed_quality"]) == 1
+                )
             ]
             inconsistent_identities = sorted(
                 inconsistent_identities,
@@ -321,6 +380,16 @@ def main(argv: list[str] | None = None) -> int:
         "identities_missing_strong_keys",
     ):
         print(f"  {key}: {counts[key]}")
+    print("Lifecycle:")
+    for key in (
+        "active_identities",
+        "orphan_identities",
+        "archived_identities",
+        "merged_identities",
+    ):
+        print(f"  {key}: {lifecycle_counts[key]}")
+    if has_identity_status:
+        print(f"  identity_status_rows: {status_rows}")
 
     print(f"Top identities by asset_count (limit={int(args.limit)}):")
     if top_identities:
@@ -354,7 +423,11 @@ def main(argv: list[str] | None = None) -> int:
             f"identity_keys=[{keys_joined}]"
         )
 
-    print(f"Inconsistent identities (limit={int(args.limit)}): {len(inconsistent_identities)}")
+    scope_label = "active+orphan" if args.include_orphans else "active"
+    print(
+        f"Inconsistent identities (limit={int(args.limit)}, scope={scope_label}): "
+        f"{len(inconsistent_identities)}"
+    )
     for row in inconsistent_identities:
         print(
             "  "

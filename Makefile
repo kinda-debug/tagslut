@@ -6,7 +6,8 @@
 	index-register-dry index-check-dry promote-dry promote audit-layout audit-cli-docs \
 	backfill-v3-identities backfill-v3-provenance validate-v3-parity lint-policies test-phase3-exec \
 	verify-v3 doctor-v3 report-identity-qa plan-merge-beatport-dupes merge-beatport-dupes \
-	plan-preferred-asset compute-preferred-asset run-move-plan
+	plan-preferred-asset compute-preferred-asset plan-identity-status compute-identity-status \
+	archive-orphans run-move-plan
 
 help: ## Show this help message
 	@echo "Tagslut - available targets:"
@@ -90,6 +91,19 @@ plan-preferred-asset: ## Plan preferred-asset selection (set V3; optional OUT an
 compute-preferred-asset: ## Plan/execute preferred-asset selection (set V3; EXECUTE=1 to write; optional VERSION)
 	@test -n "$$V3" || (echo "Usage: make compute-preferred-asset V3=/path/music_v3.db [OUT=output/preferred_asset_plan.csv] [LIMIT=200] [VERSION=1] [EXECUTE=1]"; exit 1)
 	poetry run python scripts/db/compute_preferred_asset_v3.py --db "$$V3" $(if $(OUT),--out "$$OUT",) $(if $(LIMIT),--limit "$(LIMIT)",) --version "$(if $(VERSION),$(VERSION),1)" $(if $(EXECUTE),--execute,)
+
+plan-identity-status: ## Plan identity lifecycle status recompute (set V3; optional OUT and LIMIT)
+	@test -n "$$V3" || (echo "Usage: make plan-identity-status V3=/path/music_v3.db [OUT=output/identity_status_plan.csv] [LIMIT=200]"; exit 1)
+	poetry run python scripts/db/compute_identity_status_v3.py --db "$$V3" $(if $(OUT),--out "$$OUT",) $(if $(LIMIT),--limit "$(LIMIT)",)
+
+compute-identity-status: ## Plan/execute identity lifecycle status recompute (set V3; EXECUTE=1 to write; optional VERSION)
+	@test -n "$$V3" || (echo "Usage: make compute-identity-status V3=/path/music_v3.db [OUT=output/identity_status_plan.csv] [LIMIT=200] [VERSION=1] [EXECUTE=1]"; exit 1)
+	poetry run python scripts/db/compute_identity_status_v3.py --db "$$V3" $(if $(OUT),--out "$$OUT",) $(if $(LIMIT),--limit "$(LIMIT)",) --version "$(if $(VERSION),$(VERSION),1)" $(if $(EXECUTE),--execute,)
+
+archive-orphans: ## Archive eligible orphan identities (set V3 and EXECUTE=1; optional THRESHOLD_DAYS/VERSION)
+	@test -n "$$V3" || (echo "Usage: make archive-orphans V3=/path/music_v3.db EXECUTE=1 [THRESHOLD_DAYS=90] [VERSION=1] [ARCHIVE_NO_TIMESTAMP_OK=1]"; exit 1)
+	@test "$$EXECUTE" = "1" || (echo "Refusing archive-orphans without EXECUTE=1"; exit 1)
+	poetry run python scripts/db/compute_identity_status_v3.py --db "$$V3" --execute --archive-orphans --archive-orphans-threshold-days "$(if $(THRESHOLD_DAYS),$(THRESHOLD_DAYS),90)" --version "$(if $(VERSION),$(VERSION),1)" $(if $(OUT),--out "$$OUT",) $(if $(LIMIT),--limit "$(LIMIT)",) $(if $(ARCHIVE_NO_TIMESTAMP_OK),--archive-orphans-no-timestamp-ok,)
 
 run-move-plan: ## Safely run move-plan cycle (set PLAN and V3; optional STRICT=1 DRY_RUN=1)
 	@test -n "$$PLAN" || (echo "Usage: make run-move-plan PLAN=plans/<file>.csv V3=/path/music_v3.db [STRICT=1] [DRY_RUN=1]"; exit 1)

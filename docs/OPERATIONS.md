@@ -72,3 +72,25 @@ Recommended defaults:
 - keep `REQUIRE_PREFERRED=1`
 - keep `STRICT=1`
 - use `INCLUDE_ORPHANS=0` unless you explicitly need orphan review.
+
+## DJ Profiles (Write DJ Layer Only)
+Mark one identity as DJ-ready without changing canonical metadata:
+
+```bash
+make dj-profile-set \
+  V3=<V3_DB> \
+  ID=<IDENTITY_ID> \
+  RATING=4 ENERGY=7 ROLE=builder TAG=groovy NOTES="set A candidate"
+```
+
+Inspect one profile:
+
+```bash
+make dj-profile-get V3=<V3_DB> ID=<IDENTITY_ID>
+```
+
+Export ready list (candidates + DJ profile fields):
+
+```bash
+make dj-export-ready V3=<V3_DB> OUT=output/dj_ready.csv ONLY_PROFILED=1
+```

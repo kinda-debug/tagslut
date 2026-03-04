@@ -8,6 +8,12 @@ from tagslut.db.v3.identity_status import (
     summary_counts,
     upsert_identity_statuses,
 )
+from tagslut.db.v3.dj_profile import (
+    ensure_schema as ensure_dj_profile_schema,
+    get_profile,
+    list_profiles,
+    upsert_profile,
+)
 from tagslut.db.v3.preferred_asset import (
     PreferredChoice,
     choose_preferred_asset_for_identity,
@@ -30,4 +36,8 @@ __all__ = [
     "compute_identity_statuses",
     "upsert_identity_statuses",
     "summary_counts",
+    "ensure_dj_profile_schema",
+    "get_profile",
+    "list_profiles",
+    "upsert_profile",
 ]

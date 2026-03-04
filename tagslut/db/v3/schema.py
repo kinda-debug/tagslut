@@ -9,11 +9,12 @@ from __future__ import annotations
 import sqlite3
 
 V3_SCHEMA_NAME = "v3"
-V3_SCHEMA_VERSION = 4
+V3_SCHEMA_VERSION = 5
 V3_SCHEMA_VERSION_INITIAL = 1
 V3_SCHEMA_VERSION_IDENTITY_MERGE = 2
 V3_SCHEMA_VERSION_PREFERRED_ASSET = 3
 V3_SCHEMA_VERSION_IDENTITY_STATUS = 4
+V3_SCHEMA_VERSION_DJ_PROFILE = 5
 
 
 def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
@@ -197,6 +198,17 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
             computed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE IF NOT EXISTS dj_track_profile (
+            identity_id INTEGER PRIMARY KEY REFERENCES track_identity(id),
+            rating INTEGER NULL CHECK(rating BETWEEN 0 AND 5),
+            energy INTEGER NULL CHECK(energy BETWEEN 0 AND 10),
+            set_role TEXT NULL CHECK(set_role IN ('warmup','builder','peak','tool','closer','ambient','break','unknown')),
+            dj_tags_json TEXT NOT NULL DEFAULT '[]',
+            notes TEXT NULL,
+            last_played_at TEXT NULL,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE TABLE IF NOT EXISTS scan_runs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             mode TEXT NOT NULL DEFAULT 'queue' CHECK (mode = 'queue'),
@@ -269,6 +281,9 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_preferred_asset_version ON preferred_asset(version);
         CREATE INDEX IF NOT EXISTS idx_identity_status_status ON identity_status(status);
         CREATE INDEX IF NOT EXISTS idx_identity_status_version ON identity_status(version);
+        CREATE INDEX IF NOT EXISTS idx_dj_track_profile_set_role ON dj_track_profile(set_role);
+        CREATE INDEX IF NOT EXISTS idx_dj_track_profile_energy ON dj_track_profile(energy);
+        CREATE INDEX IF NOT EXISTS idx_dj_track_profile_last_played_at ON dj_track_profile(last_played_at);
         CREATE INDEX IF NOT EXISTS idx_library_track_sources_identity_key
             ON library_track_sources(identity_key);
         CREATE INDEX IF NOT EXISTS idx_library_track_sources_provider_id
@@ -292,6 +307,32 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
         JOIN identity_status ist ON ist.identity_id = ti.id
         WHERE ti.merged_into_id IS NULL
           AND ist.status = 'active';
+
+        CREATE VIEW IF NOT EXISTS v_dj_ready_candidates AS
+        SELECT
+            ti.id AS identity_id,
+            ti.identity_key AS identity_key,
+            ti.canonical_artist AS artist,
+            ti.canonical_title AS title,
+            ti.canonical_bpm AS bpm,
+            ti.canonical_key AS key,
+            ti.canonical_genre AS genre,
+            ti.canonical_duration AS duration_s,
+            pa.asset_id AS preferred_asset_id,
+            af.path AS preferred_path,
+            COALESCE(ist.status, 'unknown') AS status,
+            dj.rating AS rating,
+            dj.energy AS energy,
+            dj.set_role AS set_role,
+            dj.dj_tags_json AS dj_tags_json,
+            dj.notes AS notes,
+            dj.last_played_at AS last_played_at
+        FROM track_identity ti
+        LEFT JOIN identity_status ist ON ist.identity_id = ti.id
+        LEFT JOIN preferred_asset pa ON pa.identity_id = ti.id
+        LEFT JOIN asset_file af ON af.id = pa.asset_id
+        LEFT JOIN dj_track_profile dj ON dj.identity_id = ti.id
+        WHERE ti.merged_into_id IS NULL;
         """
     )
     if not _column_exists(conn, "track_identity", "merged_into_id"):
@@ -328,5 +369,12 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
         VALUES (?, ?, ?)
         """,
         (V3_SCHEMA_NAME, V3_SCHEMA_VERSION_IDENTITY_STATUS, "identity lifecycle status support"),
+    )
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO schema_migrations (schema_name, version, note)
+        VALUES (?, ?, ?)
+        """,
+        (V3_SCHEMA_NAME, V3_SCHEMA_VERSION_DJ_PROFILE, "dj profile support"),
     )
     conn.commit()

@@ -7,7 +7,8 @@
 	backfill-v3-identities backfill-v3-provenance validate-v3-parity lint-policies test-phase3-exec \
 	verify-v3 doctor-v3 report-identity-qa plan-merge-beatport-dupes merge-beatport-dupes \
 	plan-preferred-asset compute-preferred-asset plan-identity-status compute-identity-status \
-	archive-orphans check-promote-invariant run-move-plan check-hardcoded-paths dj-candidates
+	archive-orphans check-promote-invariant run-move-plan check-hardcoded-paths dj-candidates \
+	dj-profile-get dj-profile-set dj-export-ready
 
 help: ## Show this help message
 	@echo "Tagslut - available targets:"
@@ -125,6 +126,32 @@ dj-candidates: ## Export DJ candidate CSV from v3 (set V3 and OUT; optional LIMI
 		$(if $(filter 1,$(INCLUDE_ORPHANS)),--include-orphans,) \
 		$(if $(filter 0,$(REQUIRE_PREFERRED)),--no-require-preferred,) \
 		$(if $(filter 0,$(STRICT)),--no-strict,)
+
+dj-profile-get: ## Get DJ profile for one identity (set V3 and ID)
+	@test -n "$$V3" || (echo "Usage: make dj-profile-get V3=/path/music_v3.db ID=123"; exit 1)
+	@test -n "$$ID" || (echo "Usage: make dj-profile-get V3=/path/music_v3.db ID=123"; exit 1)
+	poetry run python scripts/dj/profile_v3.py get --db "$$V3" --identity "$$ID"
+
+dj-profile-set: ## Set DJ profile fields for one identity (set V3 and ID; optional RATING/ENERGY/ROLE/TAG/NOTES/LAST_PLAYED_AT)
+	@test -n "$$V3" || (echo "Usage: make dj-profile-set V3=/path/music_v3.db ID=123 [RATING=] [ENERGY=] [ROLE=] [TAG=] [NOTES=] [LAST_PLAYED_AT=]"; exit 1)
+	@test -n "$$ID" || (echo "Usage: make dj-profile-set V3=/path/music_v3.db ID=123 [RATING=] [ENERGY=] [ROLE=] [TAG=] [NOTES=] [LAST_PLAYED_AT=]"; exit 1)
+	poetry run python scripts/dj/profile_v3.py set --db "$$V3" --identity "$$ID" \
+		$(if $(RATING),--rating "$(RATING)",) \
+		$(if $(ENERGY),--energy "$(ENERGY)",) \
+		$(if $(ROLE),--set-role "$(ROLE)",) \
+		$(if $(TAG),--add-tag "$(TAG)",) \
+		$(if $(NOTES),--notes "$(NOTES)",) \
+		$(if $(LAST_PLAYED_AT),--last-played-at "$(LAST_PLAYED_AT)",)
+
+dj-export-ready: ## Export DJ-ready list with profile fields (set V3 and OUT; optional MIN_RATING/ROLE/MIN_ENERGY/ONLY_PROFILED=1)
+	@test -n "$$V3" || (echo "Usage: make dj-export-ready V3=/path/music_v3.db OUT=output/dj_ready.csv [MIN_RATING=] [ROLE=] [MIN_ENERGY=] [ONLY_PROFILED=0]"; exit 1)
+	@test -n "$$OUT" || (echo "Usage: make dj-export-ready V3=/path/music_v3.db OUT=output/dj_ready.csv [MIN_RATING=] [ROLE=] [MIN_ENERGY=] [ONLY_PROFILED=0]"; exit 1)
+	poetry run python scripts/dj/export_ready_v3.py --db "$$V3" --out "$$OUT" \
+		$(if $(MIN_RATING),--min-rating "$(MIN_RATING)",) \
+		$(if $(ROLE),--set-role "$(ROLE)",) \
+		$(if $(MIN_ENERGY),--min-energy "$(MIN_ENERGY)",) \
+		$(if $(LIMIT),--limit "$(LIMIT)",) \
+		$(if $(filter 1,$(ONLY_PROFILED)),--only-profiled,)
 
 run-move-plan: ## Safely run move-plan cycle (set PLAN and V3; optional STRICT=1 DRY_RUN=1)
 	@test -n "$$PLAN" || (echo "Usage: make run-move-plan PLAN=plans/<file>.csv V3=/path/music_v3.db [STRICT=1] [DRY_RUN=1]"; exit 1)

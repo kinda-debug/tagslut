@@ -1719,7 +1719,10 @@ def inject_context() -> dict[str, Any]:
     default_policy = os.environ.get("DJ_REVIEW_POLICY") or str(_resolve_policy_path(None))
     return {
         "db_path": db_path,
-        "default_usb": os.environ.get("DJ_REVIEW_USB_PATH", "/Volumes/MUSIC/DJ"),
+        "default_usb": os.environ.get(
+            "DJ_REVIEW_USB_PATH",
+            os.environ.get("DJ_USB_ROOT", ""),
+        ),
         "default_policy": default_policy,
         "default_jobs": os.environ.get("DJ_REVIEW_JOBS", "4"),
         "default_artwork": os.environ.get("DJ_REVIEW_ARTWORK_MAX_KB", "500"),

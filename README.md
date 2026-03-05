@@ -18,10 +18,10 @@ It separates physical files from logical track identities, then applies determin
 
 ## Quick Start
 ```bash
-cd <TAGSLLUT_REPO>
+cd <TAGSLUT_REPO>
 source .venv/bin/activate
 
-export V2_DB=<V3_DB>
+export V2_DB=<V2_DB>   # optional legacy DB (v2)
 export V3_DB=<V3_DB>
 export TAGSLUT_DB="$V3_DB"
 export LIBRARY_ROOT=<LIBRARY_ROOT>

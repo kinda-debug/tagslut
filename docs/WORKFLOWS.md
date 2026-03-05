@@ -2,6 +2,9 @@
 
 Operator reference for tagslut. Start here.
 
+**Surface policy**
+Use canonical entry points for new work: `tagslut intake/index/decide/execute/verify/report/auth`. The `tools/review/*` scripts below are legacy-compatible and still operational, but should be used only if you are intentionally following the legacy review pipeline. For DJ pool v3, prefer `docs/DJ_POOL.md` + `docs/OPERATIONS.md`.
+
 > **Environment bootstrap** (update once, use everywhere):
 > ```bash
 > export REPO_ROOT="/path/to/tagslut"

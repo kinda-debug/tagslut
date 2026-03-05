@@ -25,6 +25,9 @@ BEATPORT_PREFILTER_SCRIPT="$SCRIPT_DIR/review/beatport_prefilter.py"
 BPDL_BIN="$SCRIPT_DIR/beatportdl/bpdl/bpdl"
 BPDL_CONFIG="$SCRIPT_DIR/beatportdl/bpdl/beatportdl-config.yml"
 
+AUTO_DB_AMBIGUOUS=0
+AUTO_DB_CANDIDATES=()
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -37,9 +40,9 @@ Options:
   --batch-root PATH    Download batch root to process (required)
   --source TEXT        Source label (bpdl|tidal). Auto-inferred from URL if omitted.
   --url URL            Source URL (alternative to positional URL)
-  --db PATH            SQLite DB path (default: $TAGSLUT_DB or auto-detected latest tagslut_db EPOCH)
-  --library-root PATH  Final library root (default: /Volumes/MUSIC/LIBRARY)
-  --fix-root PATH      FIX root (default: /Volumes/MUSIC/FIX)
+  --db PATH            SQLite DB path (default: $TAGSLUT_DB or auto-detected tagslut_db epoch; errors if ambiguous)
+  --library-root PATH  Final library root (default: $LIBRARY_ROOT or /Volumes/MUSIC/LIBRARY)
+  --fix-root PATH      FIX root (default: $FIX_ROOT or /Volumes/MUSIC/FIX)
   --out-dir PATH       Output directory for plans (default: artifacts/compare)
   --workers N          Fingerprint workers (default: 7)
   --trust N            Pre-scan trust score 0..3 (default: 3)
@@ -63,10 +66,10 @@ Options:
 Examples:
   tools/get-intake "https://www.beatport.com/chart/.../12345"
 
-  tools/get-intake --batch-root /Volumes/DJSSD/beatport \
+  tools/get-intake --batch-root "$STAGING_ROOT/beatport" \
     "https://www.beatport.com/release/.../12345"
 
-  tools/get-intake --no-download --batch-root /Volumes/MUSIC/CLEAN --execute
+  tools/get-intake --no-download --batch-root "$STAGING_ROOT/clean" --execute
 
   tools/get-intake --m3u-only --m3u --url "https://www.beatport.com/chart/.../12345"
 EOF
@@ -158,43 +161,36 @@ bpdl_downloads_dir_from_config() {
 
 autodetect_db_path() {
   local candidates=()
-  local latest=""
 
   if [[ -d "$REPO_ROOT/../tagslut_db" ]]; then
     while IFS= read -r file; do
       [[ -n "$file" ]] && candidates+=("$file")
-    done < <(find "$REPO_ROOT/../tagslut_db" -type f -name music.db 2>/dev/null || true)
+    done < <(find "$REPO_ROOT/../tagslut_db" -type f \( -name music.db -o -name music_v2.db -o -name music_v3.db \) 2>/dev/null || true)
   fi
 
   if [[ -d "$HOME/Projects/tagslut_db" ]]; then
     while IFS= read -r file; do
       [[ -n "$file" ]] && candidates+=("$file")
-    done < <(find "$HOME/Projects/tagslut_db" -type f -name music.db 2>/dev/null || true)
+    done < <(find "$HOME/Projects/tagslut_db" -type f \( -name music.db -o -name music_v2.db -o -name music_v3.db \) 2>/dev/null || true)
   fi
 
   if [[ ${#candidates[@]} -eq 0 ]]; then
+    AUTO_DB_AMBIGUOUS=0
+    AUTO_DB_CANDIDATES=()
     echo ""
     return 0
   fi
 
-  latest="$(printf '%s\n' "${candidates[@]}" | while IFS= read -r db; do
-    [[ -n "$db" ]] || continue
-    if [[ "$db" == *"/EPOCH_"*"/music.db" ]]; then
-      echo "$db"
-    fi
-  done | while IFS= read -r epoch_db; do
-    [[ -n "$epoch_db" ]] || continue
-    printf '%s\t%s\n' "$(stat -f '%m' "$epoch_db" 2>/dev/null || echo 0)" "$epoch_db"
-  done | sort -nr | head -n1 | cut -f2-)"
+  AUTO_DB_CANDIDATES=("${candidates[@]}")
 
-  if [[ -z "$latest" ]]; then
-    latest="$(printf '%s\n' "${candidates[@]}" | while IFS= read -r db; do
-      [[ -n "$db" ]] || continue
-      printf '%s\t%s\n' "$(stat -f '%m' "$db" 2>/dev/null || echo 0)" "$db"
-    done | sort -nr | head -n1 | cut -f2-)"
+  if [[ ${#candidates[@]} -gt 1 ]]; then
+    AUTO_DB_AMBIGUOUS=1
+    echo ""
+    return 0
   fi
 
-  echo "$latest"
+  AUTO_DB_AMBIGUOUS=0
+  echo "${candidates[0]}"
 }
 
 ensure_bpdl_download_target() {
@@ -284,8 +280,8 @@ URL=""
 BATCH_ROOT=""
 SOURCE=""
 DB_PATH="${TAGSLUT_DB:-}"
-LIBRARY_ROOT="/Volumes/MUSIC/LIBRARY"
-FIX_ROOT="/Volumes/MUSIC/FIX"
+LIBRARY_ROOT="${LIBRARY_ROOT:-/Volumes/MUSIC/LIBRARY}"
+FIX_ROOT="${FIX_ROOT:-/Volumes/MUSIC/FIX}"
 OUT_DIR="$REPO_ROOT/artifacts/compare"
 WORKERS=7
 TRUST=3
@@ -433,7 +429,14 @@ fi
 if [[ -z "$DB_PATH" ]]; then
   DB_PATH="$(autodetect_db_path)"
 fi
-[[ -n "$DB_PATH" ]] || err "Missing DB path. Set --db or TAGSLUT_DB."
+if [[ -z "$DB_PATH" ]]; then
+  if [[ "${AUTO_DB_AMBIGUOUS:-0}" -eq 1 ]]; then
+    echo "Multiple DB candidates found:" >&2
+    printf '  - %s\n' "${AUTO_DB_CANDIDATES[@]}" >&2
+    err "Set --db or TAGSLUT_DB to choose the correct DB."
+  fi
+  err "Missing DB path. Set --db or TAGSLUT_DB."
+fi
 [[ "$TRUST" =~ ^[0-3]$ ]] || err "--trust must be 0,1,2,3"
 [[ "$TRUST_POST" =~ ^[0-3]$ ]] || err "--trust-post must be 0,1,2,3"
 [[ "$WORKERS" =~ ^[0-9]+$ ]] || err "--workers must be an integer"
@@ -891,7 +894,7 @@ PY
       if [[ -z "$BATCH_ROOT" && -n "$BPDL_DOWNLOAD_ROOT" ]]; then
         BATCH_ROOT="$BPDL_DOWNLOAD_ROOT"
       fi
-      [[ -n "$BATCH_ROOT" ]] || BATCH_ROOT="/Volumes/MUSIC/CLEAN"
+      [[ -n "$BATCH_ROOT" ]] || BATCH_ROOT="${STAGING_ROOT:-/Volumes/MUSIC/CLEAN}"
       mkdir -p "$BATCH_ROOT"
       BPDL_LOG="$OUT_DIR/bpdl_m3u_missing_download_$(date +%Y%m%d_%H%M%S).log"
       run_bpdl_batch "$BPDL_ONLY_URLS_FILE" "$BPDL_LOG"

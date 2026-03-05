@@ -198,6 +198,26 @@ tagslut --help
 
 **Symptoms:**
 - Error message about deprecated command
+
+---
+
+## DJ Export Issues
+
+### Problem: `tagslut dj export` appears to hang during transcode
+
+**Symptoms:**
+- No progress output after "Starting transcode..."
+- One or more ffmpeg jobs never return
+
+**Solution:**
+```bash
+# Set a hard timeout for ffmpeg (seconds)
+export DJ_TRANSCODE_TIMEOUT_S=900
+
+# Re-run export
+tagslut dj export --input-xlsx $DJ_XLSX --output-root $DJ_USB_ROOT
+```
+If timeouts persist, check the specific source files and re-run with a smaller batch.
 - Command doesn't exist
 
 **Solution:**

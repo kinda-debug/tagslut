@@ -21,7 +21,8 @@ shift
 case "$cmd" in
   full)
     python "$PY" sync --metadata-after-isrc "$@"
-    python "$PY" audiofeatures --path /Volumes/MUSIC/LIBRARY
+    LIB_ROOT="${LIBRARY_ROOT:-/Volumes/MUSIC/LIBRARY}"
+    python "$PY" audiofeatures --path "$LIB_ROOT"
     ;;
   tag)
     exec python "$PY" sync --metadata-after-isrc "$@"

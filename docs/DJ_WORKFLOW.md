@@ -2,8 +2,17 @@
 
 DJ pool contract: see `docs/DJ_POOL.md` for the downstream-only boundary and defaults.
 
+## Pipeline Choice
 
-## Quick Export (Safe Mode)
+Preferred v3 pipeline (identity-based, deterministic):
+- Follow `docs/OPERATIONS.md` for `dj-candidates` → `dj-profile` → `dj-ready` → `dj-pool-plan/run`.
+- Use `scripts/dj/build_pool_v3.py` or the `make dj-pool-*` targets for plan/execute.
+
+Legacy v2 pipeline (XLSX/overrides-based):
+- Uses `tagslut dj curate/export` with `config/dj/track_overrides.csv`.
+- Keep this path only if you are explicitly operating from XLSX inputs.
+
+## Legacy v2 Quick Export (Safe Mode)
 
 Once tracks have been classified, just run:
 
@@ -19,7 +28,7 @@ To export a specific crate:
 tagslut dj export --safe --crate peak-time --output-root $DJ_USB_ROOT
 ```
 
-## Commands
+## Legacy v2 Commands
 
 ### tagslut dj curate
 

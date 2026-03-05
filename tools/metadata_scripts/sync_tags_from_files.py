@@ -15,6 +15,7 @@ import json
 import re
 import sqlite3
 import sys
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
@@ -105,7 +106,7 @@ def main() -> int:
     ap.add_argument("--db", help="SQLite DB path")
     ap.add_argument(
         "--path",
-        default="/Volumes/MUSIC/LIBRARY",
+        default=os.environ.get("LIBRARY_ROOT", "/Volumes/MUSIC/LIBRARY"),
         help="Root path filter (prefix match)",
     )
     ap.add_argument(
@@ -138,8 +139,9 @@ def main() -> int:
     if not fields:
         fields = ["bpm", "key", "genre", "energy", "danceability"]
 
+    default_root = Path(os.environ.get("LIBRARY_ROOT", "/Volumes/MUSIC/LIBRARY"))
     out_path = Path(args.m3u_out).expanduser().resolve() if args.m3u_out else (
-        Path("/Volumes/MUSIC/LIBRARY") / f"missing_tags_{_now_stamp()}.m3u"
+        default_root / f"missing_tags_{_now_stamp()}.m3u"
     )
 
     conn = sqlite3.connect(str(db_path))

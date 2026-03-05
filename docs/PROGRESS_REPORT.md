@@ -1,14 +1,15 @@
 # Tagslut Repository - Progress Report
 
-Report Date: February 26, 2026
+Report Date: March 5, 2026
 
 ## Executive Summary
-Restructuring phases 0/1/3 are complete. DJ workflow integration is functional for classification and MP3 export, with track-level overrides, crates, and USB finalize automation. Recent work added a DJ review web app with auto‑verdicts, DJ USB analyzer tooling, and tag sync from file metadata (Lexicon-friendly). Remaining risks are CLI evacuation (Phase 2), architecture foundations (Phase 4), and ongoing docs consolidation.
+Restructuring phases 0/1/2/3 are complete. DJ workflow integration is functional for classification and MP3 export, with track-level overrides, crates, and USB finalize automation. Recent work added a DJ review web app with auto‑verdicts, DJ USB analyzer tooling, and tag sync from file metadata (Lexicon-friendly). Remaining risks are architecture foundations (Phase 4) and ongoing docs consolidation.
 
 ## Completed Work
 ### Restructuring
 - Phase 0: Dedupe eradication.
 - Phase 1: Quick wins (scanner move, test renames, pyproject cleanup).
+- Phase 2: CLI evacuation (`cli/main.py` slimmed; command implementations live in `cli/commands/*`).
 - Phase 3: Decision logic consolidation.
 
 ### DJ Integration
@@ -33,7 +34,6 @@ Restructuring phases 0/1/3 are complete. DJ workflow integration is functional f
 
 ## Pending Work
 ### High Priority
-- Phase 2: CLI evacuation (`cli/main.py` → `cli/commands/*`).
 - Phase 4: Architecture foundations (zones module, migrations cleanup, dependency trimming).
 
 ### DJ Pipeline
@@ -41,10 +41,8 @@ Restructuring phases 0/1/3 are complete. DJ workflow integration is functional f
 - Validate genre key mapping in tag hoard data.
 
 ## Known Issues
-- `cli/main.py` remains large; refactor still pending.
 - Tag hoard sample genre fields can be sparse depending on provider coverage.
 
 ## Recommended Next Actions
 - Re-run enrich: `poetry run tagslut index enrich --db <db> --hoarding --execute`
-- Continue CLI evacuation into `tagslut/cli/commands/*`.
 - Audit tag completeness with `tools/metadata audit-tags`.

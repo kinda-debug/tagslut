@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import re
 import subprocess
+import os
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from openpyxl import load_workbook
@@ -313,7 +314,19 @@ def transcode_one(track: TrackRow, overwrite: bool) -> Tuple[str, TrackRow, str]
         "0",
         str(out),
     ]
-    cp = run_checked(cmd)
+    timeout = None
+    timeout_env = os.environ.get("DJ_TRANSCODE_TIMEOUT_S")
+    if timeout_env:
+        try:
+            timeout_val = int(timeout_env)
+            if timeout_val > 0:
+                timeout = timeout_val
+        except ValueError:
+            timeout = None
+    try:
+        cp = run_checked(cmd, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return ("error", track, f"ffmpeg_timeout_{timeout}s" if timeout else "ffmpeg_timeout")
     if cp.returncode == 0 and out.exists() and out.stat().st_size > 0:
         return ("ok", track, "")
 

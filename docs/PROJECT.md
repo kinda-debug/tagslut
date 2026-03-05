@@ -210,15 +210,13 @@ poetry run python -m tagslut _metadata enrich --db <db> --path "$LIBRARY_ROOT/%"
 
 ## 10. Known Gaps and Risks
 - `tagslut dj export` hang still under investigation.
-- CLI evacuation (Phase 2) remains incomplete.
 - Docs consolidation is ongoing.
 
 ---
 
 ## 11. Roadmap
-1. CLI evacuation (Phase 2: reduce `cli/main.py`).
-2. Architecture foundations (zones module, migrations cleanup, dependency trimming).
-3. Docs consolidation to final structure.
+1. Architecture foundations (zones module, migrations cleanup, dependency trimming).
+2. Docs consolidation to final structure.
 
 ---
 

@@ -24,6 +24,7 @@ This directory contains the active operator and developer documentation for the 
 ## DJ Tools
 
 - [DJ_REVIEW_APP.md](DJ_REVIEW_APP.md) — DJ review web app usage and configuration
+- [DJ_POOL.md](DJ_POOL.md) — v3 DJ pool contract and plan/execute model
 
 ## Implementation History (reference only)
 

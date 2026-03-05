@@ -317,7 +317,12 @@ def _pioneer_finalize(
 @click.command()
 @click.option("--source", "source_path", required=True, type=click.Path(), help="Source library (folder/XLSX/M3U)")
 @click.option("--usb", "usb_path", required=True, type=click.Path(), help="DJUSB mount path")
-@click.option("--policy", "policy_path", default="config/dj/dj_curation.yaml", help="DJ curation policy YAML")
+@click.option(
+    "--policy",
+    "policy_path",
+    default="config/dj/dj_curation_usb_v8.yaml",
+    help="DJ curation policy YAML",
+)
 @click.option("--jobs", default=4, show_default=True, help="Parallel transcode workers")
 @click.option("--overwrite", is_flag=True, help="Overwrite existing MP3s")
 @click.option("--no-overrides", is_flag=True, help="Do not append to track_overrides.csv")

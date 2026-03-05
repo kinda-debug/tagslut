@@ -40,7 +40,7 @@ from tagslut.cli.runtime import run_python_script
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_POLICY = "config/dj/dj_curation.yaml"
+DEFAULT_POLICY = "config/dj/dj_curation_usb_v8.yaml"
 DEFAULT_OUTPUT = os.environ.get("DJ_OUTPUT_ROOT", "./output/dj_yes")
 DEFAULT_INPUT = os.environ.get("DJ_XLSX", "./input/DJ_YES.xlsx")
 DEFAULT_DJUSB = os.environ.get("DJ_USB_ROOT", "./output/dj_usb")

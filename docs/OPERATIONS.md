@@ -20,7 +20,7 @@ Compatibility aliases:
 
 ## Environment
 ```bash
-cd <TAGSLLUT_REPO>
+cd <TAGSLUT_REPO>
 source .venv/bin/activate
 
 export V3_DB=<V3_DB>

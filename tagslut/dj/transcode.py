@@ -276,19 +276,19 @@ def transcode_one(
     track: TrackRow,
     overwrite: bool,
     timeout_s: int | None = None,
-) -> Tuple[str, TrackRow, str]:
+) -> Tuple[str, TrackRow, str, str]:
     """Transcode a single track to MP3 320 CBR.
 
     Returns a tuple of (status, track, error_message).
     """
     if track.output_path is None:
-        return ("error", track, "missing_output_path")
+        return ("error", track, "missing_output_path", "")
 
     out = track.output_path
     out.parent.mkdir(parents=True, exist_ok=True)
 
     if out.exists() and not overwrite:
-        return ("skipped_existing", track, "output_exists")
+        return ("skipped_existing", track, "output_exists", "")
 
     cmd = [
         "ffmpeg",
@@ -331,9 +331,10 @@ def transcode_one(
     try:
         cp = run_checked(cmd, timeout=timeout)
     except subprocess.TimeoutExpired:
-        return ("error", track, f"ffmpeg_timeout_{timeout}s" if timeout else "ffmpeg_timeout")
+        return ("error", track, f"ffmpeg_timeout_{timeout}s" if timeout else "ffmpeg_timeout", "timeout")
     if cp.returncode == 0 and out.exists() and out.stat().st_size > 0:
-        return ("ok", track, "")
+        return ("ok", track, "", "")
 
-    err = cp.stderr.strip() or "ffmpeg_failed"
-    return ("error", track, err)
+    stderr = (cp.stderr or "").strip()
+    err = stderr or "ffmpeg_failed"
+    return ("error", track, err, stderr)

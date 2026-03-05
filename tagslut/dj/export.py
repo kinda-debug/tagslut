@@ -80,6 +80,7 @@ def run_export(
     dry_run: bool = False,
     safe_mode: bool = False,
     transcode_timeout_s: int | None = None,
+    fail_fast: bool = False,
     progress_callback: Callable[[int, int], None] | None = None,
 ) -> ExportStats:
     """Run full DJ export: curate → (key detect) → transcode → place.
@@ -187,7 +188,7 @@ def run_export(
             for track in passed_tracks
         ]
         for future in as_completed(futures):
-            status, track, error = future.result()
+            status, track, error, stderr = future.result()
             completed += 1
             if status == "ok":
                 stats.transcoded_ok += 1
@@ -202,8 +203,13 @@ def run_export(
                         "output_path": str(track.output_path or ""),
                         "status": status,
                         "error": error,
+                        "stderr": (stderr or "")[:2000],
                     }
                 )
+                if fail_fast:
+                    for pending in futures:
+                        pending.cancel()
+                    break
             if progress_callback:
                 progress_callback(completed, total)
 

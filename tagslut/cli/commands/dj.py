@@ -327,6 +327,7 @@ def curate(
     default=None,
     help="Per-track ffmpeg timeout in seconds (overrides DJ_TRANSCODE_TIMEOUT_S)",
 )
+@click.option("--fail-fast", is_flag=True, help="Stop after the first transcode failure")
 @click.option("--dry-run", is_flag=True, help="Plan only, no transcoding")
 @click.option("--verbose", is_flag=True, help="Show planned output paths")
 @click.option(
@@ -345,6 +346,7 @@ def export(
     overwrite: bool,
     detect_keys: bool,
     transcode_timeout_s: int | None,
+    fail_fast: bool,
     dry_run: bool,
     verbose: bool,
     safe_only: bool,
@@ -400,6 +402,7 @@ def export(
         dry_run=dry_run,
         safe_mode=safe_only,
         transcode_timeout_s=transcode_timeout_s,
+        fail_fast=fail_fast,
         progress_callback=progress,
     )
 

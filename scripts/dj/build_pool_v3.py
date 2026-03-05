@@ -225,6 +225,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--plan", dest="execute", action="store_false")
     parser.add_argument("--execute", dest="execute", action="store_true")
     parser.set_defaults(execute=False)
+    parser.add_argument("--fail-fast", action="store_true", help="Stop on first copy/transcode failure.")
+    parser.add_argument(
+        "--transcode-timeout-s",
+        type=int,
+        default=None,
+        help="Per-track ffmpeg timeout in seconds (only for --format mp3).",
+    )
     parser.add_argument("--overwrite", choices=["never", "if_same_hash", "always"], default="if_same_hash")
     parser.add_argument("--format", choices=["copy", "mp3"], default="copy")
     parser.add_argument("--mp3-bitrate", default="320k")
@@ -333,6 +340,7 @@ def main(argv: list[str] | None = None) -> int:
     manifest_rows.sort(key=lambda r: (r.dest_path.casefold(), r.identity_id))
     manifest_written = _write_manifest(manifest_path, manifest_rows)
 
+    failure_rows: list[dict[str, object]] = []
     if args.execute:
         for item in manifest_rows:
             if item.action == "skip":
@@ -341,7 +349,22 @@ def main(argv: list[str] | None = None) -> int:
             dst = Path(item.dest_path)
             dst.parent.mkdir(parents=True, exist_ok=True)
             if item.action == "copy":
-                shutil.copy2(src, dst)
+                try:
+                    shutil.copy2(src, dst)
+                except Exception as exc:
+                    failure_rows.append(
+                        {
+                            "timestamp": datetime.now(UTC).isoformat(timespec="seconds"),
+                            "identity_id": item.identity_id,
+                            "source_path": item.source_path,
+                            "dest_path": item.dest_path,
+                            "action": item.action,
+                            "error": str(exc),
+                        }
+                    )
+                    if args.fail_fast:
+                        raise SystemExit(f"Copy failed for {src}: {exc}")
+                    continue
             else:
                 cmd = [
                     ffmpeg or "ffmpeg",
@@ -355,7 +378,46 @@ def main(argv: list[str] | None = None) -> int:
                     str(args.mp3_bitrate),
                     str(dst),
                 ]
-                subprocess.check_call(cmd)
+                try:
+                    result = subprocess.run(
+                        cmd,
+                        capture_output=True,
+                        text=True,
+                        errors="replace",
+                        timeout=args.transcode_timeout_s,
+                        check=False,
+                    )
+                except subprocess.TimeoutExpired:
+                    failure_rows.append(
+                        {
+                            "timestamp": datetime.now(UTC).isoformat(timespec="seconds"),
+                            "identity_id": item.identity_id,
+                            "source_path": item.source_path,
+                            "dest_path": item.dest_path,
+                            "action": item.action,
+                            "error": f"ffmpeg_timeout_{args.transcode_timeout_s}s",
+                            "stderr": "timeout",
+                        }
+                    )
+                    if args.fail_fast:
+                        raise SystemExit(f"ffmpeg timeout for {src}")
+                    continue
+                if result.returncode != 0:
+                    stderr = (result.stderr or "").strip()
+                    failure_rows.append(
+                        {
+                            "timestamp": datetime.now(UTC).isoformat(timespec="seconds"),
+                            "identity_id": item.identity_id,
+                            "source_path": item.source_path,
+                            "dest_path": item.dest_path,
+                            "action": item.action,
+                            "error": f"ffmpeg_exit_{result.returncode}",
+                            "stderr": stderr[:2000],
+                        }
+                    )
+                    if args.fail_fast:
+                        raise SystemExit(f"ffmpeg failed for {src}: {stderr[:2000]}")
+                    continue
 
             _append_receipt(
                 receipts_path,
@@ -369,6 +431,12 @@ def main(argv: list[str] | None = None) -> int:
                     "tool": "build_pool_v3",
                 },
             )
+
+        if failure_rows:
+            failure_path = out_dir / "export_failures.jsonl"
+            with failure_path.open("w", encoding="utf-8") as handle:
+                for row in failure_rows:
+                    handle.write(json.dumps(row, ensure_ascii=False) + "\n")
 
     if args.strict and any(row.reason == "source_missing" for row in manifest_rows):
         print("strict mode: one or more selected sources are missing")

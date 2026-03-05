@@ -220,11 +220,18 @@ tagslut dj export --input-xlsx $DJ_XLSX --output-root $DJ_USB_ROOT
 # Or pass a per-run timeout
 tagslut dj export --input-xlsx $DJ_XLSX --output-root $DJ_USB_ROOT --transcode-timeout-s 900
 ```
+To stop immediately on the first failure:
+```bash
+tagslut dj export --input-xlsx $DJ_XLSX --output-root $DJ_USB_ROOT --fail-fast
+```
 If timeouts persist, check the specific source files and re-run with a smaller batch.
 
 Artifacts:
 - `export_manifest.jsonl` includes per-track status and error details.
 - `export_failures.jsonl` is written when any tracks fail or time out.
+
+For v3 DJ pool builds (`scripts/dj/build_pool_v3.py`), failures are logged to:
+- `export_failures.jsonl` under the pool output root when `--execute` is used.
 - Command doesn't exist
 
 **Solution:**

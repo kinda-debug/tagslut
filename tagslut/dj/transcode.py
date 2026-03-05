@@ -272,7 +272,11 @@ def assign_output_paths(tracks: List[TrackRow], output_root: Path) -> None:
         track.output_path = proposed
 
 
-def transcode_one(track: TrackRow, overwrite: bool) -> Tuple[str, TrackRow, str]:
+def transcode_one(
+    track: TrackRow,
+    overwrite: bool,
+    timeout_s: int | None = None,
+) -> Tuple[str, TrackRow, str]:
     """Transcode a single track to MP3 320 CBR.
 
     Returns a tuple of (status, track, error_message).
@@ -314,15 +318,16 @@ def transcode_one(track: TrackRow, overwrite: bool) -> Tuple[str, TrackRow, str]
         "0",
         str(out),
     ]
-    timeout = None
-    timeout_env = os.environ.get("DJ_TRANSCODE_TIMEOUT_S")
-    if timeout_env:
-        try:
-            timeout_val = int(timeout_env)
-            if timeout_val > 0:
-                timeout = timeout_val
-        except ValueError:
-            timeout = None
+    timeout = timeout_s
+    if timeout is None:
+        timeout_env = os.environ.get("DJ_TRANSCODE_TIMEOUT_S")
+        if timeout_env:
+            try:
+                timeout_val = int(timeout_env)
+                if timeout_val > 0:
+                    timeout = timeout_val
+            except ValueError:
+                timeout = None
     try:
         cp = run_checked(cmd, timeout=timeout)
     except subprocess.TimeoutExpired:

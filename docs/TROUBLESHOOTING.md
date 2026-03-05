@@ -216,6 +216,9 @@ export DJ_TRANSCODE_TIMEOUT_S=900
 
 # Re-run export
 tagslut dj export --input-xlsx $DJ_XLSX --output-root $DJ_USB_ROOT
+
+# Or pass a per-run timeout
+tagslut dj export --input-xlsx $DJ_XLSX --output-root $DJ_USB_ROOT --transcode-timeout-s 900
 ```
 If timeouts persist, check the specific source files and re-run with a smaller batch.
 - Command doesn't exist

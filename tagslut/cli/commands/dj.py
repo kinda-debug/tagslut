@@ -321,6 +321,12 @@ def curate(
 @click.option("--jobs", default=4, show_default=True, help="Parallel transcode workers")
 @click.option("--overwrite", is_flag=True, help="Overwrite existing files")
 @click.option("--detect-keys", is_flag=True, help="Run KeyFinder key detection")
+@click.option(
+    "--transcode-timeout-s",
+    type=int,
+    default=None,
+    help="Per-track ffmpeg timeout in seconds (overrides DJ_TRANSCODE_TIMEOUT_S)",
+)
 @click.option("--dry-run", is_flag=True, help="Plan only, no transcoding")
 @click.option("--verbose", is_flag=True, help="Show planned output paths")
 @click.option(
@@ -338,6 +344,7 @@ def export(
     jobs: int,
     overwrite: bool,
     detect_keys: bool,
+    transcode_timeout_s: int | None,
     dry_run: bool,
     verbose: bool,
     safe_only: bool,
@@ -392,6 +399,7 @@ def export(
         detect_keys=detect_keys,
         dry_run=dry_run,
         safe_mode=safe_only,
+        transcode_timeout_s=transcode_timeout_s,
         progress_callback=progress,
     )
 

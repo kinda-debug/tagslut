@@ -79,6 +79,7 @@ def run_export(
     detect_keys: bool = False,
     dry_run: bool = False,
     safe_mode: bool = False,
+    transcode_timeout_s: int | None = None,
     progress_callback: Callable[[int, int], None] | None = None,
 ) -> ExportStats:
     """Run full DJ export: curate → (key detect) → transcode → place.
@@ -169,7 +170,10 @@ def run_export(
     completed = 0
 
     with ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
-        futures = [pool.submit(transcode_one, track, overwrite) for track in passed_tracks]
+        futures = [
+            pool.submit(transcode_one, track, overwrite, transcode_timeout_s)
+            for track in passed_tracks
+        ]
         for future in as_completed(futures):
             status, track, error = future.result()
             completed += 1

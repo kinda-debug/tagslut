@@ -17,7 +17,8 @@ def register_report_group(cli: click.Group) -> None:
     @click.option("--source", help="Source label for playlist naming")
     @click.option("--m3u-dir", type=click.Path(), help="Output directory")
     @click.option("--merge", is_flag=True, help="Merge all paths into one playlist")
-    def report_m3u(paths, db, source, m3u_dir, merge):  # type: ignore  # TODO: mypy-strict
+    @click.option("--verbose", is_flag=True, help="Print extra details about playlist generation")
+    def report_m3u(paths, db, source, m3u_dir, merge, verbose):  # type: ignore  # TODO: mypy-strict
         """Generate M3U playlists from paths."""
         run_report_m3u(
             paths=tuple(paths),
@@ -25,6 +26,7 @@ def register_report_group(cli: click.Group) -> None:
             m3u_dir=m3u_dir,
             db=db,
             source=source,
+            verbose=bool(verbose),
         )
 
     @report.command("duration")

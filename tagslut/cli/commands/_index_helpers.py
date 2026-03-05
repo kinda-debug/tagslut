@@ -268,6 +268,7 @@ def run_report_m3u(
     m3u_dir: str | None,
     db: str | None,
     source: str | None,
+    verbose: bool,
 ) -> None:
     from datetime import datetime, timezone
 
@@ -303,6 +304,13 @@ def run_report_m3u(
             groups.setdefault(group, []).append(file_path)
         for group_name in list(groups.keys()):
             groups[group_name] = sorted(groups[group_name], key=lambda p: str(p))
+
+    if verbose:
+        click.echo(f"Input paths: {len(input_paths)}")
+        click.echo(f"FLAC files: {len(flac_files)}")
+        click.echo(f"Groups: {len(groups)}")
+        for name, files in groups.items():
+            click.echo(f"  {name}: {len(files)} tracks")
 
     resolution = resolve_db_path(db, purpose="write", allow_create=True)
     conn = get_connection(str(resolution.path), purpose="write", allow_create=True)

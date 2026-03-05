@@ -236,6 +236,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--format", choices=["copy", "mp3"], default="copy")
     parser.add_argument("--mp3-bitrate", default="320k")
     parser.add_argument("--strict", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("-v", "--verbose", action="store_true", help="Print per-file actions")
     return parser.parse_args(argv)
 
 
@@ -336,6 +337,8 @@ def main(argv: list[str] | None = None) -> int:
                 sha256=source_sha,
             )
         )
+        if args.verbose:
+            print(f"{action}: {source} -> {dest} ({reason})")
 
     manifest_rows.sort(key=lambda r: (r.dest_path.casefold(), r.identity_id))
     manifest_written = _write_manifest(manifest_path, manifest_rows)

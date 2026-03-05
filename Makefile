@@ -5,7 +5,7 @@
 	run intake-help index-help decide-help execute-help verify-help report-help auth-help \
 	index-register-dry index-check-dry promote-dry promote audit-layout audit-cli-docs \
 	backfill-v3-identities backfill-v3-provenance validate-v3-parity lint-policies test-phase3-exec \
-	verify-v3 doctor-v3 report-identity-qa plan-merge-beatport-dupes merge-beatport-dupes \
+	verify-v3 doctor-v3 apply-v3-schema report-identity-qa plan-merge-beatport-dupes merge-beatport-dupes \
 	plan-preferred-asset compute-preferred-asset plan-identity-status compute-identity-status \
 	archive-orphans check-promote-invariant run-move-plan check-hardcoded-paths dj-candidates \
 	dj-profile-get dj-profile-set dj-export-ready
@@ -72,6 +72,10 @@ verify-v3: ## Verify v2->v3 migration preservation (set V2 and V3; optional STRI
 doctor-v3: ## Run read-only v3 doctor checks (set V3)
 	@test -n "$$V3" || (echo "Usage: make doctor-v3 V3=/path/music_v3.db"; exit 1)
 	poetry run python scripts/db/doctor_v3.py --v3 "$$V3"
+
+apply-v3-schema: ## Apply latest v3 schema/views to DB (set V3)
+	@test -n "$$V3" || (echo "Usage: make apply-v3-schema V3=/path/music_v3.db"; exit 1)
+	poetry run python scripts/db/create_music_v3_db.py --out "$$V3"
 
 report-identity-qa: ## Generate identity QA summary/CSV for v3 (set V3; optional OUT and LIMIT)
 	@test -n "$$V3" || (echo "Usage: make report-identity-qa V3=/path/music_v3.db [OUT=output/identity_qa.csv] [LIMIT=200]"; exit 1)

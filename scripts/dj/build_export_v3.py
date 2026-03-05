@@ -45,6 +45,20 @@ def _connect_ro(path: Path) -> sqlite3.Connection:
     return conn
 
 
+def _view_exists(conn: sqlite3.Connection, view: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='view' AND name=?",
+        (view,),
+    ).fetchone()
+    return row is not None
+
+
+def _view_for_scope(scope: str) -> str:
+    if scope == "active":
+        return "v_dj_pool_candidates_active_v3"
+    return "v_dj_pool_candidates_active_orphan_v3"
+
+
 def _sanitize_component(value: str, fallback: str) -> str:
     text = (value or "").strip()
     if not text:
@@ -93,11 +107,7 @@ def _select_rows(
     min_energy: int | None,
     limit: int | None,
 ) -> list[sqlite3.Row]:
-    view_name = (
-        "v_dj_pool_candidates_active_v3"
-        if scope == "active"
-        else "v_dj_pool_candidates_active_orphan_v3"
-    )
+    view_name = _view_for_scope(scope)
 
     where: list[str] = []
     params: list[object] = []
@@ -249,6 +259,11 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     try:
+        view_name = _view_for_scope(args.scope)
+        if not _view_exists(conn, view_name):
+            print(f"missing required view: {view_name}")
+            print('hint: run "make apply-v3-schema V3=<db>" to install missing views')
+            return 2
         rows = _select_rows(
             conn,
             scope=args.scope,

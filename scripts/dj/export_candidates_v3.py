@@ -345,6 +345,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if not _view_exists(conn, view_name):
             print(f"missing required view: {view_name}")
+            print('hint: run "make apply-v3-schema V3=<db>" to install missing views')
             return 2
 
         rows, stats = _build_rows(

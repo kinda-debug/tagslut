@@ -61,6 +61,13 @@ make doctor-v3 V3=<V3_DB>
 make check-promote-invariant V3=<V3_DB> ROOT=<PROMOTE_ROOT> MINUTES=240 STRICT=1
 ```
 
+## DB Maintenance
+After pulling schema changes (new views/indexes), run once per DB:
+
+```bash
+make apply-v3-schema V3=<V3_DB>
+```
+
 ## DJ Candidates (Read-Only CSV)
 Generate downstream DJ candidates from v3 identities without modifying files:
 

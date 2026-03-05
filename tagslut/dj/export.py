@@ -139,11 +139,23 @@ def run_export(
                 "key": track.canonical_key,
                 "transcode_status": "missing",
                 "source_path": str(track.source_path),
+                "error": "missing_source",
             }
             for track in missing_tracks
         ]
     else:
         manifest_rows = []
+    failure_rows: list[dict[str, str | None]] = []
+    if missing_tracks:
+        for track in missing_tracks:
+            failure_rows.append(
+                {
+                    "path": str(track.source_path),
+                    "output_path": str(track.output_path or ""),
+                    "status": "missing_source",
+                    "error": "missing_source",
+                }
+            )
     if missing_tracks:
         missing_ids = {id(t) for t in missing_tracks}
         passed_tracks = [t for t in passed_tracks if id(t) not in missing_ids]
@@ -184,6 +196,14 @@ def run_export(
             else:
                 stats.transcoded_failed += 1
                 log.warning("Transcode failed for %s: %s", track.source_path, error)
+                failure_rows.append(
+                    {
+                        "path": str(track.source_path),
+                        "output_path": str(track.output_path or ""),
+                        "status": status,
+                        "error": error,
+                    }
+                )
             if progress_callback:
                 progress_callback(completed, total)
 
@@ -194,6 +214,7 @@ def run_export(
                     "title": track.title,
                     "key": track.canonical_key,
                     "transcode_status": status,
+                    "error": error if status not in {"ok", "skipped_existing"} else "",
                 }
             )
 
@@ -202,6 +223,13 @@ def run_export(
         manifest_path.parent.mkdir(parents=True, exist_ok=True)
         for_write = sorted(manifest_rows, key=lambda row: str(row.get("path") or ""))
         with manifest_path.open("w", encoding="utf-8") as handle:
+            for row in for_write:
+                handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+    if failure_rows:
+        failure_path = output_root / "export_failures.jsonl"
+        failure_path.parent.mkdir(parents=True, exist_ok=True)
+        for_write = sorted(failure_rows, key=lambda row: str(row.get("path") or ""))
+        with failure_path.open("w", encoding="utf-8") as handle:
             for row in for_write:
                 handle.write(json.dumps(row, ensure_ascii=False) + "\n")
 

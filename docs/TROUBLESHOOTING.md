@@ -221,6 +221,10 @@ tagslut dj export --input-xlsx $DJ_XLSX --output-root $DJ_USB_ROOT
 tagslut dj export --input-xlsx $DJ_XLSX --output-root $DJ_USB_ROOT --transcode-timeout-s 900
 ```
 If timeouts persist, check the specific source files and re-run with a smaller batch.
+
+Artifacts:
+- `export_manifest.jsonl` includes per-track status and error details.
+- `export_failures.jsonl` is written when any tracks fail or time out.
 - Command doesn't exist
 
 **Solution:**

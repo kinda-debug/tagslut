@@ -12,6 +12,7 @@ This directory contains the active operator and developer documentation for the 
 ## Architecture
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — system design, data flow, and provenance model
+- [ZONES.md](ZONES.md) — zone model, priorities, and configuration
 - [SCRIPT_SURFACE.md](SCRIPT_SURFACE.md) — canonical command map
 - [SURFACE_POLICY.md](SURFACE_POLICY.md) — surface governance rules
 

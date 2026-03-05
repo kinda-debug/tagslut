@@ -11,6 +11,7 @@ Restructuring phases 0/1/2/3 are complete. DJ workflow integration is functional
 - Phase 1: Quick wins (scanner move, test renames, pyproject cleanup).
 - Phase 2: CLI evacuation (`cli/main.py` slimmed; command implementations live in `cli/commands/*`).
 - Phase 3: Decision logic consolidation.
+- Phase 4: Architecture foundations (zones module, migrations cleanup, dependency trimming).
 
 ### DJ Integration
 - `tagslut/dj` module: curation, export, transcode, key detection.
@@ -34,7 +35,7 @@ Restructuring phases 0/1/2/3 are complete. DJ workflow integration is functional
 
 ## Pending Work
 ### High Priority
-- Phase 4: Architecture foundations (zones module, migrations cleanup, dependency trimming).
+- Docs consolidation to final structure.
 
 ### DJ Pipeline
 - Re-run metadata enrich after registration (as needed).

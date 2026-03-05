@@ -215,8 +215,7 @@ poetry run python -m tagslut _metadata enrich --db <db> --path "$LIBRARY_ROOT/%"
 ---
 
 ## 11. Roadmap
-1. Architecture foundations (zones module, migrations cleanup, dependency trimming).
-2. Docs consolidation to final structure.
+1. Docs consolidation to final structure.
 
 ---
 

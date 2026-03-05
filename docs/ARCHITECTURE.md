@@ -300,6 +300,8 @@ Zones are first-class trust/lifecycle stages. They are **not** just labels. Zone
 
 Zones are configured via YAML (preferred) or TOML (legacy). YAML allows explicit priorities and path-level overrides.
 
+Implementation lives in `tagslut/utils/zones.py` with a convenience module at `tagslut/zones/`.
+
 ### YAML (preferred)
 
 Set `TAGSLUT_ZONES_CONFIG` to a YAML file:

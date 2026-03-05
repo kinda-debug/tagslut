@@ -9,7 +9,7 @@ from mutagen.flac import FLAC, FLACNoHeaderError
 from tagslut.storage.models import AudioFile
 from tagslut.core.integrity import classify_flac_integrity, IntegrityState
 from tagslut.core.hashing import calculate_file_hash
-from tagslut.core.zone_assignment import determine_zone
+from tagslut.zones.assignment import determine_zone
 from tagslut.core.duration_validator import check_file_duration
 from tagslut.utils.zones import Zone, coerce_zone, ZoneManager
 

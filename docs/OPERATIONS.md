@@ -80,6 +80,13 @@ Recommended defaults:
 - keep `STRICT=1`
 - use `INCLUDE_ORPHANS=0` unless you explicitly need orphan review.
 
+## DJ Missing Metadata Queue
+Generate a CSV queue of DJ candidates missing BPM/key/genre/core fields for manual enrichment:
+
+```bash
+make dj-missing-metadata V3=<V3_DB> OUT=output/dj_missing_metadata.csv SCOPE=active LIMIT=200
+```
+
 ## DJ Profiles (Write DJ Layer Only)
 Contract reference: `docs/DJ_POOL.md` (downstream-only DJ pool boundary).
 

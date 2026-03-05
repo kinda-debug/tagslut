@@ -8,7 +8,7 @@
 	verify-v3 doctor-v3 apply-v3-schema report-identity-qa plan-merge-beatport-dupes merge-beatport-dupes \
 	plan-preferred-asset compute-preferred-asset plan-identity-status compute-identity-status \
 	archive-orphans check-promote-invariant run-move-plan check-hardcoded-paths dj-candidates \
-	dj-profile-get dj-profile-set dj-export-ready
+	dj-missing-metadata dj-profile-get dj-profile-set dj-export-ready
 
 help: ## Show this help message
 	@echo "Tagslut - available targets:"
@@ -130,6 +130,16 @@ dj-candidates: ## Export DJ candidate CSV from v3 (set V3 and OUT; optional LIMI
 		$(if $(filter 1,$(INCLUDE_ORPHANS)),--include-orphans,) \
 		$(if $(filter 0,$(REQUIRE_PREFERRED)),--no-require-preferred,) \
 		$(if $(filter 0,$(STRICT)),--no-strict,)
+
+dj-missing-metadata: ## Report DJ candidates missing metadata (set V3 and OUT; optional SCOPE/LIMIT/MIN_RATING/MIN_ENERGY/ONLY_PROFILED=1)
+	@test -n "$$V3" || (echo "Usage: make dj-missing-metadata V3=/path/music_v3.db OUT=output/dj_missing_metadata.csv [SCOPE=active] [LIMIT=200] [MIN_RATING=] [MIN_ENERGY=] [ONLY_PROFILED=0]"; exit 1)
+	@test -n "$$OUT" || (echo "Usage: make dj-missing-metadata V3=/path/music_v3.db OUT=output/dj_missing_metadata.csv [SCOPE=active] [LIMIT=200] [MIN_RATING=] [MIN_ENERGY=] [ONLY_PROFILED=0]"; exit 1)
+	poetry run python scripts/dj/report_missing_metadata_v3.py --db "$$V3" --out "$$OUT" \
+		$(if $(SCOPE),--scope "$(SCOPE)",) \
+		$(if $(LIMIT),--limit "$(LIMIT)",) \
+		$(if $(MIN_RATING),--min-rating "$(MIN_RATING)",) \
+		$(if $(MIN_ENERGY),--min-energy "$(MIN_ENERGY)",) \
+		$(if $(filter 1,$(ONLY_PROFILED)),--only-profiled,)
 
 dj-profile-get: ## Get DJ profile for one identity (set V3 and ID)
 	@test -n "$$V3" || (echo "Usage: make dj-profile-get V3=/path/music_v3.db ID=123"; exit 1)

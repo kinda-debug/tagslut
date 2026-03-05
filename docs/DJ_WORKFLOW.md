@@ -2,6 +2,15 @@
 
 DJ pool contract: see `docs/DJ_POOL.md` for the downstream-only boundary and defaults.
 
+## DJ Library Root
+
+Set your DJ library root once and re-use it across workflows:
+
+```bash
+export DJ_MP3_ROOT="/Volumes/MUSIC/DJ_LIBRARY_MERGED_20260305_162807"
+export DJ_LIBRARY_ROOT="$DJ_MP3_ROOT"
+```
+
 ## Pipeline Choice
 
 Preferred v3 pipeline (identity-based, deterministic):

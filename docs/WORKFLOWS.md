@@ -15,7 +15,8 @@ Use canonical entry points for new work: `tagslut intake/index/decide/execute/ve
 > export ROOT_BP="$STAGING_ROOT/bpdl"
 > export ROOT_TD="$STAGING_ROOT/tiddl"
 > export DJ_USB_ROOT="/path/to/dj_usb"
-> export DJ_MP3_ROOT="/path/to/dj_mp3"
+> export DJ_MP3_ROOT="/Volumes/MUSIC/DJ_LIBRARY_MERGED_20260305_162807"
+> export DJ_LIBRARY_ROOT="$DJ_MP3_ROOT"
 > export DROPBOX_ROOT="/path/to/dropbox"
 > ```
 

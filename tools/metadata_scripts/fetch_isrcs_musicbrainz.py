@@ -8,7 +8,8 @@ Inputs:
 
 Matching strategy:
   1) Query MusicBrainz recording search using title + artist (+ album if present).
-  2) Pick best match by highest score and closest duration (if available).
+  2) If no ISRC found, retry with relaxed query (drop album, normalize remix/feat).
+  3) Pick best match by highest score and closest duration (if available).
 
 Safety:
   - Default is dry-run (no writes).
@@ -76,6 +77,14 @@ def _norm(s: str) -> str:
     return " ".join((s or "").strip().split())
 
 
+def _normalize_title(title: str) -> str:
+    # Remove common remix/feat decorations for relaxed search
+    s = _norm(title)
+    s = s.replace("feat.", "").replace("featuring", "").replace("ft.", "")
+    s = s.replace("remix", "").replace("mix", "")
+    return _norm(s)
+
+
 def _build_query(title: str, artist: str, album: str) -> str:
     # MusicBrainz Lucene query: field:"value"
     parts = []
@@ -103,9 +112,31 @@ def _pick_best(recordings: list[dict], duration_ms: Optional[int]) -> Optional[d
     return max(recordings, key=score_key)
 
 
-def _duration_ms_from_tags(tags: ID3) -> Optional[int]:
-    # We don't have duration in ID3 standard fields reliably; skip if not present.
-    return None
+def _duration_ms_from_ffprobe(path: Path) -> Optional[int]:
+    # Use ffprobe to get duration if available
+    import subprocess
+    cmd = [
+        "ffprobe",
+        "-v",
+        "error",
+        "-select_streams",
+        "a:0",
+        "-show_entries",
+        "stream=duration",
+        "-of",
+        "default=nk=1:nw=1",
+        str(path),
+    ]
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode != 0:
+            return None
+        val = (res.stdout or "").strip()
+        if not val:
+            return None
+        return int(float(val) * 1000)
+    except Exception:
+        return None
 
 
 def fetch_isrc_for_track(
@@ -116,10 +147,25 @@ def fetch_isrc_for_track(
     album: str,
     duration_ms: Optional[int],
 ) -> Optional[str]:
+    # Full query
     query = _build_query(title, artist, album)
     if not query:
         return None
     params = {"query": query, "fmt": "json", "limit": 5}
+    resp = client.get(f"{MB_BASE}/recording", params=params, timeout=30.0)
+    resp.raise_for_status()
+    data = resp.json()
+    recordings = data.get("recordings") or []
+    best = _pick_best(recordings, duration_ms)
+    if best and (best.get("isrcs") or []):
+        return best["isrcs"][0]
+
+    # Relaxed query (drop album, normalize title)
+    relaxed_title = _normalize_title(title)
+    relaxed_query = _build_query(relaxed_title, artist, "")
+    if not relaxed_query:
+        return None
+    params = {"query": relaxed_query, "fmt": "json", "limit": 5}
     resp = client.get(f"{MB_BASE}/recording", params=params, timeout=30.0)
     resp.raise_for_status()
     data = resp.json()
@@ -175,7 +221,7 @@ def main() -> int:
             title = _norm(_first_text(tags, "TIT2"))
             artist = _norm(_first_text(tags, "TPE1"))
             album = _norm(_first_text(tags, "TALB"))
-            duration_ms = _duration_ms_from_tags(tags)
+            duration_ms = _duration_ms_from_ffprobe(path)
 
             try:
                 isrc = fetch_isrc_for_track(

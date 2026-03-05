@@ -16,6 +16,15 @@ CSV_COLUMNS = [
     "preferred_asset_path",
     "canonical_artist",
     "canonical_title",
+    "isrc",
+    "beatport_id",
+    "traxsource_id",
+    "spotify_id",
+    "tidal_id",
+    "deezer_id",
+    "musicbrainz_id",
+    "best_provider",
+    "best_provider_id",
     "album",
     "bpm",
     "musical_key",
@@ -24,12 +33,15 @@ CSV_COLUMNS = [
     "missing_key",
     "missing_genre",
     "missing_core_fields",
+    "missing_strong_keys",
     "most_missing_fields",
     "dj_rating",
     "dj_energy",
     "dj_set_role",
     "dj_tags_json",
 ]
+
+PROVIDER_LADDER = ("beatport", "traxsource", "spotify", "tidal", "deezer", "musicbrainz")
 
 SCOPE_TO_VIEW = {
     "active": "v_dj_pool_candidates_active_v3",
@@ -142,6 +154,13 @@ def _build_rows(
             v.asset_path AS preferred_asset_path,
             v.artist AS canonical_artist,
             v.title AS canonical_title,
+            v.isrc AS isrc,
+            v.beatport_id AS beatport_id,
+            v.traxsource_id AS traxsource_id,
+            v.spotify_id AS spotify_id,
+            v.tidal_id AS tidal_id,
+            v.deezer_id AS deezer_id,
+            v.musicbrainz_id AS musicbrainz_id,
             v.album AS album,
             v.bpm AS bpm,
             v.musical_key AS musical_key,
@@ -169,6 +188,24 @@ def _build_rows(
     rows = conn.execute(query, tuple(params) + (int(limit),)).fetchall()
     out: list[dict[str, object]] = []
     for row in rows:
+        isrc = _text(row["isrc"])
+        provider_ids = {
+            "beatport": _text(row["beatport_id"]),
+            "traxsource": _text(row["traxsource_id"]),
+            "spotify": _text(row["spotify_id"]),
+            "tidal": _text(row["tidal_id"]),
+            "deezer": _text(row["deezer_id"]),
+            "musicbrainz": _text(row["musicbrainz_id"]),
+        }
+        missing_strong_keys = int(isrc == "" and all(provider_ids[name] == "" for name in PROVIDER_LADDER))
+        best_provider = "none"
+        best_provider_id = ""
+        for provider_name in PROVIDER_LADDER:
+            provider_id = provider_ids[provider_name]
+            if provider_id:
+                best_provider = provider_name
+                best_provider_id = provider_id
+                break
         out.append(
             {
                 "identity_id": int(row["identity_id"]),
@@ -177,6 +214,15 @@ def _build_rows(
                 "preferred_asset_path": _text(row["preferred_asset_path"]),
                 "canonical_artist": _text(row["canonical_artist"]),
                 "canonical_title": _text(row["canonical_title"]),
+                "isrc": isrc,
+                "beatport_id": provider_ids["beatport"],
+                "traxsource_id": provider_ids["traxsource"],
+                "spotify_id": provider_ids["spotify"],
+                "tidal_id": provider_ids["tidal"],
+                "deezer_id": provider_ids["deezer"],
+                "musicbrainz_id": provider_ids["musicbrainz"],
+                "best_provider": best_provider,
+                "best_provider_id": best_provider_id,
                 "album": _text(row["album"]),
                 "bpm": "" if row["bpm"] is None else row["bpm"],
                 "musical_key": _text(row["musical_key"]),
@@ -185,6 +231,7 @@ def _build_rows(
                 "missing_key": int(row["missing_key"]),
                 "missing_genre": int(row["missing_genre"]),
                 "missing_core_fields": int(row["missing_core_fields"]),
+                "missing_strong_keys": missing_strong_keys,
                 "most_missing_fields": int(row["most_missing_fields"]),
                 "dj_rating": "" if row["dj_rating"] is None else row["dj_rating"],
                 "dj_energy": "" if row["dj_energy"] is None else row["dj_energy"],
@@ -196,7 +243,9 @@ def _build_rows(
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Report missing DJ metadata from v3 DB")
+    parser = argparse.ArgumentParser(
+        description="Report missing DJ metadata from v3 DB (includes Deezer IDs)"
+    )
     parser.add_argument("--db", required=True, type=Path, help="Path to music_v3.db")
     parser.add_argument("--out", type=Path, help="Optional output CSV path")
     parser.add_argument(

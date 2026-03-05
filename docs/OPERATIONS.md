@@ -87,6 +87,13 @@ Generate a CSV queue of DJ candidates missing BPM/key/genre/core fields for manu
 make dj-missing-metadata V3=<V3_DB> OUT=output/dj_missing_metadata.csv SCOPE=active LIMIT=200
 ```
 
+Includes strong-key IDs (ISRC, Beatport, Traxsource, Spotify, Tidal, Deezer, MusicBrainz) to speed enrichment.
+
+Example:
+```bash
+make dj-missing-metadata V3=<V3_DB> OUT=output/dj_missing_metadata_active.csv SCOPE=active LIMIT=200
+```
+
 ## DJ Profiles (Write DJ Layer Only)
 Contract reference: `docs/DJ_POOL.md` (downstream-only DJ pool boundary).
 

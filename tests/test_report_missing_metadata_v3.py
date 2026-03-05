@@ -38,6 +38,13 @@ def _read_csv(path: Path) -> list[dict[str, str]]:
         return list(csv.DictReader(handle))
 
 
+def _read_csv_with_header(path: Path) -> tuple[list[str], list[dict[str, str]]]:
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        rows = list(reader)
+        return list(reader.fieldnames or []), rows
+
+
 def _create_fixture_db(tmp_path: Path) -> Path:
     db = tmp_path / "music_v3.db"
     conn = sqlite3.connect(str(db))
@@ -48,6 +55,13 @@ def _create_fixture_db(tmp_path: Path) -> Path:
             INSERT INTO track_identity (
                 id,
                 identity_key,
+                isrc,
+                beatport_id,
+                tidal_id,
+                deezer_id,
+                spotify_id,
+                traxsource_id,
+                musicbrainz_id,
                 canonical_artist,
                 canonical_title,
                 canonical_album,
@@ -57,14 +71,14 @@ def _create_fixture_db(tmp_path: Path) -> Path:
                 canonical_key,
                 canonical_duration,
                 merged_into_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
-                (1, "id:alpha", "Alpha", "Tune", "Alpha EP", "House", "Deep", 124.0, "8A", 320.0, None),
-                (2, "id:beta", "Beta", "Song", "Beta EP", "", "", None, "", 300.0, None),
-                (3, "id:noartist", "", "NoArtist", "NoArtist EP", "Techno", "Peak", 120.0, "9A", 310.0, None),
-                (4, "id:orphan", "Orphan", "Lost", "Lost EP", "Trance", "", 123.0, "10A", 320.0, None),
-                (5, "id:nopref", "Gamma", "NoPref", "Gamma EP", "House", "", 128.0, "11A", 330.0, None),
+                (1, "id:alpha", "ISRC1", "BP1", None, None, None, None, None, "Alpha", "Tune", "Alpha EP", "House", "Deep", 124.0, "8A", 320.0, None),
+                (2, "id:beta", None, None, None, None, None, "TS2", None, "Beta", "Song", "Beta EP", "", "", None, "", 300.0, None),
+                (3, "id:noartist", None, None, None, "DZ3", None, None, None, "", "NoArtist", "NoArtist EP", "Techno", "Peak", 120.0, "9A", 310.0, None),
+                (4, "id:orphan", None, None, "TD4", None, None, None, "MB4", "Orphan", "Lost", "Lost EP", "Trance", "", 123.0, "10A", 320.0, None),
+                (5, "id:nopref", None, None, None, None, "SP5", "TS5", None, "Gamma", "NoPref", "Gamma EP", "House", "", 128.0, "11A", 330.0, None),
             ],
         )
         conn.executemany(
@@ -149,6 +163,7 @@ def test_missing_flags_and_filters(tmp_path: Path) -> None:
     assert row_beta["missing_key"] == "1"
     assert row_beta["missing_genre"] == "1"
     assert row_beta["missing_core_fields"] == "0"
+    assert row_beta["missing_strong_keys"] == "0"
     assert row_beta["most_missing_fields"] == "3"
 
     out_filtered = tmp_path / "filtered.csv"
@@ -160,6 +175,53 @@ def test_missing_flags_and_filters(tmp_path: Path) -> None:
     assert proc_filtered.returncode == 0, f"STDOUT:\n{proc_filtered.stdout}\nSTDERR:\n{proc_filtered.stderr}"
     rows_filtered = _read_csv(out_filtered)
     assert [row["identity_id"] for row in rows_filtered] == ["1"]
+
+
+def test_report_includes_deezer_fields(tmp_path: Path) -> None:
+    db = _create_fixture_db(tmp_path)
+
+    out = tmp_path / "providers.csv"
+    proc = _run_report(db=db, out=out, extra_args=["--scope", "active"])
+    assert proc.returncode == 0, f"STDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+
+    fieldnames, rows = _read_csv_with_header(out)
+    assert "deezer_id" in fieldnames
+    assert "traxsource_id" in fieldnames
+    assert "musicbrainz_id" in fieldnames
+    assert "best_provider" in fieldnames
+    assert "best_provider_id" in fieldnames
+    assert "qobuz_id" not in fieldnames
+    assert "missing_strong_keys" in fieldnames
+    assert "qobuz" not in ",".join(fieldnames).lower()
+
+    row_alpha = next(row for row in rows if row["identity_id"] == "1")
+    assert row_alpha["deezer_id"] == ""
+    assert row_alpha["missing_strong_keys"] == "0"
+    assert row_alpha["best_provider"] == "beatport"
+
+    row_noartist = next(row for row in rows if row["identity_id"] == "3")
+    assert row_noartist["deezer_id"] == "DZ3"
+    assert row_noartist["missing_strong_keys"] == "0"
+    assert row_noartist["best_provider"] == "deezer"
+
+    row_beta = next(row for row in rows if row["identity_id"] == "2")
+    assert row_beta["best_provider"] == "traxsource"
+    assert row_beta["best_provider_id"] == "TS2"
+    assert "qobuz" not in ",".join(row_beta.values()).lower()
+
+
+def test_provider_ladder_prefers_traxsource_over_spotify(tmp_path: Path) -> None:
+    db = _create_fixture_db(tmp_path)
+
+    out = tmp_path / "ladder.csv"
+    proc = _run_report(db=db, out=out, extra_args=["--scope", "all"])
+    assert proc.returncode == 0, f"STDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+
+    rows = _read_csv(out)
+    row_nopref = next(row for row in rows if row["identity_id"] == "5")
+    assert row_nopref["best_provider"] == "traxsource"
+    assert row_nopref["best_provider_id"] == "TS5"
+    assert "qobuz" not in ",".join(row_nopref.values()).lower()
 
 
 def test_missing_view_returns_error(tmp_path: Path) -> None:

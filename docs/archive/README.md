@@ -5,17 +5,17 @@ This directory contains documents and assets that are preserved for history/refe
 ## Active Surface
 
 Use these docs for current operations:
+- `docs/README.md`
+- `docs/WORKFLOWS.md`
+- `docs/OPERATIONS.md`
 - `docs/SCRIPT_SURFACE.md`
 - `docs/SURFACE_POLICY.md`
 - `docs/REDESIGN_TRACKER.md`
-- `docs/PHASE1_V3_DUAL_WRITE.md`
-- `docs/PHASE2_POLICY_DECIDE.md`
-- `docs/PHASE3_EXECUTOR.md`
-- `docs/PHASE4_CLI_CONVERGENCE.md`
 - `docs/PHASE5_LEGACY_DECOMMISSION.md`
 
 ## Archive Buckets
 
+- `legacy-root-docs-2026-03-06-md-cleanup/`: superseded docs root plans/history/prompts archived during relevance cleanup.
 - `legacy-workflows-2026-02-09/`: retired mgmt/metadata/recovery era docs.
 - `inactive-docs-2026-02-09/`: docs moved out of active `docs/` root.
 - `inactive-root-docs-2026-02-09/`: root-level planning/handover docs moved under docs.

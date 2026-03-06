@@ -47,10 +47,13 @@ python -m tagslut intake process-root \
 - migration verification: aggregate preservation checks
 - promotion invariant guardrail: preferred-under-root must be selected when available
 
-Safe promotion command:
+Safe promotion sequence:
 ```bash
-make promote-safe V3=<V3_DB> ROOT=<PROMOTE_ROOT> LIB=<LIBRARY_ROOT>
+make doctor-v3 V3=<V3_DB>
+make check-promote-invariant V3=<V3_DB> ROOT=<PROMOTE_ROOT> MINUTES=240 STRICT=1
 ```
+
+See [`docs/README.md`](docs/README.md) for the full documentation index.
 
 ## Repository Structure
 - `tagslut/`: runtime packages and CLI

@@ -271,8 +271,6 @@ v3 safety checks:
 V3=<path> make doctor-v3
 V3=<path> ROOT=<promoted_root> make check-promote-invariant
 
-TODO: README references `make promote-safe`, but no Makefile target exists (verify before documenting usage).
-
 
 ⸻
 

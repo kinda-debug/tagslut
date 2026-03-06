@@ -280,11 +280,8 @@ If recovery fails and you need to rebuild from scratch:
 
 ## Move Executor Contract
 
-Single canonical contract:
-- `docs/MOVE_EXECUTOR_COMPAT.md`
-
-Historical snapshot:
-- `docs/archive/MOVE_EXECUTOR_COMPAT.md` (ARCHIVE - DO NOT EDIT)
+Archived compatibility contract:
+- `docs/archive/legacy-root-docs-2026-03-06-md-cleanup/MOVE_EXECUTOR_COMPAT.md`
 
 ## Zones and Trust Model
 

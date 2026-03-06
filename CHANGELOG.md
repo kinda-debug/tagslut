@@ -22,7 +22,7 @@ Versioning: [Semantic Versioning](https://semver.org/)
 - V3 data model: asset_file, track_identity, asset_link, provenance_event, move_plan, move_execution tables
 - DJ pipeline: gig builder, USB export, transcode, Rekordbox XML export
 - Pre-download identity resolution (ISRC -> provider IDs -> fuzzy fallback)
-- OneTagger ISRC enrichment wrappers (tools/tag, tools/tag-build, tools/tag-run)
+- OneTagger ISRC enrichment wrappers (tools/tag, tag-build, tag-run)
 - Classification v2: genre fallback + soft scoring (scripts/classify_tracks_sqlite.py)
 
 ### Changed
@@ -30,7 +30,7 @@ Versioning: [Semantic Versioning](https://semver.org/)
 - Project description updated to management-first framing
 
 ### Removed
-- Legacy CLI wrappers: scan, recommend, apply, promote, quarantine, mgmt, metadata, recover (retired per Phase 5)
+- Legacy CLI wrappers: scan, recommend, apply, promote, quarantine, mgmt, metadata, recover (all retired per Phase 5)
 - Recovery-era framing and documentation
 
 ## [2.0.0] — 2025-02-01

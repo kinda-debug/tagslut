@@ -120,8 +120,8 @@ Use `tagslut intake/index/decide/execute/verify/report/auth/dj/gig/export/init` 
   - `tools/review/move_from_plan.py`
   - `tools/review/quarantine_from_plan.py`
   - `tools/review/promote_by_tags.py` (`--move-log` for JSONL move audit output)
-- Single canonical compatibility contract:
-  - `docs/MOVE_EXECUTOR_COMPAT.md`
+- Archived compatibility contract:
+  - `docs/archive/legacy-root-docs-2026-03-06-md-cleanup/MOVE_EXECUTOR_COMPAT.md`
 - Historical phase runbooks and verification reports:
   - `docs/archive/phase-specs-2026-02-09/`
 

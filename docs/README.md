@@ -1,6 +1,4 @@
-# docs/ — Documentation Index
-
-This directory contains the active operator and developer documentation for the `tagslut` package.
+# Documentation Index
 
 ## Operator Docs (start here)
 
@@ -9,26 +7,29 @@ This directory contains the active operator and developer documentation for the 
 - [DJ_WORKFLOW.md](DJ_WORKFLOW.md) — DJ pool build and USB sync
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — known issues and fixes
 
-## Architecture
+## Architecture And Policy
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — system design and data flow
+- [CORE_MODEL.md](CORE_MODEL.md) — authoritative data ownership model
+- [DB_V3_SCHEMA.md](DB_V3_SCHEMA.md) — v3 schema reference
 - [SCRIPT_SURFACE.md](SCRIPT_SURFACE.md) — canonical command map
 - [SURFACE_POLICY.md](SURFACE_POLICY.md) — surface governance rules
+- [ZONES.md](ZONES.md) — zone semantics and path mapping
 
 ## Project Status
 
 - [PROJECT.md](PROJECT.md) — project overview and goals
 - [PROGRESS_REPORT.md](PROGRESS_REPORT.md) — current state and pending work
-- [REDESIGN_TRACKER.md](REDESIGN_TRACKER.md) — V3 program status and decisions log
+- [REDESIGN_TRACKER.md](REDESIGN_TRACKER.md) — v3 program status and decisions log
+- [PHASE5_LEGACY_DECOMMISSION.md](PHASE5_LEGACY_DECOMMISSION.md) — Phase 5 runbook
 
 ## DJ Tools
 
 - [DJ_REVIEW_APP.md](DJ_REVIEW_APP.md) — local DJ review web app
+- [DJ_POOL.md](DJ_POOL.md) — deterministic DJ pool contract and rules
 
-## Implementation History (reference only)
+## Archived Reference
 
-- [PHASE5_LEGACY_DECOMMISSION.md](PHASE5_LEGACY_DECOMMISSION.md) — Phase 5 runbook (completed)
-- [CODEX_PROMPTS.md](CODEX_PROMPTS.md) — Round 1 Codex implementation record
-- [CODEX_PROMPTS_ROUND2.md](CODEX_PROMPTS_ROUND2.md) — Round 2 Codex implementation record
-- [CODEX_PROMPTS_ROUND3.md](CODEX_PROMPTS_ROUND3.md) — Round 3 Codex implementation record
-- [CODEX_PROMPTS_ROUND4.md](CODEX_PROMPTS_ROUND4.md) — Round 4 Codex implementation record
+- [Archive index](archive/README.md) — complete history buckets
+- [legacy-root-docs-2026-03-06-md-cleanup](archive/legacy-root-docs-2026-03-06-md-cleanup/) — superseded plans/history/prompts moved from `docs/` root
+- [legacy-root-docs-2026-03-04](archive/legacy-root-docs-2026-03-04/) — prior active-doc snapshot bucket

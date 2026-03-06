@@ -20,7 +20,7 @@ Define the supported command/script surface during v3 migration so operators and
 
 Reference map:
 - `docs/SCRIPT_SURFACE.md`
-- `docs/MOVE_EXECUTOR_COMPAT.md` (single canonical move executor contract)
+- `docs/archive/legacy-root-docs-2026-03-06-md-cleanup/MOVE_EXECUTOR_COMPAT.md` (archived compatibility contract)
 
 Branding note:
 - `tagslut` is the preferred CLI brand.
@@ -93,7 +93,7 @@ Compatibility wrappers were removed after satisfying these gates:
 12. `poetry run tagslut gig --help`
 13. `poetry run tagslut export --help`
 14. `poetry run tagslut init --help`
-15. Move executor contract doc: `docs/MOVE_EXECUTOR_COMPAT.md`
+15. Move executor contract doc: `docs/archive/legacy-root-docs-2026-03-06-md-cleanup/MOVE_EXECUTOR_COMPAT.md`
 16. V3 parity validator: `python scripts/validate_v3_dual_write_parity.py --db <db> --strict`
 17. Policy profile lint: `python scripts/lint_policy_profiles.py`
 18. Phase 3 executor tests: `pytest -q tests/test_exec_engine_phase3.py tests/test_exec_receipts_phase3.py`
@@ -106,6 +106,6 @@ CI integration:
 Any change to canonical or transitional surface must update all of:
 - `docs/SCRIPT_SURFACE.md`
 - `docs/SURFACE_POLICY.md`
-- `docs/MOVE_EXECUTOR_COMPAT.md` (if move execution contract changes)
+- `docs/archive/legacy-root-docs-2026-03-06-md-cleanup/MOVE_EXECUTOR_COMPAT.md` (if move execution contract changes)
 - `docs/archive/phase-specs-2026-02-09/` (if phase runbook or decommission contract changes)
 - `docs/archive/REDESIGN_TRACKER.md` (if milestone impact)

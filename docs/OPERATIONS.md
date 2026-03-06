@@ -46,10 +46,22 @@ python -m tagslut intake process-root \
 
 ## Safe Promotion
 ```bash
-make promote-safe \
-  V3=<V3_DB> \
-  ROOT=<PROMOTE_ROOT> \
-  LIB=<LIBRARY_ROOT>
+python -m tagslut intake process-root \
+  --db <V3_DB> \
+  --root <PROMOTE_ROOT> \
+  --library <LIBRARY_ROOT> \
+  --phases promote
+```
+
+Optional force controls (only when intentionally bypassing default guards):
+```bash
+python tools/review/promote_replace_merge.py \
+  <PROMOTE_ROOT> \
+  --db <V3_DB> \
+  --dest <LIBRARY_ROOT> \
+  --execute \
+  --allow-duplicate-hash \
+  --allow-non-ok-duration
 ```
 
 ## Invariant

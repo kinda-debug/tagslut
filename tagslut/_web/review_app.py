@@ -1044,12 +1044,24 @@ def _validate_output_path(output_m3u: str) -> Path:
 
     The resulting path is forced to live under a local 'artifacts' directory
     adjacent to this module, preventing directory traversal.
+
+    Only a filename (no directory components) is honored from user input.
     """
+    # Reject embedded nulls early.
     if "\x00" in output_m3u:
         raise ValueError("output_m3u contains invalid characters")
+    # Normalize to a simple filename to avoid user-controlled directories.
+    raw_name = output_m3u.strip()
+    safe_name = os.path.basename(raw_name)
+    if not safe_name:
+        raise ValueError("output_m3u must be a non-empty filename")
+    # Optionally, prevent sneaky names like "." or "..".
+    if safe_name in (".", ".."):
+        raise ValueError("output_m3u must be a valid filename")
+
     base_dir = Path(__file__).resolve().parent / "artifacts"
     base_dir.mkdir(parents=True, exist_ok=True)
-    candidate = (base_dir / output_m3u).resolve()
+    candidate = (base_dir / safe_name).resolve()
     try:
         candidate.relative_to(base_dir)
     except ValueError:

@@ -11,7 +11,7 @@ from typing import Any, Iterable, Mapping, Sequence
 from tagslut.policy.models import ALLOWED_ACTIONS, PolicyProfile
 from tagslut.storage.models import AudioFile, Decision, DuplicateGroup
 from tagslut.core.keeper_selection import select_keeper_for_group
-from tagslut.utils.zones import load_zone_manager
+from tagslut.zones import load_zone_manager
 
 
 def _stable_hash(payload: Any) -> str:

@@ -1,9 +1,6 @@
-"""Zone module entry point.
+"""Zone management and assignment utilities (canonical)."""
 
-Provides zone constants, manager utilities, and assignment helpers.
-"""
-
-from tagslut.utils.zones import (  # noqa: F401
+from tagslut.zones.core import (  # noqa: F401
     Zone,
     ZoneConfig,
     ZoneManager,
@@ -24,6 +21,7 @@ from tagslut.utils.zones import (  # noqa: F401
     is_library_zone,
     is_quarantine_zone,
     is_recoverable_zone,
+    zone_priority,
     load_zone_manager,
 )
 from tagslut.zones.assignment import determine_zone, update_zone_after_decision
@@ -49,6 +47,7 @@ __all__ = [
     "is_library_zone",
     "is_quarantine_zone",
     "is_recoverable_zone",
+    "zone_priority",
     "load_zone_manager",
     "determine_zone",
     "update_zone_after_decision",

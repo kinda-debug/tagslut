@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 
 from tagslut.storage.queries import _row_to_audiofile
-from tagslut.utils.zones import Zone
+from tagslut.zones import Zone
 
 
 def _row_from_query(query: str, params: tuple[object, ...]) -> sqlite3.Row:

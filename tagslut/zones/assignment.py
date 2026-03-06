@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from tagslut.utils.zones import Zone, ZoneManager
+from tagslut.zones.core import Zone, ZoneManager
 
 logger = logging.getLogger("tagslut")
 

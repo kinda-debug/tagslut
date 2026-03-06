@@ -10,11 +10,11 @@ from pathlib import Path
 
 import pytest
 
-from tagslut.db.v3.preferred_asset import (
+from tagslut.storage.v3.preferred_asset import (
     choose_preferred_asset_for_identity,
     compute_preferred_assets,
 )
-from tagslut.db.v3.schema import create_schema_v3
+from tagslut.storage.v3.schema import create_schema_v3
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]

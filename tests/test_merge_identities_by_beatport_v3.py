@@ -11,12 +11,12 @@ from pathlib import Path
 
 import pytest
 
-from tagslut.db.v3.merge_identities import (
+from tagslut.storage.v3.merge_identities import (
     choose_winner_identity,
     find_duplicate_beatport_groups,
     merge_group_by_repointing_assets,
 )
-from tagslut.db.v3.schema import create_schema_v3
+from tagslut.storage.v3.schema import create_schema_v3
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]

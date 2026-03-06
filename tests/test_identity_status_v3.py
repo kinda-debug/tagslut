@@ -10,12 +10,12 @@ from pathlib import Path
 
 import pytest
 
-from tagslut.db.v3.identity_status import (
+from tagslut.storage.v3.identity_status import (
     compute_identity_statuses,
     summary_counts,
     upsert_identity_statuses,
 )
-from tagslut.db.v3.schema import create_schema_v3
+from tagslut.storage.v3.schema import create_schema_v3
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]

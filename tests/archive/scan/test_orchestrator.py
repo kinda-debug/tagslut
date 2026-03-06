@@ -1,3 +1,6 @@
+import pytest
+pytest.skip("scan module archived", allow_module_level=True)
+
 import json
 import sqlite3
 from pathlib import Path

@@ -16,7 +16,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from tagslut.db.v3.merge_identities import (  # noqa: E402
+from tagslut.storage.v3.merge_identities import (  # noqa: E402
     Group,
     WinnerSelection,
     choose_winner_identity,
@@ -24,7 +24,7 @@ from tagslut.db.v3.merge_identities import (  # noqa: E402
     merge_group_by_repointing_assets,
     record_identity_merge_provenance,
 )
-from tagslut.db.v3.schema import create_schema_v3  # noqa: E402
+from tagslut.storage.v3.schema import create_schema_v3  # noqa: E402
 
 DEFAULT_OUT = Path("output/merge_plan_beatport_v3.csv")
 PLAN_COLUMNS = [

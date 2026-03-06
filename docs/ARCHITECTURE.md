@@ -2,6 +2,17 @@
 
 ## System Design and Data Flow
 
+## Database Layer
+
+Canonical DB package: `tagslut.storage`
+
+V3 helpers (schema + identity/asset utilities and dual-write helpers) live under `tagslut.storage.v3`.
+
+## Zones
+
+Canonical zone management lives in `tagslut.zones` (ZoneManager, config loading, and assignment helpers).
+The legacy module `tagslut.utils.zones` is deprecated and re-exports the canonical package.
+
 # Provenance and Recovery
 
 This document covers audit trails, provenance tracking, and recovery procedures.

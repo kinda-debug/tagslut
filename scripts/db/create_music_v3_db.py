@@ -12,8 +12,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from tagslut.db.v3.db import open_db_v3
-from tagslut.db.v3.schema import create_schema_v3
+from tagslut.storage.v3.db import open_db_v3
+from tagslut.storage.v3.schema import create_schema_v3
 
 
 def main() -> int:

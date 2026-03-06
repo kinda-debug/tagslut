@@ -6,7 +6,7 @@ import json
 import sqlite3
 from typing import Any
 
-from tagslut.db.v3.schema import V3_SCHEMA_NAME, V3_SCHEMA_VERSION_DJ_PROFILE
+from tagslut.storage.v3.schema import V3_SCHEMA_NAME, V3_SCHEMA_VERSION_DJ_PROFILE
 
 _ALLOWED_SET_ROLES = {"warmup", "builder", "peak", "tool", "closer", "ambient", "break", "unknown"}
 

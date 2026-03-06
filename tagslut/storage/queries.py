@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any, Iterable, cast
 
 from tagslut.storage.models import AudioFile
-from tagslut.utils.zones import coerce_zone
+from tagslut.zones import coerce_zone
 from tagslut.storage.schema import (
     LIBRARY_TABLE,
     PICARD_MOVES_TABLE,

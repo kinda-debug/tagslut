@@ -1,3 +1,6 @@
+import pytest
+pytest.skip("scan module archived", allow_module_level=True)
+
 import sqlite3
 import wave
 from pathlib import Path

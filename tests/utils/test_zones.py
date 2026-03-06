@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tagslut.utils.zones import (
+from tagslut.zones import (
     Zone,
     ZoneManager,
     coerce_zone,

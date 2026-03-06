@@ -253,7 +253,7 @@ def register_misc_commands(cli: click.Group) -> None:
     def show_zone(path, zones_config, config):  # type: ignore  # TODO: mypy-strict
         """Show how a path is classified by ZoneManager."""
         from tagslut.utils.config import get_config
-        from tagslut.utils.zones import load_zone_manager
+        from tagslut.zones import load_zone_manager
 
         cfg = get_config(Path(config)) if config else get_config()
         zone_manager = load_zone_manager(
@@ -291,7 +291,7 @@ def register_misc_commands(cli: click.Group) -> None:
         from tagslut.storage.queries import get_files_by_checksum
         from tagslut.storage.models import DuplicateGroup
         from tagslut.core.keeper_selection import select_keeper_for_group
-        from tagslut.utils.zones import load_zone_manager
+        from tagslut.zones import load_zone_manager
         from tagslut.utils.config import get_config
 
         cfg = get_config(Path(config)) if config else get_config()

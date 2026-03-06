@@ -16,12 +16,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from tagslut.db.v3.identity_status import (  # noqa: E402
+from tagslut.storage.v3.identity_status import (  # noqa: E402
     compute_identity_statuses,
     summary_counts,
     upsert_identity_statuses,
 )
-from tagslut.db.v3.schema import create_schema_v3  # noqa: E402
+from tagslut.storage.v3.schema import create_schema_v3  # noqa: E402
 
 DEFAULT_LIMIT = 200
 CSV_COLUMNS = [

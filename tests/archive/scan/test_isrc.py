@@ -1,3 +1,6 @@
+import pytest
+pytest.skip("scan module archived", allow_module_level=True)
+
 from tagslut.scan.isrc import extract_isrc_candidates
 
 

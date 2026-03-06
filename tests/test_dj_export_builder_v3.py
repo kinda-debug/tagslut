@@ -9,8 +9,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from tagslut.db.v3.dj_profile import ensure_schema
-from tagslut.db.v3.schema import create_schema_v3
+from tagslut.storage.v3.dj_profile import ensure_schema
+from tagslut.storage.v3.schema import create_schema_v3
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 

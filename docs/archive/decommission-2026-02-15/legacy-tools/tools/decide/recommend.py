@@ -14,7 +14,7 @@ from tagslut.core.keeper_selection import select_keeper_for_group
 from tagslut.utils.cli_helper import common_options, configure_execution
 from tagslut.utils.config import get_config
 from tagslut.utils.db import resolve_db_path
-from tagslut.utils.zones import load_zone_manager
+from tagslut.zones import load_zone_manager
 from tagslut.storage.models import DuplicateGroup
 from tagslut.storage.queries import _row_to_audiofile
 

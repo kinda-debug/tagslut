@@ -6,7 +6,7 @@ import importlib.util as _ilu
 import sys
 from pathlib import Path
 
-from tagslut.db.v3.schema import create_schema_v3
+from tagslut.storage.v3.schema import create_schema_v3
 
 
 _SCRIPT = Path(__file__).resolve().parent.parent / "tools" / "review" / "process_root.py"

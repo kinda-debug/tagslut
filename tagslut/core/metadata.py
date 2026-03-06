@@ -11,7 +11,7 @@ from tagslut.core.integrity import classify_flac_integrity, IntegrityState
 from tagslut.core.hashing import calculate_file_hash
 from tagslut.zones.assignment import determine_zone
 from tagslut.core.duration_validator import check_file_duration
-from tagslut.utils.zones import Zone, coerce_zone, ZoneManager
+from tagslut.zones import Zone, coerce_zone, ZoneManager
 
 logger = logging.getLogger("tagslut")
 

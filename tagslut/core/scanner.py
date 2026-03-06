@@ -20,7 +20,7 @@ from tagslut.storage.schema import get_connection, init_db
 from tagslut.utils.paths import list_files
 from tagslut.utils.parallel import process_map, ProcessMapResult
 from tagslut.utils.config import get_config
-from tagslut.utils.zones import ZoneManager, load_zone_manager
+from tagslut.zones import ZoneManager, load_zone_manager
 
 logger = logging.getLogger(__name__)
 

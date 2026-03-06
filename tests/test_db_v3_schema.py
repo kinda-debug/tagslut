@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from tagslut.db.v3.db import open_db_v3
-from tagslut.db.v3.schema import create_schema_v3
+from tagslut.storage.v3.db import open_db_v3
+from tagslut.storage.v3.schema import create_schema_v3
 from tagslut.storage.schema import init_db
 
 

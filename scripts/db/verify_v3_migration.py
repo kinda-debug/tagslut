@@ -14,7 +14,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from tagslut.db.v3.doctor import doctor_v3
+from tagslut.storage.v3.doctor import doctor_v3
 
 MAX_SAMPLE_ROWS = 25
 
@@ -65,7 +65,7 @@ def _resolve_doctor_entrypoint() -> str:
         return str(script_path)
     module_path = PROJECT_ROOT / "tagslut" / "db" / "v3" / "doctor.py"
     if module_path.is_file():
-        return "tagslut.db.v3.doctor:doctor_v3"
+        return "tagslut.storage.v3.doctor:doctor_v3"
     return "missing"
 
 
@@ -304,7 +304,7 @@ def main(argv: list[str] | None = None) -> int:
 
     doctor_entrypoint = _resolve_doctor_entrypoint()
     if doctor_entrypoint == "missing":
-        print("doctor tooling missing: add scripts/db/doctor_v3.py or tagslut.db.v3.doctor")
+        print("doctor tooling missing: add scripts/db/doctor_v3.py or tagslut.storage.v3.doctor")
         return 2
     print(f"doctor entrypoint: {doctor_entrypoint}")
 

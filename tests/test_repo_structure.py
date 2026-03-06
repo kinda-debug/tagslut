@@ -135,7 +135,6 @@ def test_recovery_package_absent_or_stubbed() -> None:
     live_modules = sorted(path.name for path in recovery_dir.glob("*.py") if path.name != "__init__.py")
     assert not live_modules, f"Unexpected live recovery modules remain: {live_modules}"
     init_text = init_file.read_text(encoding="utf-8")
-    assert "DeprecatedModule" in init_text
     assert "ImportError" in init_text
 
 
@@ -150,5 +149,14 @@ def test_scan_package_absent_or_stubbed() -> None:
     live_modules = sorted(path.name for path in scan_dir.glob("*.py") if path.name != "__init__.py")
     assert not live_modules, f"Unexpected live scan modules remain: {live_modules}"
     init_text = init_file.read_text(encoding="utf-8")
-    assert "DeprecatedModule" in init_text
     assert "ImportError" in init_text
+
+
+def test_recovery_is_archived() -> None:
+    with pytest.raises(ImportError, match="archived"):
+        import tagslut.recovery  # noqa: F401
+
+
+def test_scan_is_archived() -> None:
+    with pytest.raises(ImportError, match="archived"):
+        import tagslut.scan  # noqa: F401

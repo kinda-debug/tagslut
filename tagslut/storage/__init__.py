@@ -1,4 +1,4 @@
-"""Storage layer for tagslut.
+"""Storage layer for tagslut (canonical DB package).
 
 Keep package import lightweight and avoid importing optional schema helpers.
 """

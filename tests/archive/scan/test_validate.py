@@ -1,3 +1,6 @@
+import pytest
+pytest.skip("scan module archived", allow_module_level=True)
+
 from unittest.mock import MagicMock, patch
 
 import pytest

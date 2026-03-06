@@ -15,12 +15,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from tagslut.db.v3.preferred_asset import (  # noqa: E402
+from tagslut.storage.v3.preferred_asset import (  # noqa: E402
     PreferredChoice,
     choose_preferred_asset_for_identity,
     upsert_preferred_assets,
 )
-from tagslut.db.v3.schema import create_schema_v3  # noqa: E402
+from tagslut.storage.v3.schema import create_schema_v3  # noqa: E402
 
 PLAN_COLUMNS = [
     "identity_id",

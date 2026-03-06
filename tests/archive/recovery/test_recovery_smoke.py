@@ -1,3 +1,6 @@
+import pytest
+pytest.skip("recovery module archived", allow_module_level=True)
+
 """Smoke tests for the tagslut.recovery submodule."""
 
 import sqlite3

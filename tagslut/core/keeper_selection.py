@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Iterable, List, Optional, Sequence
 
 from tagslut.storage.models import AudioFile, DuplicateGroup, Decision
-from tagslut.utils.zones import (
+from tagslut.zones import (
     Zone,
     ZoneManager,
     coerce_zone,

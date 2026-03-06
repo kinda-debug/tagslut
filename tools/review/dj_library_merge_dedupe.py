@@ -20,7 +20,7 @@ from typing import Iterable
 
 from tagslut.core.keeper_selection import select_keeper_for_group
 from tagslut.storage.models import AudioFile, DuplicateGroup
-from tagslut.utils.zones import Zone, ZoneConfig, ZoneManager, PathPriority, DEFAULT_ZONE_PRIORITY
+from tagslut.zones import Zone, ZoneConfig, ZoneManager, PathPriority, DEFAULT_ZONE_PRIORITY
 
 AUDIO_EXTS = {".mp3", ".m4a", ".aiff", ".aif", ".wav", ".flac"}
 

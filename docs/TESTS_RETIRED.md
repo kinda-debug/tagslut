@@ -17,6 +17,7 @@ Rationale:
 - Recovery package implementation is now retained under `legacy/tagslut_recovery/`.
 - Active CLI surface no longer includes recovery-era package imports.
 - Archived tests are retained for historical reference but excluded from active CI.
+ - Archived tests are skip-marked at module import time.
 
 ## `tests/scan/` -> `tests/archive/scan/`
 
@@ -27,3 +28,4 @@ Rationale:
 - `scan` is retired from the top-level canonical CLI surface.
 - Scanner implementation is preserved under `legacy/` for traceability.
 - Archived tests are retained for historical reference but excluded from active CI.
+ - Archived tests are skip-marked at module import time.

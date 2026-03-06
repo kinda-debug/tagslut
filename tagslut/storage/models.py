@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, Optional, List, Dict, Any, cast
 
-from tagslut.utils.zones import Zone, coerce_zone
+from tagslut.zones import Zone, coerce_zone
 
 IntegrityState = Literal["valid", "recoverable", "corrupt"]
 

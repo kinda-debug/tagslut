@@ -14,7 +14,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from tagslut.db.v3.doctor import doctor_v3
+from tagslut.storage.v3.doctor import doctor_v3
 
 
 def _connect_ro(path: Path) -> sqlite3.Connection:

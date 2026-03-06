@@ -383,7 +383,9 @@ def _search_clause(query: str, fields: list[str]) -> tuple[str, list[Any]]:
         return "", []
     like = f"%{query}%"
     clause = " OR ".join([f"{field} LIKE ?" for field in fields])
-    return f" AND ({clause})", [like] * len(fields)
+    # Return only the clause body; callers are responsible for adding any
+    # surrounding boolean operators such as "AND (" / ")".
+    return clause, [like] * len(fields)
 
 
 def _bucket_clause(bucket: str) -> str:
@@ -631,6 +633,7 @@ def _fetch_track_items(
             ok_items.sort(key=lambda item: item["label"].lower())
             return ok_items[offset : offset + limit]
 
+        search_sql = f" AND ({search_clause})" if search_clause else ""
         sql = f"""
             SELECT
                 f.path,
@@ -652,7 +655,7 @@ def _fetch_track_items(
                 ON d.level = 'track' AND d.key = f.path
             WHERE 1=1
               {prefix_clause}
-              {search_clause}
+              {search_sql}
             ORDER BY f.mtime DESC
             LIMIT ? OFFSET ?;
         """

@@ -245,18 +245,33 @@ Run tests:
 
 poetry run python -m pytest -q
 
-DJ pool plan:
+DJ candidate export:
 
-V3_DB=<path> POOL_OUT=<path> make dj-pool-plan
+V3=<path> OUT=output/dj_candidates.csv make dj-candidates
 
-DJ pool execute:
+DJ ready export:
 
-V3_DB=<path> POOL_OUT=<path> make dj-pool-run EXECUTE=1
+V3=<path> OUT=output/dj_ready.csv make dj-export-ready
 
 Direct usage:
 
 python scripts/dj/build_pool_v3.py --db <path> --out-dir <path>
 python scripts/dj/build_pool_v3.py --db <path> --out-dir <path> --execute
+
+DJ missing metadata queue:
+
+V3=<path> OUT=output/dj_missing_metadata.csv make dj-missing-metadata
+
+DJ profile update:
+
+V3=<path> ID=<identity_id> RATING=4 ENERGY=3 make dj-profile-set
+
+v3 safety checks:
+
+V3=<path> make doctor-v3
+V3=<path> ROOT=<promoted_root> make check-promote-invariant
+
+TODO: README references `make promote-safe`, but no Makefile target exists (verify before documenting usage).
 
 
 ⸻

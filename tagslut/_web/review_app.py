@@ -1016,12 +1016,32 @@ def export() -> Any:
     return jsonify({"output": str(output_path), "count": len(paths)})
 
 
+def _validate_usb_path(usb_path: str) -> str:
+    """
+    Validate a user-supplied USB path before passing it to a subprocess.
+
+    The path must be absolute and must not contain null bytes.
+    Additional project-specific checks (such as restricting to a mount
+    point prefix) can be added here if desired.
+    """
+    if "\x00" in usb_path:
+        raise ValueError("usb_path contains invalid characters")
+    if not os.path.isabs(usb_path):
+        raise ValueError("usb_path must be an absolute path")
+    return usb_path
+
+
 @APP.route("/api/export_usb", methods=["POST"])
 def export_usb() -> Any:
     payload = request.get_json(force=True) or {}
     usb_path = str(payload.get("usb_path") or "").strip()
     if not usb_path:
         return jsonify({"error": "usb_path is required"}), 400
+
+    try:
+        usb_path = _validate_usb_path(usb_path)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
 
     policy_path = str(payload.get("policy_path") or "").strip() or None
     output_m3u = str(payload.get("output_m3u") or "artifacts/dj_review_ok.m3u8")

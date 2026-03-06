@@ -13,14 +13,14 @@ import sqlite3
 from pathlib import Path
 from typing import Any, Callable, Optional, TypeVar
 
-T = TypeVar("T")
-
 import click
 
 from tagslut.scan.discovery import discover_paths
 from tagslut.scan.orchestrator import run_scan as orchestrator_run_scan
 from tagslut.storage.schema import get_connection, init_db
 from tagslut.utils.db import resolve_db_path
+
+T = TypeVar("T")
 
 
 @click.group("scan", hidden=True)

@@ -30,6 +30,8 @@ _SAFE_ARTIST_DEFAULTS = [
     Path("artifacts/dj_safe_artists_from_safe_copy.txt"),
 ]
 _TRACK_OVERRIDES_PATH = Path("config/dj/track_overrides.csv")
+
+
 class _SafeArtistCache(TypedDict):
     mtimes: dict[str, float]
     values: set[str]

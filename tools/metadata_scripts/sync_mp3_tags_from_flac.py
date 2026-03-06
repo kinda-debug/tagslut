@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 from collections import defaultdict
 from pathlib import Path
 from typing import Optional
@@ -154,10 +155,30 @@ def _apply_tags_from_flac(id3: ID3, flac_tags: dict) -> None:
         id3["TSRC"] = TSRC(encoding=3, text=isrc)
 
 
+def _env_path(key: str) -> Optional[Path]:
+    value = os.environ.get(key, "").strip()
+    if not value:
+        return None
+    return Path(value)
+
+
 def main() -> int:
+    default_mp3_root = _env_path("DJ_MP3_ROOT")
+    default_flac_root = _env_path("DJ_LIBRARY_ROOT") or _env_path("LIBRARY_ROOT") or _env_path("VOLUME_ARCHIVE")
+
     ap = argparse.ArgumentParser(description="Sync MP3 tags from master FLAC library.")
-    ap.add_argument("--mp3-root", type=Path, required=True, help="MP3 library root")
-    ap.add_argument("--flac-root", type=Path, required=True, help="FLAC master library root")
+    ap.add_argument(
+        "--mp3-root",
+        type=Path,
+        default=default_mp3_root,
+        help="MP3 library root (default: DJ_MP3_ROOT)",
+    )
+    ap.add_argument(
+        "--flac-root",
+        type=Path,
+        default=default_flac_root,
+        help="FLAC master library root (default: DJ_LIBRARY_ROOT or LIBRARY_ROOT)",
+    )
     ap.add_argument("--mp3-report", type=Path, help="Optional MP3 report CSV to filter")
     ap.add_argument(
         "--statuses",
@@ -169,6 +190,14 @@ def main() -> int:
     ap.add_argument("--backup", type=Path, default=Path("artifacts/mp3_sync_from_flac_backup.jsonl"))
     ap.add_argument("--execute", action="store_true", help="Write tags to MP3 files")
     args = ap.parse_args()
+
+    if not args.mp3_root:
+        raise SystemExit("MP3 root missing. Provide --mp3-root or set DJ_MP3_ROOT in .env.")
+    if not args.flac_root:
+        raise SystemExit("FLAC root missing. Provide --flac-root or set DJ_LIBRARY_ROOT in .env.")
+
+    args.mp3_root = args.mp3_root.expanduser().resolve()
+    args.flac_root = args.flac_root.expanduser().resolve()
 
     statuses = {s.strip() for s in args.statuses.split(",") if s.strip()}
     mp3_paths = _read_mp3_paths(args.mp3_report, args.mp3_root, statuses)

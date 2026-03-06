@@ -23,7 +23,15 @@ def _create_db(tmp_path: Path) -> Path:
         conn.executemany(
             """
             INSERT INTO track_identity (
-                id, identity_key, canonical_artist, canonical_title, canonical_bpm, canonical_key, canonical_genre, canonical_duration, merged_into_id
+                id,
+                identity_key,
+                canonical_artist,
+                canonical_title,
+                canonical_bpm,
+                canonical_key,
+                canonical_genre,
+                canonical_duration,
+                merged_into_id
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
@@ -32,7 +40,10 @@ def _create_db(tmp_path: Path) -> Path:
             ],
         )
         conn.executemany(
-            "INSERT INTO asset_file (id, path, duration_s, sample_rate, bit_depth, integrity_state) VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                "INSERT INTO asset_file "
+                "(id, path, duration_s, sample_rate, bit_depth, integrity_state) VALUES (?, ?, ?, ?, ?, ?)"
+            ),
             [
                 (11, "/root/a.flac", 320.0, 44100, 16, "ok"),
                 (21, "/root/b.flac", 300.0, 48000, 24, "ok"),

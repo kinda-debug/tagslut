@@ -12,7 +12,7 @@ import threading
 import webbrowser
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict, cast
 from urllib.parse import quote_plus
 
 try:
@@ -30,8 +30,20 @@ _SAFE_ARTIST_DEFAULTS = [
     Path("artifacts/dj_safe_artists_from_safe_copy.txt"),
 ]
 _TRACK_OVERRIDES_PATH = Path("config/dj/track_overrides.csv")
-_SAFE_ARTIST_CACHE: dict[str, Any] = {"mtimes": {}, "values": set()}
-_TRACK_OVERRIDE_CACHE: dict[str, Any] = {
+class _SafeArtistCache(TypedDict):
+    mtimes: dict[str, float]
+    values: set[str]
+
+
+class _TrackOverrideCache(TypedDict):
+    mtime: float | None
+    safe_paths: set[str]
+    block_paths: set[str]
+    safe_artists: set[str]
+
+
+_SAFE_ARTIST_CACHE: _SafeArtistCache = {"mtimes": {}, "values": set()}
+_TRACK_OVERRIDE_CACHE: _TrackOverrideCache = {
     "mtime": None,
     "safe_paths": set(),
     "block_paths": set(),
@@ -137,7 +149,7 @@ def _get_library_remixers(conn: sqlite3.Connection) -> set[str]:
     row = conn.execute("SELECT COUNT(*), MAX(mtime) FROM files").fetchone()
     key = (row[0], row[1]) if row else (None, None)
     if _AUTO_CACHE["remixers_key"] == key:
-        return _AUTO_CACHE["remixers"]
+        return cast(set[str], _AUTO_CACHE["remixers"])
 
     remixers: set[str] = set()
     rows = conn.execute(
@@ -316,7 +328,7 @@ def _load_safe_artists() -> set[str]:
     return values
 
 
-def _load_track_overrides() -> dict[str, Any]:
+def _load_track_overrides() -> _TrackOverrideCache:
     try:
         mtime = _TRACK_OVERRIDES_PATH.stat().st_mtime
     except FileNotFoundError:
@@ -541,7 +553,7 @@ def _fetch_track_items(
             if not ok_paths:
                 return []
 
-            items: list[dict[str, Any]] = []
+            ok_items: list[dict[str, Any]] = []
             ok_list = list(ok_paths)
             chunk_size = 500
             for idx in range(0, len(ok_list), chunk_size):
@@ -603,7 +615,7 @@ def _fetch_track_items(
                             pass
                         else:
                             continue
-                    items.append(
+                    ok_items.append(
                         {
                             "key": row["path"],
                             "label": f"{artist} — {label}",
@@ -614,8 +626,8 @@ def _fetch_track_items(
                             "auto_reasons": auto.get("reasons"),
                         }
                     )
-            items.sort(key=lambda item: item["label"].lower())
-            return items[offset : offset + limit]
+            ok_items.sort(key=lambda item: item["label"].lower())
+            return ok_items[offset : offset + limit]
 
         sql = f"""
             SELECT
@@ -644,7 +656,7 @@ def _fetch_track_items(
         """
         params = prefix_params + params + [limit, offset]
         rows = conn.execute(sql, params).fetchall()
-        items: list[dict[str, Any]] = []
+        track_items: list[dict[str, Any]] = []
         for row in rows:
             status = row["status"]
             if status is None:
@@ -684,7 +696,7 @@ def _fetch_track_items(
             if mismatch_only and status in {"ok", "not_ok"}:
                 if status == auto.get("verdict"):
                     continue
-            items.append(
+            track_items.append(
                 {
                     "key": row["path"],
                     "label": f"{artist} — {label}",
@@ -695,7 +707,7 @@ def _fetch_track_items(
                     "auto_reasons": auto.get("reasons"),
                 }
             )
-        return items
+        return track_items
     finally:
         conn.close()
 

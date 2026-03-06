@@ -417,7 +417,7 @@ def promote_safe_tracks(
     with ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
         futures = [pool.submit(transcode_one, track, overwrite) for track in tracks]
         for future in as_completed(futures):
-            status, _, _ = future.result()
+            status, _, _, _ = future.result()
             if status == "ok":
                 ok += 1
             elif status == "skipped_existing":

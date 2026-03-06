@@ -12,6 +12,7 @@ import re
 import shutil
 import sqlite3
 import subprocess
+import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -209,6 +210,15 @@ def _append_receipt(path: Path, payload: dict[str, object]) -> None:
         handle.write(json.dumps(payload, sort_keys=True) + "\n")
 
 
+def _write_failure_rows(path: Path, rows: list[dict[str, object]]) -> None:
+    if not rows:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build deterministic downstream DJ pool from v3 preferred assets")
     parser.add_argument("--db", required=True, type=Path)
@@ -344,7 +354,9 @@ def main(argv: list[str] | None = None) -> int:
     manifest_written = _write_manifest(manifest_path, manifest_rows)
 
     failure_rows: list[dict[str, object]] = []
+    fail_fast_message: str | None = None
     if args.execute:
+        failure_path = out_dir / "export_failures.jsonl"
         for item in manifest_rows:
             if item.action == "skip":
                 continue
@@ -366,7 +378,8 @@ def main(argv: list[str] | None = None) -> int:
                         }
                     )
                     if args.fail_fast:
-                        raise SystemExit(f"Copy failed for {src}: {exc}")
+                        fail_fast_message = f"Copy failed for {src}: {exc}"
+                        break
                     continue
             else:
                 cmd = [
@@ -403,7 +416,8 @@ def main(argv: list[str] | None = None) -> int:
                         }
                     )
                     if args.fail_fast:
-                        raise SystemExit(f"ffmpeg timeout for {src}")
+                        fail_fast_message = f"ffmpeg timeout for {src}"
+                        break
                     continue
                 if result.returncode != 0:
                     stderr = (result.stderr or "").strip()
@@ -419,7 +433,8 @@ def main(argv: list[str] | None = None) -> int:
                         }
                     )
                     if args.fail_fast:
-                        raise SystemExit(f"ffmpeg failed for {src}: {stderr[:2000]}")
+                        fail_fast_message = f"ffmpeg failed for {src}: {stderr[:2000]}"
+                        break
                     continue
 
             _append_receipt(
@@ -435,11 +450,10 @@ def main(argv: list[str] | None = None) -> int:
                 },
             )
 
-        if failure_rows:
-            failure_path = out_dir / "export_failures.jsonl"
-            with failure_path.open("w", encoding="utf-8") as handle:
-                for row in failure_rows:
-                    handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+        _write_failure_rows(failure_path, failure_rows)
+        if fail_fast_message:
+            print(fail_fast_message, file=sys.stderr)
+            return 1
 
     if args.strict and any(row.reason == "source_missing" for row in manifest_rows):
         print("strict mode: one or more selected sources are missing")

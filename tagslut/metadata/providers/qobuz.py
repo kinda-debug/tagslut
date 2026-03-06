@@ -10,6 +10,9 @@ API Reference (unofficial): https://github.com/Qobuz/api-documentation/blob/mast
 import logging
 from typing import Optional, List, Dict, Any
 
+import httpx
+
+from tagslut.metadata.auth import TokenManager
 from tagslut.metadata.models.types import ProviderTrack, MatchConfidence
 from tagslut.metadata.providers.base import AbstractProvider, RateLimitConfig
 
@@ -37,13 +40,20 @@ class QobuzProvider(AbstractProvider):
 
     BASE_URL = "https://www.qobuz.com/api.json/0.2"
 
+    def __init__(self, token_manager: TokenManager | None = None) -> None:
+        super().__init__(token_manager)
+
     def _get_app_id(self) -> Optional[str]:
         """Get app_id from token manager."""
+        if self.token_manager is None:
+            return None
         creds = self.token_manager.get_credentials(self.name)
         return creds.get("app_id") if creds else None
 
     def _get_default_headers(self) -> Dict[str, str]:
         """Get headers with user_auth_token."""
+        if self.token_manager is None:
+            return {"Accept": "application/json"}
         creds = self.token_manager.get_credentials(self.name)
         headers = {
             "Accept": "application/json",
@@ -52,7 +62,7 @@ class QobuzProvider(AbstractProvider):
             headers["user_auth_token"] = creds["user_auth_token"]
         return headers
 
-    def _make_request(self, *args, **kwargs):  # type: ignore  # TODO: mypy-strict
+    def _make_request(self, *args: Any, **kwargs: Any) -> Optional[httpx.Response]:
         """Add app_id to all requests."""
         app_id = self._get_app_id()
         if not app_id:
@@ -78,7 +88,7 @@ class QobuzProvider(AbstractProvider):
         url = f"{self.BASE_URL}/track/get"
         params = {"track_id": track_id}
 
-        response = self._make_request("GET", url, params=params)  # type: ignore  # TODO: mypy-strict
+        response = self._make_request("GET", url, params=params)
         if response is None or response.status_code != 200:
             logger.warning("Failed to fetch Qobuz track %s", track_id)
             return None
@@ -109,7 +119,7 @@ class QobuzProvider(AbstractProvider):
             "limit": min(limit, 50),
         }
 
-        response = self._make_request("GET", url, params=params)  # type: ignore  # TODO: mypy-strict
+        response = self._make_request("GET", url, params=params)
         if response is None or response.status_code != 200:
             logger.warning("Qobuz search failed for query: %s", query)
             return []

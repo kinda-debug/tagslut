@@ -244,6 +244,7 @@ Common Commands
 Run tests:
 
 poetry run python -m pytest -q
+poetry run flake8 tagslut/ tests/
 
 DJ candidate export:
 
@@ -257,6 +258,7 @@ Direct usage:
 
 python scripts/dj/build_pool_v3.py --db <path> --out-dir <path>
 python scripts/dj/build_pool_v3.py --db <path> --out-dir <path> --execute
+python scripts/dj/build_pool_v3.py --db <path> --out-dir <path> --execute --fail-fast -v
 
 DJ missing metadata queue:
 
@@ -270,6 +272,30 @@ v3 safety checks:
 
 V3=<path> make doctor-v3
 V3=<path> ROOT=<promoted_root> make check-promote-invariant
+
+Metadata helper workflows:
+
+python tools/metadata_scripts/fetch_isrcs_musicbrainz.py --playlist <paths.m3u8> --user-agent "tagslut/1.0 (contact: <email>)" --out artifacts/isrc_fetch_report.csv
+python tools/metadata_scripts/apply_isrcs_from_report.py --report artifacts/isrc_fetch_report.csv --execute
+python tools/metadata_scripts/openkeyscan_apply_keys.py --playlist <paths.m3u8> --server-cmd "<openkeyscan command>" --out artifacts/openkeyscan_report.csv
+python tools/metadata_scripts/apply_lexicon_csv_to_flac.py --csv <lexicon.csv> --root <flac_root> --out artifacts/lexicon_apply_report.csv
+python tools/metadata_scripts/apply_lexicon_csv_to_mp3.py --csv <lexicon.csv> --root <mp3_root> --out artifacts/lexicon_apply_mp3_report.csv
+python tools/metadata_scripts/sync_mp3_tags_from_flac.py --mp3-root <mp3_root> --flac-root <flac_root> --out artifacts/mp3_sync_from_flac_report.csv
+
+MP3 sync defaults:
+
+DJ_MP3_ROOT=<mp3_root>
+DJ_LIBRARY_ROOT=<flac_root>
+
+CI triage:
+
+gh run list --limit 20
+gh pr checks <pr> --json name,state,bucket,link,workflow | jq
+gh run view <run_id> --log-failed
+
+Current CI note:
+
+Run `poetry run flake8 tagslut/ tests/` before treating a `CI` failure as commit-specific.
 
 
 ⸻

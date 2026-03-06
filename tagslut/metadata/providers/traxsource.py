@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
+from tagslut.metadata.auth import TokenManager
 from tagslut.metadata.models.types import MatchConfidence, ProviderTrack
 from tagslut.metadata.providers.base import AbstractProvider, RateLimitConfig
 
@@ -51,9 +52,9 @@ class TraxsourceProvider(AbstractProvider):
 
     BASE_URL = "https://www.traxsource.com/api/v1/catalog"
 
-    def __init__(self, token_manager=None):  # type: ignore  # TODO: mypy-strict
+    def __init__(self, token_manager: TokenManager | None = None) -> None:
         # No credentials needed.
-        super().__init__(token_manager=None)  # type: ignore  # TODO: mypy-strict
+        super().__init__(token_manager=None)
 
     # ------------------------------------------------------------------
     # AbstractProvider interface

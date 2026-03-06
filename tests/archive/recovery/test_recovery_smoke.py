@@ -1,3 +1,5 @@
+# flake8: noqa: E402
+
 import pytest
 pytest.skip("recovery module archived", allow_module_level=True)
 

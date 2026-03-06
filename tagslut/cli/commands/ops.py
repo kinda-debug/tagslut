@@ -429,45 +429,49 @@ def _print_doctor_failure(phase: str, result: DoctorRunResult) -> None:
 
 def register_ops_group(cli: click.Group) -> None:
     @cli.group(name="ops")
-    def ops_group():  # type: ignore  # TODO: mypy-strict
+    def ops_group() -> None:
         """Operator-grade guarded workflows."""
 
     @ops_group.command("run-move-plan")
-    @click.argument("plan_csv", type=click.Path(path_type=Path))
-    @click.option("--db", "db_path_arg", type=click.Path(path_type=Path), help="SQLite DB path (or TAGSLUT_DB)")
+    @click.argument("plan_csv", type=click.Path())
+    @click.option("--db", "db_path_arg", type=click.Path(), help="SQLite DB path (or TAGSLUT_DB)")
     @click.option("--strict", is_flag=True, help="Enable strict doctor checks")
     @click.option("--dry-run", is_flag=True, help="Pass through dry-run to move executor")
     @click.option("--postcheck/--no-postcheck", default=True, help="Run postflight doctor checks")
     @click.option(
         "--receipt-out",
-        type=click.Path(path_type=Path),
+        type=click.Path(),
         default=None,
         help="Receipt output path (default: plans/receipts/<timestamp>_receipt.json)",
     )
     @click.option(
         "--plan-archive-dir",
-        type=click.Path(file_okay=False, path_type=Path),
+        type=click.Path(file_okay=False),
         default=None,
         help="Plan archive directory (default: plans/archive/)",
     )
-    def run_move_plan(  # type: ignore  # TODO: mypy-strict
-        plan_csv: Path,
-        db_path_arg: Path | None,
+    def run_move_plan(
+        plan_csv: str,
+        db_path_arg: str | None,
         strict: bool,
         dry_run: bool,
         postcheck: bool,
-        receipt_out: Path | None,
-        plan_archive_dir: Path | None,
+        receipt_out: str | None,
+        plan_archive_dir: str | None,
     ) -> None:
         temp_plan_path: Path | None = None
         plan_summary: PlanSummary | None = None
         timestamp_iso = _now_iso()
         timestamp_slug = _timestamp_slug()
+        plan_csv_path = Path(plan_csv)
+        db_path_value = Path(db_path_arg) if db_path_arg is not None else None
+        receipt_out_path = Path(receipt_out) if receipt_out is not None else None
+        plan_archive_dir_path = Path(plan_archive_dir) if plan_archive_dir is not None else None
 
         try:
             try:
                 resolution = resolve_cli_env_db_path(
-                    db_path_arg,
+                    db_path_value,
                     purpose="read",
                     source_label="--db",
                 )
@@ -489,7 +493,7 @@ def register_ops_group(cli: click.Group) -> None:
                 f"track_identity_total={preflight.counts['track_identity_total']}"
             )
 
-            plan_summary = _validate_and_summarize_plan(plan_csv)
+            plan_summary = _validate_and_summarize_plan(plan_csv_path)
             temp_plan_path = plan_summary.temp_executor_plan_path
             click.echo(
                 "Plan summary: "
@@ -532,8 +536,8 @@ def register_ops_group(cli: click.Group) -> None:
             else:
                 click.echo("Postflight skipped (--no-postcheck).")
 
-            receipt_path = _resolve_receipt_path(receipt_out, timestamp_slug)
-            archive_dir = _resolve_plan_archive_dir(plan_archive_dir)
+            receipt_path = _resolve_receipt_path(receipt_out_path, timestamp_slug)
+            archive_dir = _resolve_plan_archive_dir(plan_archive_dir_path)
             archived_plan = _archive_plan_csv(plan_summary.plan_csv_path, archive_dir, timestamp_slug)
 
             receipt_payload = {

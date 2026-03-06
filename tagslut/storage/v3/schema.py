@@ -202,7 +202,9 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
             identity_id INTEGER PRIMARY KEY REFERENCES track_identity(id),
             rating INTEGER NULL CHECK(rating BETWEEN 0 AND 5),
             energy INTEGER NULL CHECK(energy BETWEEN 0 AND 10),
-            set_role TEXT NULL CHECK(set_role IN ('warmup','builder','peak','tool','closer','ambient','break','unknown')),
+            set_role TEXT NULL CHECK(
+                set_role IN ('warmup','builder','peak','tool','closer','ambient','break','unknown')
+            ),
             dj_tags_json TEXT NOT NULL DEFAULT '[]',
             notes TEXT NULL,
             last_played_at TEXT NULL,

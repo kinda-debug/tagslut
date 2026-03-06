@@ -389,7 +389,7 @@ def push_to_lexicon_api(
 ) -> dict[str, int]:
     url = "http://localhost:48624/v1/tracks"
     try:
-        import requests  # type: ignore
+        import requests  # type: ignore[import-untyped]
     except Exception as e:
         logger.debug("requests import unavailable for lexicon push: %s", e)
         requests = None

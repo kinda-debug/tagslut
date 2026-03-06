@@ -92,7 +92,7 @@ class AbstractProvider(ABC):
     # Whether this provider supports ISRC search natively
     supports_isrc_search: bool = False
 
-    def __init__(self, token_manager: TokenManager):
+    def __init__(self, token_manager: TokenManager | None):
         self.token_manager = token_manager
         self.rate_limiter = RateLimiter(self.rate_limit_config)
         self._client: Optional[httpx.Client] = None
@@ -252,6 +252,8 @@ class AbstractProvider(ABC):
 
         If refresh fails, marks auth as permanently failed to prevent retry loops.
         """
+        if self.token_manager is None:
+            return False
         token = self.token_manager.ensure_valid_token(self.name)
 
         if token is None or not token.access_token:

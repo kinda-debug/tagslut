@@ -26,13 +26,28 @@ import argparse
 import csv
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor
 from collections import defaultdict
+from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Optional
 
 from mutagen.flac import FLAC
 from mutagen.id3 import ID3, ID3NoHeaderError, TBPM, TCON, TKEY, TSRC, TXXX
 from mutagen.mp3 import MP3
+
+
+DEFAULT_JOBS = min(16, max(1, os.cpu_count() or 4))
+
+
+@dataclass(frozen=True)
+class Mp3Candidate:
+    path: Path
+    title: str
+    artist: str
+    album: str
+    duration_s: float | None
 
 
 def _norm(s: str) -> str:
@@ -69,7 +84,7 @@ def _read_mp3_paths(report: Optional[Path], root: Path, statuses: set[str]) -> l
         with report.open(newline="", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
-                if statuses and row.get("status") not in statuses:
+                if statuses and row.get("status") not in statuses and row.get("reason") not in statuses:
                     continue
                 p = row.get("path")
                 if p:
@@ -78,27 +93,84 @@ def _read_mp3_paths(report: Optional[Path], root: Path, statuses: set[str]) -> l
     return list(root.rglob("*.mp3"))
 
 
-def _index_flacs(flac_root: Path) -> dict[tuple[str, str], list[dict]]:
+def _read_mp3_candidate(path: Path) -> Mp3Candidate | None:
+    if not path.exists():
+        return None
+    tags = _get_id3(path)
+    if tags is None:
+        return None
+    title = _norm(_first_text_id3(tags, "TIT2"))
+    artist = _norm(_first_text_id3(tags, "TPE1"))
+    album = _norm(_first_text_id3(tags, "TALB"))
+    duration_s = None
+    try:
+        duration_s = float(getattr(MP3(path).info, "length", 0.0) or 0.0) or None
+    except Exception:
+        duration_s = None
+    return Mp3Candidate(
+        path=path,
+        title=title,
+        artist=artist,
+        album=album,
+        duration_s=duration_s,
+    )
+
+
+def _load_flac_entry(
+    path: Path,
+    *,
+    wanted_keys: set[tuple[str, str]] | None,
+) -> tuple[tuple[str, str], dict] | None:
+    try:
+        audio = FLAC(path)
+    except Exception:
+        return None
+    title = _norm(_first_text_flac(audio.tags or {}, "title"))
+    artist = _norm(_first_text_flac(audio.tags or {}, "artist"))
+    album = _norm(_first_text_flac(audio.tags or {}, "album"))
+    duration = float(getattr(audio.info, "length", 0.0) or 0.0)
+    if not title or not artist:
+        return None
+    key = (title, artist)
+    if wanted_keys is not None and key not in wanted_keys:
+        return None
+    return (
+        key,
+        {
+            "path": path,
+            "album": album,
+            "duration": duration,
+            "tags": audio.tags or {},
+        },
+    )
+
+
+def _index_flacs(
+    flac_root: Path,
+    *,
+    wanted_keys: set[tuple[str, str]] | None,
+    jobs: int,
+) -> dict[tuple[str, str], list[dict]]:
     index: dict[tuple[str, str], list[dict]] = defaultdict(list)
-    for path in flac_root.rglob("*.flac"):
-        try:
-            audio = FLAC(path)
-        except Exception:
+    loader = partial(_load_flac_entry, wanted_keys=wanted_keys)
+    flac_paths = flac_root.rglob("*.flac")
+    if jobs <= 1:
+        entries = map(loader, flac_paths)
+    else:
+        with ThreadPoolExecutor(max_workers=jobs) as pool:
+            entries = pool.map(loader, flac_paths)
+            for entry in entries:
+                if entry is None:
+                    continue
+                key, payload = entry
+                index[key].append(payload)
+            return index
+
+    for entry in entries:
+        if entry is None:
             continue
-        title = _norm(_first_text_flac(audio.tags or {}, "title"))
-        artist = _norm(_first_text_flac(audio.tags or {}, "artist"))
-        album = _norm(_first_text_flac(audio.tags or {}, "album"))
-        duration = float(getattr(audio.info, "length", 0.0) or 0.0)
-        if not title or not artist:
-            continue
-        index[(title, artist)].append(
-            {
-                "path": path,
-                "album": album,
-                "duration": duration,
-                "tags": audio.tags or {},
-            }
-        )
+        key, payload = entry
+        index[key].append(payload)
     return index
 
 
@@ -183,9 +255,10 @@ def main() -> int:
     ap.add_argument(
         "--statuses",
         default="no_match,ambiguous",
-        help="Comma-separated MP3 report statuses to include (default: no_match,ambiguous)",
+        help="Comma-separated MP3 report status/reason selectors (default: no_match,ambiguous)",
     )
     ap.add_argument("--tol", type=float, default=2.0, help="Duration tolerance in seconds")
+    ap.add_argument("--jobs", type=int, default=DEFAULT_JOBS, help="Parallel FLAC scan workers")
     ap.add_argument("--out", type=Path, default=Path("artifacts/mp3_sync_from_flac_report.csv"))
     ap.add_argument("--backup", type=Path, default=Path("artifacts/mp3_sync_from_flac_backup.jsonl"))
     ap.add_argument("--execute", action="store_true", help="Write tags to MP3 files")
@@ -201,7 +274,27 @@ def main() -> int:
 
     statuses = {s.strip() for s in args.statuses.split(",") if s.strip()}
     mp3_paths = _read_mp3_paths(args.mp3_report, args.mp3_root, statuses)
-    flac_index = _index_flacs(args.flac_root)
+    if not mp3_paths:
+        print("applied=0 no_match=0 missing_mp3=0")
+        print(f"report={args.out}")
+        print(f"backup={args.backup}")
+        return 0
+
+    mp3_candidates = {
+        candidate.path: candidate
+        for path in mp3_paths
+        if (candidate := _read_mp3_candidate(path)) is not None
+    }
+    wanted_keys = {
+        (candidate.title, candidate.artist)
+        for candidate in mp3_candidates.values()
+        if candidate.title and candidate.artist
+    }
+    flac_index = _index_flacs(
+        args.flac_root,
+        wanted_keys=wanted_keys,
+        jobs=max(1, int(args.jobs)),
+    )
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.backup.parent.mkdir(parents=True, exist_ok=True)
@@ -222,27 +315,23 @@ def main() -> int:
                 writer.writerow({"path": str(mp3_path), "status": "skip", "reason": "missing_mp3"})
                 continue
 
+            candidate = mp3_candidates.get(mp3_path)
+            if candidate is None:
+                writer.writerow({"path": str(mp3_path), "status": "skip", "reason": "tag_read_error"})
+                continue
+
             tags = _get_id3(mp3_path)
             if tags is None:
                 writer.writerow({"path": str(mp3_path), "status": "skip", "reason": "tag_read_error"})
                 continue
 
-            title = _norm(_first_text_id3(tags, "TIT2"))
-            artist = _norm(_first_text_id3(tags, "TPE1"))
-            album = _norm(_first_text_id3(tags, "TALB"))
-            duration_s = None
-            try:
-                duration_s = float(getattr(MP3(mp3_path).info, "length", 0.0) or 0.0) or None
-            except Exception:
-                duration_s = None
-
-            candidates = flac_index.get((title, artist), [])
+            candidates = flac_index.get((candidate.title, candidate.artist), [])
             if not candidates:
                 no_match += 1
                 writer.writerow({"path": str(mp3_path), "status": "skip", "reason": "no_flac_match"})
                 continue
 
-            flac = _pick_best(candidates, album, duration_s, args.tol)
+            flac = _pick_best(candidates, candidate.album, candidate.duration_s, args.tol)
             if flac is None:
                 no_match += 1
                 writer.writerow({"path": str(mp3_path), "status": "skip", "reason": "no_flac_choice"})

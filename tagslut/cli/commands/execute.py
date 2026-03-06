@@ -144,7 +144,7 @@ def run_execute_move_plan(
 
 def register_execute_group(cli: click.Group) -> None:
     @cli.group(name="execute")
-    def execute_group():  # type: ignore  # TODO: mypy-strict
+    def execute_group() -> None:
         """Canonical execution commands."""
 
     @execute_group.command("move-plan")
@@ -152,17 +152,17 @@ def register_execute_group(cli: click.Group) -> None:
         "--plan",
         "plan_path",
         required=True,
-        type=click.Path(exists=True, dir_okay=False, path_type=Path),  # type: ignore  # TODO: mypy-strict
+        type=click.Path(exists=True, dir_okay=False),
         help="Plan CSV path",
     )
-    @click.option("--db", type=click.Path(path_type=Path), help="SQLite DB path (for receipt writeback)")
+    @click.option("--db", type=click.Path(), help="SQLite DB path (for receipt writeback)")
     @click.option("--dry-run", is_flag=True, help="Plan only; do not move files")
     @click.option("--verify", is_flag=True, help="Run parity checks after execution")
-    def execute_move_plan(plan_path: Path, db: Path | None, dry_run: bool, verify: bool) -> None:
+    def execute_move_plan(plan_path: str, db: str | None, dry_run: bool, verify: bool) -> None:
         """Execute move actions from a plan CSV."""
         run_execute_move_plan(
-            plan_path=plan_path,
-            db=db,
+            plan_path=Path(plan_path),
+            db=Path(db) if db is not None else None,
             dry_run=dry_run,
             verify=verify,
         )

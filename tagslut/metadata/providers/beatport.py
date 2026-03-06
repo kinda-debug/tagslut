@@ -12,13 +12,15 @@ This provider uses multiple methods (in order of preference):
 API Reference: https://api.beatport.com/v4/docs/
 """
 
+from urllib.parse import quote
 import logging
 import re
 import time
-from typing import Optional, List, Dict, Any
-import httpx
-from urllib.parse import quote
+from typing import Any, Dict, List, Optional
 
+import httpx
+
+from tagslut.metadata.auth import TokenManager
 from tagslut.metadata.models.types import ProviderTrack, MatchConfidence
 from tagslut.metadata.providers.base import AbstractProvider, RateLimitConfig
 
@@ -51,10 +53,10 @@ class BeatportProvider(AbstractProvider):
     WEB_URL = "https://www.beatport.com"
     MIGRATOR_URL = "https://api.beatport.com/migrator/v1"
 
-    def __init__(self, token_manager=None):  # type: ignore  # TODO: mypy-strict
+    def __init__(self, token_manager: TokenManager | None = None) -> None:
         super().__init__(token_manager)
-        self._auth_available = None
-        self._build_id = None  # Next.js build ID cache
+        self._auth_available: bool | None = None
+        self._build_id: str | None = None  # Next.js build ID cache
 
     def _has_auth(self) -> bool:
         """Check if we have valid authentication."""
@@ -88,13 +90,13 @@ class BeatportProvider(AbstractProvider):
             "x-nextjs-data": "1",
         }
 
-    def _make_request_no_auth(  # type: ignore  # TODO: mypy-strict
+    def _make_request_no_auth(
         self,
         method: str,
         url: str,
         headers: Optional[Dict[str, str]] = None,
         params: Optional[Dict[str, Any]] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> Optional[httpx.Response]:
         """
         Make a request without Authorization headers or token refresh.
@@ -148,7 +150,7 @@ class BeatportProvider(AbstractProvider):
     def _get_build_id(self) -> Optional[str]:
         """Get current Next.js build ID from Beatport website."""
         if self._build_id:
-            return self._build_id  # type: ignore  # TODO: mypy-strict
+            return self._build_id
 
         try:
             response = self._make_request_no_auth(
@@ -279,8 +281,7 @@ class BeatportProvider(AbstractProvider):
 
         return tracks
 
-    def _fetch_nextjs_track(  # type: ignore  # TODO: mypy-strict
-            self, track_id: int, slug: str = "track") -> Optional[Dict]:
+    def _fetch_nextjs_track(self, track_id: int, slug: str = "track") -> Optional[Dict[str, Any]]:
         """Fetch track data via Next.js data endpoint (no auth needed)."""
         build_id = self._get_build_id()
         if not build_id:
@@ -294,7 +295,12 @@ class BeatportProvider(AbstractProvider):
         if response and response.status_code == 200:
             try:
                 data = response.json()
-                return data.get("pageProps", {}).get("track")  # type: ignore  # TODO: mypy-strict
+                page_props = data.get("pageProps", {})
+                if isinstance(page_props, dict):
+                    track = page_props.get("track")
+                    if isinstance(track, dict):
+                        return track
+                return None
             except Exception as e:
                 logger.debug("Failed to parse Next.js response: %s", e)
 

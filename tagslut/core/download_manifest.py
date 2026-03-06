@@ -6,7 +6,7 @@ import json
 import sqlite3
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 
 from tagslut.core.quality import compute_quality_rank
 from tagslut.filters.identity_resolver import IdentityResolver, TrackIntent
@@ -44,8 +44,8 @@ class DownloadManifest:
             f"{len(self.skipped)} skipped"
         )
 
-    def to_dict(self) -> dict:
-        def _entry_dict(entry: ManifestEntry) -> dict:
+    def to_dict(self) -> dict[str, Any]:
+        def _entry_dict(entry: ManifestEntry) -> dict[str, Any]:
             payload = asdict(entry)
             payload["track_intent"] = asdict(entry.track_intent)
             return payload

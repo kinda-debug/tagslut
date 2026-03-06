@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
-from typing import Optional
+from typing import Any, Iterable, Optional, cast
 
 import click
 
@@ -106,7 +106,7 @@ def register_index_group(cli: click.Group) -> None:
                 raise click.ClickException(
                     f"File is not FLAC: {path_obj} (expected .flac)"
                 )
-            flac_iter = [path_obj]
+            flac_iter: Iterable[Path] = [path_obj]
         else:
             flac_iter = list_files(path_obj, {".flac"})
         if limit:
@@ -683,12 +683,13 @@ def register_index_group(cli: click.Group) -> None:
                     except Exception:
                         audio = None
 
-                    tags = audio.tags or {} if audio is not None else {}  # type: ignore  # TODO: mypy-strict
-                    beatport_id = extract_tag_value(  # type: ignore  # TODO: mypy-strict
+                    raw_tags = audio.tags if audio is not None else None
+                    tags = cast(dict[Any, Any], raw_tags) if isinstance(raw_tags, dict) else {}
+                    beatport_id = extract_tag_value(
                         tags,
                         ["BEATPORT_TRACK_ID", "BP_TRACK_ID", "beatport_track_id"],
                     )
-                    isrc = extract_tag_value(tags, ["ISRC", "TSRC"])  # type: ignore  # TODO: mypy-strict
+                    isrc = extract_tag_value(tags, ["ISRC", "TSRC"])
                     if not beatport_id and db_beatport_id:
                         beatport_id = db_beatport_id
                     if not isrc and db_isrc:
@@ -1098,7 +1099,7 @@ def register_index_group(cli: click.Group) -> None:
             click.echo(f"  Providers:  {' → '.join(provider_list)}")
             click.echo("")
 
-            stats = {"total": 0, "enriched": 0, "no_match": 0, "failed": 0}
+            summary_stats = {"total": 0, "enriched": 0, "no_match": 0, "failed": 0}
 
             with Enricher(
                 db_path=Path("__standalone__"),
@@ -1113,23 +1114,23 @@ def register_index_group(cli: click.Group) -> None:
                         file_info = _local_file_info_from_path(file_path)
                         result = enricher.resolve_file(file_info)
                         if result.matches:
-                            stats["enriched"] += 1
+                            summary_stats["enriched"] += 1
                         else:
-                            stats["no_match"] += 1
+                            summary_stats["no_match"] += 1
                         _print_enrichment_result(result)
                     except Exception as e:
-                        stats["failed"] += 1
+                        summary_stats["failed"] += 1
                         click.echo(f"Error: {e}")
-                    stats["total"] += 1
+                    summary_stats["total"] += 1
                     click.echo("")
 
             click.echo(f"{'='*50}")
             click.echo("RESULTS")
             click.echo(f"{'='*50}")
-            click.echo(f"  Total:      {stats['total']:>6}")
-            click.echo(f"  Enriched:   {stats['enriched']:>6}  ✓")
-            click.echo(f"  No match:   {stats['no_match']:>6}")
-            click.echo(f"  Failed:     {stats['failed']:>6}")
+            click.echo(f"  Total:      {summary_stats['total']:>6}")
+            click.echo(f"  Enriched:   {summary_stats['enriched']:>6}  ✓")
+            click.echo(f"  No match:   {summary_stats['no_match']:>6}")
+            click.echo(f"  Failed:     {summary_stats['failed']:>6}")
             return
 
         # Set up logging to both file and console

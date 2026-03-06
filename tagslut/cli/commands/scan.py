@@ -11,7 +11,9 @@ import inspect
 import json
 import sqlite3
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional, TypeVar
+
+T = TypeVar("T")
 
 import click
 
@@ -54,7 +56,7 @@ def _connect_scan_db(
     return conn
 
 
-def _call_with_optional_db(func, *args, db):  # type: ignore  # TODO: mypy-strict
+def _call_with_optional_db(func: Callable[..., T], *args: Any, db: str | Path | None) -> T:
     """Call monkeypatched helpers with backward-compatible signatures in tests."""
     parameters = inspect.signature(func).parameters
     if "db" in parameters:
@@ -227,30 +229,34 @@ def get_report_rows(run_id: int, db: Optional[str | Path] = None) -> tuple[list[
 @click.option(
     "--root",
     required=True,
-    type=click.Path(exists=True, file_okay=False, path_type=Path),  # type: ignore
-)  # TODO: mypy-strict
+    type=click.Path(exists=True, file_okay=False),
+)
 @click.option("--priority", default=5, show_default=True, type=int)
-@click.option("--db", type=click.Path(path_type=Path), help="Database path (auto-detect from env if not provided)")
-def scan_enqueue(root: Path, priority: int, db: Optional[Path]) -> None:
+@click.option("--db", type=click.Path(), help="Database path (auto-detect from env if not provided)")
+def scan_enqueue(root: str, priority: int, db: Optional[str]) -> None:
     """Enqueue files under ROOT for scanning."""
-    run_id = _call_with_optional_db(enqueue_scan, root, priority, db=db)
-    click.echo(f"Enqueued scan run {run_id} for {root} with priority={priority}")
+    root_path = Path(root)
+    db_path = Path(db) if db is not None else None
+    run_id = _call_with_optional_db(enqueue_scan, root_path, priority, db=db_path)
+    click.echo(f"Enqueued scan run {run_id} for {root_path} with priority={priority}")
 
 
 @scan_group.command("run")
 @click.option("--run-id", type=int, default=None)
-@click.option("--db", type=click.Path(path_type=Path), help="Database path (auto-detect from env if not provided)")
-def scan_run(run_id: Optional[int], db: Optional[Path]) -> None:
+@click.option("--db", type=click.Path(), help="Database path (auto-detect from env if not provided)")
+def scan_run(run_id: Optional[int], db: Optional[str]) -> None:
     """Run scanner for a specific run-id or resume latest."""
-    for line in _call_with_optional_db(run_scan_job, run_id, db=db):
+    db_path = Path(db) if db is not None else None
+    for line in _call_with_optional_db(run_scan_job, run_id, db=db_path):
         click.echo(line)
 
 
 @scan_group.command("status")
-@click.option("--db", type=click.Path(path_type=Path), help="Database path (auto-detect from env if not provided)")
-def scan_status(db: Optional[Path]) -> None:
+@click.option("--db", type=click.Path(), help="Database path (auto-detect from env if not provided)")
+def scan_status(db: Optional[str]) -> None:
     """Print scan run summary table."""
-    rows = _call_with_optional_db(get_status_rows, db=db)
+    db_path = Path(db) if db is not None else None
+    rows = _call_with_optional_db(get_status_rows, db=db_path)
     click.echo("run_id | status | queued | done | failed | started_at")
     for row in rows:
         click.echo(
@@ -262,10 +268,11 @@ def scan_status(db: Optional[Path]) -> None:
 @scan_group.command("issues")
 @click.option("--run-id", required=True, type=int)
 @click.option("--severity", default=None)
-@click.option("--db", type=click.Path(path_type=Path), help="Database path (auto-detect from env if not provided)")
-def scan_issues(run_id: int, severity: Optional[str], db: Optional[Path]) -> None:
+@click.option("--db", type=click.Path(), help="Database path (auto-detect from env if not provided)")
+def scan_issues(run_id: int, severity: Optional[str], db: Optional[str]) -> None:
     """Print issues table for a run, optionally filtered by severity."""
-    rows = _call_with_optional_db(get_issue_rows, run_id, severity, db=db)
+    db_path = Path(db) if db is not None else None
+    rows = _call_with_optional_db(get_issue_rows, run_id, severity, db=db_path)
     order = {"ERROR": 3, "WARN": 2, "INFO": 1}
     rows = sorted(rows, key=lambda r: order.get(str(r["severity"]).upper(), 0), reverse=True)
 
@@ -276,10 +283,11 @@ def scan_issues(run_id: int, severity: Optional[str], db: Optional[Path]) -> Non
 
 @scan_group.command("report")
 @click.option("--run-id", required=True, type=int)
-@click.option("--db", type=click.Path(path_type=Path), help="Database path (auto-detect from env if not provided)")
-def scan_report(run_id: int, db: Optional[Path]) -> None:
+@click.option("--db", type=click.Path(), help="Database path (auto-detect from env if not provided)")
+def scan_report(run_id: int, db: Optional[str]) -> None:
     """Print per-issue-code counts + FORMAT_DUPLICATE count."""
-    issue_rows, format_duplicate_count = _call_with_optional_db(get_report_rows, run_id, db=db)
+    db_path = Path(db) if db is not None else None
+    issue_rows, format_duplicate_count = _call_with_optional_db(get_report_rows, run_id, db=db_path)
     click.echo("issue_code | count")
     for row in issue_rows:
         click.echo(f"{row['issue_code']} | {row['count']}")

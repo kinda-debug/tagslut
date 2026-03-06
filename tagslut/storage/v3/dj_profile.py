@@ -8,7 +8,16 @@ from typing import Any
 
 from tagslut.storage.v3.schema import V3_SCHEMA_NAME, V3_SCHEMA_VERSION_DJ_PROFILE
 
-_ALLOWED_SET_ROLES = {"warmup", "builder", "peak", "tool", "closer", "ambient", "break", "unknown"}
+_ALLOWED_SET_ROLES = {
+    "warmup",
+    "builder",
+    "peak",
+    "tool",
+    "closer",
+    "ambient",
+    "break",
+    "unknown",
+}
 
 
 def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
@@ -35,7 +44,9 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
             identity_id INTEGER PRIMARY KEY REFERENCES track_identity(id),
             rating INTEGER NULL CHECK(rating BETWEEN 0 AND 5),
             energy INTEGER NULL CHECK(energy BETWEEN 0 AND 10),
-            set_role TEXT NULL CHECK(set_role IN ('warmup','builder','peak','tool','closer','ambient','break','unknown')),
+            set_role TEXT NULL CHECK(
+                set_role IN ('warmup','builder','peak','tool','closer','ambient','break','unknown')
+            ),
             dj_tags_json TEXT NOT NULL DEFAULT '[]',
             notes TEXT NULL,
             last_played_at TEXT NULL,

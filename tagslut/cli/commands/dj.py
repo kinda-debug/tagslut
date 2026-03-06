@@ -430,21 +430,21 @@ def export(
     "--root",
     "root_path",
     required=True,
-    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    type=click.Path(exists=True, file_okay=False),
     help="Curated DJ source folder to scan recursively.",
 )
 @click.option(
     "--out",
     "out_path",
     required=True,
-    type=click.Path(file_okay=False, path_type=Path),
+    type=click.Path(file_okay=False),
     help="Output mirror folder (MP3 CBR 320, 44.1kHz, ID3v2.3, embedded cover).",
 )
 @click.option(
     "--quarantine",
     "quarantine_path",
     required=True,
-    type=click.Path(file_okay=False, path_type=Path),
+    type=click.Path(file_okay=False),
     help="Quarantine folder for replaced originals.",
 )
 @click.option(
@@ -453,17 +453,17 @@ def export(
     help="Plan only; recommended first run for safety.",
 )
 def prep_rekordbox(
-    root_path: Path,
-    out_path: Path,
-    quarantine_path: Path,
+    root_path: str,
+    out_path: str,
+    quarantine_path: str,
     dry_run: bool,
 ) -> None:
     """Prepare a curated folder for Rekordbox. Use --dry-run first (recommended)."""
     try:
         result = run_rekordbox_prep(
-            root=root_path.expanduser().resolve(),
-            out=out_path.expanduser().resolve(),
-            quarantine=quarantine_path.expanduser().resolve(),
+            root=Path(root_path).expanduser().resolve(),
+            out=Path(out_path).expanduser().resolve(),
+            quarantine=Path(quarantine_path).expanduser().resolve(),
             dry_run=dry_run,
         )
     except (FileNotFoundError, RuntimeError) as exc:

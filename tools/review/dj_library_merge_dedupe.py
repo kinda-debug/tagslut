@@ -13,16 +13,23 @@ import hashlib
 import json
 import os
 import shutil
+import sys
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Iterable
 
-from tagslut.core.keeper_selection import select_keeper_for_group
-from tagslut.storage.models import AudioFile, DuplicateGroup
-from tagslut.zones import Zone, ZoneConfig, ZoneManager, PathPriority, DEFAULT_ZONE_PRIORITY
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from tagslut.core.keeper_selection import select_keeper_for_group  # noqa: E402
+from tagslut.storage.models import AudioFile, DuplicateGroup  # noqa: E402
+from tagslut.zones import DEFAULT_ZONE_PRIORITY, PathPriority, Zone, ZoneConfig, ZoneManager  # noqa: E402
 
 AUDIO_EXTS = {".mp3", ".m4a", ".aiff", ".aif", ".wav", ".flac"}
+DEFAULT_JOBS = min(16, max(1, os.cpu_count() or 4))
 
 
 @dataclass(frozen=True)
@@ -128,12 +135,21 @@ def _resolve_dest(out_root: Path, entry: FileEntry, used: dict[Path, int]) -> Pa
         count += 1
 
 
+def _scan_entry(item: tuple[Path, Path]) -> FileEntry:
+    root, path = item
+    rel = path.relative_to(root)
+    sha256 = _hash_file(path)
+    audio = _audio_file(path, sha256)
+    return FileEntry(path=path, root=root, rel=rel, sha256=sha256, audio=audio)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Merge and dedupe DJ library folders.")
     parser.add_argument("--src", action="append", required=True, help="Source root (repeatable)")
     parser.add_argument("--out", required=True, help="Output root for merged DJ library")
     parser.add_argument("--execute", action="store_true", help="Copy keepers into output root")
     parser.add_argument("--report-dir", default=None, help="Directory for plan/report outputs")
+    parser.add_argument("--jobs", type=int, default=DEFAULT_JOBS, help="Parallel scan workers")
     args = parser.parse_args()
 
     roots = [Path(p).expanduser().resolve() for p in args.src]
@@ -149,12 +165,10 @@ def main() -> int:
 
     entries: list[FileEntry] = []
     print("Scanning source roots...")
-    for root in roots:
-        for path in _iter_audio_files(root):
-            rel = path.relative_to(root)
-            sha256 = _hash_file(path)
-            audio = _audio_file(path, sha256)
-            entries.append(FileEntry(path=path, root=root, rel=rel, sha256=sha256, audio=audio))
+    scan_items = ((root, path) for root in roots for path in _iter_audio_files(root))
+    with ThreadPoolExecutor(max_workers=max(1, int(args.jobs))) as pool:
+        for entry in pool.map(_scan_entry, scan_items):
+            entries.append(entry)
 
     print(f"Found {len(entries)} audio files")
 

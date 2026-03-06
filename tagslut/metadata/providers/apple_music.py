@@ -21,6 +21,7 @@ import re
 import time
 from typing import Optional, List, Dict, Any
 
+from tagslut.metadata.auth import TokenManager
 from tagslut.metadata.models.types import ProviderTrack, MatchConfidence
 from tagslut.metadata.providers.base import AbstractProvider, RateLimitConfig
 
@@ -56,7 +57,7 @@ class AppleMusicProvider(AbstractProvider):
     # Token caching
     TOKEN_CACHE_DURATION = 3600  # 1 hour
 
-    def __init__(self, token_manager=None):  # type: ignore  # TODO: mypy-strict
+    def __init__(self, token_manager: TokenManager | None = None) -> None:
         super().__init__(token_manager)
         self._cached_token: Optional[str] = None
         self._token_fetched_at: float = 0

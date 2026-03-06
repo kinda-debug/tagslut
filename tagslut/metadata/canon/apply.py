@@ -210,12 +210,13 @@ def write_canon_to_file(path: Path, rules: CanonRules, *, dry_run: bool = True) 
     audio = MutagenFile(path, easy=True)
     if audio is None:
         raise ValueError(f"Unsupported or unreadable audio file: {path}")
+    audio_obj: Any = audio
 
     before: dict[str, Any] = {}
-    if audio.tags is not None:
+    if audio_obj.tags is not None:
         before = {
             key: list(value) if isinstance(value, (list, tuple)) else value
-            for key, value in audio.items()  # type: ignore[attr-defined]
+            for key, value in audio_obj.items()
         }
 
     after = apply_canon(before, rules)
@@ -230,11 +231,11 @@ def write_canon_to_file(path: Path, rules: CanonRules, *, dry_run: bool = True) 
     if dry_run or not diff:
         return diff
 
-    audio.clear()  # type: ignore[attr-defined]
+    audio_obj.clear()
     for key, value in after.items():
         if isinstance(value, (list, tuple)):
-            audio[key] = [str(v) for v in value]  # type: ignore[index]
+            audio_obj[key] = [str(v) for v in value]
         else:
-            audio[key] = [str(value)]  # type: ignore[index]
-    audio.save()  # type: ignore[attr-defined]
+            audio_obj[key] = [str(value)]
+    audio_obj.save()
     return diff

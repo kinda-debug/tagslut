@@ -62,12 +62,39 @@ def _create_fixture_db(tmp_path: Path) -> Path:
             [
                 (1, "id:alpha", "Alpha", "Tune", "Alpha EP", "House", "Deep", 124.0, 320.0, "8A", None),
                 (2, "id:orphan", "Orphan", "Lost", "Lost EP", "Techno", "Peak", 122.0, 300.0, "9A", None),
-                (3, "id:missing_bpm", "No", "BPM", "Silent EP", "Ambient", "Drone", None, 280.0, "10A", None),
-                (4, "id:beta", "beta", "anthem", "Beta EP", "Techno", "Peak", 126.0, 310.0, "9A", None),
+                (
+                    3,
+                    "id:missing_bpm",
+                    "No",
+                    "BPM",
+                    "Silent EP",
+                    "Ambient",
+                    "Drone",
+                    None,
+                    280.0,
+                    "10A",
+                    None,
+                ),
+                (
+                    4,
+                    "id:beta",
+                    "beta",
+                    "anthem",
+                    "Beta EP",
+                    "Techno",
+                    "Peak",
+                    126.0,
+                    310.0,
+                    "9A",
+                    None,
+                ),
             ],
         )
         conn.executemany(
-            "INSERT INTO asset_file (id, path, duration_s, sample_rate, bit_depth, integrity_state) VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                "INSERT INTO asset_file "
+                "(id, path, duration_s, sample_rate, bit_depth, integrity_state) VALUES (?, ?, ?, ?, ?, ?)"
+            ),
             [
                 (11, "/root/a.flac", 320.0, 44100, 16, "ok"),
                 (21, "/root/b.flac", 300.0, 44100, 16, "ok"),

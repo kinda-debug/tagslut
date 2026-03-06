@@ -15,13 +15,16 @@ from tagslut.storage.v3.schema import create_schema_v3
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
-def _create_db_and_sources(tmp_path: Path) -> tuple[Path, Path, Path]:
+def _create_db_and_sources(tmp_path: Path, *, second_source_is_dir: bool = False) -> tuple[Path, Path, Path]:
     src_root = tmp_path / "src"
     src_root.mkdir(parents=True, exist_ok=True)
     src_a = src_root / "alpha.flac"
     src_b = src_root / "beta.flac"
     src_a.write_bytes(b"alpha-bytes")
-    src_b.write_bytes(b"beta-bytes")
+    if second_source_is_dir:
+        src_b.mkdir()
+    else:
+        src_b.write_bytes(b"beta-bytes")
 
     db = tmp_path / "music_v3.db"
     conn = sqlite3.connect(str(db))
@@ -29,10 +32,11 @@ def _create_db_and_sources(tmp_path: Path) -> tuple[Path, Path, Path]:
         create_schema_v3(conn)
         ensure_schema(conn)
         conn.executemany(
-            """
-            INSERT INTO track_identity (id, identity_key, canonical_artist, canonical_title, canonical_genre, merged_into_id)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
+            (
+                "INSERT INTO track_identity "
+                "(id, identity_key, canonical_artist, canonical_title, canonical_genre, merged_into_id) "
+                "VALUES (?, ?, ?, ?, ?, ?)"
+            ),
             [
                 (1, "id:a", "Alpha", "Tune", "House", None),
                 (2, "id:b", "Beta", "Peak", "Techno", None),
@@ -50,7 +54,10 @@ def _create_db_and_sources(tmp_path: Path) -> tuple[Path, Path, Path]:
             [(11, 1), (21, 2)],
         )
         conn.executemany(
-            "INSERT INTO preferred_asset (identity_id, asset_id, score, reason_json, version) VALUES (?, ?, ?, ?, ?)",
+            (
+                "INSERT INTO preferred_asset "
+                "(identity_id, asset_id, score, reason_json, version) VALUES (?, ?, ?, ?, ?)"
+            ),
             [(1, 11, 1.0, "{}", 1), (2, 21, 1.0, "{}", 1)],
         )
         conn.executemany(
@@ -58,7 +65,11 @@ def _create_db_and_sources(tmp_path: Path) -> tuple[Path, Path, Path]:
             [(1,), (2,)],
         )
         conn.execute(
-            "INSERT INTO dj_track_profile (identity_id, set_role, rating, energy, dj_tags_json) VALUES (1, 'builder', 4, 7, '[\"groovy\"]')"
+            (
+                "INSERT INTO dj_track_profile "
+                "(identity_id, set_role, rating, energy, dj_tags_json) "
+                "VALUES (1, 'builder', 4, 7, '[\"groovy\"]')"
+            )
         )
         conn.commit()
     finally:
@@ -66,7 +77,13 @@ def _create_db_and_sources(tmp_path: Path) -> tuple[Path, Path, Path]:
     return db, src_a, src_b
 
 
-def _run_builder(*, db: Path, out_dir: Path, manifest: Path | None = None, extra: list[str] | None = None) -> subprocess.CompletedProcess[str]:
+def _run_builder(
+    *,
+    db: Path,
+    out_dir: Path,
+    manifest: Path | None = None,
+    extra: list[str] | None = None,
+) -> subprocess.CompletedProcess[str]:
     cmd = [
         sys.executable,
         "scripts/dj/build_pool_v3.py",
@@ -139,3 +156,32 @@ def test_overwrite_never_skips_existing_file(tmp_path: Path) -> None:
     assert target["action"] == "skip"
     assert target["reason"] == "exists_overwrite_never"
     assert existing.read_bytes() == b"old"
+
+
+def test_fail_fast_writes_failure_log_before_exiting(tmp_path: Path) -> None:
+    db, _src_a, src_b = _create_db_and_sources(tmp_path, second_source_is_dir=True)
+    out_dir = tmp_path / "export"
+
+    proc = _run_builder(
+        db=db,
+        out_dir=out_dir,
+        extra=["--execute", "--layout", "flat", "--fail-fast"],
+    )
+
+    assert proc.returncode == 1, f"STDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+    assert str(src_b) in proc.stderr
+
+    failure_path = out_dir / "export_failures.jsonl"
+    assert failure_path.exists()
+    payloads = [
+        json.loads(line)
+        for line in failure_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert len(payloads) == 1
+    assert payloads[0]["source_path"] == str(src_b)
+
+    receipts = out_dir / "receipts.jsonl"
+    assert receipts.exists()
+    lines = [line for line in receipts.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert len(lines) == 1

@@ -6,6 +6,7 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import click
 
@@ -27,7 +28,7 @@ def _default_canon_rules_path() -> Path:
     return Path(__file__).parents[3] / "tools" / "rules" / "library_canon.json"
 
 
-def _interactive_init() -> dict:  # type: ignore  # TODO: mypy-strict
+def _interactive_init() -> dict[str, object]:
     """
     Interactive session initialization.
 
@@ -39,7 +40,7 @@ def _interactive_init() -> dict:  # type: ignore  # TODO: mypy-strict
     click.echo("=" * 60)
     click.echo("\nThis wizard will help you set up a new recovery session.\n")
 
-    config = {}
+    config: dict[str, object] = {}
 
     # Source directory
     click.echo("1. SOURCE DIRECTORY")
@@ -65,7 +66,7 @@ def _interactive_init() -> dict:  # type: ignore  # TODO: mypy-strict
     click.echo("\n3. BACKUPS")
     click.echo("   Backups are handled externally (Time Machine/NAS).")
     click.echo("   This tool does not create or retain backups.")
-    config["backup_dir"] = None  # type: ignore  # TODO: mypy-strict
+    config["backup_dir"] = None
 
     # Output report
     click.echo("\n4. OUTPUT REPORT")
@@ -77,9 +78,9 @@ def _interactive_init() -> dict:  # type: ignore  # TODO: mypy-strict
 
     # Workers
     click.echo("\n5. PARALLEL WORKERS")
-    workers = click.prompt(  # type: ignore  # TODO: mypy-strict
+    workers = click.prompt(
         "   Number of parallel scan workers",
-        default=4,
+        default="4",
         type=int,
     )
     config["workers"] = workers
@@ -425,7 +426,7 @@ def register_misc_commands(cli: click.Group) -> None:
             dry_run=not execute,
             mode=mode,
         ) as enricher:
-            result, status = enricher.enrich_file(
+            enrich_result, status = enricher.enrich_file(
                 str(file_path),
                 force=force,
                 retry_no_match=retry_no_match,
@@ -446,7 +447,9 @@ def register_misc_commands(cli: click.Group) -> None:
             click.echo("Enrichment failed to write to database")
             return
 
-        _print_enrichment_result(result)
+        if enrich_result is None:
+            raise click.ClickException("Expected enrichment result for successful status")
+        _print_enrichment_result(enrich_result)
         click.echo("Done.")
 
     @cli.command("init")
@@ -804,10 +807,10 @@ def register_misc_commands(cli: click.Group) -> None:
     @click.option('--init', 'interactive', is_flag=True, help='Interactive session initialization')
     @click.option('--enrich', is_flag=True, help='Enrich salvaged files with metadata after verification')
     @click.option('-v', '--verbose', is_flag=True, help='Verbose output')
-    def recover(  # type: ignore  # TODO: mypy-strict
-        path, db, phase, output, workers,
-        execute, include_valid, interactive, enrich, verbose
-    ):
+    def recover(
+        path: Any, db: Any, phase: Any, output: Any, workers: Any,
+        execute: Any, include_valid: Any, interactive: Any, enrich: Any, verbose: Any
+    ) -> None:
         """
         Recover corrupted FLAC files.
 
@@ -816,153 +819,9 @@ def register_misc_commands(cli: click.Group) -> None:
 
         Internal command used by canonical verify/report wrappers.
         """
-        from tagslut.recovery import RecoveryScanner, Repairer, Verifier, Reporter
-        from tagslut.storage.schema import init_db
-        import sqlite3
-
-        # Configure logging
-        log_level = logging.DEBUG if verbose else logging.INFO
-        logging.basicConfig(
-            level=log_level,
-            format='%(asctime)s - %(levelname)s - %(message)s'
+        raise click.ClickException(
+            "tagslut.recovery is archived. Use legacy/tagslut_recovery/ for the old recovery workflow."
         )
-
-        # Interactive initialization
-        if interactive:
-            config = _interactive_init()
-            path = str(config["source"])
-            db = str(config["db"])
-            output = str(config["output"])
-            workers = config["workers"]
-            execute = True  # Interactive mode implies execution
-            phase = 'all'
-
-        # Validate required options
-        if not db:
-            raise click.ClickException("--db is required (or use --init for interactive setup)")
-
-        db_path = Path(db)
-
-        # Initialize database if needed
-        if not db_path.exists():
-            if phase in ('scan', 'all') and path:
-                logger.info(f"Creating new database: {db_path}")
-                db_path.parent.mkdir(parents=True, exist_ok=True)
-                conn = sqlite3.connect(db_path)
-                init_db(conn)
-                conn.close()
-            else:
-                raise click.ClickException(f"Database not found: {db_path}")
-
-        # Track repairer for potential backup cleanup
-        repairer = None
-
-        # Run requested phase(s)
-        if phase in ('scan', 'all'):
-            if not path:
-                raise click.ClickException("PATH is required for scan phase")
-
-            click.echo(f"\n{'='*50}")
-            click.echo("PHASE 1: SCAN")
-            click.echo(f"{'='*50}")
-
-            scanner = RecoveryScanner(db_path, workers=workers)
-            stats = scanner.scan_directory(Path(path))
-
-            click.echo(f"Scanned: {stats['total']} files")
-            click.echo(f"  Valid: {stats['valid']}")
-            click.echo(f"  Corrupt: {stats['corrupt']}")
-            click.echo(f"  Recoverable: {stats['recoverable']}")
-
-        if phase in ('repair', 'all'):
-            click.echo(f"\n{'='*50}")
-            click.echo("PHASE 2: REPAIR")
-            click.echo(f"{'='*50}")
-
-            if not execute:
-                click.echo("[DRY-RUN MODE - use --execute to perform repairs]")
-
-            repairer = Repairer(
-                db_path,
-                dry_run=not execute,
-            )
-            stats = repairer.repair_all()
-
-            click.echo(f"Processed: {stats['total']} files")
-            click.echo(f"  Salvaged: {stats['salvaged']}")
-            click.echo(f"  Already valid: {stats['already_valid']}")
-            click.echo(f"  Failed: {stats['failed']}")
-            if stats['skipped'] > 0:
-                click.echo(f"  Skipped (dry-run): {stats['skipped']}")
-
-        if phase in ('verify', 'all'):
-            click.echo(f"\n{'='*50}")
-            click.echo("PHASE 3: VERIFY")
-            click.echo(f"{'='*50}")
-
-            verifier = Verifier(db_path)
-            stats = verifier.verify_all()
-
-            click.echo(f"Verified: {stats['total']} files")
-            click.echo(f"  Passed: {stats['passed']}")
-            click.echo(f"  Degraded: {stats['degraded']}")
-            click.echo(f"  Failed: {stats['failed']}")
-
-            # No backup cleanup in move-only mode
-
-        if enrich and phase in ('verify', 'all'):
-            click.echo(f"\n{'='*50}")
-            click.echo("PHASE 3.5: ENRICH SALVAGED FILES")
-            click.echo(f"{'='*50}")
-
-            from tagslut.metadata.enricher import Enricher
-            from tagslut.metadata.auth import TokenManager
-
-            token_manager = TokenManager()
-            # Using default providers for now, could be an option
-            provider_list = ["beatport", "tidal", "deezer", "itunes"]
-
-            click.echo(f"Enriching with providers: {', '.join(provider_list)}")
-
-            with Enricher(
-                db_path=db_path,
-                token_manager=token_manager,
-                providers=provider_list,
-                dry_run=not execute,
-            ) as enricher:
-                # Get salvaged and verified files
-                conn = sqlite3.connect(db_path)
-                salvaged_paths = [
-                    row[0]
-                    for row in conn.execute(
-                        "SELECT path FROM files "
-                        "WHERE recovery_status = 'salvaged' AND verified_at IS NOT NULL"
-                    )
-                ]
-                conn.close()
-
-                if not salvaged_paths:
-                    click.echo("No salvaged and verified files to enrich.")
-                else:
-                    for i, file_path in enumerate(salvaged_paths):
-                        click.echo(f"Enriching [{i+1}/{len(salvaged_paths)}] {file_path}")
-                        enricher.enrich_all(path_pattern=file_path, force=True)
-
-        if phase in ('report', 'all'):
-            click.echo(f"\n{'='*50}")
-            click.echo("PHASE 4: REPORT")
-            click.echo(f"{'='*50}")
-
-            reporter = Reporter(db_path)
-            reporter.print_summary()
-
-            if output:
-                output_path = Path(output)
-                if output_path.suffix.lower() == '.json':
-                    rows = reporter.export_json(output_path, include_valid=include_valid)
-                else:
-                    rows = reporter.export_csv(output_path, include_valid=include_valid)
-                click.echo(f"Exported {rows} records to {output_path}")
 
     @cli.command("recovery", hidden=True)
     @click.argument("paths", nargs=-1, type=click.Path(exists=True))

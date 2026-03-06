@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
+from tagslut.metadata.auth import TokenManager
 from tagslut.metadata.models.types import MatchConfidence, ProviderTrack
 from tagslut.metadata.providers.base import AbstractProvider, RateLimitConfig
 
@@ -25,9 +26,9 @@ class DeezerProvider(AbstractProvider):
 
     BASE_URL = "https://api.deezer.com"
 
-    def __init__(self, token_manager=None):  # type: ignore  # TODO: mypy-strict
+    def __init__(self, token_manager: TokenManager | None = None) -> None:
         # Deezer public API does not require credentials for these endpoints.
-        super().__init__(token_manager=None)  # type: ignore  # TODO: mypy-strict
+        super().__init__(token_manager=None)
 
     def _get_default_headers(self) -> Dict[str, str]:
         return {"Accept": "application/json"}

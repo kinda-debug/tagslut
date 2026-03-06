@@ -29,10 +29,11 @@ def _create_db_and_sources(tmp_path: Path) -> tuple[Path, Path, Path]:
         create_schema_v3(conn)
         ensure_schema(conn)
         conn.executemany(
-            """
-            INSERT INTO track_identity (id, identity_key, canonical_artist, canonical_title, canonical_genre, merged_into_id)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
+            (
+                "INSERT INTO track_identity "
+                "(id, identity_key, canonical_artist, canonical_title, canonical_genre, merged_into_id) "
+                "VALUES (?, ?, ?, ?, ?, ?)"
+            ),
             [
                 (1, "id:a", "Alpha", "Tune", "House", None),
                 (2, "id:b", "Beta", "Peak", "Techno", None),
@@ -50,7 +51,10 @@ def _create_db_and_sources(tmp_path: Path) -> tuple[Path, Path, Path]:
             [(11, 1), (21, 2)],
         )
         conn.executemany(
-            "INSERT INTO preferred_asset (identity_id, asset_id, score, reason_json, version) VALUES (?, ?, ?, ?, ?)",
+            (
+                "INSERT INTO preferred_asset "
+                "(identity_id, asset_id, score, reason_json, version) VALUES (?, ?, ?, ?, ?)"
+            ),
             [(1, 11, 1.0, "{}", 1), (2, 21, 1.0, "{}", 1)],
         )
         conn.executemany(
@@ -58,7 +62,11 @@ def _create_db_and_sources(tmp_path: Path) -> tuple[Path, Path, Path]:
             [(1,), (2,)],
         )
         conn.execute(
-            "INSERT INTO dj_track_profile (identity_id, set_role, rating, energy, dj_tags_json) VALUES (1, 'builder', 4, 7, '[\"groovy\"]')"
+            (
+                "INSERT INTO dj_track_profile "
+                "(identity_id, set_role, rating, energy, dj_tags_json) "
+                "VALUES (1, 'builder', 4, 7, '[\"groovy\"]')"
+            )
         )
         conn.commit()
     finally:
@@ -66,7 +74,13 @@ def _create_db_and_sources(tmp_path: Path) -> tuple[Path, Path, Path]:
     return db, src_a, src_b
 
 
-def _run_builder(*, db: Path, out_dir: Path, manifest: Path | None = None, extra: list[str] | None = None) -> subprocess.CompletedProcess[str]:
+def _run_builder(
+    *,
+    db: Path,
+    out_dir: Path,
+    manifest: Path | None = None,
+    extra: list[str] | None = None,
+) -> subprocess.CompletedProcess[str]:
     cmd = [
         sys.executable,
         "scripts/dj/build_export_v3.py",
@@ -109,7 +123,11 @@ def test_execute_copy_creates_files_and_receipts(tmp_path: Path) -> None:
     proc = _run_builder(db=db, out_dir=out_dir, extra=["--execute", "--layout", "flat"])
     assert proc.returncode == 0, f"STDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
 
-    copied = [p for p in out_dir.rglob("*") if p.is_file() and p.name != "manifest.csv" and p.name != "receipts.jsonl"]
+    copied = [
+        p
+        for p in out_dir.rglob("*")
+        if p.is_file() and p.name not in {"manifest.csv", "receipts.jsonl"}
+    ]
     assert len(copied) == 2
     receipts = out_dir / "receipts.jsonl"
     assert receipts.exists()

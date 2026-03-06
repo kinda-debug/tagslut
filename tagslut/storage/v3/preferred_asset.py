@@ -50,8 +50,20 @@ def _is_blank(value: object) -> bool:
 def _to_int(value: object) -> int:
     if value is None:
         return 0
-    try:
+    if isinstance(value, bool):
         return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, (str, bytes, bytearray)):
+        raw = value.decode() if isinstance(value, (bytes, bytearray)) else value
+        try:
+            return int(raw)
+        except ValueError:
+            return 0
+    try:
+        return int(str(value))
     except (TypeError, ValueError):
         return 0
 
@@ -59,8 +71,16 @@ def _to_int(value: object) -> int:
 def _to_float(value: object) -> float:
     if value is None:
         return 0.0
-    try:
+    if isinstance(value, (int, float)):
         return float(value)
+    if isinstance(value, (str, bytes, bytearray)):
+        raw = value.decode() if isinstance(value, (bytes, bytearray)) else value
+        try:
+            return float(raw)
+        except ValueError:
+            return 0.0
+    try:
+        return float(str(value))
     except (TypeError, ValueError):
         return 0.0
 

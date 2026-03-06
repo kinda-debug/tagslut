@@ -200,10 +200,10 @@ def register_intake_group(cli: click.Group) -> None:
     @click.option(
         "--root",
         required=True,
-        type=click.Path(exists=True, file_okay=False, path_type=Path),
+        type=click.Path(exists=True, file_okay=False),
         help="Root folder to process",
     )
-    @click.option("--library", type=click.Path(path_type=Path), help="Library destination")
+    @click.option("--library", type=click.Path(), help="Library destination")
     @click.option("--providers", default="beatport,deezer,apple_music,itunes")
     @click.option("--force", is_flag=True, help="Force re-enrichment")
     @click.option("--no-art", is_flag=True, help="Skip cover art embedding")
@@ -241,8 +241,8 @@ def register_intake_group(cli: click.Group) -> None:
     )
     def intake_process_root(  # type: ignore[no-untyped-def]  # TODO: mypy-strict
         db_path,
-        root,
-        library,
+        root: str,
+        library: str | None,
         providers,
         force,
         no_art,
@@ -262,11 +262,14 @@ def register_intake_group(cli: click.Group) -> None:
         except DbResolutionError as exc:
             raise click.ClickException(str(exc)) from exc
 
+        root_path = Path(root)
+        library_path = Path(library) if library is not None else None
+
         args: list[str] = [
             "--db",
             str(resolution.path),
             "--root",
-            str(root),
+            str(root_path),
             "--providers",
             str(providers),
             "--trust",
@@ -274,8 +277,8 @@ def register_intake_group(cli: click.Group) -> None:
             "--trust-post",
             str(trust_post),
         ]
-        if library:
-            args.extend(["--library", str(library)])
+        if library_path is not None:
+            args.extend(["--library", str(library_path)])
         if force:
             args.append("--force")
         if no_art:

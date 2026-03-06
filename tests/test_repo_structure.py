@@ -124,6 +124,10 @@ def test_archived_classifier_changelog_exists() -> None:
     assert archived.exists(), "Expected archived classifier changelog at docs/archive/CLASSIFY_V2_CHANGELOG.md"
 
 
+def test_classify_changelog_archived() -> None:
+    assert (PROJECT_ROOT / "docs" / "archive" / "CLASSIFY_V2_CHANGELOG.md").exists()
+
+
 def test_recovery_package_absent_or_stubbed() -> None:
     """Ensure `tagslut.recovery` implementation is archived from live package."""
     recovery_dir = PROJECT_ROOT / "tagslut" / "recovery"

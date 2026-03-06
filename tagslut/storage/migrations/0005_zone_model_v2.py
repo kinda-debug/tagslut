@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 
 
@@ -84,11 +85,6 @@ def down(conn: sqlite3.Connection) -> None:
     if not _has_column(conn, "files", "zone"):
         return
 
-    _drop_zone_guards(conn)
-    # Lossy reverse mapping: archive can originate from BAD or QUARANTINE.
-    conn.execute(
-        "UPDATE files SET zone = 'GOOD' WHERE zone IS NOT NULL AND LOWER(TRIM(zone)) = 'library'"
-    )
-    conn.execute(
-        "UPDATE files SET zone = 'BAD' WHERE zone IS NOT NULL AND LOWER(TRIM(zone)) = 'archive'"
+    logging.getLogger(__name__).warning(
+        "Zone migration rollback: ARCHIVE cannot be split back to BAD/QUARANTINE — no-op."
     )

@@ -109,7 +109,7 @@ def test_zone_migration_blocks_legacy_values_after_up(tmp_path: Path) -> None:
         conn.close()
 
 
-def test_zone_migration_down_rolls_back_values(tmp_path: Path) -> None:
+def test_zone_migration_down_is_noop_with_warning(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     db_path = tmp_path / "zones.sqlite"
     _seed_zone_table(db_path)
     migration_module = _load_migration_module(_migration_source())
@@ -117,17 +117,18 @@ def test_zone_migration_down_rolls_back_values(tmp_path: Path) -> None:
     conn = sqlite3.connect(db_path)
     try:
         migration_module.up(conn)
-        migration_module.down(conn)
+        with caplog.at_level("WARNING"):
+            migration_module.down(conn)
         conn.commit()
 
         rows = conn.execute("SELECT path, zone FROM files ORDER BY path").fetchall()
     finally:
         conn.close()
 
-    # Reverse mapping is intentionally lossy: both BAD and QUARANTINE map to BAD.
+    assert "Zone migration rollback" in caplog.text
     assert {str(path): str(zone) for path, zone in rows} == {
         "/music/accepted.flac": "accepted",
-        "/music/bad.flac": "BAD",
-        "/music/good.flac": "GOOD",
-        "/music/quarantine.flac": "BAD",
+        "/music/bad.flac": "archive",
+        "/music/good.flac": "library",
+        "/music/quarantine.flac": "archive",
     }

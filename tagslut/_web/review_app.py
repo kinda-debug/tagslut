@@ -1031,7 +1031,30 @@ def _validate_usb_path(usb_path: str) -> str:
         raise ValueError("usb_path contains invalid characters")
     if not os.path.isabs(usb_path):
         raise ValueError("usb_path must be an absolute path")
+    # Restrict USB paths to common mount locations to avoid arbitrary paths.
+    allowed_prefixes = (os.path.sep + "media", os.path.sep + "mnt")
+    if not usb_path.startswith(allowed_prefixes):
+        raise ValueError("usb_path must be under a mounted USB directory")
     return usb_path
+
+
+def _validate_output_path(output_m3u: str) -> Path:
+    """
+    Validate and normalize a user-supplied output playlist path.
+
+    The resulting path is forced to live under a local 'artifacts' directory
+    adjacent to this module, preventing directory traversal.
+    """
+    if "\x00" in output_m3u:
+        raise ValueError("output_m3u contains invalid characters")
+    base_dir = Path(__file__).resolve().parent / "artifacts"
+    base_dir.mkdir(parents=True, exist_ok=True)
+    candidate = (base_dir / output_m3u).resolve()
+    try:
+        candidate.relative_to(base_dir)
+    except ValueError:
+        raise ValueError("output_m3u must be within artifacts directory")
+    return candidate
 
 
 @APP.route("/api/export_usb", methods=["POST"])
@@ -1047,7 +1070,7 @@ def export_usb() -> Any:
         return jsonify({"error": str(exc)}), 400
 
     policy_path = str(payload.get("policy_path") or "").strip() or None
-    output_m3u = str(payload.get("output_m3u") or "artifacts/dj_review_ok.m3u8")
+    output_m3u = str(payload.get("output_m3u") or "dj_review_ok.m3u8")
     limit = int(payload.get("limit", "0"))
     jobs = int(payload.get("jobs", "4"))
     overwrite = bool(payload.get("overwrite", False))
@@ -1055,7 +1078,11 @@ def export_usb() -> Any:
     artwork_max_kb = int(payload.get("artwork_max_kb", "500"))
     rekordbox_xml = str(payload.get("rekordbox_xml") or "rekordbox.xml")
 
-    output_path = Path(output_m3u)
+    try:
+        output_path = _validate_output_path(output_m3u)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
     conn = _get_conn()
     try:
         _ensure_schema(conn)

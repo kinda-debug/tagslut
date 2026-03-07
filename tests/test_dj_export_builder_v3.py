@@ -1,4 +1,4 @@
-"""Tests for scripts/dj/build_export_v3.py."""
+"""Compatibility tests for archived scripts/archive/build_export_v3.py."""
 
 from __future__ import annotations
 
@@ -83,7 +83,7 @@ def _run_builder(
 ) -> subprocess.CompletedProcess[str]:
     cmd = [
         sys.executable,
-        "scripts/dj/build_export_v3.py",
+        "scripts/archive/build_export_v3.py",
         "--db",
         str(db),
         "--out-dir",

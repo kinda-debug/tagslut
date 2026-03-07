@@ -30,6 +30,7 @@ class ExportRow:
     action: str
     reason: str
     sha256: str
+    mtime: str
 
 
 def _connect_ro(path: Path) -> sqlite3.Connection:
@@ -152,6 +153,7 @@ def _select_rows(
             preferred_asset_id,
             asset_path AS source_path,
             sha256 AS source_sha256,
+            asset_mtime AS source_mtime,
             artist,
             title,
             genre,
@@ -196,6 +198,7 @@ def _write_manifest(path: Path, rows: list[ExportRow]) -> Path:
                 "action",
                 "reason",
                 "sha256",
+                "mtime",
             ],
         )
         writer.writeheader()
@@ -223,6 +226,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build deterministic downstream DJ pool from v3 preferred assets")
     parser.add_argument("--db", required=True, type=Path)
     parser.add_argument("--out-dir", required=True, type=Path)
+    parser.add_argument(
+        "--source-mode",
+        choices=["preferred"],
+        default="preferred",
+        help="Legacy compatibility flag; v3 pool builds always use preferred assets.",
+    )
     parser.add_argument("--manifest", type=Path)
     parser.add_argument("--receipts", type=Path)
     parser.add_argument("--layout", choices=["by_role", "by_genre", "flat"], default="by_role")
@@ -245,6 +254,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--overwrite", choices=["never", "if_same_hash", "always"], default="if_same_hash")
     parser.add_argument("--format", choices=["copy", "mp3"], default="copy")
     parser.add_argument("--mp3-bitrate", default="320k")
+    parser.add_argument("--ffmpeg-path")
     parser.add_argument("--strict", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("-v", "--verbose", action="store_true", help="Print per-file actions")
     return parser.parse_args(argv)
@@ -269,9 +279,9 @@ def main(argv: list[str] | None = None) -> int:
             print("refusing --out-dir inside MASTER_LIBRARY")
             return 2
 
-    ffmpeg = shutil.which("ffmpeg")
+    ffmpeg = args.ffmpeg_path or shutil.which("ffmpeg")
     if args.execute and args.format == "mp3" and not ffmpeg:
-        print("ffmpeg not found; install ffmpeg for --format mp3")
+        print("ffmpeg not found; set --ffmpeg-path or install ffmpeg")
         return 2
 
     try:
@@ -302,30 +312,34 @@ def main(argv: list[str] | None = None) -> int:
     copy_count = 0
     transcode_count = 0
     skip_count = 0
+    existing_files = 0
 
     for row in rows:
         source = Path(str(row["source_path"])).expanduser().resolve()
         dest = _dest_path(out_dir, row, args.layout, args.format)
         source_sha = str(row["source_sha256"] or "")
+        source_mtime = str(row["source_mtime"] or "")
 
         action = "transcode" if args.format == "mp3" else "copy"
         reason = "selected"
 
         if not source.exists():
             action = "skip"
-            reason = "source_missing"
-            if args.strict:
-                skip_count += 1
+            reason = "source_missing" if args.strict else "source_missing_non_strict"
         elif dest.exists():
+            existing_files += 1
             if args.overwrite == "never":
                 action = "skip"
                 reason = "exists_overwrite_never"
             elif args.overwrite == "if_same_hash":
-                if source_sha and _hash_file(dest) == source_sha:
-                    action = "skip"
-                    reason = "exists_same_hash"
+                if source_sha:
+                    if _hash_file(dest) == source_sha:
+                        action = "skip"
+                        reason = "exists_same_hash"
+                    else:
+                        reason = "exists_different_hash_overwrite"
                 else:
-                    reason = "exists_overwrite_if_same_hash"
+                    reason = "exists_no_source_hash_overwrite"
             else:
                 reason = "exists_overwrite_always"
 
@@ -345,6 +359,7 @@ def main(argv: list[str] | None = None) -> int:
                 action=action,
                 reason=reason,
                 sha256=source_sha,
+                mtime=source_mtime,
             )
         )
         if args.verbose:
@@ -447,6 +462,7 @@ def main(argv: list[str] | None = None) -> int:
                     "action": item.action,
                     "overwrite_policy": args.overwrite,
                     "tool": "build_pool_v3",
+                    "tool_version": "build_pool_v3",
                 },
             )
 
@@ -460,6 +476,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     print(f"selected_identities: {len(rows)}")
+    print(f"existing_files: {existing_files}")
     print(f"copy: {copy_count}")
     print(f"transcode: {transcode_count}")
     print(f"skip: {skip_count}")

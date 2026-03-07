@@ -95,6 +95,16 @@ Role: Run `onetagger-cli` on a symlink batch from M3U and emit summary artifacts
 8. `tools/tag [options]`
 Role: Combined build + run OneTagger workflow with defaults.
 
+## Canonical DJ Pool Builder
+
+The only canonical script-level DJ pool builder is:
+- `scripts/dj/build_pool_v3.py`
+
+Archived legacy builder:
+- `scripts/archive/build_export_v3.py`
+
+New work and operator docs should point to `scripts/dj/build_pool_v3.py`, not the archived export builder.
+
 ## Retired Command Groups
 
 Retired in Phase 5 (not operator-facing):

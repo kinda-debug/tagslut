@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build deterministic DJ export tree from v3 policy view."""
+"""Archived legacy DJ export builder retained for compatibility tests."""
 
 from __future__ import annotations
 

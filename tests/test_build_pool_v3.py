@@ -43,10 +43,10 @@ def _create_db_and_sources(tmp_path: Path, *, second_source_is_dir: bool = False
             ],
         )
         conn.executemany(
-            "INSERT INTO asset_file (id, path, content_sha256) VALUES (?, ?, ?)",
+            "INSERT INTO asset_file (id, path, content_sha256, mtime) VALUES (?, ?, ?, ?)",
             [
-                (11, str(src_a), "a4f9e7a9bb7d6c4f4a6ea0f3f3151803f2d3f7035508ed9d95b3f80e7cecc665"),
-                (21, str(src_b), "2e3b1fd1f2f8a5df1e4e7fe0e6bb70f4f44d8f093bcf5d67272ed8f76b56d5b5"),
+                (11, str(src_a), "a4f9e7a9bb7d6c4f4a6ea0f3f3151803f2d3f7035508ed9d95b3f80e7cecc665", 1.0),
+                (21, str(src_b), "2e3b1fd1f2f8a5df1e4e7fe0e6bb70f4f44d8f093bcf5d67272ed8f76b56d5b5", 2.0),
             ],
         )
         conn.executemany(
@@ -116,6 +116,34 @@ def test_plan_writes_manifest_and_no_files_created(tmp_path: Path) -> None:
     assert len(rows) == 2
     exported_files = [p for p in out_dir.rglob("*") if p.is_file()]
     assert exported_files == []
+
+
+def test_plan_accepts_legacy_args_and_writes_mtime_field(tmp_path: Path) -> None:
+    db, _src_a, _src_b = _create_db_and_sources(tmp_path)
+    out_dir = tmp_path / "export"
+    manifest = tmp_path / "plan_manifest.csv"
+
+    proc = _run_builder(
+        db=db,
+        out_dir=out_dir,
+        manifest=manifest,
+        extra=[
+            "--source-mode",
+            "preferred",
+            "--format",
+            "mp3",
+            "--ffmpeg-path",
+            "/tmp/not-used-in-plan-mode",
+        ],
+    )
+
+    assert proc.returncode == 0, f"STDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+    rows = _read_manifest(manifest)
+    assert len(rows) == 2
+    assert rows[0]["mtime"] in {"1.0", "2.0"}
+    assert rows[1]["mtime"] in {"1.0", "2.0"}
+    assert rows[0]["dest_path"].endswith(".mp3")
+    assert rows[1]["dest_path"].endswith(".mp3")
 
 
 def test_execute_copy_creates_files_and_receipts(tmp_path: Path) -> None:

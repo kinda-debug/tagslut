@@ -85,6 +85,8 @@ fi
 URL="$1"
 shift
 
+INTAKE_CMD=()
+
 build_intake_cmd() {
     local source="$1"
     local url="$2"
@@ -118,15 +120,14 @@ build_intake_cmd() {
         esac
     done
 
-    local cmd=("$GET_INTAKE" --source "$source" --missing-policy download --execute --m3u)
+    INTAKE_CMD=("$GET_INTAKE" --source "$source" --missing-policy download --execute --m3u)
     if [[ "$precheck_enabled" -eq 0 ]]; then
-        cmd+=(--no-precheck)
+        INTAKE_CMD+=(--no-precheck)
     fi
-    cmd+=("$url")
+    INTAKE_CMD+=("$url")
     if [[ ${#intake_args[@]} -gt 0 ]]; then
-        cmd+=("${intake_args[@]}")
+        INTAKE_CMD+=("${intake_args[@]}")
     fi
-    printf '%s\0' "${cmd[@]}"
 }
 
 # Route based on domain
@@ -139,8 +140,8 @@ if [[ "$URL" == *"tidal.com"* ]]; then
     if [[ "$MODE" == "simple" ]]; then
         exec "$TIDDL_WRAPPER" "$URL" "$@"
     fi
-    mapfile -d '' CMD < <(build_intake_cmd "tidal" "$URL" "$@")
-    exec "${CMD[@]}"
+    build_intake_cmd "tidal" "$URL" "$@"
+    exec "${INTAKE_CMD[@]}"
 
 elif [[ "$URL" == *"beatport.com"* ]]; then
     if [[ ! -x "$GET_INTAKE" ]]; then
@@ -178,8 +179,8 @@ elif [[ "$URL" == *"beatport.com"* ]]; then
         exec "$BPDL_BIN" "$URL" "$@"
     fi
 
-    mapfile -d '' CMD < <(build_intake_cmd "bpdl" "$URL" "$@")
-    exec "${CMD[@]}"
+    build_intake_cmd "bpdl" "$URL" "$@"
+    exec "${INTAKE_CMD[@]}"
 
 elif [[ "$URL" == *"deezer.com"* || "$URL" == *"dzr.page.link"* ]]; then
     if [[ ! -x "$DEEMIX_WRAPPER" ]]; then

@@ -52,7 +52,7 @@ Notes:
 Use `tools/get` for normal provider downloads.
 
 ```bash
-# Default: precheck + download + tag + promote + merged M3U
+# Default: precheck + download + local tag prep + promote + merged M3U
 tools/get <provider-url>
 
 # Add DJ MP3 export
@@ -64,6 +64,7 @@ tools/get <provider-url> --no-hoard
 
 Notes:
 - `tools/get` is the primary user-facing downloader for Beatport and Tidal.
+- local identify/tag prep runs before promote; external enrich + cover art are launched in the background after promote
 - `tools/get-intake` is the advanced/backend command for existing batch roots and `--m3u-only`.
 - `tools/get-sync` is deprecated and kept only as a compatibility alias.
 

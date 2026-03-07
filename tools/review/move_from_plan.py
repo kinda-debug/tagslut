@@ -33,6 +33,10 @@ import hashlib
 import re
 import unicodedata
 
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
 from tagslut.exec import execute_move, record_move_receipt, update_legacy_path_with_receipt
 from tagslut.storage.schema import init_db
 from tagslut.storage.v3 import (

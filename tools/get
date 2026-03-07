@@ -38,7 +38,7 @@ fi
 
 usage() {
     echo "Primary workflow:"
-    echo "  tools/get <provider-url>         precheck + download + tag + promote + m3u"
+    echo "  tools/get <provider-url>         precheck + download + local tag prep + promote + m3u"
     echo ""
     echo "General usage: tools/get [--sync|--synch|--simple] <url> [extra-args...]"
     echo "  --sync/--synch: provider sync workflow"
@@ -46,8 +46,8 @@ usage() {
     echo ""
     echo "Common high-level options:"
     echo "  --dj                 create DJ MP3 copies after promote"
-    echo "  --hoard              alias for metadata/tagging pipeline (default)"
-    echo "  --no-hoard           skip tagging/enrich/art pipeline"
+    echo "  --hoard              local tag prep before promote; enrich/art continue in background after promote (default)"
+    echo "  --no-hoard           skip local tag prep and background enrich/art"
     echo "  --no-precheck        skip duplicate-quality precheck"
     echo "  --force-download     keep matched tracks anyway"
     echo "  --providers LIST     metadata providers for enrich step"

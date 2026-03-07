@@ -29,7 +29,7 @@ Use canonical entry points for new work: `tagslut intake/index/decide/execute/ve
 This is the normal day-to-day operator path.
 
 ```bash
-# Default: precheck + download + tag + promote + merged M3U
+# Default: precheck + download + local tag prep + promote + merged M3U
 tools/get "https://www.beatport.com/release/.../..."
 tools/get "https://tidal.com/browse/album/..."
 
@@ -47,6 +47,7 @@ High-level workflow flags:
 - `--dj` builds DJ MP3 copies after promote
 - `--m3u` writes Roon-friendly relative-path playlists into `PLAYLIST_ROOT`
 - `--dj` also writes DJ absolute-path playlists into `DJ_PLAYLIST_ROOT`
+- local identify/tag prep runs before promote; external enrich + cover art are launched in the background after promote
 - `--hoard` keeps the tagging/enrich/art pipeline on (default)
 - `--no-hoard` disables tagging/enrich/art
 - `--no-precheck` bypasses same-or-better duplicate filtering
@@ -209,7 +210,7 @@ export PYTHONPATH=.
 tools/review/process_root.py
 ```
 
-It will prompt for the root folder, then automatically run: integrity · hoarding enrichment · genre normalization · tag writes · art embedding · promote/replace.
+It will prompt for the root folder, then automatically run: integrity · local identify/tag prep · promote/replace. External enrich + art can then be run post-move.
 
 ---
 

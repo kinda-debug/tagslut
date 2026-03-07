@@ -51,7 +51,7 @@ python -m tagslut intake process-root \
 For day-to-day downloads, use the umbrella wrapper instead of stitching phases together manually.
 
 ```bash
-# Default: precheck + download + tag + promote + merged M3U
+# Default: precheck + download + local tag prep + promote + merged M3U
 tools/get <provider-url>
 
 # Also build DJ MP3 copies
@@ -63,6 +63,7 @@ tools/get <provider-url> --no-hoard
 
 Notes:
 - `tools/get` is the primary user-facing downloader for Beatport and Tidal.
+- local identify/tag prep runs before promote; external enrich + cover art now launch in the background after promote
 - `tools/get --m3u` writes Roon-style playlists inside `PLAYLIST_ROOT` using relative paths.
 - `tools/get --dj` writes DJ playlists inside `DJ_PLAYLIST_ROOT` using absolute paths for Rekordbox/Lexicon.
 - `tools/get-intake` is the advanced/backend command for existing batch roots, `--m3u-only`, and direct pipeline control.

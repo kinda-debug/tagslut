@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 echo "Primary command:"
-echo "1) tools/get <provider-url> - precheck + download + tag + promote + m3u"
+echo "1) tools/get <provider-url> - precheck + download + local tag prep + promote + m3u"
 echo "2) tools/get-report <beatport-url> - report only, no download"
 echo ""
 echo "Advanced/internal:"
@@ -18,6 +18,6 @@ echo "  --simple         : downloader-only behavior"
 echo ""
 echo "Useful workflow flags:"
 echo "  --dj             : create DJ MP3 copies after promote"
-echo "  --hoard          : tagging/enrich/art pipeline (default)"
-echo "  --no-hoard       : skip tagging/enrich/art pipeline"
+echo "  --hoard          : local tag prep before promote; enrich/art continue in background after promote (default)"
+echo "  --no-hoard       : skip local tag prep and background enrich/art"
 echo "  --no-precheck    : skip duplicate-quality precheck"

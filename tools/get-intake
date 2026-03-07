@@ -33,6 +33,7 @@ PLAN_SCRIPT="$SCRIPT_DIR/review/plan_fpcalc_promote_unique_to_final_library.py"
 MOVE_SCRIPT="$SCRIPT_DIR/review/move_from_plan.py"
 PROCESS_ROOT_SCRIPT="$SCRIPT_DIR/review/process_root.py"
 PRE_DOWNLOAD_CHECK_SCRIPT="$SCRIPT_DIR/review/pre_download_check.py"
+POST_MOVE_ENRICH_SCRIPT="$SCRIPT_DIR/review/post_move_enrich_art.py"
 BPDL_BIN="$SCRIPT_DIR/beatportdl/bpdl/bpdl"
 BPDL_CONFIG="$SCRIPT_DIR/beatportdl/bpdl/beatportdl-config.yml"
 
@@ -64,7 +65,7 @@ Options:
   --trust N            Pre-scan trust score 0..3 (default: 3)
   --trust-post N       Post-scan trust score 0..3 (default: 3)
   --library-tag TEXT   Library tag used in scan_with_trust (default: INTAKE)
-  --providers TEXT     Metadata providers for tagging/enrichment
+  --providers TEXT     Metadata providers for enrichment
   --execute            Execute move plans (default: dry-run planning only)
   --m3u                Generate Roon-friendly merged M3U from promoted files
   --m3u-dir PATH       M3U output dir (default: $PLAYLIST_ROOT or library root)
@@ -652,6 +653,7 @@ fi
 [[ -f "$MOVE_SCRIPT" ]] || err "Missing script: $MOVE_SCRIPT"
 [[ -f "$PROCESS_ROOT_SCRIPT" ]] || err "Missing script: $PROCESS_ROOT_SCRIPT"
 [[ -f "$PRE_DOWNLOAD_CHECK_SCRIPT" ]] || err "Missing script: $PRE_DOWNLOAD_CHECK_SCRIPT"
+[[ -f "$POST_MOVE_ENRICH_SCRIPT" ]] || err "Missing script: $POST_MOVE_ENRICH_SCRIPT"
 
 command -v poetry >/dev/null 2>&1 || err "poetry is required in PATH"
 command -v python >/dev/null 2>&1 || err "python is required in PATH"
@@ -1186,7 +1188,7 @@ if [[ "$USE_DOWNLOAD_PRECHECK" -eq 1 ]]; then
   TOTAL_STEPS=$((TOTAL_STEPS + 1))
 fi
 if [[ "$TAGGING_MODE" -eq 1 && "$EXECUTE" -eq 1 ]]; then
-  TOTAL_STEPS=$((TOTAL_STEPS + 1))
+  TOTAL_STEPS=$((TOTAL_STEPS + 2))
 fi
 if [[ "$M3U_MODE" -eq 1 ]]; then
   TOTAL_STEPS=$((TOTAL_STEPS + 1))
@@ -1331,13 +1333,13 @@ run_cmd python "$SCAN_SCRIPT" \
 STEP=$((STEP + 1))
 
 if [[ "$TAGGING_MODE" -eq 1 && "$EXECUTE" -eq 1 ]]; then
-  step "$STEP" "$TOTAL_STEPS" "Tagging + metadata enrich"
+  step "$STEP" "$TOTAL_STEPS" "Local identify + tag prep"
   run_cmd python "$PROCESS_ROOT_SCRIPT" \
     --db "$DB_PATH" \
     --root "$BATCH_ROOT" \
     --library "$LIBRARY_ROOT" \
     --providers "$ENRICH_PROVIDERS" \
-    --phases identify,enrich,art
+    --phases identify
   STEP=$((STEP + 1))
 fi
 
@@ -1514,6 +1516,32 @@ with out_file.open("w", encoding="utf-8") as handle:
     for item in selected:
         handle.write(f"{item}\n")
 PY
+
+if [[ "$TAGGING_MODE" -eq 1 && "$EXECUTE" -eq 1 ]]; then
+  STEP=$((STEP + 1))
+  step "$STEP" "$TOTAL_STEPS" "Launch background enrich + art"
+
+  POST_MOVE_LOG="$OUT_DIR/post_move_enrich_art_$(date +%Y%m%d_%H%M%S).log"
+  POST_MOVE_PID_FILE="$OUT_DIR/post_move_enrich_art_$(date +%Y%m%d_%H%M%S).pid"
+
+  if [[ ! -s "$PROMOTED_FLACS_FILE" ]]; then
+    echo "No promoted files found for background enrich/art; skipping."
+  else
+    printf '→ '
+    printf '%q ' python -u "$POST_MOVE_ENRICH_SCRIPT" --db "$DB_PATH" --paths-file "$PROMOTED_FLACS_FILE" --providers "$ENRICH_PROVIDERS"
+    printf '> %s 2>&1 &\n' "$POST_MOVE_LOG"
+    nohup python -u "$POST_MOVE_ENRICH_SCRIPT" \
+      --db "$DB_PATH" \
+      --paths-file "$PROMOTED_FLACS_FILE" \
+      --providers "$ENRICH_PROVIDERS" \
+      >"$POST_MOVE_LOG" 2>&1 </dev/null &
+    POST_MOVE_PID=$!
+    printf '%s\n' "$POST_MOVE_PID" > "$POST_MOVE_PID_FILE"
+    echo "Background enrich/art started: pid=$POST_MOVE_PID"
+    echo "  log: $POST_MOVE_LOG"
+    echo "  pid: $POST_MOVE_PID_FILE"
+  fi
+fi
 
 if [[ "$M3U_MODE" -eq 1 ]]; then
   STEP=$((STEP + 1))

@@ -8,16 +8,16 @@ Use canonical entry points for new work: `tagslut intake/index/decide/execute/ve
 > **Environment bootstrap** (update once, use everywhere):
 > ```bash
 > export REPO_ROOT="/path/to/tagslut"
-> export V3_DB="<V3_DB>"
-> export TAGSLUT_DB="$V3_DB"
-> export LIBRARY_ROOT="/path/to/music_library"
-> export STAGING_ROOT="$HOME/Music/mdl"
-> export ROOT_BP="$STAGING_ROOT/bpdl"
-> export ROOT_TD="$STAGING_ROOT/tiddl"
-> export DJ_USB_ROOT="/path/to/dj_usb"
-> export DJ_MP3_ROOT="/Volumes/MUSIC/DJ_LIBRARY_MERGED_20260305_162807"
-> export DJ_LIBRARY_ROOT="$DJ_MP3_ROOT"
-> export DROPBOX_ROOT="/path/to/dropbox"
+> source .venv/bin/activate
+> set -a
+> source .env
+> set +a
+> export V3_DB="${V3_DB:-$TAGSLUT_DB}"
+> export LIBRARY_ROOT="${LIBRARY_ROOT:-$VOLUME_LIBRARY}"
+> export STAGING_ROOT="${STAGING_ROOT:-$VOLUME_STAGING}"
+> export ROOT_BP="${ROOT_BP:-$STAGING_ROOT/bpdl}"
+> export ROOT_TD="${ROOT_TD:-$STAGING_ROOT/tiddl}"
+> export DJ_LIBRARY_ROOT="${DJ_LIBRARY_ROOT:-$LIBRARY_ROOT}"
 > ```
 
 ---

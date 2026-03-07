@@ -245,6 +245,23 @@ Run tests:
 
 poetry run python -m pytest -q
 poetry run flake8 tagslut/ tests/
+poetry run mypy tagslut/ --ignore-missing-imports
+
+Review app regressions:
+
+poetry run pytest -q tests/test_review_app.py
+
+CI triage:
+
+gh auth status
+gh run list --limit 20 --json databaseId,workflowName,conclusion,headSha,url
+gh run view <run-id> --json jobs,name,workflowName,conclusion,status,url
+gh run view <run-id> --log
+
+Performance triage:
+
+poetry run python -m cProfile -o artifacts/pytest.prof -m pytest -q tests/test_review_app.py
+sqlite3 <db-path> "EXPLAIN QUERY PLAN <sql>"
 
 DJ candidate export:
 
@@ -287,15 +304,10 @@ MP3 sync defaults:
 DJ_MP3_ROOT=<mp3_root>
 DJ_LIBRARY_ROOT=<flac_root>
 
-CI triage:
-
-gh run list --limit 20
-gh pr checks <pr> --json name,state,bucket,link,workflow | jq
-gh run view <run_id> --log-failed
-
 Current CI note:
 
-Run `poetry run flake8 tagslut/ tests/` before treating a `CI` failure as commit-specific.
+Run `poetry run flake8 tagslut/ tests/` and `poetry run mypy tagslut/ --ignore-missing-imports`
+before treating a `CI` failure as commit-specific.
 
 
 ⸻

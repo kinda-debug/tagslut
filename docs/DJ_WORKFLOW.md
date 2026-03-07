@@ -7,9 +7,16 @@ DJ pool contract: see `docs/DJ_POOL.md` for the downstream-only boundary and def
 Set your DJ library root once and re-use it across workflows:
 
 ```bash
-export DJ_MP3_ROOT="/Volumes/MUSIC/DJ_LIBRARY_MERGED_20260305_162807"
-export DJ_LIBRARY_ROOT="$DJ_MP3_ROOT"
+set -a
+source .env
+set +a
+
+export LIBRARY_ROOT="${LIBRARY_ROOT:-$VOLUME_LIBRARY}"
+export DJ_MP3_ROOT="${DJ_MP3_ROOT:?set DJ_MP3_ROOT in .env}"
+export DJ_LIBRARY_ROOT="${DJ_LIBRARY_ROOT:-$LIBRARY_ROOT}"
 ```
+
+`DJ_MP3_ROOT` is the derived DJ library. `DJ_LIBRARY_ROOT` remains a compatibility alias for metadata helpers that still expect the FLAC master root.
 
 ## Pipeline Choice
 

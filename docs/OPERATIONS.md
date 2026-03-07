@@ -22,12 +22,20 @@ Compatibility aliases:
 ```bash
 cd <TAGSLUT_REPO>
 source .venv/bin/activate
+set -a
+source .env
+set +a
 
-export V3_DB=<V3_DB>
-export LIBRARY_ROOT=<LIBRARY_ROOT>
-export SCAN_ROOT=<PROMOTE_ROOT>
-export PROMOTE_ROOT=<PROMOTE_ROOT>
+export V3_DB="${V3_DB:-$TAGSLUT_DB}"
+export LIBRARY_ROOT="${LIBRARY_ROOT:-$VOLUME_LIBRARY}"
+export SCAN_ROOT="${SCAN_ROOT:-$VOLUME_STAGING}"
+export PROMOTE_ROOT="${PROMOTE_ROOT:-$VOLUME_STAGING}"
 ```
+
+Notes:
+- `LIBRARY_ROOT` / `VOLUME_LIBRARY` is the canonical FLAC library.
+- `DJ_MP3_ROOT` is the derived DJ library.
+- No separate archive library is assumed by this runbook.
 
 ## Daily Scan
 ```bash

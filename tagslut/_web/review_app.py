@@ -93,6 +93,10 @@ def _resolve_policy_path(explicit: str | None) -> Path:
     return Path("config/dj/dj_curation.yaml")
 
 
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
 def _normalize_simple(value: str | None) -> str:
     if value is None:
         return ""
@@ -408,6 +412,7 @@ def _fetch_artist_items(bucket: str, query: str, limit: int, offset: int) -> lis
             prefix_clause = " AND path LIKE ?"
             prefix_params.append(f"{prefix}%")
 
+        search_sql = f" AND ({search_clause})" if search_clause else ""
         sql = f"""
             WITH base AS (
                 SELECT
@@ -424,7 +429,7 @@ def _fetch_artist_items(bucket: str, query: str, limit: int, offset: int) -> lis
             LEFT JOIN dj_review_decisions d
                 ON d.level = 'artist' AND d.key = base.artist_key
             WHERE 1=1
-            {search_clause}
+            {search_sql}
             ORDER BY base.artist;
         """
         rows = conn.execute(sql, prefix_params + params).fetchall()
@@ -463,6 +468,7 @@ def _fetch_album_items(bucket: str, query: str, limit: int, offset: int) -> list
             prefix_clause = " AND path LIKE ?"
             prefix_params.append(f"{prefix}%")
 
+        search_sql = f" AND ({search_clause})" if search_clause else ""
         sql = f"""
             WITH base AS (
                 SELECT
@@ -482,7 +488,7 @@ def _fetch_album_items(bucket: str, query: str, limit: int, offset: int) -> list
             LEFT JOIN dj_review_decisions d
                 ON d.level = 'album' AND d.key = (base.artist_key || '|' || base.album_key)
             WHERE 1=1
-            {search_clause}
+            {search_sql}
             ORDER BY base.artist, base.album;
         """
         rows = conn.execute(sql, prefix_params + params).fetchall()
@@ -1028,7 +1034,12 @@ def _validate_usb_path(usb_path: str) -> str:
     if not os.path.isabs(usb_path):
         raise ValueError("usb_path must be an absolute path")
     # Restrict USB paths to common mount locations to avoid arbitrary paths.
-    allowed_prefixes = (os.path.sep + "media", os.path.sep + "mnt")
+    allowed_prefixes = (
+        os.path.sep + "Volumes",
+        os.path.sep + "media",
+        os.path.sep + "mnt",
+        os.path.sep + "run" + os.path.sep + "media",
+    )
     if not usb_path.startswith(allowed_prefixes):
         raise ValueError("usb_path must be under a mounted USB directory")
     return usb_path
@@ -1055,7 +1066,7 @@ def _validate_output_path(output_m3u: str) -> Path:
     if not raw_name.lower().endswith((".m3u", ".m3u8")):
         raise ValueError("output_m3u must end with .m3u or .m3u8")
 
-    base_dir = Path(__file__).resolve().parent / "artifacts"
+    base_dir = _repo_root() / "artifacts"
     base_dir.mkdir(parents=True, exist_ok=True)
     return base_dir / raw_name
 

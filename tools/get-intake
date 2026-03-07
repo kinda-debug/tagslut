@@ -124,6 +124,22 @@ run_cmd() {
   "$@"
 }
 
+run_tiddl_download() {
+  local tidal_url="${1:-}"
+  shift || true
+
+  local cmd=("$TIDDL_WRAPPER")
+  if [[ $# -gt 0 ]]; then
+    cmd+=("$@")
+  fi
+  cmd+=(--path "$BATCH_ROOT" --scan-path "$BATCH_ROOT" --skip-errors "$tidal_url")
+
+  printf '→ '
+  printf '%q ' "${cmd[@]}"
+  printf '\n'
+  "${cmd[@]}"
+}
+
 count_audio_files() {
   local root="${1:-}"
   if [[ -z "$root" || ! -d "$root" ]]; then
@@ -261,10 +277,14 @@ bpdl_downloads_dir_from_config() {
 
 tiddl_downloads_dir_from_config() {
   local cfg=""
+  local kind="json"
   local candidate=""
-  for candidate in "$HOME/.tiddl" "$HOME/tiddl.json" "$HOME/Documents/tiddl.json"; do
+  for candidate in "$HOME/.tiddl/config.toml" "$HOME/tiddl.json" "$HOME/Documents/tiddl.json"; do
     if [[ -f "$candidate" ]]; then
       cfg="$candidate"
+      if [[ "$candidate" == *.toml ]]; then
+        kind="toml"
+      fi
       break
     fi
   done
@@ -272,20 +292,25 @@ tiddl_downloads_dir_from_config() {
     echo ""
     return 0
   fi
-  python3 - "$cfg" <<'PY'
-import json
+  python3 - "$cfg" "$kind" <<'PY'
 import sys
 from pathlib import Path
+import json
+import tomllib
 
 cfg = Path(sys.argv[1]).expanduser()
+kind = sys.argv[2]
 try:
-    payload = json.loads(cfg.read_text(encoding="utf-8"))
+    if kind == "toml":
+        payload = tomllib.loads(cfg.read_text(encoding="utf-8"))
+    else:
+        payload = json.loads(cfg.read_text(encoding="utf-8"))
 except Exception:
     print("")
     raise SystemExit(0)
 
 download = payload.get("download") or {}
-print(download.get("path") or "")
+print(download.get("path") or download.get("download_path") or "")
 PY
 }
 
@@ -1479,28 +1504,45 @@ PY
       echo "No new candidates to process; intake pipeline finished."
       exit 0
     else
-      BPDL_LOG="$OUT_DIR/bpdl_prefilter_download_$(date +%Y%m%d_%H%M%S).log"
-      if [[ "$VERBOSE" -eq 1 ]]; then
-        echo "  Beatport keep list: $KEEP_URLS_TXT"
-        echo "  Beatport log:       $BPDL_LOG"
-      fi
       if [[ "$SOURCE" == "tidal" ]]; then
         KEEP_COUNT="$(awk 'NF{c++} END{print c+0}' "$KEEP_URLS_TXT")"
         DONE=0
+        TIDDL_FAILED_COUNT=0
+        TIDDL_FAILED_URLS_FILE="$OUT_DIR/tiddl_failed_urls_$(date +%Y%m%d_%H%M%S).txt"
+        : > "$TIDDL_FAILED_URLS_FILE"
+        if [[ "$VERBOSE" -eq 1 ]]; then
+          echo "  Tidal keep list:    $KEEP_URLS_TXT"
+          echo "  Tidal batch root:   $BATCH_ROOT"
+          echo "  Tidal failures:     $TIDDL_FAILED_URLS_FILE"
+        fi
         while IFS= read -r keep_url; do
           [[ -n "$keep_url" ]] || continue
           DONE=$((DONE + 1))
           echo "[$DONE/$KEEP_COUNT] $keep_url"
-          if [[ ${#DOWNLOADER_ARGS[@]} -gt 0 ]]; then
-            run_cmd "$TIDDL_WRAPPER" "$keep_url" "${DOWNLOADER_ARGS[@]}"
+          if run_tiddl_download "$keep_url" "${DOWNLOADER_ARGS[@]}"; then
+            :
           else
-            run_cmd "$TIDDL_WRAPPER" "$keep_url"
+            TIDDL_FAILED_COUNT=$((TIDDL_FAILED_COUNT + 1))
+            printf '%s\n' "$keep_url" >> "$TIDDL_FAILED_URLS_FILE"
+            echo "WARNING: Tidal download failed for $keep_url; continuing."
           fi
         done < "$KEEP_URLS_TXT"
-      elif [[ ${#DOWNLOADER_ARGS[@]} -gt 0 ]]; then
-        run_bpdl_batch "$KEEP_URLS_TXT" "$BPDL_LOG" "${DOWNLOADER_ARGS[@]}"
+        if [[ "$TIDDL_FAILED_COUNT" -gt 0 ]]; then
+          echo "Tidal download failures: $TIDDL_FAILED_COUNT (saved: $TIDDL_FAILED_URLS_FILE)"
+        else
+          rm -f "$TIDDL_FAILED_URLS_FILE"
+        fi
       else
-        run_bpdl_batch "$KEEP_URLS_TXT" "$BPDL_LOG"
+        BPDL_LOG="$OUT_DIR/bpdl_prefilter_download_$(date +%Y%m%d_%H%M%S).log"
+        if [[ "$VERBOSE" -eq 1 ]]; then
+          echo "  Beatport keep list: $KEEP_URLS_TXT"
+          echo "  Beatport log:       $BPDL_LOG"
+        fi
+        if [[ ${#DOWNLOADER_ARGS[@]} -gt 0 ]]; then
+          run_bpdl_batch "$KEEP_URLS_TXT" "$BPDL_LOG" "${DOWNLOADER_ARGS[@]}"
+        else
+          run_bpdl_batch "$KEEP_URLS_TXT" "$BPDL_LOG"
+        fi
       fi
     fi
   else
@@ -1508,10 +1550,8 @@ PY
       if [[ "$VERBOSE" -eq 1 ]]; then
         echo "  Tidal download target: $(tiddl_downloads_dir_from_config || true)"
       fi
-      if [[ ${#DOWNLOADER_ARGS[@]} -gt 0 ]]; then
-        run_cmd "$TIDDL_WRAPPER" "$URL" "${DOWNLOADER_ARGS[@]}"
-      else
-        run_cmd "$TIDDL_WRAPPER" "$URL"
+      if ! run_tiddl_download "$URL" "${DOWNLOADER_ARGS[@]}"; then
+        err "Tidal download failed for $URL"
       fi
     elif [[ "$SOURCE" == "bpdl" && "$URL" == *"beatport.com"* ]]; then
       RAW_URLS_TXT="$OUT_DIR/bpdl_raw_urls_$(date +%Y%m%d_%H%M%S).txt"
@@ -1694,10 +1734,13 @@ import sys
 def emit(key, value):
     print(f"{key}={shlex.quote(str(value))}")
 
-for prefix, path in (("FIX", sys.argv[1]), ("DISCARD", sys.argv[2])):
-    payload = json.load(open(path, encoding="utf-8"))
-    emit(f"{prefix}_SKIP_MOVE", payload.get("selected_rows", 0))
-    emit(f"{prefix}_SKIP_PLAN", payload.get("plan_csv", ""))
+payload = json.load(open(sys.argv[1], encoding="utf-8"))
+emit("FIX_SKIP_MOVE", payload.get("selected_rows", 0))
+emit("FIX_SKIP_PLAN", payload.get("plan_csv", ""))
+
+payload = json.load(open(sys.argv[2], encoding="utf-8"))
+emit("DISCARD_MOVE", payload.get("selected_rows", 0))
+emit("DISCARD_PLAN", payload.get("plan_csv", ""))
 PY
 )"
 

@@ -14,7 +14,32 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+ENV_LOADER="$SCRIPT_DIR/_load_env.sh"
 TIDDL_BIN="${TIDDL_BIN:-/opt/homebrew/bin/tiddl}"
+
+if [[ -f "$ENV_LOADER" ]]; then
+    # shellcheck disable=SC1090
+    source "$ENV_LOADER"
+    load_workspace_env "$REPO_ROOT"
+fi
+
+default_download_root() {
+    if [[ -n "${ROOT_TD:-}" ]]; then
+        printf '%s\n' "$ROOT_TD"
+        return 0
+    fi
+    if [[ -n "${TIDDL_DOWNLOAD_ROOT:-}" ]]; then
+        printf '%s\n' "$TIDDL_DOWNLOAD_ROOT"
+        return 0
+    fi
+    if [[ -n "${VOLUME_STAGING:-}" ]]; then
+        printf '%s\n' "${VOLUME_STAGING}/tidal"
+        return 0
+    fi
+    return 1
+}
 
 if [[ ! -x "$TIDDL_BIN" ]]; then
     if command -v tiddl >/dev/null 2>&1; then
@@ -35,7 +60,47 @@ case "$1" in
         exec "$TIDDL_BIN" "$@"
         ;;
     *)
-        # Newer tiddl CLI expects: tiddl download url <url>
-        exec "$TIDDL_BIN" download url "$@"
+        # Newer tiddl CLI expects: tiddl download [options] url <url>
+        CMD=("$TIDDL_BIN" download)
+        DOWNLOAD_ARGS=()
+        URL_ARGS=()
+        EXPECT_VALUE=0
+
+        for arg in "$@"; do
+            if [[ "$EXPECT_VALUE" -eq 1 ]]; then
+                DOWNLOAD_ARGS+=("$arg")
+                EXPECT_VALUE=0
+                continue
+            fi
+
+            case "$arg" in
+                --track-quality|-q|--video-quality|-vq|--threads-count|-t|--path|-p|--scan-path|--sp|--output|-o|--singles|-s|--videos|-vid)
+                    DOWNLOAD_ARGS+=("$arg")
+                    EXPECT_VALUE=1
+                    ;;
+                --track-quality=*|--video-quality=*|--threads-count=*|--path=*|--scan-path=*|--sp=*|--output=*|--singles=*|--videos=*)
+                    DOWNLOAD_ARGS+=("$arg")
+                    ;;
+                --no-skip|-ns|--rewrite-metadata|-r|--skip-errors|-se)
+                    DOWNLOAD_ARGS+=("$arg")
+                    ;;
+                *)
+                    URL_ARGS+=("$arg")
+                    ;;
+            esac
+        done
+
+        if ROOT_TD_VALUE="$(default_download_root)"; then
+            CMD+=(--path "$ROOT_TD_VALUE" --scan-path "$ROOT_TD_VALUE")
+        fi
+        CMD+=(--skip-errors)
+        if [[ ${#DOWNLOAD_ARGS[@]} -gt 0 ]]; then
+            CMD+=("${DOWNLOAD_ARGS[@]}")
+        fi
+        CMD+=(url)
+        if [[ ${#URL_ARGS[@]} -gt 0 ]]; then
+            CMD+=("${URL_ARGS[@]}")
+        fi
+        exec "${CMD[@]}"
         ;;
 esac

@@ -22,10 +22,12 @@ source .env
 set +a
 
 export MASTER_LIBRARY="${MASTER_LIBRARY:-${LIBRARY_ROOT:-$VOLUME_LIBRARY}}"
+export PLAYLIST_ROOT="${PLAYLIST_ROOT:-$MASTER_LIBRARY/playlists}"
 export DJ_LIBRARY="${DJ_LIBRARY:-${DJ_MP3_ROOT:?set DJ_LIBRARY in .env}}"
+export DJ_PLAYLIST_ROOT="${DJ_PLAYLIST_ROOT:-$DJ_LIBRARY}"
 ```
 
-`MASTER_LIBRARY` is the FLAC source of truth. `DJ_LIBRARY` is the derived DJ library. Legacy scripts can still read `LIBRARY_ROOT`, `DJ_MP3_ROOT`, or `DJ_LIBRARY_ROOT` via aliases from `.env`.
+`MASTER_LIBRARY` is the FLAC source of truth. `PLAYLIST_ROOT` holds Roon-readable library playlists. `DJ_LIBRARY` is the derived DJ library, and `DJ_PLAYLIST_ROOT` holds DJ playlists with absolute paths for Rekordbox/Lexicon workflows. Legacy scripts can still read `LIBRARY_ROOT`, `DJ_MP3_ROOT`, or `DJ_LIBRARY_ROOT` via aliases from `.env`.
 
 ## Pipeline Choice
 

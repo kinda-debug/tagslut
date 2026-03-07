@@ -16,9 +16,18 @@ def register_report_group(cli: click.Group) -> None:
     @click.option("--db", type=click.Path(), help="Database path")
     @click.option("--source", help="Source label for playlist naming")
     @click.option("--m3u-dir", type=click.Path(), help="Output directory")
+    @click.option(
+        "--path-mode",
+        type=click.Choice(["absolute", "relative"], case_sensitive=False),
+        default="absolute",
+        show_default=True,
+        help="Write absolute or playlist-relative paths",
+    )
+    @click.option("--name-prefix", default="", help="Prefix added to the generated playlist name")
+    @click.option("--name-suffix", default="", help="Suffix added to the generated playlist name")
     @click.option("--merge", is_flag=True, help="Merge all paths into one playlist")
     @click.option("--verbose", is_flag=True, help="Print extra details about playlist generation")
-    def report_m3u(paths, db, source, m3u_dir, merge, verbose):  # type: ignore  # TODO: mypy-strict
+    def report_m3u(paths, db, source, m3u_dir, path_mode, name_prefix, name_suffix, merge, verbose):  # type: ignore  # TODO: mypy-strict
         """Generate M3U playlists from paths."""
         run_report_m3u(
             paths=tuple(paths),
@@ -26,6 +35,9 @@ def register_report_group(cli: click.Group) -> None:
             m3u_dir=m3u_dir,
             db=db,
             source=source,
+            path_mode=str(path_mode),
+            name_prefix=str(name_prefix),
+            name_suffix=str(name_suffix),
             verbose=bool(verbose),
         )
 

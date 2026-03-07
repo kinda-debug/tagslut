@@ -17,7 +17,9 @@ Use canonical entry points for new work: `tagslut intake/index/decide/execute/ve
 > export STAGING_ROOT="${STAGING_ROOT:-$VOLUME_STAGING}"
 > export ROOT_BP="${ROOT_BP:-$STAGING_ROOT/bpdl}"
 > export ROOT_TD="${ROOT_TD:-$STAGING_ROOT/tidal}"
+> export PLAYLIST_ROOT="${PLAYLIST_ROOT:-$MASTER_LIBRARY/playlists}"
 > export DJ_LIBRARY="${DJ_LIBRARY:-${DJ_MP3_ROOT:-}}"
+> export DJ_PLAYLIST_ROOT="${DJ_PLAYLIST_ROOT:-$DJ_LIBRARY}"
 > ```
 
 ---
@@ -43,6 +45,8 @@ tools/get "https://www.beatport.com/release/.../..." --no-hoard
 
 High-level workflow flags:
 - `--dj` builds DJ MP3 copies after promote
+- `--m3u` writes Roon-friendly relative-path playlists into `PLAYLIST_ROOT`
+- `--dj` also writes DJ absolute-path playlists into `DJ_PLAYLIST_ROOT`
 - `--hoard` keeps the tagging/enrich/art pipeline on (default)
 - `--no-hoard` disables tagging/enrich/art
 - `--no-precheck` bypasses same-or-better duplicate filtering
@@ -118,8 +122,8 @@ poetry run tagslut index register "$STAGING_ROOT" \
   --db "$TAGSLUT_DB" --source staging --execute
 
 # Source-specific
-poetry run tagslut index register "$STAGING_ROOT/tidal"   --db "$TAGSLUT_DB" --source tidal    --execute
-poetry run tagslut index register "$STAGING_ROOT/beatport" --db "$TAGSLUT_DB" --source beatport --execute
+poetry run tagslut index register "$ROOT_TD" --db "$TAGSLUT_DB" --source tidal --execute
+poetry run tagslut index register "$ROOT_BP" --db "$TAGSLUT_DB" --source beatport --execute
 poetry run tagslut index register "$STAGING_ROOT/deezer"  --db "$TAGSLUT_DB" --source deezer   --execute
 ```
 
@@ -186,7 +190,7 @@ python tools/review/promote_replace_merge.py "$STAGING_ROOT" \
 ```bash
 # Roon M3U export
 poetry run tagslut report m3u "$MASTER_LIBRARY" \
-  --db "$TAGSLUT_DB" --source library --m3u-dir "$MASTER_LIBRARY" --merge
+  --db "$TAGSLUT_DB" --source library --m3u-dir "$PLAYLIST_ROOT" --path-mode relative --name-prefix roon- --merge
 
 # Review warn/fail/unknown buckets
 poetry run tagslut verify duration --db "$TAGSLUT_DB" --status warn,fail,unknown
@@ -374,7 +378,7 @@ python scripts/reassess_duration_variant_mismatch.py --db "$TAGSLUT_DB" --execut
 
 # Rebuild playlists after
 poetry run tagslut report m3u "$MASTER_LIBRARY" \
-  --db "$TAGSLUT_DB" --source library --m3u-dir "$MASTER_LIBRARY" --merge
+  --db "$TAGSLUT_DB" --source library --m3u-dir "$PLAYLIST_ROOT" --path-mode relative --name-prefix roon- --merge
 ```
 
 ### Playlist audit against DB (XLSX input)

@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import click
 
-from tagslut.cli.runtime import collect_flac_paths as _collect_flac_paths
+from tagslut.utils.paths import list_files
 
 
 def duration_thresholds_from_config() -> tuple[int, int]:
@@ -33,10 +34,28 @@ def duration_status(delta_ms: int | None, ok_max_ms: int, warn_max_ms: int) -> s
     return "fail"
 
 
-def collect_flac_inputs(paths: tuple[str, ...]) -> list[Path]:
+SUPPORTED_PLAYLIST_EXTENSIONS = {
+    ".flac",
+    ".mp3",
+    ".m4a",
+    ".aac",
+    ".aif",
+    ".aiff",
+    ".wav",
+}
+
+
+def collect_audio_inputs(paths: tuple[str, ...]) -> list[Path]:
     files: list[Path] = []
     for input_path in paths:
-        files.extend(_collect_flac_paths(input_path))
+        path = Path(input_path).expanduser().resolve()
+        if path.is_dir():
+            files.extend(sorted(list_files(path, SUPPORTED_PLAYLIST_EXTENSIONS), key=lambda item: str(item)))
+            continue
+        if path.is_file() and path.suffix.lower() in SUPPORTED_PLAYLIST_EXTENSIONS:
+            files.append(path)
+            continue
+        raise FileNotFoundError(f"Path not found or unsupported audio type: {input_path}")
     return files
 
 
@@ -84,11 +103,14 @@ def extract_tag_value(tags: dict, keys: list[str]) -> str | None:  # type: ignor
 
 def format_extinf(file_path: Path) -> tuple[int, str]:
     try:
-        from mutagen.flac import FLAC
+        from mutagen import File as MutagenFile  # type: ignore  # TODO: mypy-strict
 
-        audio = FLAC(file_path)
-        duration = int(audio.info.length) if audio.info.length else -1
-        tags = audio.tags or {}  # type: ignore  # TODO: mypy-strict
+        audio = MutagenFile(str(file_path), easy=False)
+        if audio is None or not hasattr(audio, "info") or audio.info is None:
+            return -1, file_path.stem
+
+        duration = int(audio.info.length) if getattr(audio.info, "length", None) else -1
+        tags = getattr(audio, "tags", None) or {}  # type: ignore  # TODO: mypy-strict
         artist = extract_tag_value(tags, ["artist", "albumartist"]) or "Unknown"  # type: ignore  # TODO: mypy-strict
         title = extract_tag_value(tags, ["title"]) or file_path.stem  # type: ignore  # TODO: mypy-strict
         return duration, f"{artist} - {title}"
@@ -96,7 +118,14 @@ def format_extinf(file_path: Path) -> tuple[int, str]:
         return -1, file_path.stem
 
 
-def write_m3u(*, playlist_name: str, files: list[Path], output_dir: Path) -> Path:
+def _playlist_entry(file_path: Path, *, output_dir: Path, path_mode: str) -> str:
+    resolved = file_path.resolve()
+    if path_mode == "relative":
+        return Path(os.path.relpath(resolved, start=output_dir.resolve())).as_posix()
+    return str(resolved)
+
+
+def write_m3u(*, playlist_name: str, files: list[Path], output_dir: Path, path_mode: str = "absolute") -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     safe_name = safe_playlist_name(playlist_name)
     output_path = output_dir / f"{safe_name}.m3u"
@@ -105,7 +134,7 @@ def write_m3u(*, playlist_name: str, files: list[Path], output_dir: Path) -> Pat
     for file_path in files:
         duration, label = format_extinf(file_path)
         lines.append(f"#EXTINF:{duration},{label}")
-        lines.append(str(file_path.resolve()))
+        lines.append(_playlist_entry(file_path, output_dir=output_dir, path_mode=path_mode))
 
     output_path.write_text("\n".join(lines), encoding="utf-8")
     return output_path
@@ -268,6 +297,9 @@ def run_report_m3u(
     m3u_dir: str | None,
     db: str | None,
     source: str | None,
+    path_mode: str,
+    name_prefix: str,
+    name_suffix: str,
     verbose: bool,
 ) -> None:
     from datetime import datetime, timezone
@@ -284,9 +316,9 @@ def run_report_m3u(
     output_dir = Path(m3u_dir) if m3u_dir else (Path(default_m3u_dir).expanduser() if default_m3u_dir else None)
 
     input_paths = [Path(p).expanduser().resolve() for p in paths]
-    flac_files = collect_flac_inputs(tuple(paths))
-    if not flac_files:
-        raise click.ClickException("No FLAC files found in provided PATHS")
+    audio_files = collect_audio_inputs(tuple(paths))
+    if not audio_files:
+        raise click.ClickException("No supported audio files found in provided PATHS")
 
     if output_dir is None:
         if len(input_paths) == 1 and input_paths[0].is_dir():
@@ -296,10 +328,10 @@ def run_report_m3u(
 
     groups: dict[str, list[Path]] = {}
     if merge:
-        groups["merged"] = sorted(flac_files, key=lambda p: str(p))
+        groups["merged"] = sorted(audio_files, key=lambda p: str(p))
     else:
         base_paths = [p for p in input_paths if p.exists()]
-        for file_path in flac_files:
+        for file_path in audio_files:
             group = resolve_group_name(file_path, base_paths)
             groups.setdefault(group, []).append(file_path)
         for group_name in list(groups.keys()):
@@ -307,7 +339,7 @@ def run_report_m3u(
 
     if verbose:
         click.echo(f"Input paths: {len(input_paths)}")
-        click.echo(f"FLAC files: {len(flac_files)}")
+        click.echo(f"Audio files: {len(audio_files)}")
         click.echo(f"Groups: {len(groups)}")
         for name, files in groups.items():
             click.echo(f"  {name}: {len(files)} tracks")
@@ -327,11 +359,13 @@ def run_report_m3u(
                 stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
                 label = source or "tagslut"
                 playlist_name = f"{label}-{stamp}"
+            playlist_name = f"{name_prefix}{playlist_name}{name_suffix}"
 
             output_path = write_m3u(
                 playlist_name=playlist_name,
                 files=files,
                 output_dir=output_dir,
+                path_mode=path_mode,
             )
             playlist_outputs.append(output_path)
 

@@ -53,13 +53,13 @@ Note:
   m3u-only workflows, and direct pipeline control.
 
 Options:
-  --batch-root PATH    Download batch root to process (default: provider download root or $VOLUME_STAGING)
+  --batch-root PATH    Download batch root to process (default: $ROOT_BP/$ROOT_TD or $VOLUME_STAGING/<provider>)
   --source TEXT        Source label (bpdl|tidal). Auto-inferred from URL if omitted.
   --url URL            Source URL (alternative to positional URL)
   --db PATH            SQLite DB path (default: $TAGSLUT_DB or auto-detected tagslut_db epoch; errors if ambiguous)
   --library-root PATH  Final library root (default: $LIBRARY_ROOT or $VOLUME_LIBRARY or $MASTER_LIBRARY)
   --fix-root PATH      Quarantine/FIX root (default: $FIX_ROOT or $VOLUME_QUARANTINE or artifacts/quarantine)
-  --out-dir PATH       Output directory for plans (default: artifacts/compare)
+  --out-dir PATH       Output directory for plans (default: $TAGSLUT_ARTIFACTS/compare or artifacts/compare)
   --workers N          Fingerprint workers (default: 7)
   --trust N            Pre-scan trust score 0..3 (default: 3)
   --trust-post N       Post-scan trust score 0..3 (default: 3)
@@ -67,9 +67,10 @@ Options:
   --providers TEXT     Metadata providers for tagging/enrichment
   --execute            Execute move plans (default: dry-run planning only)
   --m3u                Generate Roon-friendly merged M3U from promoted files
-  --m3u-dir PATH       M3U output dir (default: library root when --m3u)
-  --dj                 Transcode promoted FLACs to MP3 into DJ library root
+  --m3u-dir PATH       M3U output dir (default: $PLAYLIST_ROOT or library root)
+  --dj                 Transcode promoted FLACs to MP3 into DJ library root and write DJ playlists
   --dj-root PATH       DJ MP3 root (default: $DJ_MP3_ROOT or $DJ_LIBRARY)
+  --dj-m3u-dir PATH    DJ playlist output dir (default: $DJ_PLAYLIST_ROOT or DJ root)
   --m3u-only           Only generate merged M3U (skip download/scan/move stages)
   --playlist-file PATH Build M3U from playlist file (.m3u/.m3u8/.txt/.csv/.json)
   --missing-policy MODE
@@ -88,7 +89,7 @@ Options:
 Examples:
   tools/get-intake "https://www.beatport.com/chart/.../12345"
 
-  tools/get-intake --batch-root "$STAGING_ROOT/beatport" \
+  tools/get-intake --batch-root "$ROOT_BP" \
     "https://www.beatport.com/release/.../12345"
 
   tools/get-intake --no-download --batch-root "$STAGING_ROOT/clean" --execute
@@ -147,6 +148,8 @@ rename_latest_m3u_from_marker() {
   local m3u_dir="$1"
   local marker_file="$2"
   local base_name="$3"
+  local name_prefix="${4:-}"
+  local name_suffix="${5:-}"
 
   [[ -d "$m3u_dir" ]] || return 0
   [[ -f "$marker_file" ]] || return 0
@@ -156,7 +159,7 @@ rename_latest_m3u_from_marker() {
   latest_new_m3u="$(find "$m3u_dir" -maxdepth 1 -type f -name '*.m3u' -newer "$marker_file" -print | sort | tail -n1 || true)"
   [[ -n "$latest_new_m3u" ]] || return 0
 
-  local target="$m3u_dir/$base_name.m3u"
+  local target="$m3u_dir/${name_prefix}${base_name}${name_suffix}.m3u"
   if [[ "$latest_new_m3u" != "$target" ]]; then
     if [[ -f "$latest_new_m3u" ]]; then
       mv -f "$latest_new_m3u" "$target" || true
@@ -232,27 +235,28 @@ PY
 }
 
 default_batch_root() {
+  local staging_root=""
   local bpdl_root=""
   local tiddl_root=""
+  staging_root="$(first_nonempty "${STAGING_ROOT:-}" "${VOLUME_STAGING:-}")"
   bpdl_root="$(bpdl_downloads_dir_from_config)"
   tiddl_root="$(tiddl_downloads_dir_from_config)"
   if [[ "${SOURCE:-}" == "tidal" ]]; then
     first_nonempty \
       "${BATCH_ROOT:-}" \
-      "${TIDDL_DOWNLOAD_ROOT:-}" \
       "${ROOT_TD:-}" \
+      "${TIDDL_DOWNLOAD_ROOT:-}" \
       "${tiddl_root:-}" \
-      "${VOLUME_STAGING:-}" \
+      "${staging_root:+$staging_root/tidal}" \
       "$HOME/Downloads/tiddl" \
       "$REPO_ROOT/output/downloads/tidal"
     return 0
   fi
   first_nonempty \
     "${BATCH_ROOT:-}" \
-    "${bpdl_root:-}" \
     "${ROOT_BP:-}" \
-    "${VOLUME_STAGING:-}" \
-    "${STAGING_ROOT:-}" \
+    "${bpdl_root:-}" \
+    "${staging_root:+$staging_root/bpdl}" \
     "$REPO_ROOT/output/downloads/bpdl"
 }
 
@@ -268,6 +272,33 @@ default_fix_root() {
     "${FIX_ROOT:-}" \
     "${VOLUME_QUARANTINE:-}" \
     "$REPO_ROOT/artifacts/quarantine"
+}
+
+default_out_dir() {
+  local artifacts_root=""
+  artifacts_root="$(first_nonempty "${TAGSLUT_ARTIFACTS:-}" "$REPO_ROOT/artifacts")"
+  first_nonempty \
+    "${OUT_DIR:-}" \
+    "${TAGSLUT_COMPARE_DIR:-}" \
+    "${artifacts_root:+$artifacts_root/compare}" \
+    "$REPO_ROOT/artifacts/compare"
+}
+
+default_m3u_dir() {
+  first_nonempty \
+    "${M3U_DIR:-}" \
+    "${PLAYLIST_ROOT:-}" \
+    "${TAGSLUT_PLAYLIST_ROOT:-}" \
+    "${LIBRARY_ROOT:-}"
+}
+
+default_dj_m3u_dir() {
+  first_nonempty \
+    "${DJ_M3U_DIR:-}" \
+    "${DJ_PLAYLIST_ROOT:-}" \
+    "${DJ_ROOT:-}" \
+    "${DJ_MP3_ROOT:-}" \
+    "${DJ_LIBRARY:-}"
 }
 
 default_dj_root() {
@@ -402,16 +433,21 @@ SOURCE=""
 DB_PATH="${TAGSLUT_DB:-}"
 LIBRARY_ROOT="${LIBRARY_ROOT:-}"
 FIX_ROOT="${FIX_ROOT:-}"
-OUT_DIR="$REPO_ROOT/artifacts/compare"
+OUT_DIR="${TAGSLUT_COMPARE_DIR:-}"
 WORKERS=7
 TRUST=3
 TRUST_POST=3
 LIBRARY_TAG="INTAKE"
 M3U_DIR=""
+DJ_M3U_DIR="${DJ_PLAYLIST_ROOT:-}"
 PLAYLIST_FILE=""
 MISSING_POLICY="report"
 DJ_ROOT="${DJ_MP3_ROOT:-${DJ_LIBRARY:-}}"
 ENRICH_PROVIDERS="beatport,tidal,deezer,traxsource,musicbrainz"
+ROON_PLAYLIST_PREFIX="${ROON_PLAYLIST_PREFIX:-roon-}"
+ROON_PLAYLIST_SUFFIX="${ROON_PLAYLIST_SUFFIX:-}"
+DJ_PLAYLIST_PREFIX="${DJ_PLAYLIST_PREFIX:-dj-}"
+DJ_PLAYLIST_SUFFIX="${DJ_PLAYLIST_SUFFIX:-}"
 
 DOWNLOADER_ARGS=()
 
@@ -502,6 +538,11 @@ while [[ $# -gt 0 ]]; do
     --dj-root)
       [[ $# -ge 2 ]] || err "--dj-root requires a value"
       DJ_ROOT="$2"
+      shift 2
+      ;;
+    --dj-m3u-dir)
+      [[ $# -ge 2 ]] || err "--dj-m3u-dir requires a value"
+      DJ_M3U_DIR="$2"
       shift 2
       ;;
     --playlist-file)
@@ -638,9 +679,8 @@ FIX_ROOT="$(resolve_path "$FIX_ROOT")"
 
 DB_PATH="$(cd "$(dirname "$DB_PATH")" && pwd -P)/$(basename "$DB_PATH")"
 if [[ "$M3U_MODE" -eq 1 ]]; then
-  if [[ -z "$M3U_DIR" ]]; then
-    M3U_DIR="$LIBRARY_ROOT"
-  fi
+  M3U_DIR="${M3U_DIR:-$(default_m3u_dir || true)}"
+  [[ -n "$M3U_DIR" ]] || err "Missing M3U dir. Set --m3u-dir, PLAYLIST_ROOT, or LIBRARY_ROOT."
   mkdir -p "$M3U_DIR"
   M3U_DIR="$(resolve_path "$M3U_DIR")"
 fi
@@ -649,7 +689,13 @@ if [[ "$DJ_MODE" -eq 1 ]]; then
   [[ -n "$DJ_ROOT" ]] || err "Missing DJ root. Set --dj-root, DJ_MP3_ROOT, or DJ_LIBRARY."
   mkdir -p "$DJ_ROOT"
   DJ_ROOT="$(resolve_path "$DJ_ROOT")"
+  DJ_M3U_DIR="${DJ_M3U_DIR:-$(default_dj_m3u_dir || true)}"
+  [[ -n "$DJ_M3U_DIR" ]] || err "Missing DJ playlist dir. Set --dj-m3u-dir, DJ_PLAYLIST_ROOT, or DJ_LIBRARY."
+  mkdir -p "$DJ_M3U_DIR"
+  DJ_M3U_DIR="$(resolve_path "$DJ_M3U_DIR")"
 fi
+OUT_DIR="${OUT_DIR:-$(default_out_dir || true)}"
+[[ -n "$OUT_DIR" ]] || err "Missing output dir. Set --out-dir or TAGSLUT_ARTIFACTS."
 mkdir -p "$OUT_DIR"
 OUT_DIR="$(resolve_path "$OUT_DIR")"
 
@@ -665,14 +711,16 @@ if [[ "$FORCE_DOWNLOAD" -eq 1 ]]; then
   echo "Force dl:     1"
 fi
 if [[ "$M3U_MODE" -eq 1 ]]; then
-  echo "M3U:          1 (dir=$M3U_DIR)"
+  echo "Roon M3U:     1 (dir=$M3U_DIR, paths=relative, prefix=$ROON_PLAYLIST_PREFIX)"
 else
-  echo "M3U:          0"
+  echo "Roon M3U:     0"
 fi
 if [[ "$DJ_MODE" -eq 1 ]]; then
   echo "DJ MP3:       1 (dir=$DJ_ROOT)"
+  echo "DJ M3U:       1 (dir=$DJ_M3U_DIR, paths=absolute, prefix=$DJ_PLAYLIST_PREFIX)"
 else
   echo "DJ MP3:       0"
+  echo "DJ M3U:       0"
 fi
 echo "Tagging:      $TAGGING_MODE"
 if [[ "$M3U_ONLY" -eq 1 ]]; then
@@ -989,12 +1037,15 @@ PY
     run_cmd poetry run python -m tagslut report m3u \
       --merge \
       --m3u-dir "$M3U_DIR" \
+      --path-mode relative \
+      --name-prefix "$ROON_PLAYLIST_PREFIX" \
+      --name-suffix "$ROON_PLAYLIST_SUFFIX" \
       --db "$DB_PATH" \
       --source "$M3U_SOURCE_LABEL" \
       "${M3U_PATH_ARGS[@]}"
 
     if [[ -n "$M3U_NAME_HINT" ]]; then
-      rename_latest_m3u_from_marker "$M3U_DIR" "$M3U_MARKER_FILE" "$M3U_NAME_HINT"
+      rename_latest_m3u_from_marker "$M3U_DIR" "$M3U_MARKER_FILE" "$M3U_NAME_HINT" "$ROON_PLAYLIST_PREFIX" "$ROON_PLAYLIST_SUFFIX"
     fi
     rm -f "$M3U_MARKER_FILE"
   fi
@@ -1481,6 +1532,9 @@ if [[ "$M3U_MODE" -eq 1 ]]; then
     run_cmd poetry run python -m tagslut report m3u \
       --merge \
       --m3u-dir "$M3U_DIR" \
+      --path-mode relative \
+      --name-prefix "$ROON_PLAYLIST_PREFIX" \
+      --name-suffix "$ROON_PLAYLIST_SUFFIX" \
       --db "$DB_PATH" \
       --source "$SOURCE" \
       "${M3U_PATH_ARGS[@]}"
@@ -1495,7 +1549,8 @@ if [[ "$DJ_MODE" -eq 1 ]]; then
   if [[ "$DJ_INPUT_COUNT" -eq 0 ]]; then
     echo "No promoted FLAC files found on disk for DJ export; skipping."
   else
-    run_cmd poetry run python - "$PROMOTED_FLACS_FILE" "$DJ_ROOT" <<'PY'
+    DJ_M3U_INPUTS_FILE="$OUT_DIR/dj_playlist_inputs_$(date +%Y%m%d_%H%M%S).txt"
+    run_cmd poetry run python - "$PROMOTED_FLACS_FILE" "$DJ_ROOT" "$DJ_M3U_INPUTS_FILE" <<'PY'
 import sys
 from pathlib import Path
 
@@ -1503,10 +1558,12 @@ from tagslut.exec.transcoder import FFmpegNotFoundError, TranscodeError, transco
 
 inputs_file = Path(sys.argv[1])
 dest_root = Path(sys.argv[2]).expanduser().resolve()
+playlist_inputs = Path(sys.argv[3]).expanduser().resolve()
 dest_root.mkdir(parents=True, exist_ok=True)
 
 errors = []
 done = 0
+written = []
 
 for line in inputs_file.read_text(encoding="utf-8").splitlines():
     path = Path(line.strip()).expanduser()
@@ -1516,10 +1573,16 @@ for line in inputs_file.read_text(encoding="utf-8").splitlines():
         errors.append(f"missing source: {path}")
         continue
     try:
-        transcode_to_mp3(path, dest_root)
+        output = transcode_to_mp3(path, dest_root)
+        written.append(str(output))
         done += 1
     except (FFmpegNotFoundError, TranscodeError, FileNotFoundError) as exc:
         errors.append(f"{path}: {exc}")
+
+playlist_inputs.write_text(
+    "\n".join(written) + ("\n" if written else ""),
+    encoding="utf-8",
+)
 
 print(f"DJ export complete: {done} files -> {dest_root}")
 if errors:
@@ -1527,6 +1590,27 @@ if errors:
         print(f"ERROR: {item}", file=sys.stderr)
     raise SystemExit(1)
 PY
+
+    DJ_M3U_INPUT_COUNT="$(wc -l < "$DJ_M3U_INPUTS_FILE" | tr -d ' ')"
+    if [[ "$DJ_M3U_INPUT_COUNT" -eq 0 ]]; then
+      echo "No DJ MP3 files written for playlist generation; skipping DJ M3U."
+    else
+      DJ_M3U_PATH_ARGS=()
+      while IFS= read -r dj_m3u_path; do
+        [[ -n "$dj_m3u_path" ]] || continue
+        DJ_M3U_PATH_ARGS+=("$dj_m3u_path")
+      done < "$DJ_M3U_INPUTS_FILE"
+
+      run_cmd poetry run python -m tagslut report m3u \
+        --merge \
+        --m3u-dir "$DJ_M3U_DIR" \
+        --path-mode absolute \
+        --name-prefix "$DJ_PLAYLIST_PREFIX" \
+        --name-suffix "$DJ_PLAYLIST_SUFFIX" \
+        --db "$DB_PATH" \
+        --source "$SOURCE" \
+        "${DJ_M3U_PATH_ARGS[@]}"
+    fi
   fi
 fi
 

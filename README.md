@@ -25,7 +25,12 @@ export V2_DB=<V2_DB>   # optional legacy DB (v2)
 export V3_DB=<V3_DB>
 export TAGSLUT_DB="$V3_DB"
 export LIBRARY_ROOT=<LIBRARY_ROOT>
-export PROMOTE_ROOT=<PROMOTE_ROOT>
+export STAGING_ROOT=<STAGING_ROOT>
+export ROOT_BP="${ROOT_BP:-$STAGING_ROOT/bpdl}"
+export ROOT_TD="${ROOT_TD:-$STAGING_ROOT/tidal}"
+export PLAYLIST_ROOT="${PLAYLIST_ROOT:-$LIBRARY_ROOT/playlists}"
+export DJ_PLAYLIST_ROOT="${DJ_PLAYLIST_ROOT:-$DJ_LIBRARY}"
+export PROMOTE_ROOT="${PROMOTE_ROOT:-$STAGING_ROOT}"
 ```
 
 ## Standard Operations
@@ -58,6 +63,8 @@ tools/get <provider-url> --no-hoard
 
 Notes:
 - `tools/get` is the primary user-facing downloader for Beatport and Tidal.
+- `tools/get --m3u` writes Roon-style playlists inside `PLAYLIST_ROOT` using relative paths.
+- `tools/get --dj` writes DJ playlists inside `DJ_PLAYLIST_ROOT` using absolute paths for Rekordbox/Lexicon.
 - `tools/get-intake` is the advanced/backend command for existing batch roots, `--m3u-only`, and direct pipeline control.
 - `tools/get-sync` is a deprecated Beatport compatibility alias.
 

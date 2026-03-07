@@ -28,13 +28,22 @@ set +a
 
 export V3_DB="${V3_DB:-$TAGSLUT_DB}"
 export MASTER_LIBRARY="${MASTER_LIBRARY:-${LIBRARY_ROOT:-$VOLUME_LIBRARY}}"
-export SCAN_ROOT="${SCAN_ROOT:-$VOLUME_STAGING}"
-export PROMOTE_ROOT="${PROMOTE_ROOT:-$VOLUME_STAGING}"
+export STAGING_ROOT="${STAGING_ROOT:-$VOLUME_STAGING}"
+export ROOT_BP="${ROOT_BP:-$STAGING_ROOT/bpdl}"
+export ROOT_TD="${ROOT_TD:-$STAGING_ROOT/tidal}"
+export PLAYLIST_ROOT="${PLAYLIST_ROOT:-$MASTER_LIBRARY/playlists}"
+export DJ_PLAYLIST_ROOT="${DJ_PLAYLIST_ROOT:-$DJ_LIBRARY}"
+export SCAN_ROOT="${SCAN_ROOT:-$STAGING_ROOT}"
+export PROMOTE_ROOT="${PROMOTE_ROOT:-$STAGING_ROOT}"
+export COMPARE_ROOT="${COMPARE_ROOT:-${TAGSLUT_ARTIFACTS:-artifacts}/compare}"
 ```
 
 Notes:
 - `MASTER_LIBRARY` is the canonical master library stored as FLAC.
+- `PLAYLIST_ROOT` is the Roon-visible playlist folder inside the master library. `tools/get` writes relative-path M3Us there.
 - `DJ_LIBRARY` is the derived DJ library.
+- `DJ_PLAYLIST_ROOT` is the DJ playlist destination. `tools/get --dj` writes absolute-path M3Us there for Rekordbox/Lexicon.
+- `ROOT_BP` and `ROOT_TD` are the default provider batch roots used by `tools/get`.
 - `LIBRARY_ROOT`, `VOLUME_LIBRARY`, `DJ_MP3_ROOT`, and `DJ_LIBRARY_ROOT` remain compatibility aliases.
 - Eligible non-FLAC lossless inputs are inspected at scan time and converted to FLAC before registration.
 - No separate archive library is assumed by this runbook.

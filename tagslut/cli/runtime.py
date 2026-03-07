@@ -5,6 +5,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from rich.console import Console
+
 from tagslut.utils.paths import list_files
 
 INTERNAL_CLI_ENV = "TAGSLUT_CLI_INTERNAL_CALL"
@@ -40,17 +42,25 @@ def run_executable(script_rel_path: str, args: tuple[str, ...]) -> None:
 
 
 _DEDUPE_DEPRECATION_MESSAGE = (
-    "WARNING: 'dedupe' is deprecated and will be removed June 2026. "
-    "Use 'tagslut' instead.\n"
+    "The 'dedupe' command is deprecated and will be removed on 2026-06-01. "
+    "Use 'tagslut' instead."
 )
 
 
 def emit_dedupe_deprecation_warning() -> None:
-    sys.stderr.write(_DEDUPE_DEPRECATION_MESSAGE)
+    console = Console(stderr=True)
+    console.print(f"[yellow]WARNING: {_DEDUPE_DEPRECATION_MESSAGE}[/yellow]")
 
 
 def dedupe_entry_point() -> None:
     """Entry point for the deprecated 'dedupe' CLI alias."""
+    import warnings
+
+    warnings.warn(
+        _DEDUPE_DEPRECATION_MESSAGE,
+        DeprecationWarning,
+        stacklevel=2,
+    )
     emit_dedupe_deprecation_warning()
     from tagslut.cli.main import cli
 

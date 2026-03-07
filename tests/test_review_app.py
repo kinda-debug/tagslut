@@ -3,6 +3,10 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+import pytest
+
+flask = pytest.importorskip("flask", reason="flask optional dep not installed")
+
 from tagslut._web import review_app
 
 

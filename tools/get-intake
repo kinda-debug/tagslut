@@ -697,6 +697,7 @@ BATCH_AUDIO_END=0
 ROON_M3U_OUTPUT=""
 DJ_M3U_OUTPUT=""
 DJ_EXPORT_COUNT=0
+DJ_TAG_MAP_FILE=""
 POST_MOVE_PID=""
 POST_MOVE_LOG=""
 M3U_NAME_HINT=""
@@ -2020,32 +2021,6 @@ if [[ "$VERBOSE" -eq 1 ]]; then
   fi
 fi
 
-if [[ "$TAGGING_MODE" -eq 1 && "$EXECUTE" -eq 1 ]]; then
-  STEP=$((STEP + 1))
-  step "$STEP" "$TOTAL_STEPS" "Launch background enrich + art"
-
-  POST_MOVE_LOG="$OUT_DIR/post_move_enrich_art_$(date +%Y%m%d_%H%M%S).log"
-  POST_MOVE_PID_FILE="$OUT_DIR/post_move_enrich_art_$(date +%Y%m%d_%H%M%S).pid"
-
-  if [[ ! -s "$PROMOTED_FLACS_FILE" ]]; then
-    echo "No promoted files found for background enrich/art; skipping."
-  else
-    printf '→ '
-    printf '%q ' python -u "$POST_MOVE_ENRICH_SCRIPT" --db "$DB_PATH" --paths-file "$PROMOTED_FLACS_FILE" --providers "$ENRICH_PROVIDERS"
-    printf '> %s 2>&1 &\n' "$POST_MOVE_LOG"
-    nohup python -u "$POST_MOVE_ENRICH_SCRIPT" \
-      --db "$DB_PATH" \
-      --paths-file "$PROMOTED_FLACS_FILE" \
-      --providers "$ENRICH_PROVIDERS" \
-      >"$POST_MOVE_LOG" 2>&1 </dev/null &
-    POST_MOVE_PID=$!
-    printf '%s\n' "$POST_MOVE_PID" > "$POST_MOVE_PID_FILE"
-    echo "Background enrich/art started: pid=$POST_MOVE_PID"
-    echo "  log: $POST_MOVE_LOG"
-    echo "  pid: $POST_MOVE_PID_FILE"
-  fi
-fi
-
 if [[ "$M3U_MODE" -eq 1 ]]; then
   STEP=$((STEP + 1))
   step "$STEP" "$TOTAL_STEPS" "Generate Roon M3U"
@@ -2088,7 +2063,8 @@ if [[ "$DJ_MODE" -eq 1 ]]; then
     echo "No promoted FLAC files found on disk for DJ export; skipping."
   else
     DJ_M3U_INPUTS_FILE="$OUT_DIR/dj_playlist_inputs_$(date +%Y%m%d_%H%M%S).txt"
-    run_cmd poetry run python - "$PROMOTED_FLACS_FILE" "$DJ_ROOT" "$DJ_M3U_INPUTS_FILE" <<'PY'
+    DJ_TAG_MAP_FILE="$OUT_DIR/dj_tag_map_$(date +%Y%m%d_%H%M%S).tsv"
+    run_cmd poetry run python - "$PROMOTED_FLACS_FILE" "$DJ_ROOT" "$DJ_M3U_INPUTS_FILE" "$DJ_TAG_MAP_FILE" <<'PY'
 import sys
 from pathlib import Path
 
@@ -2097,11 +2073,13 @@ from tagslut.exec.transcoder import FFmpegNotFoundError, TranscodeError, transco
 inputs_file = Path(sys.argv[1])
 dest_root = Path(sys.argv[2]).expanduser().resolve()
 playlist_inputs = Path(sys.argv[3]).expanduser().resolve()
+tag_map_file = Path(sys.argv[4]).expanduser().resolve()
 dest_root.mkdir(parents=True, exist_ok=True)
 
 errors = []
 done = 0
 written = []
+tag_map_rows = []
 
 for line in inputs_file.read_text(encoding="utf-8").splitlines():
     path = Path(line.strip()).expanduser()
@@ -2113,12 +2091,17 @@ for line in inputs_file.read_text(encoding="utf-8").splitlines():
     try:
         output = transcode_to_mp3(path, dest_root)
         written.append(str(output))
+        tag_map_rows.append(f"{path.resolve()}\t{output.resolve()}")
         done += 1
     except (FFmpegNotFoundError, TranscodeError, FileNotFoundError) as exc:
         errors.append(f"{path}: {exc}")
 
 playlist_inputs.write_text(
     "\n".join(written) + ("\n" if written else ""),
+    encoding="utf-8",
+)
+tag_map_file.write_text(
+    "\n".join(tag_map_rows) + ("\n" if tag_map_rows else ""),
     encoding="utf-8",
 )
 
@@ -2157,6 +2140,43 @@ PY
       DJ_M3U_OUTPUT="$(latest_file_after_marker "$DJ_M3U_DIR" "$DJ_M3U_MARKER")"
       rm -f "$DJ_M3U_MARKER"
     fi
+  fi
+fi
+
+if [[ "$TAGGING_MODE" -eq 1 && "$EXECUTE" -eq 1 ]]; then
+  STEP=$((STEP + 1))
+  if [[ "$DJ_MODE" -eq 1 ]]; then
+    step "$STEP" "$TOTAL_STEPS" "Launch background enrich/art + DJ tag sync"
+  else
+    step "$STEP" "$TOTAL_STEPS" "Launch background enrich + art"
+  fi
+
+  POST_MOVE_LOG="$OUT_DIR/post_move_enrich_art_$(date +%Y%m%d_%H%M%S).log"
+  POST_MOVE_PID_FILE="$OUT_DIR/post_move_enrich_art_$(date +%Y%m%d_%H%M%S).pid"
+
+  if [[ ! -s "$PROMOTED_FLACS_FILE" ]]; then
+    echo "No promoted files found for background enrich/art; skipping."
+  else
+    POST_MOVE_ARGS=(
+      python
+      -u
+      "$POST_MOVE_ENRICH_SCRIPT"
+      --db "$DB_PATH"
+      --paths-file "$PROMOTED_FLACS_FILE"
+      --providers "$ENRICH_PROVIDERS"
+    )
+    if [[ -n "$DJ_TAG_MAP_FILE" && -s "$DJ_TAG_MAP_FILE" ]]; then
+      POST_MOVE_ARGS+=(--dj-map-file "$DJ_TAG_MAP_FILE")
+    fi
+    printf '→ '
+    printf '%q ' "${POST_MOVE_ARGS[@]}"
+    printf '> %s 2>&1 &\n' "$POST_MOVE_LOG"
+    nohup "${POST_MOVE_ARGS[@]}" >"$POST_MOVE_LOG" 2>&1 </dev/null &
+    POST_MOVE_PID=$!
+    printf '%s\n' "$POST_MOVE_PID" > "$POST_MOVE_PID_FILE"
+    echo "Background enrich/art started: pid=$POST_MOVE_PID"
+    echo "  log: $POST_MOVE_LOG"
+    echo "  pid: $POST_MOVE_PID_FILE"
   fi
 fi
 

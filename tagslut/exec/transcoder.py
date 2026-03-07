@@ -2,7 +2,7 @@
 FLAC to MP3 transcoder for DJ pool export.
 
 Master FLAC files are NEVER modified. MP3 is written to dest_dir.
-All tags are copied from source FLAC to output MP3 via mutagen.
+DJ copies intentionally keep only a small, operational tag set plus artwork.
 Requires ffmpeg installed as a system dependency.
 """
 import logging
@@ -12,9 +12,26 @@ from pathlib import Path
 from typing import Optional
 
 from mutagen.flac import FLAC
-from mutagen.id3 import APIC, ID3, SYLT, TALB, TBPM, TCON, TDRC, TIT2, TKEY, TPE1, TSRC, USLT  # type: ignore  # TODO: mypy-strict
+from mutagen.id3 import APIC, ID3, SYLT, TALB, TBPM, TCON, TDRC, TIT2, TKEY, TPE1, TSRC, TXXX, USLT  # type: ignore  # TODO: mypy-strict
 
 logger = logging.getLogger(__name__)
+
+DJ_MANAGED_FRAMES = (
+    "TIT2",
+    "TPE1",
+    "TALB",
+    "TDRC",
+    "TCON",
+    "TBPM",
+    "TKEY",
+    "TSRC",
+    "TXXX:INITIALKEY",
+    "TXXX:LABEL",
+    "TXXX:ENERGY",
+    "USLT",
+    "SYLT",
+    "APIC",
+)
 
 
 class TranscodeError(Exception):
@@ -115,7 +132,7 @@ def transcode_to_mp3(
         "-id3v2_version",
         "3",
         "-map_metadata",
-        "0",
+        "-1",
         str(dest_path),
     ]
     logger.debug("Transcoding: %s", " ".join(cmd))
@@ -125,26 +142,48 @@ def transcode_to_mp3(
             f"ffmpeg failed for {source}:\n{result.stderr[-500:]}"
         )
 
-    _apply_id3_tags(dest_path, flac_tags)
+    _apply_id3_tags(dest_path, flac_tags, prune_existing=True)
 
     logger.info("Transcoded: %s -> %s", source, dest_path)
     return dest_path
 
 
-def _apply_id3_tags(mp3_path: Path, flac_tags: Optional[FLAC]) -> None:
-    """Apply critical DJ tags to the MP3 via mutagen ID3."""
-    if flac_tags is None:
-        return
-    try:
-        tags = ID3(mp3_path)  # type: ignore  # TODO: mypy-strict
-    except Exception as e:
-        logger.warning("Could not load existing ID3 tags from %s: %s", mp3_path, e)
+def sync_dj_mp3_from_flac(mp3_path: Path, source_flac: Path) -> None:
+    """Refresh DJ MP3 tags/artwork from an enriched source FLAC."""
+    flac_tags = FLAC(source_flac)
+    _apply_id3_tags(mp3_path, flac_tags, prune_existing=False)
+
+
+def _apply_id3_tags(mp3_path: Path, flac_tags: Optional[FLAC], *, prune_existing: bool) -> None:
+    """Apply the DJ tag policy to an MP3 via mutagen ID3."""
+    if prune_existing:
         tags = ID3()  # type: ignore  # TODO: mypy-strict
+    else:
+        try:
+            tags = ID3(mp3_path)  # type: ignore  # TODO: mypy-strict
+        except Exception as e:
+            logger.warning("Could not load existing ID3 tags from %s: %s", mp3_path, e)
+            tags = ID3()  # type: ignore  # TODO: mypy-strict
+
+    _clear_dj_managed_frames(tags)
+    if flac_tags is None:
+        tags.save(mp3_path)
+        return
 
     def first(key: str) -> Optional[str]:
         vals = flac_tags.get(key)
         return vals[0] if vals else None
 
+    _apply_dj_tag_policy(tags, flac_tags, first)
+    tags.save(mp3_path)
+
+
+def _clear_dj_managed_frames(tags: ID3) -> None:
+    for frame_id in DJ_MANAGED_FRAMES:
+        tags.delall(frame_id)
+
+
+def _apply_dj_tag_policy(tags: ID3, flac_tags: FLAC, first) -> None:
     if first("title"):
         tags["TIT2"] = TIT2(encoding=3, text=first("title"))  # type: ignore  # TODO: mypy-strict
     if first("artist") or first("albumartist"):
@@ -161,16 +200,17 @@ def _apply_id3_tags(mp3_path: Path, flac_tags: Optional[FLAC]) -> None:
     if first("bpm"):
         tags["TBPM"] = TBPM(encoding=3, text=first("bpm"))  # type: ignore  # TODO: mypy-strict
     if first("initialkey") or first("key"):
-        tags["TKEY"] = TKEY(encoding=3, text=first("initialkey") or first("key"))  # type: ignore  # TODO: mypy-strict
+        key_value = first("initialkey") or first("key")
+        tags["TKEY"] = TKEY(encoding=3, text=key_value)  # type: ignore  # TODO: mypy-strict
+        tags["TXXX:INITIALKEY"] = TXXX(encoding=3, desc="INITIALKEY", text=key_value)  # type: ignore  # TODO: mypy-strict
     if first("isrc"):
         tags["TSRC"] = TSRC(encoding=3, text=first("isrc"))  # type: ignore  # TODO: mypy-strict
+    if first("label"):
+        tags["TXXX:LABEL"] = TXXX(encoding=3, desc="LABEL", text=first("label"))  # type: ignore  # TODO: mypy-strict
+    if first("energy"):
+        tags["TXXX:ENERGY"] = TXXX(encoding=3, desc="ENERGY", text=first("energy"))  # type: ignore  # TODO: mypy-strict
 
-    # DJ copies should keep artwork, but not copy lyrics/subtitles from source.
-    tags.delall("USLT")
-    tags.delall("SYLT")
     _apply_cover_art(tags, flac_tags)
-
-    tags.save(mp3_path)
 
 
 def _apply_cover_art(tags: ID3, flac_tags: FLAC) -> None:

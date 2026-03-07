@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from mutagen.id3 import APIC, ID3, SYLT, USLT
+from mutagen.id3 import APIC, ID3, SYLT, TXXX, USLT
 
-from tagslut.exec.transcoder import _apply_cover_art
+from tagslut.exec.transcoder import _apply_cover_art, _apply_dj_tag_policy, _clear_dj_managed_frames
 
 
 class _Picture:
@@ -14,6 +14,12 @@ class _Picture:
 
 class _FakeFlac:
     def __init__(self, pictures: list[_Picture]) -> None:
+        self.pictures = pictures
+
+
+class _FakeTaggedFlac(dict):
+    def __init__(self, data: dict[str, list[str]], pictures: list[_Picture]) -> None:
+        super().__init__(data)
         self.pictures = pictures
 
 
@@ -44,3 +50,50 @@ def test_dj_mp3_policy_keeps_cover_but_strips_lyrics_frames() -> None:
 
     assert tags.getall("USLT") == []
     assert tags.getall("SYLT") == []
+
+
+def test_dj_mp3_policy_keeps_only_useful_dj_tags() -> None:
+    tags = ID3()
+    tags.add(USLT(encoding=3, lang="eng", desc="", text="lyrics"))
+    tags.add(SYLT(encoding=3, lang="eng", format=2, type=1, desc="", text=[("line", 1000)]))
+    tags.add(APIC(encoding=3, mime="image/jpeg", type=3, desc="old", data=b"old"))
+    tags.add(TXXX(encoding=3, desc="KEEPME", text="persist"))
+
+    flac = _FakeTaggedFlac(
+        {
+            "title": ["Title"],
+            "artist": ["Artist"],
+            "album": ["Album"],
+            "date": ["2024"],
+            "genre": ["House"],
+            "bpm": ["122"],
+            "initialkey": ["Am"],
+            "label": ["Label"],
+            "energy": ["7"],
+            "isrc": ["ISRC123"],
+        },
+        pictures=[_Picture(data=b"front", mime="image/png", picture_type=3)],
+    )
+
+    def first(key: str) -> str | None:
+        vals = flac.get(key)
+        return vals[0] if vals else None
+
+    _clear_dj_managed_frames(tags)
+    _apply_dj_tag_policy(tags, flac, first)  # type: ignore[arg-type]
+
+    assert tags["TIT2"].text[0] == "Title"
+    assert tags["TPE1"].text[0] == "Artist"
+    assert tags["TALB"].text[0] == "Album"
+    assert str(tags["TDRC"].text[0]) == "2024"
+    assert tags["TCON"].text[0] == "House"
+    assert tags["TBPM"].text[0] == "122"
+    assert tags["TKEY"].text[0] == "Am"
+    assert tags["TXXX:INITIALKEY"].text[0] == "Am"
+    assert tags["TXXX:LABEL"].text[0] == "Label"
+    assert tags["TXXX:ENERGY"].text[0] == "7"
+    assert tags["TSRC"].text[0] == "ISRC123"
+    assert tags.getall("USLT") == []
+    assert tags.getall("SYLT") == []
+    assert tags.getall("APIC")[0].data == b"front"
+    assert tags["TXXX:KEEPME"].text[0] == "persist"

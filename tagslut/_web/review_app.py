@@ -834,12 +834,10 @@ def _evidence_for_artist(conn: sqlite3.Connection, key: str) -> dict[str, Any]:
     }
 
 
-@APP.route("/")
 def index() -> str:
-    return render_template_string(_HTML)
+    return str(render_template_string(_HTML))
 
 
-@APP.route("/api/items")
 def items() -> Any:
     level = request.args.get("level", "track")
     bucket = request.args.get("bucket", "not_ok")
@@ -887,7 +885,6 @@ def items() -> Any:
     return jsonify({"items": data})
 
 
-@APP.route("/api/move", methods=["POST"])
 def move() -> Any:
     payload = request.get_json(force=True) or {}
     level = payload.get("level")
@@ -923,7 +920,6 @@ def move() -> Any:
     return jsonify({"updated": len(keys)})
 
 
-@APP.route("/api/evidence")
 def evidence() -> Any:
     level = request.args.get("level", "track")
     key = request.args.get("key") or ""
@@ -1001,7 +997,6 @@ def _write_m3u(path: Path, items: list[str]) -> None:
     path.write_text("\n".join(items) + ("\n" if items else ""), encoding="utf-8")
 
 
-@APP.route("/api/export", methods=["POST"])
 def export() -> Any:
     payload = request.get_json(force=True) or {}
     output = payload.get("output") or "artifacts/dj_review_ok.m3u8"
@@ -1069,7 +1064,6 @@ def _validate_output_path(output_m3u: str) -> Path:
     return candidate
 
 
-@APP.route("/api/export_usb", methods=["POST"])
 def export_usb() -> Any:
     payload = request.get_json(force=True) or {}
     usb_path = str(payload.get("usb_path") or "").strip()
@@ -1786,7 +1780,6 @@ window.addEventListener('DOMContentLoaded', async () => {
 """
 
 
-@APP.context_processor
 def inject_context() -> dict[str, Any]:
     try:
         db_path = str(_resolve_db_path())
@@ -1804,6 +1797,15 @@ def inject_context() -> dict[str, Any]:
         "default_artwork": os.environ.get("DJ_REVIEW_ARTWORK_MAX_KB", "500"),
         "default_rekordbox": os.environ.get("DJ_REVIEW_REKORDBOX_XML", "rekordbox.xml"),
     }
+
+
+APP.add_url_rule("/", view_func=index)
+APP.add_url_rule("/api/items", view_func=items)
+APP.add_url_rule("/api/move", view_func=move, methods=["POST"])
+APP.add_url_rule("/api/evidence", view_func=evidence)
+APP.add_url_rule("/api/export", view_func=export, methods=["POST"])
+APP.add_url_rule("/api/export_usb", view_func=export_usb, methods=["POST"])
+APP.context_processor(inject_context)
 
 
 def _parse_args() -> argparse.Namespace:

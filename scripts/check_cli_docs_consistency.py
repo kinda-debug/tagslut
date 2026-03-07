@@ -229,6 +229,7 @@ def main() -> int:
     phase5_verify_doc = _read_optional("PHASE5_VERIFICATION_2026-02-09.md")
     workflow_3_doc = _read_optional("WORKFLOW_3_COMMANDS.md")
     readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8", errors="replace")
+    workflows_doc = (DOCS_DIR / "WORKFLOWS.md").read_text(encoding="utf-8", errors="replace")
 
     # SCRIPT_SURFACE requirements (now consolidated into docs/OPERATIONS.md)
     for canonical in sorted(TOP_CANONICAL_COMMANDS):
@@ -281,11 +282,22 @@ def main() -> int:
     # README minimal workflow checks
     required_readme_phrases = [
         "tagslut",
+        "tools/get <provider-url>",
     ]
     for phrase in required_readme_phrases:
         ensure_contains(readme, phrase, errors, "README.md")
 
-    # 3-command workflow doc checks
+    # Active downloader workflow docs
+    required_active_workflow_phrases = [
+        "tools/get \"https://www.beatport.com/release/.../...\"",
+        "tools/get \"https://tidal.com/browse/album/...\"",
+        "tools/get-intake",
+        "deprecated Beatport compatibility alias",
+    ]
+    for phrase in required_active_workflow_phrases:
+        ensure_contains(workflows_doc, phrase, errors, "docs/WORKFLOWS.md")
+
+    # Historical 3-command workflow doc checks
     required_workflow_phrases = [
         "tools/get <beatport-url>",
         "tools/get-sync <beatport-url>",

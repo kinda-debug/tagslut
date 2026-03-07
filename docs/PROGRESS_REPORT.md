@@ -32,6 +32,7 @@ Restructuring phases 0/1/2/3 are complete. DJ workflow integration is functional
 - Tests: not re-run for this report.
 - Tag hoard: varies by scan (see `tag_hoard_files` in DB).
 - DJUSB MP3 count: depends on current policy + overrides.
+- Primary downloader flow is `tools/get <provider-url>`; `tools/get-intake` remains the advanced/backend path.
 
 ## Pending Work
 ### High Priority
@@ -46,4 +47,5 @@ Restructuring phases 0/1/2/3 are complete. DJ workflow integration is functional
 
 ## Recommended Next Actions
 - Re-run enrich: `poetry run tagslut index enrich --db <db> --hoarding --execute`
+- Validate the umbrella downloader flow with `tools/get <provider-url> [--dj]`
 - Audit tag completeness with `tools/metadata audit-tags`.

@@ -16,15 +16,46 @@ Use canonical entry points for new work: `tagslut intake/index/decide/execute/ve
 > export MASTER_LIBRARY="${MASTER_LIBRARY:-${LIBRARY_ROOT:-$VOLUME_LIBRARY}}"
 > export STAGING_ROOT="${STAGING_ROOT:-$VOLUME_STAGING}"
 > export ROOT_BP="${ROOT_BP:-$STAGING_ROOT/bpdl}"
-> export ROOT_TD="${ROOT_TD:-$STAGING_ROOT/tiddl}"
+> export ROOT_TD="${ROOT_TD:-$STAGING_ROOT/tidal}"
 > export DJ_LIBRARY="${DJ_LIBRARY:-${DJ_MP3_ROOT:-}}"
 > ```
 
 ---
 
-## Daily Sequence (Standard Run)
+## Primary Downloader (Standard Run)
 
-This is the complete daily intake loop in order. Run top to bottom.
+This is the normal day-to-day operator path.
+
+```bash
+# Default: precheck + download + tag + promote + merged M3U
+tools/get "https://www.beatport.com/release/.../..."
+tools/get "https://tidal.com/browse/album/..."
+
+# Also create DJ MP3 copies
+tools/get "https://www.beatport.com/release/.../..." --dj
+
+# Skip duplicate-quality precheck
+tools/get "https://tidal.com/browse/album/..." --no-precheck
+
+# Skip tagging/enrich/art
+tools/get "https://www.beatport.com/release/.../..." --no-hoard
+```
+
+High-level workflow flags:
+- `--dj` builds DJ MP3 copies after promote
+- `--hoard` keeps the tagging/enrich/art pipeline on (default)
+- `--no-hoard` disables tagging/enrich/art
+- `--no-precheck` bypasses same-or-better duplicate filtering
+- `--force-download` keeps matched tracks anyway
+- `--providers beatport,tidal,...` overrides metadata provider order
+
+Advanced/backend command:
+- `tools/get-intake` is for existing batch roots, `--m3u-only`, and direct pipeline control
+- `tools/get-sync` is a deprecated Beatport compatibility alias for `tools/get`
+
+## Manual Phase Workflow (Advanced)
+
+This is the explicit phase-by-phase loop. Use it when you intentionally want manual control rather than `tools/get`.
 
 ```
 1. precheck    → decide what to download
@@ -61,21 +92,21 @@ Outputs: `output/precheck/precheck_decisions_*.csv`, `precheck_keep_track_urls_*
 ### 2 · Download
 
 ```bash
-# Unified router (auto-detects source)
+# Primary wrapper (recommended)
 tools/get "https://www.beatport.com/release/.../..."
 tools/get "https://tidal.com/browse/album/..."
 tools/get "https://www.deezer.com/en/track/..."
 
-# Direct wrappers
-tools/get-sync "https://www.beatport.com/release/..."  # Beatport
-tools/tiddl    "https://tidal.com/browse/album/..."    # Tidal
+# Advanced/direct wrappers
+tools/get-intake --no-download --batch-root "$STAGING_ROOT/bpdl" --execute
+tools/tiddl    "https://tidal.com/browse/album/..."    # downloader-only Tidal
 tools/deemix   "https://www.deezer.com/en/track/..."   # Deezer (FLAC, auto-registers)
 ```
 
 | Source   | Wrapper          | `--source` flag | Auto-register | Default path              |
 |----------|------------------|-----------------|---------------|---------------------------|
-| Beatport | `get`, `get-sync`| `bpdl`          | No            | config-defined            |
-| Tidal    | `get`, `tiddl`   | `tidal`         | No            | `~/Music/mdl/tiddl`       |
+| Beatport | `get`            | `bpdl`          | No            | config-defined / staging  |
+| Tidal    | `get`, `tiddl`   | `tidal`         | No            | `~/Music/mdl/tidal`       |
 | Deezer   | `get`, `deemix`  | `deezer`        | **Yes**       | `~/Music/mdl/deezer`      |
 | Qobuz    | —                | —               | —             | Not in active workflows   |
 
@@ -87,7 +118,7 @@ poetry run tagslut index register "$STAGING_ROOT" \
   --db "$TAGSLUT_DB" --source staging --execute
 
 # Source-specific
-poetry run tagslut index register "$STAGING_ROOT/tiddl"   --db "$TAGSLUT_DB" --source tidal    --execute
+poetry run tagslut index register "$STAGING_ROOT/tidal"   --db "$TAGSLUT_DB" --source tidal    --execute
 poetry run tagslut index register "$STAGING_ROOT/beatport" --db "$TAGSLUT_DB" --source beatport --execute
 poetry run tagslut index register "$STAGING_ROOT/deezer"  --db "$TAGSLUT_DB" --source deezer   --execute
 ```

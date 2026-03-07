@@ -42,6 +42,25 @@ python -m tagslut intake process-root \
   --root <PROMOTE_ROOT>
 ```
 
+## Primary Downloader
+For day-to-day downloads, use the umbrella wrapper instead of stitching phases together manually.
+
+```bash
+# Default: precheck + download + tag + promote + merged M3U
+tools/get <provider-url>
+
+# Also build DJ MP3 copies
+tools/get <provider-url> --dj
+
+# Skip tagging/enrich/art when intentionally doing a lighter run
+tools/get <provider-url> --no-hoard
+```
+
+Notes:
+- `tools/get` is the primary user-facing downloader for Beatport and Tidal.
+- `tools/get-intake` is the advanced/backend command for existing batch roots, `--m3u-only`, and direct pipeline control.
+- `tools/get-sync` is a deprecated Beatport compatibility alias.
+
 ## Safety Gates
 - v3 doctor: schema and invariants
 - migration verification: aggregate preservation checks

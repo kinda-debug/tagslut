@@ -251,6 +251,17 @@ Review app regressions:
 
 poetry run pytest -q tests/test_review_app.py
 
+Primary downloader:
+
+tools/get <provider-url>
+tools/get <provider-url> --dj
+tools/get <provider-url> --no-hoard
+
+Notes:
+	•	`tools/get` is the primary user-facing downloader.
+	•	`tools/get-intake` is the advanced/backend command for existing batch roots and `--m3u-only`.
+	•	`tools/get-sync` is deprecated compatibility only.
+
 CI triage:
 
 gh auth status

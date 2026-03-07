@@ -63,26 +63,33 @@ Timeline:
 These wrappers are active convenience entrypoints around canonical intake/report flows:
 
 1. `tools/get <url>`
-Role: Unified URL router.
-- `tidal.com` -> `tools/tiddl`
-- `beatport.com` -> `tools/get-sync`
+Role: Primary user-facing download workflow.
+- default behavior: precheck + download + tagging/enrich/art + promote + merged M3U
+- high-level workflow flags: `--dj`, `--hoard`, `--no-hoard`, `--no-precheck`, `--force-download`, `--providers`
+- `--simple` keeps downloader-only behavior
 
-2. `tools/get-sync <beatport-url>`
-Role: Beatport sync mode (download missing + build merged M3U).
+2. `tools/get-intake ...`
+Role: Advanced/backend intake engine.
+- use for existing batch roots (`--no-download --batch-root ...`)
+- use for `--m3u-only` or direct pipeline control
+- not the recommended first command for normal downloads
 
 3. `tools/get-report <beatport-url>`
 Role: Beatport report-only mode (no download).
 
-4. `tools/tagslut [args...]`
+4. `tools/get-sync <beatport-url>`
+Role: Deprecated compatibility alias for `tools/get <beatport-url>`.
+
+5. `tools/tagslut [args...]`
 Role: Local wrapper for `python -m tagslut`.
 
-5. `tools/tag-build [options]`
+6. `tools/tag-build [options]`
 Role: Build M3U from DB for library FLAC files missing ISRC.
 
-6. `tools/tag-run --m3u <path> [options]`
+7. `tools/tag-run --m3u <path> [options]`
 Role: Run `onetagger-cli` on a symlink batch from M3U and emit summary artifacts.
 
-7. `tools/tag [options]`
+8. `tools/tag [options]`
 Role: Combined build + run OneTagger workflow with defaults.
 
 ## Retired Command Groups

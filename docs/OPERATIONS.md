@@ -39,6 +39,25 @@ Notes:
 - Eligible non-FLAC lossless inputs are inspected at scan time and converted to FLAC before registration.
 - No separate archive library is assumed by this runbook.
 
+## Primary Downloader
+Use `tools/get` for normal provider downloads.
+
+```bash
+# Default: precheck + download + tag + promote + merged M3U
+tools/get <provider-url>
+
+# Add DJ MP3 export
+tools/get <provider-url> --dj
+
+# Skip tagging/enrich/art
+tools/get <provider-url> --no-hoard
+```
+
+Notes:
+- `tools/get` is the primary user-facing downloader for Beatport and Tidal.
+- `tools/get-intake` is the advanced/backend command for existing batch roots and `--m3u-only`.
+- `tools/get-sync` is deprecated and kept only as a compatibility alias.
+
 ## Daily Scan
 ```bash
 python -m tagslut intake process-root \

@@ -73,6 +73,24 @@ cat config.toml | grep -n "db"
 
 ## Pre-Download Check Issues
 
+### Problem: `tools/get` skips everything
+
+**Symptoms:**
+- Output says all candidates already have same-or-better matches
+- No download starts
+
+**Solution:**
+```bash
+# Inspect current precheck behavior explicitly
+python tools/review/pre_download_check.py --input "<url>"
+
+# Intentionally bypass precheck if needed
+tools/get "<url>" --no-precheck
+
+# Or keep matched tracks anyway
+tools/get "<url>" --force-download
+```
+
 ### Problem: Extract Script Not Found
 
 **Symptoms:**

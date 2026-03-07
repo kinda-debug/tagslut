@@ -2,6 +2,16 @@
 
 DJ pool contract: see `docs/DJ_POOL.md` for the downstream-only boundary and defaults.
 
+## Downloader Shortcut
+
+For new downloads that should flow all the way into the DJ library, start with:
+
+```bash
+tools/get <provider-url> --dj
+```
+
+That runs precheck, download, tagging/enrichment, promote, merged M3U generation, and DJ MP3 export in one flow.
+
 ## DJ Library Root
 
 Set your DJ library root once and re-use it across workflows:

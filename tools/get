@@ -2,8 +2,8 @@
 # get — Unified intake/download entrypoint for Tidal, Beatport, and Deezer URLs
 #
 # Routes URLs to the appropriate workflow based on domain:
-#   - tidal.com    → tools/tiddl (TIDDL wrapper)
-#   - beatport.com → tools/get-sync (prefilter + download missing + m3u)
+#   - tidal.com    → tools/get-intake sync flow (or tools/tiddl for --simple)
+#   - beatport.com → tools/get-intake sync flow (or bpdl for --simple)
 #   - deezer.com   → tools/deemix (Deezer wrapper + auto-register)
 #
 # Usage:
@@ -25,7 +25,6 @@ TIDDL_WRAPPER="$SCRIPT_DIR/tiddl"
 DEEMIX_WRAPPER="$SCRIPT_DIR/deemix"
 BPDL_BIN="$SCRIPT_DIR/beatportdl/bpdl/bpdl"
 GET_INTAKE="$SCRIPT_DIR/get-intake"
-GET_SYNC="$SCRIPT_DIR/get-sync"
 GET_REPORT="$SCRIPT_DIR/get-report"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 ENV_LOADER="$SCRIPT_DIR/_load_env.sh"

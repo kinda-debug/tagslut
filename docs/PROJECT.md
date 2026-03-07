@@ -166,16 +166,17 @@ Decision thresholds:
 ## 8. Operational Workflow (Step-by-Step)
 
 ### 8.1 Daily/Weekly Sync
-1. Add new FLACs to `$LIBRARY_ROOT`.
-2. Optional: `tagslut index register` to update DB inventory.
-3. Optional: `tagslut index enrich --hoarding` for provider metadata.
-4. If Lexicon updated tags, sync canonical fields from files:
+1. Download via `tools/get <provider-url>` (add `--dj` if DJ MP3 copies are needed).
+2. Add new FLACs to `$LIBRARY_ROOT` if operating manually outside `tools/get`.
+3. Optional: `tagslut index register` to update DB inventory.
+4. Optional: `tagslut index enrich --hoarding --execute` for provider metadata.
+5. If Lexicon updated tags, sync canonical fields from files:
    - `tools/metadata sync-tags --read-files --execute --path $LIBRARY_ROOT`
-5. Run classification:
+6. Run classification:
    - `tagslut dj classify --input $LIBRARY_ROOT --policy config/dj/dj_curation_usb_v8.yaml --output-crates`
-6. Promote safe tracks:
+7. Promote safe tracks:
    - `tagslut dj classify --input $LIBRARY_ROOT --policy config/dj/dj_curation_usb_v8.yaml --promote --output-root $DJ_USB_ROOT`
-7. Import into Lexicon/Rekordbox for beatgrid/cue analysis.
+8. Import into Lexicon/Rekordbox for beatgrid/cue analysis.
 
 ### 8.2 Review Loop
 - Review `config/dj/crates/review.m3u8`
@@ -203,7 +204,7 @@ python tools/dj_usb_sync.py --source $LIBRARY_ROOT --usb $DJ_USB_ROOT --policy c
 
 ### Metadata Enrichment
 ```
-poetry run python -m tagslut _metadata enrich --db <db> --path "$LIBRARY_ROOT/%" --hoarding --execute
+poetry run tagslut index enrich --db <db> --path "$LIBRARY_ROOT/%" --hoarding --execute
 ```
 
 ---

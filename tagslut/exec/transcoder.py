@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Optional
 
 from mutagen.flac import FLAC
-from mutagen.id3 import ID3, TALB, TBPM, TCON, TDRC, TIT2, TKEY, TPE1, TSRC  # type: ignore  # TODO: mypy-strict
+from mutagen.id3 import APIC, ID3, SYLT, TALB, TBPM, TCON, TDRC, TIT2, TKEY, TPE1, TSRC, USLT  # type: ignore  # TODO: mypy-strict
 
 logger = logging.getLogger(__name__)
 
@@ -165,4 +165,38 @@ def _apply_id3_tags(mp3_path: Path, flac_tags: Optional[FLAC]) -> None:
     if first("isrc"):
         tags["TSRC"] = TSRC(encoding=3, text=first("isrc"))  # type: ignore  # TODO: mypy-strict
 
+    # DJ copies should keep artwork, but not copy lyrics/subtitles from source.
+    tags.delall("USLT")
+    tags.delall("SYLT")
+    _apply_cover_art(tags, flac_tags)
+
     tags.save(mp3_path)
+
+
+def _apply_cover_art(tags: ID3, flac_tags: FLAC) -> None:
+    pictures = getattr(flac_tags, "pictures", None) or []
+    if not pictures:
+        return
+
+    front_cover = None
+    for picture in pictures:
+        if getattr(picture, "type", None) == 3:
+            front_cover = picture
+            break
+    if front_cover is None:
+        front_cover = pictures[0]
+
+    data = getattr(front_cover, "data", None)
+    if not data:
+        return
+
+    tags.delall("APIC")
+    tags.add(
+        APIC(
+            encoding=3,
+            mime=getattr(front_cover, "mime", "image/jpeg") or "image/jpeg",
+            type=3,
+            desc="Cover",
+            data=data,
+        )
+    )

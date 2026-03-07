@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# get-sync — Beatport URL -> download missing + generate playlist in library
+# get-sync — deprecated Beatport compatibility alias for tools/get
 
 set -euo pipefail
 
@@ -15,12 +15,16 @@ if [[ -f "$ENV_LOADER" ]]; then
 fi
 
 usage() {
-  echo "Usage: tools/get-sync <beatport-url> [extra get-intake args...]"
-  echo "Defaults: precheck on, execute moves, build merged M3U"
+  echo "Usage: tools/get-sync <beatport-url> [extra args...]"
+  echo "Deprecated: use tools/get <beatport-url> instead."
   exit 1
 }
 
 if [[ $# -lt 1 ]]; then
+  usage
+fi
+
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
   usage
 fi
 
@@ -32,4 +36,5 @@ if [[ "$URL" != *"beatport.com"* ]]; then
   exit 2
 fi
 
-exec "$GET_INTAKE" "$URL" --missing-policy download --execute --m3u "$@"
+echo "Deprecated: tools/get-sync is a compatibility alias. Use tools/get $URL instead." >&2
+exec "$SCRIPT_DIR/get" "$URL" "$@"

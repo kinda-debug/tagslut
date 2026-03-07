@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# get-intake — download + fast tagslut intake for EDM-friendly workflows
+# get-intake — advanced/backend intake pipeline for downloaded batches
+#
+# This is the lower-level engine behind tools/get.
 #
 # Pipeline:
 #  1) Download via tools/get (optional)
@@ -45,6 +47,11 @@ Usage:
   tools/get-intake --m3u-only (--url <beatport-url> | --playlist-file <file>) [options]
   tools/get-intake <provider-url>   # auto: use provider download root when --batch-root omitted
 
+Note:
+  tools/get is the primary user-facing downloader.
+  tools/get-intake is the advanced/backend command for existing batch roots,
+  m3u-only workflows, and direct pipeline control.
+
 Options:
   --batch-root PATH    Download batch root to process (default: provider download root or $VOLUME_STAGING)
   --source TEXT        Source label (bpdl|tidal). Auto-inferred from URL if omitted.
@@ -69,6 +76,8 @@ Options:
                        Missing handling for --m3u-only: ask|report|skip|download (default: report)
   --no-download        Skip downloader step; process existing batch root
   --skip-mgmt-check    Skip quick duplicate check stage (legacy flag name)
+  --hoard              Alias for tagging/enrich/art pipeline (default)
+  --no-hoard           Alias for --no-tagging
   --no-tagging         Skip tagging / metadata enrich / cover-art steps
   --no-precheck        Skip pre-download DB check for Tidal/Beatport URLs
   --force-download     Keep matched tracks instead of skipping same/better inventory matches
@@ -513,7 +522,11 @@ while [[ $# -gt 0 ]]; do
       SKIP_MGMT_CHECK=1
       shift
       ;;
-    --no-tagging)
+    --hoard)
+      TAGGING_MODE=1
+      shift
+      ;;
+    --no-hoard|--no-tagging)
       TAGGING_MODE=0
       shift
       ;;

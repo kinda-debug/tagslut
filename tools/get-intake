@@ -4,7 +4,7 @@
 # This is the lower-level engine behind tools/get.
 #
 # Pipeline:
-#  1) Download via tools/get (optional)
+#  1) Download via provider downloader (optional)
 #  2) Quick duplicate check via tagslut index check (strict, non-interactive)
 #  3) Fast trust scan + integrity registration
 #  4) Cross-root fingerprint audit against final library
@@ -66,6 +66,7 @@ Options:
   --trust-post N       Post-scan trust score 0..3 (default: 3)
   --library-tag TEXT   Library tag used in scan_with_trust (default: INTAKE)
   --providers TEXT     Metadata providers for enrichment
+  --verbose            Print internal paths, artifacts, and batch snapshots
   --execute            Execute move plans (default: dry-run planning only)
   --m3u                Generate Roon-friendly merged M3U from promoted files
   --m3u-dir PATH       M3U output dir (default: $PLAYLIST_ROOT or library root)
@@ -117,6 +118,65 @@ run_cmd() {
   printf '%q ' "$@"
   printf '\n'
   "$@"
+}
+
+count_audio_files() {
+  local root="${1:-}"
+  if [[ -z "$root" || ! -d "$root" ]]; then
+    echo "0"
+    return 0
+  fi
+  find "$root" -type f \( \
+    -iname '*.flac' -o \
+    -iname '*.mp3' -o \
+    -iname '*.wav' -o \
+    -iname '*.aif' -o \
+    -iname '*.aiff' -o \
+    -iname '*.m4a' \
+  \) | wc -l | tr -d ' '
+}
+
+preview_file_lines() {
+  local path="${1:-}"
+  local limit="${2:-5}"
+  if [[ -z "$path" || ! -f "$path" ]]; then
+    return 0
+  fi
+  awk -v limit="$limit" 'NF {print "    " $0; shown += 1; if (shown >= limit) exit}' "$path"
+}
+
+print_batch_snapshot() {
+  local label="${1:-Batch}"
+  local root="${2:-}"
+  if [[ -z "$root" ]]; then
+    echo "$label: root unset"
+    return 0
+  fi
+  if [[ ! -d "$root" ]]; then
+    echo "$label: missing ($root)"
+    return 0
+  fi
+
+  local audio_count
+  local flac_count
+  local mp3_count
+  audio_count="$(count_audio_files "$root")"
+  flac_count="$(find "$root" -type f -iname '*.flac' | wc -l | tr -d ' ')"
+  mp3_count="$(find "$root" -type f -iname '*.mp3' | wc -l | tr -d ' ')"
+
+  echo "$label: root=$root audio=$audio_count flac=$flac_count mp3=$mp3_count"
+  local sample_file=""
+  while IFS= read -r sample_file; do
+    [[ -n "$sample_file" ]] || continue
+    echo "    $sample_file"
+  done < <(find "$root" -type f \( \
+      -iname '*.flac' -o \
+      -iname '*.mp3' -o \
+      -iname '*.wav' -o \
+      -iname '*.aif' -o \
+      -iname '*.aiff' -o \
+      -iname '*.m4a' \
+    \) | sort | tail -n 5)
 }
 
 safe_m3u_name() {
@@ -418,6 +478,14 @@ infer_source() {
   esac
 }
 
+download_step_label() {
+  case "${SOURCE:-}" in
+    bpdl) echo "Download from Beatport" ;;
+    tidal) echo "Download from Tidal" ;;
+    *) echo "Download from provider" ;;
+  esac
+}
+
 DOWNLOAD=1
 EXECUTE=0
 SKIP_MGMT_CHECK=0
@@ -427,6 +495,7 @@ M3U_MODE=0
 M3U_ONLY=0
 DJ_MODE=0
 TAGGING_MODE=1
+VERBOSE=0
 
 URL=""
 BATCH_ROOT=""
@@ -513,6 +582,10 @@ while [[ $# -gt 0 ]]; do
       [[ $# -ge 2 ]] || err "--providers requires a value"
       ENRICH_PROVIDERS="$2"
       shift 2
+      ;;
+    --verbose)
+      VERBOSE=1
+      shift
       ;;
     --execute)
       EXECUTE=1
@@ -703,12 +776,27 @@ OUT_DIR="$(resolve_path "$OUT_DIR")"
 
 echo "Batch root:   $BATCH_ROOT"
 echo "Source:       $SOURCE"
-echo "DB:           $DB_PATH"
+if [[ "$VERBOSE" -eq 1 && -n "$URL" ]]; then
+  echo "URL:          $URL"
+fi
+if [[ "$VERBOSE" -eq 1 ]]; then
+  echo "DB:           $DB_PATH"
+fi
 echo "Library root: $LIBRARY_ROOT"
 echo "FIX root:     $FIX_ROOT"
-echo "Output dir:   $OUT_DIR"
+if [[ "$VERBOSE" -eq 1 ]]; then
+  echo "Output dir:   $OUT_DIR"
+fi
 echo "Execute:      $EXECUTE"
 echo "Precheck:     $((1 - SKIP_PRECHECK))"
+if [[ "$VERBOSE" -eq 1 ]]; then
+  echo "Providers:    $ENRICH_PROVIDERS"
+fi
+if [[ "$VERBOSE" -eq 1 && ${#DOWNLOADER_ARGS[@]} -gt 0 ]]; then
+  printf 'Dl args:      '
+  printf '%q ' "${DOWNLOADER_ARGS[@]}"
+  printf '\n'
+fi
 if [[ "$FORCE_DOWNLOAD" -eq 1 ]]; then
   echo "Force dl:     1"
 fi
@@ -728,6 +816,22 @@ echo "Tagging:      $TAGGING_MODE"
 if [[ "$M3U_ONLY" -eq 1 ]]; then
   echo "M3U only:     1"
   echo "Missing mode: $MISSING_POLICY"
+fi
+if [[ "$VERBOSE" -eq 1 && "$DOWNLOAD" -eq 1 ]]; then
+  case "$SOURCE" in
+    bpdl)
+      echo "Downloader:   Beatport"
+      echo "Dl target:    $(bpdl_downloads_dir_from_config || true)"
+      ;;
+    tidal)
+      echo "Downloader:   Tidal"
+      echo "Dl target:    $(tiddl_downloads_dir_from_config || true)"
+      ;;
+    *)
+      echo "Downloader:   $SOURCE"
+      ;;
+  esac
+  print_batch_snapshot "Batch state" "$BATCH_ROOT"
 fi
 
 if [[ "$M3U_ONLY" -eq 1 ]]; then
@@ -1200,6 +1304,7 @@ STEP=1
 
 if [[ "$DOWNLOAD" -eq 1 ]]; then
   KEEP_URLS_TXT=""
+  BATCH_AUDIO_BEFORE_DOWNLOAD="$(count_audio_files "$BATCH_ROOT")"
   if [[ "$USE_DOWNLOAD_PRECHECK" -eq 1 ]]; then
     step "$STEP" "$TOTAL_STEPS" "Pre-download check"
     PRECHECK_ARGS=(
@@ -1209,6 +1314,9 @@ if [[ "$DOWNLOAD" -eq 1 ]]; then
       --out-dir "$OUT_DIR"
       --candidate-quality-rank 3
     )
+    if [[ "$VERBOSE" -eq 0 ]]; then
+      PRECHECK_ARGS+=(--quiet)
+    fi
     if [[ "$FORCE_DOWNLOAD" -eq 1 ]]; then
       PRECHECK_ARGS+=(--force-keep-matched)
     fi
@@ -1255,10 +1363,26 @@ PY
 )"
 
     echo "Precheck summary: keep=$PREFILTER_KEEP skip=$PREFILTER_SKIP total=$PREFILTER_TOTAL"
+    if [[ "$VERBOSE" -eq 1 ]]; then
+      echo "Precheck files:"
+      echo "  decisions: $PRECHECK_DECISIONS_CSV"
+      echo "  keep urls: $KEEP_URLS_TXT"
+      if [[ -f "$KEEP_URLS_TXT" ]]; then
+        echo "  keep preview:"
+        preview_file_lines "$KEEP_URLS_TXT" 5
+      fi
+    fi
     STEP=$((STEP + 1))
   fi
 
-  step "$STEP" "$TOTAL_STEPS" "Download via tools/get"
+  step "$STEP" "$TOTAL_STEPS" "$(download_step_label)"
+  if [[ "$USE_DOWNLOAD_PRECHECK" -eq 1 ]]; then
+    echo "Selected for download: ${PREFILTER_KEEP:-0} track(s)"
+  fi
+  if [[ "$VERBOSE" -eq 1 ]]; then
+    echo "Download context:"
+    echo "  batch before: $BATCH_AUDIO_BEFORE_DOWNLOAD audio files under $BATCH_ROOT"
+  fi
   if [[ "$USE_DOWNLOAD_PRECHECK" -eq 1 ]]; then
     if [[ "${PREFILTER_KEEP:-0}" -eq 0 ]]; then
       echo "All candidates already have same-or-better inventory matches; skipping download."
@@ -1266,6 +1390,10 @@ PY
       exit 0
     else
       BPDL_LOG="$OUT_DIR/bpdl_prefilter_download_$(date +%Y%m%d_%H%M%S).log"
+      if [[ "$VERBOSE" -eq 1 ]]; then
+        echo "  Beatport keep list: $KEEP_URLS_TXT"
+        echo "  Beatport log:       $BPDL_LOG"
+      fi
       if [[ "$SOURCE" == "tidal" ]]; then
         KEEP_COUNT="$(awk 'NF{c++} END{print c+0}' "$KEEP_URLS_TXT")"
         DONE=0
@@ -1287,6 +1415,9 @@ PY
     fi
   else
     if [[ "$SOURCE" == "tidal" && "$URL" == *"tidal.com"* ]]; then
+      if [[ "$VERBOSE" -eq 1 ]]; then
+        echo "  Tidal download target: $(tiddl_downloads_dir_from_config || true)"
+      fi
       if [[ ${#DOWNLOADER_ARGS[@]} -gt 0 ]]; then
         run_cmd "$TIDDL_WRAPPER" "$URL" "${DOWNLOADER_ARGS[@]}"
       else
@@ -1296,6 +1427,10 @@ PY
       RAW_URLS_TXT="$OUT_DIR/bpdl_raw_urls_$(date +%Y%m%d_%H%M%S).txt"
       printf '%s\n' "$URL" > "$RAW_URLS_TXT"
       BPDL_LOG="$OUT_DIR/bpdl_raw_download_$(date +%Y%m%d_%H%M%S).log"
+      if [[ "$VERBOSE" -eq 1 ]]; then
+        echo "  Beatport URL file:  $RAW_URLS_TXT"
+        echo "  Beatport log:       $BPDL_LOG"
+      fi
       if [[ ${#DOWNLOADER_ARGS[@]} -gt 0 ]]; then
         run_bpdl_batch "$RAW_URLS_TXT" "$BPDL_LOG" "${DOWNLOADER_ARGS[@]}"
       else
@@ -1306,6 +1441,13 @@ PY
     else
       run_cmd "$GET_BIN" "$URL"
     fi
+  fi
+  if [[ "$VERBOSE" -eq 1 ]]; then
+    BATCH_AUDIO_AFTER_DOWNLOAD="$(count_audio_files "$BATCH_ROOT")"
+    echo "Download result:"
+    echo "  batch after:  $BATCH_AUDIO_AFTER_DOWNLOAD audio files under $BATCH_ROOT"
+    echo "  delta:        $((BATCH_AUDIO_AFTER_DOWNLOAD - BATCH_AUDIO_BEFORE_DOWNLOAD))"
+    print_batch_snapshot "Batch state" "$BATCH_ROOT"
   fi
   STEP=$((STEP + 1))
 fi
@@ -1483,6 +1625,10 @@ else
   fi
 fi
 
+if [[ "$VERBOSE" -eq 1 && "$EXECUTE" -eq 1 ]]; then
+  print_batch_snapshot "Batch after apply" "$BATCH_ROOT"
+fi
+
 PROMOTED_FLACS_FILE="$OUT_DIR/promoted_flacs_$(date +%Y%m%d_%H%M%S).txt"
 python - "$PROMOTE_PLAN" "$PROMOTED_FLACS_FILE" <<'PY'
 import csv
@@ -1516,6 +1662,15 @@ with out_file.open("w", encoding="utf-8") as handle:
     for item in selected:
         handle.write(f"{item}\n")
 PY
+
+PROMOTED_FLACS_COUNT="$(wc -l < "$PROMOTED_FLACS_FILE" | tr -d ' ')"
+if [[ "$VERBOSE" -eq 1 ]]; then
+  echo "Promoted file list: $PROMOTED_FLACS_FILE ($PROMOTED_FLACS_COUNT files)"
+  if [[ "$PROMOTED_FLACS_COUNT" -gt 0 ]]; then
+    echo "Promoted preview:"
+    preview_file_lines "$PROMOTED_FLACS_FILE" 5
+  fi
+fi
 
 if [[ "$TAGGING_MODE" -eq 1 && "$EXECUTE" -eq 1 ]]; then
   STEP=$((STEP + 1))

@@ -258,6 +258,7 @@ Match Methods (in priority order):
         help="Keep matched URLs instead of skipping them",
     )
     ap.add_argument("--out-dir", default="output/precheck", help="Output directory (default: output/precheck)")
+    ap.add_argument("--quiet", action="store_true", help="Suppress progress/output details; emit files only")
     ap.add_argument(
         "--extract-script",
         default=str(default_extract_script),
@@ -281,7 +282,8 @@ Match Methods (in priority order):
     except DbResolutionError as exc:
         raise SystemExit(f"ERROR: {exc}") from exc
     db_path = db_resolution.path
-    print(f"Resolved DB path: {db_path}")
+    if not args.quiet:
+        print(f"Resolved DB path: {db_path}")
     out_dir = Path(args.out_dir).expanduser().resolve()
     extract_script = Path(args.extract_script).expanduser().resolve()
 
@@ -315,7 +317,17 @@ Match Methods (in priority order):
     if existing_pythonpath:
         pythonpath_parts.append(existing_pythonpath)
     env["PYTHONPATH"] = os.pathsep.join(pythonpath_parts)
-    subprocess.run(cmd, check=True, env=env)
+    try:
+        if args.quiet:
+            subprocess.run(cmd, check=True, env=env, capture_output=True, text=True)
+        else:
+            subprocess.run(cmd, check=True, env=env)
+    except subprocess.CalledProcessError as exc:
+        if args.quiet:
+            output = "\n".join(part for part in [(exc.stdout or "").strip(), (exc.stderr or "").strip()] if part)
+            if output:
+                raise SystemExit(output) from exc
+        raise
 
     by_isrc, by_beatport, by_exact3, by_exact2 = load_db_rows(db_path)
 
@@ -446,12 +458,13 @@ Match Methods (in priority order):
         f.write("| exact_title_artist_album | medium | Normalized title+artist+album match |\n")
         f.write("| exact_title_artist | low | Normalized title+artist match (no album) |\n")
 
-    print("Pre-download check complete")
-    print(f"  decisions_csv: {decision_csv}")
-    print(f"  summary_csv:   {decision_summary_csv}")
-    print(f"  keep_urls:     {keep_urls_txt}")
-    print(f"  report:        {report_txt}")
-    print(f"  keep={total_keep} skip={total_skip}")
+    if not args.quiet:
+        print("Pre-download check complete")
+        print(f"  decisions_csv: {decision_csv}")
+        print(f"  summary_csv:   {decision_summary_csv}")
+        print(f"  keep_urls:     {keep_urls_txt}")
+        print(f"  report:        {report_txt}")
+        print(f"  keep={total_keep} skip={total_skip}")
     return 0
 
 

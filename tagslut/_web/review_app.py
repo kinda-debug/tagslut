@@ -30,6 +30,7 @@ _SAFE_ARTIST_DEFAULTS = [
     Path("artifacts/dj_safe_artists_from_safe_copy.txt"),
 ]
 _TRACK_OVERRIDES_PATH = Path("config/dj/track_overrides.csv")
+_SAFE_EXPORT_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
 
 class _SafeArtistCache(TypedDict):
@@ -1042,26 +1043,21 @@ def _validate_output_path(output_m3u: str) -> Path:
 
     Only a filename (no directory components) is honored from user input.
     """
-    # Reject embedded nulls early.
     if "\x00" in output_m3u:
         raise ValueError("output_m3u contains invalid characters")
-    # Normalize to a simple filename to avoid user-controlled directories.
     raw_name = output_m3u.strip()
-    safe_name = os.path.basename(raw_name)
-    if not safe_name:
+    if not raw_name:
         raise ValueError("output_m3u must be a non-empty filename")
-    # Optionally, prevent sneaky names like "." or "..".
-    if safe_name in (".", ".."):
-        raise ValueError("output_m3u must be a valid filename")
+    if Path(raw_name).name != raw_name:
+        raise ValueError("output_m3u must not contain directory components")
+    if not _SAFE_EXPORT_NAME_RE.fullmatch(raw_name):
+        raise ValueError("output_m3u must be a simple filename using letters, numbers, . _ or -")
+    if not raw_name.lower().endswith((".m3u", ".m3u8")):
+        raise ValueError("output_m3u must end with .m3u or .m3u8")
 
     base_dir = Path(__file__).resolve().parent / "artifacts"
     base_dir.mkdir(parents=True, exist_ok=True)
-    candidate = (base_dir / safe_name).resolve()
-    try:
-        candidate.relative_to(base_dir)
-    except ValueError:
-        raise ValueError("output_m3u must be within artifacts directory")
-    return candidate
+    return base_dir / raw_name
 
 
 def export_usb() -> Any:
@@ -1073,7 +1069,8 @@ def export_usb() -> Any:
     try:
         usb_path = _validate_usb_path(usb_path)
     except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+        APP.logger.info("Rejected export_usb request with invalid usb_path: %s", exc)
+        return jsonify({"error": "Invalid usb_path"}), 400
 
     policy_path = str(payload.get("policy_path") or "").strip() or None
     output_m3u = str(payload.get("output_m3u") or "dj_review_ok.m3u8")
@@ -1087,7 +1084,8 @@ def export_usb() -> Any:
     try:
         output_path = _validate_output_path(output_m3u)
     except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+        APP.logger.info("Rejected export_usb request with invalid output_m3u: %s", exc)
+        return jsonify({"error": "Invalid output_m3u"}), 400
 
     conn = _get_conn()
     try:

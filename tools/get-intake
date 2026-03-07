@@ -36,7 +36,7 @@ PRE_DOWNLOAD_CHECK_SCRIPT="$SCRIPT_DIR/review/pre_download_check.py"
 POST_MOVE_ENRICH_SCRIPT="$SCRIPT_DIR/review/post_move_enrich_art.py"
 PLAN_SKIPPED_SCRIPT="$SCRIPT_DIR/review/plan_move_skipped.py"
 BPDL_BIN="$SCRIPT_DIR/beatportdl/bpdl/bpdl"
-BPDL_CONFIG="$SCRIPT_DIR/beatportdl/bpdl/beatportdl-config.yml"
+BPDL_CONFIG="${BPDL_CONFIG:-$HOME/.config/beatportdl/config.yml}"
 
 AUTO_DB_AMBIGUOUS=0
 AUTO_DB_CANDIDATES=()
@@ -225,6 +225,41 @@ playlist_label_from_url() {
   safe_m3u_name "$slug"
 }
 
+is_playlist_url() {
+  local clean="${1%%\?*}"
+  [[ "$clean" == *"/playlist/"* || "$clean" == *"/playlists/"* ]]
+}
+
+playlist_name_hint_from_tracks_csv() {
+  local tracks_csv="${1:-}"
+  local source_url="${2:-}"
+  [[ -f "$tracks_csv" ]] || return 0
+
+  python3 - "$tracks_csv" "$source_url" <<'PY'
+import csv
+import sys
+from pathlib import Path
+
+tracks_csv = Path(sys.argv[1])
+source_url = (sys.argv[2] or "").strip()
+
+with tracks_csv.open(newline="", encoding="utf-8") as handle:
+    reader = csv.DictReader(handle)
+    for row in reader:
+        link_type = (row.get("link_type") or "").strip().lower()
+        row_url = (row.get("source_link") or "").strip()
+        link_title = (row.get("link_title") or "").strip()
+        if "playlist" not in link_type:
+            continue
+        if source_url and row_url and row_url != source_url:
+            continue
+        if link_title:
+            print(link_title)
+            raise SystemExit(0)
+print("")
+PY
+}
+
 rename_latest_m3u_from_marker() {
   local m3u_dir="$1"
   local marker_file="$2"
@@ -325,6 +360,30 @@ first_nonempty() {
   return 1
 }
 
+path_candidate_is_usable() {
+  local candidate="${1:-}"
+  [[ -n "$candidate" ]] || return 1
+  if [[ "$candidate" == /Volumes/* ]]; then
+    local remainder="${candidate#/Volumes/}"
+    local volume_name="${remainder%%/*}"
+    [[ -n "$volume_name" ]] || return 1
+    [[ -d "/Volumes/$volume_name" ]] || return 1
+  fi
+  return 0
+}
+
+first_usable_path() {
+  local candidate=""
+  for candidate in "$@"; do
+    [[ -n "${candidate:-}" ]] || continue
+    if path_candidate_is_usable "$candidate"; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
 resolve_path() {
   python3 - "$1" <<'PY'
 from pathlib import Path
@@ -336,27 +395,35 @@ PY
 
 default_batch_root() {
   local staging_root=""
+  local volume_staging=""
+  local local_staging=""
   local bpdl_root=""
   local tiddl_root=""
-  staging_root="$(first_nonempty "${STAGING_ROOT:-}" "${VOLUME_STAGING:-}")"
+  staging_root="${STAGING_ROOT:-}"
+  volume_staging="${VOLUME_STAGING:-}"
+  local_staging="${LOCAL_STAGING:-$HOME/Music/mdl}"
   bpdl_root="$(bpdl_downloads_dir_from_config)"
   tiddl_root="$(tiddl_downloads_dir_from_config)"
   if [[ "${SOURCE:-}" == "tidal" ]]; then
-    first_nonempty \
+    first_usable_path \
       "${BATCH_ROOT:-}" \
       "${ROOT_TD:-}" \
       "${TIDDL_DOWNLOAD_ROOT:-}" \
       "${tiddl_root:-}" \
       "${staging_root:+$staging_root/tidal}" \
+      "${volume_staging:+$volume_staging/tidal}" \
+      "${local_staging:+$local_staging/tidal}" \
       "$HOME/Downloads/tiddl" \
       "$REPO_ROOT/output/downloads/tidal"
     return 0
   fi
-  first_nonempty \
+  first_usable_path \
     "${BATCH_ROOT:-}" \
     "${ROOT_BP:-}" \
     "${bpdl_root:-}" \
     "${staging_root:+$staging_root/bpdl}" \
+    "${volume_staging:+$volume_staging/bpdl}" \
+    "${local_staging:+$local_staging/bpdl}" \
     "$REPO_ROOT/output/downloads/bpdl"
 }
 
@@ -476,16 +543,46 @@ autodetect_db_path() {
 }
 
 ensure_bpdl_download_target() {
-  local target
-  target="$(bpdl_downloads_dir_from_config)"
+  [[ -f "$BPDL_CONFIG" ]] || return 0
+
+  local configured_target=""
+  local target=""
+  local local_staging=""
+  configured_target="$(bpdl_downloads_dir_from_config)"
+  local_staging="${LOCAL_STAGING:-$HOME/Music/mdl}"
+
+  target="$(first_usable_path \
+    "${ROOT_BP:-}" \
+    "${configured_target:-}" \
+    "${STAGING_ROOT:+$STAGING_ROOT/bpdl}" \
+    "${VOLUME_STAGING:+$VOLUME_STAGING/bpdl}" \
+    "${local_staging:+$local_staging/bpdl}" \
+    "$REPO_ROOT/output/downloads/bpdl" \
+  )"
+
   if [[ -z "$target" ]]; then
     return 0
   fi
 
-  local parent
-  parent="$(dirname "$target")"
-  if [[ ! -d "$parent" ]]; then
-    err "Beatport downloads_directory parent is missing: $parent (from $BPDL_CONFIG). Mount the volume or update downloads_directory."
+  if [[ "$configured_target" != "$target" ]]; then
+    python3 - "$BPDL_CONFIG" "$target" <<'PY'
+from pathlib import Path
+import sys
+
+cfg = Path(sys.argv[1]).expanduser()
+target = sys.argv[2]
+text = cfg.read_text(encoding="utf-8")
+lines = text.splitlines()
+updated = False
+for idx, line in enumerate(lines):
+    if line.startswith("downloads_directory:"):
+        lines[idx] = f"downloads_directory: {target}"
+        updated = True
+        break
+if not updated:
+    lines.append(f"downloads_directory: {target}")
+cfg.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+PY
   fi
 
   mkdir -p "$target" || err "Cannot create Beatport downloads_directory: $target"
@@ -602,6 +699,7 @@ DJ_M3U_OUTPUT=""
 DJ_EXPORT_COUNT=0
 POST_MOVE_PID=""
 POST_MOVE_LOG=""
+M3U_NAME_HINT=""
 PREFILTER_KEEP=0
 PREFILTER_SKIP=0
 PREFILTER_TOTAL=0
@@ -936,11 +1034,11 @@ if [[ "$VERBOSE" -eq 1 && "$DOWNLOAD" -eq 1 ]]; then
   case "$SOURCE" in
     bpdl)
       echo "Downloader:   Beatport"
-      echo "Dl target:    $(bpdl_downloads_dir_from_config || true)"
+      echo "Dl target:    $BATCH_ROOT"
       ;;
     tidal)
       echo "Downloader:   Tidal"
-      echo "Dl target:    $(tiddl_downloads_dir_from_config || true)"
+      echo "Dl target:    $BATCH_ROOT"
       ;;
     *)
       echo "Downloader:   $SOURCE"
@@ -949,10 +1047,13 @@ if [[ "$VERBOSE" -eq 1 && "$DOWNLOAD" -eq 1 ]]; then
   print_batch_snapshot "Batch state" "$BATCH_ROOT"
 fi
 
+if [[ -n "$URL" ]] && is_playlist_url "$URL"; then
+  M3U_NAME_HINT="$(playlist_label_from_url "$URL")"
+fi
+
 if [[ "$M3U_ONLY" -eq 1 ]]; then
   STEP=1
   TOTAL_STEPS=3
-  M3U_NAME_HINT=""
 
   M3U_EXISTING_FILE="$OUT_DIR/m3u_existing_paths_$(date +%Y%m%d_%H%M%S).txt"
   M3U_MISSING_URLS_FILE="$OUT_DIR/m3u_missing_urls_$(date +%Y%m%d_%H%M%S).txt"
@@ -972,6 +1073,13 @@ if [[ "$M3U_ONLY" -eq 1 ]]; then
 
     PREFILTER_DECISIONS_CSV="$(ls -1t "$OUT_DIR"/precheck_decisions_*.csv 2>/dev/null | head -n1 || true)"
     [[ -n "$PREFILTER_DECISIONS_CSV" ]] || err "Could not find precheck decisions in $OUT_DIR"
+    PREFILTER_TRACKS_CSV="$(ls -1t "$OUT_DIR"/precheck_tracks_extracted_*.csv 2>/dev/null | head -n1 || true)"
+    if [[ -n "$PREFILTER_TRACKS_CSV" ]]; then
+      PREFILTER_PLAYLIST_TITLE="$(playlist_name_hint_from_tracks_csv "$PREFILTER_TRACKS_CSV" "$URL" || true)"
+      if [[ -n "$PREFILTER_PLAYLIST_TITLE" ]]; then
+        M3U_NAME_HINT="$(safe_m3u_name "$PREFILTER_PLAYLIST_TITLE")"
+      fi
+    fi
 
     FALLBACK_LOCAL_ROOTS=()
     BPDL_DOWNLOAD_ROOT="$(bpdl_downloads_dir_from_config)"
@@ -1439,8 +1547,15 @@ if [[ "$DOWNLOAD" -eq 1 ]]; then
 
     PRECHECK_DECISIONS_CSV="$(ls -1t "$OUT_DIR"/precheck_decisions_*.csv 2>/dev/null | head -n1 || true)"
     [[ -n "$PRECHECK_DECISIONS_CSV" ]] || err "Could not find precheck decisions in $OUT_DIR"
+    PRECHECK_TRACKS_CSV="$(ls -1t "$OUT_DIR"/precheck_tracks_extracted_*.csv 2>/dev/null | head -n1 || true)"
     KEEP_URLS_TXT="$(ls -1t "$OUT_DIR"/precheck_keep_track_urls_*.txt 2>/dev/null | head -n1 || true)"
     [[ -n "$KEEP_URLS_TXT" ]] || err "Could not find precheck keep URL list in $OUT_DIR"
+    if [[ -n "$PRECHECK_TRACKS_CSV" && -n "$URL" ]]; then
+      PRECHECK_PLAYLIST_TITLE="$(playlist_name_hint_from_tracks_csv "$PRECHECK_TRACKS_CSV" "$URL" || true)"
+      if [[ -n "$PRECHECK_PLAYLIST_TITLE" ]]; then
+        M3U_NAME_HINT="$(safe_m3u_name "$PRECHECK_PLAYLIST_TITLE")"
+      fi
+    fi
 
     eval "$(python - "$PRECHECK_DECISIONS_CSV" "$KEEP_URLS_TXT" <<'PY'
 import csv
@@ -1505,32 +1620,53 @@ PY
       exit 0
     else
       if [[ "$SOURCE" == "tidal" ]]; then
-        KEEP_COUNT="$(awk 'NF{c++} END{print c+0}' "$KEEP_URLS_TXT")"
-        DONE=0
-        TIDDL_FAILED_COUNT=0
-        TIDDL_FAILED_URLS_FILE="$OUT_DIR/tiddl_failed_urls_$(date +%Y%m%d_%H%M%S).txt"
-        : > "$TIDDL_FAILED_URLS_FILE"
-        if [[ "$VERBOSE" -eq 1 ]]; then
-          echo "  Tidal keep list:    $KEEP_URLS_TXT"
-          echo "  Tidal batch root:   $BATCH_ROOT"
-          echo "  Tidal failures:     $TIDDL_FAILED_URLS_FILE"
-        fi
-        while IFS= read -r keep_url; do
-          [[ -n "$keep_url" ]] || continue
-          DONE=$((DONE + 1))
-          echo "[$DONE/$KEEP_COUNT] $keep_url"
-          if run_tiddl_download "$keep_url" "${DOWNLOADER_ARGS[@]}"; then
-            :
-          else
-            TIDDL_FAILED_COUNT=$((TIDDL_FAILED_COUNT + 1))
-            printf '%s\n' "$keep_url" >> "$TIDDL_FAILED_URLS_FILE"
-            echo "WARNING: Tidal download failed for $keep_url; continuing."
+        if [[ "${PREFILTER_SKIP:-0}" -eq 0 && -n "$URL" ]]; then
+          if [[ "$VERBOSE" -eq 1 ]]; then
+            echo "  Tidal mode:         direct URL (no filtered skips)"
+            echo "  Tidal batch root:   $BATCH_ROOT"
           fi
-        done < "$KEEP_URLS_TXT"
-        if [[ "$TIDDL_FAILED_COUNT" -gt 0 ]]; then
-          echo "Tidal download failures: $TIDDL_FAILED_COUNT (saved: $TIDDL_FAILED_URLS_FILE)"
+          if [[ ${#DOWNLOADER_ARGS[@]} -gt 0 ]]; then
+            run_tiddl_download "$URL" "${DOWNLOADER_ARGS[@]}"
+          else
+            run_tiddl_download "$URL"
+          fi
+          if [[ $? -ne 0 ]]; then
+            err "Tidal download failed for $URL"
+          fi
         else
-          rm -f "$TIDDL_FAILED_URLS_FILE"
+          KEEP_COUNT="$(awk 'NF{c++} END{print c+0}' "$KEEP_URLS_TXT")"
+          DONE=0
+          TIDDL_FAILED_COUNT=0
+          TIDDL_FAILED_URLS_FILE="$OUT_DIR/tiddl_failed_urls_$(date +%Y%m%d_%H%M%S).txt"
+          : > "$TIDDL_FAILED_URLS_FILE"
+          if [[ "$VERBOSE" -eq 1 ]]; then
+            echo "  Tidal mode:         filtered keep list"
+            echo "  Tidal keep list:    $KEEP_URLS_TXT"
+            echo "  Tidal batch root:   $BATCH_ROOT"
+            echo "  Tidal failures:     $TIDDL_FAILED_URLS_FILE"
+          fi
+          while IFS= read -r keep_url; do
+            [[ -n "$keep_url" ]] || continue
+            DONE=$((DONE + 1))
+            echo "[$DONE/$KEEP_COUNT] $keep_url"
+            if [[ ${#DOWNLOADER_ARGS[@]} -gt 0 ]]; then
+              run_tiddl_download "$keep_url" "${DOWNLOADER_ARGS[@]}"
+            else
+              run_tiddl_download "$keep_url"
+            fi
+            if [[ $? -eq 0 ]]; then
+              :
+            else
+              TIDDL_FAILED_COUNT=$((TIDDL_FAILED_COUNT + 1))
+              printf '%s\n' "$keep_url" >> "$TIDDL_FAILED_URLS_FILE"
+              echo "WARNING: Tidal download failed for $keep_url; continuing."
+            fi
+          done < "$KEEP_URLS_TXT"
+          if [[ "$TIDDL_FAILED_COUNT" -gt 0 ]]; then
+            echo "Tidal download failures: $TIDDL_FAILED_COUNT (saved: $TIDDL_FAILED_URLS_FILE)"
+          else
+            rm -f "$TIDDL_FAILED_URLS_FILE"
+          fi
         fi
       else
         BPDL_LOG="$OUT_DIR/bpdl_prefilter_download_$(date +%Y%m%d_%H%M%S).log"
@@ -1548,9 +1684,14 @@ PY
   else
     if [[ "$SOURCE" == "tidal" && "$URL" == *"tidal.com"* ]]; then
       if [[ "$VERBOSE" -eq 1 ]]; then
-        echo "  Tidal download target: $(tiddl_downloads_dir_from_config || true)"
+        echo "  Tidal download target: $BATCH_ROOT"
       fi
-      if ! run_tiddl_download "$URL" "${DOWNLOADER_ARGS[@]}"; then
+      if [[ ${#DOWNLOADER_ARGS[@]} -gt 0 ]]; then
+        run_tiddl_download "$URL" "${DOWNLOADER_ARGS[@]}"
+      else
+        run_tiddl_download "$URL"
+      fi
+      if [[ $? -ne 0 ]]; then
         err "Tidal download failed for $URL"
       fi
     elif [[ "$SOURCE" == "bpdl" && "$URL" == *"beatport.com"* ]]; then
@@ -1930,6 +2071,9 @@ if [[ "$M3U_MODE" -eq 1 ]]; then
       --db "$DB_PATH" \
       --source "$SOURCE" \
       "${M3U_PATH_ARGS[@]}"
+    if [[ -n "$M3U_NAME_HINT" ]]; then
+      rename_latest_m3u_from_marker "$M3U_DIR" "$ROON_M3U_MARKER" "$M3U_NAME_HINT" "$ROON_PLAYLIST_PREFIX" "$ROON_PLAYLIST_SUFFIX"
+    fi
     ROON_M3U_OUTPUT="$(latest_file_after_marker "$M3U_DIR" "$ROON_M3U_MARKER")"
     rm -f "$ROON_M3U_MARKER"
   fi
@@ -2007,6 +2151,9 @@ PY
         --db "$DB_PATH" \
         --source "$SOURCE" \
         "${DJ_M3U_PATH_ARGS[@]}"
+      if [[ -n "$M3U_NAME_HINT" ]]; then
+        rename_latest_m3u_from_marker "$DJ_M3U_DIR" "$DJ_M3U_MARKER" "$M3U_NAME_HINT" "$DJ_PLAYLIST_PREFIX" "$DJ_PLAYLIST_SUFFIX"
+      fi
       DJ_M3U_OUTPUT="$(latest_file_after_marker "$DJ_M3U_DIR" "$DJ_M3U_MARKER")"
       rm -f "$DJ_M3U_MARKER"
     fi

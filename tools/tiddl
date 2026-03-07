@@ -26,19 +26,57 @@ if [[ -f "$ENV_LOADER" ]]; then
 fi
 
 default_download_root() {
-    if [[ -n "${ROOT_TD:-}" ]]; then
-        printf '%s\n' "$ROOT_TD"
+    path_is_usable() {
+        local candidate="${1:-}"
+        [[ -n "$candidate" ]] || return 1
+        if [[ "$candidate" == /Volumes/* ]]; then
+            local remainder="${candidate#/Volumes/}"
+            local volume_name="${remainder%%/*}"
+            [[ -n "$volume_name" ]] || return 1
+            [[ -d "/Volumes/$volume_name" ]] || return 1
+        fi
         return 0
-    fi
-    if [[ -n "${TIDDL_DOWNLOAD_ROOT:-}" ]]; then
-        printf '%s\n' "$TIDDL_DOWNLOAD_ROOT"
-        return 0
-    fi
-    if [[ -n "${VOLUME_STAGING:-}" ]]; then
-        printf '%s\n' "${VOLUME_STAGING}/tidal"
-        return 0
-    fi
+    }
+
+    local local_staging="${LOCAL_STAGING:-$HOME/Music/mdl}"
+    local candidate=""
+    for candidate in \
+        "${ROOT_TD:-}" \
+        "${TIDDL_DOWNLOAD_ROOT:-}" \
+        "${STAGING_ROOT:+$STAGING_ROOT/tidal}" \
+        "${VOLUME_STAGING:+$VOLUME_STAGING/tidal}" \
+        "${local_staging:+$local_staging/tidal}" \
+        "$HOME/Music/tiddl"; do
+        if path_is_usable "$candidate"; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
     return 1
+}
+
+sync_tiddl_config_paths() {
+    local target="${1:-}"
+    local config_path="$HOME/.tiddl/config.toml"
+    [[ -n "$target" ]] || return 0
+    [[ -f "$config_path" ]] || return 0
+
+    python3 - "$config_path" "$target" <<'PY'
+from pathlib import Path
+import sys
+
+config_path = Path(sys.argv[1]).expanduser()
+target = sys.argv[2]
+lines = config_path.read_text(encoding="utf-8").splitlines()
+for idx, line in enumerate(lines):
+    stripped = line.strip()
+    if stripped.startswith("download_path ="):
+        lines[idx] = f'download_path = "{target}"'
+    elif stripped.startswith("scan_path ="):
+        lines[idx] = f'scan_path = "{target}"'
+
+config_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+PY
 }
 
 if [[ ! -x "$TIDDL_BIN" ]]; then
@@ -91,6 +129,8 @@ case "$1" in
         done
 
         if ROOT_TD_VALUE="$(default_download_root)"; then
+            mkdir -p "$ROOT_TD_VALUE"
+            sync_tiddl_config_paths "$ROOT_TD_VALUE"
             CMD+=(--path "$ROOT_TD_VALUE" --scan-path "$ROOT_TD_VALUE")
         fi
         CMD+=(--skip-errors)

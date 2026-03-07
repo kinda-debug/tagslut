@@ -20,7 +20,9 @@ from tagslut.cli.commands._enrich_helpers import (
     _local_file_info_from_path,
     _print_enrichment_result,
 )
+from tagslut.core.flac_scan_prep import cleanup_prepared_flac_input, prepare_flac_scan_input
 from tagslut.storage.schema import init_db
+from tagslut.utils import AUDIO_EXTENSIONS
 
 
 def register_index_group(cli: click.Group) -> None:
@@ -58,8 +60,9 @@ def register_index_group(cli: click.Group) -> None:
         """
         Register files in inventory.
 
-        Scans directory for FLAC files, computes checksums, and registers
-        them in the database with source tracking. Used after downloading
+        Scans directory for audio files, converts eligible non-FLAC lossless
+        inputs to FLAC, computes checksums, and registers the resulting FLAC
+        files in the database with source tracking. Used after downloading
         from Beatport, Tidal, Qobuz, etc.
 
         \b
@@ -102,15 +105,15 @@ def register_index_group(cli: click.Group) -> None:
             raise click.ClickException(f"Path not found: {path}")
 
         if path_obj.is_file():
-            if path_obj.suffix.lower() != ".flac":
-                raise click.ClickException(
-                    f"File is not FLAC: {path_obj} (expected .flac)"
-                )
-            flac_iter: Iterable[Path] = [path_obj]
+            input_iter: Iterable[Path] = [path_obj]
         else:
-            flac_iter = list_files(path_obj, {".flac"})
+            input_iter = (
+                p
+                for p in list_files(path_obj, set(AUDIO_EXTENSIONS))
+                if p.suffix.lower() == ".flac" or not p.with_suffix(".flac").exists()
+            )
         if limit:
-            flac_iter = itertools.islice(flac_iter, int(limit))
+            input_iter = itertools.islice(input_iter, int(limit))
 
         click.echo(f"Scanning: {path_obj}")
         click.echo(f"Source: {source}")
@@ -143,10 +146,22 @@ def register_index_group(cli: click.Group) -> None:
             duration_version = duration_check_version(ok_max_ms, warn_max_ms)
 
             total = 0
-            for i, file_path in enumerate(flac_iter, start=1):
+            for i, input_path in enumerate(input_iter, start=1):
                 total = i
+                prepared = None
                 try:
                     mgmt_status_override = None
+                    prepared = prepare_flac_scan_input(input_path, persist=bool(execute))
+                    if prepared.scan_path is None:
+                        if verbose:
+                            click.echo(
+                                f"  [{i}] SKIP ({prepared.message or prepared.skip_reason}) {input_path.name}"
+                            )
+                        skipped += 1
+                        continue
+
+                    file_path = prepared.scan_path
+                    original_path = prepared.original_path
 
                     existing = get_file(conn, file_path)
                     if existing:
@@ -162,6 +177,8 @@ def register_index_group(cli: click.Group) -> None:
                         library="default",
                         zone_manager=None,
                     )
+                    if original_path != file_path:
+                        audio.original_path = original_path
 
                     checksum = audio.checksum
                     sha256 = audio.sha256
@@ -205,6 +222,7 @@ def register_index_group(cli: click.Group) -> None:
                                 "event": "duplicate_decision",
                                 "timestamp": now_iso,
                                 "path": str(file_path),
+                                "original_path": str(original_path),
                                 "content_id": content_id_for_log,
                                 "content_id_type": content_id_type,
                                 "source": source,
@@ -275,6 +293,7 @@ def register_index_group(cli: click.Group) -> None:
                             "event": "duration_check",
                             "timestamp": now_iso,
                             "path": str(file_path),
+                            "original_path": str(original_path),
                             "source": source,
                             "track_id": (
                                 f"beatport:{beatport_id}"
@@ -296,6 +315,7 @@ def register_index_group(cli: click.Group) -> None:
                                 "event": "duration_anomaly",
                                 "timestamp": now_iso,
                                 "path": str(file_path),
+                                "original_path": str(original_path),
                                 "track_id": log_payload["track_id"],
                                 "is_dj_material": True,
                                 "duration_status": duration_status_value,
@@ -341,7 +361,7 @@ def register_index_group(cli: click.Group) -> None:
                                 audio.integrity_state,
                                 source,
                                 now_iso,
-                                str(file_path),
+                                str(original_path),
                                 mgmt_status_override
                                 or (
                                     "needs_review"
@@ -390,16 +410,21 @@ def register_index_group(cli: click.Group) -> None:
                             )
 
                     if verbose or i % 50 == 0:
+                        if prepared.converted:
+                            click.echo(f"  [{i}] CONVERT {original_path.name} -> {file_path.name}")
                         click.echo(f"  [{i}] {file_path.name}")
 
                     registered += 1
 
                 except Exception as e:
                     errors += 1
-                    click.echo(f"  ERROR: {file_path.name}: {e}")
+                    click.echo(f"  ERROR: {input_path.name}: {e}")
+                finally:
+                    if prepared is not None:
+                        cleanup_prepared_flac_input(prepared)
 
             if total == 0:
-                click.echo(f"No FLAC files found in {path}")
+                click.echo(f"No audio files found in {path}")
                 return
 
             if execute:
@@ -414,7 +439,7 @@ def register_index_group(cli: click.Group) -> None:
         click.echo(f"{'='*50}")
         click.echo(f"  Total:       {total:>6}")
         click.echo(f"  Registered:  {registered:>6}  {'✓' if registered > 0 else '(none)'}")
-        click.echo(f"  Skipped:     {skipped:>6}  (already registered)")
+        click.echo(f"  Skipped:     {skipped:>6}")
         click.echo(f"  Errors:      {errors:>6}  {'⚠' if errors > 0 else ''}")
 
     @index.command("check")

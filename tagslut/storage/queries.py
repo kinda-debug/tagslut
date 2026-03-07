@@ -681,9 +681,9 @@ def upsert_file(conn: sqlite3.Connection, file: AudioFile) -> None:
     INSERT INTO files (
         path, library, zone, mtime, size, checksum, streaminfo_md5, sha256, duration,
         bit_depth, sample_rate, bitrate, metadata_json, flac_ok, integrity_state,
-        integrity_checked_at, streaminfo_checked_at, sha256_checked_at, acoustid,
+        integrity_checked_at, streaminfo_checked_at, sha256_checked_at, acoustid, original_path,
         checksum_type
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(path) DO UPDATE SET
         library=excluded.library,
         zone=excluded.zone,
@@ -703,6 +703,7 @@ def upsert_file(conn: sqlite3.Connection, file: AudioFile) -> None:
         streaminfo_checked_at=excluded.streaminfo_checked_at,
         sha256_checked_at=excluded.sha256_checked_at,
         acoustid=excluded.acoustid,
+        original_path=excluded.original_path,
         checksum_type=excluded.checksum_type;
     """
 
@@ -735,6 +736,7 @@ def upsert_file(conn: sqlite3.Connection, file: AudioFile) -> None:
         _normalize_text_field(file.streaminfo_checked_at, "streaminfo_checked_at"),
         _normalize_text_field(file.sha256_checked_at, "sha256_checked_at"),
         acoustid,
+        _normalize_text_field(file.original_path, "original_path"),
         _normalize_text_field(file.checksum_type, "checksum_type"),
     )
 
@@ -828,6 +830,7 @@ def _row_to_audiofile(row: sqlite3.Row) -> AudioFile:
         metadata=metadata,
         flac_ok=flac_ok,
         acoustid=_get("acoustid"),
+        original_path=_get("original_path"),
         integrity_state=integrity_state,
         integrity_checked_at=_get("integrity_checked_at"),
         streaminfo_checked_at=_get("streaminfo_checked_at"),

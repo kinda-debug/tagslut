@@ -33,9 +33,10 @@ export PROMOTE_ROOT="${PROMOTE_ROOT:-$VOLUME_STAGING}"
 ```
 
 Notes:
-- `MASTER_LIBRARY` is the canonical FLAC library.
+- `MASTER_LIBRARY` is the canonical master library stored as FLAC.
 - `DJ_LIBRARY` is the derived DJ library.
 - `LIBRARY_ROOT`, `VOLUME_LIBRARY`, `DJ_MP3_ROOT`, and `DJ_LIBRARY_ROOT` remain compatibility aliases.
+- Eligible non-FLAC lossless inputs are inspected at scan time and converted to FLAC before registration.
 - No separate archive library is assumed by this runbook.
 
 ## Daily Scan

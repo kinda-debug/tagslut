@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
+from tagslut.core.flac_scan_prep import cleanup_prepared_flac_input, prepare_flac_scan_input
 from tagslut.core.metadata import extract_metadata
 from tagslut.policy.v3.staleness import is_hash_stale, is_integrity_stale
 from tagslut.storage.models import AudioFile
@@ -17,6 +18,7 @@ from tagslut.storage.queries import (
     upsert_file,
 )
 from tagslut.storage.schema import get_connection, init_db
+from tagslut.utils import AUDIO_EXTENSIONS
 from tagslut.utils.paths import list_files
 from tagslut.utils.parallel import process_map, ProcessMapResult
 from tagslut.utils.config import get_config
@@ -144,17 +146,31 @@ def _scan_one_file(task: ScanTask) -> ScanResult:
     logger.debug("[%s/%s] %s", index, total, path.name)
     logger.debug("  %s", path.parent)
 
+    prepared = prepare_flac_scan_input(path, persist=True)
+    if prepared.scan_path is None:
+        return ScanResult(
+            path=path,
+            run_integrity=scan_integrity,
+            run_hash=scan_hash,
+            error_class="InputSkipped",
+            error_message=prepared.message or prepared.skip_reason or "input skipped",
+        )
+
     try:
         result = extract_metadata(
-            path,
+            prepared.scan_path,
             scan_integrity=scan_integrity,
             scan_hash=scan_hash,
             library=task.library_name,
             zone_manager=task.zone_manager,
         )
+        if prepared.original_path != prepared.scan_path:
+            result.original_path = prepared.original_path
 
         # Show what was extracted
         logger.debug("  Metadata extracted")
+        if prepared.converted:
+            logger.debug("  Input converted: %s -> %s", prepared.original_path, prepared.scan_path)
         if result.streaminfo_md5:
             logger.debug("  STREAMINFO MD5: %s...", result.streaminfo_md5[:8])
         if result.sha256:
@@ -172,16 +188,16 @@ def _scan_one_file(task: ScanTask) -> ScanResult:
             )
 
         return ScanResult(
-            path=path,
+            path=prepared.scan_path,
             run_integrity=scan_integrity,
             run_hash=scan_hash,
             file=result,
         )
 
     except ValueError as e:
-        logger.warning("Invalid FLAC for %s: %s", path, e)
+        logger.warning("Invalid FLAC for %s: %s", prepared.scan_path, e)
         return ScanResult(
-            path=path,
+            path=prepared.scan_path,
             run_integrity=scan_integrity,
             run_hash=scan_hash,
             error_class="InvalidFLAC",
@@ -206,14 +222,16 @@ def _scan_one_file(task: ScanTask) -> ScanResult:
             error_message="Permission denied",
         )
     except Exception as e:
-        logger.warning("Failed to process %s: %s: %s", path, type(e).__name__, str(e)[:50])
+        logger.warning("Failed to process %s: %s: %s", prepared.scan_path, type(e).__name__, str(e)[:50])
         return ScanResult(
-            path=path,
+            path=prepared.scan_path,
             run_integrity=scan_integrity,
             run_hash=scan_hash,
             error_class=type(e).__name__,
             error_message=f"Unexpected error: {str(e)[:120]}",
         )
+    finally:
+        cleanup_prepared_flac_input(prepared)
 
 
 def scan_library(
@@ -263,11 +281,11 @@ def scan_library(
 
     zone_manager = load_zone_manager(config=getattr(config, "_data", None))
 
-    flac_files: list[Path]
+    scan_inputs: list[Path]
     # Handle specific paths mode (e.g., from --paths-from-file)
     if specific_paths:
         logger.info("Processing %d specific paths", len(specific_paths))
-        flac_files = [p for p in specific_paths if p.suffix.lower() == ".flac"]
+        scan_inputs = [p for p in specific_paths if p.is_file()]
         library_name = library or "adhoc"
         root_path = None
         paths_source = paths_source or "paths-from-file"
@@ -282,7 +300,12 @@ def scan_library(
         root_path = library_path
         logger.info("Scanning library: %s", library_path)
         logger.info("Using DB: %s (cwd=%s)", db_path, Path.cwd())
-        flac_files = list(list_files(library_path, {".flac"}))
+        discovered_inputs = list(list_files(library_path, set(AUDIO_EXTENSIONS)))
+        scan_inputs = [
+            p
+            for p in discovered_inputs
+            if p.suffix.lower() == ".flac" or not p.with_suffix(".flac").exists()
+        ]
 
     # Zone is now auto-assigned based on scan results
     zone_name = "auto"  # For logging purposes only
@@ -315,10 +338,10 @@ def scan_library(
         )
     conn.close()
 
-    total_discovered = len(flac_files)
-    logger.info("Found %d FLAC files.", total_discovered)
+    total_discovered = len(scan_inputs)
+    logger.info("Found %d audio inputs.", total_discovered)
 
-    if not flac_files:
+    if not scan_inputs:
         conn = get_connection(
             db_path,
             purpose="write",
@@ -445,8 +468,8 @@ def scan_library(
                 "path, mtime, size, library, zone, checksum, flac_ok, integrity_state, "
                 "integrity_checked_at, streaminfo_md5, sha256, streaminfo_checked_at, sha256_checked_at"
             )
-            for i in range(0, len(flac_files), chunk_size):
-                chunk = [str(p) for p in flac_files[i: i + chunk_size]]
+            for i in range(0, len(scan_inputs), chunk_size):
+                chunk = [str(p) for p in scan_inputs[i: i + chunk_size]]
                 placeholders = ",".join(["?"] * len(chunk))
                 rows = conn.execute(
                     f"SELECT {columns} FROM files WHERE path IN ({placeholders})",
@@ -494,7 +517,7 @@ def scan_library(
     scan_tasks: List[ScanTask] = []
     skip_reasons: dict[str, int] = {"up_to_date": 0}
 
-    for idx, path in enumerate(flac_files, start=1):
+    for idx, path in enumerate(scan_inputs, start=1):
         key = str(path)
         row = existing_rows.get(key)
         v3_row = existing_v3_rows.get(key)

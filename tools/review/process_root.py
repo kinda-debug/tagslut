@@ -32,7 +32,9 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from tagslut.utils import AUDIO_EXTENSIONS  # noqa: E402
 from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path  # noqa: E402
+from tagslut.utils.paths import list_files  # noqa: E402
 
 ALLOWED_PHASES = (
     "register",
@@ -365,8 +367,8 @@ def main() -> None:
 
     db_path = Path(db)
     root_path = Path(root)
-    if root_path.exists() and not list(root_path.rglob("*.flac")):
-        print(f"Warning: no FLAC files found under {root_path}")
+    if root_path.exists() and not list(list_files(root_path, set(AUDIO_EXTENSIONS))):
+        print(f"Warning: no audio files found under {root_path}")
     library_path = Path(library)
 
     if not root_path.exists():

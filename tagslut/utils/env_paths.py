@@ -14,14 +14,69 @@ import os
 from pathlib import Path
 from typing import Optional
 
+_DOTENV_LOADED = False
+
 
 class PathNotConfiguredError(Exception):
     """Raised when a required path is not configured"""
     pass
 
 
+def _load_dotenv_once() -> None:
+    global _DOTENV_LOADED
+    if _DOTENV_LOADED:
+        return
+    _DOTENV_LOADED = True
+
+    dotenv_path = None
+    repo_root = Path(__file__).resolve().parents[2]
+    try:
+        from dotenv import find_dotenv, load_dotenv  # type: ignore
+        dotenv_path = find_dotenv(usecwd=True)
+        if not dotenv_path:
+            candidate = repo_root / ".env"
+            if candidate.exists():
+                dotenv_path = str(candidate)
+        if dotenv_path:
+            load_dotenv(dotenv_path=dotenv_path, override=False)
+        return
+    except Exception:
+        pass
+
+    candidate = repo_root / ".env"
+    if not candidate.exists():
+        return
+    _load_simple_dotenv(candidate)
+
+
+def _load_simple_dotenv(dotenv_path: Path) -> None:
+    """Minimal .env loader for environments without python-dotenv."""
+    try:
+        lines = dotenv_path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return
+
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export "):].strip()
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if not key or key in os.environ:
+            continue
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+            value = value[1:-1]
+        os.environ[key] = os.path.expandvars(os.path.expanduser(value))
+
+
 def _get_env(var: str, default: Optional[str] = None, required: bool = False) -> Optional[str]:
     """Get environment variable with validation"""
+    _load_dotenv_once()
     value = os.getenv(var, default)
 
     if value is None and required:

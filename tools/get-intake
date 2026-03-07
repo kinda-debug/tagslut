@@ -15,13 +15,22 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+ENV_LOADER="$SCRIPT_DIR/_load_env.sh"
+
+if [[ -f "$ENV_LOADER" ]]; then
+  # shellcheck disable=SC1090
+  source "$ENV_LOADER"
+  load_workspace_env "$REPO_ROOT"
+fi
 
 GET_BIN="$SCRIPT_DIR/get"
+TIDDL_WRAPPER="$SCRIPT_DIR/tiddl"
 SCAN_SCRIPT="$SCRIPT_DIR/review/scan_with_trust.py"
 AUDIT_SCRIPT="$SCRIPT_DIR/review/audio_dupe_audit.py"
 PLAN_SCRIPT="$SCRIPT_DIR/review/plan_fpcalc_promote_unique_to_final_library.py"
 MOVE_SCRIPT="$SCRIPT_DIR/review/move_from_plan.py"
-BEATPORT_PREFILTER_SCRIPT="$SCRIPT_DIR/review/beatport_prefilter.py"
+PROCESS_ROOT_SCRIPT="$SCRIPT_DIR/review/process_root.py"
+PRE_DOWNLOAD_CHECK_SCRIPT="$SCRIPT_DIR/review/pre_download_check.py"
 BPDL_BIN="$SCRIPT_DIR/beatportdl/bpdl/bpdl"
 BPDL_CONFIG="$SCRIPT_DIR/beatportdl/bpdl/beatportdl-config.yml"
 
@@ -34,33 +43,37 @@ Usage:
   tools/get-intake [options] <url> [-- downloader-args...]
   tools/get-intake --no-download --batch-root <path> [options]
   tools/get-intake --m3u-only (--url <beatport-url> | --playlist-file <file>) [options]
-  tools/get-intake <beatport-url>   # auto: m3u-only with defaults when --batch-root omitted
+  tools/get-intake <provider-url>   # auto: use provider download root when --batch-root omitted
 
 Options:
-  --batch-root PATH    Download batch root to process (required)
+  --batch-root PATH    Download batch root to process (default: provider download root or $VOLUME_STAGING)
   --source TEXT        Source label (bpdl|tidal). Auto-inferred from URL if omitted.
   --url URL            Source URL (alternative to positional URL)
   --db PATH            SQLite DB path (default: $TAGSLUT_DB or auto-detected tagslut_db epoch; errors if ambiguous)
-  --library-root PATH  Final library root (default: $LIBRARY_ROOT or /Volumes/MUSIC/LIBRARY)
-  --fix-root PATH      FIX root (default: $FIX_ROOT or /Volumes/MUSIC/FIX)
+  --library-root PATH  Final library root (default: $LIBRARY_ROOT or $VOLUME_LIBRARY or $MASTER_LIBRARY)
+  --fix-root PATH      Quarantine/FIX root (default: $FIX_ROOT or $VOLUME_QUARANTINE or artifacts/quarantine)
   --out-dir PATH       Output directory for plans (default: artifacts/compare)
   --workers N          Fingerprint workers (default: 7)
   --trust N            Pre-scan trust score 0..3 (default: 3)
   --trust-post N       Post-scan trust score 0..3 (default: 3)
   --library-tag TEXT   Library tag used in scan_with_trust (default: INTAKE)
+  --providers TEXT     Metadata providers for tagging/enrichment
   --execute            Execute move plans (default: dry-run planning only)
   --m3u                Generate Roon-friendly merged M3U from promoted files
   --m3u-dir PATH       M3U output dir (default: library root when --m3u)
+  --dj                 Transcode promoted FLACs to MP3 into DJ library root
+  --dj-root PATH       DJ MP3 root (default: $DJ_MP3_ROOT or $DJ_LIBRARY)
   --m3u-only           Only generate merged M3U (skip download/scan/move stages)
   --playlist-file PATH Build M3U from playlist file (.m3u/.m3u8/.txt/.csv/.json)
   --missing-policy MODE
                        Missing handling for --m3u-only: ask|report|skip|download (default: report)
   --no-download        Skip downloader step; process existing batch root
   --skip-mgmt-check    Skip quick duplicate check stage (legacy flag name)
+  --no-tagging         Skip tagging / metadata enrich / cover-art steps
+  --no-precheck        Skip pre-download DB check for Tidal/Beatport URLs
+  --force-download     Keep matched tracks instead of skipping same/better inventory matches
   --skip-beatport-prefilter
-                       Skip fast metadata prefilter before Beatport download
-  --prefilter-margin-ms N
-                       Duration tolerance for prefilter (default: 4000)
+                       Deprecated alias for --no-precheck
   -h, --help           Show this help
 
 Examples:
@@ -157,6 +170,101 @@ bpdl_downloads_dir_from_config() {
   raw="${raw%\'}"
   raw="${raw#\'}"
   echo "$raw"
+}
+
+tiddl_downloads_dir_from_config() {
+  local cfg=""
+  local candidate=""
+  for candidate in "$HOME/.tiddl" "$HOME/tiddl.json" "$HOME/Documents/tiddl.json"; do
+    if [[ -f "$candidate" ]]; then
+      cfg="$candidate"
+      break
+    fi
+  done
+  if [[ -z "$cfg" ]]; then
+    echo ""
+    return 0
+  fi
+  python3 - "$cfg" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+cfg = Path(sys.argv[1]).expanduser()
+try:
+    payload = json.loads(cfg.read_text(encoding="utf-8"))
+except Exception:
+    print("")
+    raise SystemExit(0)
+
+download = payload.get("download") or {}
+print(download.get("path") or "")
+PY
+}
+
+first_nonempty() {
+  local value=""
+  for value in "$@"; do
+    if [[ -n "${value:-}" ]]; then
+      printf '%s\n' "$value"
+      return 0
+    fi
+  done
+  return 1
+}
+
+resolve_path() {
+  python3 - "$1" <<'PY'
+from pathlib import Path
+import sys
+
+print(Path(sys.argv[1]).expanduser().resolve())
+PY
+}
+
+default_batch_root() {
+  local bpdl_root=""
+  local tiddl_root=""
+  bpdl_root="$(bpdl_downloads_dir_from_config)"
+  tiddl_root="$(tiddl_downloads_dir_from_config)"
+  if [[ "${SOURCE:-}" == "tidal" ]]; then
+    first_nonempty \
+      "${BATCH_ROOT:-}" \
+      "${TIDDL_DOWNLOAD_ROOT:-}" \
+      "${ROOT_TD:-}" \
+      "${tiddl_root:-}" \
+      "${VOLUME_STAGING:-}" \
+      "$HOME/Downloads/tiddl" \
+      "$REPO_ROOT/output/downloads/tidal"
+    return 0
+  fi
+  first_nonempty \
+    "${BATCH_ROOT:-}" \
+    "${bpdl_root:-}" \
+    "${ROOT_BP:-}" \
+    "${VOLUME_STAGING:-}" \
+    "${STAGING_ROOT:-}" \
+    "$REPO_ROOT/output/downloads/bpdl"
+}
+
+default_library_root() {
+  first_nonempty \
+    "${LIBRARY_ROOT:-}" \
+    "${VOLUME_LIBRARY:-}" \
+    "${MASTER_LIBRARY:-}"
+}
+
+default_fix_root() {
+  first_nonempty \
+    "${FIX_ROOT:-}" \
+    "${VOLUME_QUARANTINE:-}" \
+    "$REPO_ROOT/artifacts/quarantine"
+}
+
+default_dj_root() {
+  first_nonempty \
+    "${DJ_MP3_ROOT:-}" \
+    "${DJ_LIBRARY:-}"
 }
 
 autodetect_db_path() {
@@ -272,25 +380,29 @@ infer_source() {
 DOWNLOAD=1
 EXECUTE=0
 SKIP_MGMT_CHECK=0
-SKIP_BEATPORT_PREFILTER=0
+SKIP_PRECHECK=0
+FORCE_DOWNLOAD=0
 M3U_MODE=0
 M3U_ONLY=0
+DJ_MODE=0
+TAGGING_MODE=1
 
 URL=""
 BATCH_ROOT=""
 SOURCE=""
 DB_PATH="${TAGSLUT_DB:-}"
-LIBRARY_ROOT="${LIBRARY_ROOT:-/Volumes/MUSIC/LIBRARY}"
-FIX_ROOT="${FIX_ROOT:-/Volumes/MUSIC/FIX}"
+LIBRARY_ROOT="${LIBRARY_ROOT:-}"
+FIX_ROOT="${FIX_ROOT:-}"
 OUT_DIR="$REPO_ROOT/artifacts/compare"
 WORKERS=7
 TRUST=3
 TRUST_POST=3
 LIBRARY_TAG="INTAKE"
-PREFILTER_MARGIN_MS=4000
 M3U_DIR=""
 PLAYLIST_FILE=""
 MISSING_POLICY="report"
+DJ_ROOT="${DJ_MP3_ROOT:-${DJ_LIBRARY:-}}"
+ENRICH_PROVIDERS="beatport,tidal,deezer,traxsource,musicbrainz"
 
 DOWNLOADER_ARGS=()
 
@@ -351,6 +463,11 @@ while [[ $# -gt 0 ]]; do
       LIBRARY_TAG="$2"
       shift 2
       ;;
+    --providers)
+      [[ $# -ge 2 ]] || err "--providers requires a value"
+      ENRICH_PROVIDERS="$2"
+      shift 2
+      ;;
     --execute)
       EXECUTE=1
       shift
@@ -367,6 +484,15 @@ while [[ $# -gt 0 ]]; do
     --m3u-dir)
       [[ $# -ge 2 ]] || err "--m3u-dir requires a value"
       M3U_DIR="$2"
+      shift 2
+      ;;
+    --dj)
+      DJ_MODE=1
+      shift
+      ;;
+    --dj-root)
+      [[ $# -ge 2 ]] || err "--dj-root requires a value"
+      DJ_ROOT="$2"
       shift 2
       ;;
     --playlist-file)
@@ -387,14 +513,17 @@ while [[ $# -gt 0 ]]; do
       SKIP_MGMT_CHECK=1
       shift
       ;;
-    --skip-beatport-prefilter)
-      SKIP_BEATPORT_PREFILTER=1
+    --no-tagging)
+      TAGGING_MODE=0
       shift
       ;;
-    --prefilter-margin-ms)
-      [[ $# -ge 2 ]] || err "--prefilter-margin-ms requires a value"
-      PREFILTER_MARGIN_MS="$2"
-      shift 2
+    --no-precheck|--skip-beatport-prefilter)
+      SKIP_PRECHECK=1
+      shift
+      ;;
+    --force-download)
+      FORCE_DOWNLOAD=1
+      shift
       ;;
     -h|--help)
       usage
@@ -419,11 +548,15 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if [[ -z "$SOURCE" && -n "$URL" ]]; then
+  SOURCE="$(infer_source "$URL")"
+fi
+[[ -n "$SOURCE" ]] || SOURCE="ingest"
+
 if [[ "$M3U_ONLY" -eq 0 && -n "$URL" && -z "$BATCH_ROOT" ]]; then
-  M3U_ONLY=1
-  M3U_MODE=1
-  DOWNLOAD=0
-  echo "Auto mode: no --batch-root provided; running in --m3u-only mode."
+  BATCH_ROOT="$(default_batch_root || true)"
+  [[ -n "$BATCH_ROOT" ]] || err "No batch root configured. Set --batch-root or VOLUME_STAGING."
+  echo "Auto mode: no --batch-root provided; using batch root: $BATCH_ROOT"
 fi
 
 if [[ -z "$DB_PATH" ]]; then
@@ -440,7 +573,6 @@ fi
 [[ "$TRUST" =~ ^[0-3]$ ]] || err "--trust must be 0,1,2,3"
 [[ "$TRUST_POST" =~ ^[0-3]$ ]] || err "--trust-post must be 0,1,2,3"
 [[ "$WORKERS" =~ ^[0-9]+$ ]] || err "--workers must be an integer"
-[[ "$PREFILTER_MARGIN_MS" =~ ^[0-9]+$ ]] || err "--prefilter-margin-ms must be an integer"
 case "$MISSING_POLICY" in
   ask|report|skip|download) ;;
   *) err "--missing-policy must be one of: ask, report, skip, download" ;;
@@ -457,18 +589,15 @@ else
   fi
 fi
 
-if [[ -z "$SOURCE" && -n "$URL" ]]; then
-  SOURCE="$(infer_source "$URL")"
-fi
-[[ -n "$SOURCE" ]] || SOURCE="ingest"
-
 [[ -x "$GET_BIN" ]] || err "Missing executable: $GET_BIN"
 [[ -x "$BPDL_BIN" ]] || err "Missing executable: $BPDL_BIN"
+[[ -x "$TIDDL_WRAPPER" ]] || err "Missing executable: $TIDDL_WRAPPER"
 [[ -f "$SCAN_SCRIPT" ]] || err "Missing script: $SCAN_SCRIPT"
 [[ -f "$AUDIT_SCRIPT" ]] || err "Missing script: $AUDIT_SCRIPT"
 [[ -f "$PLAN_SCRIPT" ]] || err "Missing script: $PLAN_SCRIPT"
 [[ -f "$MOVE_SCRIPT" ]] || err "Missing script: $MOVE_SCRIPT"
-[[ -f "$BEATPORT_PREFILTER_SCRIPT" ]] || err "Missing script: $BEATPORT_PREFILTER_SCRIPT"
+[[ -f "$PROCESS_ROOT_SCRIPT" ]] || err "Missing script: $PROCESS_ROOT_SCRIPT"
+[[ -f "$PRE_DOWNLOAD_CHECK_SCRIPT" ]] || err "Missing script: $PRE_DOWNLOAD_CHECK_SCRIPT"
 
 command -v poetry >/dev/null 2>&1 || err "poetry is required in PATH"
 command -v python >/dev/null 2>&1 || err "python is required in PATH"
@@ -479,23 +608,37 @@ if [[ "$M3U_ONLY" -eq 0 ]]; then
   else
     [[ -d "$BATCH_ROOT" ]] || err "--batch-root does not exist: $BATCH_ROOT"
   fi
-  BATCH_ROOT="$(cd "$BATCH_ROOT" && pwd -P)"
+  BATCH_ROOT="$(resolve_path "$BATCH_ROOT")"
 else
   BATCH_ROOT=""
 fi
 
-LIBRARY_ROOT="$(cd "$LIBRARY_ROOT" && pwd -P)"
-FIX_ROOT="$(cd "$FIX_ROOT" && pwd -P)"
+LIBRARY_ROOT="${LIBRARY_ROOT:-$(default_library_root || true)}"
+[[ -n "$LIBRARY_ROOT" ]] || err "Missing library root. Set --library-root, LIBRARY_ROOT, VOLUME_LIBRARY, or MASTER_LIBRARY."
+[[ -d "$LIBRARY_ROOT" ]] || err "Library root does not exist: $LIBRARY_ROOT"
+LIBRARY_ROOT="$(resolve_path "$LIBRARY_ROOT")"
+
+FIX_ROOT="${FIX_ROOT:-$(default_fix_root || true)}"
+[[ -n "$FIX_ROOT" ]] || err "Missing fix/quarantine root. Set --fix-root or VOLUME_QUARANTINE."
+mkdir -p "$FIX_ROOT"
+FIX_ROOT="$(resolve_path "$FIX_ROOT")"
+
 DB_PATH="$(cd "$(dirname "$DB_PATH")" && pwd -P)/$(basename "$DB_PATH")"
 if [[ "$M3U_MODE" -eq 1 ]]; then
   if [[ -z "$M3U_DIR" ]]; then
     M3U_DIR="$LIBRARY_ROOT"
   fi
   mkdir -p "$M3U_DIR"
-  M3U_DIR="$(cd "$M3U_DIR" && pwd -P)"
+  M3U_DIR="$(resolve_path "$M3U_DIR")"
+fi
+if [[ "$DJ_MODE" -eq 1 ]]; then
+  DJ_ROOT="${DJ_ROOT:-$(default_dj_root || true)}"
+  [[ -n "$DJ_ROOT" ]] || err "Missing DJ root. Set --dj-root, DJ_MP3_ROOT, or DJ_LIBRARY."
+  mkdir -p "$DJ_ROOT"
+  DJ_ROOT="$(resolve_path "$DJ_ROOT")"
 fi
 mkdir -p "$OUT_DIR"
-OUT_DIR="$(cd "$OUT_DIR" && pwd -P)"
+OUT_DIR="$(resolve_path "$OUT_DIR")"
 
 echo "Batch root:   $BATCH_ROOT"
 echo "Source:       $SOURCE"
@@ -504,12 +647,21 @@ echo "Library root: $LIBRARY_ROOT"
 echo "FIX root:     $FIX_ROOT"
 echo "Output dir:   $OUT_DIR"
 echo "Execute:      $EXECUTE"
-echo "Prefilter:    $((1 - SKIP_BEATPORT_PREFILTER))"
+echo "Precheck:     $((1 - SKIP_PRECHECK))"
+if [[ "$FORCE_DOWNLOAD" -eq 1 ]]; then
+  echo "Force dl:     1"
+fi
 if [[ "$M3U_MODE" -eq 1 ]]; then
   echo "M3U:          1 (dir=$M3U_DIR)"
 else
   echo "M3U:          0"
 fi
+if [[ "$DJ_MODE" -eq 1 ]]; then
+  echo "DJ MP3:       1 (dir=$DJ_ROOT)"
+else
+  echo "DJ MP3:       0"
+fi
+echo "Tagging:      $TAGGING_MODE"
 if [[ "$M3U_ONLY" -eq 1 ]]; then
   echo "M3U only:     1"
   echo "Missing mode: $MISSING_POLICY"
@@ -531,26 +683,13 @@ if [[ "$M3U_ONLY" -eq 1 ]]; then
       err "--m3u-only URL mode currently supports Beatport URLs. Use --playlist-file for other sources."
     fi
 
-    run_cmd python "$BEATPORT_PREFILTER_SCRIPT" \
+    run_cmd python "$PRE_DOWNLOAD_CHECK_SCRIPT" \
+      --input "$URL" \
       --db "$DB_PATH" \
-      --url "$URL" \
-      --library-root "$LIBRARY_ROOT" \
-      --credentials "$SCRIPT_DIR/beatportdl/bpdl/beatportdl-credentials.json" \
-      --duration-margin-ms "$PREFILTER_MARGIN_MS" \
       --out-dir "$OUT_DIR"
 
-    PREFILTER_SUMMARY_JSON="$(ls -1t "$OUT_DIR"/beatport_prefilter_summary_*.json 2>/dev/null | head -n1 || true)"
-    [[ -n "$PREFILTER_SUMMARY_JSON" ]] || err "Could not find Beatport prefilter summary in $OUT_DIR"
-
-    PREFILTER_DECISIONS_CSV="$(python - "$PREFILTER_SUMMARY_JSON" <<'PY'
-import json
-import sys
-with open(sys.argv[1], encoding="utf-8") as handle:
-    payload = json.load(handle)
-print(payload.get("outputs", {}).get("decisions_csv", ""))
-PY
-)"
-    [[ -n "$PREFILTER_DECISIONS_CSV" ]] || err "Missing decisions_csv in prefilter summary: $PREFILTER_SUMMARY_JSON"
+    PREFILTER_DECISIONS_CSV="$(ls -1t "$OUT_DIR"/precheck_decisions_*.csv 2>/dev/null | head -n1 || true)"
+    [[ -n "$PREFILTER_DECISIONS_CSV" ]] || err "Could not find precheck decisions in $OUT_DIR"
 
     FALLBACK_LOCAL_ROOTS=()
     BPDL_DOWNLOAD_ROOT="$(bpdl_downloads_dir_from_config)"
@@ -644,9 +783,14 @@ def match_unresolved(row: dict[str, str], candidates: list[tuple[str, set[str], 
 with decisions_csv.open(newline="", encoding="utf-8") as handle:
     reader = csv.DictReader(handle)
     for row in reader:
-        action = (row.get("action") or "").strip().lower()
-        matched_path = (row.get("matched_path") or "").strip()
+        action = (row.get("decision") or row.get("action") or "").strip().lower()
+        matched_path = (row.get("db_path") or row.get("matched_path") or "").strip()
         candidate_url = (row.get("url") or "").strip()
+        if not candidate_url:
+            domain = (row.get("domain") or "").strip().lower()
+            track_id = (row.get("track_id") or "").strip()
+            if domain == "beatport" and track_id:
+                candidate_url = f"https://www.beatport.com/track/-/{track_id}"
         artist = (row.get("artist") or "").strip()
         title = (row.get("title") or "").strip()
 
@@ -962,9 +1106,9 @@ PY
   exit 0
 fi
 
-USE_BEATPORT_PREFILTER=0
-if [[ "$DOWNLOAD" -eq 1 && "$SKIP_BEATPORT_PREFILTER" -eq 0 && "$SOURCE" == "bpdl" && "$URL" == *"beatport.com"* ]]; then
-  USE_BEATPORT_PREFILTER=1
+USE_DOWNLOAD_PRECHECK=0
+if [[ "$DOWNLOAD" -eq 1 && "$SKIP_PRECHECK" -eq 0 && ( "$SOURCE" == "bpdl" || "$SOURCE" == "tidal" ) ]]; then
+  USE_DOWNLOAD_PRECHECK=1
 fi
 
 TOTAL_STEPS=4
@@ -974,68 +1118,124 @@ fi
 if [[ "$DOWNLOAD" -eq 1 ]]; then
   TOTAL_STEPS=$((TOTAL_STEPS + 1))
 fi
-if [[ "$USE_BEATPORT_PREFILTER" -eq 1 ]]; then
+if [[ "$USE_DOWNLOAD_PRECHECK" -eq 1 ]]; then
+  TOTAL_STEPS=$((TOTAL_STEPS + 1))
+fi
+if [[ "$TAGGING_MODE" -eq 1 && "$EXECUTE" -eq 1 ]]; then
   TOTAL_STEPS=$((TOTAL_STEPS + 1))
 fi
 if [[ "$M3U_MODE" -eq 1 ]]; then
+  TOTAL_STEPS=$((TOTAL_STEPS + 1))
+fi
+if [[ "$DJ_MODE" -eq 1 ]]; then
   TOTAL_STEPS=$((TOTAL_STEPS + 1))
 fi
 STEP=1
 
 if [[ "$DOWNLOAD" -eq 1 ]]; then
   KEEP_URLS_TXT=""
-  if [[ "$USE_BEATPORT_PREFILTER" -eq 1 ]]; then
-    step "$STEP" "$TOTAL_STEPS" "Beatport fast pre-download filter"
-    run_cmd python "$BEATPORT_PREFILTER_SCRIPT" \
-      --db "$DB_PATH" \
-      --url "$URL" \
-      --library-root "$LIBRARY_ROOT" \
-      --credentials "$SCRIPT_DIR/beatportdl/bpdl/beatportdl-credentials.json" \
-      --duration-margin-ms "$PREFILTER_MARGIN_MS" \
+  if [[ "$USE_DOWNLOAD_PRECHECK" -eq 1 ]]; then
+    step "$STEP" "$TOTAL_STEPS" "Pre-download check"
+    PRECHECK_ARGS=(
+      "$PRE_DOWNLOAD_CHECK_SCRIPT"
+      --input "$URL"
+      --db "$DB_PATH"
       --out-dir "$OUT_DIR"
+      --candidate-quality-rank 3
+    )
+    if [[ "$FORCE_DOWNLOAD" -eq 1 ]]; then
+      PRECHECK_ARGS+=(--force-keep-matched)
+    fi
+    run_cmd python "${PRECHECK_ARGS[@]}"
 
-    PREFILTER_SUMMARY_JSON="$(ls -1t "$OUT_DIR"/beatport_prefilter_summary_*.json 2>/dev/null | head -n1 || true)"
-    [[ -n "$PREFILTER_SUMMARY_JSON" ]] || err "Could not find Beatport prefilter summary in $OUT_DIR"
+    PRECHECK_DECISIONS_CSV="$(ls -1t "$OUT_DIR"/precheck_decisions_*.csv 2>/dev/null | head -n1 || true)"
+    [[ -n "$PRECHECK_DECISIONS_CSV" ]] || err "Could not find precheck decisions in $OUT_DIR"
+    KEEP_URLS_TXT="$(ls -1t "$OUT_DIR"/precheck_keep_track_urls_*.txt 2>/dev/null | head -n1 || true)"
+    [[ -n "$KEEP_URLS_TXT" ]] || err "Could not find precheck keep URL list in $OUT_DIR"
 
-    eval "$(python - "$PREFILTER_SUMMARY_JSON" <<'PY'
-import json
+    eval "$(python - "$PRECHECK_DECISIONS_CSV" "$KEEP_URLS_TXT" <<'PY'
+import csv
 import shlex
 import sys
+from pathlib import Path
 
-with open(sys.argv[1], encoding="utf-8") as handle:
-    payload = json.load(handle)
+keep = 0
+skip = 0
+total = 0
+
+with open(sys.argv[1], newline="", encoding="utf-8") as handle:
+    reader = csv.DictReader(handle)
+    for row in reader:
+        total += 1
+        decision = (row.get("decision") or row.get("action") or "").strip().lower()
+        if decision == "keep":
+            keep += 1
+        elif decision == "skip":
+            skip += 1
+
+keep_file = Path(sys.argv[2])
+keep_file_count = 0
+if keep_file.exists():
+    keep_file_count = sum(1 for line in keep_file.read_text(encoding="utf-8").splitlines() if line.strip())
 
 def emit(key, value):
     print(f"{key}={shlex.quote(str(value))}")
 
-emit("PREFILTER_KEEP", payload.get("keep_count", 0))
-emit("PREFILTER_TOTAL", payload.get("total_candidates", 0))
-emit("PREFILTER_SKIP", payload.get("skip_count", 0))
-emit("KEEP_URLS_TXT", payload.get("outputs", {}).get("keep_urls_txt", ""))
+emit("PREFILTER_KEEP", keep_file_count or keep)
+emit("PREFILTER_TOTAL", total)
+emit("PREFILTER_SKIP", skip)
+emit("KEEP_URLS_TXT", keep_file)
 PY
 )"
 
-    [[ -n "$KEEP_URLS_TXT" ]] || err "Missing keep_urls_txt in prefilter summary: $PREFILTER_SUMMARY_JSON"
-    echo "Prefilter summary: keep=$PREFILTER_KEEP skip=$PREFILTER_SKIP total=$PREFILTER_TOTAL"
+    echo "Precheck summary: keep=$PREFILTER_KEEP skip=$PREFILTER_SKIP total=$PREFILTER_TOTAL"
     STEP=$((STEP + 1))
   fi
 
   step "$STEP" "$TOTAL_STEPS" "Download via tools/get"
-  if [[ "$USE_BEATPORT_PREFILTER" -eq 1 ]]; then
+  if [[ "$USE_DOWNLOAD_PRECHECK" -eq 1 ]]; then
     if [[ "${PREFILTER_KEEP:-0}" -eq 0 ]]; then
-      echo "All Beatport candidates already matched in library; skipping download."
+      echo "All candidates already have same-or-better inventory matches; skipping download."
       echo "No new candidates to process; intake pipeline finished."
       exit 0
     else
       BPDL_LOG="$OUT_DIR/bpdl_prefilter_download_$(date +%Y%m%d_%H%M%S).log"
-      if [[ ${#DOWNLOADER_ARGS[@]} -gt 0 ]]; then
+      if [[ "$SOURCE" == "tidal" ]]; then
+        KEEP_COUNT="$(awk 'NF{c++} END{print c+0}' "$KEEP_URLS_TXT")"
+        DONE=0
+        while IFS= read -r keep_url; do
+          [[ -n "$keep_url" ]] || continue
+          DONE=$((DONE + 1))
+          echo "[$DONE/$KEEP_COUNT] $keep_url"
+          if [[ ${#DOWNLOADER_ARGS[@]} -gt 0 ]]; then
+            run_cmd "$TIDDL_WRAPPER" "$keep_url" "${DOWNLOADER_ARGS[@]}"
+          else
+            run_cmd "$TIDDL_WRAPPER" "$keep_url"
+          fi
+        done < "$KEEP_URLS_TXT"
+      elif [[ ${#DOWNLOADER_ARGS[@]} -gt 0 ]]; then
         run_bpdl_batch "$KEEP_URLS_TXT" "$BPDL_LOG" "${DOWNLOADER_ARGS[@]}"
       else
         run_bpdl_batch "$KEEP_URLS_TXT" "$BPDL_LOG"
       fi
     fi
   else
-    if [[ ${#DOWNLOADER_ARGS[@]} -gt 0 ]]; then
+    if [[ "$SOURCE" == "tidal" && "$URL" == *"tidal.com"* ]]; then
+      if [[ ${#DOWNLOADER_ARGS[@]} -gt 0 ]]; then
+        run_cmd "$TIDDL_WRAPPER" "$URL" "${DOWNLOADER_ARGS[@]}"
+      else
+        run_cmd "$TIDDL_WRAPPER" "$URL"
+      fi
+    elif [[ "$SOURCE" == "bpdl" && "$URL" == *"beatport.com"* ]]; then
+      RAW_URLS_TXT="$OUT_DIR/bpdl_raw_urls_$(date +%Y%m%d_%H%M%S).txt"
+      printf '%s\n' "$URL" > "$RAW_URLS_TXT"
+      BPDL_LOG="$OUT_DIR/bpdl_raw_download_$(date +%Y%m%d_%H%M%S).log"
+      if [[ ${#DOWNLOADER_ARGS[@]} -gt 0 ]]; then
+        run_bpdl_batch "$RAW_URLS_TXT" "$BPDL_LOG" "${DOWNLOADER_ARGS[@]}"
+      else
+        run_bpdl_batch "$RAW_URLS_TXT" "$BPDL_LOG"
+      fi
+    elif [[ ${#DOWNLOADER_ARGS[@]} -gt 0 ]]; then
       run_cmd "$GET_BIN" "$URL" "${DOWNLOADER_ARGS[@]}"
     else
       run_cmd "$GET_BIN" "$URL"
@@ -1065,6 +1265,17 @@ run_cmd python "$SCAN_SCRIPT" \
   --trust "$TRUST" \
   --trust-post "$TRUST_POST"
 STEP=$((STEP + 1))
+
+if [[ "$TAGGING_MODE" -eq 1 && "$EXECUTE" -eq 1 ]]; then
+  step "$STEP" "$TOTAL_STEPS" "Tagging + metadata enrich"
+  run_cmd python "$PROCESS_ROOT_SCRIPT" \
+    --db "$DB_PATH" \
+    --root "$BATCH_ROOT" \
+    --library "$LIBRARY_ROOT" \
+    --providers "$ENRICH_PROVIDERS" \
+    --phases identify,enrich,art
+  STEP=$((STEP + 1))
+fi
 
 step "$STEP" "$TOTAL_STEPS" "Cross-root fingerprint audit"
 run_cmd python "$AUDIT_SCRIPT" \
@@ -1206,12 +1417,8 @@ else
   fi
 fi
 
-if [[ "$M3U_MODE" -eq 1 ]]; then
-  STEP=$((STEP + 1))
-  step "$STEP" "$TOTAL_STEPS" "Generate Roon M3U"
-
-  M3U_INPUTS_FILE="$OUT_DIR/m3u_inputs_$(date +%Y%m%d_%H%M%S).txt"
-  python - "$PROMOTE_PLAN" "$M3U_INPUTS_FILE" <<'PY'
+PROMOTED_FLACS_FILE="$OUT_DIR/promoted_flacs_$(date +%Y%m%d_%H%M%S).txt"
+python - "$PROMOTE_PLAN" "$PROMOTED_FLACS_FILE" <<'PY'
 import csv
 import sys
 from pathlib import Path
@@ -1231,9 +1438,7 @@ with plan_csv.open(newline="", encoding="utf-8") as handle:
             candidate = dest
         elif str(src) and src.exists():
             candidate = src
-        if candidate is None:
-            continue
-        if candidate.suffix.lower() != ".flac":
+        if candidate is None or candidate.suffix.lower() != ".flac":
             continue
         key = str(candidate.resolve())
         if key in seen:
@@ -1246,7 +1451,11 @@ with out_file.open("w", encoding="utf-8") as handle:
         handle.write(f"{item}\n")
 PY
 
-  M3U_INPUT_COUNT="$(wc -l < "$M3U_INPUTS_FILE" | tr -d ' ')"
+if [[ "$M3U_MODE" -eq 1 ]]; then
+  STEP=$((STEP + 1))
+  step "$STEP" "$TOTAL_STEPS" "Generate Roon M3U"
+
+  M3U_INPUT_COUNT="$(wc -l < "$PROMOTED_FLACS_FILE" | tr -d ' ')"
   if [[ "$M3U_INPUT_COUNT" -eq 0 ]]; then
     echo "No promoted files found on disk for M3U generation; skipping."
   else
@@ -1254,7 +1463,7 @@ PY
     while IFS= read -r m3u_path; do
       [[ -n "$m3u_path" ]] || continue
       M3U_PATH_ARGS+=("$m3u_path")
-    done < "$M3U_INPUTS_FILE"
+    done < "$PROMOTED_FLACS_FILE"
 
     run_cmd poetry run python -m tagslut report m3u \
       --merge \
@@ -1262,6 +1471,49 @@ PY
       --db "$DB_PATH" \
       --source "$SOURCE" \
       "${M3U_PATH_ARGS[@]}"
+  fi
+fi
+
+if [[ "$DJ_MODE" -eq 1 ]]; then
+  STEP=$((STEP + 1))
+  step "$STEP" "$TOTAL_STEPS" "Transcode DJ MP3 copies"
+
+  DJ_INPUT_COUNT="$(wc -l < "$PROMOTED_FLACS_FILE" | tr -d ' ')"
+  if [[ "$DJ_INPUT_COUNT" -eq 0 ]]; then
+    echo "No promoted FLAC files found on disk for DJ export; skipping."
+  else
+    run_cmd poetry run python - "$PROMOTED_FLACS_FILE" "$DJ_ROOT" <<'PY'
+import sys
+from pathlib import Path
+
+from tagslut.exec.transcoder import FFmpegNotFoundError, TranscodeError, transcode_to_mp3
+
+inputs_file = Path(sys.argv[1])
+dest_root = Path(sys.argv[2]).expanduser().resolve()
+dest_root.mkdir(parents=True, exist_ok=True)
+
+errors = []
+done = 0
+
+for line in inputs_file.read_text(encoding="utf-8").splitlines():
+    path = Path(line.strip()).expanduser()
+    if not line.strip():
+        continue
+    if not path.exists():
+        errors.append(f"missing source: {path}")
+        continue
+    try:
+        transcode_to_mp3(path, dest_root)
+        done += 1
+    except (FFmpegNotFoundError, TranscodeError, FileNotFoundError) as exc:
+        errors.append(f"{path}: {exc}")
+
+print(f"DJ export complete: {done} files -> {dest_root}")
+if errors:
+    for item in errors:
+        print(f"ERROR: {item}", file=sys.stderr)
+    raise SystemExit(1)
+PY
   fi
 fi
 

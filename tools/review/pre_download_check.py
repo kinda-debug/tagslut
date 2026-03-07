@@ -43,6 +43,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from tagslut.core.quality import is_upgrade
 from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
 
 # Confidence levels for match methods
@@ -63,6 +64,7 @@ class DbRow:
     artist: str
     album: str
     download_source: str
+    quality_rank: int | None
 
 
 def norm_text(value: str | None) -> str:
@@ -108,7 +110,8 @@ def load_db_rows(db_path: Path) -> tuple[dict[str, list[DbRow]], dict[str, list[
             canonical_artist,
             canonical_album,
             metadata_json,
-            download_source
+            download_source,
+            quality_rank
         FROM files
         """
     )
@@ -135,6 +138,7 @@ def load_db_rows(db_path: Path) -> tuple[dict[str, list[DbRow]], dict[str, list[
             artist=artist,
             album=album,
             download_source=(r["download_source"] or "").strip(),
+            quality_rank=int(r["quality_rank"]) if r["quality_rank"] is not None else None,
         )
 
         if row.isrc:
@@ -163,6 +167,41 @@ def build_keep_track_url(domain: str, track_id: str) -> str:
     if domain == "tidal":
         return f"https://tidal.com/browse/track/{tid}"
     return ""
+
+
+def choose_best_match(matches: list[DbRow]) -> DbRow:
+    return sorted(
+        matches,
+        key=lambda row: (
+            row.quality_rank is None,
+            row.quality_rank if row.quality_rank is not None else 999,
+            row.path,
+        ),
+    )[0]
+
+
+def decide_match_action(
+    matched: DbRow | None,
+    *,
+    match_method: str,
+    candidate_quality_rank: int,
+    force_keep_matched: bool,
+) -> tuple[str, str]:
+    if matched is None:
+        return "keep", "no inventory match"
+    if force_keep_matched:
+        return "keep", f"forced download despite {match_method} match"
+    if matched.quality_rank is None:
+        return "keep", f"matched by {match_method}; existing quality rank missing"
+    if is_upgrade(current_rank=matched.quality_rank, candidate_rank=candidate_quality_rank):
+        return (
+            "keep",
+            f"matched by {match_method}; candidate rank {candidate_quality_rank} improves existing rank {matched.quality_rank}",
+        )
+    return (
+        "skip",
+        f"matched by {match_method}; existing rank {matched.quality_rank} is equal or better than candidate rank {candidate_quality_rank}",
+    )
 
 
 def get_repo_root() -> Path:
@@ -206,6 +245,17 @@ Match Methods (in priority order):
     ap.add_argument(
         "--db",
         help="Path to music.db (or set TAGSLUT_DB env var)",
+    )
+    ap.add_argument(
+        "--candidate-quality-rank",
+        type=int,
+        default=3,
+        help="Incoming file quality rank (default: 3 = fresh hi-res FLAC)",
+    )
+    ap.add_argument(
+        "--force-keep-matched",
+        action="store_true",
+        help="Keep matched URLs instead of skipping them",
     )
     ap.add_argument("--out-dir", default="output/precheck", help="Output directory (default: output/precheck)")
     ap.add_argument(
@@ -259,7 +309,13 @@ Match Methods (in priority order):
         "--report-md",
         str(report_md),
     ]
-    subprocess.run(cmd, check=True)
+    env = os.environ.copy()
+    existing_pythonpath = env.get("PYTHONPATH", "").strip()
+    pythonpath_parts = [str(repo_root)]
+    if existing_pythonpath:
+        pythonpath_parts.append(existing_pythonpath)
+    env["PYTHONPATH"] = os.pathsep.join(pythonpath_parts)
+    subprocess.run(cmd, check=True, env=env)
 
     by_isrc, by_beatport, by_exact3, by_exact2 = load_db_rows(db_path)
 
@@ -276,8 +332,11 @@ Match Methods (in priority order):
             "decision",
             "confidence",
             "match_method",
+            "reason",
             "db_path",
             "db_download_source",
+            "existing_quality_rank",
+            "candidate_quality_rank",
         ]
         writer = csv.DictWriter(fout, fieldnames=fields)
         writer.writeheader()
@@ -296,32 +355,39 @@ Match Methods (in priority order):
 
             # Match hierarchy: ISRC (high) > Beatport ID (high) > title+artist+album (medium) > title+artist (low)
             if isrc and isrc in by_isrc:
-                matched = by_isrc[isrc][0]
+                matched = choose_best_match(by_isrc[isrc])
                 method = "isrc"
             elif domain == "beatport" and track_id and track_id in by_beatport:
-                matched = by_beatport[track_id][0]
+                matched = choose_best_match(by_beatport[track_id])
                 method = "beatport_id"
             else:
                 k3 = "|".join([norm_text(title), norm_text(artist), norm_text(album)])
                 if k3 in by_exact3:
-                    matched = by_exact3[k3][0]
+                    matched = choose_best_match(by_exact3[k3])
                     method = "exact_title_artist_album"
                 else:
                     k2 = "|".join([norm_text(title), norm_text(artist)])
                     if k2 in by_exact2:
-                        matched = by_exact2[k2][0]
+                        matched = choose_best_match(by_exact2[k2])
                         method = "exact_title_artist"
 
+            decision, reason = decide_match_action(
+                matched,
+                match_method=method or "unknown",
+                candidate_quality_rank=int(args.candidate_quality_rank),
+                force_keep_matched=bool(args.force_keep_matched),
+            )
             if matched:
-                decision = "skip"
                 confidence = CONFIDENCE_LEVELS.get(method, "unknown")
                 db_path_val = matched.path
                 db_source = matched.download_source
+                existing_quality_rank: int | str = matched.quality_rank if matched.quality_rank is not None else ""
             else:
-                decision = "keep"
                 confidence = ""
                 db_path_val = ""
                 db_source = ""
+                existing_quality_rank = ""
+            if decision == "keep":
                 keep_url = build_keep_track_url(domain, track_id)
                 if keep_url:
                     keep_urls.append(keep_url)
@@ -331,8 +397,11 @@ Match Methods (in priority order):
                     "decision": decision,
                     "confidence": confidence,
                     "match_method": method,
+                    "reason": reason,
                     "db_path": db_path_val,
                     "db_download_source": db_source,
+                    "existing_quality_rank": existing_quality_rank,
+                    "candidate_quality_rank": int(args.candidate_quality_rank),
                 }
             )
             writer.writerow(row)
@@ -361,13 +430,14 @@ Match Methods (in priority order):
         f.write(f"| Metric | Count |\n")
         f.write(f"|--------|-------|\n")
         f.write(f"| Tracks to download (keep) | {total_keep} |\n")
-        f.write(f"| Tracks already in library (skip) | {total_skip} |\n")
+        f.write(f"| Tracks skipped (same or better already exists) | {total_skip} |\n")
         f.write(f"| Total tracks checked | {total_keep + total_skip} |\n")
         f.write(f"| Links processed | {len(link_stats)} |\n\n")
         f.write("## Outputs\n\n")
         f.write(f"- **Decisions CSV:** `{decision_csv}`\n")
         f.write(f"- **Summary CSV:** `{decision_summary_csv}`\n")
         f.write(f"- **Keep URLs (for downloader):** `{keep_urls_txt}`\n\n")
+        f.write(f"- **Candidate quality rank:** `{int(args.candidate_quality_rank)}`\n\n")
         f.write("## Match Methods\n\n")
         f.write("| Method | Confidence | Description |\n")
         f.write("|--------|------------|-------------|\n")

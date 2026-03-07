@@ -15,6 +15,13 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 PRECHECK_PY="$REPO_ROOT/tools/review/pre_download_check.py"
 GET_BIN="$REPO_ROOT/tools/get"
 OUT_DIR="$REPO_ROOT/output/precheck"
+ENV_LOADER="$SCRIPT_DIR/_load_env.sh"
+
+if [[ -f "$ENV_LOADER" ]]; then
+  # shellcheck disable=SC1090
+  source "$ENV_LOADER"
+  load_workspace_env "$REPO_ROOT"
+fi
 
 usage() {
   cat <<'EOF'

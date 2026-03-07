@@ -5,9 +5,18 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GET_INTAKE="$SCRIPT_DIR/get-intake"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+ENV_LOADER="$SCRIPT_DIR/_load_env.sh"
+
+if [[ -f "$ENV_LOADER" ]]; then
+  # shellcheck disable=SC1090
+  source "$ENV_LOADER"
+  load_workspace_env "$REPO_ROOT"
+fi
 
 usage() {
   echo "Usage: tools/get-sync <beatport-url> [extra get-intake args...]"
+  echo "Defaults: precheck on, execute moves, build merged M3U"
   exit 1
 }
 
@@ -23,4 +32,4 @@ if [[ "$URL" != *"beatport.com"* ]]; then
   exit 2
 fi
 
-exec "$GET_INTAKE" "$URL" --missing-policy download "$@"
+exec "$GET_INTAKE" "$URL" --missing-policy download --execute --m3u "$@"

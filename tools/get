@@ -28,6 +28,14 @@ GET_INTAKE="$SCRIPT_DIR/get-intake"
 GET_SYNC="$SCRIPT_DIR/get-sync"
 GET_REPORT="$SCRIPT_DIR/get-report"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+ENV_LOADER="$SCRIPT_DIR/_load_env.sh"
+
+if [[ -f "$ENV_LOADER" ]]; then
+    # Load repo-local .env so wrapper commands see TAGSLUT_DB and volume roots.
+    # shellcheck disable=SC1090
+    source "$ENV_LOADER"
+    load_workspace_env "$REPO_ROOT"
+fi
 
 usage() {
     echo "3-command Beatport workflow:"
@@ -64,28 +72,25 @@ shift
 
 # Route based on domain
 if [[ "$URL" == *"tidal.com"* ]]; then
-    if [[ ! -x "$TIDDL_WRAPPER" ]]; then
-        echo "Error: TIDDL wrapper not found or not executable at: $TIDDL_WRAPPER" >&2
+    if [[ ! -x "$GET_INTAKE" ]]; then
+        echo "Error: get-intake not found or not executable at: $GET_INTAKE" >&2
         exit 1
     fi
     cd "$REPO_ROOT"
-    # Tidal "sync" => missing-only; "simple" => downloader-only.
-    MISSING_ONLY=1
     if [[ "$MODE" == "simple" ]]; then
-        MISSING_ONLY=0
-    elif [[ "$MODE" == "sync" ]]; then
-        MISSING_ONLY=1
+        exec "$TIDDL_WRAPPER" "$URL" "$@"
     fi
+
+    PRECHECK_ENABLED=1
     DB_PATH=""
-    DOWNLOADER_ARGS=()
+    INTAKE_ARGS=()
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --missing-only)
-                MISSING_ONLY=1
                 shift
                 ;;
             --allow-duplicates)
-                MISSING_ONLY=0
+                PRECHECK_ENABLED=0
                 shift
                 ;;
             --db)
@@ -95,54 +100,27 @@ if [[ "$URL" == *"tidal.com"* ]]; then
                 ;;
             --)
                 shift
-                DOWNLOADER_ARGS+=("$@")
+                INTAKE_ARGS+=("$@")
                 break
                 ;;
             *)
-                DOWNLOADER_ARGS+=("$1")
+                INTAKE_ARGS+=("$1")
                 shift
                 ;;
         esac
     done
-
-    if [[ "$MISSING_ONLY" -eq 1 ]]; then
-        PRECHECK_DIR="$REPO_ROOT/output/precheck"
-        mkdir -p "$PRECHECK_DIR"
-        RESOLVED_DB_PATH=""
-        if [[ -n "$DB_PATH" ]]; then
-            RESOLVED_DB_PATH="$DB_PATH"
-        elif [[ -n "${TAGSLUT_DB:-}" ]]; then
-            RESOLVED_DB_PATH="$TAGSLUT_DB"
-        fi
-
-        if [[ -n "$RESOLVED_DB_PATH" ]]; then
-            PYTHONPATH="$REPO_ROOT" python3 "$REPO_ROOT/tools/review/pre_download_check.py" \
-                --input "$URL" \
-                --out-dir "$PRECHECK_DIR" \
-                --db "$RESOLVED_DB_PATH"
-        else
-            PYTHONPATH="$REPO_ROOT" python3 "$REPO_ROOT/tools/review/pre_download_check.py" \
-                --input "$URL" \
-                --out-dir "$PRECHECK_DIR"
-        fi
-
-        KEEP_LIST="$(ls -t "$PRECHECK_DIR"/precheck_keep_track_urls_*.txt 2>/dev/null | head -n1 || true)"
-        if [[ -z "$KEEP_LIST" ]]; then
-            echo "Error: keep list not found in $PRECHECK_DIR" >&2
-            exit 1
-        fi
-        if [[ ! -s "$KEEP_LIST" ]]; then
-            echo "No missing tracks to download (keep list empty)."
-            exit 0
-        fi
-        while IFS= read -r track_url; do
-            [[ -n "$track_url" ]] || continue
-                "$TIDDL_WRAPPER" "$track_url" "${DOWNLOADER_ARGS[@]+"${DOWNLOADER_ARGS[@]}"}"
-        done < "$KEEP_LIST"
-        exit 0
+    CMD=("$GET_INTAKE" --source tidal --missing-policy download --execute --m3u)
+    if [[ "$PRECHECK_ENABLED" -eq 0 ]]; then
+        CMD+=(--no-precheck)
     fi
-
-    exec "$TIDDL_WRAPPER" "$URL" "${DOWNLOADER_ARGS[@]+"${DOWNLOADER_ARGS[@]}"}"
+    if [[ -n "$DB_PATH" ]]; then
+        CMD+=(--db "$DB_PATH")
+    fi
+    CMD+=("$URL")
+    if [[ ${#INTAKE_ARGS[@]} -gt 0 ]]; then
+        CMD+=("${INTAKE_ARGS[@]}")
+    fi
+    exec "${CMD[@]}"
 
 elif [[ "$URL" == *"beatport.com"* ]]; then
     if [[ ! -x "$GET_SYNC" ]]; then

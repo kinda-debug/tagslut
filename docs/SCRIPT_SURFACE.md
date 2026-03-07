@@ -65,13 +65,15 @@ These wrappers are active convenience entrypoints around canonical intake/report
 1. `tools/get <url>`
 Role: Primary user-facing download workflow.
 - default behavior: precheck + download + tagging/enrich/art + promote + merged M3U
-- high-level workflow flags: `--dj`, `--hoard`, `--no-hoard`, `--no-precheck`, `--force-download`, `--providers`
+- default output is concise; `--verbose` enables internal paths, artifact files, and batch snapshots
+- high-level workflow flags: `--dj`, `--hoard`, `--no-hoard`, `--no-precheck`, `--force-download`, `--providers`, `--verbose`
 - `--simple` keeps downloader-only behavior
 
 2. `tools/get-intake ...`
 Role: Advanced/backend intake engine.
 - use for existing batch roots (`--no-download --batch-root ...`)
 - use for `--m3u-only` or direct pipeline control
+- default output is concise; use `--verbose` for wrapper/debug details
 - not the recommended first command for normal downloads
 
 3. `tools/get-report <beatport-url>`

@@ -59,13 +59,19 @@ tools/get <provider-url> --dj
 
 # Skip tagging/enrich/art when intentionally doing a lighter run
 tools/get <provider-url> --no-hoard
+
+# Show internal paths, artifact files, and batch snapshots
+tools/get <provider-url> --verbose
 ```
 
 Notes:
 - `tools/get` is the primary user-facing downloader for Beatport and Tidal.
+- default output is concise; use `--verbose` for internal paths, artifact files, and batch snapshots
 - local identify/tag prep runs before promote; external enrich + cover art now launch in the background after promote
 - `tools/get --m3u` writes Roon-style playlists inside `PLAYLIST_ROOT` using relative paths.
 - `tools/get --dj` writes DJ playlists inside `DJ_PLAYLIST_ROOT` using absolute paths for Rekordbox/Lexicon.
+- quarantine/stash output now lives under `$VOLUME_QUARANTINE` (default: `/Volumes/MUSIC/_work/quarantine`)
+- `--force-download` bypasses the pre-download skip so matched URLs are still fetched, but equal-or-better library files still win at promote time unless you run an explicit replacement workflow
 - `tools/get-intake` is the advanced/backend command for existing batch roots, `--m3u-only`, and direct pipeline control.
 - `tools/get-sync` is a deprecated Beatport compatibility alias.
 

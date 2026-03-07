@@ -87,9 +87,13 @@ python tools/review/pre_download_check.py --input "<url>"
 # Intentionally bypass precheck if needed
 tools/get "<url>" --no-precheck
 
-# Or keep matched tracks anyway
+# Or still download matched tracks
 tools/get "<url>" --force-download
 ```
+
+Notes:
+- `--force-download` only affects the download decision. It does not make a lower-quality incoming file replace an equal-or-better library file.
+- Lower-quality duplicates are quarantined under `$VOLUME_QUARANTINE` (default: `/Volumes/MUSIC/_work/quarantine`).
 
 ### Problem: Extract Script Not Found
 

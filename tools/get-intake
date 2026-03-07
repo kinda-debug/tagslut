@@ -231,6 +231,16 @@ rename_latest_m3u_from_marker() {
   fi
 }
 
+latest_file_after_marker() {
+  local search_dir="$1"
+  local marker_file="$2"
+  local pattern="${3:-*.m3u}"
+
+  [[ -d "$search_dir" ]] || return 0
+  [[ -f "$marker_file" ]] || return 0
+  find "$search_dir" -maxdepth 1 -type f -name "$pattern" -newer "$marker_file" -print | sort | tail -n1 || true
+}
+
 bpdl_downloads_dir_from_config() {
   if [[ ! -f "$BPDL_CONFIG" ]]; then
     echo ""
@@ -520,6 +530,20 @@ DJ_PLAYLIST_PREFIX="${DJ_PLAYLIST_PREFIX:-dj-}"
 DJ_PLAYLIST_SUFFIX="${DJ_PLAYLIST_SUFFIX:-}"
 
 DOWNLOADER_ARGS=()
+BATCH_AUDIO_START=0
+BATCH_AUDIO_END=0
+ROON_M3U_OUTPUT=""
+DJ_M3U_OUTPUT=""
+DJ_EXPORT_COUNT=0
+POST_MOVE_PID=""
+POST_MOVE_LOG=""
+PREFILTER_KEEP=0
+PREFILTER_SKIP=0
+PREFILTER_TOTAL=0
+PROMOTE_MOVE=0
+STASH_MOVE=0
+QUARANTINE_MOVE=0
+PROMOTED_FLACS_COUNT=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -738,6 +762,7 @@ if [[ "$M3U_ONLY" -eq 0 ]]; then
     [[ -d "$BATCH_ROOT" ]] || err "--batch-root does not exist: $BATCH_ROOT"
   fi
   BATCH_ROOT="$(resolve_path "$BATCH_ROOT")"
+  BATCH_AUDIO_START="$(count_audio_files "$BATCH_ROOT")"
 else
   BATCH_ROOT=""
 fi
@@ -1706,6 +1731,8 @@ if [[ "$M3U_MODE" -eq 1 ]]; then
   if [[ "$M3U_INPUT_COUNT" -eq 0 ]]; then
     echo "No promoted files found on disk for M3U generation; skipping."
   else
+    ROON_M3U_MARKER="$OUT_DIR/roon_m3u_marker_$(date +%Y%m%d_%H%M%S)"
+    : > "$ROON_M3U_MARKER"
     M3U_PATH_ARGS=()
     while IFS= read -r m3u_path; do
       [[ -n "$m3u_path" ]] || continue
@@ -1721,6 +1748,8 @@ if [[ "$M3U_MODE" -eq 1 ]]; then
       --db "$DB_PATH" \
       --source "$SOURCE" \
       "${M3U_PATH_ARGS[@]}"
+    ROON_M3U_OUTPUT="$(latest_file_after_marker "$M3U_DIR" "$ROON_M3U_MARKER")"
+    rm -f "$ROON_M3U_MARKER"
   fi
 fi
 
@@ -1775,9 +1804,12 @@ if errors:
 PY
 
     DJ_M3U_INPUT_COUNT="$(wc -l < "$DJ_M3U_INPUTS_FILE" | tr -d ' ')"
+    DJ_EXPORT_COUNT="$DJ_M3U_INPUT_COUNT"
     if [[ "$DJ_M3U_INPUT_COUNT" -eq 0 ]]; then
       echo "No DJ MP3 files written for playlist generation; skipping DJ M3U."
     else
+      DJ_M3U_MARKER="$OUT_DIR/dj_m3u_marker_$(date +%Y%m%d_%H%M%S)"
+      : > "$DJ_M3U_MARKER"
       DJ_M3U_PATH_ARGS=()
       while IFS= read -r dj_m3u_path; do
         [[ -n "$dj_m3u_path" ]] || continue
@@ -1793,11 +1825,41 @@ PY
         --db "$DB_PATH" \
         --source "$SOURCE" \
         "${DJ_M3U_PATH_ARGS[@]}"
+      DJ_M3U_OUTPUT="$(latest_file_after_marker "$DJ_M3U_DIR" "$DJ_M3U_MARKER")"
+      rm -f "$DJ_M3U_MARKER"
     fi
   fi
 fi
 
 if [[ "$EXECUTE" -eq 1 ]]; then
+  if [[ -n "$BATCH_ROOT" ]]; then
+    BATCH_AUDIO_END="$(count_audio_files "$BATCH_ROOT")"
+  fi
   echo
-  echo "Done: download+intake executed."
+  echo "Run summary"
+  echo "  source:       $SOURCE"
+  if [[ -n "$URL" ]]; then
+    echo "  url:          $URL"
+  fi
+  echo "  batch root:   $BATCH_ROOT"
+  echo "  batch files:  start=$BATCH_AUDIO_START end=$BATCH_AUDIO_END"
+  if [[ "$USE_DOWNLOAD_PRECHECK" -eq 1 ]]; then
+    echo "  precheck:     keep=$PREFILTER_KEEP skip=$PREFILTER_SKIP total=$PREFILTER_TOTAL"
+  fi
+  echo "  promoted:     $PROMOTE_MOVE"
+  echo "  stashed:      $STASH_MOVE"
+  echo "  quarantined:  $QUARANTINE_MOVE"
+  echo "  promoted txt: $PROMOTED_FLACS_FILE ($PROMOTED_FLACS_COUNT files)"
+  if [[ -n "$ROON_M3U_OUTPUT" ]]; then
+    echo "  roon m3u:     $ROON_M3U_OUTPUT"
+  fi
+  if [[ "$DJ_MODE" -eq 1 ]]; then
+    echo "  dj exports:   $DJ_EXPORT_COUNT"
+    if [[ -n "$DJ_M3U_OUTPUT" ]]; then
+      echo "  dj m3u:       $DJ_M3U_OUTPUT"
+    fi
+  fi
+  if [[ -n "$POST_MOVE_PID" ]]; then
+    echo "  enrich/art:   pid=$POST_MOVE_PID log=$POST_MOVE_LOG"
+  fi
 fi

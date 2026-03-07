@@ -11,6 +11,7 @@ tools/get <provider-url> --dj
 ```
 
 That runs precheck, download, tagging/enrichment, promote, merged M3U generation, and DJ MP3 export in one flow.
+Use `--verbose` only when you want internal wrapper diagnostics.
 
 ## DJ Library Root
 

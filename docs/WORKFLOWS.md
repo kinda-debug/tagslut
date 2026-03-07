@@ -41,6 +41,9 @@ tools/get "https://tidal.com/browse/album/..." --no-precheck
 
 # Skip tagging/enrich/art
 tools/get "https://www.beatport.com/release/.../..." --no-hoard
+
+# Print internal paths, logs, and stage diagnostics
+tools/get "https://www.beatport.com/release/.../..." --verbose
 ```
 
 High-level workflow flags:
@@ -51,8 +54,10 @@ High-level workflow flags:
 - `--hoard` keeps the tagging/enrich/art pipeline on (default)
 - `--no-hoard` disables tagging/enrich/art
 - `--no-precheck` bypasses same-or-better duplicate filtering
-- `--force-download` keeps matched tracks anyway
+- `--force-download` still downloads matched tracks, but promote keeps the equal-or-better existing library file by default
 - `--providers beatport,tidal,...` overrides metadata provider order
+- `--verbose` prints internal paths, artifacts, and batch snapshots
+- quarantine/stash output lives under `VOLUME_QUARANTINE` (default: `/Volumes/MUSIC/_work/quarantine`)
 
 Advanced/backend command:
 - `tools/get-intake` is for existing batch roots, `--m3u-only`, and direct pipeline control
@@ -93,6 +98,8 @@ tools/get-auto --links-file ~/links.txt
 ```
 
 Outputs: `output/precheck/precheck_decisions_*.csv`, `precheck_keep_track_urls_*.txt`
+
+Use `--quiet` for script-level automation, or run through `tools/get` for the normal concise operator flow.
 
 ### 2 · Download
 

@@ -256,11 +256,15 @@ Primary downloader:
 tools/get <provider-url>
 tools/get <provider-url> --dj
 tools/get <provider-url> --no-hoard
+tools/get <provider-url> --verbose
 
 Notes:
 	•	`tools/get` is the primary user-facing downloader.
 	•	`tools/get-intake` is the advanced/backend command for existing batch roots and `--m3u-only`.
 	•	`tools/get-sync` is deprecated compatibility only.
+	•	Default wrapper output should stay concise; use `--verbose` only when debugging wrapper behavior.
+	•	`--force-download` should not replace an equal-or-better library file by default.
+	•	Quarantine/stash output belongs under `/Volumes/MUSIC/_work/quarantine`, not local staging storage.
 
 CI triage:
 

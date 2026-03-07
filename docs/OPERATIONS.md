@@ -43,6 +43,7 @@ Notes:
 - `PLAYLIST_ROOT` is the Roon-visible playlist folder inside the master library. `tools/get` writes relative-path M3Us there.
 - `DJ_LIBRARY` is the derived DJ library.
 - `DJ_PLAYLIST_ROOT` is the DJ playlist destination. `tools/get --dj` writes absolute-path M3Us there for Rekordbox/Lexicon.
+- `VOLUME_QUARANTINE` is the active quarantine/stash root. Default live path is `/Volumes/MUSIC/_work/quarantine`.
 - `ROOT_BP` and `ROOT_TD` are the default provider batch roots used by `tools/get`.
 - `LIBRARY_ROOT`, `VOLUME_LIBRARY`, `DJ_MP3_ROOT`, and `DJ_LIBRARY_ROOT` remain compatibility aliases.
 - Eligible non-FLAC lossless inputs are inspected at scan time and converted to FLAC before registration.
@@ -60,11 +61,16 @@ tools/get <provider-url> --dj
 
 # Skip tagging/enrich/art
 tools/get <provider-url> --no-hoard
+
+# Show internal paths, artifacts, and batch snapshots
+tools/get <provider-url> --verbose
 ```
 
 Notes:
 - `tools/get` is the primary user-facing downloader for Beatport and Tidal.
+- default output is concise; add `--verbose` only when debugging the wrapper itself
 - local identify/tag prep runs before promote; external enrich + cover art are launched in the background after promote
+- `--force-download` downloads matched URLs anyway, but promotion still keeps an equal-or-better existing library file unless you intentionally run a replacement workflow
 - `tools/get-intake` is the advanced/backend command for existing batch roots and `--m3u-only`.
 - `tools/get-sync` is deprecated and kept only as a compatibility alias.
 

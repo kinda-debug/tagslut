@@ -8,7 +8,7 @@
 #  2) Quick duplicate check via tagslut index check (strict, non-interactive)
 #  3) Fast trust scan + integrity registration
 #  4) Cross-root fingerprint audit against final library
-#  5) Build promote/stash/quarantine plans
+#  5) Build promote/fix/quarantine/discard plans
 #  6) Optionally execute move plans (move-only semantics)
 #
 # Default behavior is safe: plans only (no moves) unless --execute is passed.
@@ -34,6 +34,7 @@ MOVE_SCRIPT="$SCRIPT_DIR/review/move_from_plan.py"
 PROCESS_ROOT_SCRIPT="$SCRIPT_DIR/review/process_root.py"
 PRE_DOWNLOAD_CHECK_SCRIPT="$SCRIPT_DIR/review/pre_download_check.py"
 POST_MOVE_ENRICH_SCRIPT="$SCRIPT_DIR/review/post_move_enrich_art.py"
+PLAN_SKIPPED_SCRIPT="$SCRIPT_DIR/review/plan_move_skipped.py"
 BPDL_BIN="$SCRIPT_DIR/beatportdl/bpdl/bpdl"
 BPDL_CONFIG="$SCRIPT_DIR/beatportdl/bpdl/beatportdl-config.yml"
 
@@ -59,7 +60,10 @@ Options:
   --url URL            Source URL (alternative to positional URL)
   --db PATH            SQLite DB path (default: $TAGSLUT_DB or auto-detected tagslut_db epoch; errors if ambiguous)
   --library-root PATH  Final library root (default: $LIBRARY_ROOT or $VOLUME_LIBRARY or $MASTER_LIBRARY)
-  --fix-root PATH      Quarantine/FIX root (default: $FIX_ROOT or $VOLUME_QUARANTINE or artifacts/quarantine)
+  --fix-root PATH      FIX root for salvageable metadata issues (default: $FIX_ROOT or $VOLUME_WORK/fix)
+  --quarantine-root PATH
+                       Quarantine root for risky files (default: $QUARANTINE_ROOT or $VOLUME_QUARANTINE)
+  --discard-root PATH  Discard root for deterministic duplicates like dest_exists (default: $DISCARD_ROOT or $VOLUME_WORK/discard)
   --out-dir PATH       Output directory for plans (default: $TAGSLUT_ARTIFACTS/compare or artifacts/compare)
   --workers N          Fingerprint workers (default: 7)
   --trust N            Pre-scan trust score 0..3 (default: 3)
@@ -338,11 +342,45 @@ default_library_root() {
     "${MASTER_LIBRARY:-}"
 }
 
+default_work_root() {
+  local quarantine_root=""
+  quarantine_root="$(first_nonempty "${QUARANTINE_ROOT:-}" "${VOLUME_QUARANTINE:-}")"
+  if [[ -n "$quarantine_root" && "$(basename "$quarantine_root")" == "quarantine" ]]; then
+    dirname "$quarantine_root"
+    return 0
+  fi
+  first_nonempty \
+    "${WORK_ROOT:-}" \
+    "${VOLUME_WORK:-}" \
+    "$REPO_ROOT/artifacts/work"
+}
+
 default_fix_root() {
+  local work_root=""
+  work_root="$(default_work_root || true)"
   first_nonempty \
     "${FIX_ROOT:-}" \
+    "${work_root:+$work_root/fix}" \
+    "$REPO_ROOT/artifacts/fix"
+}
+
+default_quarantine_root() {
+  local work_root=""
+  work_root="$(default_work_root || true)"
+  first_nonempty \
+    "${QUARANTINE_ROOT:-}" \
     "${VOLUME_QUARANTINE:-}" \
+    "${work_root:+$work_root/quarantine}" \
     "$REPO_ROOT/artifacts/quarantine"
+}
+
+default_discard_root() {
+  local work_root=""
+  work_root="$(default_work_root || true)"
+  first_nonempty \
+    "${DISCARD_ROOT:-}" \
+    "${work_root:+$work_root/discard}" \
+    "$REPO_ROOT/artifacts/discard"
 }
 
 default_out_dir() {
@@ -513,6 +551,8 @@ SOURCE=""
 DB_PATH="${TAGSLUT_DB:-}"
 LIBRARY_ROOT="${LIBRARY_ROOT:-}"
 FIX_ROOT="${FIX_ROOT:-}"
+QUARANTINE_ROOT="${QUARANTINE_ROOT:-${VOLUME_QUARANTINE:-}}"
+DISCARD_ROOT="${DISCARD_ROOT:-}"
 OUT_DIR="${TAGSLUT_COMPARE_DIR:-}"
 WORKERS=7
 TRUST=3
@@ -544,6 +584,8 @@ PROMOTE_MOVE=0
 STASH_MOVE=0
 QUARANTINE_MOVE=0
 PROMOTED_FLACS_COUNT=0
+FIX_SKIP_MOVE=0
+DISCARD_MOVE=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -575,6 +617,16 @@ while [[ $# -gt 0 ]]; do
     --fix-root)
       [[ $# -ge 2 ]] || err "--fix-root requires a value"
       FIX_ROOT="$2"
+      shift 2
+      ;;
+    --quarantine-root)
+      [[ $# -ge 2 ]] || err "--quarantine-root requires a value"
+      QUARANTINE_ROOT="$2"
+      shift 2
+      ;;
+    --discard-root)
+      [[ $# -ge 2 ]] || err "--discard-root requires a value"
+      DISCARD_ROOT="$2"
       shift 2
       ;;
     --out-dir)
@@ -751,6 +803,7 @@ fi
 [[ -f "$PROCESS_ROOT_SCRIPT" ]] || err "Missing script: $PROCESS_ROOT_SCRIPT"
 [[ -f "$PRE_DOWNLOAD_CHECK_SCRIPT" ]] || err "Missing script: $PRE_DOWNLOAD_CHECK_SCRIPT"
 [[ -f "$POST_MOVE_ENRICH_SCRIPT" ]] || err "Missing script: $POST_MOVE_ENRICH_SCRIPT"
+[[ -f "$PLAN_SKIPPED_SCRIPT" ]] || err "Missing script: $PLAN_SKIPPED_SCRIPT"
 
 command -v poetry >/dev/null 2>&1 || err "poetry is required in PATH"
 command -v python >/dev/null 2>&1 || err "python is required in PATH"
@@ -773,9 +826,19 @@ LIBRARY_ROOT="${LIBRARY_ROOT:-$(default_library_root || true)}"
 LIBRARY_ROOT="$(resolve_path "$LIBRARY_ROOT")"
 
 FIX_ROOT="${FIX_ROOT:-$(default_fix_root || true)}"
-[[ -n "$FIX_ROOT" ]] || err "Missing fix/quarantine root. Set --fix-root or VOLUME_QUARANTINE."
+[[ -n "$FIX_ROOT" ]] || err "Missing fix root. Set --fix-root or FIX_ROOT."
 mkdir -p "$FIX_ROOT"
 FIX_ROOT="$(resolve_path "$FIX_ROOT")"
+
+QUARANTINE_ROOT="${QUARANTINE_ROOT:-$(default_quarantine_root || true)}"
+[[ -n "$QUARANTINE_ROOT" ]] || err "Missing quarantine root. Set --quarantine-root or VOLUME_QUARANTINE."
+mkdir -p "$QUARANTINE_ROOT"
+QUARANTINE_ROOT="$(resolve_path "$QUARANTINE_ROOT")"
+
+DISCARD_ROOT="${DISCARD_ROOT:-$(default_discard_root || true)}"
+[[ -n "$DISCARD_ROOT" ]] || err "Missing discard root. Set --discard-root or DISCARD_ROOT."
+mkdir -p "$DISCARD_ROOT"
+DISCARD_ROOT="$(resolve_path "$DISCARD_ROOT")"
 
 DB_PATH="$(cd "$(dirname "$DB_PATH")" && pwd -P)/$(basename "$DB_PATH")"
 if [[ "$M3U_MODE" -eq 1 ]]; then
@@ -808,7 +871,9 @@ if [[ "$VERBOSE" -eq 1 ]]; then
   echo "DB:           $DB_PATH"
 fi
 echo "Library root: $LIBRARY_ROOT"
-echo "FIX root:     $FIX_ROOT"
+echo "Fix root:     $FIX_ROOT"
+echo "Quarantine:   $QUARANTINE_ROOT"
+echo "Discard root: $DISCARD_ROOT"
 if [[ "$VERBOSE" -eq 1 ]]; then
   echo "Output dir:   $OUT_DIR"
 fi
@@ -1520,7 +1585,7 @@ run_cmd python "$AUDIT_SCRIPT" \
   --workers "$WORKERS"
 STEP=$((STEP + 1))
 
-step "$STEP" "$TOTAL_STEPS" "Plan promote/stash/quarantine"
+step "$STEP" "$TOTAL_STEPS" "Plan promote/fix/quarantine/discard"
 run_cmd python "$PLAN_SCRIPT" \
   --db "$DB_PATH" \
   --source-root "$BATCH_ROOT" \
@@ -1528,7 +1593,7 @@ run_cmd python "$PLAN_SCRIPT" \
   --dest-root "$LIBRARY_ROOT" \
   --prefer-root "$BATCH_ROOT" \
   --stash-folder-name "../FIX" \
-  --quarantine-root "$FIX_ROOT" \
+  --quarantine-root "$QUARANTINE_ROOT" \
   --quarantine-missing-fp \
   --out-dir "$OUT_DIR"
 STEP=$((STEP + 1))
@@ -1597,14 +1662,57 @@ with dst_csv.open("w", newline="", encoding="utf-8") as handle:
     writer.writerows(rows)
 PY
 
+PLAN_STAMP="$(basename "$SUMMARY_JSON" | sed -E 's/^plan_fpcalc_unique_final_summary_([0-9_]+)\.json$/\1/')"
+FIX_SKIP_PLAN="$OUT_DIR/plan_move_skipped_to_fix_${PLAN_STAMP}.csv"
+FIX_SKIP_SUMMARY="$OUT_DIR/plan_move_skipped_to_fix_summary_${PLAN_STAMP}.json"
+DISCARD_PLAN="$OUT_DIR/plan_move_skipped_to_discard_${PLAN_STAMP}.csv"
+DISCARD_SUMMARY="$OUT_DIR/plan_move_skipped_to_discard_summary_${PLAN_STAMP}.json"
+
+run_cmd python "$PLAN_SKIPPED_SCRIPT" \
+  "$PROMOTE_PLAN" \
+  --target-root "$FIX_ROOT" \
+  --source-root "$BATCH_ROOT" \
+  --include-buckets "missing_tags,path_too_long,conflict_same_dest" \
+  --output-prefix "plan_move_skipped_to_fix" \
+  --out-dir "$OUT_DIR" \
+  --stamp "$PLAN_STAMP"
+
+run_cmd python "$PLAN_SKIPPED_SCRIPT" \
+  "$PROMOTE_PLAN" \
+  --target-root "$DISCARD_ROOT" \
+  --source-root "$BATCH_ROOT" \
+  --include-buckets "dest_exists" \
+  --output-prefix "plan_move_skipped_to_discard" \
+  --out-dir "$OUT_DIR" \
+  --stamp "$PLAN_STAMP"
+
+eval "$(python - "$FIX_SKIP_SUMMARY" "$DISCARD_SUMMARY" <<'PY'
+import json
+import shlex
+import sys
+
+def emit(key, value):
+    print(f"{key}={shlex.quote(str(value))}")
+
+for prefix, path in (("FIX", sys.argv[1]), ("DISCARD", sys.argv[2])):
+    payload = json.load(open(path, encoding="utf-8"))
+    emit(f"{prefix}_SKIP_MOVE", payload.get("selected_rows", 0))
+    emit(f"{prefix}_SKIP_PLAN", payload.get("plan_csv", ""))
+PY
+)"
+
 echo
 echo "Plan summary: $SUMMARY_JSON"
 echo "  promote:    $PROMOTE_MOVE"
 echo "  stash:      $STASH_MOVE"
 echo "  quarantine: $QUARANTINE_MOVE"
+echo "  fix skips:  $FIX_SKIP_MOVE"
+echo "  discard:    $DISCARD_MOVE"
 echo "  promote csv:    $PROMOTE_PLAN"
 echo "  stash csv:      $STASH_PLAN_NORMALIZED (normalized to FIX root)"
 echo "  quarantine csv: $QUARANTINE_PLAN"
+echo "  fix csv:        $FIX_SKIP_PLAN"
+echo "  discard csv:    $DISCARD_PLAN"
 
 step "$STEP" "$TOTAL_STEPS" "Apply plans"
 if [[ "$EXECUTE" -eq 1 ]]; then
@@ -1632,10 +1740,32 @@ if [[ "$EXECUTE" -eq 1 ]]; then
     run_cmd python "$MOVE_SCRIPT" \
       "$QUARANTINE_PLAN" \
       --source-root "$BATCH_ROOT" \
+      --dest-root "$QUARANTINE_ROOT" \
+      --db "$DB_PATH" \
+      --zone quarantine \
+      --mgmt-status moved_to_quarantine \
+      --execute
+  fi
+
+  if [[ "$FIX_SKIP_MOVE" -gt 0 ]]; then
+    run_cmd python "$MOVE_SCRIPT" \
+      "$FIX_SKIP_PLAN" \
+      --source-root "$BATCH_ROOT" \
       --dest-root "$FIX_ROOT" \
       --db "$DB_PATH" \
       --zone suspect \
-      --mgmt-status moved_to_fix \
+      --mgmt-status moved_to_fix_from_skip \
+      --execute
+  fi
+
+  if [[ "$DISCARD_MOVE" -gt 0 ]]; then
+    run_cmd python "$MOVE_SCRIPT" \
+      "$DISCARD_PLAN" \
+      --source-root "$BATCH_ROOT" \
+      --dest-root "$DISCARD_ROOT" \
+      --db "$DB_PATH" \
+      --zone suspect \
+      --mgmt-status moved_to_discard \
       --execute
   fi
 else
@@ -1646,7 +1776,13 @@ else
     echo "  python \"$MOVE_SCRIPT\" \"$STASH_PLAN_NORMALIZED\" --source-root \"$BATCH_ROOT\" --dest-root \"$FIX_ROOT\" --db \"$DB_PATH\" --zone suspect --mgmt-status moved_to_fix --execute"
   fi
   if [[ "$QUARANTINE_MOVE" -gt 0 ]]; then
-    echo "  python \"$MOVE_SCRIPT\" \"$QUARANTINE_PLAN\" --source-root \"$BATCH_ROOT\" --dest-root \"$FIX_ROOT\" --db \"$DB_PATH\" --zone suspect --mgmt-status moved_to_fix --execute"
+    echo "  python \"$MOVE_SCRIPT\" \"$QUARANTINE_PLAN\" --source-root \"$BATCH_ROOT\" --dest-root \"$QUARANTINE_ROOT\" --db \"$DB_PATH\" --zone quarantine --mgmt-status moved_to_quarantine --execute"
+  fi
+  if [[ "$FIX_SKIP_MOVE" -gt 0 ]]; then
+    echo "  python \"$MOVE_SCRIPT\" \"$FIX_SKIP_PLAN\" --source-root \"$BATCH_ROOT\" --dest-root \"$FIX_ROOT\" --db \"$DB_PATH\" --zone suspect --mgmt-status moved_to_fix_from_skip --execute"
+  fi
+  if [[ "$DISCARD_MOVE" -gt 0 ]]; then
+    echo "  python \"$MOVE_SCRIPT\" \"$DISCARD_PLAN\" --source-root \"$BATCH_ROOT\" --dest-root \"$DISCARD_ROOT\" --db \"$DB_PATH\" --zone suspect --mgmt-status moved_to_discard --execute"
   fi
 fi
 
@@ -1668,6 +1804,9 @@ seen = set()
 with plan_csv.open(newline="", encoding="utf-8") as handle:
     reader = csv.DictReader(handle)
     for row in reader:
+        action = (row.get("action") or "").strip().upper()
+        if action != "MOVE":
+            continue
         dest = Path((row.get("dest_path") or "").strip())
         src = Path((row.get("path") or "").strip())
         candidate = None
@@ -1849,6 +1988,8 @@ if [[ "$EXECUTE" -eq 1 ]]; then
   echo "  promoted:     $PROMOTE_MOVE"
   echo "  stashed:      $STASH_MOVE"
   echo "  quarantined:  $QUARANTINE_MOVE"
+  echo "  fix skips:    $FIX_SKIP_MOVE"
+  echo "  discarded:    $DISCARD_MOVE"
   echo "  promoted txt: $PROMOTED_FLACS_FILE ($PROMOTED_FLACS_COUNT files)"
   if [[ -n "$ROON_M3U_OUTPUT" ]]; then
     echo "  roon m3u:     $ROON_M3U_OUTPUT"

@@ -70,7 +70,11 @@ Notes:
 - local identify/tag prep runs before promote; external enrich + cover art now launch in the background after promote
 - `tools/get --m3u` writes Roon-style playlists inside `PLAYLIST_ROOT` using relative paths.
 - `tools/get --dj` writes DJ playlists inside `DJ_PLAYLIST_ROOT` using absolute paths for Rekordbox/Lexicon.
-- quarantine/stash output now lives under `$VOLUME_QUARANTINE` (default: `/Volumes/MUSIC/_work/quarantine`)
+- work output is split by intent:
+  - `FIX_ROOT` for salvageable metadata/tag issues (default: `/Volumes/MUSIC/_work/fix`)
+  - `QUARANTINE_ROOT` / `$VOLUME_QUARANTINE` for risky files only (default: `/Volumes/MUSIC/_work/quarantine`)
+  - `DISCARD_ROOT` for deterministic duplicates like `dest_exists` (default: `/Volumes/MUSIC/_work/discard`)
+- expired quarantine can be reviewed or purged with `python tools/review/quarantine_gc.py --root "$QUARANTINE_ROOT" --days "$QUARANTINE_RETENTION_DAYS"`
 - `--force-download` bypasses the pre-download skip so matched URLs are still fetched, but equal-or-better library files still win at promote time unless you run an explicit replacement workflow
 - `tools/get-intake` is the advanced/backend command for existing batch roots, `--m3u-only`, and direct pipeline control.
 - `tools/get-sync` is a deprecated Beatport compatibility alias.

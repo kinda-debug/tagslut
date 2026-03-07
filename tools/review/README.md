@@ -7,7 +7,8 @@ Active operational scripts for tagslut planning, analysis, and move execution.
 1. Build a plan:
 - `plan_promote_to_final_library.py`
 - `plan_fpcalc_*` planners
-- `plan_move_skipped_to_fix.py`
+- `plan_move_skipped.py`
+- `plan_move_skipped_to_fix.py` (older FIX-specific helper)
 
 2. Review and summarize:
 - `plan_summary.py`
@@ -19,6 +20,7 @@ Active operational scripts for tagslut planning, analysis, and move execution.
 3. Execute move-only actions:
 - `move_from_plan.py`
 - `quarantine_from_plan.py`
+- `quarantine_gc.py`
 - `promote_by_tags.py` (direct promotion path; use `--move-log` for JSONL move audit output)
 
 4. Sync DB after moves:

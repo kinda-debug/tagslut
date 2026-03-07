@@ -264,7 +264,7 @@ Notes:
 	•	`tools/get-sync` is deprecated compatibility only.
 	•	Default wrapper output should stay concise; use `--verbose` only when debugging wrapper behavior.
 	•	`--force-download` should not replace an equal-or-better library file by default.
-	•	Quarantine/stash output belongs under `/Volumes/MUSIC/_work/quarantine`, not local staging storage.
+	•	Work output is split: `FIX_ROOT=/Volumes/MUSIC/_work/fix`, `QUARANTINE_ROOT=/Volumes/MUSIC/_work/quarantine`, `DISCARD_ROOT=/Volumes/MUSIC/_work/discard`.
 
 CI triage:
 

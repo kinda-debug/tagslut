@@ -67,6 +67,7 @@ Role: Primary user-facing download workflow.
 - default behavior: precheck + download + tagging/enrich/art + promote + merged M3U
 - default output is concise; `--verbose` enables internal paths, artifact files, and batch snapshots
 - high-level workflow flags: `--dj`, `--hoard`, `--no-hoard`, `--no-precheck`, `--force-download`, `--providers`, `--verbose`
+- work roots are split by intent: `FIX_ROOT`, `QUARANTINE_ROOT`, `DISCARD_ROOT`
 - `--simple` keeps downloader-only behavior
 
 2. `tools/get-intake ...`
@@ -126,9 +127,11 @@ Use `tagslut intake/index/decide/execute/verify/report/auth/dj/gig/export/init` 
   - `tagslut intake process-root --root <folder> [--db <db>]`
 - For move execution today, use:
   - Plan generation scripts in `tools/review/`
-  - `tools/review/move_from_plan.py`
-  - `tools/review/quarantine_from_plan.py`
-  - `tools/review/promote_by_tags.py` (`--move-log` for JSONL move audit output)
+- `tools/review/move_from_plan.py`
+- `tools/review/quarantine_from_plan.py`
+- `tools/review/plan_move_skipped.py`
+- `tools/review/quarantine_gc.py`
+- `tools/review/promote_by_tags.py` (`--move-log` for JSONL move audit output)
 - Archived compatibility contract:
   - `docs/archive/legacy-root-docs-2026-03-06-md-cleanup/MOVE_EXECUTOR_COMPAT.md`
 - Historical phase runbooks and verification reports:

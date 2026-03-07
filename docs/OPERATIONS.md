@@ -33,6 +33,10 @@ export ROOT_BP="${ROOT_BP:-$STAGING_ROOT/bpdl}"
 export ROOT_TD="${ROOT_TD:-$STAGING_ROOT/tidal}"
 export PLAYLIST_ROOT="${PLAYLIST_ROOT:-$MASTER_LIBRARY/playlists}"
 export DJ_PLAYLIST_ROOT="${DJ_PLAYLIST_ROOT:-$DJ_LIBRARY}"
+export VOLUME_WORK="${VOLUME_WORK:-/Volumes/MUSIC/_work}"
+export FIX_ROOT="${FIX_ROOT:-$VOLUME_WORK/fix}"
+export QUARANTINE_ROOT="${QUARANTINE_ROOT:-${VOLUME_QUARANTINE:-$VOLUME_WORK/quarantine}}"
+export DISCARD_ROOT="${DISCARD_ROOT:-$VOLUME_WORK/discard}"
 export SCAN_ROOT="${SCAN_ROOT:-$STAGING_ROOT}"
 export PROMOTE_ROOT="${PROMOTE_ROOT:-$STAGING_ROOT}"
 export COMPARE_ROOT="${COMPARE_ROOT:-${TAGSLUT_ARTIFACTS:-artifacts}/compare}"
@@ -43,7 +47,10 @@ Notes:
 - `PLAYLIST_ROOT` is the Roon-visible playlist folder inside the master library. `tools/get` writes relative-path M3Us there.
 - `DJ_LIBRARY` is the derived DJ library.
 - `DJ_PLAYLIST_ROOT` is the DJ playlist destination. `tools/get --dj` writes absolute-path M3Us there for Rekordbox/Lexicon.
-- `VOLUME_QUARANTINE` is the active quarantine/stash root. Default live path is `/Volumes/MUSIC/_work/quarantine`.
+- work output is split:
+  - `FIX_ROOT=/Volumes/MUSIC/_work/fix` for salvageable metadata/tag issues
+  - `QUARANTINE_ROOT` / `VOLUME_QUARANTINE=/Volumes/MUSIC/_work/quarantine` for risky files only
+  - `DISCARD_ROOT=/Volumes/MUSIC/_work/discard` for deterministic duplicates like `dest_exists`
 - `ROOT_BP` and `ROOT_TD` are the default provider batch roots used by `tools/get`.
 - `LIBRARY_ROOT`, `VOLUME_LIBRARY`, `DJ_MP3_ROOT`, and `DJ_LIBRARY_ROOT` remain compatibility aliases.
 - Eligible non-FLAC lossless inputs are inspected at scan time and converted to FLAC before registration.
@@ -71,6 +78,7 @@ Notes:
 - default output is concise; add `--verbose` only when debugging the wrapper itself
 - local identify/tag prep runs before promote; external enrich + cover art are launched in the background after promote
 - `--force-download` downloads matched URLs anyway, but promotion still keeps an equal-or-better existing library file unless you intentionally run a replacement workflow
+- expired quarantine can be reviewed or purged with `python tools/review/quarantine_gc.py --root "$QUARANTINE_ROOT" --days "$QUARANTINE_RETENTION_DAYS"`
 - `tools/get-intake` is the advanced/backend command for existing batch roots and `--m3u-only`.
 - `tools/get-sync` is deprecated and kept only as a compatibility alias.
 

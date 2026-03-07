@@ -20,6 +20,10 @@ Use canonical entry points for new work: `tagslut intake/index/decide/execute/ve
 > export PLAYLIST_ROOT="${PLAYLIST_ROOT:-$MASTER_LIBRARY/playlists}"
 > export DJ_LIBRARY="${DJ_LIBRARY:-${DJ_MP3_ROOT:-}}"
 > export DJ_PLAYLIST_ROOT="${DJ_PLAYLIST_ROOT:-$DJ_LIBRARY}"
+> export VOLUME_WORK="${VOLUME_WORK:-/Volumes/MUSIC/_work}"
+> export FIX_ROOT="${FIX_ROOT:-$VOLUME_WORK/fix}"
+> export QUARANTINE_ROOT="${QUARANTINE_ROOT:-${VOLUME_QUARANTINE:-$VOLUME_WORK/quarantine}}"
+> export DISCARD_ROOT="${DISCARD_ROOT:-$VOLUME_WORK/discard}"
 > ```
 
 ---
@@ -57,7 +61,10 @@ High-level workflow flags:
 - `--force-download` still downloads matched tracks, but promote keeps the equal-or-better existing library file by default
 - `--providers beatport,tidal,...` overrides metadata provider order
 - `--verbose` prints internal paths, artifacts, and batch snapshots
-- quarantine/stash output lives under `VOLUME_QUARANTINE` (default: `/Volumes/MUSIC/_work/quarantine`)
+- work output is split by intent:
+  - `FIX_ROOT` for salvageable metadata/tag issues
+  - `QUARANTINE_ROOT` / `VOLUME_QUARANTINE` for risky files only
+  - `DISCARD_ROOT` for deterministic duplicates like `dest_exists`
 
 Advanced/backend command:
 - `tools/get-intake` is for existing batch roots, `--m3u-only`, and direct pipeline control
@@ -113,6 +120,11 @@ tools/get "https://www.deezer.com/en/track/..."
 tools/get-intake --no-download --batch-root "$STAGING_ROOT/bpdl" --execute
 tools/tiddl    "https://tidal.com/browse/album/..."    # downloader-only Tidal
 tools/deemix   "https://www.deezer.com/en/track/..."   # Deezer (FLAC, auto-registers)
+
+# Quarantine retention cleanup
+python tools/review/quarantine_gc.py \
+  --root "$QUARANTINE_ROOT" \
+  --days "$QUARANTINE_RETENTION_DAYS"
 ```
 
 | Source   | Wrapper          | `--source` flag | Auto-register | Default path              |

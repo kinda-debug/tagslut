@@ -93,7 +93,9 @@ tools/get "<url>" --force-download
 
 Notes:
 - `--force-download` only affects the download decision. It does not make a lower-quality incoming file replace an equal-or-better library file.
-- Lower-quality duplicates are quarantined under `$VOLUME_QUARANTINE` (default: `/Volumes/MUSIC/_work/quarantine`).
+- salvageable metadata/tag issues go to `FIX_ROOT` (default: `/Volumes/MUSIC/_work/fix`)
+- risky files go to `QUARANTINE_ROOT` / `$VOLUME_QUARANTINE` (default: `/Volumes/MUSIC/_work/quarantine`)
+- deterministic `dest_exists` duplicates go to `DISCARD_ROOT` (default: `/Volumes/MUSIC/_work/discard`)
 
 ### Problem: Extract Script Not Found
 
@@ -151,8 +153,8 @@ ls -la /path/to/destination/
 **Solution:**
 This is by design - tagslut uses move-only semantics and won't overwrite.
 1. Review duplicates: `tagslut index check`
-2. Quarantine duplicate: `tagslut execute quarantine-plan`
-3. Or manually resolve
+2. Deterministic duplicates should go to `DISCARD_ROOT`, not quarantine
+3. Use quarantine only for genuinely risky files
 
 ### Problem: Interrupted Move
 
@@ -269,6 +271,13 @@ These commands were retired on Feb 9, 2026:
 | `tagslut mgmt` | `tagslut index ... + tagslut report m3u ...` |
 | `tagslut metadata` | `tagslut auth ... + tagslut index enrich ...` |
 | `tagslut recover` | `tagslut verify recovery ... + tagslut report recovery ...` |
+
+Retention cleanup:
+```bash
+python tools/review/quarantine_gc.py \
+  --root "$QUARANTINE_ROOT" \
+  --days "$QUARANTINE_RETENTION_DAYS"
+```
 
 ---
 

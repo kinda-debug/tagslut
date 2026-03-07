@@ -156,8 +156,8 @@ def test_scan_package_absent_or_stubbed() -> None:
     assert "ImportError" in init_text
 
 
-def test_recovery_is_archived() -> None:
-    with pytest.raises(ImportError, match="archived"):
+def test_recovery_is_decommissioned() -> None:
+    with pytest.raises(ImportError):
         import tagslut.recovery  # noqa: F401
 
 

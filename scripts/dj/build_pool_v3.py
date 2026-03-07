@@ -264,9 +264,9 @@ def main(argv: list[str] | None = None) -> int:
         if not _guard_out_dir(out_dir):
             print("refusing unsafe --out-dir")
             return 2
-        library_root = os.environ.get("LIBRARY_ROOT", "").strip()
+        library_root = (os.environ.get("MASTER_LIBRARY") or os.environ.get("LIBRARY_ROOT", "")).strip()
         if library_root and _is_inside(Path(library_root).expanduser().resolve(), out_dir):
-            print("refusing --out-dir inside LIBRARY_ROOT")
+            print("refusing --out-dir inside MASTER_LIBRARY")
             return 2
 
     ffmpeg = shutil.which("ffmpeg")

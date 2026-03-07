@@ -301,8 +301,8 @@ python tools/metadata_scripts/sync_mp3_tags_from_flac.py --mp3-root <mp3_root> -
 
 MP3 sync defaults:
 
-DJ_MP3_ROOT=<mp3_root>
-DJ_LIBRARY_ROOT=<flac_root>
+DJ_LIBRARY=<mp3_root>
+MASTER_LIBRARY=<flac_root>
 
 Current CI note:
 

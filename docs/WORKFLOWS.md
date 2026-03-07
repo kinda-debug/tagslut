@@ -13,11 +13,11 @@ Use canonical entry points for new work: `tagslut intake/index/decide/execute/ve
 > source .env
 > set +a
 > export V3_DB="${V3_DB:-$TAGSLUT_DB}"
-> export LIBRARY_ROOT="${LIBRARY_ROOT:-$VOLUME_LIBRARY}"
+> export MASTER_LIBRARY="${MASTER_LIBRARY:-${LIBRARY_ROOT:-$VOLUME_LIBRARY}}"
 > export STAGING_ROOT="${STAGING_ROOT:-$VOLUME_STAGING}"
 > export ROOT_BP="${ROOT_BP:-$STAGING_ROOT/bpdl}"
 > export ROOT_TD="${ROOT_TD:-$STAGING_ROOT/tiddl}"
-> export DJ_LIBRARY_ROOT="${DJ_LIBRARY_ROOT:-$LIBRARY_ROOT}"
+> export DJ_LIBRARY="${DJ_LIBRARY:-${DJ_MP3_ROOT:-}}"
 > ```
 
 ---
@@ -135,11 +135,11 @@ Status meanings: `ok` = safe for DJ use · `warn` = review · `fail` = do not pr
 ```bash
 # Dry run first (always)
 poetry run tagslut execute promote-tags "$STAGING_ROOT" \
-  --dest "$LIBRARY_ROOT"
+  --dest "$MASTER_LIBRARY"
 
 # Execute
 poetry run tagslut execute promote-tags "$STAGING_ROOT" \
-  --dest "$LIBRARY_ROOT" --execute
+  --dest "$MASTER_LIBRARY" --execute
 ```
 
 Gates: corrupt FLACs are blocked (`flac -t`). `duration_status` must be `ok` (override: `--allow-non-ok-duration`).
@@ -147,15 +147,15 @@ Gates: corrupt FLACs are blocked (`flac -t`). `duration_status` must be `ok` (ov
 Alternatively, use the replace+merge script for smarter conflict handling:
 ```bash
 python tools/review/promote_replace_merge.py "$STAGING_ROOT" \
-  --dest "$LIBRARY_ROOT" --db "$TAGSLUT_DB" --execute
+  --dest "$MASTER_LIBRARY" --db "$TAGSLUT_DB" --execute
 ```
 
 ### 8 · Rebuild playlists
 
 ```bash
 # Roon M3U export
-poetry run tagslut report m3u "$LIBRARY_ROOT" \
-  --db "$TAGSLUT_DB" --source library --m3u-dir "$LIBRARY_ROOT" --merge
+poetry run tagslut report m3u "$MASTER_LIBRARY" \
+  --db "$TAGSLUT_DB" --source library --m3u-dir "$MASTER_LIBRARY" --merge
 
 # Review warn/fail/unknown buckets
 poetry run tagslut verify duration --db "$TAGSLUT_DB" --status warn,fail,unknown
@@ -187,9 +187,9 @@ python3 - <<'PY'
 import os, subprocess
 from pathlib import Path
 
-SRC_ROOT = Path('$LIBRARY_ROOT')
-DST_ROOT = Path('$DJ_MP3_ROOT')
-M3U      = Path('$LIBRARY_ROOT/MDL_NEW_TRACKS.m3u')
+SRC_ROOT = Path('$MASTER_LIBRARY')
+DST_ROOT = Path('$DJ_LIBRARY')
+M3U      = Path('$MASTER_LIBRARY/MDL_NEW_TRACKS.m3u')
 
 lines = [l.strip() for l in M3U.read_text(encoding='utf-8', errors='replace').splitlines()]
 seen, paths = set(), []
@@ -234,10 +234,10 @@ PY
 python3 - <<'PY'
 from pathlib import Path
 
-src_m3u  = Path('$LIBRARY_ROOT/DJ_SET_POOL_4TO12.m3u')
+src_m3u  = Path('$MASTER_LIBRARY/DJ_SET_POOL_4TO12.m3u')
 dst_m3u  = Path('$DJ_USB_ROOT/DJ_SET_POOL_4TO12.m3u')
-src_root = '$LIBRARY_ROOT/'
-dst_root = '$DJ_MP3_ROOT/'
+src_root = '$MASTER_LIBRARY/'
+dst_root = '$DJ_LIBRARY/'
 
 lines = [l.strip() for l in src_m3u.read_text(encoding='utf-8', errors='replace').splitlines()]
 paths = [l for l in lines if l and not l.startswith('#')]
@@ -248,7 +248,7 @@ PY
 
 ### Rekordbox import
 
-1. Lexicon: import folder `$DJ_MP3_ROOT`
+1. Lexicon: import folder `$DJ_LIBRARY`
 2. Rekordbox: import MP3 library root → Analyze BPM/beatgrid/phrase
 3. Disable **Preferences → Advanced → Write tags to file**
 4. Export to USB: Rekordbox Export Mode → `$DJ_USB_ROOT`
@@ -279,10 +279,10 @@ python tools/review/tag_normalized_genres.py "$STAGING_ROOT" \
 tools/metadata sync-tags \
   --read-files --execute \
   --db "$TAGSLUT_DB" \
-  --path "$LIBRARY_ROOT"
+  --path "$MASTER_LIBRARY"
 ```
 
-Writes an M3U of tracks still missing critical tags at `$LIBRARY_ROOT/missing_tags_*.m3u`.
+Writes an M3U of tracks still missing critical tags at `$MASTER_LIBRARY/missing_tags_*.m3u`.
 
 ### ISRC enrichment (OneTagger)
 
@@ -310,7 +310,7 @@ scripts/workflow_health_rescan.py \
   --workers 8 \
   --electronic-only \
   --hoard-metadata \
-  --playlist-out "$LIBRARY_ROOT/HEALTHY_PRIORITY_WORKFLOW.m3u"
+  --playlist-out "$MASTER_LIBRARY/HEALTHY_PRIORITY_WORKFLOW.m3u"
 ```
 
 Dry run: `--dry-run --limit 500` · Skip playlist: `--no-playlist`
@@ -324,13 +324,13 @@ Outputs: `artifacts/logs/health_rescan_*.jsonl`, `*_summary.json`, `HEALTHY_PRIO
 python scripts/bootstrap_duration_refs_local.py --db "$TAGSLUT_DB" --execute
 
 # 2) Recompute durations
-poetry run tagslut index duration-check "$LIBRARY_ROOT" \
+poetry run tagslut index duration-check "$MASTER_LIBRARY" \
   --db "$TAGSLUT_DB" --execute --dj-only
 
 # 3) Optional: provider pass to fill remaining unknowns
 poetry run tagslut index enrich \
   --db "$TAGSLUT_DB" --providers beatport,tidal \
-  --path "$LIBRARY_ROOT/%" --recovery --retry-no-match --execute
+  --path "$MASTER_LIBRARY/%" --recovery --retry-no-match --execute
 
 # 4) Verify
 poetry run tagslut verify duration --db "$TAGSLUT_DB" --dj-only --status ok,warn,fail,unknown
@@ -342,8 +342,8 @@ poetry run tagslut verify duration --db "$TAGSLUT_DB" --dj-only --status ok,warn
 python scripts/reassess_duration_variant_mismatch.py --db "$TAGSLUT_DB" --execute
 
 # Rebuild playlists after
-poetry run tagslut report m3u "$LIBRARY_ROOT" \
-  --db "$TAGSLUT_DB" --source library --m3u-dir "$LIBRARY_ROOT" --merge
+poetry run tagslut report m3u "$MASTER_LIBRARY" \
+  --db "$TAGSLUT_DB" --source library --m3u-dir "$MASTER_LIBRARY" --merge
 ```
 
 ### Playlist audit against DB (XLSX input)
@@ -352,7 +352,7 @@ poetry run tagslut report m3u "$LIBRARY_ROOT" \
 python scripts/audit_playlist_xlsx.py \
   --xlsx "$HOME/Desktop/DJ_NEW.xlsx" \
   --db "$TAGSLUT_DB" \
-  --library-root "$LIBRARY_ROOT"
+  --library-root "$MASTER_LIBRARY"
 ```
 
 Outputs: status CSV/XLSX + `*_ok.m3u`, `*_warn.m3u`, `*_fail.m3u`, `*_unknown.m3u`
@@ -361,14 +361,14 @@ Outputs: status CSV/XLSX + `*_ok.m3u`, `*_warn.m3u`, `*_fail.m3u`, `*_unknown.m3
 
 ```bash
 python scripts/convert_m3u_to_mp3_320.py \
-  --input-m3u "$LIBRARY_ROOT/BEATPORT_TIDAL_MATCHES.m3u" \
+  --input-m3u "$MASTER_LIBRARY/BEATPORT_TIDAL_MATCHES.m3u" \
   --output-root "$HOME/Music/Rekordbox_MP3_320" \
   --dedupe --bitrate 320 --cbr
 
 # Optional: embed artwork
 python scripts/embed_artwork_from_sources.py \
-  --source-m3u "$LIBRARY_ROOT/BEATPORT_TIDAL_MATCHES.m3u" \
-  --target-m3u "$LIBRARY_ROOT/BEATPORT_TIDAL_MATCHES_FULL_MP3_320.m3u"
+  --source-m3u "$MASTER_LIBRARY/BEATPORT_TIDAL_MATCHES.m3u" \
+  --target-m3u "$MASTER_LIBRARY/BEATPORT_TIDAL_MATCHES_FULL_MP3_320.m3u"
 ```
 
 ### Dropbox intake
@@ -380,7 +380,7 @@ python scripts/scan_dropbox_audio_health.py --root "$DROPBOX_ROOT"
 # 2) Promote valid files
 poetry run tagslut execute promote-tags \
   "$DROPBOX_ROOT/Music Hi-Res" \
-  --dest "$LIBRARY_ROOT" --execute
+  --dest "$MASTER_LIBRARY" --execute
 
 # 3) Cloud delete (requires files.content.write scope)
 python scripts/delete_dropbox_cloud_paths.py \
@@ -395,7 +395,7 @@ python scripts/bootstrap_relink_db.py \
   --from-db "$V2_DB" \
   --to-db "$V3_DB"
 
-poetry run tagslut index register "$LIBRARY_ROOT" \
+poetry run tagslut index register "$MASTER_LIBRARY" \
   --db "$V3_DB" \
   --source relink --execute
 ```

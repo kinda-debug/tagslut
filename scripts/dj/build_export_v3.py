@@ -237,11 +237,11 @@ def main(argv: list[str] | None = None) -> int:
         if _is_dangerous_out_dir(out_dir):
             print("refusing dangerous --out-dir")
             return 2
-        lib_root = os.environ.get("LIBRARY_ROOT", "").strip()
+        lib_root = (os.environ.get("MASTER_LIBRARY") or os.environ.get("LIBRARY_ROOT", "")).strip()
         if lib_root:
             lib_path = Path(lib_root).expanduser().resolve()
             if _is_inside(lib_path, out_dir):
-                print("refusing --out-dir inside LIBRARY_ROOT")
+                print("refusing --out-dir inside MASTER_LIBRARY")
                 return 2
 
     if args.format == "mp3" and args.execute:

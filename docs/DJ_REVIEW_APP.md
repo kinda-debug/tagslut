@@ -20,7 +20,7 @@ python $REPO_ROOT/tools/dj_review_app.py --db "$TAGSLUT_DB"
 Optional filters / defaults:
 
 ```bash
-export DJ_REVIEW_LIBRARY_PREFIX="$LIBRARY_ROOT"
+export DJ_REVIEW_LIBRARY_PREFIX="$MASTER_LIBRARY"
 export DJ_REVIEW_PORT=5055
 export DJ_REVIEW_POLICY="config/dj/dj_curation_usb_v8.yaml"
 export DJ_REVIEW_USB_PATH="$DJ_USB_ROOT"

@@ -27,14 +27,15 @@ source .env
 set +a
 
 export V3_DB="${V3_DB:-$TAGSLUT_DB}"
-export LIBRARY_ROOT="${LIBRARY_ROOT:-$VOLUME_LIBRARY}"
+export MASTER_LIBRARY="${MASTER_LIBRARY:-${LIBRARY_ROOT:-$VOLUME_LIBRARY}}"
 export SCAN_ROOT="${SCAN_ROOT:-$VOLUME_STAGING}"
 export PROMOTE_ROOT="${PROMOTE_ROOT:-$VOLUME_STAGING}"
 ```
 
 Notes:
-- `LIBRARY_ROOT` / `VOLUME_LIBRARY` is the canonical FLAC library.
-- `DJ_MP3_ROOT` is the derived DJ library.
+- `MASTER_LIBRARY` is the canonical FLAC library.
+- `DJ_LIBRARY` is the derived DJ library.
+- `LIBRARY_ROOT`, `VOLUME_LIBRARY`, `DJ_MP3_ROOT`, and `DJ_LIBRARY_ROOT` remain compatibility aliases.
 - No separate archive library is assumed by this runbook.
 
 ## Daily Scan
@@ -57,7 +58,7 @@ python -m tagslut intake process-root \
 python -m tagslut intake process-root \
   --db <V3_DB> \
   --root <PROMOTE_ROOT> \
-  --library <LIBRARY_ROOT> \
+  --library <MASTER_LIBRARY> \
   --phases promote
 ```
 
@@ -66,7 +67,7 @@ Optional force controls (only when intentionally bypassing default guards):
 python tools/review/promote_replace_merge.py \
   <PROMOTE_ROOT> \
   --db <V3_DB> \
-  --dest <LIBRARY_ROOT> \
+  --dest <MASTER_LIBRARY> \
   --execute \
   --allow-duplicate-hash \
   --allow-non-ok-duration
@@ -152,5 +153,5 @@ make dj-pool-run V3=<V3_DB> OUTDIR=<DJ_EXPORT_ROOT> EXECUTE=1 OVERWRITE=if_same_
 
 Recommended layout:
 - `LAYOUT=by_role` for set programming
-- use a separate export root (never inside `LIBRARY_ROOT`)
+- use a separate export root (never inside `MASTER_LIBRARY`)
 - review manifest before execute.

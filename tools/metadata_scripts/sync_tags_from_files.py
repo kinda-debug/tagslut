@@ -106,7 +106,7 @@ def main() -> int:
     ap.add_argument("--db", help="SQLite DB path")
     ap.add_argument(
         "--path",
-        default=os.environ.get("LIBRARY_ROOT", "/Volumes/MUSIC/LIBRARY"),
+        default=os.environ.get("MASTER_LIBRARY") or os.environ.get("LIBRARY_ROOT", "./library"),
         help="Root path filter (prefix match)",
     )
     ap.add_argument(
@@ -139,7 +139,7 @@ def main() -> int:
     if not fields:
         fields = ["bpm", "key", "genre", "energy", "danceability"]
 
-    default_root = Path(os.environ.get("LIBRARY_ROOT", "/Volumes/MUSIC/LIBRARY"))
+    default_root = Path(os.environ.get("MASTER_LIBRARY") or os.environ.get("LIBRARY_ROOT", "./library"))
     out_path = Path(args.m3u_out).expanduser().resolve() if args.m3u_out else (
         default_root / f"missing_tags_{_now_stamp()}.m3u"
     )

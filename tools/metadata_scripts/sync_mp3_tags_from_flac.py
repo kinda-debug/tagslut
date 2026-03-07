@@ -235,21 +235,25 @@ def _env_path(key: str) -> Optional[Path]:
 
 
 def main() -> int:
-    default_mp3_root = _env_path("DJ_MP3_ROOT")
-    default_flac_root = _env_path("DJ_LIBRARY_ROOT") or _env_path("LIBRARY_ROOT") or _env_path("VOLUME_ARCHIVE")
+    default_mp3_root = _env_path("DJ_LIBRARY") or _env_path("DJ_MP3_ROOT")
+    default_flac_root = (
+        _env_path("MASTER_LIBRARY")
+        or _env_path("DJ_LIBRARY_ROOT")
+        or _env_path("LIBRARY_ROOT")
+    )
 
     ap = argparse.ArgumentParser(description="Sync MP3 tags from master FLAC library.")
     ap.add_argument(
         "--mp3-root",
         type=Path,
         default=default_mp3_root,
-        help="MP3 library root (default: DJ_MP3_ROOT)",
+        help="MP3 library root (default: DJ_LIBRARY or DJ_MP3_ROOT)",
     )
     ap.add_argument(
         "--flac-root",
         type=Path,
         default=default_flac_root,
-        help="FLAC master library root (default: DJ_LIBRARY_ROOT or LIBRARY_ROOT)",
+        help="FLAC master library root (default: MASTER_LIBRARY, DJ_LIBRARY_ROOT, or LIBRARY_ROOT)",
     )
     ap.add_argument("--mp3-report", type=Path, help="Optional MP3 report CSV to filter")
     ap.add_argument(
@@ -265,9 +269,9 @@ def main() -> int:
     args = ap.parse_args()
 
     if not args.mp3_root:
-        raise SystemExit("MP3 root missing. Provide --mp3-root or set DJ_MP3_ROOT in .env.")
+        raise SystemExit("MP3 root missing. Provide --mp3-root or set DJ_LIBRARY in .env.")
     if not args.flac_root:
-        raise SystemExit("FLAC root missing. Provide --flac-root or set DJ_LIBRARY_ROOT in .env.")
+        raise SystemExit("FLAC root missing. Provide --flac-root or set MASTER_LIBRARY in .env.")
 
     args.mp3_root = args.mp3_root.expanduser().resolve()
     args.flac_root = args.flac_root.expanduser().resolve()

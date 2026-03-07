@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The DJ pool is a derived output generated from the canonical FLAC library and v3 identity database.
+The DJ pool is a derived output generated from `MASTER_LIBRARY` and the v3 identity database.
 
 It provides a deterministic set of tracks suitable for DJ environments (Rekordbox, Lexicon, etc.) without modifying the master library.
 
@@ -11,7 +11,7 @@ The DJ pool is downstream-only and must never become a source of truth.
 ## Design Principles
 
 1. Read-only upstream
-- The FLAC master library and v3 database are never modified by DJ pool operations.
+- `MASTER_LIBRARY` and the v3 database are never modified by DJ pool operations.
 2. Deterministic builds
 - The same inputs must produce the same pool.
 3. Plan-first execution
@@ -26,7 +26,7 @@ The DJ pool is downstream-only and must never become a source of truth.
 Typical DJ workflow:
 
 ```
-FLAC Library
+MASTER_LIBRARY
       |
       v
 v3 identity index
@@ -141,8 +141,8 @@ Recommended suffix:
 
 ## Safety Rules
 
-1. The DJ pool builder must never modify the master library.
-2. Pool outputs must live outside the master library path.
+1. The DJ pool builder must never modify `MASTER_LIBRARY`.
+2. Pool outputs must live outside the `MASTER_LIBRARY` path.
 3. Execution must be explicit.
 4. Missing preferred assets must cause a failure unless explicitly overridden.
 

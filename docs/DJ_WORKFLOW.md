@@ -11,12 +11,11 @@ set -a
 source .env
 set +a
 
-export LIBRARY_ROOT="${LIBRARY_ROOT:-$VOLUME_LIBRARY}"
-export DJ_MP3_ROOT="${DJ_MP3_ROOT:?set DJ_MP3_ROOT in .env}"
-export DJ_LIBRARY_ROOT="${DJ_LIBRARY_ROOT:-$LIBRARY_ROOT}"
+export MASTER_LIBRARY="${MASTER_LIBRARY:-${LIBRARY_ROOT:-$VOLUME_LIBRARY}}"
+export DJ_LIBRARY="${DJ_LIBRARY:-${DJ_MP3_ROOT:?set DJ_LIBRARY in .env}}"
 ```
 
-`DJ_MP3_ROOT` is the derived DJ library. `DJ_LIBRARY_ROOT` remains a compatibility alias for metadata helpers that still expect the FLAC master root.
+`MASTER_LIBRARY` is the FLAC source of truth. `DJ_LIBRARY` is the derived DJ library. Legacy scripts can still read `LIBRARY_ROOT`, `DJ_MP3_ROOT`, or `DJ_LIBRARY_ROOT` via aliases from `.env`.
 
 ## Pipeline Choice
 

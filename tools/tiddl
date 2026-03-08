@@ -103,6 +103,7 @@ case "$1" in
         DOWNLOAD_ARGS=()
         URL_ARGS=()
         EXPECT_VALUE=0
+        HAS_TRACK_QUALITY=0
 
         for arg in "$@"; do
             if [[ "$EXPECT_VALUE" -eq 1 ]]; then
@@ -113,10 +114,16 @@ case "$1" in
 
             case "$arg" in
                 --track-quality|-q|--video-quality|-vq|--threads-count|-t|--path|-p|--scan-path|--sp|--output|-o|--singles|-s|--videos|-vid)
+                    if [[ "$arg" == "--track-quality" || "$arg" == "-q" ]]; then
+                        HAS_TRACK_QUALITY=1
+                    fi
                     DOWNLOAD_ARGS+=("$arg")
                     EXPECT_VALUE=1
                     ;;
                 --track-quality=*|--video-quality=*|--threads-count=*|--path=*|--scan-path=*|--sp=*|--output=*|--singles=*|--videos=*)
+                    if [[ "$arg" == --track-quality=* ]]; then
+                        HAS_TRACK_QUALITY=1
+                    fi
                     DOWNLOAD_ARGS+=("$arg")
                     ;;
                 --no-skip|-ns|--rewrite-metadata|-r|--skip-errors|-se)
@@ -134,6 +141,9 @@ case "$1" in
             CMD+=(--path "$ROOT_TD_VALUE" --scan-path "$ROOT_TD_VALUE")
         fi
         CMD+=(--skip-errors)
+        if [[ "$HAS_TRACK_QUALITY" -eq 0 ]]; then
+            CMD+=(--track-quality max)
+        fi
         if [[ ${#DOWNLOAD_ARGS[@]} -gt 0 ]]; then
             CMD+=("${DOWNLOAD_ARGS[@]}")
         fi

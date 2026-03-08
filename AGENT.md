@@ -117,6 +117,17 @@ Retired commands must not be reintroduced.
 
 ⸻
 
+Beatport Rule
+
+For operator guidance, Beatport download workflows are tokenless.
+
+Rules:
+	•	Never say Beatport downloads require tokens.
+	•	`tools/get`, `tools/get-intake`, and `bpdl` Beatport download flows must be treated as non-token workflows.
+	•	If a Beatport metadata or enrichment path fails, describe it as a repo-specific Beatport API auth problem, not a Beatport download requirement.
+
+⸻
+
 DJ Workflow (v3)
 
 The DJ system is downstream from the FLAC library.

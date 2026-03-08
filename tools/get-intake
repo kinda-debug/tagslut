@@ -1665,6 +1665,9 @@ PY
           done < "$KEEP_URLS_TXT"
           if [[ "$TIDDL_FAILED_COUNT" -gt 0 ]]; then
             echo "Tidal download failures: $TIDDL_FAILED_COUNT (saved: $TIDDL_FAILED_URLS_FILE)"
+            if [[ "$TIDDL_FAILED_COUNT" -eq "$KEEP_COUNT" ]]; then
+              err "All $KEEP_COUNT Tidal downloads failed; aborting pipeline."
+            fi
           else
             rm -f "$TIDDL_FAILED_URLS_FILE"
           fi

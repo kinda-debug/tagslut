@@ -16,6 +16,8 @@ from tagslut.metadata.auth import TokenManager
 from tagslut.metadata.enricher import Enricher
 from tagslut.exec.transcoder import sync_dj_mp3_from_flac
 
+logger = logging.getLogger(__name__)
+
 
 def parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(description="Run enrichment and cover-art embedding for exact promoted paths")
@@ -56,11 +58,13 @@ def load_dj_pairs(dj_map_file: Path) -> list[tuple[Path, Path]]:
             continue
         parts = raw.split("\t", 1)
         if len(parts) != 2:
+            logger.warning("Skipping malformed DJ map line (expected 2 tab-separated fields): %s", raw)
             continue
         flac_path = Path(parts[0]).expanduser().resolve()
         mp3_path = Path(parts[1]).expanduser().resolve()
         key = (str(flac_path), str(mp3_path))
         if key in seen:
+            logger.warning("Skipping duplicate DJ map pair: %s", raw)
             continue
         seen.add(key)
         pairs.append((flac_path, mp3_path))

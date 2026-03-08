@@ -1,8 +1,16 @@
 from __future__ import annotations
 
+from pathlib import Path
+from unittest.mock import patch
+
 from mutagen.id3 import APIC, ID3, SYLT, TXXX, USLT
 
-from tagslut.exec.transcoder import _apply_cover_art, _apply_dj_tag_policy, _clear_dj_managed_frames
+from tagslut.exec.transcoder import (
+    _apply_cover_art,
+    _apply_dj_tag_policy,
+    _clear_dj_managed_frames,
+    sync_dj_mp3_from_flac,
+)
 
 
 class _Picture:
@@ -97,3 +105,39 @@ def test_dj_mp3_policy_keeps_only_useful_dj_tags() -> None:
     assert tags.getall("SYLT") == []
     assert tags.getall("APIC")[0].data == b"front"
     assert tags["TXXX:KEEPME"].text[0] == "persist"
+
+
+def test_sync_dj_mp3_from_flac_refreshes_dj_tags_preserves_custom(
+    tmp_path: Path,
+) -> None:
+    """sync_dj_mp3_from_flac refreshes DJ-managed frames from FLAC
+    while preserving non-DJ TXXX frames already on the MP3."""
+    mp3_path = tmp_path / "test.mp3"
+    # Minimal valid MP3 frame so mutagen can save/load ID3 tags
+    mp3_path.write_bytes(b"\xff\xe3\x18\x00" + b"\x00" * 417)
+    tags = ID3()
+    tags.add(TXXX(encoding=3, desc="KEEPME", text="custom_value"))
+    tags.add(TXXX(encoding=3, desc="INITIALKEY", text="Cm"))  # stale DJ tag
+    tags.save(mp3_path)
+
+    flac = _FakeTaggedFlac(
+        {
+            "title": ["New Title"],
+            "artist": ["New Artist"],
+            "initialkey": ["Am"],
+            "bpm": ["128"],
+        },
+        pictures=[_Picture(data=b"art", mime="image/jpeg", picture_type=3)],
+    )
+
+    with patch("tagslut.exec.transcoder.FLAC", return_value=flac):
+        sync_dj_mp3_from_flac(mp3_path, tmp_path / "fake.flac")
+
+    result = ID3(mp3_path)
+    # DJ-managed frames refreshed from FLAC source
+    assert result["TIT2"].text[0] == "New Title"
+    assert result["TPE1"].text[0] == "New Artist"
+    assert result["TXXX:INITIALKEY"].text[0] == "Am"
+    assert result["TBPM"].text[0] == "128"
+    # Non-DJ custom frame survives
+    assert result["TXXX:KEEPME"].text[0] == "custom_value"

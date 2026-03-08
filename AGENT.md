@@ -168,6 +168,30 @@ Execution must always be explicit.
 
 ⸻
 
+DJ MP3 Transcode and Sync
+
+The --dj flag on tools/get triggers DJ MP3 transcoding after promotion.
+
+Workflow:
+	1.	tools/get <url> --dj transcodes promoted FLACs to DJ_ROOT.
+	2.	A FLAC→MP3 map TSV is generated for post-move tag sync.
+	3.	sync_dj_mp3_from_flac() refreshes DJ MP3 tags from enriched FLACs.
+
+Tag policy:
+	•	DJ MP3s keep: title, artist, album, date, genre, BPM, key, ISRC, label, energy, cover art.
+	•	Lyrics (USLT, SYLT) are always stripped.
+	•	ffmpeg encodes with -map_metadata -1 (strips all source metadata).
+
+Implementation:
+
+tagslut/exec/transcoder.py
+
+Functions:
+	•	transcode_to_mp3(): fresh FLAC-to-MP3 (prune_existing=True)
+	•	sync_dj_mp3_from_flac(): refresh tags on existing DJ MP3 (prune_existing=False)
+
+⸻
+
 DJ Development Layers
 
 DJ features are split into three layers.
@@ -264,7 +288,32 @@ Notes:
 	•	`tools/get-sync` is deprecated compatibility only.
 	•	Default wrapper output should stay concise; use `--verbose` only when debugging wrapper behavior.
 	•	`--force-download` should not replace an equal-or-better library file by default.
-	•	Work output is split: `FIX_ROOT=/Volumes/MUSIC/_work/fix`, `QUARANTINE_ROOT=/Volumes/MUSIC/_work/quarantine`, `DISCARD_ROOT=/Volumes/MUSIC/_work/discard`.
+
+Tidal downloader (wrapper):
+
+tools/tiddl <tidal-url>
+
+Notes:
+	•	Wraps system-installed TIDDL binary.
+	•	Override binary path: TIDDL_BIN=/path/to/tiddl
+	•	Resolves download root from ROOT_TD, TIDDL_DOWNLOAD_ROOT, or STAGING_ROOT.
+	•	Syncs ~/.tiddl/config.toml download_path to match resolved root.
+
+Work output zones:
+
+FIX_ROOT         Salvageable metadata issues (FIX_ROOT or $VOLUME_WORK/fix)
+QUARANTINE_ROOT  Risky files needing manual review (QUARANTINE_ROOT or $VOLUME_QUARANTINE)
+DISCARD_ROOT     Deterministic duplicates (DISCARD_ROOT or $VOLUME_WORK/discard)
+
+Quarantine lifecycle:
+
+python tools/review/quarantine_gc.py --root <quarantine-root> --days <retention-days>
+python tools/review/quarantine_gc.py --root <quarantine-root> --days <retention-days> --db <db> --execute
+
+Notes:
+	•	Default is dry-run. Pass --execute to delete.
+	•	With --db, marks file_quarantine rows as deleted.
+	•	JSON report written to artifacts/compare/quarantine_gc_<stamp>.json.
 
 CI triage:
 

@@ -32,3 +32,23 @@ def test_beatport_no_auth_retries_on_429(monkeypatch) -> None:
     assert response is not None
     assert response.status_code == 200
     assert len(calls) == 2
+
+
+def test_beatport_search_by_isrc_without_auth_skips_catalog_api(monkeypatch) -> None:
+    provider = BeatportProvider(token_manager=None)
+
+    calls: list[tuple[str, str]] = []
+
+    def fail_if_called(method: str, url: str, headers: dict[str, Any], params=None, **kwargs):
+        calls.append((method, url))
+        raise AssertionError("search_by_isrc should not call Beatport catalog API without auth")
+
+    class DummyClient:
+        def request(self, method, url, headers=None, params=None, **kwargs):
+            return fail_if_called(method, url, headers or {}, params=params, **kwargs)
+
+    provider._client = DummyClient()  # type: ignore[assignment]
+
+    results = provider.search_by_isrc("GBEXH2900051")
+    assert results == []
+    assert calls == []

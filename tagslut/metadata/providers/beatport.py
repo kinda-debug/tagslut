@@ -467,30 +467,17 @@ class BeatportProvider(AbstractProvider):
         Returns:
             List of ProviderTrack with match_confidence=EXACT
         """
+        # Beatport's catalog ISRC endpoint is not part of the public, tokenless
+        # download/search workflow. Without auth it returns 401, so skip it
+        # entirely and let the pipeline continue to other provider/search stages.
+        if not self._has_auth():
+            return []
+
         url = f"{self.BASE_URL}/tracks/"
         params = {
             "isrc": isrc,
             "per_page": 5,
         }
-
-        # First try public (no-auth) API behavior (matches MP3Tag usage)
-        response = self._make_request_no_auth("GET", url, params=params)
-        if response and response.status_code == 200:
-            try:
-                data = response.json()
-                results = data.get("results", [])
-                tracks = []
-                for item in results:
-                    track = self._normalize_track(item)
-                    track.match_confidence = MatchConfidence.EXACT
-                    tracks.append(track)
-                return tracks
-            except Exception as e:
-                logger.error("Failed to parse Beatport ISRC response (no-auth): %s", e)
-
-        # Fall back to auth (if configured) for any cases where public endpoint fails
-        if not self._has_auth():
-            return []
 
         response = self._make_request("GET", url, params=params)
         if response and response.status_code == 200:

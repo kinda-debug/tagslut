@@ -594,19 +594,26 @@ run_bpdl_batch() {
   local log_file="$2"
   shift 2
   local extra_args=("$@")
+  local bpdl_workdir="$REPO_ROOT"
 
   ensure_bpdl_download_target
+  if [[ -f "$BPDL_CONFIG" ]]; then
+    bpdl_workdir="$(cd "$(dirname "$BPDL_CONFIG")" && pwd)"
+  fi
 
   local supports_quit=0
-  if "$BPDL_BIN" -h 2>&1 | grep -q -- "-q"; then
+  if (
+    cd "$bpdl_workdir"
+    "$BPDL_BIN" -h
+  ) 2>&1 | grep -q -- "-q"; then
     supports_quit=1
   fi
 
   if [[ "$supports_quit" -eq 1 ]]; then
     if [[ ${#extra_args[@]} -gt 0 ]]; then
-      run_cmd "$BPDL_BIN" -q "${extra_args[@]}" "$url_list"
+      run_cmd bash -lc "cd \"\$1\" && shift && exec \"\$@\"" _ "$bpdl_workdir" "$BPDL_BIN" -q "${extra_args[@]}" "$url_list"
     else
-      run_cmd "$BPDL_BIN" -q "$url_list"
+      run_cmd bash -lc "cd \"\$1\" && shift && exec \"\$@\"" _ "$bpdl_workdir" "$BPDL_BIN" -q "$url_list"
     fi
     return 0
   fi
@@ -617,12 +624,18 @@ run_bpdl_batch() {
     printf '→ '
     printf '%q ' "$BPDL_BIN" "${extra_args[@]}" "$url_list"
     printf '\n'
-    "$BPDL_BIN" "${extra_args[@]}" "$url_list" < /dev/null 2>&1 | tee "$log_file"
+    (
+      cd "$bpdl_workdir" &&
+      "$BPDL_BIN" "${extra_args[@]}" "$url_list" < /dev/null
+    ) 2>&1 | tee "$log_file"
   else
     printf '→ '
     printf '%q ' "$BPDL_BIN" "$url_list"
     printf '\n'
-    "$BPDL_BIN" "$url_list" < /dev/null 2>&1 | tee "$log_file"
+    (
+      cd "$bpdl_workdir" &&
+      "$BPDL_BIN" "$url_list" < /dev/null
+    ) 2>&1 | tee "$log_file"
   fi
   local bpdl_code=${PIPESTATUS[0]}
   set -e

@@ -21,6 +21,7 @@ This script runs the pipeline in-order for a provided root folder.
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import sqlite3
 import subprocess
@@ -35,6 +36,9 @@ if str(_REPO_ROOT) not in sys.path:
 from tagslut.utils import AUDIO_EXTENSIONS  # noqa: E402
 from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path  # noqa: E402
 from tagslut.utils.paths import list_files  # noqa: E402
+from tagslut.utils.config import get_config  # noqa: E402
+from tagslut.exec.enrich_dj_tags import enrich_dj_tags  # noqa: E402
+from tagslut.exec.transcoder import transcode_to_mp3  # noqa: E402
 
 ALLOWED_PHASES = (
     "register",
@@ -67,6 +71,9 @@ class PipelineStep:
     phase: str
     label: str
     command: list[str]
+
+
+logger = logging.getLogger(__name__)
 
 
 def run(cmd: list[str]) -> None:
@@ -297,6 +304,56 @@ def build_pipeline_steps(
     return steps
 
 
+def run_dj_phase(
+    *,
+    db_path: Path,
+    root_path: Path,
+    dry_run: bool = False,
+    dj_pool_dir: Path | None = None,
+) -> None:
+    config = get_config()
+    pool_dir = (dj_pool_dir or Path(config.get("dj_pool_dir", "~/Music/DJPool"))).expanduser().resolve()
+    flac_paths = sorted(
+        path for path in list_files(root_path, set(AUDIO_EXTENSIONS))
+        if path.is_file() and path.suffix.lower() == ".flac"
+    )
+    if not flac_paths:
+        logger.info("DJ phase: no FLAC files found under %s", root_path)
+        return
+
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    essentia_missing_warned = False
+    try:
+        for flac_path in flac_paths:
+            try:
+                enriched = enrich_dj_tags(conn, flac_path, dry_run=dry_run)
+                if enriched:
+                    logger.info("DJ tag enrichment: %s → %s", flac_path.name, enriched)
+            except FileNotFoundError:
+                if not essentia_missing_warned:
+                    logger.warning(
+                        "Essentia not found — DJ tag enrichment skipped. "
+                        "Install with: brew install essentia (macOS) or see docs."
+                    )
+                    essentia_missing_warned = True
+
+            if dry_run:
+                logger.info("DJ dry-run: would transcode %s into %s", flac_path, pool_dir)
+                continue
+
+            mp3_path = transcode_to_mp3(flac_path, pool_dir)
+            if _table_exists(conn, "files"):
+                conn.execute(
+                    "UPDATE files SET dj_pool_path = ? WHERE path = ?",
+                    (str(mp3_path), str(flac_path)),
+                )
+        if not dry_run:
+            conn.commit()
+    finally:
+        conn.close()
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Processing pipeline for a root folder")
     ap.add_argument("--db", help="DB path")
@@ -349,7 +406,14 @@ def main() -> None:
         action="store_true",
         help="Allow promoting multiple assets per identity during promote phase",
     )
+    ap.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Run DJ phase without writing FLAC tags, MP3s, or dj_pool_path updates",
+    )
     args = ap.parse_args()
+
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
     default_library = os.environ.get("LIBRARY_ROOT", "./library")
 
@@ -408,6 +472,13 @@ def main() -> None:
         print("Mode: scan-only")
     for step in steps:
         run(step.command)
+
+    if "dj" in phases:
+        run_dj_phase(
+            db_path=db_path,
+            root_path=root_path,
+            dry_run=bool(args.dry_run),
+        )
 
 
 if __name__ == "__main__":

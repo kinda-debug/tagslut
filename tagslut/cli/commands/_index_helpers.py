@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any, Mapping
 
 import click
 
@@ -85,7 +86,7 @@ def safe_playlist_name(name: str) -> str:
     return cleaned or "playlist"
 
 
-def extract_tag_value(tags: dict, keys: list[str]) -> str | None:  # type: ignore  # TODO: mypy-strict
+def extract_tag_value(tags: Mapping[str, Any], keys: list[str]) -> str | None:
     if not tags:
         return None
     lowered = {str(k).lower(): v for k, v in tags.items()}
@@ -110,9 +111,9 @@ def format_extinf(file_path: Path) -> tuple[int, str]:
             return -1, file_path.stem
 
         duration = int(audio.info.length) if getattr(audio.info, "length", None) else -1
-        tags = getattr(audio, "tags", None) or {}  # type: ignore  # TODO: mypy-strict
-        artist = extract_tag_value(tags, ["artist", "albumartist"]) or "Unknown"  # type: ignore  # TODO: mypy-strict
-        title = extract_tag_value(tags, ["title"]) or file_path.stem  # type: ignore  # TODO: mypy-strict
+        tags = getattr(audio, "tags", None) or {}
+        artist = extract_tag_value(tags, ["artist", "albumartist"]) or "Unknown"
+        title = extract_tag_value(tags, ["title"]) or file_path.stem
         return duration, f"{artist} - {title}"
     except Exception:
         return -1, file_path.stem

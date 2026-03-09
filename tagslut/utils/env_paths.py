@@ -11,10 +11,25 @@ Usage:
     library = get_volume("library")
 """
 import os
+import warnings
 from pathlib import Path
 from typing import Optional
 
 _DOTENV_LOADED = False
+
+_CANONICAL_VOLUME_ENV_VARS: dict[str, tuple[str, ...]] = {
+    "library": ("LIBRARY_ROOT", "MASTER_LIBRARY", "VOLUME_LIBRARY"),
+    "staging": ("STAGING_ROOT", "VOLUME_STAGING"),
+    "quarantine": ("QUARANTINE_ROOT", "VOLUME_QUARANTINE"),
+    "work": ("WORK_ROOT", "VOLUME_WORK"),
+}
+
+_LEGACY_ENV_NAMES: dict[str, tuple[str, ...]] = {
+    "VOLUME_LIBRARY": ("LIBRARY_ROOT", "MASTER_LIBRARY"),
+    "VOLUME_STAGING": ("STAGING_ROOT",),
+    "VOLUME_QUARANTINE": ("QUARANTINE_ROOT",),
+    "VOLUME_WORK": ("WORK_ROOT",),
+}
 
 
 class PathNotConfiguredError(Exception):
@@ -31,7 +46,7 @@ def _load_dotenv_once() -> None:
     dotenv_path = None
     repo_root = Path(__file__).resolve().parents[2]
     try:
-        from dotenv import find_dotenv, load_dotenv  # type: ignore
+        from dotenv import find_dotenv, load_dotenv
         dotenv_path = find_dotenv(usecwd=True)
         if not dotenv_path:
             candidate = repo_root / ".env"
@@ -88,6 +103,15 @@ def _get_env(var: str, default: Optional[str] = None, required: bool = False) ->
     return value
 
 
+def _warn_legacy_env(legacy: str, preferred: tuple[str, ...]) -> None:
+    preferred_text = " or ".join(preferred)
+    warnings.warn(
+        f"{legacy} is deprecated; use {preferred_text} instead.",
+        DeprecationWarning,
+        stacklevel=3,
+    )
+
+
 def _expand_path(value: Optional[str]) -> Optional[Path]:
     """Expand environment variables and user home directory in path"""
     if value is None:
@@ -98,7 +122,8 @@ def _expand_path(value: Optional[str]) -> Optional[Path]:
 
 
 def _env_flag(name: str, default: str = "true") -> bool:
-    return _get_env(name, default=default).lower() in ("true", "1", "yes")  # type: ignore  # TODO: mypy-strict
+    value = _get_env(name, default=default)
+    return (value or default).lower() in ("true", "1", "yes")
 
 
 # ============================================================================
@@ -126,14 +151,33 @@ def get_volume(name: str, required: bool = False) -> Optional[Path]:
     Returns:
         Path to volume or None if not configured
     """
-    env_var = f"VOLUME_{name.upper()}"
-    path = _get_env(env_var, required=required)
-    return _expand_path(path)
+    aliases = _CANONICAL_VOLUME_ENV_VARS.get(name, (f"VOLUME_{name.upper()}",))
+    value: Optional[str] = None
+
+    for env_var in aliases:
+        candidate = _get_env(env_var, required=False)
+        if candidate is None:
+            continue
+        if env_var in _LEGACY_ENV_NAMES:
+            _warn_legacy_env(env_var, _LEGACY_ENV_NAMES[env_var])
+        value = candidate
+        break
+
+    if value is None and required:
+        raise PathNotConfiguredError(
+            f"Required environment variable for volume '{name}' not set.\n"
+            f"Tried: {', '.join(aliases)}"
+        )
+
+    return _expand_path(value)
 
 
 def get_library_volume() -> Path:
     """Get primary library volume (required)"""
-    return get_volume("library", required=True)  # type: ignore  # TODO: mypy-strict
+    volume = get_volume("library", required=True)
+    if volume is None:
+        raise PathNotConfiguredError("Required environment variable for volume 'library' not set.")
+    return volume
 
 
 def get_staging_volume() -> Optional[Path]:
@@ -163,14 +207,20 @@ def get_quarantine_volume() -> Optional[Path]:
 def get_artifacts_dir() -> Path:
     """Get artifacts directory"""
     path = _get_env("TAGSLUT_ARTIFACTS", default="./artifacts")
-    return _expand_path(path)  # type: ignore  # TODO: mypy-strict
+    expanded = _expand_path(path)
+    if expanded is None:
+        raise PathNotConfiguredError("TAGSLUT_ARTIFACTS resolved to an empty path.")
+    return expanded
 
 
 def get_reports_dir() -> Path:
     """Get reports directory"""
     default = str(get_artifacts_dir() / "M" / "03_reports")
     path = _get_env("TAGSLUT_REPORTS", default=default)
-    return _expand_path(path)  # type: ignore  # TODO: mypy-strict
+    expanded = _expand_path(path)
+    if expanded is None:
+        raise PathNotConfiguredError("TAGSLUT_REPORTS resolved to an empty path.")
+    return expanded
 
 
 def get_log_path(name: str) -> Path:
@@ -184,12 +234,12 @@ def get_log_path(name: str) -> Path:
 
 def get_scan_workers() -> int:
     """Get number of scan workers"""
-    return int(_get_env("SCAN_WORKERS", default="8"))  # type: ignore  # TODO: mypy-strict
+    return int(_get_env("SCAN_WORKERS", default="8") or "8")
 
 
 def get_scan_progress_interval() -> int:
     """Get scan progress reporting interval"""
-    return int(_get_env("SCAN_PROGRESS_INTERVAL", default="100"))  # type: ignore  # TODO: mypy-strict
+    return int(_get_env("SCAN_PROGRESS_INTERVAL", default="100") or "100")
 
 
 def get_scan_check_integrity() -> bool:
@@ -213,12 +263,12 @@ def get_scan_incremental() -> bool:
 
 def get_auto_approve_threshold() -> float:
     """Get auto-approval confidence threshold"""
-    return float(_get_env("AUTO_APPROVE_THRESHOLD", default="0.95"))  # type: ignore  # TODO: mypy-strict
+    return float(_get_env("AUTO_APPROVE_THRESHOLD", default="0.95") or "0.95")
 
 
 def get_quarantine_retention_days() -> int:
     """Get quarantine retention period in days"""
-    return int(_get_env("QUARANTINE_RETENTION_DAYS", default="30"))  # type: ignore  # TODO: mypy-strict
+    return int(_get_env("QUARANTINE_RETENTION_DAYS", default="30") or "30")
 
 
 def get_prefer_high_bitrate() -> bool:
@@ -266,7 +316,7 @@ def validate_paths() -> list[str]:
     return errors
 
 
-def print_config():  # type: ignore  # TODO: mypy-strict
+def print_config() -> None:
     """Print current configuration (for debugging)"""
     print("=== Dedupe Configuration ===")
     print(f"Database:    {get_db_path()}")
@@ -288,7 +338,7 @@ def print_config():  # type: ignore  # TODO: mypy-strict
 
 if __name__ == "__main__":
     # Test configuration
-    print_config()  # type: ignore  # TODO: mypy-strict
+    print_config()
 
     errors = validate_paths()
     if errors:

@@ -2,6 +2,7 @@
 
 from tagslut.storage.v3.db import open_db_v3
 from tagslut.storage.v3.doctor import doctor_v3
+from tagslut.storage.v3.migration_runner import run_pending_v3, verify_v3_migration
 from tagslut.storage.v3.dual_write import (
     dual_write_enabled,
     dual_write_registered_file,
@@ -35,16 +36,21 @@ from tagslut.storage.v3.preferred_asset import (
     upsert_preferred_assets,
 )
 from tagslut.storage.v3.schema import create_schema_v3
+from tagslut.storage.v3.analysis_service import resolve_dj_tag_snapshot, resolve_dj_tag_snapshot_for_path
 
 __all__ = [
     "open_db_v3",
     "create_schema_v3",
+    "run_pending_v3",
+    "verify_v3_migration",
     "doctor_v3",
     "PreferredChoice",
     "compute_candidate_score",
     "choose_preferred_asset_for_identity",
     "compute_preferred_assets",
     "upsert_preferred_assets",
+    "resolve_dj_tag_snapshot",
+    "resolve_dj_tag_snapshot_for_path",
     "IdentityStatusRow",
     "compute_identity_statuses",
     "upsert_identity_statuses",

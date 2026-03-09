@@ -9,12 +9,15 @@ from __future__ import annotations
 import sqlite3
 
 V3_SCHEMA_NAME = "v3"
-V3_SCHEMA_VERSION = 5
+V3_SCHEMA_VERSION = 8
 V3_SCHEMA_VERSION_INITIAL = 1
 V3_SCHEMA_VERSION_IDENTITY_MERGE = 2
 V3_SCHEMA_VERSION_PREFERRED_ASSET = 3
 V3_SCHEMA_VERSION_IDENTITY_STATUS = 4
 V3_SCHEMA_VERSION_DJ_PROFILE = 5
+V3_SCHEMA_VERSION_TRACK_IDENTITY_PHASE1 = 6
+V3_SCHEMA_VERSION_TRACK_IDENTITY_PHASE1_RENAME = 7
+V3_SCHEMA_VERSION_ASSET_ANALYSIS = 8
 
 
 def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
@@ -211,6 +214,21 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE IF NOT EXISTS asset_analysis (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            asset_id INTEGER NOT NULL REFERENCES asset_file(id) ON DELETE CASCADE,
+            analyzer TEXT NOT NULL,
+            analyzer_version TEXT NOT NULL,
+            analysis_scope TEXT NOT NULL,
+            bpm REAL,
+            musical_key TEXT,
+            analysis_energy_1_10 INTEGER CHECK(analysis_energy_1_10 BETWEEN 1 AND 10),
+            confidence REAL,
+            raw_payload_json TEXT,
+            computed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(asset_id, analysis_scope) ON CONFLICT REPLACE
+        );
+
         CREATE TABLE IF NOT EXISTS scan_runs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             mode TEXT NOT NULL DEFAULT 'queue' CHECK (mode = 'queue'),
@@ -289,6 +307,9 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_dj_track_profile_energy ON dj_track_profile(energy);
         CREATE INDEX IF NOT EXISTS idx_dj_track_profile_last_played_at ON dj_track_profile(last_played_at);
         CREATE INDEX IF NOT EXISTS idx_dj_profile_identity ON dj_track_profile(identity_id);
+        CREATE INDEX IF NOT EXISTS idx_asset_analysis_asset ON asset_analysis(asset_id);
+        CREATE INDEX IF NOT EXISTS idx_asset_analysis_scope
+            ON asset_analysis(analysis_scope, computed_at);
         CREATE INDEX IF NOT EXISTS idx_library_track_sources_identity_key
             ON library_track_sources(identity_key);
         CREATE INDEX IF NOT EXISTS idx_library_track_sources_provider_id
@@ -402,6 +423,51 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
         WHERE
             preferred_asset_id IS NOT NULL
             AND identity_status IN ('active', 'orphan');
+
+        CREATE VIEW IF NOT EXISTS v_asset_analysis_latest_dj AS
+        SELECT *
+        FROM asset_analysis
+        WHERE analysis_scope = 'dj';
+
+        CREATE VIEW IF NOT EXISTS v_dj_export_metadata_v1 AS
+        SELECT
+            ti.id AS identity_id,
+            ti.identity_key AS identity_key,
+            ti.isrc AS isrc,
+            ti.canonical_artist AS artist,
+            ti.canonical_title AS title,
+            ti.canonical_album AS album,
+            ti.canonical_genre AS genre,
+            ti.canonical_label AS label,
+            ti.canonical_year AS year,
+            pa.asset_id AS preferred_asset_id,
+            af.path AS preferred_path,
+            COALESCE(ti.canonical_bpm, aa.bpm) AS export_bpm,
+            CASE
+                WHEN ti.canonical_bpm IS NOT NULL THEN 'identity'
+                WHEN aa.bpm IS NOT NULL THEN 'analysis'
+                ELSE NULL
+            END AS bpm_source,
+            COALESCE(ti.canonical_key, aa.musical_key) AS export_key,
+            CASE
+                WHEN ti.canonical_key IS NOT NULL THEN 'identity'
+                WHEN aa.musical_key IS NOT NULL THEN 'analysis'
+                ELSE NULL
+            END AS key_source,
+            COALESCE(dj.energy, aa.analysis_energy_1_10) AS export_energy,
+            CASE
+                WHEN dj.energy IS NOT NULL THEN 'dj_profile'
+                WHEN aa.analysis_energy_1_10 IS NOT NULL THEN 'analysis'
+                ELSE NULL
+            END AS energy_source,
+            aa.analyzer AS analysis_analyzer,
+            aa.computed_at AS analysis_computed_at
+        FROM track_identity ti
+        LEFT JOIN preferred_asset pa ON pa.identity_id = ti.id
+        LEFT JOIN asset_file af ON af.id = pa.asset_id
+        LEFT JOIN dj_track_profile dj ON dj.identity_id = ti.id
+        LEFT JOIN v_asset_analysis_latest_dj aa ON aa.asset_id = pa.asset_id
+        WHERE ti.merged_into_id IS NULL;
         """
     )
     if not _column_exists(conn, "track_identity", "merged_into_id"):
@@ -445,5 +511,30 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
         VALUES (?, ?, ?)
         """,
         (V3_SCHEMA_NAME, V3_SCHEMA_VERSION_DJ_PROFILE, "dj profile support"),
+    )
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO schema_migrations (schema_name, version, note)
+        VALUES (?, ?, ?)
+        """,
+        (V3_SCHEMA_NAME, V3_SCHEMA_VERSION_TRACK_IDENTITY_PHASE1, "phase 1 canonical identity extension"),
+    )
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO schema_migrations (schema_name, version, note)
+        VALUES (?, ?, ?)
+        """,
+        (
+            V3_SCHEMA_NAME,
+            V3_SCHEMA_VERSION_TRACK_IDENTITY_PHASE1_RENAME,
+            "rename phase 1 track identity columns to canonical names",
+        ),
+    )
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO schema_migrations (schema_name, version, note)
+        VALUES (?, ?, ?)
+        """,
+        (V3_SCHEMA_NAME, V3_SCHEMA_VERSION_ASSET_ANALYSIS, "asset analysis and dj export metadata views"),
     )
     conn.commit()

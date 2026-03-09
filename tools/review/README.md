@@ -1,3 +1,5 @@
+<!-- Status: Active document. Reviewed 2026-03-09. Historical or superseded material belongs in docs/archive/. -->
+
 # tools/review
 
 Active operational scripts for tagslut planning, analysis, and move execution.

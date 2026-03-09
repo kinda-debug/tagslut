@@ -1,3 +1,5 @@
+<!-- Status: Active document. Reviewed 2026-03-09. Historical or superseded material belongs in docs/archive/. -->
+
 # Metadata Package
 
 This package handles metadata enrichment and provider resolution for FLAC files.

@@ -1,4 +1,11 @@
+<!-- Status: Active document. Reviewed 2026-03-09. Historical or superseded material belongs in docs/archive/. -->
+
 # Documentation Index
+
+Active-doc policy:
+- Files in `docs/` root are the maintained operator/developer docs.
+- Historical prompts, one-off audits, handover notes, and superseded specs belong in `docs/archive/`.
+- If a Markdown file stops being authoritative, archive it instead of leaving it in the active surface.
 
 ## Operator Docs (start here)
 

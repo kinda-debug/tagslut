@@ -1,3 +1,5 @@
+<!-- Status: Active document. Reviewed 2026-03-09. Historical or superseded material belongs in docs/archive/. -->
+
 # Zones (V2)
 
 Zones are first-class trust/lifecycle stages. They are **not** just labels. Zones drive keeper selection, safety rules, and the staged workflow. Zones are stored in the DB (`files.zone`) and are always auditable.

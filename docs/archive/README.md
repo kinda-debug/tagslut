@@ -2,6 +2,11 @@
 
 This directory contains documents and assets that are preserved for history/reference but are not part of the active operator workflow.
 
+Archive policy:
+- Material here is historical, superseded, or one-off reference only.
+- Do not treat archive content as the current source of truth when an active doc exists in `docs/` root, `AGENT.md`, or the repo root docs.
+- Prompts, audit drafts, handover notes, and superseded plans should be moved here rather than kept in the active doc surface.
+
 ## Active Surface
 
 Use these docs for current operations:

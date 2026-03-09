@@ -246,6 +246,8 @@ def upsert_track_identity(
     beatport_id: str | None,
     artist: str | None,
     title: str | None,
+    bpm: str | None = None,
+    key: str | None = None,
     duration_ref_ms: int | None = None,
     ref_source: str | None = None,
 ) -> int | None:
@@ -253,6 +255,8 @@ def upsert_track_identity(
     beatport_norm = _norm_text(beatport_id)
     artist_norm = _norm_name(artist)
     title_norm = _norm_name(title)
+    bpm_norm = _norm_text(bpm)
+    key_norm = _norm_text(key)
 
     identity_key: str | None = None
     if isrc_norm:
@@ -268,13 +272,16 @@ def upsert_track_identity(
     conn.execute(
         f"""
         INSERT INTO {V3_TRACK_IDENTITY_TABLE} (
-            identity_key, isrc, beatport_id, artist_norm, title_norm, duration_ref_ms, ref_source
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            identity_key, isrc, beatport_id, artist_norm, title_norm,
+            canonical_bpm, canonical_key, duration_ref_ms, ref_source
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(identity_key) DO UPDATE SET
             isrc = COALESCE(excluded.isrc, isrc),
             beatport_id = COALESCE(excluded.beatport_id, beatport_id),
             artist_norm = COALESCE(excluded.artist_norm, artist_norm),
             title_norm = COALESCE(excluded.title_norm, title_norm),
+            canonical_bpm = COALESCE(excluded.canonical_bpm, canonical_bpm),
+            canonical_key = COALESCE(excluded.canonical_key, canonical_key),
             duration_ref_ms = COALESCE(excluded.duration_ref_ms, duration_ref_ms),
             ref_source = COALESCE(excluded.ref_source, ref_source),
             updated_at = CURRENT_TIMESTAMP
@@ -285,6 +292,8 @@ def upsert_track_identity(
             beatport_norm,
             artist_norm,
             title_norm,
+            bpm_norm,
+            key_norm,
             duration_ref_ms,
             _norm_text(ref_source),
         ),
@@ -457,11 +466,15 @@ def identity_hints_from_metadata(metadata: dict[str, Any] | None) -> dict[str, s
     )
     artist = _lookup_tag(metadata, ["artist", "albumartist", "canonical_artist"])
     title = _lookup_tag(metadata, ["title", "canonical_title"])
+    bpm = _lookup_tag(metadata, ["bpm", "canonical_bpm"])
+    key = _lookup_tag(metadata, ["initialkey", "key", "canonical_key"])
     return {
         "isrc": isrc,
         "beatport_id": beatport_id,
         "artist": artist,
         "title": title,
+        "bpm": bpm,
+        "key": key,
     }
 
 
@@ -514,6 +527,8 @@ def dual_write_registered_file(
         beatport_id=identity_hints["beatport_id"],
         artist=identity_hints["artist"],
         title=identity_hints["title"],
+        bpm=identity_hints["bpm"],
+        key=identity_hints["key"],
         duration_ref_ms=duration_ref_ms,
         ref_source=duration_ref_source or download_source,
     )

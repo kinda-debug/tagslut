@@ -1,3 +1,5 @@
+<!-- Status: Active document. Reviewed 2026-03-09. Historical or superseded material belongs in docs/archive/. -->
+
 # Operations
 
 This is the canonical operator guide for the v3 model.

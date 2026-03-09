@@ -1,3 +1,5 @@
+<!-- Status: Archived document. Historical prompt only; not authoritative for current implementation. -->
+
 # Tagslut Repository Audit Prompt (v2 -- Phase 1 Aware)
 
 ## What changed from v1

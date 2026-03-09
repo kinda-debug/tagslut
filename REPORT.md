@@ -1,3 +1,5 @@
+<!-- Status: Active document. Reviewed 2026-03-09. Historical or superseded material belongs in docs/archive/. -->
+
 # REPORT.md — Project Strategy & Current State
 
 ## Status: Recovery Phase COMPLETE

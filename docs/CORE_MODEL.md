@@ -1,3 +1,5 @@
+<!-- Status: Active document. Reviewed 2026-03-09. Historical or superseded material belongs in docs/archive/. -->
+
 # Core Model (V3)
 
 This is the canonical conceptual model for core library operations.

@@ -1,3 +1,5 @@
+<!-- Status: Active document. Reviewed 2026-03-09. Historical or superseded material belongs in docs/archive/. -->
+
 # DJ Review App
 
 Local web app to classify Artist / Album / Track as **OK** vs **Not OK**, with web review links and DB-backed decisions.

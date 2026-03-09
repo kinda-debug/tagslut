@@ -1,3 +1,5 @@
+<!-- Status: Active document. Reviewed 2026-03-09. Historical or superseded material belongs in docs/archive/. -->
+
 ## Phase 1 Invariants (Active)
 
 - All writes to track_identity must go through tagslut/storage/v3/identity_service.py

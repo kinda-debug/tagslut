@@ -1,3 +1,5 @@
+<!-- Status: Active document. Reviewed 2026-03-09. Historical or superseded material belongs in docs/archive/. -->
+
 # DB V3 Schema (Core)
 
 This document summarizes the core v3 tables and ownership model.

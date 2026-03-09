@@ -1,3 +1,5 @@
+<!-- Status: Active document. Reviewed 2026-03-09. Historical or superseded material belongs in docs/archive/. -->
+
 # Script Surface (Canonical vs Legacy)
 
 This file is the authoritative map of where to run things in this repo.

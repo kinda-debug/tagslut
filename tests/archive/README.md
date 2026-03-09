@@ -1,3 +1,5 @@
+<!-- Status: Active document. Reviewed 2026-03-09. Historical or superseded material belongs in docs/archive/. -->
+
 # Archived Test Suites
 
 This directory contains retired test suites preserved for historical reference:

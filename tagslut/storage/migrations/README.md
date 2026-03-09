@@ -1,3 +1,5 @@
+<!-- Status: Active document. Reviewed 2026-03-09. Historical or superseded material belongs in docs/archive/. -->
+
 # Storage Migrations
 
 Migrations run in filename order via `tagslut.storage.migration_runner`.

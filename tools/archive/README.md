@@ -1,3 +1,5 @@
+<!-- Status: Active document. Reviewed 2026-03-09. Historical or superseded material belongs in docs/archive/. -->
+
 # Tools Archive
 
 This directory contains archived scripts that have been superseded or are no longer actively maintained.

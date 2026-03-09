@@ -1,3 +1,5 @@
+<!-- Status: Active document. Reviewed 2026-03-09. Historical or superseded material belongs in docs/archive/. -->
+
 # Tagslut Repository - Progress Report
 
 Report Date: March 5, 2026

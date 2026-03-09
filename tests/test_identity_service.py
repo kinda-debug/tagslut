@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import sqlite3
 
+import pytest
+
 from tagslut.storage.schema import init_db
 from tagslut.storage.v3.identity_service import (
+    link_asset_to_identity,
     mirror_identity_to_legacy,
     resolve_active_identity,
     resolve_or_create_identity,
@@ -207,6 +210,51 @@ def test_resolve_or_create_identity_matches_fuzzy_and_preserves_exact_fields(tmp
     assert str(row["isrc"]) == "ISRC-FILL"
 
 
+def test_resolve_or_create_identity_matches_fuzzy_with_short_artist_prefix(tmp_path) -> None:
+    conn = _open_fixture_db(tmp_path)
+    try:
+        asset_row = _asset_row(conn, 109, "/music/short-prefix.flac", duration_s=180.0)
+        conn.execute(
+            """
+            INSERT INTO track_identity (
+                id,
+                identity_key,
+                artist_norm,
+                title_norm,
+                canonical_artist,
+                canonical_title,
+                canonical_duration
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                13,
+                "text:abc|track short",
+                "abc",
+                "track short",
+                "ABC",
+                "Track Short",
+                180.0,
+            ),
+        )
+
+        identity_id = resolve_or_create_identity(
+            conn,
+            asset_row,
+            {"artist": "ABC", "title": "Track Short", "duration": 180.0},
+            {"source": "test"},
+        )
+        count = conn.execute(
+            "SELECT COUNT(*) FROM track_identity WHERE identity_key = ?",
+            ("text:abc|track short",),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert identity_id == 13
+    assert count is not None
+    assert int(count[0]) == 1
+
+
 def test_resolve_or_create_identity_creates_new_identity_when_no_match_exists(tmp_path) -> None:
     conn = _open_fixture_db(tmp_path)
     try:
@@ -236,6 +284,37 @@ def test_resolve_or_create_identity_creates_new_identity_when_no_match_exists(tm
     assert str(row["canonical_artist"]) == "Create Artist"
     assert str(row["canonical_title"]) == "Create Title"
     assert float(row["canonical_duration"]) == 250.0
+
+
+def test_resolve_or_create_identity_reuses_existing_identity_on_repeated_create_path(tmp_path) -> None:
+    conn = _open_fixture_db(tmp_path)
+    try:
+        asset_row = _asset_row(conn, 108, "/music/retry.flac", duration_s=200.0)
+
+        first_id = resolve_or_create_identity(conn, asset_row, {}, {})
+        second_id = resolve_or_create_identity(conn, asset_row, {}, {})
+
+        row = conn.execute(
+            """
+            SELECT id, identity_key
+            FROM track_identity
+            WHERE identity_key = ?
+            """,
+            ("unidentified:asset:108",),
+        ).fetchone()
+        count = conn.execute(
+            "SELECT COUNT(*) FROM track_identity WHERE identity_key = ?",
+            ("unidentified:asset:108",),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert row is not None
+    assert count is not None
+    assert first_id == second_id
+    assert int(row["id"]) == first_id
+    assert str(row["identity_key"]) == "unidentified:asset:108"
+    assert int(count[0]) == 1
 
 
 def test_mirror_identity_to_legacy_keeps_files_and_library_tracks_in_parity(tmp_path) -> None:
@@ -394,3 +473,76 @@ def test_mirror_identity_to_legacy_keeps_files_and_library_tracks_in_parity(tmp_
     assert float(library_track_row["bpm"]) == float(identity_row["canonical_bpm"])
     assert str(library_track_row["musical_key"]) == str(identity_row["canonical_key"])
     assert str(library_track_row["label"]) == str(identity_row["canonical_label"])
+
+
+def test_mirror_identity_to_legacy_warns_when_files_has_no_canonical_columns(
+    tmp_path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    conn = _open_fixture_db(tmp_path)
+    try:
+        conn.execute("CREATE TABLE files (id INTEGER PRIMARY KEY, path TEXT NOT NULL UNIQUE)")
+        asset_row = _asset_row(conn, 110, "/music/mirror-warning.flac", duration_s=210.0)
+        conn.execute("INSERT INTO files (path) VALUES (?)", (str(asset_row["path"]),))
+        conn.execute(
+            """
+            INSERT INTO track_identity (
+                id,
+                identity_key,
+                canonical_title,
+                canonical_artist
+            ) VALUES (?, ?, ?, ?)
+            """,
+            (21, "warning:test", "Warning Title", "Warning Artist"),
+        )
+
+        with caplog.at_level("WARNING", logger="tagslut.storage.v3.identity_service"):
+            mirror_identity_to_legacy(conn, 21, 110)
+    finally:
+        conn.close()
+
+    assert "no canonical_* columns found in 'files' table" in caplog.text
+    assert "identity 21" in caplog.text
+
+
+def test_link_asset_to_identity_upserts_single_active_row_per_asset(tmp_path) -> None:
+    conn = _open_fixture_db(tmp_path)
+    try:
+        _asset_row(conn, 107, "/music/link-upsert.flac")
+        conn.executemany(
+            """
+            INSERT INTO track_identity (id, identity_key)
+            VALUES (?, ?)
+            """,
+            [
+                (30, "id:first"),
+                (31, "id:second"),
+            ],
+        )
+
+        link_asset_to_identity(conn, 107, 30, 0.75, "first-pass")
+        link_asset_to_identity(conn, 107, 31, 0.95, "second-pass")
+
+        row = conn.execute(
+            """
+            SELECT asset_id, identity_id, confidence, link_source, active
+            FROM asset_link
+            WHERE asset_id = ?
+            """,
+            (107,),
+        ).fetchone()
+        count = conn.execute(
+            "SELECT COUNT(*) FROM asset_link WHERE asset_id = ?",
+            (107,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert row is not None
+    assert count is not None
+    assert int(count[0]) == 1
+    assert int(row["asset_id"]) == 107
+    assert int(row["identity_id"]) == 31
+    assert float(row["confidence"]) == 0.95
+    assert str(row["link_source"]) == "second-pass"
+    assert int(row["active"]) == 1

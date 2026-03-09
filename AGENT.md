@@ -86,6 +86,13 @@ Archived material must never override active documentation.
 
 CLI Command Surface
 
+> **⚠ STALE — awaiting Phase 1 PR 14 (docs/AGENT update)**
+> Commands `tagslut init`, `tagslut gig`, `tagslut export` are canonical
+> but not yet listed here. Commands `canonize`, `enrich-file`,
+> `explain-keeper` are policy-hidden, not canonical. Do not use this
+> section as authoritative until PR 14 merges.
+> See: `docs/SURFACE_POLICY.md` §Canonical Surface and `docs/PHASE1_STATUS.md`.
+
 Preferred commands:
 
 tagslut intake
@@ -189,7 +196,7 @@ Workflow:
 	3.	sync_dj_mp3_from_flac() refreshes DJ MP3 tags from enriched FLACs.
 
 Tag policy:
-	•	DJ MP3s keep: title, artist, album, date, genre, BPM, key, ISRC, label, energy, cover art.
+	•	DJ MP3s keep: title, artist, album, date, genre, BPM, key, ISRC, TSRC (ISRC identifier, written if present in source FLAC), TXXX:LABEL (release label, custom user-text frame), TXXX:ENERGY (energy value, custom user-text frame), label, energy, cover art.
 	•	Lyrics (USLT, SYLT) are always stripped.
 	•	ffmpeg encodes with -map_metadata -1 (strips all source metadata).
 

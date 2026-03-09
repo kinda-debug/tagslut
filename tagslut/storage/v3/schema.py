@@ -394,14 +394,14 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
         FROM v_dj_pool_candidates_v3
         WHERE
             preferred_asset_id IS NOT NULL
-            AND identity_status IN ('curated', 'active');
+            AND identity_status = 'active';
 
         CREATE VIEW IF NOT EXISTS v_dj_pool_candidates_active_orphan_v3 AS
         SELECT *
         FROM v_dj_pool_candidates_v3
         WHERE
             preferred_asset_id IS NOT NULL
-            AND identity_status IN ('curated', 'active', 'orphan');
+            AND identity_status IN ('active', 'orphan');
         """
     )
     if not _column_exists(conn, "track_identity", "merged_into_id"):

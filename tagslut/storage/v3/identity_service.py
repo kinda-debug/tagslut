@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import re
 from collections.abc import Mapping
@@ -29,6 +30,7 @@ PROVIDER_COLUMNS: tuple[str, ...] = (
 )
 FUZZY_DURATION_TOLERANCE_S = 2.0
 FUZZY_SCORE_THRESHOLD = 0.92
+logger = logging.getLogger(__name__)
 
 
 def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
@@ -288,6 +290,7 @@ def _fuzzy_match_identity_id(
 
     has_merged_into = _column_exists(conn, "track_identity", "merged_into_id")
     where_active = "AND merged_into_id IS NULL" if has_merged_into else ""
+    artist_prefix = f"{artist_norm[:4]}%"
 
     rows = conn.execute(
         f"""
@@ -298,11 +301,12 @@ def _fuzzy_match_identity_id(
             canonical_duration,
             duration_ref_ms
         FROM track_identity
-        WHERE artist_norm IS NOT NULL
+        WHERE artist_norm LIKE ?
           AND title_norm IS NOT NULL
           {where_active}
         ORDER BY id ASC
-        """
+        """,
+        (artist_prefix,),
     ).fetchall()
 
     search_text = f"{artist_norm} {title_norm}"
@@ -339,7 +343,7 @@ def _create_identity(
     placeholders = ", ".join("?" for _ in columns)
     conn.execute(
         f"""
-        INSERT INTO track_identity ({", ".join(columns)})
+        INSERT OR IGNORE INTO track_identity ({", ".join(columns)})
         VALUES ({placeholders})
         """,
         params,
@@ -422,6 +426,11 @@ def _mirror_to_files(
     }
     available = [column for column in file_values if _column_exists(conn, "files", column)]
     if not available:
+        logger.warning(
+            "mirror_identity_to_legacy: no canonical_* columns found in 'files' "
+            "table — mirror skipped for identity %s. Run legacy schema migration first.",
+            int(identity_row["id"]),
+        )
         return
 
     assignments = ", ".join(f"{column} = ?" for column in available)
@@ -538,56 +547,76 @@ def resolve_or_create_identity(
     if not _table_exists(conn, "track_identity"):
         raise RuntimeError("track_identity table is missing")
 
-    fields = _identity_value_map(asset_row, metadata, provenance)
-    asset_id_raw = _row_value(asset_row, "id")
-    asset_id = int(asset_id_raw) if asset_id_raw is not None else None
+    owns_transaction = not conn.in_transaction
+    if owns_transaction:
+        conn.execute("BEGIN IMMEDIATE")
 
-    if asset_id is not None and _table_exists(conn, "asset_link"):
-        active_link_where = "AND active = 1" if _column_exists(conn, "asset_link", "active") else ""
-        linked = conn.execute(
-            f"""
-            SELECT identity_id
-            FROM asset_link
-            WHERE asset_id = ?
-            {active_link_where}
-            ORDER BY id ASC
-            LIMIT 1
-            """,
-            (asset_id,),
-        ).fetchone()
-        if linked is not None:
-            resolved = resolve_active_identity(conn, int(linked["identity_id"]))
-            resolved_id = int(resolved["id"])
-            _merge_identity_fields_if_empty(conn, resolved_id, fields)
-            return resolved_id
+    try:
+        fields = _identity_value_map(asset_row, metadata, provenance)
+        asset_id_raw = _row_value(asset_row, "id")
+        asset_id = int(asset_id_raw) if asset_id_raw is not None else None
 
-    isrc = _norm_text(fields.get("isrc"))
-    if isrc:
-        matched_id = _matched_identity_id_by_field(conn, "isrc", isrc)
+        if asset_id is not None and _table_exists(conn, "asset_link"):
+            active_link_where = "AND active = 1" if _column_exists(conn, "asset_link", "active") else ""
+            linked = conn.execute(
+                f"""
+                SELECT identity_id
+                FROM asset_link
+                WHERE asset_id = ?
+                {active_link_where}
+                ORDER BY id ASC
+                LIMIT 1
+                """,
+                (asset_id,),
+            ).fetchone()
+            if linked is not None:
+                resolved = resolve_active_identity(conn, int(linked["identity_id"]))
+                resolved_id = int(resolved["id"])
+                _merge_identity_fields_if_empty(conn, resolved_id, fields)
+                if owns_transaction:
+                    conn.commit()
+                return resolved_id
+
+        isrc = _norm_text(fields.get("isrc"))
+        if isrc:
+            matched_id = _matched_identity_id_by_field(conn, "isrc", isrc)
+            if matched_id is not None:
+                _merge_identity_fields_if_empty(conn, matched_id, fields)
+                if owns_transaction:
+                    conn.commit()
+                return matched_id
+
+        for column in PROVIDER_COLUMNS:
+            value = _norm_text(fields.get(column))
+            if not value:
+                continue
+            matched_id = _matched_identity_id_by_field(conn, column, value)
+            if matched_id is not None:
+                _merge_identity_fields_if_empty(conn, matched_id, fields)
+                if owns_transaction:
+                    conn.commit()
+                return matched_id
+
+        matched_id = _fuzzy_match_identity_id(
+            conn,
+            artist_norm=_norm_text(fields.get("artist_norm")),
+            title_norm=_norm_text(fields.get("title_norm")),
+            duration_s=_to_float(fields.get("canonical_duration")),
+        )
         if matched_id is not None:
             _merge_identity_fields_if_empty(conn, matched_id, fields)
+            if owns_transaction:
+                conn.commit()
             return matched_id
 
-    for column in PROVIDER_COLUMNS:
-        value = _norm_text(fields.get(column))
-        if not value:
-            continue
-        matched_id = _matched_identity_id_by_field(conn, column, value)
-        if matched_id is not None:
-            _merge_identity_fields_if_empty(conn, matched_id, fields)
-            return matched_id
-
-    matched_id = _fuzzy_match_identity_id(
-        conn,
-        artist_norm=_norm_text(fields.get("artist_norm")),
-        title_norm=_norm_text(fields.get("title_norm")),
-        duration_s=_to_float(fields.get("canonical_duration")),
-    )
-    if matched_id is not None:
-        _merge_identity_fields_if_empty(conn, matched_id, fields)
-        return matched_id
-
-    return _create_identity(conn, asset_row, fields)
+        created_id = _create_identity(conn, asset_row, fields)
+        if owns_transaction:
+            conn.commit()
+        return created_id
+    except Exception:
+        if owns_transaction:
+            conn.rollback()
+        raise
 
 
 def link_asset_to_identity(
@@ -598,7 +627,19 @@ def link_asset_to_identity(
     link_source: str,
 ) -> None:
     """Create or update the canonical asset-to-identity link for an asset."""
-    raise NotImplementedError
+    conn.execute(
+        """
+        INSERT INTO asset_link (asset_id, identity_id, confidence, link_source, active)
+        VALUES (?, ?, ?, ?, 1)
+        ON CONFLICT(asset_id) DO UPDATE SET
+            identity_id = excluded.identity_id,
+            confidence = excluded.confidence,
+            link_source = excluded.link_source,
+            active = 1,
+            updated_at = CURRENT_TIMESTAMP
+        """,
+        (int(asset_id), int(identity_id), float(confidence), link_source),
+    )
 
 
 def mirror_identity_to_legacy(

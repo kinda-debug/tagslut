@@ -17,7 +17,7 @@ This is the canonical conceptual model for core library operations.
 
 1. `asset_file` is authoritative for physical truth.
 2. `track_identity` is authoritative for canonical identity truth.
-3. Every asset must map to exactly one active identity link (`asset_link`).
+3. Every asset has at most one `asset_link` row. The `active` column (default 1) is used for soft-delink; it does not represent historical alternatives. Use `UPDATE SET active=0` to delink without deleting.
 4. `move_plan` + `move_execution` + `provenance_event` are authoritative for move/audit truth.
 5. DJ workflows are optional overlays and must not be required for core library correctness.
 
@@ -35,4 +35,3 @@ If facts conflict:
 - physical facts come from `asset_file` + successful move receipts/events
 - identity facts come from `track_identity`
 - mapping truth comes from the active `asset_link`
-

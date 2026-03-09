@@ -13,3 +13,8 @@ To apply pending migrations:
 ```bash
 python -m tagslut.storage.migration_runner <db_path>
 ```
+
+Verification note:
+- Numbered migration modules such as `0007_v3_isrc_partial_unique.py` cannot be imported with `from ... import 0007_...` because Python identifiers cannot start with digits.
+- Use `importlib.import_module("tagslut.storage.migrations.0007_v3_isrc_partial_unique")` for in-package verification snippets.
+- If loading by path outside the installed package, use `importlib.util.spec_from_file_location(...)`.

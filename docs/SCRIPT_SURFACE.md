@@ -1,4 +1,4 @@
-<!-- Status: Active document. Reviewed 2026-03-09. Historical or superseded material belongs in docs/archive/. -->
+<!-- Status: Active document. Synced 2026-03-09 after recent code/doc review. Historical or superseded material belongs in docs/archive/. -->
 
 # Script Surface (Canonical vs Legacy)
 
@@ -88,6 +88,9 @@ Role: Run `onetagger-cli` on a symlink batch from M3U and emit summary artifacts
 8. `tools/tag [options]`
 Role: Combined build + run OneTagger workflow with defaults.
 
+9. `tools/review/sync_phase1_prs.sh`
+Role: Maintainer-only helper for pushing the active Phase 1 branch stack with preserved PR scope boundaries.
+
 ## Canonical DJ Pool Builder
 
 The only canonical script-level DJ pool builder is:
@@ -128,13 +131,16 @@ Use `tagslut intake/index/decide/execute/verify/report/auth/dj/gig/export/init` 
 - `tagslut recovery` is a hidden minimal stub logger and does not implement the full move pipeline described in some historical docs.
 - Canonical operator path for end-to-end root processing:
   - `tagslut intake process-root --root <folder> [--db <db>]`
+- Current v3-safe `process-root` usage is `identify,enrich,art,promote,dj`; legacy scan phases are blocked when `--db` points at a v3 database.
 - For move execution today, use:
+  - `tagslut execute move-plan --plan <plan.csv> [--db <db>] [--dry-run]`
   - Plan generation scripts in `tools/review/`
-- `tools/review/move_from_plan.py`
-- `tools/review/quarantine_from_plan.py`
-- `tools/review/plan_move_skipped.py`
-- `tools/review/quarantine_gc.py`
-- `tools/review/promote_by_tags.py` (`--move-log` for JSONL move audit output)
+- Compatibility-only executors:
+  - `tools/review/move_from_plan.py` (deprecated in favor of `tagslut execute move-plan`)
+  - `tools/review/quarantine_from_plan.py`
+  - `tools/review/plan_move_skipped.py`
+  - `tools/review/quarantine_gc.py`
+  - `tools/review/promote_by_tags.py` (`--move-log` for JSONL move audit output)
 - Archived compatibility contract:
   - `docs/archive/legacy-root-docs-2026-03-06-md-cleanup/MOVE_EXECUTOR_COMPAT.md`
 - Historical phase runbooks and verification reports:

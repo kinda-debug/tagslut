@@ -1,4 +1,4 @@
-<!-- Status: Active document. Reviewed 2026-03-09. Historical or superseded material belongs in docs/archive/. -->
+<!-- Status: Active document. Synced 2026-03-09 after recent code/doc review. Historical or superseded material belongs in docs/archive/. -->
 
 # Troubleshooting Guide
 
@@ -158,6 +158,18 @@ This is by design - tagslut uses move-only semantics and won't overwrite.
 2. Deterministic duplicates should go to `DISCARD_ROOT`, not quarantine
 3. Use quarantine only for genuinely risky files
 
+### Problem: Sidecar files did not land where expected
+
+**Symptoms:**
+- audio move succeeded
+- adjacent lyric or artwork files were skipped or not present at destination
+
+**Solution:**
+`tagslut execute move-plan` now attempts common sidecars automatically, but it still uses skip-on-collision behavior.
+1. Check whether sibling files actually existed next to the source audio
+2. Review the move summary for companion `skip_dest_exists` results
+3. Re-run after resolving the destination collision if the sidecar must move
+
 ### Problem: Interrupted Move
 
 **Symptoms:**
@@ -201,6 +213,38 @@ tagslut index set-duration-ref --db $TAGSLUT_DB
 ---
 
 ## CLI Issues
+
+### Problem: `process-root` rejects scan phases on a v3 DB
+
+**Symptoms:**
+- error mentions `v3 DB guard`
+- `register`, `integrity`, or `hash` were requested through `process-root`
+
+**Solution:**
+```bash
+# Use only the v3-safe staged-root phases
+python -m tagslut intake process-root \
+  --db "$V3_DB" \
+  --root "$PROMOTE_ROOT" \
+  --library "$MASTER_LIBRARY" \
+  --phases identify,enrich,art,promote,dj
+```
+
+If you intentionally need register or integrity behavior, run the dedicated commands (`tagslut index register`, `tools/review/check_integrity_update_db.py`) instead of `process-root`.
+
+### Problem: Essentia not found during DJ phase
+
+**Symptoms:**
+- warning mentions `Essentia not found`
+- BPM/key fallback analysis is skipped for staged FLACs
+
+**Solution:**
+```bash
+# macOS
+brew install essentia
+```
+
+If Essentia is unavailable, the DJ phase can still use canonical BPM/key already present in v3 identity data.
 
 ### Problem: Command Not Found
 

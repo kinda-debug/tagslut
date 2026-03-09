@@ -1,4 +1,4 @@
-<!-- Status: Active document. Reviewed 2026-03-09. Historical or superseded material belongs in docs/archive/. -->
+<!-- Status: Active document. Synced 2026-03-09 after recent code/doc review. Historical or superseded material belongs in docs/archive/. -->
 
 # Operations
 
@@ -84,20 +84,32 @@ Notes:
 - `tools/get-intake` is the advanced/backend command for existing batch roots and `--m3u-only`.
 - `tools/get-sync` is deprecated and kept only as a compatibility alias.
 
-## Daily Scan
+## V3 Staged-Root Processing
+
+Use `tagslut intake process-root` only for the v3-safe staged-root phases:
+
 ```bash
 python -m tagslut intake process-root \
   --db <V3_DB> \
-  --root <SCAN_ROOT> \
-  --scan-only
+  --root <PROMOTE_ROOT> \
+  --library <MASTER_LIBRARY> \
+  --phases identify,enrich,art,promote,dj
 ```
 
-## Full Pipeline
+Preview just the DJ phase without writing FLAC tags or MP3s:
+
 ```bash
 python -m tagslut intake process-root \
   --db <V3_DB> \
-  --root <SCAN_ROOT>
+  --root <PROMOTE_ROOT> \
+  --phases dj \
+  --dry-run
 ```
+
+Important:
+- On a v3 DB, `register`, `integrity`, and `hash` are blocked by the `process-root` v3 guard.
+- Use `tagslut index register` and `tools/review/check_integrity_update_db.py` directly when you intentionally need those legacy-scan behaviors.
+- `--dry-run` currently applies to the DJ phase only.
 
 ## Safe Promotion
 ```bash
@@ -119,8 +131,32 @@ python tools/review/promote_replace_merge.py \
   --allow-non-ok-duration
 ```
 
+## Move Plan Execution
+
+Use the canonical executor for reviewed plan CSVs:
+
+```bash
+python -m tagslut execute move-plan \
+  --plan plans/example.csv \
+  --db <V3_DB> \
+  --dry-run
+```
+
+Notes:
+- writes `move_plan`, `move_execution`, and `provenance_event` rows
+- `--verify` runs parity checks after execution
+- common sidecars such as `.lrc`, `.cover.jpg`, and sibling artwork files move with the audio file
+
 ## Invariant
 Promotion must select the preferred asset whenever a preferred asset exists under the promoted root.
+
+## Maintainer Helper
+
+For the active Phase 1 branch stack only:
+
+```bash
+tools/review/sync_phase1_prs.sh
+```
 
 ## Required Gates
 ```bash

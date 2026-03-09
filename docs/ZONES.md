@@ -1,82 +1,90 @@
-<!-- Status: Active document. Reviewed 2026-03-09. Historical or superseded material belongs in docs/archive/. -->
+<!-- Status: Active document. Synced 2026-03-09 after recent code/doc review. Historical or superseded material belongs in docs/archive/. -->
 
-# Zones (V2)
+# Zones
 
-Zones are first-class trust/lifecycle stages. They are **not** just labels. Zones drive keeper selection, safety rules, and the staged workflow. Zones are stored in the DB (`files.zone`) and are always auditable.
+## Purpose
 
-## Zone Definitions
+Zones describe asset placement and trust. They are not the same thing as v3 identity lifecycle status.
 
-- **accepted**: Canonical library content. Highest trust.
-- **archive**: Long-term storage. High trust but not necessarily canonical.
-- **staging**: Incoming/working area. Medium trust.
-- **suspect**: Duplicates, corrupt, or unverified files. Low trust.
-- **quarantine**: Duplicates copied into a safety net. Lowest trust.
-- **inbox / rejected**: Optional legacy zones (supported for compatibility).
+Use this distinction:
+
+- `zone`: where a file lives and how move/promotion logic should treat it
+- `identity_status`: whether a canonical identity is `active`, `orphan`, or `archived`
+
+## Active Zone Vocabulary
+
+The repo still uses these placement-oriented zones:
+
+- `accepted`: canonical library content
+- `archive`: retained long-term but not necessarily the primary playable copy
+- `staging`: incoming or not-yet-promoted material
+- `suspect`: lower-trust files, collisions, or files needing review
+- `quarantine`: isolated risky content
+
+Legacy compatibility values may still appear in old tables or scripts, but new guidance should use the active zone set above.
+
+## Work Roots vs Zones
+
+The operator work roots are related but not identical:
+
+- `FIX_ROOT`: salvageable metadata/tag issues
+- `QUARANTINE_ROOT`: risky files needing manual review
+- `DISCARD_ROOT`: deterministic duplicates such as `dest_exists`
+
+These are workflow buckets. When such files are written back into DB-facing move flows, they usually map to `suspect` or `quarantine` depending on the path and action.
 
 ## Core Rules
 
-- **No deletion**: Code never deletes source files. Quarantine is copy-only.
-- **Reversible**: All actions must be auditable in DB/logs.
-- **Zones remain central**: Keeper selection always considers zones unless no library zones exist.
+1. Zones are about asset placement, not canonical identity truth.
+2. Promotion should move toward `accepted`, not away from it.
+3. Quarantine should remain reversible and auditable.
+4. Do not treat a zone label as a substitute for `preferred_asset` or `identity_status`.
+5. Do not infer canonical identity from zone or path shape.
 
-## Zone Configuration
+## Configuration
 
-Zones are configured via YAML (preferred) or TOML (legacy). YAML allows explicit priorities and path-level overrides.
+Zone resolution is configured through YAML or TOML inputs loaded by the zone manager.
 
-### YAML (preferred)
+Preferred pattern:
 
-Set `TAGSLUT_ZONES_CONFIG` to a YAML file:
-
-```
+```bash
 export TAGSLUT_ZONES_CONFIG=~/.config/tagslut/zones.yaml
 ```
 
-The YAML structure uses these top-level keys:
+Typical YAML keys:
 
-- `defaults.zone`: fallback zone (usually `suspect`)
-- `roots.base`: optional base for relative paths
-- `zones`: mapping of zone → {paths, priority, description}
-- `path_priorities`: optional path-level tie-breakers
+- `defaults.zone`
+- `roots.base`
+- `zones`
+- `path_priorities`
 
-See `config.example.yaml` for three scenarios.
+## Practical Interpretation
 
-### TOML (legacy)
+### Accepted
 
-The existing `config.toml` supports `library.root` and `library.zones`. When present, ZoneManager loads from TOML but uses default priorities.
+High-trust library content. This is where the canonical playable asset should end up after successful promotion.
 
-## Scenarios
+### Staging
 
-### Scenario A — Single main library
+Incoming content that has not yet completed the required checks and promotion logic.
 
-- One canonical `accepted` root.
-- `staging`, `suspect`, and `quarantine` live under a work area.
-- `path_priorities` can nudge tie-breaks within the accepted library.
+### Suspect
 
-### Scenario B — Multiple peer libraries (no single main)
+Files that should not silently re-enter the accepted library without review.
 
-- Multiple `accepted` roots with the **same base priority**.
-- `path_priorities` break ties between peers if needed.
-- Keeper selection still prefers accepted over staging/suspect/quarantine.
+### Quarantine
 
-### Scenario C — No main library
+Isolation area for risky content. Treat this as a review boundary, not an archive strategy.
 
-- No `accepted` zone at all.
-- Keeper selection ignores zone priority and ranks purely by quality, size, and hygiene.
-- Best for transient/staging-only collections.
+### Archive
 
-## Keeper Selection Order
+Retained storage that is intentionally outside the primary accepted-library path.
 
-1. **Zone priority** (from ZoneManager)
-2. **Path priority** (within zone, if configured)
-3. **Audio quality** (sample rate, bit depth, bitrate, integrity)
-4. **File size** (larger tends to be more complete)
-5. **Path hygiene** (shorter and cleaner paths win ties)
+## Diagnostics
 
-If **no accepted zone** exists, step 1 is skipped automatically.
+Helpful read-only commands:
 
-## CLI Helpers
+- `tagslut show-zone --path /path/to/file` (hidden/policy-only helper)
+- `tagslut explain-keeper --db <db> --group-id <id>` (hidden/policy-only helper)
 
-- `tagslut show-zone --path /path/to/file`
-- `tagslut explain-keeper --db /path/to/music.db --group-id <checksum>`
-
-Both commands are safe, read-only diagnostics.
+Use them for debugging, not as the primary operator surface.

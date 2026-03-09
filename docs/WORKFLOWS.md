@@ -1,4 +1,4 @@
-<!-- Status: Active document. Reviewed 2026-03-09. Historical or superseded material belongs in docs/archive/. -->
+<!-- Status: Active document. Synced 2026-03-09 after recent code/doc review. Historical or superseded material belongs in docs/archive/. -->
 
 # WORKFLOWS.md
 
@@ -6,6 +6,10 @@ Operator reference for tagslut. Start here.
 
 **Surface policy**
 Use canonical entry points for new work: `tagslut intake/index/decide/execute/verify/report/auth`. The `tools/review/*` scripts below are legacy-compatible and still operational, but should be used only if you are intentionally following the legacy review pipeline. For DJ pool v3, prefer `docs/DJ_POOL.md` + `docs/OPERATIONS.md`.
+
+Important current guardrail:
+- On a v3 DB, `tagslut intake process-root` should be used only for `identify,enrich,art,promote,dj`.
+- `register`, `integrity`, and `hash` remain legacy-scan phases and are blocked by the v3 guard.
 
 > **Environment bootstrap** (update once, use everywhere):
 > ```bash
@@ -221,17 +225,42 @@ poetry run tagslut report duration --db "$TAGSLUT_DB"
 
 ---
 
-## One-Command Pipeline (Interactive)
+## One-Command Pipeline (Staged Root)
 
-For a fully automatic run that handles the whole intake pipeline:
+For a staged root that is already on disk, use the v3-safe `process-root` phase set:
 
 ```bash
-cd "$REPO_ROOT"
-export PYTHONPATH=.
-tools/review/process_root.py
+python -m tagslut intake process-root \
+  --db "$V3_DB" \
+  --root "$STAGING_ROOT" \
+  --library "$MASTER_LIBRARY" \
+  --phases identify,enrich,art,promote,dj
 ```
 
-It will prompt for the root folder, then automatically run: integrity · local identify/tag prep · promote/replace. External enrich + art can then be run post-move.
+Preview only the DJ stage:
+
+```bash
+python -m tagslut intake process-root \
+  --db "$V3_DB" \
+  --root "$STAGING_ROOT" \
+  --phases dj \
+  --dry-run
+```
+
+Current `--dry-run` scope is DJ-only. If you need scan/register/integrity behavior, run the dedicated commands from the manual workflow instead of relying on `process-root`.
+
+## Reviewed Plan Execution
+
+For CSV-backed move plans, use the canonical executor:
+
+```bash
+python -m tagslut execute move-plan \
+  --plan plans/example.csv \
+  --db "$V3_DB" \
+  --dry-run
+```
+
+When executed, common sidecars such as lyric files and sibling artwork move with the audio file.
 
 ---
 

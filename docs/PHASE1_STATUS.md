@@ -1,4 +1,4 @@
-<!-- Status: Active document. Reviewed 2026-03-09. Historical or superseded material belongs in docs/archive/. -->
+<!-- Status: Active document. Synced 2026-03-09 after recent code/doc review. Historical or superseded material belongs in docs/archive/. -->
 
 ## Phase 1 PR Chain
 
@@ -27,5 +27,6 @@ Status note (2026-03-09):
 - `fix/migration-0006` contains `0007_v3_isrc_partial_unique.py` at commit `d853b0a`; the partial unique ISRC behavior was verified in a detached worktree before merge.
 - The 6-item action list covering `link_asset_to_identity`, race-safe identity creation, mirror visibility warnings, fuzzy prefiltering, and legacy `library_tracks` verification is complete.
 - PR 9 merge remains the gate before PRs 10 (`fix/identity-service`) and 11 (`fix/backfill-v3`) can land.
+- Use `tools/review/sync_phase1_prs.sh` to push the migration, identity, and DJ-enrichment worktrees without collapsing their PR scope boundaries.
 
 Update this as PRs merge. Codex can read it when needed, and you can reference it in prompts with "check docs/PHASE1_STATUS.md for current state."

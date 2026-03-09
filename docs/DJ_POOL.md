@@ -1,4 +1,4 @@
-<!-- Status: Active document. Reviewed 2026-03-09. Historical or superseded material belongs in docs/archive/. -->
+<!-- Status: Active document. Synced 2026-03-09 after recent code/doc review. Historical or superseded material belongs in docs/archive/. -->
 
 # DJ Pool Contract (v3)
 
@@ -121,6 +121,15 @@ python scripts/dj/build_pool_v3.py \
 ```
 
 Make targets may wrap this behavior.
+
+## Upstream Tag Preparation
+
+Two upstream paths can feed DJ MP3 creation:
+
+1. `tools/get --dj` / `tools/get-intake --dj` for wrapper-driven downstream output after promote
+2. `tagslut intake process-root --phases dj` for staged-root DJ preparation
+
+The staged-root DJ phase can enrich FLAC BPM/key from v3 identity data and use Essentia as fallback before MP3 transcode. Use `--phases dj --dry-run` to preview that work.
 
 ## Output Layout
 

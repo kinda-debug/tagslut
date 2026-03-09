@@ -1,4 +1,4 @@
-<!-- Status: Active document. Reviewed 2026-03-09. Historical or superseded material belongs in docs/archive/. -->
+<!-- Status: Active document. Synced 2026-03-09 after recent code/doc review. Historical or superseded material belongs in docs/archive/. -->
 
 # tagslut
 
@@ -37,17 +37,25 @@ export PROMOTE_ROOT="${PROMOTE_ROOT:-$STAGING_ROOT}"
 
 ## Standard Operations
 ```bash
-# Scan-only (asset-level)
+# V3-safe staged-root processing
 python -m tagslut intake process-root \
   --db <V3_DB> \
   --root <PROMOTE_ROOT> \
-  --scan-only
+  --library <LIBRARY_ROOT> \
+  --phases identify,enrich,art,promote,dj
 
-# Full pipeline
+# Preview only the DJ phase for an already-staged root
 python -m tagslut intake process-root \
   --db <V3_DB> \
-  --root <PROMOTE_ROOT>
+  --root <PROMOTE_ROOT> \
+  --phases dj \
+  --dry-run
 ```
+
+Notes:
+- On a v3 DB, `process-root` should be used with `identify,enrich,art,promote,dj`.
+- `register`, `integrity`, and `hash` are legacy-scan phases and are blocked by the v3 guard when `--db` points at a v3 database.
+- `--dry-run` currently previews the `dj` phase only.
 
 ## Primary Downloader
 For day-to-day downloads, use the umbrella wrapper instead of stitching phases together manually.
@@ -80,6 +88,18 @@ Notes:
 - `--force-download` bypasses the pre-download skip so matched URLs are still fetched, but equal-or-better library files still win at promote time unless you run an explicit replacement workflow
 - `tools/get-intake` is the advanced/backend command for existing batch roots, `--m3u-only`, and direct pipeline control.
 - `tools/get-sync` is a deprecated Beatport compatibility alias.
+
+## Move Plan Execution
+Use the canonical executor for reviewed plan CSVs:
+
+```bash
+python -m tagslut execute move-plan \
+  --plan plans/example.csv \
+  --db <V3_DB> \
+  --dry-run
+```
+
+Execution writes receipts into the v3 move/provenance tables and also carries common per-track sidecars with the audio move.
 
 ## Maintainer PR Sync (Phase 1 stack)
 Use `tools/review/sync_phase1_prs.sh` to push the three immediate branch updates while preserving branch/PR scope boundaries.

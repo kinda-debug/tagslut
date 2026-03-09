@@ -1,4 +1,4 @@
-<!-- Status: Active document. Reviewed 2026-03-09. Historical or superseded material belongs in docs/archive/. -->
+<!-- Status: Active document. Synced 2026-03-09 after recent code/doc review. Historical or superseded material belongs in docs/archive/. -->
 
 # DJ Workflow
 
@@ -41,6 +41,30 @@ Preferred v3 pipeline (identity-based, deterministic):
 Legacy v2 pipeline (XLSX/overrides-based):
 - Uses `tagslut dj curate/export` with `config/dj/track_overrides.csv`.
 - Keep this path only if you are explicitly operating from XLSX inputs.
+
+## Staged-Root DJ Phase
+
+For an already-staged FLAC root, `process-root` now has a DJ phase:
+
+```bash
+python -m tagslut intake process-root \
+  --db "$V3_DB" \
+  --root "$STAGING_ROOT" \
+  --phases dj \
+  --dry-run
+```
+
+What it does:
+
+- looks up the active identity for each staged FLAC
+- writes BPM and key from v3 canonical identity data when available
+- falls back to Essentia for BPM/key/energy when canonical values are missing
+- transcodes staged FLACs to the configured DJ pool when not in dry-run mode
+
+Notes:
+- `--dry-run` currently previews the DJ phase only
+- if Essentia is not installed, fallback analysis is skipped with a warning
+- the deterministic v3 builder path is still the preferred export route for a curated DJ pool
 
 ## Legacy v2 Quick Export (Safe Mode)
 

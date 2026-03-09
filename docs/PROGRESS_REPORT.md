@@ -1,53 +1,37 @@
-<!-- Status: Active document. Reviewed 2026-03-09. Historical or superseded material belongs in docs/archive/. -->
+<!-- Status: Active document. Synced 2026-03-09 after recent code/doc review. Historical or superseded material belongs in docs/archive/. -->
 
-# Tagslut Repository - Progress Report
+# Progress Report
 
-Report Date: March 5, 2026
+Report date: March 9, 2026
 
 ## Executive Summary
-Restructuring phases 0/1/2/3 are complete. DJ workflow integration is functional for classification and MP3 export, with track-level overrides, crates, and USB finalize automation. Recent work added a DJ review web app with auto‑verdicts, DJ USB analyzer tooling, and tag sync from file metadata (Lexicon-friendly). Remaining risks are architecture foundations (Phase 4) and ongoing docs consolidation.
 
-## Completed Work
-### Restructuring
-- Phase 0: Dedupe eradication.
-- Phase 1: Quick wins (scanner move, test renames, pyproject cleanup).
-- Phase 2: CLI evacuation (`cli/main.py` slimmed; command implementations live in `cli/commands/*`).
-- Phase 3: Decision logic consolidation.
-- Phase 4: Architecture foundations (zones module, migrations cleanup, dependency trimming).
+The v3 core surface is active and the recovery-era implementation has been archived. Recent work focused on reducing operator drift: move-plan execution now carries sidecars, staged-root DJ processing gained a previewable DJ phase, and the active Markdown surface was resynchronized with the codebase.
 
-### DJ Integration
-- `tagslut/dj` module: curation, export, transcode, key detection.
-- Track overrides + crates.
-- Scoring classifier + `--promote`.
-- `tools/dj_usb_sync.py` orchestrator.
-- Pioneer finalize automation (ID3v2.3, artwork cap, Rekordbox XML) now integrated in `tools/dj_usb_sync.py`.
-- DJ Review App: `tools/dj_review_app.py` (OK/Not OK + auto verdict).
-- DJ USB Analyzer: `tools/dj_usb_analyzer.py`.
-- Tag sync from files: `tools/metadata sync-tags`.
+## Recent Completed Work
 
-### Housekeeping
-- `.gitignore` improvements.
-- Script archiving.
-- Documentation cleanup.
+- Added `tools/review/sync_phase1_prs.sh` for the active Phase 1 branch stack.
+- Added common sidecar handling to move-plan execution.
+- Added staged-root DJ FLAC tag enrichment and MP3 transcode hooks to `process-root`.
+- Added `process-root --dry-run` support for previewing the DJ phase.
+- Refreshed active root/docs Markdown files so examples match the current v3 guardrails.
 
 ## Current State
-- Tests: not re-run for this report.
-- Tag hoard: varies by scan (see `tag_hoard_files` in DB).
-- DJUSB MP3 count: depends on current policy + overrides.
-- Primary downloader flow is `tools/get <provider-url>`; `tools/get-intake` remains the advanced/backend path.
 
-## Pending Work
-### High Priority
-- Docs consolidation to final structure.
+- Primary downloader flow remains `tools/get <provider-url>`.
+- Canonical CLI surface remains `tagslut intake/index/decide/execute/verify/report/auth`.
+- The deterministic v3 DJ pool path remains the preferred builder/export route.
+- `process-root` is useful for already-staged roots, but its v3-safe phase set is `identify,enrich,art,promote,dj`.
 
-### DJ Pipeline
-- Re-run metadata enrich after registration (as needed).
-- Validate genre key mapping in tag hoard data.
+## Risks
 
-## Known Issues
-- Tag hoard sample genre fields can be sparse depending on provider coverage.
+- Compatibility wrappers still exist, so stale operator habits can reintroduce drift.
+- Provider metadata coverage is uneven, which keeps fallback/repair workflows important.
+- The Phase 1 stacked branches still need careful scope control while landing.
 
 ## Recommended Next Actions
-- Re-run enrich: `poetry run tagslut index enrich --db <db> --hoarding --execute`
-- Validate the umbrella downloader flow with `tools/get <provider-url> [--dj]`
-- Audit tag completeness with `tools/metadata audit-tags`.
+
+1. Keep the Phase 1 stack synchronized with `tools/review/sync_phase1_prs.sh`.
+2. Prefer `tagslut execute move-plan` over compatibility executors for reviewed plans.
+3. Use `tagslut intake process-root --phases dj --dry-run` when validating staged-root DJ enrichment behavior.
+4. Continue running the doc/layout consistency checks after behavior changes.

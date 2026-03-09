@@ -1,4 +1,4 @@
-<!-- Status: Active document. Reviewed 2026-03-09. Historical or superseded material belongs in docs/archive/. -->
+<!-- Status: Active document. Synced 2026-03-09 after recent code/doc review. Historical or superseded material belongs in docs/archive/. -->
 
 # Documentation Index
 
@@ -27,6 +27,7 @@ Active-doc policy:
 
 - [PROJECT.md](PROJECT.md) — project overview and goals
 - [PROGRESS_REPORT.md](PROGRESS_REPORT.md) — current state and pending work
+- [PHASE1_STATUS.md](PHASE1_STATUS.md) — current Phase 1 branch-stack note
 - [REDESIGN_TRACKER.md](REDESIGN_TRACKER.md) — v3 program status and decisions log
 - [PHASE5_LEGACY_DECOMMISSION.md](PHASE5_LEGACY_DECOMMISSION.md) — Phase 5 runbook
 

@@ -1,6 +1,6 @@
-<!-- Status: Active document. Reviewed 2026-03-09. Historical or superseded material belongs in docs/archive/. -->
+<!-- Status: Active document. Synced 2026-03-09 after recent code/doc review. Historical or superseded material belongs in docs/archive/. -->
 
-# Surface Policy - tagslut (2026-03-02)
+# Surface Policy - tagslut (2026-03-09)
 
 ## Purpose
 
@@ -49,6 +49,15 @@ Top-level commands hidden by policy until promoted:
 3. `tagslut explain-keeper ...`
 4. `tagslut show-zone ...`
 5. `tagslut recovery ...`
+
+Compatibility scripts still allowed, but not canonical:
+1. `tools/review/move_from_plan.py`
+2. `tools/review/quarantine_from_plan.py`
+3. `tools/review/promote_by_tags.py`
+
+Current rule for `tagslut intake process-root`:
+- on a v3 DB, use only `identify,enrich,art,promote,dj`
+- `register`, `integrity`, and `hash` are legacy-scan phases and must not be documented as the normal v3 path
 
 ## Removal Horizon
 
@@ -99,6 +108,8 @@ Compatibility wrappers were removed after satisfying these gates:
 16. V3 parity validator: `python scripts/validate_v3_dual_write_parity.py --db <db> --strict`
 17. Policy profile lint: `python scripts/lint_policy_profiles.py`
 18. Phase 3 executor tests: `pytest -q tests/test_exec_engine_phase3.py tests/test_exec_receipts_phase3.py`
+19. `python -m tagslut intake process-root --help`
+20. `python -m tagslut execute move-plan --help`
 
 CI integration:
 - `.github/workflows/test.yml` runs `scripts/audit_repo_layout.py` on push/PR.

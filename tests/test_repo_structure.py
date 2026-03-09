@@ -139,7 +139,10 @@ def test_recovery_package_absent_or_stubbed() -> None:
     live_modules = sorted(path.name for path in recovery_dir.glob("*.py") if path.name != "__init__.py")
     assert not live_modules, f"Unexpected live recovery modules remain: {live_modules}"
     init_text = init_file.read_text(encoding="utf-8")
+    assert "intentionally retired" in init_text
+    assert "non-importable" in init_text
     assert "ImportError" in init_text
+    assert "decommissioned" in init_text
 
 
 def test_scan_package_absent_or_stubbed() -> None:
@@ -157,8 +160,12 @@ def test_scan_package_absent_or_stubbed() -> None:
 
 
 def test_recovery_is_decommissioned() -> None:
-    with pytest.raises(ImportError):
+    with pytest.raises(ImportError, match="decommissioned"):
         import tagslut.recovery  # noqa: F401
+
+
+def test_active_cli_import_does_not_depend_on_recovery() -> None:
+    importlib.import_module("tagslut.cli.main")
 
 
 def test_scan_is_archived() -> None:

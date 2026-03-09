@@ -81,6 +81,32 @@ Notes:
 - `tools/get-intake` is the advanced/backend command for existing batch roots, `--m3u-only`, and direct pipeline control.
 - `tools/get-sync` is a deprecated Beatport compatibility alias.
 
+## Maintainer PR Sync (Phase 1 stack)
+Use `tools/review/sync_phase1_prs.sh` to push the three immediate branch updates while preserving branch/PR scope boundaries.
+
+```bash
+# Optional: override worktree paths
+MIGRATION_WT=/tmp/tagslut_wt_migration \
+IDENTITY_WT=/tmp/tagslut_wt_identity \
+BACKFILL_WT=/tmp/tagslut_wt_backfill \
+tools/review/sync_phase1_prs.sh
+```
+
+The script pushes:
+- `fix/migration-0006` with `--force-with-lease` (PR #193)
+- `fix/identity-service` with `--force-with-lease` (PR #185)
+- `fix/backfill-v3` to remote branch `fix/dj-tag-enrichment` with `--force-with-lease`
+
+After pushing, open the DJ enrichment PR targeting `fix/identity-service`:
+
+```bash
+gh pr create --base fix/identity-service --head fix/dj-tag-enrichment \
+  --title "feat(dj): enrich FLAC DJ tags from v3 identity cache before transcode" \
+  --draft
+```
+
+This keeps DJ enrichment separate from `fix/v3-backfill-command` (PR #186).
+
 ## Safety Gates
 - v3 doctor: schema and invariants
 - migration verification: aggregate preservation checks

@@ -5,14 +5,17 @@ Master FLAC files are NEVER modified. MP3 is written to dest_dir.
 DJ copies intentionally keep only a small, operational tag set plus artwork.
 Requires ffmpeg installed as a system dependency.
 """
+
+from __future__ import annotations
+
 import logging
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Optional
+from typing import Any, Callable, Optional, cast
 
 from mutagen.flac import FLAC
-from mutagen.id3 import APIC, ID3, SYLT, TALB, TBPM, TCON, TDRC, TIT2, TKEY, TPE1, TSRC, TXXX, USLT  # type: ignore  # TODO: mypy-strict
+from mutagen.id3 import ID3
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +43,15 @@ class TranscodeError(Exception):
 
 class FFmpegNotFoundError(TranscodeError):
     pass
+
+
+TagLookup = Callable[[str], Optional[str]]
+
+
+def _mutagen_id3() -> Any:
+    from mutagen import id3 as mutagen_id3
+
+    return mutagen_id3
 
 
 def _check_ffmpeg() -> None:
@@ -154,16 +166,55 @@ def sync_dj_mp3_from_flac(mp3_path: Path, source_flac: Path) -> None:
     _apply_id3_tags(mp3_path, flac_tags, prune_existing=False)
 
 
-def _apply_id3_tags(mp3_path: Path, flac_tags: Optional[FLAC], *, prune_existing: bool) -> None:
+def _empty_id3() -> ID3:
+    return cast(ID3, _mutagen_id3().ID3())
+
+
+def _load_id3(mp3_path: Path) -> ID3:
+    return cast(ID3, _mutagen_id3().ID3(mp3_path))
+
+
+def _id3_delall(tags: ID3, frame_id: str) -> None:
+    cast(Any, tags).delall(frame_id)
+
+
+def _id3_add(tags: ID3, frame: object) -> None:
+    cast(Any, tags).add(frame)
+
+
+def _apic_frame(data: bytes, mime: str) -> object:
+    return _mutagen_id3().APIC(
+        encoding=3,
+        mime=mime,
+        type=3,
+        desc="Cover",
+        data=data,
+    )
+
+
+def _text_frame(frame_name: str, text: str) -> object:
+    return getattr(_mutagen_id3(), frame_name)(encoding=3, text=text)
+
+
+def _user_text_frame(desc: str, text: str) -> object:
+    return _mutagen_id3().TXXX(encoding=3, desc=desc, text=text)
+
+
+def _apply_id3_tags(
+    mp3_path: Path,
+    flac_tags: Optional[FLAC],
+    *,
+    prune_existing: bool,
+) -> None:
     """Apply the DJ tag policy to an MP3 via mutagen ID3."""
     if prune_existing:
-        tags = ID3()  # type: ignore  # TODO: mypy-strict
+        tags = _empty_id3()
     else:
         try:
-            tags = ID3(mp3_path)  # type: ignore  # TODO: mypy-strict
+            tags = _load_id3(mp3_path)
         except Exception as e:
             logger.warning("Could not load existing ID3 tags from %s: %s", mp3_path, e)
-            tags = ID3()  # type: ignore  # TODO: mypy-strict
+            tags = _empty_id3()
 
     _clear_dj_managed_frames(tags)
     if flac_tags is None:
@@ -180,35 +231,46 @@ def _apply_id3_tags(mp3_path: Path, flac_tags: Optional[FLAC], *, prune_existing
 
 def _clear_dj_managed_frames(tags: ID3) -> None:
     for frame_id in DJ_MANAGED_FRAMES:
-        tags.delall(frame_id)
+        _id3_delall(tags, frame_id)
 
 
-def _apply_dj_tag_policy(tags: ID3, flac_tags: FLAC, first) -> None:
-    if first("title"):
-        tags["TIT2"] = TIT2(encoding=3, text=first("title"))  # type: ignore  # TODO: mypy-strict
-    if first("artist") or first("albumartist"):
-        tags["TPE1"] = TPE1(  # type: ignore  # TODO: mypy-strict
-            encoding=3,
-            text=first("artist") or first("albumartist"),
-        )
-    if first("album"):
-        tags["TALB"] = TALB(encoding=3, text=first("album"))  # type: ignore  # TODO: mypy-strict
-    if first("date") or first("year"):
-        tags["TDRC"] = TDRC(encoding=3, text=first("date") or first("year"))  # type: ignore  # TODO: mypy-strict
-    if first("genre"):
-        tags["TCON"] = TCON(encoding=3, text=first("genre"))  # type: ignore  # TODO: mypy-strict
-    if first("bpm"):
-        tags["TBPM"] = TBPM(encoding=3, text=first("bpm"))  # type: ignore  # TODO: mypy-strict
-    if first("initialkey") or first("key"):
-        key_value = first("initialkey") or first("key")
-        tags["TKEY"] = TKEY(encoding=3, text=key_value)  # type: ignore  # TODO: mypy-strict
-        tags["TXXX:INITIALKEY"] = TXXX(encoding=3, desc="INITIALKEY", text=key_value)  # type: ignore  # TODO: mypy-strict
-    if first("isrc"):
-        tags["TSRC"] = TSRC(encoding=3, text=first("isrc"))  # type: ignore  # TODO: mypy-strict
-    if first("label"):
-        tags["TXXX:LABEL"] = TXXX(encoding=3, desc="LABEL", text=first("label"))  # type: ignore  # TODO: mypy-strict
-    if first("energy"):
-        tags["TXXX:ENERGY"] = TXXX(encoding=3, desc="ENERGY", text=first("energy"))  # type: ignore  # TODO: mypy-strict
+def _apply_dj_tag_policy(tags: ID3, flac_tags: FLAC, first: TagLookup) -> None:
+    title = first("title")
+    artist = first("artist")
+    albumartist = first("albumartist")
+    album = first("album")
+    date = first("date")
+    year = first("year")
+    genre = first("genre")
+    bpm = first("bpm")
+    initialkey = first("initialkey")
+    key = first("key")
+    isrc = first("isrc")
+    label = first("label")
+    energy = first("energy")
+
+    if title:
+        tags["TIT2"] = _text_frame("TIT2", title)
+    if artist or albumartist:
+        tags["TPE1"] = _text_frame("TPE1", artist or albumartist or "")
+    if album:
+        tags["TALB"] = _text_frame("TALB", album)
+    if date or year:
+        tags["TDRC"] = _text_frame("TDRC", date or year or "")
+    if genre:
+        tags["TCON"] = _text_frame("TCON", genre)
+    if bpm:
+        tags["TBPM"] = _text_frame("TBPM", bpm)
+    if initialkey or key:
+        key_value = initialkey or key or ""
+        tags["TKEY"] = _text_frame("TKEY", key_value)
+        tags["TXXX:INITIALKEY"] = _user_text_frame("INITIALKEY", key_value)
+    if isrc:
+        tags["TSRC"] = _text_frame("TSRC", isrc)
+    if label:
+        tags["TXXX:LABEL"] = _user_text_frame("LABEL", label)
+    if energy:
+        tags["TXXX:ENERGY"] = _user_text_frame("ENERGY", energy)
 
     _apply_cover_art(tags, flac_tags)
 
@@ -230,13 +292,5 @@ def _apply_cover_art(tags: ID3, flac_tags: FLAC) -> None:
     if not data:
         return
 
-    tags.delall("APIC")
-    tags.add(
-        APIC(
-            encoding=3,
-            mime=getattr(front_cover, "mime", "image/jpeg") or "image/jpeg",
-            type=3,
-            desc="Cover",
-            data=data,
-        )
-    )
+    _id3_delall(tags, "APIC")
+    _id3_add(tags, _apic_frame(data, getattr(front_cover, "mime", "image/jpeg") or "image/jpeg"))

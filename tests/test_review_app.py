@@ -7,7 +7,7 @@ import pytest
 
 flask = pytest.importorskip("flask", reason="flask optional dep not installed")
 
-from tagslut._web import review_app
+from tagslut._web import review_app  # noqa: E402
 
 
 def _make_review_db(path: Path) -> None:

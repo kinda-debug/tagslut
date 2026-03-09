@@ -107,6 +107,19 @@ def test_dj_mp3_policy_keeps_only_useful_dj_tags() -> None:
     assert tags["TXXX:KEEPME"].text[0] == "persist"
 
 
+def test_clear_dj_managed_frames_preserves_custom_txxx() -> None:
+    tags = ID3()
+    tags.add(TXXX(encoding=3, desc="KEEPME", text="persist"))
+    tags.add(TXXX(encoding=3, desc="INITIALKEY", text="Cm"))
+    tags.add(APIC(encoding=3, mime="image/jpeg", type=3, desc="old", data=b"old"))
+
+    _clear_dj_managed_frames(tags)
+
+    assert tags.getall("APIC") == []
+    assert "TXXX:INITIALKEY" not in tags
+    assert tags["TXXX:KEEPME"].text[0] == "persist"
+
+
 def test_sync_dj_mp3_from_flac_refreshes_dj_tags_preserves_custom(
     tmp_path: Path,
 ) -> None:

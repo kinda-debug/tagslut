@@ -63,6 +63,7 @@ def run_execute_move_plan(
     echo: Callable[[str], None] = click.echo,
 ) -> ExecuteMovePlanResult:
     """Run execute move-plan core flow and return structured results."""
+    from tagslut.exec.companions import execute_track_companion_moves
     from tagslut.exec.engine import MovePlanItem, execute_move_plan as run_move_plan
     from tagslut.exec.receipts import record_move_receipt, update_legacy_path_with_receipt
     from tagslut.storage.schema import get_connection, init_db
@@ -81,6 +82,23 @@ def run_execute_move_plan(
 
     plan_items = [MovePlanItem(src=row.src, dest=row.dest) for row in move_rows]
     receipts = run_move_plan(plan_items, execute=not dry_run, collision_policy="skip")
+    companion_counts = {
+        "moved": 0,
+        "dry_run": 0,
+        "skip_missing": 0,
+        "skip_dest_exists": 0,
+        "error": 0,
+    }
+    for row, receipt in zip(move_rows, receipts):
+        if receipt.status not in {"moved", "dry_run"}:
+            continue
+        for companion_receipt in execute_track_companion_moves(
+            src=row.src,
+            dest=receipt.dest_final or row.dest,
+            execute=not dry_run,
+            collision_policy="skip",
+        ):
+            companion_counts[companion_receipt.status] += 1
 
     db_path: Path | None = None
     if db is not None:
@@ -131,6 +149,16 @@ def run_execute_move_plan(
     echo(f"Skipped (missing): {counts['skip_missing']}")
     echo(f"Skipped (dest exists): {counts['skip_dest_exists']}")
     echo(f"Errors: {counts['error']}")
+    companion_total = sum(companion_counts.values())
+    if companion_total:
+        echo(
+            "Companions: "
+            f"moved={companion_counts['moved']} "
+            f"dry_run={companion_counts['dry_run']} "
+            f"skip_missing={companion_counts['skip_missing']} "
+            f"skip_dest_exists={companion_counts['skip_dest_exists']} "
+            f"errors={companion_counts['error']}"
+        )
     if db_path is not None:
         echo(f"DB: {db_path}")
 

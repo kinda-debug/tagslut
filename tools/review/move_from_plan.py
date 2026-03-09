@@ -38,6 +38,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from tagslut.exec import execute_move, record_move_receipt, update_legacy_path_with_receipt
+from tagslut.exec.companions import execute_track_companion_moves
 from tagslut.storage.schema import init_db
 from tagslut.storage.v3 import (
     ensure_move_plan,
@@ -247,6 +248,10 @@ def main() -> int:
     skipped_exists = 0
     skipped_missing = 0
     failed = 0
+    companion_moved = 0
+    companion_skipped_exists = 0
+    companion_skipped_missing = 0
+    companion_failed = 0
     with log_path.open("w", encoding="utf-8") as log:
         for m in moves:
             evt: Dict[str, Any] = {
@@ -308,6 +313,40 @@ def main() -> int:
 
             log.write(json.dumps(evt, ensure_ascii=False) + "\n")
 
+            if receipt.status not in {"moved", "dry_run"}:
+                continue
+
+            for companion_receipt in execute_track_companion_moves(
+                src=m.src,
+                dest=receipt.dest_final or m.dest,
+                execute=bool(args.execute),
+                collision_policy="skip",
+            ):
+                companion_evt: Dict[str, Any] = {
+                    "event": "move_from_plan_sidecar",
+                    "timestamp": _now_iso(),
+                    "action": action_value,
+                    "execute": bool(args.execute),
+                    "parent_src": str(m.src),
+                    "parent_dest": str(receipt.dest_final or m.dest),
+                    "src": str(companion_receipt.src),
+                    "dest": str(companion_receipt.dest_requested),
+                    "zone": str(args.zone),
+                    "mgmt_status": str(args.mgmt_status),
+                }
+                companion_evt.update(companion_receipt.to_event_fields())
+
+                if companion_receipt.status == "moved":
+                    companion_moved += 1
+                elif companion_receipt.status == "skip_missing":
+                    companion_skipped_missing += 1
+                elif companion_receipt.status == "skip_dest_exists":
+                    companion_skipped_exists += 1
+                elif companion_receipt.status == "error":
+                    companion_failed += 1
+
+                log.write(json.dumps(companion_evt, ensure_ascii=False) + "\n")
+
     if conn is not None:
         conn.commit()
         conn.close()
@@ -318,10 +357,15 @@ def main() -> int:
         f"skipped_missing={skipped_missing} "
         f"skipped_exists={skipped_exists} failed={failed}"
     )
+    print(
+        f"{mode}: companions moved={companion_moved} "
+        f"skipped_missing={companion_skipped_missing} "
+        f"skipped_exists={companion_skipped_exists} failed={companion_failed}"
+    )
     print(f"Plan: {plan_csv}")
     print(f"Dest root: {dest_root}")
     print(f"Log: {log_path}")
-    return 0 if failed == 0 else 3
+    return 0 if failed == 0 and companion_failed == 0 else 3
 
 
 if __name__ == "__main__":

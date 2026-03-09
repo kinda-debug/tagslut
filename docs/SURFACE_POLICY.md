@@ -24,8 +24,8 @@ Reference map:
 
 Branding note:
 - `tagslut` is the preferred CLI brand.
-- `dedupe` is a deprecated alias for `tagslut` and is still shipped.
-- `dedupe` remains supported as a compatibility alias until 2026-06-01.
+- `dedupe` has been retired and is no longer shipped as a console script.
+- Replace any remaining `dedupe [args]` usage with `tagslut [args]`.
 
 ## Transitional Surface
 

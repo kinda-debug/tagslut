@@ -2,22 +2,15 @@
 
 from __future__ import annotations
 
-import io
 import re
 import sys
 import types
 
-import click
 from click.testing import CliRunner
 
 from tagslut.cli.main import (
     _TRANSITIONAL_COMMAND_REPLACEMENTS,
     cli,
-)
-from tagslut.cli.runtime import (
-    _DEDUPE_DEPRECATION_MESSAGE,
-    dedupe_entry_point,
-    emit_dedupe_deprecation_warning,
 )
 
 
@@ -206,48 +199,6 @@ def test_report_dj_review_invokes_run_review_app(monkeypatch) -> None:
             "open_browser": False,
         }
     ]
-
-
-def test_dedupe_deprecation_warning_emitted_to_stderr() -> None:
-    buf = io.StringIO()
-    original_stderr = sys.stderr
-    sys.stderr = buf
-    try:
-        emit_dedupe_deprecation_warning()
-    finally:
-        sys.stderr = original_stderr
-
-    output = buf.getvalue()
-    assert "dedupe" in output
-    assert "deprecated" in output
-    assert "2026-06-01" in output
-    assert "tagslut" in output
-
-
-def test_dedupe_deprecation_message_contains_migration_hint() -> None:
-    assert "dedupe" in _DEDUPE_DEPRECATION_MESSAGE
-    assert "2026-06-01" in _DEDUPE_DEPRECATION_MESSAGE
-    assert "tagslut" in _DEDUPE_DEPRECATION_MESSAGE
-
-
-def test_dedupe_entry_point_emits_deprecation_message_via_click_runner(monkeypatch) -> None:
-    import tagslut.cli.main as cli_main
-
-    def fake_cli() -> None:
-        click.echo("fake tagslut cli")
-
-    @click.command()
-    def invoke_dedupe() -> None:
-        dedupe_entry_point()
-
-    monkeypatch.setattr(cli_main, "cli", fake_cli)
-
-    runner = CliRunner()
-    result = runner.invoke(invoke_dedupe)
-
-    assert result.exit_code == 0, result.output
-    assert " ".join(_DEDUPE_DEPRECATION_MESSAGE.split()) in " ".join(result.output.split())
-    assert "fake tagslut cli" in result.output
 
 
 def test_tagslut_help_has_no_deprecation_warning() -> None:

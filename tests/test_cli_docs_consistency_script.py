@@ -64,15 +64,12 @@ def test_dedupe_alignment_fails_when_docs_claim_dedupe_but_script_missing() -> N
     assert "no `dedupe` console script" in "\n".join(errors)
 
 
-def test_dedupe_alignment_passes_when_docs_and_scripts_agree() -> None:
+def test_dedupe_alignment_passes_when_alias_is_removed_and_docs_match() -> None:
     checker = _load_checker_module()
     errors: list[str] = []
     checker.check_dedupe_docs_alignment(
-        surface_policy_text=(
-            "`dedupe` is a deprecated alias for `tagslut` and is still shipped. "
-            "`dedupe` remains supported as a compatibility alias until 2026-06-01."
-        ),
-        project_scripts={"tagslut", "dedupe"},
+        surface_policy_text="`tagslut` is the preferred CLI brand.",
+        project_scripts={"tagslut"},
         errors=errors,
     )
     assert errors == []

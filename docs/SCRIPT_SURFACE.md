@@ -44,19 +44,10 @@ Role: First-run interactive initialization wizard.
 
 The preferred command brand is now `tagslut`.
 
-Compatibility aliases:
+Retired alias:
 
-### `dedupe` — ⚠️ RETIRING June 2026
-
-The `dedupe` entry point is a deprecated alias for `tagslut`. It emits a deprecation warning
-on every invocation and will be removed from `pyproject.toml` on **2026-06-01**.
-
-**Migration:** Replace all uses of `dedupe [args]` with `tagslut [args]`.
-
-Timeline:
-- **Now → May 2026**: `dedupe` emits a deprecation warning to stderr on every invocation.
-- **2026-05-01**: Alias frozen — no new subcommands added under `dedupe`.
-- **2026-06-01**: `dedupe` entry point removed.
+- `dedupe` has been removed as a console entry point.
+- Migration: replace any remaining `dedupe [args]` usage with `tagslut [args]`.
 
 ## Operational Wrappers (Active)
 

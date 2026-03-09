@@ -29,7 +29,6 @@ dependencies = [
 
 [project.scripts]
 tagslut = "tagslut.cli.main:cli"
-dedupe = "tagslut.cli.runtime:dedupe_entry_point"
 
 [project.optional-dependencies]
 # Install with: pip install tagslut[web]

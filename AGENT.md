@@ -105,13 +105,13 @@ tagslut canonize
 tagslut enrich-file
 tagslut explain-keeper
 
-Deprecated alias:
+Retired alias:
 
 dedupe
 
-Scheduled removal:
+Replacement:
 
-2026-06-01
+tagslut
 
 Retired commands must not be reintroduced.
 

@@ -239,6 +239,11 @@ def register_intake_group(cli: click.Group) -> None:
         is_flag=True,
         help="Allow promoting multiple assets per identity during promote phase.",
     )
+    @click.option(
+        "--dry-run",
+        is_flag=True,
+        help="Preview enrichment and transcode without writing files.",
+    )
     def intake_process_root(  # type: ignore[no-untyped-def]  # TODO: mypy-strict
         db_path,
         root: str,
@@ -255,6 +260,7 @@ def register_intake_group(cli: click.Group) -> None:
         use_preferred_asset,
         require_preferred_asset,
         allow_multiple_per_identity,
+        dry_run,
     ):
         """Run end-to-end root processing pipeline (canonical wrapper for tools/review/process_root.py)."""
         try:
@@ -299,5 +305,7 @@ def register_intake_group(cli: click.Group) -> None:
             args.append("--require-preferred-asset")
         if allow_multiple_per_identity:
             args.append("--allow-multiple-per-identity")
+        if dry_run:
+            args.append("--dry-run")
 
         run_python_script("tools/review/process_root.py", tuple(args))

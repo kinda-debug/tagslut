@@ -36,7 +36,8 @@ run_push "$BACKFILL_WT" origin fix/backfill-v3:fix/dj-tag-enrichment --force-wit
 
 echo "done: pushed migration, identity, and dj enrichment branches"
 
-echo "next: open PR for fix/dj-tag-enrichment targeting fix/identity-service"
-echo "  gh pr create --base fix/identity-service --head fix/dj-tag-enrichment \"
-echo "    --title 'feat(dj): enrich FLAC DJ tags from v3 identity cache before transcode' \\\"
+echo ""
+echo "next: open DJ enrichment draft PR:"
+echo "  gh pr create --base fix/identity-service --head fix/dj-tag-enrichment \\"
+echo "    --title 'feat(dj): enrich FLAC DJ tags from v3 identity cache before transcode' \\"
 echo "    --draft"

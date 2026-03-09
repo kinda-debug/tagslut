@@ -366,14 +366,16 @@ def run_dj_phase(
                 continue
 
             mp3_path = transcode_to_mp3_from_snapshot(flac_path, pool_dir, snapshot)
+            resolved_flac_path = str(flac_path.expanduser().resolve())
+            resolved_mp3_path = str(mp3_path.expanduser().resolve())
             record_provenance_event(
                 conn,
                 event_type="dj_export",
                 status="success",
-                asset_id=resolve_asset_id_by_path(conn, flac_path),
+                asset_id=resolve_asset_id_by_path(conn, resolved_flac_path),
                 identity_id=snapshot.identity_id,
-                source_path=str(flac_path),
-                dest_path=str(mp3_path),
+                source_path=resolved_flac_path,
+                dest_path=resolved_mp3_path,
                 details={
                     "tag_snapshot": snapshot.as_dict(),
                     "bpm_source": snapshot.bpm_source,
@@ -391,7 +393,7 @@ def run_dj_phase(
             if _table_exists(conn, "files"):
                 conn.execute(
                     "UPDATE files SET dj_pool_path = ? WHERE path = ?",
-                    (str(mp3_path), str(flac_path)),
+                    (resolved_mp3_path, resolved_flac_path),
                 )
         if not dry_run:
             conn.commit()

@@ -2149,79 +2149,12 @@ PY
         --execute
 
       run_cmd poetry run python - "$DB_PATH" "$DJ_MANIFEST_FILE" "$DJ_M3U_INPUTS_FILE" <<'PY'
-import csv
-import json
-import sqlite3
 import sys
-from pathlib import Path
 
-from tagslut.storage.v3 import record_provenance_event, resolve_asset_id_by_path
-from tagslut.storage.v3.analysis_service import resolve_dj_tag_snapshot
+from tagslut.exec.dj_manifest_receipts import apply_dj_export_manifest
 
-db_path = Path(sys.argv[1]).expanduser().resolve()
-manifest_path = Path(sys.argv[2]).expanduser().resolve()
-playlist_inputs = Path(sys.argv[3]).expanduser().resolve()
-
-conn = sqlite3.connect(str(db_path))
-conn.row_factory = sqlite3.Row
-try:
-    has_files_table = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='files'"
-    ).fetchone() is not None
-    playlist_rows = []
-    with manifest_path.open("r", encoding="utf-8", newline="") as handle:
-        reader = csv.DictReader(handle)
-        for row in reader:
-            dest_path = Path((row.get("dest_path") or "").strip()).expanduser()
-            if not str(dest_path) or not dest_path.exists():
-                continue
-            identity_text = (row.get("identity_id") or "").strip()
-            if not identity_text:
-                continue
-            identity_id = int(identity_text)
-            snapshot = resolve_dj_tag_snapshot(conn, identity_id, run_essentia=False, dry_run=True)
-            source_path = (row.get("source_path") or "").strip()
-            asset_id = resolve_asset_id_by_path(conn, source_path) if source_path else None
-            partial_metadata = any(
-                value is None
-                for value in (snapshot.bpm, snapshot.musical_key, snapshot.energy_1_10)
-            )
-            record_provenance_event(
-                conn,
-                event_type="dj_export",
-                status="success",
-                asset_id=asset_id,
-                identity_id=identity_id,
-                source_path=source_path or None,
-                dest_path=str(dest_path.resolve()),
-                details={
-                    "tag_snapshot": snapshot.as_dict(),
-                    "bpm_source": snapshot.bpm_source,
-                    "key_source": snapshot.key_source,
-                    "energy_source": snapshot.energy_source,
-                    "format": "mp3",
-                    "bitrate": 320,
-                    "tool_version": "build_pool_v3",
-                    "action": (row.get("action") or "").strip().lower(),
-                    "reason": (row.get("reason") or "").strip(),
-                    "partial_metadata": partial_metadata,
-                },
-            )
-            if has_files_table and source_path:
-                conn.execute(
-                    "UPDATE files SET dj_pool_path = ? WHERE path = ?",
-                    (str(dest_path.resolve()), source_path),
-                )
-            playlist_rows.append(str(dest_path.resolve()))
-    conn.commit()
-finally:
-    conn.close()
-
-playlist_inputs.write_text(
-    "\n".join(playlist_rows) + ("\n" if playlist_rows else ""),
-    encoding="utf-8",
-)
-print(f"DJ manifest applied: {len(playlist_rows)} playlist entries")
+count = apply_dj_export_manifest(sys.argv[1], sys.argv[2], sys.argv[3], tool_version="build_pool_v3")
+print(f"DJ manifest applied: {count} playlist entries")
 PY
 
     DJ_M3U_INPUT_COUNT="$(wc -l < "$DJ_M3U_INPUTS_FILE" | tr -d ' ')"

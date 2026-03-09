@@ -16,7 +16,6 @@ if str(_REPO_ROOT) not in sys.path:
 from tagslut.metadata.auth import TokenManager
 from tagslut.metadata.enricher import Enricher
 from tagslut.exec.canonical_writeback import write_canonical_tags
-from tagslut.exec.transcoder import sync_dj_mp3_from_flac
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +29,7 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--retry-no-match", action="store_true", help="Retry files previously marked no_match")
     ap.add_argument("--art-force", action="store_true", help="Force replace embedded cover art")
     ap.add_argument("--skip-art", action="store_true", help="Skip cover-art embedding after enrichment")
-    ap.add_argument("--dj-map-file", help="Optional TSV map of promoted FLAC path to DJ MP3 path")
+    ap.add_argument("--writeback-force", action="store_true", help="Force overwrite canonical FLAC tags")
     return ap.parse_args()
 
 
@@ -51,33 +50,10 @@ def load_paths(paths_file: Path) -> list[Path]:
     return out
 
 
-def load_dj_pairs(dj_map_file: Path) -> list[tuple[Path, Path]]:
-    pairs: list[tuple[Path, Path]] = []
-    seen: set[tuple[str, str]] = set()
-    for raw_line in dj_map_file.read_text(encoding="utf-8").splitlines():
-        raw = raw_line.strip()
-        if not raw:
-            continue
-        parts = raw.split("\t", 1)
-        if len(parts) != 2:
-            logger.warning("Skipping malformed DJ map line (expected 2 tab-separated fields): %s", raw)
-            continue
-        flac_path = Path(parts[0]).expanduser().resolve()
-        mp3_path = Path(parts[1]).expanduser().resolve()
-        key = (str(flac_path), str(mp3_path))
-        if key in seen:
-            logger.warning("Skipping duplicate DJ map pair: %s", raw)
-            continue
-        seen.add(key)
-        pairs.append((flac_path, mp3_path))
-    return pairs
-
-
 def main() -> int:
     args = parse_args()
     db_path = Path(args.db).expanduser().resolve()
     paths_file = Path(args.paths_file).expanduser().resolve()
-    dj_map_file = Path(args.dj_map_file).expanduser().resolve() if args.dj_map_file else None
     providers = [item.strip() for item in args.providers.split(",") if item.strip()]
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
@@ -142,7 +118,7 @@ def main() -> int:
             stats = write_canonical_tags(
                 writeback_conn,
                 file_paths,
-                force=True,
+                force=bool(args.writeback_force),
                 execute=True,
                 echo=print,
             )
@@ -177,28 +153,6 @@ def main() -> int:
             exit_code = result.returncode
         else:
             print("Post-move cover-art embedding complete.")
-
-    if dj_map_file and dj_map_file.exists():
-        pairs = load_dj_pairs(dj_map_file)
-        print(f"Post-move DJ tag sync start: files={len(pairs)}")
-        dj_stats = {"updated": 0, "missing": 0, "failed": 0}
-        for idx, (flac_path, mp3_path) in enumerate(pairs, start=1):
-            print(f"[{idx}/{len(pairs)}] dj-sync {mp3_path}")
-            if not flac_path.is_file() or not mp3_path.is_file():
-                dj_stats["missing"] += 1
-                print(f"WARNING: missing DJ sync input: flac={flac_path} mp3={mp3_path}")
-                continue
-            try:
-                sync_dj_mp3_from_flac(mp3_path, flac_path)
-                dj_stats["updated"] += 1
-            except Exception as exc:  # pragma: no cover - defensive for background worker
-                dj_stats["failed"] += 1
-                print(f"ERROR: dj-sync failed for {mp3_path}: {exc}")
-        print("Post-move DJ tag sync summary:")
-        for key in ("updated", "missing", "failed"):
-            print(f"  {key}: {dj_stats[key]}")
-        if dj_stats["failed"] and exit_code == 0:
-            exit_code = 1
 
     return exit_code
 

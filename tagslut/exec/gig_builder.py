@@ -147,16 +147,18 @@ class GigBuilder:
 
                 self._conn.execute(
                     "UPDATE files SET dj_pool_path = ? WHERE path = ?",
-                    (str(mp3_path), str(flac_path)),
+                    (str(mp3_path.expanduser().resolve()), str(flac_path.expanduser().resolve())),
                 )
+                resolved_flac_path = str(flac_path.expanduser().resolve())
+                resolved_mp3_path = str(mp3_path.expanduser().resolve())
                 record_provenance_event(
                     self._conn,
                     event_type="dj_export",
                     status="success",
-                    asset_id=resolve_asset_id_by_path(self._conn, flac_path),
+                    asset_id=resolve_asset_id_by_path(self._conn, resolved_flac_path),
                     identity_id=snapshot.identity_id if snapshot is not None else None,
-                    source_path=str(flac_path),
-                    dest_path=str(mp3_path),
+                    source_path=resolved_flac_path,
+                    dest_path=resolved_mp3_path,
                     details={
                         "format": "mp3",
                         "bitrate": self._mp3_bitrate,

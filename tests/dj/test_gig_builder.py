@@ -111,8 +111,8 @@ def test_build_full_flow_transcode_copy_record(tmp_path: Path) -> None:
         assert prov is not None
         assert prov[0] == "dj_export"
         assert prov[1] == "success"
-        assert prov[2] == str(flac_a)
-        assert prov[3] == str(transcoded_mp3)
+        assert prov[2] == str(flac_a.resolve())
+        assert prov[3] == str(transcoded_mp3.resolve())
 
         gig_row = conn.execute(
             "SELECT name, track_count, usb_path, filter_expr FROM gig_sets ORDER BY id DESC LIMIT 1"

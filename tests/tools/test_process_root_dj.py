@@ -141,9 +141,10 @@ def test_run_dj_phase_continues_transcode_when_essentia_missing(
     assert row is not None
     assert row[0] == str(mp3_path)
     prov = sqlite3.connect(str(db_path)).execute(
-        "SELECT event_type, status, dest_path FROM provenance_event ORDER BY id DESC LIMIT 1"
+        "SELECT event_type, status, source_path, dest_path FROM provenance_event ORDER BY id DESC LIMIT 1"
     ).fetchone()
     assert prov is not None
     assert prov[0] == "dj_export"
     assert prov[1] == "success"
-    assert prov[2] == str(mp3_path)
+    assert prov[2] == str(flac_path.resolve())
+    assert prov[3] == str(mp3_path.resolve())

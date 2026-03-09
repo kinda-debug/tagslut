@@ -11,12 +11,14 @@ import os
 import re
 import shutil
 import sqlite3
-import subprocess
 import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from urllib.parse import quote
+
+from tagslut.exec.transcoder import transcode_to_mp3_from_snapshot
+from tagslut.storage.v3 import open_db_v3
+from tagslut.storage.v3.analysis_service import resolve_dj_tag_snapshot
 
 SAFE_MAX_NAME = 160
 
@@ -33,16 +35,11 @@ class ExportRow:
     mtime: str
 
 
-def _connect_ro(path: Path) -> sqlite3.Connection:
+def _connect_db(path: Path) -> sqlite3.Connection:
     resolved = path.expanduser().resolve()
     if not resolved.exists():
         raise FileNotFoundError(f"v3 DB not found: {resolved}")
-    uri = f"file:{quote(str(resolved))}?mode=ro"
-    conn = sqlite3.connect(uri, uri=True)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys=ON")
-    conn.execute("PRAGMA query_only=ON")
-    return conn
+    return open_db_v3(resolved, create=False)
 
 
 def _view_exists(conn: sqlite3.Connection, view: str) -> bool:
@@ -117,6 +114,7 @@ def _select_rows(
     set_roles: list[str],
     only_profiled: bool,
     limit: int | None,
+    identity_ids: set[int] | None,
 ) -> list[sqlite3.Row]:
     role_sql, role_params = _roles_clause(set_roles)
     view_name = _view_for_scope(scope)
@@ -135,6 +133,12 @@ def _select_rows(
     if role_sql:
         where.append(role_sql)
         params.extend(role_params)
+    if identity_ids is not None:
+        if not identity_ids:
+            return []
+        placeholders = ",".join("?" for _ in sorted(identity_ids))
+        where.append(f"identity_id IN ({placeholders})")
+        params.extend(sorted(identity_ids))
 
     where_sql = " AND ".join(where)
 
@@ -166,11 +170,20 @@ def _select_rows(
     return conn.execute(query, tuple(params)).fetchall()
 
 
-def _dest_path(out_dir: Path, row: sqlite3.Row, layout: str, fmt: str) -> Path:
-    artist = _sanitize_component(str(row["artist"] or ""), "Unknown Artist")
-    title = _sanitize_component(str(row["title"] or ""), "Unknown Title")
+def _dest_path(
+    out_dir: Path,
+    row: sqlite3.Row,
+    layout: str,
+    fmt: str,
+    *,
+    artist_override: str | None = None,
+    title_override: str | None = None,
+    genre_override: str | None = None,
+) -> Path:
+    artist = _sanitize_component(artist_override or str(row["artist"] or ""), "Unknown Artist")
+    title = _sanitize_component(title_override or str(row["title"] or ""), "Unknown Title")
     role = _sanitize_component(str(row["set_role"] or ""), "unassigned")
-    genre = _sanitize_component(str(row["genre"] or ""), "Unknown")
+    genre = _sanitize_component(genre_override or str(row["genre"] or ""), "Unknown")
     identity_id = int(row["identity_id"])
 
     source_ext = Path(str(row["source_path"])).suffix.lower() or ".flac"
@@ -234,6 +247,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--manifest", type=Path)
     parser.add_argument("--receipts", type=Path)
+    parser.add_argument("--identity-id-file", type=Path)
     parser.add_argument("--layout", choices=["by_role", "by_genre", "flat"], default="by_role")
     parser.add_argument("--scope", choices=["active", "active+orphan"], default="active")
     parser.add_argument("--min-rating", type=int)
@@ -260,6 +274,31 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def _load_identity_ids(path: Path | None) -> set[int] | None:
+    if path is None:
+        return None
+    resolved = path.expanduser().resolve()
+    if not resolved.exists():
+        raise FileNotFoundError(f"identity id file not found: {resolved}")
+    values: set[int] = set()
+    for line in resolved.read_text(encoding="utf-8").splitlines():
+        text = line.strip()
+        if not text:
+            continue
+        values.add(int(text))
+    return values
+
+
+def _parse_mp3_bitrate(value: str) -> int:
+    text = value.strip().lower()
+    if text.endswith("k"):
+        text = text[:-1]
+    bitrate = int(text)
+    if bitrate <= 0:
+        raise ValueError("bitrate must be > 0")
+    return bitrate
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     out_dir = args.out_dir.expanduser().resolve()
@@ -283,9 +322,19 @@ def main(argv: list[str] | None = None) -> int:
     if args.execute and args.format == "mp3" and not ffmpeg:
         print("ffmpeg not found; set --ffmpeg-path or install ffmpeg")
         return 2
+    try:
+        identity_ids = _load_identity_ids(args.identity_id_file)
+    except (FileNotFoundError, ValueError) as exc:
+        print(str(exc))
+        return 2
+    try:
+        mp3_bitrate = _parse_mp3_bitrate(str(args.mp3_bitrate))
+    except ValueError as exc:
+        print(f"--mp3-bitrate invalid: {exc}")
+        return 2
 
     try:
-        conn = _connect_ro(args.db)
+        conn = _connect_db(args.db)
     except FileNotFoundError as exc:
         print(str(exc))
         return 2
@@ -296,6 +345,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"missing required view: {view_name}")
             print('hint: run "make apply-v3-schema V3=<db>" to install missing views')
             return 2
+        if args.format == "mp3" and not _view_exists(conn, "v_dj_export_metadata_v1"):
+            print("missing required view: v_dj_export_metadata_v1")
+            print('hint: apply the latest v3 schema/migrations before mp3 export')
+            return 2
         rows = _select_rows(
             conn,
             scope=args.scope,
@@ -304,186 +357,189 @@ def main(argv: list[str] | None = None) -> int:
             set_roles=args.set_role,
             only_profiled=bool(args.only_profiled),
             limit=args.limit,
+            identity_ids=identity_ids,
         )
+        manifest_rows: list[ExportRow] = []
+        snapshots_by_identity: dict[int, object] = {}
+        copy_count = 0
+        transcode_count = 0
+        skip_count = 0
+        existing_files = 0
+
+        for row in rows:
+            source = Path(str(row["source_path"])).expanduser().resolve()
+            snapshot = None
+            if args.format == "mp3":
+                snapshot = resolve_dj_tag_snapshot(
+                    conn,
+                    int(row["identity_id"]),
+                    run_essentia=bool(args.execute),
+                    dry_run=not args.execute,
+                )
+                snapshots_by_identity[int(row["identity_id"])] = snapshot
+            dest = _dest_path(
+                out_dir,
+                row,
+                args.layout,
+                args.format,
+                artist_override=getattr(snapshot, "artist", None),
+                title_override=getattr(snapshot, "title", None),
+                genre_override=getattr(snapshot, "genre", None),
+            )
+            source_sha = str(row["source_sha256"] or "")
+            source_mtime = str(row["source_mtime"] or "")
+
+            action = "transcode" if args.format == "mp3" else "copy"
+            reason = "selected"
+
+            if not source.exists():
+                action = "skip"
+                reason = "source_missing" if args.strict else "source_missing_non_strict"
+            elif dest.exists():
+                existing_files += 1
+                if args.overwrite == "never":
+                    action = "skip"
+                    reason = "exists_overwrite_never"
+                elif args.overwrite == "if_same_hash":
+                    if source_sha:
+                        if _hash_file(dest) == source_sha:
+                            action = "skip"
+                            reason = "exists_same_hash"
+                        else:
+                            reason = "exists_different_hash_overwrite"
+                    else:
+                        reason = "exists_no_source_hash_overwrite"
+                else:
+                    reason = "exists_overwrite_always"
+
+            if action == "copy":
+                copy_count += 1
+            elif action == "transcode":
+                transcode_count += 1
+            else:
+                skip_count += 1
+
+            manifest_rows.append(
+                ExportRow(
+                    identity_id=int(row["identity_id"]),
+                    preferred_asset_id=int(row["preferred_asset_id"]),
+                    source_path=str(source),
+                    dest_path=str(dest),
+                    action=action,
+                    reason=reason,
+                    sha256=source_sha,
+                    mtime=source_mtime,
+                )
+            )
+            if args.verbose:
+                print(f"{action}: {source} -> {dest} ({reason})")
+
+        manifest_rows.sort(key=lambda r: (r.dest_path.casefold(), r.identity_id))
+        manifest_written = _write_manifest(manifest_path, manifest_rows)
+
+        failure_rows: list[dict[str, object]] = []
+        fail_fast_message: str | None = None
+        if args.execute:
+            failure_path = out_dir / "export_failures.jsonl"
+            for item in manifest_rows:
+                if item.action == "skip":
+                    continue
+                src = Path(item.source_path)
+                dst = Path(item.dest_path)
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                if item.action == "copy":
+                    try:
+                        shutil.copy2(src, dst)
+                    except Exception as exc:
+                        failure_rows.append(
+                            {
+                                "timestamp": datetime.now(UTC).isoformat(timespec="seconds"),
+                                "identity_id": item.identity_id,
+                                "source_path": item.source_path,
+                                "dest_path": item.dest_path,
+                                "action": item.action,
+                                "error": str(exc),
+                            }
+                        )
+                        if args.fail_fast:
+                            fail_fast_message = f"Copy failed for {src}: {exc}"
+                            break
+                        continue
+                else:
+                    try:
+                        snapshot = snapshots_by_identity[item.identity_id]
+                        transcode_to_mp3_from_snapshot(
+                            src,
+                            dst.parent,
+                            snapshot,
+                            bitrate=mp3_bitrate,
+                            overwrite=True,
+                            ffmpeg_path=ffmpeg,
+                            dest_path=dst,
+                        )
+                    except Exception as exc:
+                        failure_rows.append(
+                            {
+                                "timestamp": datetime.now(UTC).isoformat(timespec="seconds"),
+                                "identity_id": item.identity_id,
+                                "source_path": item.source_path,
+                                "dest_path": item.dest_path,
+                                "action": item.action,
+                                "error": str(exc),
+                            }
+                        )
+                        if args.fail_fast:
+                            fail_fast_message = f"Transcode failed for {src}: {exc}"
+                            break
+                        continue
+
+                snapshot = snapshots_by_identity.get(item.identity_id)
+                partial_metadata = False
+                if snapshot is not None:
+                    partial_metadata = any(
+                        value is None
+                        for value in (
+                            snapshot.bpm,
+                            snapshot.musical_key,
+                            snapshot.energy_1_10,
+                        )
+                    )
+                _append_receipt(
+                    receipts_path,
+                    {
+                        "timestamp": datetime.now(UTC).isoformat(timespec="seconds"),
+                        "identity_id": item.identity_id,
+                        "source_path": item.source_path,
+                        "dest_path": item.dest_path,
+                        "action": item.action,
+                        "overwrite_policy": args.overwrite,
+                        "tool": "build_pool_v3",
+                        "tool_version": "build_pool_v3",
+                        "partial_metadata": partial_metadata,
+                        "tag_snapshot": snapshot.as_dict() if snapshot is not None else None,
+                    },
+                )
+
+            _write_failure_rows(failure_path, failure_rows)
+            if fail_fast_message:
+                print(fail_fast_message, file=sys.stderr)
+                return 1
+
+        if args.strict and any(row.reason == "source_missing" for row in manifest_rows):
+            print("strict mode: one or more selected sources are missing")
+            return 2
+
+        print(f"selected_identities: {len(rows)}")
+        print(f"existing_files: {existing_files}")
+        print(f"copy: {copy_count}")
+        print(f"transcode: {transcode_count}")
+        print(f"skip: {skip_count}")
+        print(f"manifest: {manifest_written}")
+        if args.execute:
+            print(f"receipts: {receipts_path}")
+        return 0
     finally:
         conn.close()
-
-    manifest_rows: list[ExportRow] = []
-    copy_count = 0
-    transcode_count = 0
-    skip_count = 0
-    existing_files = 0
-
-    for row in rows:
-        source = Path(str(row["source_path"])).expanduser().resolve()
-        dest = _dest_path(out_dir, row, args.layout, args.format)
-        source_sha = str(row["source_sha256"] or "")
-        source_mtime = str(row["source_mtime"] or "")
-
-        action = "transcode" if args.format == "mp3" else "copy"
-        reason = "selected"
-
-        if not source.exists():
-            action = "skip"
-            reason = "source_missing" if args.strict else "source_missing_non_strict"
-        elif dest.exists():
-            existing_files += 1
-            if args.overwrite == "never":
-                action = "skip"
-                reason = "exists_overwrite_never"
-            elif args.overwrite == "if_same_hash":
-                if source_sha:
-                    if _hash_file(dest) == source_sha:
-                        action = "skip"
-                        reason = "exists_same_hash"
-                    else:
-                        reason = "exists_different_hash_overwrite"
-                else:
-                    reason = "exists_no_source_hash_overwrite"
-            else:
-                reason = "exists_overwrite_always"
-
-        if action == "copy":
-            copy_count += 1
-        elif action == "transcode":
-            transcode_count += 1
-        else:
-            skip_count += 1
-
-        manifest_rows.append(
-            ExportRow(
-                identity_id=int(row["identity_id"]),
-                preferred_asset_id=int(row["preferred_asset_id"]),
-                source_path=str(source),
-                dest_path=str(dest),
-                action=action,
-                reason=reason,
-                sha256=source_sha,
-                mtime=source_mtime,
-            )
-        )
-        if args.verbose:
-            print(f"{action}: {source} -> {dest} ({reason})")
-
-    manifest_rows.sort(key=lambda r: (r.dest_path.casefold(), r.identity_id))
-    manifest_written = _write_manifest(manifest_path, manifest_rows)
-
-    failure_rows: list[dict[str, object]] = []
-    fail_fast_message: str | None = None
-    if args.execute:
-        failure_path = out_dir / "export_failures.jsonl"
-        for item in manifest_rows:
-            if item.action == "skip":
-                continue
-            src = Path(item.source_path)
-            dst = Path(item.dest_path)
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            if item.action == "copy":
-                try:
-                    shutil.copy2(src, dst)
-                except Exception as exc:
-                    failure_rows.append(
-                        {
-                            "timestamp": datetime.now(UTC).isoformat(timespec="seconds"),
-                            "identity_id": item.identity_id,
-                            "source_path": item.source_path,
-                            "dest_path": item.dest_path,
-                            "action": item.action,
-                            "error": str(exc),
-                        }
-                    )
-                    if args.fail_fast:
-                        fail_fast_message = f"Copy failed for {src}: {exc}"
-                        break
-                    continue
-            else:
-                cmd = [
-                    ffmpeg or "ffmpeg",
-                    "-y",
-                    "-i",
-                    str(src),
-                    "-vn",
-                    "-c:a",
-                    "libmp3lame",
-                    "-b:a",
-                    str(args.mp3_bitrate),
-                    str(dst),
-                ]
-                try:
-                    result = subprocess.run(
-                        cmd,
-                        capture_output=True,
-                        text=True,
-                        errors="replace",
-                        timeout=args.transcode_timeout_s,
-                        check=False,
-                    )
-                except subprocess.TimeoutExpired:
-                    failure_rows.append(
-                        {
-                            "timestamp": datetime.now(UTC).isoformat(timespec="seconds"),
-                            "identity_id": item.identity_id,
-                            "source_path": item.source_path,
-                            "dest_path": item.dest_path,
-                            "action": item.action,
-                            "error": f"ffmpeg_timeout_{args.transcode_timeout_s}s",
-                            "stderr": "timeout",
-                        }
-                    )
-                    if args.fail_fast:
-                        fail_fast_message = f"ffmpeg timeout for {src}"
-                        break
-                    continue
-                if result.returncode != 0:
-                    stderr = (result.stderr or "").strip()
-                    failure_rows.append(
-                        {
-                            "timestamp": datetime.now(UTC).isoformat(timespec="seconds"),
-                            "identity_id": item.identity_id,
-                            "source_path": item.source_path,
-                            "dest_path": item.dest_path,
-                            "action": item.action,
-                            "error": f"ffmpeg_exit_{result.returncode}",
-                            "stderr": stderr[:2000],
-                        }
-                    )
-                    if args.fail_fast:
-                        fail_fast_message = f"ffmpeg failed for {src}: {stderr[:2000]}"
-                        break
-                    continue
-
-            _append_receipt(
-                receipts_path,
-                {
-                    "timestamp": datetime.now(UTC).isoformat(timespec="seconds"),
-                    "identity_id": item.identity_id,
-                    "source_path": item.source_path,
-                    "dest_path": item.dest_path,
-                    "action": item.action,
-                    "overwrite_policy": args.overwrite,
-                    "tool": "build_pool_v3",
-                    "tool_version": "build_pool_v3",
-                },
-            )
-
-        _write_failure_rows(failure_path, failure_rows)
-        if fail_fast_message:
-            print(fail_fast_message, file=sys.stderr)
-            return 1
-
-    if args.strict and any(row.reason == "source_missing" for row in manifest_rows):
-        print("strict mode: one or more selected sources are missing")
-        return 2
-
-    print(f"selected_identities: {len(rows)}")
-    print(f"existing_files: {existing_files}")
-    print(f"copy: {copy_count}")
-    print(f"transcode: {transcode_count}")
-    print(f"skip: {skip_count}")
-    print(f"manifest: {manifest_written}")
-    if args.execute:
-        print(f"receipts: {receipts_path}")
-    return 0
 
 
 if __name__ == "__main__":

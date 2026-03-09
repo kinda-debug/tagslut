@@ -46,9 +46,13 @@ def test_run_dj_phase_dry_run_logs_enrichment_and_skips_transcode(
 
     with caplog.at_level(logging.INFO), patch.object(
         module,
-        "enrich_dj_tags",
-        return_value={"bpm": "128", "key": "Am", "energy": None},
-    ) as mock_enrich, patch.object(module, "transcode_to_mp3") as mock_transcode:
+        "resolve_dj_tag_snapshot_for_path",
+    ) as mock_snapshot, patch.object(module, "transcode_to_mp3_from_snapshot") as mock_transcode:
+        mock_snapshot.return_value = type(
+            "Snapshot",
+            (),
+            {"bpm": "128", "musical_key": "Am", "energy_1_10": None},
+        )()
         module.run_dj_phase(
             db_path=db_path,
             root_path=root,
@@ -61,8 +65,8 @@ def test_run_dj_phase_dry_run_logs_enrichment_and_skips_transcode(
         (str(flac_path),),
     ).fetchone()
 
-    assert "DJ tag enrichment: track.flac" in caplog.text
-    mock_enrich.assert_called_once_with(ANY, flac_path, dry_run=True)
+    assert "DJ snapshot: track.flac" in caplog.text
+    mock_snapshot.assert_called_once_with(ANY, flac_path, run_essentia=True, dry_run=True)
     mock_transcode.assert_not_called()
     assert row is not None
     assert row[0] is None
@@ -84,9 +88,14 @@ def test_run_dj_phase_continues_transcode_when_essentia_missing(
 
     with caplog.at_level(logging.INFO), patch.object(
         module,
-        "enrich_dj_tags",
-        side_effect=FileNotFoundError("missing essentia"),
-    ) as mock_enrich, patch.object(module, "transcode_to_mp3", return_value=mp3_path) as mock_transcode:
+        "resolve_dj_tag_snapshot_for_path",
+        side_effect=[
+            FileNotFoundError("missing essentia"),
+            type("Snapshot", (), {"bpm": None, "musical_key": None, "energy_1_10": None})(),
+        ],
+    ) as mock_snapshot, patch.object(
+        module, "transcode_to_mp3_from_snapshot", return_value=mp3_path
+    ) as mock_transcode:
         module.run_dj_phase(
             db_path=db_path,
             root_path=root,
@@ -100,7 +109,9 @@ def test_run_dj_phase_continues_transcode_when_essentia_missing(
     ).fetchone()
 
     assert "Essentia not found" in caplog.text
-    mock_enrich.assert_called_once_with(ANY, flac_path, dry_run=False)
-    mock_transcode.assert_called_once_with(flac_path, pool)
+    assert mock_snapshot.call_count == 2
+    mock_snapshot.assert_any_call(ANY, flac_path, run_essentia=True, dry_run=False)
+    mock_snapshot.assert_any_call(ANY, flac_path, run_essentia=False, dry_run=True)
+    mock_transcode.assert_called_once()
     assert row is not None
     assert row[0] == str(mp3_path)

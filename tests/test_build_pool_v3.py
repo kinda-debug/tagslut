@@ -146,6 +146,26 @@ def test_plan_accepts_legacy_args_and_writes_mtime_field(tmp_path: Path) -> None
     assert rows[1]["dest_path"].endswith(".mp3")
 
 
+def test_plan_filters_to_identity_id_file(tmp_path: Path) -> None:
+    db, _src_a, _src_b = _create_db_and_sources(tmp_path)
+    out_dir = tmp_path / "export"
+    manifest = tmp_path / "plan_manifest.csv"
+    identity_ids = tmp_path / "identity_ids.txt"
+    identity_ids.write_text("2\n", encoding="utf-8")
+
+    proc = _run_builder(
+        db=db,
+        out_dir=out_dir,
+        manifest=manifest,
+        extra=["--identity-id-file", str(identity_ids)],
+    )
+
+    assert proc.returncode == 0, f"STDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+    rows = _read_manifest(manifest)
+    assert len(rows) == 1
+    assert rows[0]["identity_id"] == "2"
+
+
 def test_execute_copy_creates_files_and_receipts(tmp_path: Path) -> None:
     db, _src_a, _src_b = _create_db_and_sources(tmp_path)
     out_dir = tmp_path / "export"

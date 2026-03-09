@@ -32,6 +32,7 @@ def test_create_schema_v3_creates_required_tables_without_v2_files() -> None:
         "asset_file",
         "track_identity",
         "asset_link",
+        "asset_analysis",
         "preferred_asset",
         "identity_status",
         "library_track_sources",
@@ -176,9 +177,13 @@ def test_create_schema_v3_creates_active_identity_view() -> None:
         row = conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type='view' AND name='v_active_identity'"
         ).fetchone()
+        export_view = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='view' AND name='v_dj_export_metadata_v1'"
+        ).fetchone()
     finally:
         conn.close()
     assert row is not None
+    assert export_view is not None
 
 
 def test_init_db_is_compatible_with_v3_library_track_sources_shape() -> None:

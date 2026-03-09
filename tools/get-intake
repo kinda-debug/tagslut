@@ -34,6 +34,7 @@ MOVE_SCRIPT="$SCRIPT_DIR/review/move_from_plan.py"
 PROCESS_ROOT_SCRIPT="$SCRIPT_DIR/review/process_root.py"
 PRE_DOWNLOAD_CHECK_SCRIPT="$SCRIPT_DIR/review/pre_download_check.py"
 POST_MOVE_ENRICH_SCRIPT="$SCRIPT_DIR/review/post_move_enrich_art.py"
+BUILD_POOL_V3_SCRIPT="$REPO_ROOT/scripts/dj/build_pool_v3.py"
 PLAN_SKIPPED_SCRIPT="$SCRIPT_DIR/review/plan_move_skipped.py"
 BPDL_BIN="$SCRIPT_DIR/beatportdl/bpdl/bpdl"
 BPDL_CONFIG="${BPDL_CONFIG:-$HOME/.config/beatportdl/config.yml}"
@@ -1529,7 +1530,10 @@ if [[ "$USE_DOWNLOAD_PRECHECK" -eq 1 ]]; then
   TOTAL_STEPS=$((TOTAL_STEPS + 1))
 fi
 if [[ "$TAGGING_MODE" -eq 1 && "$EXECUTE" -eq 1 ]]; then
-  TOTAL_STEPS=$((TOTAL_STEPS + 2))
+  TOTAL_STEPS=$((TOTAL_STEPS + 1))
+  if [[ "$DJ_MODE" -eq 0 ]]; then
+    TOTAL_STEPS=$((TOTAL_STEPS + 1))
+  fi
 fi
 if [[ "$M3U_MODE" -eq 1 ]]; then
   TOTAL_STEPS=$((TOTAL_STEPS + 1))
@@ -2072,60 +2076,152 @@ fi
 
 if [[ "$DJ_MODE" -eq 1 ]]; then
   STEP=$((STEP + 1))
-  step "$STEP" "$TOTAL_STEPS" "Transcode DJ MP3 copies"
+  step "$STEP" "$TOTAL_STEPS" "Build DJ MP3 copies"
 
   DJ_INPUT_COUNT="$(wc -l < "$PROMOTED_FLACS_FILE" | tr -d ' ')"
   if [[ "$DJ_INPUT_COUNT" -eq 0 ]]; then
     echo "No promoted FLAC files found on disk for DJ export; skipping."
   else
+    DJ_IDENTITY_IDS_FILE="$OUT_DIR/dj_identity_ids_$(date +%Y%m%d_%H%M%S).txt"
+    DJ_MANIFEST_FILE="$OUT_DIR/dj_manifest_$(date +%Y%m%d_%H%M%S).csv"
+    DJ_RECEIPTS_FILE="$OUT_DIR/dj_receipts_$(date +%Y%m%d_%H%M%S).jsonl"
     DJ_M3U_INPUTS_FILE="$OUT_DIR/dj_playlist_inputs_$(date +%Y%m%d_%H%M%S).txt"
-    DJ_TAG_MAP_FILE="$OUT_DIR/dj_tag_map_$(date +%Y%m%d_%H%M%S).tsv"
-    run_cmd poetry run python - "$PROMOTED_FLACS_FILE" "$DJ_ROOT" "$DJ_M3U_INPUTS_FILE" "$DJ_TAG_MAP_FILE" <<'PY'
+    run_cmd poetry run python - "$DB_PATH" "$PROMOTED_FLACS_FILE" "$DJ_IDENTITY_IDS_FILE" <<'PY'
+import sqlite3
 import sys
 from pathlib import Path
 
-from tagslut.exec.transcoder import FFmpegNotFoundError, TranscodeError, transcode_to_mp3
+db_path = Path(sys.argv[1]).expanduser().resolve()
+inputs_file = Path(sys.argv[2]).expanduser().resolve()
+out_file = Path(sys.argv[3]).expanduser().resolve()
 
-inputs_file = Path(sys.argv[1])
-dest_root = Path(sys.argv[2]).expanduser().resolve()
+conn = sqlite3.connect(str(db_path))
+try:
+    has_active = any(str(row[1]) == "active" for row in conn.execute("PRAGMA table_info(asset_link)").fetchall())
+    active_where = "AND al.active = 1" if has_active else ""
+    seen = set()
+    selected = []
+    for raw_line in inputs_file.read_text(encoding="utf-8").splitlines():
+        text = raw_line.strip()
+        if not text:
+            continue
+        row = conn.execute(
+            f"""
+            SELECT al.identity_id
+            FROM asset_file af
+            JOIN asset_link al ON al.asset_id = af.id
+            WHERE af.path = ?
+            {active_where}
+            ORDER BY al.id ASC
+            LIMIT 1
+            """,
+            (text,),
+        ).fetchone()
+        if row is None:
+            continue
+        identity_id = int(row[0])
+        if identity_id in seen:
+            continue
+        seen.add(identity_id)
+        selected.append(identity_id)
+finally:
+    conn.close()
+
+out_file.write_text(
+    "\n".join(str(item) for item in selected) + ("\n" if selected else ""),
+    encoding="utf-8",
+)
+print(f"Resolved {len(selected)} promoted identity ids")
+PY
+
+    DJ_IDENTITY_COUNT="$(wc -l < "$DJ_IDENTITY_IDS_FILE" | tr -d ' ')"
+    if [[ "$DJ_IDENTITY_COUNT" -eq 0 ]]; then
+      echo "No promoted identities resolved for DJ export; skipping."
+    else
+      run_cmd poetry run python "$BUILD_POOL_V3_SCRIPT" \
+        --db "$DB_PATH" \
+        --out-dir "$DJ_ROOT" \
+        --layout flat \
+        --manifest "$DJ_MANIFEST_FILE" \
+        --receipts "$DJ_RECEIPTS_FILE" \
+        --identity-id-file "$DJ_IDENTITY_IDS_FILE" \
+        --format mp3 \
+        --execute
+
+      run_cmd poetry run python - "$DB_PATH" "$DJ_MANIFEST_FILE" "$DJ_M3U_INPUTS_FILE" <<'PY'
+import csv
+import json
+import sqlite3
+import sys
+from pathlib import Path
+
+from tagslut.storage.v3 import record_provenance_event, resolve_asset_id_by_path
+from tagslut.storage.v3.analysis_service import resolve_dj_tag_snapshot
+
+db_path = Path(sys.argv[1]).expanduser().resolve()
+manifest_path = Path(sys.argv[2]).expanduser().resolve()
 playlist_inputs = Path(sys.argv[3]).expanduser().resolve()
-tag_map_file = Path(sys.argv[4]).expanduser().resolve()
-dest_root.mkdir(parents=True, exist_ok=True)
 
-errors = []
-done = 0
-written = []
-tag_map_rows = []
-
-for line in inputs_file.read_text(encoding="utf-8").splitlines():
-    path = Path(line.strip()).expanduser()
-    if not line.strip():
-        continue
-    if not path.exists():
-        errors.append(f"missing source: {path}")
-        continue
-    try:
-        output = transcode_to_mp3(path, dest_root)
-        written.append(str(output))
-        tag_map_rows.append(f"{path.resolve()}\t{output.resolve()}")
-        done += 1
-    except (FFmpegNotFoundError, TranscodeError, FileNotFoundError) as exc:
-        errors.append(f"{path}: {exc}")
+conn = sqlite3.connect(str(db_path))
+conn.row_factory = sqlite3.Row
+try:
+    has_files_table = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='files'"
+    ).fetchone() is not None
+    playlist_rows = []
+    with manifest_path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            dest_path = Path((row.get("dest_path") or "").strip()).expanduser()
+            if not str(dest_path) or not dest_path.exists():
+                continue
+            identity_text = (row.get("identity_id") or "").strip()
+            if not identity_text:
+                continue
+            identity_id = int(identity_text)
+            snapshot = resolve_dj_tag_snapshot(conn, identity_id, run_essentia=False, dry_run=True)
+            source_path = (row.get("source_path") or "").strip()
+            asset_id = resolve_asset_id_by_path(conn, source_path) if source_path else None
+            partial_metadata = any(
+                value is None
+                for value in (snapshot.bpm, snapshot.musical_key, snapshot.energy_1_10)
+            )
+            record_provenance_event(
+                conn,
+                event_type="dj_export",
+                status="success",
+                asset_id=asset_id,
+                identity_id=identity_id,
+                source_path=source_path or None,
+                dest_path=str(dest_path.resolve()),
+                details={
+                    "tag_snapshot": snapshot.as_dict(),
+                    "bpm_source": snapshot.bpm_source,
+                    "key_source": snapshot.key_source,
+                    "energy_source": snapshot.energy_source,
+                    "format": "mp3",
+                    "bitrate": 320,
+                    "tool_version": "build_pool_v3",
+                    "action": (row.get("action") or "").strip().lower(),
+                    "reason": (row.get("reason") or "").strip(),
+                    "partial_metadata": partial_metadata,
+                },
+            )
+            if has_files_table and source_path:
+                conn.execute(
+                    "UPDATE files SET dj_pool_path = ? WHERE path = ?",
+                    (str(dest_path.resolve()), source_path),
+                )
+            playlist_rows.append(str(dest_path.resolve()))
+    conn.commit()
+finally:
+    conn.close()
 
 playlist_inputs.write_text(
-    "\n".join(written) + ("\n" if written else ""),
+    "\n".join(playlist_rows) + ("\n" if playlist_rows else ""),
     encoding="utf-8",
 )
-tag_map_file.write_text(
-    "\n".join(tag_map_rows) + ("\n" if tag_map_rows else ""),
-    encoding="utf-8",
-)
-
-print(f"DJ export complete: {done} files -> {dest_root}")
-if errors:
-    for item in errors:
-        print(f"ERROR: {item}", file=sys.stderr)
-    raise SystemExit(1)
+print(f"DJ manifest applied: {len(playlist_rows)} playlist entries")
 PY
 
     DJ_M3U_INPUT_COUNT="$(wc -l < "$DJ_M3U_INPUTS_FILE" | tr -d ' ')"
@@ -2159,13 +2255,9 @@ PY
   fi
 fi
 
-if [[ "$TAGGING_MODE" -eq 1 && "$EXECUTE" -eq 1 ]]; then
+if [[ "$TAGGING_MODE" -eq 1 && "$EXECUTE" -eq 1 && "$DJ_MODE" -eq 0 ]]; then
   STEP=$((STEP + 1))
-  if [[ "$DJ_MODE" -eq 1 ]]; then
-    step "$STEP" "$TOTAL_STEPS" "Launch background enrich/art + DJ tag sync"
-  else
-    step "$STEP" "$TOTAL_STEPS" "Launch background enrich + art"
-  fi
+  step "$STEP" "$TOTAL_STEPS" "Launch background enrich + art"
 
   POST_MOVE_LOG="$OUT_DIR/post_move_enrich_art_$(date +%Y%m%d_%H%M%S).log"
   POST_MOVE_PID_FILE="$OUT_DIR/post_move_enrich_art_$(date +%Y%m%d_%H%M%S).pid"
@@ -2181,9 +2273,6 @@ if [[ "$TAGGING_MODE" -eq 1 && "$EXECUTE" -eq 1 ]]; then
       --paths-file "$PROMOTED_FLACS_FILE"
       --providers "$ENRICH_PROVIDERS"
     )
-    if [[ -n "$DJ_TAG_MAP_FILE" && -s "$DJ_TAG_MAP_FILE" ]]; then
-      POST_MOVE_ARGS+=(--dj-map-file "$DJ_TAG_MAP_FILE")
-    fi
     printf '→ '
     printf '%q ' "${POST_MOVE_ARGS[@]}"
     printf '> %s 2>&1 &\n' "$POST_MOVE_LOG"

@@ -5,9 +5,12 @@ from unittest.mock import patch
 
 from mutagen.id3 import APIC, ID3, SYLT, TXXX, USLT
 
+from tagslut.exec.dj_tag_snapshot import DjTagSnapshot
 from tagslut.exec.transcoder import (
     _apply_cover_art,
     _apply_dj_tag_policy,
+    _apply_snapshot_tag_policy,
+    _build_snapshot_mp3_filename,
     _clear_dj_managed_frames,
     sync_dj_mp3_from_flac,
 )
@@ -154,3 +157,65 @@ def test_sync_dj_mp3_from_flac_refreshes_dj_tags_preserves_custom(
     assert result["TBPM"].text[0] == "128"
     # Non-DJ custom frame survives
     assert result["TXXX:KEEPME"].text[0] == "custom_value"
+
+
+def test_snapshot_policy_uses_snapshot_fields_not_flac_tags() -> None:
+    tags = ID3()
+    snapshot = DjTagSnapshot(
+        artist="Snapshot Artist",
+        title="Snapshot Title",
+        album="Snapshot Album",
+        genre="Techno",
+        label="Snapshot Label",
+        year=2025,
+        isrc="ISRC123",
+        bpm="128",
+        musical_key="Am",
+        energy_1_10=7,
+        bpm_source="identity",
+        key_source="analysis",
+        energy_source="analysis",
+        identity_id=1,
+        preferred_asset_id=11,
+        preferred_path="/music/source.flac",
+    )
+
+    _apply_snapshot_tag_policy(tags, snapshot)
+
+    assert tags["TIT2"].text[0] == "Snapshot Title"
+    assert tags["TPE1"].text[0] == "Snapshot Artist"
+    assert tags["TALB"].text[0] == "Snapshot Album"
+    assert str(tags["TDRC"].text[0]) == "2025"
+    assert tags["TCON"].text[0] == "Techno"
+    assert tags["TBPM"].text[0] == "128"
+    assert tags["TKEY"].text[0] == "Am"
+    assert tags["TXXX:INITIALKEY"].text[0] == "Am"
+    assert tags["TXXX:LABEL"].text[0] == "Snapshot Label"
+    assert tags["TXXX:ENERGY"].text[0] == "7"
+    assert tags["TSRC"].text[0] == "ISRC123"
+
+
+def test_build_snapshot_mp3_filename_uses_snapshot_metadata(tmp_path: Path) -> None:
+    src = tmp_path / "track.flac"
+    snapshot = DjTagSnapshot(
+        artist="Artist",
+        title="Title",
+        album=None,
+        genre=None,
+        label=None,
+        year=None,
+        isrc=None,
+        bpm="124",
+        musical_key="F#m",
+        energy_1_10=None,
+        bpm_source="identity",
+        key_source="identity",
+        energy_source=None,
+        identity_id=9,
+        preferred_asset_id=None,
+        preferred_path=None,
+    )
+
+    name = _build_snapshot_mp3_filename(src, snapshot, include_identity_id=True)
+
+    assert name == "Artist - Title [9] (F#m) (124).mp3"

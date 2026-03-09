@@ -37,8 +37,8 @@ from tagslut.utils import AUDIO_EXTENSIONS  # noqa: E402
 from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path  # noqa: E402
 from tagslut.utils.paths import list_files  # noqa: E402
 from tagslut.utils.config import get_config  # noqa: E402
-from tagslut.exec.enrich_dj_tags import enrich_dj_tags  # noqa: E402
-from tagslut.exec.transcoder import transcode_to_mp3  # noqa: E402
+from tagslut.exec.transcoder import transcode_to_mp3_from_snapshot  # noqa: E402
+from tagslut.storage.v3.analysis_service import resolve_dj_tag_snapshot_for_path  # noqa: E402
 
 ALLOWED_PHASES = (
     "register",
@@ -327,9 +327,12 @@ def run_dj_phase(
     try:
         for flac_path in flac_paths:
             try:
-                enriched = enrich_dj_tags(conn, flac_path, dry_run=dry_run)
-                if enriched:
-                    logger.info("DJ tag enrichment: %s → %s", flac_path.name, enriched)
+                snapshot = resolve_dj_tag_snapshot_for_path(
+                    conn,
+                    flac_path,
+                    run_essentia=True,
+                    dry_run=dry_run,
+                )
             except FileNotFoundError:
                 if not essentia_missing_warned:
                     logger.warning(
@@ -337,12 +340,31 @@ def run_dj_phase(
                         "Install with: brew install essentia (macOS) or see docs."
                     )
                     essentia_missing_warned = True
+                snapshot = resolve_dj_tag_snapshot_for_path(
+                    conn,
+                    flac_path,
+                    run_essentia=False,
+                    dry_run=True,
+                )
+
+            if snapshot is not None:
+                logger.info(
+                    "DJ snapshot: %s → bpm=%s key=%s energy=%s",
+                    flac_path.name,
+                    snapshot.bpm,
+                    snapshot.musical_key,
+                    snapshot.energy_1_10,
+                )
 
             if dry_run:
                 logger.info("DJ dry-run: would transcode %s into %s", flac_path, pool_dir)
                 continue
 
-            mp3_path = transcode_to_mp3(flac_path, pool_dir)
+            if snapshot is None:
+                logger.warning("DJ snapshot missing for %s; skipping transcode", flac_path)
+                continue
+
+            mp3_path = transcode_to_mp3_from_snapshot(flac_path, pool_dir, snapshot)
             if _table_exists(conn, "files"):
                 conn.execute(
                     "UPDATE files SET dj_pool_path = ? WHERE path = ?",

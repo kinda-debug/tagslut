@@ -17,6 +17,8 @@ from typing import Any, Callable, Optional, cast
 from mutagen.flac import FLAC
 from mutagen.id3 import ID3
 
+from tagslut.exec.dj_tag_snapshot import DjTagSnapshot
+
 logger = logging.getLogger(__name__)
 
 DJ_MANAGED_FRAMES = (
@@ -54,7 +56,11 @@ def _mutagen_id3() -> Any:
     return mutagen_id3
 
 
-def _check_ffmpeg() -> None:
+def _check_ffmpeg(ffmpeg_path: str | None = None) -> None:
+    if ffmpeg_path:
+        resolved = shutil.which(ffmpeg_path) or (ffmpeg_path if Path(ffmpeg_path).exists() else None)
+        if resolved is not None:
+            return
     if shutil.which("ffmpeg") is None:
         raise FFmpegNotFoundError(
             "ffmpeg not found in PATH. Install it: brew install ffmpeg (macOS) "
@@ -84,6 +90,31 @@ def _build_mp3_filename(source: Path, tags: Optional[FLAC]) -> str:
     if bpm:
         parts += f" ({bpm})"
 
+    safe = "".join(c for c in parts if c not in r'\\/:*?"<>|')
+    return safe + ".mp3"
+
+
+def _build_snapshot_mp3_filename(
+    source: Path,
+    snapshot: DjTagSnapshot,
+    *,
+    include_identity_id: bool = False,
+) -> str:
+    artist = (snapshot.artist or "").strip()
+    title = (snapshot.title or "").strip()
+    bpm = (snapshot.bpm or "").strip()
+    key = (snapshot.musical_key or "").strip()
+
+    if not artist or not title:
+        return source.stem + ".mp3"
+
+    parts = f"{artist} - {title}"
+    if include_identity_id and snapshot.identity_id is not None:
+        parts += f" [{snapshot.identity_id}]"
+    if key:
+        parts += f" ({key})"
+    if bpm:
+        parts += f" ({bpm})"
     safe = "".join(c for c in parts if c not in r'\\/:*?"<>|')
     return safe + ".mp3"
 
@@ -132,8 +163,58 @@ def transcode_to_mp3(
         logger.info("Skipping transcode, already exists: %s", dest_path)
         return dest_path
 
+    _run_ffmpeg_transcode(source, dest_path, bitrate=bitrate, ffmpeg_path=None)
+    _apply_id3_tags(dest_path, flac_tags, prune_existing=True)
+
+    logger.info("Transcoded: %s -> %s", source, dest_path)
+    return dest_path
+
+
+def transcode_to_mp3_from_snapshot(
+    source: Path,
+    dest_dir: Path,
+    snapshot: DjTagSnapshot,
+    *,
+    bitrate: int = 320,
+    overwrite: bool = False,
+    ffmpeg_path: str | None = None,
+    dest_path: Path | None = None,
+) -> Path:
+    if not source.exists():
+        raise FileNotFoundError(f"Source file not found: {source}")
+    _check_ffmpeg(ffmpeg_path)
+
+    try:
+        flac_tags: Optional[FLAC] = FLAC(source)
+    except Exception as e:
+        flac_tags = None
+        logger.warning("Could not read FLAC tags from %s: %s", source, e)
+
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    final_dest_path = dest_path or (dest_dir / _build_snapshot_mp3_filename(source, snapshot))
+
+    final_dest_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if final_dest_path.exists() and not overwrite:
+        logger.info("Skipping transcode, already exists: %s", final_dest_path)
+        return final_dest_path
+
+    _run_ffmpeg_transcode(source, final_dest_path, bitrate=bitrate, ffmpeg_path=ffmpeg_path)
+    _apply_snapshot_id3_tags(final_dest_path, snapshot, flac_tags, prune_existing=True)
+
+    logger.info("Transcoded from snapshot: %s -> %s", source, final_dest_path)
+    return final_dest_path
+
+
+def _run_ffmpeg_transcode(
+    source: Path,
+    dest_path: Path,
+    *,
+    bitrate: int,
+    ffmpeg_path: str | None,
+) -> None:
     cmd = [
-        "ffmpeg",
+        ffmpeg_path or "ffmpeg",
         "-y",
         "-i",
         str(source),
@@ -153,11 +234,6 @@ def transcode_to_mp3(
         raise TranscodeError(
             f"ffmpeg failed for {source}:\n{result.stderr[-500:]}"
         )
-
-    _apply_id3_tags(dest_path, flac_tags, prune_existing=True)
-
-    logger.info("Transcoded: %s -> %s", source, dest_path)
-    return dest_path
 
 
 def sync_dj_mp3_from_flac(mp3_path: Path, source_flac: Path) -> None:
@@ -229,6 +305,29 @@ def _apply_id3_tags(
     tags.save(mp3_path)
 
 
+def _apply_snapshot_id3_tags(
+    mp3_path: Path,
+    snapshot: DjTagSnapshot,
+    flac_tags: Optional[FLAC],
+    *,
+    prune_existing: bool,
+) -> None:
+    if prune_existing:
+        tags = _empty_id3()
+    else:
+        try:
+            tags = _load_id3(mp3_path)
+        except Exception as e:
+            logger.warning("Could not load existing ID3 tags from %s: %s", mp3_path, e)
+            tags = _empty_id3()
+
+    _clear_dj_managed_frames(tags)
+    _apply_snapshot_tag_policy(tags, snapshot)
+    if flac_tags is not None:
+        _apply_cover_art(tags, flac_tags)
+    tags.save(mp3_path)
+
+
 def _clear_dj_managed_frames(tags: ID3) -> None:
     for frame_id in DJ_MANAGED_FRAMES:
         _id3_delall(tags, frame_id)
@@ -273,6 +372,30 @@ def _apply_dj_tag_policy(tags: ID3, flac_tags: FLAC, first: TagLookup) -> None:
         tags["TXXX:ENERGY"] = _user_text_frame("ENERGY", energy)
 
     _apply_cover_art(tags, flac_tags)
+
+
+def _apply_snapshot_tag_policy(tags: ID3, snapshot: DjTagSnapshot) -> None:
+    if snapshot.title:
+        tags["TIT2"] = _text_frame("TIT2", snapshot.title)
+    if snapshot.artist:
+        tags["TPE1"] = _text_frame("TPE1", snapshot.artist)
+    if snapshot.album:
+        tags["TALB"] = _text_frame("TALB", snapshot.album)
+    if snapshot.year is not None:
+        tags["TDRC"] = _text_frame("TDRC", str(snapshot.year))
+    if snapshot.genre:
+        tags["TCON"] = _text_frame("TCON", snapshot.genre)
+    if snapshot.bpm:
+        tags["TBPM"] = _text_frame("TBPM", snapshot.bpm)
+    if snapshot.musical_key:
+        tags["TKEY"] = _text_frame("TKEY", snapshot.musical_key)
+        tags["TXXX:INITIALKEY"] = _user_text_frame("INITIALKEY", snapshot.musical_key)
+    if snapshot.isrc:
+        tags["TSRC"] = _text_frame("TSRC", snapshot.isrc)
+    if snapshot.label:
+        tags["TXXX:LABEL"] = _user_text_frame("LABEL", snapshot.label)
+    if snapshot.energy_1_10 is not None:
+        tags["TXXX:ENERGY"] = _user_text_frame("ENERGY", str(snapshot.energy_1_10))
 
 
 def _apply_cover_art(tags: ID3, flac_tags: FLAC) -> None:

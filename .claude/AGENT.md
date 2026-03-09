@@ -1,42 +1,13 @@
-# AGENT.md - Repository Operating Guide for tagslut
+## Phase 1 Invariants (Active)
 
-## Purpose
-`tagslut` is a music-library management toolkit for large FLAC collections with DJ-oriented workflows.
-Recovery-era work is archived; active work is forward-looking, deterministic, and auditable.
-
-## Documentation Scope and Precedence
-This repo has a large markdown surface. The tracked markdown set currently splits roughly into:
-- Active docs in `docs/` (operator and implementation guidance)
-- Historical docs in `docs/archive/`
-- Tool/package readmes in `tools/`, `legacy/`, and package subfolders
-
-When docs conflict, use this precedence:
-1. This file (`AGENT.md`)
-2. `REPORT.md`
-3. `docs/WORKFLOWS.md` and `docs/OPERATIONS.md`
-4. `docs/SCRIPT_SURFACE.md` and `docs/SURFACE_POLICY.md`
-5. `docs/TROUBLESHOOTING.md`
-6. `docs/archive/**` (historical reference only)
-
-## Canonical Operational Surface
-Prefer these command groups for new operator-facing work:
-1. `tagslut intake`
-2. `tagslut index`
-3. `tagslut decide`
-4. `tagslut execute`
-5. `tagslut verify`
-6. `tagslut report`
-7. `tagslut auth`
-
-Also active in the current CLI surface (specialized use):
-- `tagslut export`
-- `tagslut dj`
-- `tagslut gig`
-- `tagslut canonize`
-- `tagslut enrich-file`
-- `tagslut show-zone`
-- `tagslut explain-keeper`
-- `tagslut recovery` (currently a stub path; treat as limited)
+- All writes to track_identity must go through tagslut/storage/v3/identity_service.py
+- No module outside tagslut/storage/v3/ may reference merged_into_id
+- Legacy mirrors (files, library_tracks) must be updated on every identity write via mirror_identity_to_legacy()
+- Fuzzy matches must not overwrite exact-provider fields unless the target field is empty
+- Schema PRs must not contain service logic or backfill logic
+- SQLite migrations must enable FK per connection and run foreign_key_check + integrity_check
+- DJ candidate paths must read from v3 tables only, no filesystem heuristics
+- No direct writes to files.canonical_* or files.library_track_key outside the mirror service
 
 Branding and alias policy:
 - `tagslut` is the preferred command brand.

@@ -28,9 +28,9 @@ def test_exact_reuse_by_isrc() -> None:
         )
         identity_id = resolve_or_create_identity(
             conn,
-            {"path": "/music/new.flac", "duration_s": 300.0},
-            {"isrc": "ABC123", "artist": "Artist", "title": "Track"},
-            {"source": "tidal"},
+            asset_row={"path": "/music/new.flac", "duration_s": 300.0},
+            metadata={"isrc": "ABC123", "artist": "Artist", "title": "Track"},
+            provenance={"source": "tidal"},
         )
         assert identity_id == 1
     finally:
@@ -48,9 +48,9 @@ def test_exact_reuse_by_provider_id() -> None:
         )
         identity_id = resolve_or_create_identity(
             conn,
-            {"path": "/music/provider.flac", "duration_s": 300.0},
-            {"beatport_id": "12345", "artist": "Artist", "title": "Track"},
-            {"source": "beatport"},
+            asset_row={"path": "/music/provider.flac", "duration_s": 300.0},
+            metadata={"beatport_id": "12345", "artist": "Artist", "title": "Track"},
+            provenance={"source": "beatport"},
         )
         assert identity_id == 2
     finally:
@@ -69,15 +69,15 @@ def test_fuzzy_reuse_then_create_when_no_match() -> None:
         )
         reused = resolve_or_create_identity(
             conn,
-            {"path": "/music/fuzzy.flac", "duration_s": 299.5},
-            {"artist": "Artist", "title": "Track"},
-            {"source": "manual"},
+            asset_row={"path": "/music/fuzzy.flac", "duration_s": 299.5},
+            metadata={"artist": "Artist", "title": "Track"},
+            provenance={"source": "manual"},
         )
         created = resolve_or_create_identity(
             conn,
-            {"path": "/music/new-create.flac", "duration_s": 420.0},
-            {"artist": "Other Artist", "title": "Other Track"},
-            {"source": "manual"},
+            asset_row={"path": "/music/new-create.flac", "duration_s": 420.0},
+            metadata={"artist": "Other Artist", "title": "Other Track"},
+            provenance={"source": "manual"},
         )
 
         assert reused == 3
@@ -99,7 +99,7 @@ def test_resolve_active_identity_follows_single_merge_hop() -> None:
                 (11, "id:merged", 10),
             ],
         )
-        row = resolve_active_identity(conn, "id:merged")
+        row = resolve_active_identity(conn, 11)
         assert int(row["id"]) == 10
         assert str(row["identity_key"]) == "id:active"
     finally:

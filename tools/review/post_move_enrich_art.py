@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -14,6 +15,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 from tagslut.metadata.auth import TokenManager
 from tagslut.metadata.enricher import Enricher
+from tagslut.exec.canonical_writeback import write_canonical_tags
 from tagslut.exec.transcoder import sync_dj_mp3_from_flac
 
 logger = logging.getLogger(__name__)
@@ -135,24 +137,22 @@ def main() -> int:
         print(f"  {key}: {stats[key]}")
 
     exit_code = 0
-    writeback_script = Path(__file__).resolve().with_name("write_canonical_tags_to_files.py")
-    writeback_cmd = [
-        sys.executable,
-        str(writeback_script),
-        "--db",
-        str(db_path),
-        "--m3u",
-        str(paths_file),
-        "--force",
-        "--execute",
-    ]
-    print("$ " + " ".join(writeback_cmd))
-    writeback_result = subprocess.run(writeback_cmd, check=False)
-    if writeback_result.returncode != 0:
-        print(f"WARNING: canonical tag writeback exited with code {writeback_result.returncode}")
-        exit_code = writeback_result.returncode
-    else:
-        print("Post-move canonical tag writeback complete.")
+    try:
+        with sqlite3.connect(str(db_path)) as writeback_conn:
+            stats = write_canonical_tags(
+                writeback_conn,
+                file_paths,
+                force=True,
+                execute=True,
+                echo=print,
+            )
+        print(
+            "Post-move canonical tag writeback complete: "
+            f"updated={stats.updated} skipped={stats.skipped} missing={stats.missing}"
+        )
+    except Exception as exc:  # pragma: no cover - defensive for background worker
+        print(f"WARNING: canonical tag writeback failed: {exc}")
+        exit_code = 1
 
     if args.skip_art:
         print("Skipping cover-art embedding by request.")

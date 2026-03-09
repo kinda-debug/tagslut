@@ -9,9 +9,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
-from tagslut.exec.transcoder import TranscodeError, transcode_to_mp3
+from tagslut.exec.transcoder import TranscodeError, transcode_to_mp3, transcode_to_mp3_from_snapshot
 from tagslut.exec.usb_export import copy_to_usb, write_manifest, write_rekordbox_db
 from tagslut.filters.gig_filter import parse_filter
+from tagslut.storage.v3 import (
+    record_provenance_event,
+    resolve_asset_id_by_path,
+    resolve_dj_tag_snapshot_for_path,
+    resolve_latest_dj_export_path,
+)
 
 logger = logging.getLogger("tagslut.gig_builder")
 
@@ -89,7 +95,9 @@ class GigBuilder:
 
         for row in rows:
             flac_path = Path(row[0])
-            existing_mp3 = Path(row[1]) if row[1] else None
+            existing_mp3 = resolve_latest_dj_export_path(self._conn, source_path=flac_path)
+            if existing_mp3 is None and row[1]:
+                existing_mp3 = Path(row[1])
 
             if existing_mp3 and existing_mp3.exists():
                 export_pairs.append((flac_path, existing_mp3, False))
@@ -107,14 +115,66 @@ class GigBuilder:
                 continue
 
             try:
-                mp3_path = transcode_to_mp3(
-                    flac_path,
-                    self._dj_pool_dir,
-                    bitrate=self._mp3_bitrate,
-                )
+                snapshot = None
+                try:
+                    snapshot = resolve_dj_tag_snapshot_for_path(
+                        self._conn,
+                        flac_path,
+                        run_essentia=True,
+                        dry_run=False,
+                    )
+                except FileNotFoundError:
+                    snapshot = resolve_dj_tag_snapshot_for_path(
+                        self._conn,
+                        flac_path,
+                        run_essentia=False,
+                        dry_run=True,
+                    )
+
+                if snapshot is not None:
+                    mp3_path = transcode_to_mp3_from_snapshot(
+                        flac_path,
+                        self._dj_pool_dir,
+                        snapshot,
+                        bitrate=self._mp3_bitrate,
+                    )
+                else:
+                    mp3_path = transcode_to_mp3(
+                        flac_path,
+                        self._dj_pool_dir,
+                        bitrate=self._mp3_bitrate,
+                    )
+
                 self._conn.execute(
                     "UPDATE files SET dj_pool_path = ? WHERE path = ?",
                     (str(mp3_path), str(flac_path)),
+                )
+                record_provenance_event(
+                    self._conn,
+                    event_type="dj_export",
+                    status="success",
+                    asset_id=resolve_asset_id_by_path(self._conn, flac_path),
+                    identity_id=snapshot.identity_id if snapshot is not None else None,
+                    source_path=str(flac_path),
+                    dest_path=str(mp3_path),
+                    details={
+                        "format": "mp3",
+                        "bitrate": self._mp3_bitrate,
+                        "tool_version": "gig_builder",
+                        "partial_metadata": (
+                            any(
+                                value is None
+                                for value in (
+                                    snapshot.bpm,
+                                    snapshot.musical_key,
+                                    snapshot.energy_1_10,
+                                )
+                            )
+                            if snapshot is not None
+                            else True
+                        ),
+                        "tag_snapshot": snapshot.as_dict() if snapshot is not None else None,
+                    },
                 )
                 export_pairs.append((flac_path, mp3_path, True))
                 result.tracks_transcoded += 1

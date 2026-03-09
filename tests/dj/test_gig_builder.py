@@ -105,6 +105,14 @@ def test_build_full_flow_transcode_copy_record(tmp_path: Path) -> None:
         ).fetchone()
         assert row[0] == str(transcoded_mp3)
         assert row[1] is not None
+        prov = conn.execute(
+            "SELECT event_type, status, source_path, dest_path FROM provenance_event ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        assert prov is not None
+        assert prov[0] == "dj_export"
+        assert prov[1] == "success"
+        assert prov[2] == str(flac_a)
+        assert prov[3] == str(transcoded_mp3)
 
         gig_row = conn.execute(
             "SELECT name, track_count, usb_path, filter_expr FROM gig_sets ORDER BY id DESC LIMIT 1"
@@ -268,5 +276,42 @@ def test_build_reuses_existing_dj_pool_mp3_without_transcode(tmp_path: Path) -> 
 
         exported = conn.execute("SELECT last_exported_usb FROM files WHERE path = ?", (str(flac),)).fetchone()[0]
         assert exported is not None
+    finally:
+        conn.close()
+
+
+def test_build_reuses_latest_dj_export_receipt_without_dj_pool_path(tmp_path: Path) -> None:
+    conn = _setup_db()
+    try:
+        usb = tmp_path / "usb"
+        pool = tmp_path / "pool"
+        usb.mkdir()
+        pool.mkdir()
+
+        flac = tmp_path / "track.flac"
+        flac.write_bytes(b"x")
+        exported_mp3 = pool / "receipt.mp3"
+        exported_mp3.write_bytes(b"mp3")
+
+        _insert_file(conn, path=flac, checksum="sha-1", genre="techno", bpm=130.0)
+        conn.execute(
+            """
+            INSERT INTO provenance_event (event_type, status, source_path, dest_path)
+            VALUES ('dj_export', 'success', ?, ?)
+            """,
+            (str(flac), str(exported_mp3)),
+        )
+        conn.commit()
+
+        with patch("tagslut.exec.gig_builder.transcode_to_mp3") as mock_transcode, patch(
+            "tagslut.exec.gig_builder.copy_to_usb", return_value=[usb / "MUSIC" / "Reuse" / "receipt.mp3"]
+        ), patch("tagslut.exec.gig_builder.write_rekordbox_db"), patch(
+            "tagslut.exec.gig_builder.write_manifest", return_value=usb / "manifest.txt"
+        ):
+            result = GigBuilder(conn, dj_pool_dir=pool).build("Reuse", "dj_flag:true", usb, dry_run=False)
+
+        mock_transcode.assert_not_called()
+        assert result.tracks_skipped == 1
+        assert result.tracks_copied == 1
     finally:
         conn.close()

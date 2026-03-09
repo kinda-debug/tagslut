@@ -31,6 +31,35 @@ def _init_db_file(db_path: Path, flac_path: Path) -> None:
     conn.close()
 
 
+class _Snapshot:
+    def __init__(
+        self,
+        *,
+        bpm: str | None,
+        musical_key: str | None,
+        energy_1_10: int | None,
+        identity_id: int | None = None,
+        bpm_source: str | None = None,
+        key_source: str | None = None,
+        energy_source: str | None = None,
+    ) -> None:
+        self.bpm = bpm
+        self.musical_key = musical_key
+        self.energy_1_10 = energy_1_10
+        self.identity_id = identity_id
+        self.bpm_source = bpm_source
+        self.key_source = key_source
+        self.energy_source = energy_source
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "bpm": self.bpm,
+            "musical_key": self.musical_key,
+            "energy_1_10": self.energy_1_10,
+            "identity_id": self.identity_id,
+        }
+
+
 def test_run_dj_phase_dry_run_logs_enrichment_and_skips_transcode(
     tmp_path: Path,
     caplog,
@@ -48,11 +77,7 @@ def test_run_dj_phase_dry_run_logs_enrichment_and_skips_transcode(
         module,
         "resolve_dj_tag_snapshot_for_path",
     ) as mock_snapshot, patch.object(module, "transcode_to_mp3_from_snapshot") as mock_transcode:
-        mock_snapshot.return_value = type(
-            "Snapshot",
-            (),
-            {"bpm": "128", "musical_key": "Am", "energy_1_10": None},
-        )()
+        mock_snapshot.return_value = _Snapshot(bpm="128", musical_key="Am", energy_1_10=None)
         module.run_dj_phase(
             db_path=db_path,
             root_path=root,
@@ -91,7 +116,7 @@ def test_run_dj_phase_continues_transcode_when_essentia_missing(
         "resolve_dj_tag_snapshot_for_path",
         side_effect=[
             FileNotFoundError("missing essentia"),
-            type("Snapshot", (), {"bpm": None, "musical_key": None, "energy_1_10": None})(),
+            _Snapshot(bpm=None, musical_key=None, energy_1_10=None, identity_id=41),
         ],
     ) as mock_snapshot, patch.object(
         module, "transcode_to_mp3_from_snapshot", return_value=mp3_path
@@ -115,3 +140,10 @@ def test_run_dj_phase_continues_transcode_when_essentia_missing(
     mock_transcode.assert_called_once()
     assert row is not None
     assert row[0] == str(mp3_path)
+    prov = sqlite3.connect(str(db_path)).execute(
+        "SELECT event_type, status, dest_path FROM provenance_event ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    assert prov is not None
+    assert prov[0] == "dj_export"
+    assert prov[1] == "success"
+    assert prov[2] == str(mp3_path)

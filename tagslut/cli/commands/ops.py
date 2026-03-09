@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import sqlite3
 import shutil
 import subprocess
 import sys
@@ -13,6 +14,7 @@ from typing import Any
 
 import click
 
+from tagslut.exec.canonical_writeback import iter_flacs_from_m3u, iter_flacs_from_root, write_canonical_tags
 from tagslut.cli.runtime import PROJECT_ROOT
 from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
 
@@ -588,3 +590,58 @@ def register_ops_group(cli: click.Group) -> None:
                     temp_plan_path.unlink()
                 except OSError:
                     pass
+
+    @ops_group.command("writeback-canonical")
+    @click.option("--db", "db_path_arg", type=click.Path(), help="SQLite DB path (or TAGSLUT_DB)")
+    @click.option("--path", "path_arg", type=click.Path(), help="Root path or FLAC file to scan")
+    @click.option("--m3u", "m3u_arg", type=click.Path(), help="M3U file listing FLAC paths")
+    @click.option("--force", is_flag=True, help="Overwrite existing tags")
+    @click.option("--execute", is_flag=True, help="Write tags to files")
+    @click.option("--progress-interval", default=100, show_default=True, type=int)
+    def writeback_canonical(
+        db_path_arg: str | None,
+        path_arg: str | None,
+        m3u_arg: str | None,
+        force: bool,
+        execute: bool,
+        progress_interval: int,
+    ) -> None:
+        if not path_arg and not m3u_arg:
+            raise click.ClickException("Provide --path or --m3u")
+        if path_arg and m3u_arg:
+            raise click.ClickException("Use only one of --path or --m3u")
+
+        try:
+            resolution = resolve_cli_env_db_path(
+                Path(db_path_arg) if db_path_arg is not None else None,
+                purpose="read",
+                source_label="--db",
+            )
+        except DbResolutionError as exc:
+            raise click.ClickException(str(exc)) from exc
+
+        db_path = resolution.path
+        if m3u_arg:
+            sources = list(iter_flacs_from_m3u(Path(m3u_arg).expanduser().resolve()))
+        else:
+            sources = list(iter_flacs_from_root(Path(path_arg).expanduser().resolve()))
+
+        if not sources:
+            raise click.ClickException("No FLAC files found.")
+
+        with sqlite3.connect(str(db_path)) as conn:
+            stats = write_canonical_tags(
+                conn,
+                sources,
+                force=force,
+                execute=execute,
+                progress_interval=progress_interval,
+                echo=click.echo,
+            )
+
+        click.echo(f"Scanned:  {stats.scanned}")
+        click.echo(f"Updated:  {stats.updated}")
+        click.echo(f"Skipped:  {stats.skipped}")
+        click.echo(f"Missing:  {stats.missing}")
+        if not execute:
+            click.echo("DRY-RUN: use --execute to write tags")

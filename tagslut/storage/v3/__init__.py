@@ -37,6 +37,7 @@ from tagslut.storage.v3.preferred_asset import (
 )
 from tagslut.storage.v3.schema import create_schema_v3
 from tagslut.storage.v3.analysis_service import resolve_dj_tag_snapshot, resolve_dj_tag_snapshot_for_path
+from tagslut.storage.v3.dj_exports import resolve_latest_dj_export_path
 
 __all__ = [
     "open_db_v3",
@@ -51,6 +52,7 @@ __all__ = [
     "upsert_preferred_assets",
     "resolve_dj_tag_snapshot",
     "resolve_dj_tag_snapshot_for_path",
+    "resolve_latest_dj_export_path",
     "IdentityStatusRow",
     "compute_identity_statuses",
     "upsert_identity_statuses",

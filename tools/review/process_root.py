@@ -38,6 +38,7 @@ from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path  # noqa:
 from tagslut.utils.paths import list_files  # noqa: E402
 from tagslut.utils.config import get_config  # noqa: E402
 from tagslut.exec.transcoder import transcode_to_mp3_from_snapshot  # noqa: E402
+from tagslut.storage.v3 import record_provenance_event, resolve_asset_id_by_path  # noqa: E402
 from tagslut.storage.v3.analysis_service import resolve_dj_tag_snapshot_for_path  # noqa: E402
 
 ALLOWED_PHASES = (
@@ -365,6 +366,28 @@ def run_dj_phase(
                 continue
 
             mp3_path = transcode_to_mp3_from_snapshot(flac_path, pool_dir, snapshot)
+            record_provenance_event(
+                conn,
+                event_type="dj_export",
+                status="success",
+                asset_id=resolve_asset_id_by_path(conn, flac_path),
+                identity_id=snapshot.identity_id,
+                source_path=str(flac_path),
+                dest_path=str(mp3_path),
+                details={
+                    "tag_snapshot": snapshot.as_dict(),
+                    "bpm_source": snapshot.bpm_source,
+                    "key_source": snapshot.key_source,
+                    "energy_source": snapshot.energy_source,
+                    "format": "mp3",
+                    "bitrate": 320,
+                    "tool_version": "process_root",
+                    "partial_metadata": any(
+                        value is None
+                        for value in (snapshot.bpm, snapshot.musical_key, snapshot.energy_1_10)
+                    ),
+                },
+            )
             if _table_exists(conn, "files"):
                 conn.execute(
                     "UPDATE files SET dj_pool_path = ? WHERE path = ?",

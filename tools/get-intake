@@ -2251,7 +2251,8 @@ PY
       fi
       DJ_M3U_OUTPUT="$(latest_file_after_marker "$DJ_M3U_DIR" "$DJ_M3U_MARKER")"
       rm -f "$DJ_M3U_MARKER"
-    fi
+	    fi
+	  fi
   fi
 fi
 

@@ -10,6 +10,7 @@ from tagslut.exec.dj_library_normalize import (
     apply_dj_pool_relink,
     apply_playlist_rewrite_manifest,
     build_canonical_mp3_destination,
+    classify_current_layout,
     plan_dj_library_normalize,
 )
 from tagslut.exec.dj_tag_snapshot import DjTagSnapshot
@@ -25,6 +26,37 @@ def _meta(path: Path, **fields: str) -> AudioMetadata:
 def _read_csv(path: Path) -> list[dict[str, str]]:
     with path.open("r", encoding="utf-8", newline="") as handle:
         return list(csv.DictReader(handle))
+
+
+def test_classify_current_layout_treats_samefile_as_already_canonical(tmp_path: Path) -> None:
+    import pytest
+
+    root = (tmp_path / "DJ_LIBRARY").resolve()
+    root.mkdir()
+
+    tags = {
+        "title": ["Song"],
+        "artist": ["Artist"],
+        "album": ["Album"],
+        "albumartist": ["Artist"],
+        "date": ["2024"],
+        "tracknumber": ["01"],
+    }
+    expected = build_canonical_mp3_destination(tags, root)
+    expected.parent.mkdir(parents=True, exist_ok=True)
+    expected.write_bytes(b"mp3")
+
+    alias = root / "ALT" / expected.name
+    alias.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        alias.hardlink_to(expected)
+    except OSError as exc:
+        pytest.skip(f"hardlink not supported: {exc}")
+
+    status, returned_expected, reason = classify_current_layout(alias.resolve(), tags, root)
+    assert status == "already_canonical"
+    assert returned_expected == expected
+    assert reason == "already_canonical"
 
 
 def test_plan_dj_library_normalize_buckets_files_and_writes_manifests(tmp_path, monkeypatch) -> None:

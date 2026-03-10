@@ -222,12 +222,25 @@ def dedupe_destination(dest: Path, src: Path, *, used_destinations: set[Path] | 
     raise RuntimeError(f"could not allocate deduped path for {src}")
 
 
+def _samefile(path_a: Path, path_b: Path) -> bool:
+    """Best-effort "same file" check to handle macOS normalization/case quirks.
+
+    On case-insensitive or Unicode-normalization-insensitive filesystems, two different
+    textual paths can refer to the same inode. We treat those as equivalent for
+    canonicalization decisions.
+    """
+    try:
+        return path_a.samefile(path_b)
+    except (FileNotFoundError, OSError, ValueError):
+        return False
+
+
 def classify_current_layout(path: Path, tags: dict[str, list[str]], root: Path) -> tuple[str, Path | None, str]:
     try:
         expected = build_canonical_mp3_destination(tags, root)
     except FinalLibraryLayoutError as exc:
         return "incomplete", None, str(exc)
-    if expected == path:
+    if expected == path or _samefile(expected, path):
         return "already_canonical", expected, "already_canonical"
     return "move_only", expected, "path_mismatch"
 
@@ -543,6 +556,10 @@ def plan_dj_library_normalize(
             continue
 
         if status == "move_only" and metadata is not None and expected_dest is not None:
+            if _samefile(expected_dest, mp3_path):
+                already_canonical += 1
+                bucket_counts["already_canonical"] += 1
+                continue
             if expected_dest.exists() and expected_dest != mp3_path:
                 unresolved_rows.append(
                     PlannedMoveRow(

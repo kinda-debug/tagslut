@@ -12,9 +12,9 @@ Default workflow:
 5) Optionally transcode into `DJ_OUTPUT_ROOT` env var or `./output/dj_yes`
 
 Usage examples:
-  python scripts/dj_yes_transcode.py --estimate-only
-  python scripts/dj_yes_transcode.py --dry-run
-  python scripts/dj_yes_transcode.py --jobs 6
+  python scripts/dj/dj_yes_transcode.py --estimate-only
+  python scripts/dj/dj_yes_transcode.py --dry-run
+  python scripts/dj/dj_yes_transcode.py --jobs 6
 """
 
 from __future__ import annotations

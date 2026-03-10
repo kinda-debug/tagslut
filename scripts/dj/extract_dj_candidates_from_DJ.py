@@ -20,8 +20,8 @@ Requirements:
 - ffprobe available on PATH (comes with ffmpeg)
 
 Usage:
-  python3 scripts/extract_dj_candidates_from_DJ.py
-  python3 scripts/extract_dj_candidates_from_DJ.py --min-bpm 112 --max-bpm 130
+  python3 scripts/dj/extract_dj_candidates_from_DJ.py
+  python3 scripts/dj/extract_dj_candidates_from_DJ.py --min-bpm 112 --max-bpm 130
 """
 
 from __future__ import annotations
@@ -265,4 +265,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

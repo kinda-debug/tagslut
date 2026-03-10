@@ -89,6 +89,7 @@ Notes:
 - `tools/get-intake` is the advanced/backend command for existing batch roots, `--m3u-only`, and direct pipeline control.
 - `tools/get-sync` is a deprecated Beatport compatibility alias.
 
+<<<<<<< ours
 ## Move Plan Execution
 Use the canonical executor for reviewed plan CSVs:
 
@@ -101,6 +102,8 @@ python -m tagslut execute move-plan \
 
 Execution writes receipts into the v3 move/provenance tables and also carries common per-track sidecars with the audio move.
 
+=======
+>>>>>>> theirs
 ## Maintainer PR Sync (Phase 1 stack)
 Use `tools/review/sync_phase1_prs.sh` to push the three immediate branch updates while preserving branch/PR scope boundaries.
 
@@ -127,8 +130,11 @@ gh pr create --base fix/identity-service --head fix/dj-tag-enrichment \
 
 This keeps DJ enrichment separate from `fix/v3-backfill-command` (PR #186).
 
+<<<<<<< ours
 When you want to refresh the stack only when new commits exist, run `tools/review/auto_sync_phase1_prs.sh`. It uses the same `MIGRATION_WT`, `IDENTITY_WT`, and `BACKFILL_WT` overrides, checks each worktree against its upstream, and executes `sync_phase1_prs.sh` only when the local branch is ahead (or the remote is missing). The helper aborts with an error if a remote already contains commits that are not present locally so you can reconcile manually.
 
+=======
+>>>>>>> theirs
 ## Safety Gates
 - v3 doctor: schema and invariants
 - migration verification: aggregate preservation checks

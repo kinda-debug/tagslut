@@ -13,6 +13,7 @@ from tagslut.storage.v3 import (
     move_asset_path,
     record_provenance_event,
     upsert_asset_file,
+    upsert_asset_link,
 )
 
 
@@ -85,6 +86,92 @@ def test_dual_write_registered_file_creates_asset_identity_and_link(tmp_path) ->
     assert asset_count == 1
     assert link_count == 1
     assert event_count == 1
+
+
+def test_upsert_asset_link_relinks_existing_asset_to_new_identity(tmp_path) -> None:
+    db_path = tmp_path / "phase1.db"
+    conn = sqlite3.connect(str(db_path))
+    init_db(conn)
+
+    asset_id = upsert_asset_file(conn, path="/music/test.flac", content_sha256="abc123")
+    _, first_identity_id = dual_write_registered_file(
+        conn,
+        path="/music/first.flac",
+        content_sha256="first123",
+        streaminfo_md5="first456",
+        checksum="first123",
+        size_bytes=1234,
+        mtime=100.0,
+        duration_s=300.0,
+        sample_rate=44100,
+        bit_depth=16,
+        bitrate=900,
+        library="default",
+        zone="staging",
+        download_source="bpdl",
+        download_date="2026-02-09T00:00:00Z",
+        mgmt_status="new",
+        metadata={"ISRC": "US1234567890", "artist": "Example", "title": "Track One"},
+        duration_ref_ms=300000,
+        duration_ref_source="beatport",
+        event_time="2026-02-09T00:00:00Z",
+    )
+    second_asset_id, second_identity_id = dual_write_registered_file(
+        conn,
+        path="/music/second.flac",
+        content_sha256="second123",
+        streaminfo_md5="second456",
+        checksum="second123",
+        size_bytes=1234,
+        mtime=100.0,
+        duration_s=300.0,
+        sample_rate=44100,
+        bit_depth=16,
+        bitrate=900,
+        library="default",
+        zone="staging",
+        download_source="bpdl",
+        download_date="2026-02-09T00:00:00Z",
+        mgmt_status="new",
+        metadata={"ISRC": "US0987654321", "artist": "Example", "title": "Track Two"},
+        duration_ref_ms=300000,
+        duration_ref_source="beatport",
+        event_time="2026-02-09T00:00:00Z",
+    )
+    assert first_identity_id is not None
+    assert second_asset_id > 0
+    assert second_identity_id is not None
+
+    upsert_asset_link(
+        conn,
+        asset_id=asset_id,
+        identity_id=first_identity_id,
+        confidence=1.0,
+        link_source="register",
+    )
+    link_id = upsert_asset_link(
+        conn,
+        asset_id=asset_id,
+        identity_id=second_identity_id,
+        confidence=0.9,
+        link_source="relink",
+    )
+    conn.commit()
+
+    row = conn.execute(
+        "SELECT id, identity_id, confidence, link_source, active FROM asset_link WHERE asset_id = ?",
+        (asset_id,),
+    ).fetchone()
+    link_count = conn.execute("SELECT COUNT(*) FROM asset_link WHERE asset_id = ?", (asset_id,)).fetchone()[0]
+    conn.close()
+
+    assert row is not None
+    assert int(row[0]) == link_id
+    assert int(row[1]) == second_identity_id
+    assert float(row[2]) == 0.9
+    assert str(row[3]) == "relink"
+    assert int(row[4]) == 1
+    assert link_count == 1
 
 
 def test_move_helpers_create_move_execution_and_provenance(tmp_path) -> None:

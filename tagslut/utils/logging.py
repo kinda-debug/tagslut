@@ -36,5 +36,5 @@ def setup_logger(name: str = "tagslut", level: int = logging.INFO, log_file: Opt
     return logger
 
 
-# Default logger instance
-logger = setup_logger()
+# Default logger reference without import-time handler side effects.
+logger = logging.getLogger("tagslut")

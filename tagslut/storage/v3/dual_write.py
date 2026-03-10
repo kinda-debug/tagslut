@@ -53,6 +53,14 @@ def _norm_name(value: Any) -> str | None:
     return re.sub(r"\s+", " ", text).strip().lower()
 
 
+def _column_exists(conn: sqlite3.Connection, table_name: str, column_name: str) -> bool:
+    try:
+        rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+    except sqlite3.OperationalError:
+        return False
+    return any(str(row[1]) == column_name for row in rows)
+
+
 def _lookup_tag(metadata: dict[str, Any] | None, keys: list[str]) -> str | None:
     if not metadata:
         return None
@@ -269,34 +277,55 @@ def upsert_track_identity(
     if not identity_key:
         return None
 
+    columns = [
+        "identity_key",
+        "isrc",
+        "beatport_id",
+        "artist_norm",
+        "title_norm",
+    ]
+    params: list[Any] = [
+        identity_key,
+        isrc_norm,
+        beatport_norm,
+        artist_norm,
+        title_norm,
+    ]
+
+    optional_values = {
+        "canonical_bpm": bpm_norm,
+        "canonical_key": key_norm,
+        "duration_ref_ms": duration_ref_ms,
+        "ref_source": _norm_text(ref_source),
+    }
+    for column, value in optional_values.items():
+        if _column_exists(conn, V3_TRACK_IDENTITY_TABLE, column):
+            columns.append(column)
+            params.append(value)
+
+    update_assignments = [
+        "isrc = COALESCE(excluded.isrc, isrc)",
+        "beatport_id = COALESCE(excluded.beatport_id, beatport_id)",
+        "artist_norm = COALESCE(excluded.artist_norm, artist_norm)",
+        "title_norm = COALESCE(excluded.title_norm, title_norm)",
+    ]
+    for column in optional_values:
+        if column in columns:
+            update_assignments.append(
+                f"{column} = COALESCE(excluded.{column}, {column})"
+            )
+    if _column_exists(conn, V3_TRACK_IDENTITY_TABLE, "updated_at"):
+        update_assignments.append("updated_at = CURRENT_TIMESTAMP")
+
+    placeholders = ", ".join("?" for _ in columns)
     conn.execute(
         f"""
-        INSERT INTO {V3_TRACK_IDENTITY_TABLE} (
-            identity_key, isrc, beatport_id, artist_norm, title_norm,
-            canonical_bpm, canonical_key, duration_ref_ms, ref_source
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO {V3_TRACK_IDENTITY_TABLE} ({", ".join(columns)})
+        VALUES ({placeholders})
         ON CONFLICT(identity_key) DO UPDATE SET
-            isrc = COALESCE(excluded.isrc, isrc),
-            beatport_id = COALESCE(excluded.beatport_id, beatport_id),
-            artist_norm = COALESCE(excluded.artist_norm, artist_norm),
-            title_norm = COALESCE(excluded.title_norm, title_norm),
-            canonical_bpm = COALESCE(excluded.canonical_bpm, canonical_bpm),
-            canonical_key = COALESCE(excluded.canonical_key, canonical_key),
-            duration_ref_ms = COALESCE(excluded.duration_ref_ms, duration_ref_ms),
-            ref_source = COALESCE(excluded.ref_source, ref_source),
-            updated_at = CURRENT_TIMESTAMP
+            {", ".join(update_assignments)}
         """,
-        (
-            identity_key,
-            isrc_norm,
-            beatport_norm,
-            artist_norm,
-            title_norm,
-            bpm_norm,
-            key_norm,
-            duration_ref_ms,
-            _norm_text(ref_source),
-        ),
+        tuple(params),
     )
     row = conn.execute(
         f"SELECT id FROM {V3_TRACK_IDENTITY_TABLE} WHERE identity_key = ?",
@@ -314,22 +343,42 @@ def upsert_asset_link(
     link_source: str,
     active: bool = True,
 ) -> int:
-    conn.execute(
-        f"""
-        INSERT INTO {V3_ASSET_LINK_TABLE} (
-            asset_id, identity_id, confidence, link_source, active
-        ) VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(asset_id, identity_id) DO UPDATE SET
-            confidence = excluded.confidence,
-            link_source = excluded.link_source,
-            active = excluded.active,
-            updated_at = CURRENT_TIMESTAMP
-        """,
-        (asset_id, identity_id, confidence, link_source, 1 if active else 0),
-    )
+    existing_rows = conn.execute(
+        f"SELECT id FROM {V3_ASSET_LINK_TABLE} WHERE asset_id = ? ORDER BY id ASC",
+        (asset_id,),
+    ).fetchall()
+    if existing_rows:
+        keep_id = int(existing_rows[0][0])
+        if len(existing_rows) > 1:
+            conn.execute(
+                f"DELETE FROM {V3_ASSET_LINK_TABLE} WHERE asset_id = ? AND id != ?",
+                (asset_id, keep_id),
+            )
+        conn.execute(
+            f"""
+            UPDATE {V3_ASSET_LINK_TABLE}
+            SET identity_id = ?,
+                confidence = ?,
+                link_source = ?,
+                active = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (identity_id, confidence, link_source, 1 if active else 0, keep_id),
+        )
+    else:
+        conn.execute(
+            f"""
+            INSERT INTO {V3_ASSET_LINK_TABLE} (
+                asset_id, identity_id, confidence, link_source, active
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            (asset_id, identity_id, confidence, link_source, 1 if active else 0),
+        )
+
     row = conn.execute(
-        f"SELECT id FROM {V3_ASSET_LINK_TABLE} WHERE asset_id = ? AND identity_id = ?",
-        (asset_id, identity_id),
+        f"SELECT id FROM {V3_ASSET_LINK_TABLE} WHERE asset_id = ? ORDER BY id ASC LIMIT 1",
+        (asset_id,),
     ).fetchone()
     if not row:
         raise RuntimeError("Failed to upsert asset_link row")

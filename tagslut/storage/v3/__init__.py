@@ -1,5 +1,9 @@
 """V3 database helpers and dual-write utilities."""
 
+from tagslut.storage.v3.classification import (
+    ClassificationCandidate,
+    Phase2ClassificationPolicy,
+)
 from tagslut.storage.v3.db import open_db_v3
 from tagslut.storage.v3.doctor import doctor_v3
 from tagslut.storage.v3.migration_runner import run_pending_v3, verify_v3_migration
@@ -45,6 +49,8 @@ __all__ = [
     "run_pending_v3",
     "verify_v3_migration",
     "doctor_v3",
+    "ClassificationCandidate",
+    "Phase2ClassificationPolicy",
     "PreferredChoice",
     "compute_candidate_score",
     "choose_preferred_asset_for_identity",

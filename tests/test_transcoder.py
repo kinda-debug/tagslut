@@ -4,9 +4,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 from mutagen.id3 import APIC, ID3, SYLT, TXXX, USLT
+import pytest
 
 from tagslut.exec.dj_tag_snapshot import DjTagSnapshot
 from tagslut.exec.transcoder import (
+    TranscodeError,
     _apply_cover_art,
     _apply_dj_tag_policy,
     _apply_snapshot_tag_policy,
@@ -219,3 +221,115 @@ def test_build_snapshot_mp3_filename_uses_snapshot_metadata(tmp_path: Path) -> N
     name = _build_snapshot_mp3_filename(src, snapshot, include_identity_id=True)
 
     assert name == "Artist - Title [9] (F#m) (124).mp3"
+
+
+def test_build_snapshot_mp3_filename_raises_without_artist_title(tmp_path: Path) -> None:
+    src = tmp_path / "track.flac"
+    snapshot = DjTagSnapshot(
+        artist=None,
+        title=None,
+        album=None,
+        genre=None,
+        label=None,
+        year=None,
+        isrc=None,
+        bpm="124",
+        musical_key="F#m",
+        energy_1_10=None,
+        bpm_source="identity",
+        key_source="identity",
+        energy_source=None,
+        identity_id=9,
+        preferred_asset_id=None,
+        preferred_path=None,
+    )
+
+    with pytest.raises(TranscodeError):
+        _build_snapshot_mp3_filename(src, snapshot)
+
+
+def test_transcode_to_mp3_from_snapshot_falls_back_to_flac_core_tags(tmp_path: Path, monkeypatch) -> None:
+    from tagslut.exec import transcoder as module
+
+    src = tmp_path / "track.flac"
+    src.write_bytes(b"fake")
+    dest_dir = tmp_path / "out"
+
+    snapshot = DjTagSnapshot(
+        artist=None,
+        title=None,
+        album=None,
+        genre=None,
+        label=None,
+        year=None,
+        isrc=None,
+        bpm="124",
+        musical_key="F#m",
+        energy_1_10=None,
+        bpm_source="identity",
+        key_source="identity",
+        energy_source=None,
+        identity_id=9,
+        preferred_asset_id=None,
+        preferred_path=None,
+    )
+
+    fake_flac = _FakeTaggedFlac(
+        {
+            "title": ["Fallback Title"],
+            "artist": ["Fallback Artist"],
+            "album": ["Fallback Album"],
+            "date": ["2025"],
+        },
+        pictures=[],
+    )
+
+    monkeypatch.setattr(module, "_check_ffmpeg", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "FLAC", lambda path: fake_flac)
+
+    def _fake_transcode(source: Path, dest_path: Path, *, bitrate: int, ffmpeg_path: str | None) -> None:
+        dest_path.parent.mkdir(parents=True, exist_ok=True)
+        dest_path.write_bytes(b"\xff\xe3\x18\x00" + b"\x00" * 417)
+
+    monkeypatch.setattr(module, "_run_ffmpeg_transcode", _fake_transcode)
+
+    result = module.transcode_to_mp3_from_snapshot(src, dest_dir, snapshot)
+
+    assert result.name == "Fallback Artist - Fallback Title (F#m) (124).mp3"
+    tags = ID3(result)
+    assert tags["TIT2"].text[0] == "Fallback Title"
+    assert tags["TPE1"].text[0] == "Fallback Artist"
+    assert tags["TALB"].text[0] == "Fallback Album"
+
+
+def test_transcode_to_mp3_from_snapshot_raises_when_core_tags_still_missing(tmp_path: Path, monkeypatch) -> None:
+    from tagslut.exec import transcoder as module
+
+    src = tmp_path / "track.flac"
+    src.write_bytes(b"fake")
+    dest_dir = tmp_path / "out"
+
+    snapshot = DjTagSnapshot(
+        artist=None,
+        title=None,
+        album=None,
+        genre=None,
+        label=None,
+        year=None,
+        isrc=None,
+        bpm="124",
+        musical_key="F#m",
+        energy_1_10=None,
+        bpm_source="identity",
+        key_source="identity",
+        energy_source=None,
+        identity_id=9,
+        preferred_asset_id=None,
+        preferred_path=None,
+    )
+
+    monkeypatch.setattr(module, "_check_ffmpeg", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "FLAC", lambda path: _FakeTaggedFlac({}, pictures=[]))
+
+    with pytest.raises(TranscodeError):
+        module.transcode_to_mp3_from_snapshot(src, dest_dir, snapshot)

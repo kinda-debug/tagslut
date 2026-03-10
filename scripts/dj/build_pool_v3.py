@@ -180,8 +180,12 @@ def _dest_path(
     title_override: str | None = None,
     genre_override: str | None = None,
 ) -> Path:
-    artist = _sanitize_component(artist_override or str(row["artist"] or ""), "Unknown Artist")
-    title = _sanitize_component(title_override or str(row["title"] or ""), "Unknown Title")
+    artist_raw = (artist_override or str(row["artist"] or "")).strip()
+    title_raw = (title_override or str(row["title"] or "")).strip()
+    if not artist_raw or not title_raw:
+        raise ValueError(f"missing artist/title for identity_id={int(row['identity_id'])}")
+    artist = _sanitize_component(artist_raw, "")
+    title = _sanitize_component(title_raw, "")
     role = _sanitize_component(str(row["set_role"] or ""), "unassigned")
     genre = _sanitize_component(genre_override or str(row["genre"] or ""), "Unknown")
     identity_id = int(row["identity_id"])
@@ -377,15 +381,36 @@ def main(argv: list[str] | None = None) -> int:
                     dry_run=not args.execute,
                 )
                 snapshots_by_identity[int(row["identity_id"])] = snapshot
-            dest = _dest_path(
-                out_dir,
-                row,
-                args.layout,
-                args.format,
-                artist_override=getattr(snapshot, "artist", None),
-                title_override=getattr(snapshot, "title", None),
-                genre_override=getattr(snapshot, "genre", None),
-            )
+            try:
+                dest = _dest_path(
+                    out_dir,
+                    row,
+                    args.layout,
+                    args.format,
+                    artist_override=getattr(snapshot, "artist", None),
+                    title_override=getattr(snapshot, "title", None),
+                    genre_override=getattr(snapshot, "genre", None),
+                )
+            except ValueError as exc:
+                source = Path(str(row["source_path"])).expanduser().resolve()
+                source_sha = str(row["source_sha256"] or "")
+                source_mtime = str(row["source_mtime"] or "")
+                manifest_rows.append(
+                    ExportRow(
+                        identity_id=int(row["identity_id"]),
+                        preferred_asset_id=int(row["preferred_asset_id"]),
+                        source_path=str(source),
+                        dest_path="",
+                        action="skip",
+                        reason="missing_artist_or_title",
+                        sha256=source_sha,
+                        mtime=source_mtime,
+                    )
+                )
+                skip_count += 1
+                if args.verbose:
+                    print(f"skip: {source} ({exc})")
+                continue
             source_sha = str(row["source_sha256"] or "")
             source_mtime = str(row["source_mtime"] or "")
 

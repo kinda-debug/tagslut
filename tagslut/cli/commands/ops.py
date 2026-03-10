@@ -15,6 +15,11 @@ from typing import Any
 import click
 
 from tagslut.exec.canonical_writeback import iter_flacs_from_m3u, iter_flacs_from_root, write_canonical_tags
+from tagslut.exec.dj_library_normalize import (
+    apply_dj_pool_relink,
+    apply_playlist_rewrite_manifest,
+    plan_dj_library_normalize,
+)
 from tagslut.cli.runtime import PROJECT_ROOT
 from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
 
@@ -590,6 +595,131 @@ def register_ops_group(cli: click.Group) -> None:
                     temp_plan_path.unlink()
                 except OSError:
                     pass
+
+    @ops_group.command("plan-dj-library-normalize")
+    @click.option("--root", "root_arg", required=True, type=click.Path(exists=True, file_okay=False))
+    @click.option("--master-root", "master_root_arg", required=True, type=click.Path(exists=True, file_okay=False))
+    @click.option("--db", "db_path_arg", type=click.Path(), help="SQLite DB path (or TAGSLUT_DB)")
+    @click.option("--out-dir", "out_dir_arg", required=True, type=click.Path(file_okay=False))
+    @click.option(
+        "--unresolved-root",
+        "unresolved_root_arg",
+        type=click.Path(file_okay=False),
+        default=None,
+        help="Unresolved hold area (default: <root>/_UNRESOLVED)",
+    )
+    @click.option("--duration-tol", default=2.0, show_default=True, type=float)
+    def plan_dj_library_normalize_cli(
+        root_arg: str,
+        master_root_arg: str,
+        db_path_arg: str | None,
+        out_dir_arg: str,
+        unresolved_root_arg: str | None,
+        duration_tol: float,
+    ) -> None:
+        try:
+            resolution = resolve_cli_env_db_path(
+                Path(db_path_arg) if db_path_arg is not None else None,
+                purpose="read",
+                source_label="--db",
+            )
+        except DbResolutionError as exc:
+            raise click.ClickException(str(exc)) from exc
+
+        root_path = Path(root_arg).expanduser().resolve()
+        master_root = Path(master_root_arg).expanduser().resolve()
+        out_dir = Path(out_dir_arg).expanduser().resolve()
+        unresolved_root = (
+            Path(unresolved_root_arg).expanduser().resolve()
+            if unresolved_root_arg is not None
+            else (root_path / "_UNRESOLVED").resolve()
+        )
+
+        with sqlite3.connect(str(resolution.path)) as conn:
+            summary = plan_dj_library_normalize(
+                root=root_path,
+                master_root=master_root,
+                conn=conn,
+                out_dir=out_dir,
+                unresolved_root=unresolved_root,
+                duration_tol=float(duration_tol),
+            )
+
+        click.echo(f"Resolved DB path: {resolution.path}")
+        click.echo(f"Root: {root_path}")
+        click.echo(f"Master root: {master_root}")
+        click.echo(f"Unresolved root: {unresolved_root}")
+        click.echo(f"Total MP3: {summary['total_mp3']}")
+        click.echo(f"Already canonical: {summary['already_canonical']}")
+        click.echo(f"Move plan rows: {summary['move_plan_rows']}")
+        click.echo(f"Repair from master: {summary['repair_master_rows']}")
+        click.echo(f"Repair from DB: {summary['repair_db_rows']}")
+        click.echo(f"Unresolved rows: {summary['unresolved_rows']}")
+        click.echo(f"Playlist rewrite rows: {summary['playlist_rewrite_rows']}")
+        for label, path_value in sorted(dict(summary["outputs"]).items()):  # type: ignore[arg-type]
+            click.echo(f"{label}: {path_value}")
+
+    @ops_group.command("relink-dj-pool")
+    @click.option("--db", "db_path_arg", type=click.Path(), help="SQLite DB path (or TAGSLUT_DB)")
+    @click.option("--manifest", "manifest_arg", required=True, type=click.Path(exists=True, dir_okay=False))
+    @click.option(
+        "--playlist-rewrite-manifest",
+        "playlist_manifest_arg",
+        type=click.Path(exists=True, dir_okay=False),
+        default=None,
+        help="Optional playlist rewrite CSV from plan-dj-library-normalize",
+    )
+    @click.option("--dry-run", is_flag=True, help="Validate relink rows without writing")
+    @click.option("--execute", is_flag=True, help="Write dj_pool_path updates and playlist rewrites")
+    def relink_dj_pool_cli(
+        db_path_arg: str | None,
+        manifest_arg: str,
+        playlist_manifest_arg: str | None,
+        dry_run: bool,
+        execute: bool,
+    ) -> None:
+        if dry_run and execute:
+            raise click.ClickException("Use only one of --dry-run or --execute")
+
+        do_execute = bool(execute)
+        if not dry_run and not execute:
+            do_execute = False
+
+        try:
+            resolution = resolve_cli_env_db_path(
+                Path(db_path_arg) if db_path_arg is not None else None,
+                purpose="write" if do_execute else "read",
+                source_label="--db",
+            )
+        except DbResolutionError as exc:
+            raise click.ClickException(str(exc)) from exc
+
+        manifest_path = Path(manifest_arg).expanduser().resolve()
+        playlist_manifest = (
+            Path(playlist_manifest_arg).expanduser().resolve()
+            if playlist_manifest_arg is not None
+            else None
+        )
+
+        with sqlite3.connect(str(resolution.path)) as conn:
+            stats = apply_dj_pool_relink(conn, manifest_path, execute=do_execute)
+
+        playlist_rewrites = 0
+        if playlist_manifest is not None:
+            playlist_rewrites = apply_playlist_rewrite_manifest(playlist_manifest, execute=do_execute)
+
+        click.echo(f"Resolved DB path: {resolution.path}")
+        click.echo(f"Manifest: {manifest_path}")
+        if playlist_manifest is not None:
+            click.echo(f"Playlist manifest: {playlist_manifest}")
+        click.echo(f"Rows: {stats.rows}")
+        click.echo(f"Updated: {stats.updated}")
+        click.echo(f"Skipped: {stats.skipped}")
+        click.echo(f"Errors: {stats.errors}")
+        if playlist_manifest is not None:
+            click.echo(f"Playlist rewrites: {playlist_rewrites}")
+        if not do_execute:
+            click.echo("DRY-RUN: use --execute to write dj_pool_path and playlists")
 
     @ops_group.command("writeback-canonical")
     @click.option("--db", "db_path_arg", type=click.Path(), help="SQLite DB path (or TAGSLUT_DB)")

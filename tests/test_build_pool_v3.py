@@ -233,3 +233,32 @@ def test_fail_fast_writes_failure_log_before_exiting(tmp_path: Path) -> None:
     assert receipts.exists()
     lines = [line for line in receipts.read_text(encoding="utf-8").splitlines() if line.strip()]
     assert len(lines) == 1
+
+
+def test_plan_skips_rows_missing_artist_or_title_for_mp3_exports(tmp_path: Path) -> None:
+    db, _src_a, _src_b = _create_db_and_sources(tmp_path)
+    out_dir = tmp_path / "export"
+    manifest = tmp_path / "plan_manifest.csv"
+
+    conn = sqlite3.connect(str(db))
+    try:
+        conn.execute(
+            "UPDATE track_identity SET canonical_artist = NULL, canonical_title = NULL WHERE id = 1"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    proc = _run_builder(
+        db=db,
+        out_dir=out_dir,
+        manifest=manifest,
+        extra=["--format", "mp3", "--ffmpeg-path", "/tmp/not-used-in-plan-mode"],
+    )
+
+    assert proc.returncode == 0, f"STDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+    rows = _read_manifest(manifest)
+    skipped = next(row for row in rows if row["identity_id"] == "1")
+    assert skipped["action"] == "skip"
+    assert skipped["reason"] == "missing_artist_or_title"
+    assert skipped["dest_path"] == ""

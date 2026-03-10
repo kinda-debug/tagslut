@@ -106,7 +106,7 @@ def _build_snapshot_mp3_filename(
     key = (snapshot.musical_key or "").strip()
 
     if not artist or not title:
-        return source.stem + ".mp3"
+        raise TranscodeError(f"missing artist/title for DJ snapshot export: {source}")
 
     parts = f"{artist} - {title}"
     if include_identity_id and snapshot.identity_id is not None:
@@ -117,6 +117,55 @@ def _build_snapshot_mp3_filename(
         parts += f" ({bpm})"
     safe = "".join(c for c in parts if c not in r'\\/:*?"<>|')
     return safe + ".mp3"
+
+
+def _flac_first(flac_tags: Optional[FLAC], key: str) -> str | None:
+    if flac_tags is None:
+        return None
+    values = flac_tags.get(key)
+    if not values:
+        return None
+    value = str(values[0]).strip()
+    return value or None
+
+
+def _snapshot_with_flac_fallback(snapshot: DjTagSnapshot, flac_tags: Optional[FLAC]) -> DjTagSnapshot:
+    if flac_tags is None:
+        return snapshot
+
+    artist = snapshot.artist or _flac_first(flac_tags, "artist") or _flac_first(flac_tags, "albumartist")
+    title = snapshot.title or _flac_first(flac_tags, "title")
+    album = snapshot.album or _flac_first(flac_tags, "album")
+    year_text = (
+        str(snapshot.year) if snapshot.year is not None else (
+            _flac_first(flac_tags, "date") or _flac_first(flac_tags, "originaldate") or _flac_first(flac_tags, "year")
+        )
+    )
+    year: int | None = snapshot.year
+    if year is None and year_text:
+        try:
+            year = int(str(year_text).split("-", 1)[0].split(";", 1)[0].strip())
+        except ValueError:
+            year = None
+
+    return DjTagSnapshot(
+        artist=artist,
+        title=title,
+        album=album,
+        genre=snapshot.genre or _flac_first(flac_tags, "genre"),
+        label=snapshot.label or _flac_first(flac_tags, "label"),
+        year=year,
+        isrc=snapshot.isrc or _flac_first(flac_tags, "isrc"),
+        bpm=snapshot.bpm or _flac_first(flac_tags, "bpm"),
+        musical_key=snapshot.musical_key or _flac_first(flac_tags, "initialkey") or _flac_first(flac_tags, "key"),
+        energy_1_10=snapshot.energy_1_10,
+        bpm_source=snapshot.bpm_source,
+        key_source=snapshot.key_source,
+        energy_source=snapshot.energy_source,
+        identity_id=snapshot.identity_id,
+        preferred_asset_id=snapshot.preferred_asset_id,
+        preferred_path=snapshot.preferred_path,
+    )
 
 
 def transcode_to_mp3(
@@ -190,8 +239,12 @@ def transcode_to_mp3_from_snapshot(
         flac_tags = None
         logger.warning("Could not read FLAC tags from %s: %s", source, e)
 
+    resolved_snapshot = _snapshot_with_flac_fallback(snapshot, flac_tags)
+    if not resolved_snapshot.artist or not resolved_snapshot.title:
+        raise TranscodeError(f"DJ snapshot export requires artist/title metadata: {source}")
+
     dest_dir.mkdir(parents=True, exist_ok=True)
-    final_dest_path = dest_path or (dest_dir / _build_snapshot_mp3_filename(source, snapshot))
+    final_dest_path = dest_path or (dest_dir / _build_snapshot_mp3_filename(source, resolved_snapshot))
 
     final_dest_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -200,7 +253,7 @@ def transcode_to_mp3_from_snapshot(
         return final_dest_path
 
     _run_ffmpeg_transcode(source, final_dest_path, bitrate=bitrate, ffmpeg_path=ffmpeg_path)
-    _apply_snapshot_id3_tags(final_dest_path, snapshot, flac_tags, prune_existing=True)
+    _apply_snapshot_id3_tags(final_dest_path, resolved_snapshot, flac_tags, prune_existing=True)
 
     logger.info("Transcoded from snapshot: %s -> %s", source, final_dest_path)
     return final_dest_path

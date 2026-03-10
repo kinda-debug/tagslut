@@ -1,22 +1,12 @@
 #!/usr/bin/env python3
 """
-Sync DJ-relevant tags from master FLAC library to MP3 files.
+Sync DJ-relevant and core tags from master FLAC library to MP3 files.
 
 Matching:
-  - title + artist, then closest duration within tolerance (default 2s)
-  - if album is present on both, prefer exact album match
-
-Tags copied from FLAC -> MP3:
-  - BPM
-  - INITIALKEY / KEY / KEY_CAMELOT
-  - GENRE
-  - LABEL
-  - ENERGY
-  - ISRC
-
-Inputs:
-  - MP3 report CSV with 'path' and 'status' columns (optional filter)
-  - Or a direct MP3 root
+  - direct `flac_path` from a manifest/report row
+  - exact `files.dj_pool_path` match when --match-source includes db_dj_pool_path
+  - normalized title + artist, preferring exact album and close duration, when
+    --match-source includes master
 
 Default is dry-run; use --execute to write tags.
 """
@@ -26,28 +16,31 @@ import argparse
 import csv
 import json
 import os
-from concurrent.futures import ThreadPoolExecutor
-from collections import defaultdict
+import sqlite3
 from dataclasses import dataclass
-from functools import partial
 from pathlib import Path
 from typing import Optional
 
 from mutagen.flac import FLAC
-from mutagen.id3 import ID3, ID3NoHeaderError, TBPM, TCON, TKEY, TSRC, TXXX
-from mutagen.mp3 import MP3
+from mutagen.id3 import ID3, ID3NoHeaderError, TALB, TBPM, TCON, TDRC, TKEY, TIT2, TPE1, TPE2, TRCK, TSRC, TXXX
 
+from tagslut.exec.dj_library_normalize import (
+    load_db_dj_pool_lookup,
+    load_master_index,
+    pick_best_master_match,
+    read_audio_metadata,
+)
+from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
 
 DEFAULT_JOBS = min(16, max(1, os.cpu_count() or 4))
 
 
 @dataclass(frozen=True)
-class Mp3Candidate:
+class Mp3WorkItem:
     path: Path
-    title: str
-    artist: str
-    album: str
-    duration_s: float | None
+    manifest_flac_path: Path | None
+    report_status: str
+    report_reason: str
 
 
 def _norm(s: str) -> str:
@@ -71,178 +64,145 @@ def _first_text_id3(tags: ID3, key: str) -> str:
     return ""
 
 
-def _first_text_flac(tags: dict, key: str) -> str:
-    vals = tags.get(key)
+def _first_text_flac(tags: dict[str, list[str]], key: str) -> str:
+    vals = tags.get(key.lower())
     if vals:
         return str(vals[0]).strip()
     return ""
 
 
-def _read_mp3_paths(report: Optional[Path], root: Path, statuses: set[str]) -> list[Path]:
+def _resolve_report_path(value: str, report_path: Path) -> Path:
+    candidate = Path(value).expanduser()
+    if candidate.is_absolute():
+        return candidate.resolve()
+    return (report_path.parent / candidate).resolve()
+
+
+def _read_mp3_work_items(report: Optional[Path], root: Path, statuses: set[str]) -> list[Mp3WorkItem]:
     if report:
-        paths = []
+        items: list[Mp3WorkItem] = []
         with report.open(newline="", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
-                if statuses and row.get("status") not in statuses and row.get("reason") not in statuses:
+                path_text = str(row.get("path") or row.get("source_path") or "").strip()
+                if not path_text:
                     continue
-                p = row.get("path")
-                if p:
-                    paths.append(Path(p))
-        return paths
-    return list(root.rglob("*.mp3"))
-
-
-def _read_mp3_candidate(path: Path) -> Mp3Candidate | None:
-    if not path.exists():
-        return None
-    tags = _get_id3(path)
-    if tags is None:
-        return None
-    title = _norm(_first_text_id3(tags, "TIT2"))
-    artist = _norm(_first_text_id3(tags, "TPE1"))
-    album = _norm(_first_text_id3(tags, "TALB"))
-    duration_s = None
-    try:
-        duration_s = float(getattr(MP3(path).info, "length", 0.0) or 0.0) or None
-    except Exception:
-        duration_s = None
-    return Mp3Candidate(
-        path=path,
-        title=title,
-        artist=artist,
-        album=album,
-        duration_s=duration_s,
-    )
-
-
-def _load_flac_entry(
-    path: Path,
-    *,
-    wanted_keys: set[tuple[str, str]] | None,
-) -> tuple[tuple[str, str], dict] | None:
-    try:
-        audio = FLAC(path)
-    except Exception:
-        return None
-    title = _norm(_first_text_flac(audio.tags or {}, "title"))
-    artist = _norm(_first_text_flac(audio.tags or {}, "artist"))
-    album = _norm(_first_text_flac(audio.tags or {}, "album"))
-    duration = float(getattr(audio.info, "length", 0.0) or 0.0)
-    if not title or not artist:
-        return None
-    key = (title, artist)
-    if wanted_keys is not None and key not in wanted_keys:
-        return None
-    return (
-        key,
-        {
-            "path": path,
-            "album": album,
-            "duration": duration,
-            "tags": audio.tags or {},
-        },
-    )
-
-
-def _index_flacs(
-    flac_root: Path,
-    *,
-    wanted_keys: set[tuple[str, str]] | None,
-    jobs: int,
-) -> dict[tuple[str, str], list[dict]]:
-    index: dict[tuple[str, str], list[dict]] = defaultdict(list)
-    loader = partial(_load_flac_entry, wanted_keys=wanted_keys)
-    flac_paths = flac_root.rglob("*.flac")
-    if jobs <= 1:
-        entries = map(loader, flac_paths)
-    else:
-        with ThreadPoolExecutor(max_workers=jobs) as pool:
-            entries = pool.map(loader, flac_paths)
-            for entry in entries:
-                if entry is None:
+                flac_text = str(row.get("flac_path") or row.get("db_path") or "").strip()
+                status_text = str(row.get("status") or "").strip()
+                reason_text = str(row.get("reason") or "").strip()
+                if flac_text:
+                    include = True
+                else:
+                    include = not statuses or status_text in statuses or reason_text in statuses
+                if not include:
                     continue
-                key, payload = entry
-                index[key].append(payload)
-            return index
+                items.append(
+                    Mp3WorkItem(
+                        path=_resolve_report_path(path_text, report),
+                        manifest_flac_path=_resolve_report_path(flac_text, report) if flac_text else None,
+                        report_status=status_text,
+                        report_reason=reason_text,
+                    )
+                )
+        return items
 
-    for entry in entries:
-        if entry is None:
-            continue
-        key, payload = entry
-        index[key].append(payload)
-    return index
-
-
-def _pick_best(candidates: list[dict], album: str, duration: Optional[float], tol: float) -> Optional[dict]:
-    if not candidates:
-        return None
-    album = _norm(album)
-    if album:
-        album_matches = [c for c in candidates if _norm(c.get("album", "")) == album]
-        if album_matches:
-            candidates = album_matches
-    if duration is None:
-        return candidates[0]
-    best = None
-    best_diff = None
-    for c in candidates:
-        d = c.get("duration")
-        if d is None:
-            continue
-        diff = abs(float(d) - duration)
-        if diff <= tol and (best is None or diff < best_diff):
-            best = c
-            best_diff = diff
-    return best or candidates[0]
+    return [Mp3WorkItem(path=path, manifest_flac_path=None, report_status="", report_reason="") for path in root.rglob("*.mp3")]
 
 
-def _apply_tags_from_flac(id3: ID3, flac_tags: dict) -> None:
-    bpm = _first_text_flac(flac_tags, "bpm") or _first_text_flac(flac_tags, "BPM")
-    key = (
-        _first_text_flac(flac_tags, "initialkey")
-        or _first_text_flac(flac_tags, "INITIALKEY")
-        or _first_text_flac(flac_tags, "key")
-        or _first_text_flac(flac_tags, "KEY")
-        or _first_text_flac(flac_tags, "key_camelot")
-        or _first_text_flac(flac_tags, "KEY_CAMELOT")
-    )
-    genre = _first_text_flac(flac_tags, "genre") or _first_text_flac(flac_tags, "GENRE")
-    label = _first_text_flac(flac_tags, "label") or _first_text_flac(flac_tags, "LABEL")
-    energy = _first_text_flac(flac_tags, "energy") or _first_text_flac(flac_tags, "ENERGY")
-    isrc = _first_text_flac(flac_tags, "isrc") or _first_text_flac(flac_tags, "ISRC")
-
-    if bpm:
-        id3["TBPM"] = TBPM(encoding=3, text=bpm)
-    if key:
-        id3["TKEY"] = TKEY(encoding=3, text=key)
-        id3["TXXX:INITIALKEY"] = TXXX(encoding=3, desc="INITIALKEY", text=key)
-    if genre:
-        id3["TCON"] = TCON(encoding=3, text=genre)
-    if label:
-        id3["TXXX:LABEL"] = TXXX(encoding=3, desc="LABEL", text=label)
-    if energy:
-        id3["TXXX:ENERGY"] = TXXX(encoding=3, desc="ENERGY", text=energy)
-    if isrc:
-        id3["TSRC"] = TSRC(encoding=3, text=isrc)
+def _backup_frames(tags: ID3) -> dict[str, str]:
+    return {
+        "TIT2": _first_text_id3(tags, "TIT2"),
+        "TPE1": _first_text_id3(tags, "TPE1"),
+        "TPE2": _first_text_id3(tags, "TPE2"),
+        "TALB": _first_text_id3(tags, "TALB"),
+        "TRCK": _first_text_id3(tags, "TRCK"),
+        "TDRC": _first_text_id3(tags, "TDRC"),
+        "TBPM": _first_text_id3(tags, "TBPM"),
+        "TKEY": _first_text_id3(tags, "TKEY"),
+        "TXXX:INITIALKEY": _first_text_id3(tags, "TXXX:INITIALKEY"),
+        "TCON": _first_text_id3(tags, "TCON"),
+        "TXXX:LABEL": _first_text_id3(tags, "TXXX:LABEL"),
+        "TXXX:ENERGY": _first_text_id3(tags, "TXXX:ENERGY"),
+        "TSRC": _first_text_id3(tags, "TSRC"),
+    }
 
 
-def _env_path(key: str) -> Optional[Path]:
-    value = os.environ.get(key, "").strip()
-    if not value:
-        return None
-    return Path(value)
+def _set_if_missing(tags: ID3, frame_id: str, frame: object) -> None:
+    if frame_id in tags and _first_text_id3(tags, frame_id):
+        return
+    tags[frame_id] = frame
+
+
+def _apply_selected_tags_from_flac(
+    id3: ID3,
+    flac_tags: dict[str, list[str]],
+    *,
+    copy_core_tags: bool,
+    copy_dj_tags: bool,
+) -> None:
+    if copy_core_tags:
+        title = _first_text_flac(flac_tags, "title")
+        artist = _first_text_flac(flac_tags, "artist")
+        album = _first_text_flac(flac_tags, "album")
+        albumartist = _first_text_flac(flac_tags, "albumartist")
+        tracknumber = _first_text_flac(flac_tags, "tracknumber") or _first_text_flac(flac_tags, "track")
+        date = (
+            _first_text_flac(flac_tags, "date")
+            or _first_text_flac(flac_tags, "originaldate")
+            or _first_text_flac(flac_tags, "year")
+        )
+
+        if title:
+            _set_if_missing(id3, "TIT2", TIT2(encoding=3, text=title))
+        if artist:
+            _set_if_missing(id3, "TPE1", TPE1(encoding=3, text=artist))
+        if album:
+            _set_if_missing(id3, "TALB", TALB(encoding=3, text=album))
+        if albumartist:
+            _set_if_missing(id3, "TPE2", TPE2(encoding=3, text=albumartist))
+        if tracknumber:
+            _set_if_missing(id3, "TRCK", TRCK(encoding=3, text=tracknumber))
+        if date:
+            _set_if_missing(id3, "TDRC", TDRC(encoding=3, text=date))
+
+    if copy_dj_tags:
+        bpm = _first_text_flac(flac_tags, "bpm") or _first_text_flac(flac_tags, "TBPM")
+        key = (
+            _first_text_flac(flac_tags, "initialkey")
+            or _first_text_flac(flac_tags, "INITIALKEY")
+            or _first_text_flac(flac_tags, "key")
+            or _first_text_flac(flac_tags, "KEY")
+            or _first_text_flac(flac_tags, "key_camelot")
+            or _first_text_flac(flac_tags, "KEY_CAMELOT")
+        )
+        genre = _first_text_flac(flac_tags, "genre") or _first_text_flac(flac_tags, "GENRE")
+        label = _first_text_flac(flac_tags, "label") or _first_text_flac(flac_tags, "LABEL")
+        energy = _first_text_flac(flac_tags, "energy") or _first_text_flac(flac_tags, "ENERGY")
+        isrc = _first_text_flac(flac_tags, "isrc") or _first_text_flac(flac_tags, "ISRC")
+
+        if bpm:
+            id3["TBPM"] = TBPM(encoding=3, text=bpm)
+        if key:
+            id3["TKEY"] = TKEY(encoding=3, text=key)
+            id3["TXXX:INITIALKEY"] = TXXX(encoding=3, desc="INITIALKEY", text=key)
+        if genre:
+            id3["TCON"] = TCON(encoding=3, text=genre)
+        if label:
+            id3["TXXX:LABEL"] = TXXX(encoding=3, desc="LABEL", text=label)
+        if energy:
+            id3["TXXX:ENERGY"] = TXXX(encoding=3, desc="ENERGY", text=energy)
+        if isrc:
+            id3["TSRC"] = TSRC(encoding=3, text=isrc)
 
 
 def main() -> int:
-    default_mp3_root = _env_path("DJ_LIBRARY") or _env_path("DJ_MP3_ROOT")
-    default_flac_root = (
-        _env_path("MASTER_LIBRARY")
-        or _env_path("DJ_LIBRARY_ROOT")
-        or _env_path("LIBRARY_ROOT")
-    )
+    default_mp3_root = Path(os.environ.get("DJ_LIBRARY") or os.environ.get("DJ_MP3_ROOT", ".")).expanduser()
+    default_flac_root = Path(
+        os.environ.get("MASTER_LIBRARY") or os.environ.get("DJ_LIBRARY_ROOT") or os.environ.get("LIBRARY_ROOT", ".")
+    ).expanduser()
 
     ap = argparse.ArgumentParser(description="Sync MP3 tags from master FLAC library.")
+    ap.add_argument("--db", help="SQLite DB path (used for db_dj_pool_path matching)")
     ap.add_argument(
         "--mp3-root",
         type=Path,
@@ -255,50 +215,80 @@ def main() -> int:
         default=default_flac_root,
         help="FLAC master library root (default: MASTER_LIBRARY, DJ_LIBRARY_ROOT, or LIBRARY_ROOT)",
     )
-    ap.add_argument("--mp3-report", type=Path, help="Optional MP3 report CSV to filter")
+    ap.add_argument("--mp3-report", type=Path, help="Optional repair/report CSV")
     ap.add_argument(
         "--statuses",
         default="no_match,ambiguous",
-        help="Comma-separated MP3 report status/reason selectors (default: no_match,ambiguous)",
+        help="Comma-separated report status/reason selectors (ignored for rows with flac_path)",
+    )
+    ap.add_argument(
+        "--match-source",
+        choices=["auto", "master", "db_dj_pool_path"],
+        default="auto",
+        help="How to resolve source FLACs for MP3 repair",
+    )
+    ap.add_argument(
+        "--copy-core-tags",
+        dest="copy_core_tags",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Copy missing core ID3 tags (title/artist/album/albumartist/track/date)",
+    )
+    ap.add_argument(
+        "--copy-dj-tags",
+        dest="copy_dj_tags",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Copy DJ tags (BPM/key/genre/label/energy/ISRC)",
     )
     ap.add_argument("--tol", type=float, default=2.0, help="Duration tolerance in seconds")
-    ap.add_argument("--jobs", type=int, default=DEFAULT_JOBS, help="Parallel FLAC scan workers")
+    ap.add_argument("--jobs", type=int, default=DEFAULT_JOBS, help="Reserved compatibility flag")
     ap.add_argument("--out", type=Path, default=Path("artifacts/mp3_sync_from_flac_report.csv"))
     ap.add_argument("--backup", type=Path, default=Path("artifacts/mp3_sync_from_flac_backup.jsonl"))
     ap.add_argument("--execute", action="store_true", help="Write tags to MP3 files")
     args = ap.parse_args()
 
-    if not args.mp3_root:
-        raise SystemExit("MP3 root missing. Provide --mp3-root or set DJ_LIBRARY in .env.")
-    if not args.flac_root:
-        raise SystemExit("FLAC root missing. Provide --flac-root or set MASTER_LIBRARY in .env.")
-
-    args.mp3_root = args.mp3_root.expanduser().resolve()
-    args.flac_root = args.flac_root.expanduser().resolve()
-
+    mp3_root = args.mp3_root.expanduser().resolve()
+    flac_root = args.flac_root.expanduser().resolve()
+    report_path = args.mp3_report.expanduser().resolve() if args.mp3_report else None
     statuses = {s.strip() for s in args.statuses.split(",") if s.strip()}
-    mp3_paths = _read_mp3_paths(args.mp3_report, args.mp3_root, statuses)
-    if not mp3_paths:
+    work_items = _read_mp3_work_items(report_path, mp3_root, statuses)
+
+    if not work_items:
         print("applied=0 no_match=0 missing_mp3=0")
         print(f"report={args.out}")
         print(f"backup={args.backup}")
         return 0
 
-    mp3_candidates = {
-        candidate.path: candidate
-        for path in mp3_paths
-        if (candidate := _read_mp3_candidate(path)) is not None
-    }
-    wanted_keys = {
-        (candidate.title, candidate.artist)
-        for candidate in mp3_candidates.values()
-        if candidate.title and candidate.artist
-    }
-    flac_index = _index_flacs(
-        args.flac_root,
-        wanted_keys=wanted_keys,
-        jobs=max(1, int(args.jobs)),
-    )
+    db_lookup = {}
+    if args.match_source in {"auto", "db_dj_pool_path"}:
+        try:
+            resolution = resolve_cli_env_db_path(
+                Path(args.db) if args.db else None,
+                purpose="read",
+                source_label="--db",
+            )
+        except DbResolutionError:
+            resolution = None
+        if resolution is not None:
+            with sqlite3.connect(str(resolution.path)) as conn:
+                db_lookup = load_db_dj_pool_lookup(conn, mp3_root)
+
+    mp3_meta_by_path = {}
+    wanted_master_keys: set[tuple[str, str]] = set()
+    for item in work_items:
+        metadata = read_audio_metadata(item.path)
+        mp3_meta_by_path[item.path] = metadata
+        if metadata is None:
+            continue
+        if item.manifest_flac_path is not None:
+            continue
+        if args.match_source == "db_dj_pool_path" and item.path in db_lookup:
+            continue
+        if args.match_source in {"auto", "master"} and metadata.title and metadata.artist:
+            wanted_master_keys.add((_norm(metadata.title), _norm(metadata.artist)))
+
+    master_index = load_master_index(flac_root, wanted_master_keys) if args.match_source in {"auto", "master"} else {}
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.backup.parent.mkdir(parents=True, exist_ok=True)
@@ -307,71 +297,101 @@ def main() -> int:
     no_match = 0
     missing_mp3 = 0
 
-    with args.out.open("w", newline="", encoding="utf-8") as fr, args.backup.open(
-        "w", encoding="utf-8"
-    ) as fb:
-        writer = csv.DictWriter(fr, fieldnames=["path", "status", "reason", "flac_path"])
+    with args.out.open("w", newline="", encoding="utf-8") as fr, args.backup.open("w", encoding="utf-8") as fb:
+        writer = csv.DictWriter(
+            fr,
+            fieldnames=["path", "status", "reason", "flac_path", "match_source"],
+        )
         writer.writeheader()
 
-        for mp3_path in mp3_paths:
-            if not mp3_path.exists():
+        for item in work_items:
+            if not item.path.exists():
                 missing_mp3 += 1
-                writer.writerow({"path": str(mp3_path), "status": "skip", "reason": "missing_mp3"})
+                writer.writerow({"path": str(item.path), "status": "skip", "reason": "missing_mp3"})
                 continue
 
-            candidate = mp3_candidates.get(mp3_path)
-            if candidate is None:
-                writer.writerow({"path": str(mp3_path), "status": "skip", "reason": "tag_read_error"})
+            metadata = mp3_meta_by_path.get(item.path)
+            if metadata is None:
+                writer.writerow({"path": str(item.path), "status": "skip", "reason": "tag_read_error"})
                 continue
 
-            tags = _get_id3(mp3_path)
+            chosen_flac: Path | None = item.manifest_flac_path if item.manifest_flac_path is not None else None
+            match_source = "manifest_flac_path" if chosen_flac is not None else ""
+
+            if chosen_flac is None and args.match_source in {"auto", "db_dj_pool_path"}:
+                lookup = db_lookup.get(item.path)
+                if lookup is not None:
+                    chosen_flac = lookup.source_path
+                    match_source = "db_dj_pool_path"
+
+            if chosen_flac is None and args.match_source in {"auto", "master"}:
+                matches = master_index.get((_norm(metadata.title), _norm(metadata.artist)), [])
+                best = pick_best_master_match(metadata, matches, duration_tol=float(args.tol))
+                if best is not None:
+                    chosen_flac = best.path
+                    match_source = "master"
+
+            if chosen_flac is None or not chosen_flac.exists():
+                no_match += 1
+                writer.writerow(
+                    {
+                        "path": str(item.path),
+                        "status": "skip",
+                        "reason": "no_flac_match",
+                        "flac_path": str(chosen_flac) if chosen_flac is not None else "",
+                        "match_source": match_source,
+                    }
+                )
+                continue
+
+            tags = _get_id3(item.path)
             if tags is None:
-                writer.writerow({"path": str(mp3_path), "status": "skip", "reason": "tag_read_error"})
+                writer.writerow({"path": str(item.path), "status": "skip", "reason": "tag_read_error"})
                 continue
 
-            candidates = flac_index.get((candidate.title, candidate.artist), [])
-            if not candidates:
-                no_match += 1
-                writer.writerow({"path": str(mp3_path), "status": "skip", "reason": "no_flac_match"})
+            try:
+                flac = FLAC(chosen_flac)
+            except Exception:
+                writer.writerow(
+                    {
+                        "path": str(item.path),
+                        "status": "skip",
+                        "reason": "flac_read_error",
+                        "flac_path": str(chosen_flac),
+                        "match_source": match_source,
+                    }
+                )
                 continue
 
-            flac = _pick_best(candidates, candidate.album, candidate.duration_s, args.tol)
-            if flac is None:
-                no_match += 1
-                writer.writerow({"path": str(mp3_path), "status": "skip", "reason": "no_flac_choice"})
-                continue
-
-            backup = {
-                "path": str(mp3_path),
-                "tags": {
-                    "TBPM": _first_text_id3(tags, "TBPM"),
-                    "TKEY": _first_text_id3(tags, "TKEY"),
-                    "TXXX:INITIALKEY": _first_text_id3(tags, "TXXX:INITIALKEY"),
-                    "TCON": _first_text_id3(tags, "TCON"),
-                    "TXXX:LABEL": _first_text_id3(tags, "TXXX:LABEL"),
-                    "TXXX:ENERGY": _first_text_id3(tags, "TXXX:ENERGY"),
-                    "TSRC": _first_text_id3(tags, "TSRC"),
-                },
-            }
+            backup = {"path": str(item.path), "tags": _backup_frames(tags)}
             fb.write(json.dumps(backup, ensure_ascii=False) + "\n")
 
             if args.execute:
-                _apply_tags_from_flac(tags, flac["tags"])
-                tags.save(mp3_path, v2_version=3)
+                flac_tags = {str(key).lower(): list(value) for key, value in (flac.tags or {}).items()}
+                _apply_selected_tags_from_flac(
+                    tags,
+                    flac_tags,
+                    copy_core_tags=bool(args.copy_core_tags),
+                    copy_dj_tags=bool(args.copy_dj_tags),
+                )
+                tags.save(item.path, v2_version=3)
 
             applied += 1
             writer.writerow(
                 {
-                    "path": str(mp3_path),
+                    "path": str(item.path),
                     "status": "applied",
                     "reason": "",
-                    "flac_path": str(flac["path"]),
+                    "flac_path": str(chosen_flac),
+                    "match_source": match_source,
                 }
             )
 
     print(f"applied={applied} no_match={no_match} missing_mp3={missing_mp3}")
     print(f"report={args.out}")
     print(f"backup={args.backup}")
+    if not args.execute:
+        print("DRY-RUN: use --execute to write tags")
     return 0
 
 

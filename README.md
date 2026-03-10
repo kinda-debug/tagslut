@@ -127,6 +127,8 @@ gh pr create --base fix/identity-service --head fix/dj-tag-enrichment \
 
 This keeps DJ enrichment separate from `fix/v3-backfill-command` (PR #186).
 
+When you want to refresh the stack only when new commits exist, run `tools/review/auto_sync_phase1_prs.sh`. It uses the same `MIGRATION_WT`, `IDENTITY_WT`, and `BACKFILL_WT` overrides, checks each worktree against its upstream, and executes `sync_phase1_prs.sh` only when the local branch is ahead (or the remote is missing). The helper aborts with an error if a remote already contains commits that are not present locally so you can reconcile manually.
+
 ## Safety Gates
 - v3 doctor: schema and invariants
 - migration verification: aggregate preservation checks

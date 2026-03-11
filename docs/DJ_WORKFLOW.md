@@ -42,6 +42,43 @@ Legacy v2 pipeline (XLSX/overrides-based):
 - Uses `tagslut dj curate/export` with `config/dj/track_overrides.csv`.
 - Keep this path only if you are explicitly operating from XLSX inputs.
 
+## DJ Pool Wizard
+
+`tagslut dj pool-wizard` is the primary operator workflow for building a final MP3 DJ pool from `MASTER_LIBRARY`.
+
+### Usage
+
+Plan-first, non-interactive:
+
+```bash
+poetry run tagslut dj pool-wizard \
+  --db "$TAGSLUT_DB" \
+  --master-root "$MASTER_LIBRARY" \
+  --dj-cache-root "$DJ_LIBRARY" \
+  --out-root /tmp/dj_pool_runs \
+  --non-interactive \
+  --profile config/dj/pool_profile.json
+```
+
+Interactive TTY wizard:
+
+```bash
+poetry run tagslut dj pool-wizard \
+  --db "$TAGSLUT_DB" \
+  --master-root "$MASTER_LIBRARY" \
+  --dj-cache-root "$DJ_LIBRARY" \
+  --out-root /tmp/dj_pool_runs
+```
+
+What it does:
+
+- locks the cohort to flagged tracks under `MASTER_LIBRARY`
+- writes cohort health, duplicate analysis, selected rows, plan rows, and manifest artifacts into a timestamped run directory
+- uses relinked or cached MP3 sources when available, and only transcodes on execute when no reusable MP3 source exists
+- keeps `--plan` mutation-free; file copies and DB writes only happen under `--execute`
+
+Use `scripts/dj/build_pool_v3.py` only as the lower-level script path when you need the script-level builder directly. Operator docs should point to `tagslut dj pool-wizard`.
+
 ## Staged-Root DJ Phase
 
 For an already-staged FLAC root, `process-root` now has a DJ phase:

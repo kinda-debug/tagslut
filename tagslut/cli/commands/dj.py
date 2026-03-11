@@ -938,3 +938,87 @@ def crates_export(
     else:
         click.echo("(Dry run — transcoding skipped)")
     click.echo(f"Skipped (unclassified): {skipped}")
+
+
+@dj_group.command("pool-wizard")
+@click.option(
+    "--db",
+    "db_path",
+    type=click.Path(),
+    default=None,
+    help="SQLite DB path (or TAGSLUT_DB env)",
+)
+@click.option(
+    "--master-root",
+    required=True,
+    type=click.Path(),
+    help="MASTER_LIBRARY root path",
+)
+@click.option(
+    "--dj-cache-root",
+    required=True,
+    type=click.Path(),
+    help="DJ_LIBRARY cache root path",
+)
+@click.option(
+    "--out-root",
+    type=click.Path(),
+    default=None,
+    help="Output root for final pool (required in --non-interactive)",
+)
+@click.option(
+    "--plan/--execute",
+    "plan_mode",
+    default=True,
+    help="Plan only (default) or execute",
+)
+@click.option(
+    "--profile",
+    "profile_path",
+    type=click.Path(),
+    default=None,
+    help="Read/write JSON profile of wizard answers",
+)
+@click.option(
+    "--non-interactive",
+    is_flag=True,
+    help="Non-interactive mode (requires --profile and --out-root)",
+)
+@click.option(
+    "--overwrite-run",
+    is_flag=True,
+    help="Overwrite existing run dir if pool_manifest.json exists",
+)
+def pool_wizard(
+    db_path: str | None,
+    master_root: str,
+    dj_cache_root: str,
+    out_root: str | None,
+    plan_mode: bool,
+    profile_path: str | None,
+    non_interactive: bool,
+    overwrite_run: bool,
+) -> None:
+    """Build a final MP3 DJ pool from MASTER_LIBRARY (plan-first, auditable)."""
+    import sys
+
+    from tagslut.exec.dj_pool_wizard import run_pool_wizard
+    from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
+
+    try:
+        resolved_db = resolve_cli_env_db_path(db_path, purpose="read", source_label="--db").path
+    except DbResolutionError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    sys.exit(
+        run_pool_wizard(
+            db_path=resolved_db,
+            master_root=master_root,
+            dj_cache_root=dj_cache_root,
+            out_root=out_root,
+            plan_mode=plan_mode,
+            profile_path=profile_path,
+            non_interactive=non_interactive,
+            overwrite_run=overwrite_run,
+        )
+    )

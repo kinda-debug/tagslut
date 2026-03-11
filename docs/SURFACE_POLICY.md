@@ -15,7 +15,7 @@ Define the supported command/script surface during v3 migration so operators and
 5. `poetry run tagslut verify ...` - receipt and parity checks
 6. `poetry run tagslut report ...` - M3U, duration, and DJ pool diff reports
 7. `poetry run tagslut auth ...` - provider credential management
-8. `poetry run tagslut dj ...` - DJ library curation and USB export
+8. `poetry run tagslut dj ...` - DJ library workflows; `tagslut dj pool-wizard` is the canonical pool-build entrypoint
 9. `poetry run tagslut gig ...` - gig set build and management
 10. `poetry run tagslut export ...` - USB / DJ pool export
 11. `poetry run tagslut init ...` - first-run initialization wizard

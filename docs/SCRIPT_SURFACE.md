@@ -93,13 +93,16 @@ Role: Maintainer-only helper for pushing the active Phase 1 branch stack with pr
 
 ## Canonical DJ Pool Builder
 
-The only canonical script-level DJ pool builder is:
+Primary operator-facing DJ pool workflow:
+- `poetry run tagslut dj pool-wizard`
+
+Canonical lower-level script path:
 - `scripts/dj/build_pool_v3.py`
 
 Archived legacy builder:
 - `scripts/archive/build_export_v3.py`
 
-New work and operator docs should point to `scripts/dj/build_pool_v3.py`, not the archived export builder.
+New operator docs should point to `tagslut dj pool-wizard`. Script-level references should point to `scripts/dj/build_pool_v3.py`, not the archived export builder.
 
 ## Retired Command Groups
 

@@ -5,6 +5,11 @@ from typing import Literal, Optional, List, Dict, Any, cast
 from tagslut.zones import Zone, coerce_zone
 
 IntegrityState = Literal["valid", "recoverable", "corrupt"]
+DJ_SET_ROLES = frozenset({"groove", "prime", "bridge", "club"})
+DJ_SUBROLES = frozenset({
+    "opener", "builder", "vocal", "left_turn",
+    "closer", "classic", "tool"
+})
 
 
 @dataclass
@@ -41,6 +46,8 @@ class AudioFile:
     m3u_exported: Optional[str] = None
     m3u_path: Optional[str] = None
     is_dj_material: Optional[int] = None
+    dj_set_role: Optional[str] = None
+    dj_subrole: Optional[str] = None
     duration_ref_ms: Optional[int] = None
     duration_ref_source: Optional[str] = None
     duration_ref_track_id: Optional[str] = None
@@ -74,6 +81,16 @@ class AudioFile:
         self.duration_check_version = self._normalize_scalar(self.duration_check_version)
         if self.zone is not None:
             self.zone = coerce_zone(self.zone)
+        if self.dj_set_role is not None and self.dj_set_role not in DJ_SET_ROLES:
+            raise ValueError(
+                f"Invalid dj_set_role {self.dj_set_role!r}. "
+                f"Allowed: {sorted(DJ_SET_ROLES)}"
+            )
+        if self.dj_subrole is not None and self.dj_subrole not in DJ_SUBROLES:
+            raise ValueError(
+                f"Invalid dj_subrole {self.dj_subrole!r}. "
+                f"Allowed: {sorted(DJ_SUBROLES)}"
+            )
 
     @staticmethod
     def _normalize_scalar(value: Optional[object]) -> Optional[str]:

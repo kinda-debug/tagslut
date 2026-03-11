@@ -229,6 +229,8 @@ def init_db(
             "dj_flag": "INTEGER DEFAULT 0",
             "bpm": "REAL",
             "key_camelot": "TEXT",
+            "dj_set_role": "TEXT",
+            "dj_subrole": "TEXT",
             "energy": "INTEGER",
             "genre": "TEXT",
             "isrc": "TEXT",
@@ -273,6 +275,8 @@ def init_db(
         connection.execute("CREATE INDEX IF NOT EXISTS idx_dj_pool_path ON files(dj_pool_path);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_last_exported_usb ON files(last_exported_usb);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_dj_flag ON files(dj_flag);")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_dj_set_role ON files(dj_set_role);")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_dj_subrole ON files(dj_subrole);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_bpm ON files(bpm);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_key_camelot ON files(key_camelot);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_isrc ON files(isrc);")

@@ -273,6 +273,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--format", choices=["copy", "mp3"], default="copy")
     parser.add_argument("--mp3-bitrate", default="320k")
     parser.add_argument("--ffmpeg-path")
+    parser.add_argument(
+        "--no-essentia",
+        action="store_true",
+        help="Skip Essentia-based DJ analysis refresh and use existing DB metadata only.",
+    )
     parser.add_argument("--strict", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("-v", "--verbose", action="store_true", help="Print per-file actions")
     return parser.parse_args(argv)
@@ -377,7 +382,7 @@ def main(argv: list[str] | None = None) -> int:
                 snapshot = resolve_dj_tag_snapshot(
                     conn,
                     int(row["identity_id"]),
-                    run_essentia=bool(args.execute),
+                    run_essentia=bool(args.execute and not args.no_essentia),
                     dry_run=not args.execute,
                 )
                 snapshots_by_identity[int(row["identity_id"])] = snapshot

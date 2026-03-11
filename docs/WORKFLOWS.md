@@ -76,6 +76,72 @@ Advanced/backend command:
 - `tools/get-intake` is for existing batch roots, `--m3u-only`, and direct pipeline control
 - `tools/get-sync` is a deprecated Beatport compatibility alias for `tools/get`
 
+## V3 Migration Operations
+
+Use these commands when validating or repairing the v3 identity layer. Do not mix them into ordinary intake work.
+
+### Baseline snapshot before migration work
+
+```bash
+cp "$V3_DB" "${V3_DB}.pre_phase1_$(date +%Y%m%d_%H%M%S).bak"
+sqlite3 "$V3_DB" "PRAGMA foreign_keys = ON; PRAGMA foreign_key_check;"
+sqlite3 "$V3_DB" "PRAGMA integrity_check;"
+```
+
+### Identity backfill
+
+```bash
+# Dry run
+python scripts/backfill_v3_identity_links.py --db "$V3_DB"
+
+# Execute
+python scripts/backfill_v3_identity_links.py --db "$V3_DB" --execute
+
+# Resume from a known file id
+python scripts/backfill_v3_identity_links.py \
+  --db "$V3_DB" \
+  --execute \
+  --resume-from-file-id <file_id>
+```
+
+Artifacts written by the backfill command:
+- `artifacts/backfill_v3_summary_<stamp>.json`
+- `artifacts/backfill_v3_checkpoint_<stamp>_<file_id>.json`
+- `artifacts/backfill_v3_abort_<stamp>.json`
+
+### Migration and parity verification
+
+```bash
+sqlite3 "$V3_DB" "PRAGMA foreign_keys = ON; PRAGMA foreign_key_check;"
+sqlite3 "$V3_DB" "PRAGMA integrity_check;"
+sqlite3 "$V3_DB" "PRAGMA optimize;"
+
+python scripts/validate_v3_dual_write_parity.py --db "$V3_DB" --strict
+python scripts/db/verify_v3_migration.py --db "$V3_DB"
+```
+
+### Merged identity inspection
+
+```bash
+python scripts/db/compute_identity_status_v3.py \
+  --db "$V3_DB" \
+  --out artifacts/identity_status.csv
+
+sqlite3 "$V3_DB" "
+SELECT id, identity_key, merged_into_id
+FROM track_identity
+WHERE merged_into_id IS NOT NULL
+ORDER BY merged_into_id, id;
+"
+```
+
+### Rollback to a pre-phase backup
+
+```bash
+cp "${V3_DB}.pre_phase1_<stamp>.bak" "$V3_DB"
+sqlite3 "$V3_DB" "PRAGMA integrity_check;"
+```
+
 ## Manual Phase Workflow (Advanced)
 
 This is the explicit phase-by-phase loop. Use it when you intentionally want manual control rather than `tools/get`.

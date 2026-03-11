@@ -181,3 +181,130 @@ class AuditEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     job_run: Mapped[JobRun] = relationship(back_populates="audit_events")
+
+
+class RawProviderResult(Base):
+    __tablename__ = "raw_provider_result"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    batch_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    provider: Mapped[str] = mapped_column(String(128), nullable=False)
+    external_id: Mapped[str | None] = mapped_column(String(255))
+    query_text: Mapped[str] = mapped_column(String(1024), nullable=False)
+    payload_json: Mapped[dict[str, Any]] = mapped_column(JSON(), nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class MatchCandidate(Base):
+    __tablename__ = "match_candidate"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    raw_result_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("raw_provider_result.id"),
+        nullable=False,
+        index=True,
+    )
+    track_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("track.id"),
+        nullable=True,
+        index=True,
+    )
+    score: Mapped[float] = mapped_column(Float(), nullable=False)
+    reasons_json: Mapped[list[str]] = mapped_column(JSON(), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+
+
+class MetadataCandidate(Base):
+    __tablename__ = "metadata_candidate"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    track_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("track.id"),
+        nullable=True,
+        index=True,
+    )
+    raw_result_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("raw_provider_result.id"),
+        nullable=False,
+        index=True,
+    )
+    field_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    normalized_value_json: Mapped[Any] = mapped_column(JSON(), nullable=False)
+    confidence: Mapped[float] = mapped_column(Float(), nullable=False)
+    rationale_json: Mapped[dict[str, Any]] = mapped_column(JSON(), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    is_user_override: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=False)
+
+
+class ApprovedMetadata(Base):
+    __tablename__ = "approved_metadata"
+    __table_args__ = (
+        UniqueConstraint("track_id", "field_name", name="uq_approved_metadata_track_field"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    track_id: Mapped[str] = mapped_column(String(36), ForeignKey("track.id"), nullable=False, index=True)
+    field_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    value_json: Mapped[Any] = mapped_column(JSON(), nullable=False)
+    approved_from_candidate_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("metadata_candidate.id"),
+        nullable=True,
+        index=True,
+    )
+    approved_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    approved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    is_user_override: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=False)
+
+
+class ExportWriteLog(Base):
+    __tablename__ = "export_write_log"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    job_run_id: Mapped[str] = mapped_column(String(36), ForeignKey("job_run.id"), nullable=False, index=True)
+    track_id: Mapped[str] = mapped_column(String(36), ForeignKey("track.id"), nullable=False, index=True)
+    target: Mapped[str] = mapped_column(String(128), nullable=False)
+    field_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    old_value_json: Mapped[Any | None] = mapped_column(JSON())
+    new_value_json: Mapped[Any | None] = mapped_column(JSON())
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    written_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class VocabTerm(Base):
+    __tablename__ = "vocab_term"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    domain: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    canonical_value: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text())
+
+
+class VocabAlias(Base):
+    __tablename__ = "vocab_alias"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    vocab_term_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("vocab_term.id"),
+        nullable=False,
+        index=True,
+    )
+    alias: Mapped[str] = mapped_column(String(255), nullable=False)
+    source: Mapped[str | None] = mapped_column(String(255))
+
+
+class TrackVocabAssignment(Base):
+    __tablename__ = "track_vocab_assignment"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    track_id: Mapped[str] = mapped_column(String(36), ForeignKey("track.id"), nullable=False, index=True)
+    domain: Mapped[str] = mapped_column(String(128), nullable=False)
+    canonical_value: Mapped[str] = mapped_column(String(255), nullable=False)
+    confidence: Mapped[float] = mapped_column(Float(), nullable=False)
+    assigned_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)

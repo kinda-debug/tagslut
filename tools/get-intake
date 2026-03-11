@@ -298,12 +298,14 @@ latest_file_after_marker() {
 }
 
 bpdl_downloads_dir_from_config() {
-  if [[ ! -f "$BPDL_CONFIG" ]]; then
+  local cfg=""
+  cfg="$(bpdl_config_path)"
+  if [[ ! -f "$cfg" ]]; then
     echo ""
     return 0
   fi
   local raw
-  raw="$(sed -n 's/^downloads_directory:[[:space:]]*//p' "$BPDL_CONFIG" | head -n1)"
+  raw="$(sed -n 's/^downloads_directory:[[:space:]]*//p' "$cfg" | head -n1)"
   raw="${raw%\"}"
   raw="${raw#\"}"
   raw="${raw%\'}"
@@ -392,6 +394,74 @@ import sys
 
 print(Path(sys.argv[1]).expanduser().resolve())
 PY
+}
+
+bpdl_binary_dir() {
+  local resolved=""
+  if [[ -n "${BPDL_BIN:-}" && -e "$BPDL_BIN" ]]; then
+    resolved="$(resolve_path "$BPDL_BIN" 2>/dev/null || true)"
+  fi
+  if [[ -n "$resolved" ]]; then
+    dirname "$resolved"
+    return 0
+  fi
+  echo ""
+}
+
+bpdl_config_path() {
+  local candidate=""
+  local resolved_env=""
+  local env_dir=""
+  local bin_dir=""
+
+  if [[ -n "${BPDL_CONFIG:-}" ]]; then
+    resolved_env="$(resolve_path "$BPDL_CONFIG" 2>/dev/null || true)"
+    if [[ -n "$resolved_env" ]]; then
+      env_dir="$(dirname "$resolved_env")"
+    fi
+  fi
+  bin_dir="$(bpdl_binary_dir)"
+
+  while IFS= read -r candidate; do
+    [[ -n "$candidate" ]] || continue
+    if [[ -f "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done < <(
+    printf '%s\n' \
+      "${bin_dir:+$bin_dir/beatportdl-config.yml}" \
+      "${resolved_env:-}" \
+      "${env_dir:+$env_dir/beatportdl-config.yml}" \
+      "$HOME/.config/beatportdl/beatportdl-config.yml" \
+      "$HOME/.config/beatportdl/config.yml" | awk 'NF && !seen[$0]++'
+  )
+
+  echo ""
+}
+
+bpdl_workdir_from_config() {
+  local cfg=""
+  local bin_dir=""
+
+  cfg="$(bpdl_config_path)"
+  if [[ -n "$cfg" && "$(basename "$cfg")" == "beatportdl-config.yml" ]]; then
+    dirname "$cfg"
+    return 0
+  fi
+
+  bin_dir="$(bpdl_binary_dir)"
+  if [[ -n "$bin_dir" && -f "$bin_dir/beatportdl-config.yml" ]]; then
+    printf '%s\n' "$bin_dir"
+    return 0
+  fi
+
+  if [[ -n "$cfg" ]]; then
+    dirname "$cfg"
+    return 0
+  fi
+
+  printf '%s\n' "$REPO_ROOT"
 }
 
 default_batch_root() {
@@ -544,7 +614,9 @@ autodetect_db_path() {
 }
 
 ensure_bpdl_download_target() {
-  [[ -f "$BPDL_CONFIG" ]] || return 0
+  local cfg=""
+  cfg="$(bpdl_config_path)"
+  [[ -f "$cfg" ]] || return 0
 
   local configured_target=""
   local target=""
@@ -566,7 +638,7 @@ ensure_bpdl_download_target() {
   fi
 
   if [[ "$configured_target" != "$target" ]]; then
-    python3 - "$BPDL_CONFIG" "$target" <<'PY'
+    python3 - "$cfg" "$target" <<'PY'
 from pathlib import Path
 import sys
 
@@ -596,19 +668,11 @@ run_bpdl_batch() {
   shift 2
   local extra_args=("$@")
   local bpdl_workdir="$REPO_ROOT"
+  # BeatportDL runs config/auth setup before parsing CLI flags, so probing with -h can block.
+  local supports_quit="${BPDL_ASSUME_Q:-0}"
 
   ensure_bpdl_download_target
-  if [[ -f "$BPDL_CONFIG" ]]; then
-    bpdl_workdir="$(cd "$(dirname "$BPDL_CONFIG")" && pwd)"
-  fi
-
-  local supports_quit=0
-  if (
-    cd "$bpdl_workdir"
-    "$BPDL_BIN" -h
-  ) 2>&1 | grep -q -- "-q"; then
-    supports_quit=1
-  fi
+  bpdl_workdir="$(bpdl_workdir_from_config)"
 
   if [[ "$supports_quit" -eq 1 ]]; then
     if [[ ${#extra_args[@]} -gt 0 ]]; then
@@ -619,7 +683,7 @@ run_bpdl_batch() {
     return 0
   fi
 
-  echo "bpdl '-q' not supported by this binary; using compatibility mode."
+  echo "bpdl compatibility mode: running without '-q' probe."
   set +e
   if [[ ${#extra_args[@]} -gt 0 ]]; then
     printf '→ '

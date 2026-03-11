@@ -1,0 +1,11 @@
+tagslut/core/flac_scan_prep.py:326: error: Name "contextlib" is not defined  [name-defined]
+tagslut/utils/env_paths.py:34: error: Unused "type: ignore" comment  [unused-ignore]
+tagslut/exec/transcoder.py:183: error: Call to untyped function "delall" in typed context  [no-untyped-call]
+tagslut/exec/transcoder.py:186: error: Function is missing a type annotation for one or more arguments  [no-untyped-def]
+tagslut/exec/transcoder.py:233: error: Call to untyped function "delall" in typed context  [no-untyped-call]
+tagslut/exec/transcoder.py:234: error: Call to untyped function "add" in typed context  [no-untyped-call]
+tagslut/exec/transcoder.py:235: error: Call to untyped function "APIC" in typed context  [no-untyped-call]
+tagslut/cli/commands/_index_helpers.py:113: error: Unused "type: ignore" comment  [unused-ignore]
+tagslut/cli/commands/_index_helpers.py:114: error: Unused "type: ignore" comment  [unused-ignore]
+tagslut/cli/commands/_index_helpers.py:115: error: Unused "type: ignore" comment  [unused-ignore]
+Found 10 errors in 4 files (checked 137 source files)

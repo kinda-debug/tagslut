@@ -1,0 +1,7 @@
+tagslut/cli/commands/report.py:30:121: E501 line too long (137 > 120 characters)
+tagslut/core/flac_scan_prep.py:326:18: F821 undefined name 'contextlib'
+tagslut/exec/transcoder.py:15:1: F401 'mutagen.id3.SYLT' imported but unused
+tagslut/exec/transcoder.py:15:1: F401 'mutagen.id3.USLT' imported but unused
+tagslut/exec/transcoder.py:15:121: E501 line too long (136 > 120 characters)
+tagslut/exec/transcoder.py:205:121: E501 line too long (122 > 120 characters)
+tests/test_review_app.py:10:1: E402 module level import not at top of file

@@ -1,0 +1,44 @@
+........................................................................ [ 12%]
+........................................................................ [ 24%]
+........................................................................ [ 37%]
+........................................................................ [ 49%]
+........................................................................ [ 61%]
+........................................................................ [ 74%]
+.....................................................F.F................ [ 86%]
+........................................................................ [ 99%]
+.....                                                                    [100%]
+=================================== FAILURES ===================================
+___________________ test_recovery_package_absent_or_stubbed ____________________
+
+    def test_recovery_package_absent_or_stubbed() -> None:
+        """Ensure `tagslut.recovery` implementation is archived from live package."""
+        recovery_dir = PROJECT_ROOT / "tagslut" / "recovery"
+        if not recovery_dir.exists():
+            return
+    
+        init_file = recovery_dir / "__init__.py"
+>       assert init_file.exists(), "tagslut/recovery must be absent or contain a stub __init__.py"
+E       AssertionError: tagslut/recovery must be absent or contain a stub __init__.py
+E       assert False
+E        +  where False = exists()
+E        +    where exists = PosixPath('/Users/georgeskhawam/Projects/tagslut/tagslut/recovery/__init__.py').exists
+
+tests/test_repo_structure.py:138: AssertionError
+_______________________ test_recovery_is_decommissioned ________________________
+
+    def test_recovery_is_decommissioned() -> None:
+>       with pytest.raises(ImportError):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE <class 'ImportError'>
+
+tests/test_repo_structure.py:160: Failed
+=============================== warnings summary ===============================
+tests/test_cli_command_interface.py::test_dedupe_entry_point_emits_deprecation_message_via_click_runner
+  /Users/georgeskhawam/Projects/tagslut/tests/test_cli_command_interface.py:241: DeprecationWarning: The 'dedupe' command is deprecated and will be removed on 2026-06-01. Use 'tagslut' instead.
+    dedupe_entry_point()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_repo_structure.py::test_recovery_package_absent_or_stubbed
+FAILED tests/test_repo_structure.py::test_recovery_is_decommissioned - Failed...
+2 failed, 579 passed, 1 warning in 14.62s

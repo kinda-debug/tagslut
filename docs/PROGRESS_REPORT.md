@@ -18,7 +18,10 @@ The v3 core surface is active and the recovery-era implementation has been archi
 
 ## Current State
 
-- Primary downloader flow remains `tools/get <provider-url>`.
+- Tests: 579 passed, 2 failed, 1 warning (`poetry run python -m pytest -q` on March 8, 2026).
+- Tag hoard: varies by scan (see `tag_hoard_files` in DB).
+- DJUSB MP3 count: depends on current policy + overrides.
+- Primary downloader flow remains `tools/get <provider-url>`; `tools/get-intake` remains the advanced/backend path.
 - Canonical CLI surface remains `tagslut intake/index/decide/execute/verify/report/auth`.
 - The deterministic v3 DJ pool path remains the preferred builder/export route.
 - `process-root` is useful for already-staged roots, but its v3-safe phase set is `identify,enrich,art,promote,dj`.

@@ -3,8 +3,9 @@ from __future__ import annotations
 import getpass
 import json
 import logging
+import sqlite3
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -13,12 +14,15 @@ import xml.etree.ElementTree as ET
 
 import click
 from sqlalchemy import select
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, selectinload
 
+from tagslut.dj.key_utils import classical_to_camelot, normalize_key
 from tagslut.library import (
     DEFAULT_LIBRARY_DB_URL,
     create_library_session_factory,
     ensure_library_schema,
+    resolve_library_db_url,
 )
 from tagslut.library.matcher import MatchResult, TrackMatcher, TrackQuery
 from tagslut.library.models import (
@@ -35,6 +39,8 @@ from tagslut.library.models import (
     TrackFile,
 )
 from tagslut.library.repositories import get_track_by_alias, record_audit_event, upsert_track_alias
+from tagslut.storage.queries import get_files_for_library_track
+from tagslut.storage.schema import init_db
 from tagslut.tag.providers import get_provider
 from tagslut.tag.providers.base import FieldCandidate, ProviderConfigError, RawResult
 from tagslut.tag.providers.spotify import SpotifyProvider
@@ -54,6 +60,21 @@ _FILE_TAG_FIELD_MAP = {
     "comments": "comment",
 }
 _BATCH_SOURCE_TYPES = ("tag_batch", "batch")
+_SYNC_FIELD_COLUMN_MAP = {
+    "canonical_title": ("canonical_title",),
+    "canonical_artist_credit": ("canonical_artist",),
+    "canonical_bpm": ("canonical_bpm", "bpm"),
+    "canonical_genre": ("canonical_genre", "genre"),
+    "canonical_energy": ("canonical_energy",),
+    "canonical_danceability": ("canonical_danceability",),
+    "canonical_valence": ("canonical_valence",),
+    "canonical_label": ("canonical_label",),
+    "canonical_mix_name": ("canonical_mix_name",),
+    "canonical_year": ("canonical_year",),
+    "canonical_release_date": ("canonical_release_date",),
+    "canonical_explicit": ("canonical_explicit",),
+    "spotify_id": ("spotify_id",),
+}
 
 
 @dataclass(frozen=True)
@@ -67,6 +88,15 @@ class _AutoApprovalDecision:
 class _BatchWorkItem:
     provenance: SourceProvenance
     track: Track | None
+
+
+@dataclass
+class _SyncToFilesSummary:
+    files_updated: set[str] = field(default_factory=set)
+    fields_written: int = 0
+    skipped_null_source: int = 0
+    skipped_already_set: int = 0
+    warnings: int = 0
 
 
 def _utcnow() -> datetime:
@@ -1117,6 +1147,334 @@ def run_tag_export(
         return export_job
 
 
+def _library_db_sqlite_path(db_url: str | None = None) -> str:
+    resolved = resolve_library_db_url(db_url or _default_db_url())
+    url = make_url(resolved)
+    if url.drivername != "sqlite":
+        raise click.ClickException("tag sync-to-files only supports SQLite library databases")
+    database = url.database
+    if not database:
+        raise click.ClickException("Could not resolve SQLite database path for tag sync-to-files")
+    if database == ":memory:":
+        raise click.ClickException("tag sync-to-files requires a file-backed SQLite library database")
+    return str(database)
+
+
+def _approved_metadata_rows_for_sync(
+    session: Session,
+    *,
+    batch_id: str | None = None,
+) -> list[tuple[ApprovedMetadata, str | None]]:
+    statement = (
+        select(ApprovedMetadata, RawProviderResult.provider)
+        .outerjoin(
+            MetadataCandidate,
+            MetadataCandidate.id == ApprovedMetadata.approved_from_candidate_id,
+        )
+        .outerjoin(
+            RawProviderResult,
+            RawProviderResult.id == MetadataCandidate.raw_result_id,
+        )
+        .where(ApprovedMetadata.track_id.is_not(None))
+        .order_by(ApprovedMetadata.track_id.asc(), ApprovedMetadata.field_name.asc())
+    )
+    if batch_id is not None:
+        statement = statement.where(
+            ApprovedMetadata.track_id.in_(
+                select(SourceProvenance.track_id).where(
+                    SourceProvenance.track_id.is_not(None),
+                    SourceProvenance.source_type.in_(_BATCH_SOURCE_TYPES),
+                    SourceProvenance.source_key == batch_id,
+                )
+            )
+        )
+    return list(session.execute(statement).all())
+
+
+def _active_track_file_paths(
+    session: Session,
+    track_ids: set[str],
+) -> dict[str, list[str]]:
+    if not track_ids:
+        return {}
+
+    rows = session.execute(
+        select(TrackFile.track_id, TrackFile.path)
+        .where(
+            TrackFile.track_id.in_(track_ids),
+            TrackFile.active.is_(True),
+        )
+        .order_by(TrackFile.track_id.asc(), TrackFile.path.asc())
+    ).all()
+    paths_by_track_id: dict[str, list[str]] = defaultdict(list)
+    for track_id, path in rows:
+        if track_id is None or not path:
+            continue
+        if path not in paths_by_track_id[track_id]:
+            paths_by_track_id[track_id].append(str(path))
+    return dict(paths_by_track_id)
+
+
+def _format_sync_value(value: Any) -> str:
+    if value is None:
+        return "NULL"
+    if isinstance(value, str):
+        return value
+    return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+
+def _parse_enrichment_providers(raw_value: Any) -> list[str]:
+    if raw_value is None:
+        return []
+
+    if isinstance(raw_value, str):
+        value = raw_value.strip()
+        if not value:
+            return []
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            parsed = None
+        if isinstance(parsed, list):
+            items = parsed
+        else:
+            items = value.split(",")
+    elif isinstance(raw_value, list):
+        items = raw_value
+    else:
+        items = [raw_value]
+
+    providers: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        text = str(item).strip()
+        if not text:
+            continue
+        if text in seen:
+            continue
+        providers.append(text)
+        seen.add(text)
+    return providers
+
+
+def _append_enrichment_provider(existing: Any, provider_name: str | None) -> str | None:
+    providers = _parse_enrichment_providers(existing)
+    if provider_name:
+        provider_text = provider_name.strip()
+        if provider_text and provider_text not in providers:
+            providers.append(provider_text)
+    if not providers:
+        return None
+    return ",".join(providers)
+
+
+def _library_track_keys_for_paths(
+    conn: sqlite3.Connection,
+    paths: list[str],
+) -> list[str]:
+    if not paths:
+        return []
+
+    placeholders = ",".join("?" for _ in paths)
+    rows = conn.execute(
+        f"""
+        SELECT DISTINCT library_track_key
+        FROM files
+        WHERE path IN ({placeholders})
+          AND library_track_key IS NOT NULL
+          AND TRIM(library_track_key) != ''
+        ORDER BY library_track_key
+        """,
+        paths,
+    ).fetchall()
+    return [str(row["library_track_key"]) for row in rows if row["library_track_key"]]
+
+
+def _resolve_target_files_for_track(
+    conn: sqlite3.Connection,
+    track_id: str,
+    source_paths: list[str],
+) -> list[dict[str, Any]]:
+    if not source_paths:
+        logger.info("No active track files found for track %s; skipping sync-to-files", track_id)
+        return []
+
+    keys = _library_track_keys_for_paths(conn, source_paths)
+    if not keys:
+        logger.info(
+            "No matching files rows with library_track_key found for track %s; paths=%s",
+            track_id,
+            ", ".join(source_paths),
+        )
+        return []
+
+    files_by_path: dict[str, dict[str, Any]] = {}
+    for library_track_key in keys:
+        for row in get_files_for_library_track(conn, library_track_key):
+            files_by_path[str(row["path"])] = dict(row)
+
+    if not files_by_path:
+        logger.info(
+            "No files rows found for track %s after resolving library_track_key(s): %s",
+            track_id,
+            ", ".join(keys),
+        )
+        return []
+
+    return [files_by_path[path] for path in sorted(files_by_path)]
+
+
+def _sync_updates_for_approved_metadata(
+    approved: ApprovedMetadata,
+    summary: _SyncToFilesSummary,
+) -> dict[str, Any] | None:
+    value = approved.value_json
+    if value is None:
+        summary.skipped_null_source += 1
+        return None
+
+    if approved.field_name == "canonical_key":
+        normalized = normalize_key(str(value))
+        if normalized is None:
+            logger.warning(
+                "Skipping canonical_key sync for track %s: unrecognized key %r",
+                approved.track_id,
+                value,
+            )
+            summary.warnings += 1
+            return None
+
+        updates = {"canonical_key": normalized}
+        camelot = classical_to_camelot(normalized)
+        if camelot is not None:
+            updates["key_camelot"] = camelot
+        return updates
+
+    columns = _SYNC_FIELD_COLUMN_MAP.get(approved.field_name)
+    if columns is None:
+        logger.warning("Skipping unsupported approved_metadata field: %s", approved.field_name)
+        summary.warnings += 1
+        return None
+
+    if approved.field_name == "canonical_explicit" and isinstance(value, bool):
+        value = 1 if value else 0
+
+    return {column: value for column in columns}
+
+
+def _write_sync_update(
+    conn: sqlite3.Connection,
+    *,
+    path: str,
+    column_updates: dict[str, Any],
+    enriched_at: str,
+    enrichment_providers: str | None,
+) -> None:
+    assignments = [f"{column} = ?" for column in column_updates]
+    params: list[Any] = list(column_updates.values())
+    assignments.append("enriched_at = ?")
+    params.append(enriched_at)
+    assignments.append("enrichment_providers = ?")
+    params.append(enrichment_providers)
+    params.append(path)
+    conn.execute(
+        f"UPDATE files SET {', '.join(assignments)} WHERE path = ?",
+        params,
+    )
+
+
+def _sync_summary_line(summary: _SyncToFilesSummary) -> str:
+    return (
+        f"Sync complete: {len(summary.files_updated)} files updated, "
+        f"{summary.fields_written} fields written, "
+        f"{summary.skipped_null_source} skipped (null source), "
+        f"{summary.skipped_already_set} skipped (already set), "
+        f"{summary.warnings} warnings"
+    )
+
+
+def run_tag_sync_to_files(
+    *,
+    batch_id: str | None = None,
+    dry_run: bool = False,
+    force: bool = False,
+    db_url: str | None = None,
+) -> _SyncToFilesSummary:
+    session_factory = _session_factory(db_url)
+    db_path = _library_db_sqlite_path(db_url)
+    summary = _SyncToFilesSummary()
+    sync_timestamp = _utcnow().isoformat()
+
+    with session_factory() as session, sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
+
+        approved_rows = _approved_metadata_rows_for_sync(session, batch_id=batch_id)
+        track_ids = {approved.track_id for approved, _provider_name in approved_rows if approved.track_id}
+        paths_by_track_id = _active_track_file_paths(session, track_ids)
+        target_files_by_track_id = {
+            track_id: _resolve_target_files_for_track(conn, track_id, source_paths)
+            for track_id, source_paths in paths_by_track_id.items()
+        }
+
+        for approved, provider_name in approved_rows:
+            if approved.track_id is None:
+                continue
+
+            column_updates = _sync_updates_for_approved_metadata(approved, summary)
+            if not column_updates:
+                continue
+
+            target_files = target_files_by_track_id.get(approved.track_id)
+            if not target_files:
+                logger.info(
+                    "No matching files rows found for approved metadata track %s field %s",
+                    approved.track_id,
+                    approved.field_name,
+                )
+                continue
+
+            for file_row in target_files:
+                file_path = str(file_row["path"])
+                pending_updates: dict[str, Any] = {}
+                for column, new_value in column_updates.items():
+                    old_value = file_row.get(column)
+                    if old_value is not None and not force:
+                        summary.skipped_already_set += 1
+                        continue
+                    pending_updates[column] = new_value
+                    if dry_run:
+                        click.echo(
+                            f"{file_path}: {column}: "
+                            f"{_format_sync_value(old_value)} -> {_format_sync_value(new_value)}"
+                        )
+
+                if not pending_updates:
+                    continue
+
+                enrichment_providers = _append_enrichment_provider(
+                    file_row.get("enrichment_providers"),
+                    provider_name,
+                )
+                if not dry_run:
+                    _write_sync_update(
+                        conn,
+                        path=file_path,
+                        column_updates=pending_updates,
+                        enriched_at=sync_timestamp,
+                        enrichment_providers=enrichment_providers,
+                    )
+
+                file_row.update(pending_updates)
+                file_row["enriched_at"] = sync_timestamp
+                file_row["enrichment_providers"] = enrichment_providers
+                summary.files_updated.add(file_path)
+                summary.fields_written += len(pending_updates)
+
+    click.echo(_sync_summary_line(summary))
+    return summary
+
+
 def register_tag_group(cli: click.Group) -> None:
     @cli.group()
     def tag():  # type: ignore[misc]
@@ -1170,3 +1528,10 @@ def register_tag_group(cli: click.Group) -> None:
         job_run = run_tag_export(target, job_id_or_last, dry_run=dry_run)
         click.echo(f"Job: {job_run.id}")
         click.echo(f"Status: {job_run.status}")
+
+    @tag.command("sync-to-files")
+    @click.option("--batch", "batch_id", help="Restrict sync to a specific tag batch")
+    @click.option("--dry-run", is_flag=True, help="Preview file-table writes without updating files")
+    @click.option("--force", is_flag=True, help="Overwrite non-NULL file-table values")
+    def tag_sync_to_files_command(batch_id: str | None, dry_run: bool, force: bool) -> None:  # type: ignore[misc]
+        run_tag_sync_to_files(batch_id=batch_id, dry_run=dry_run, force=force)

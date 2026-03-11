@@ -763,6 +763,34 @@ def get_file(conn: sqlite3.Connection, path: Path) -> Optional[AudioFile]:
     return _row_to_audiofile(row)
 
 
+def get_files_for_library_track(
+    conn: sqlite3.Connection,
+    library_track_key: str,
+) -> List[sqlite3.Row]:
+    """Return all legacy files rows linked to a library_track_key."""
+    cursor = conn.execute(
+        """
+        SELECT
+            path,
+            canonical_key,
+            key_camelot,
+            canonical_bpm,
+            bpm,
+            canonical_artist,
+            canonical_title,
+            canonical_genre,
+            genre,
+            enriched_at,
+            enrichment_providers
+        FROM files
+        WHERE library_track_key = ?
+        ORDER BY path
+        """,
+        (library_track_key,),
+    )
+    return cast(List[sqlite3.Row], cursor.fetchall())
+
+
 def get_file_by_isrc(conn: sqlite3.Connection, isrc: str | None) -> Optional[sqlite3.Row]:
     """Primary identity lookup — use this before any other lookup."""
     if isrc is None:

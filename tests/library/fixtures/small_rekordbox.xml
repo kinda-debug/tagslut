@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DJ_PLAYLISTS Version="1.0.0">
+  <PRODUCT Name="tagslut" Version="v8" Company="tagslut" />
+  <COLLECTION Entries="2">
+    <TRACK
+      TrackID="1"
+      Name="First Track"
+      Artist="Alpha Artist"
+      Album="Alpha EP"
+      Mix="Extended Mix"
+      BitRate="320"
+      SampleRate="44100"
+      TotalTime="245"
+      Location="file://localhost/Users/test/Music/Alpha%20Artist/First%20Track.mp3"
+    />
+    <TRACK
+      TrackID="2"
+      Name="Second Track"
+      Artist="Beta Artist"
+      Album="Beta EP"
+      BitRate="256"
+      SampleRate="48000"
+      TotalTime="198"
+      Location="file://localhost/Users/test/Music/Beta%20Artist/Second%20Track.mp3"
+    />
+  </COLLECTION>
+  <PLAYLISTS>
+    <NODE Type="0" Name="ROOT" Count="1">
+      <NODE Type="1" Name="DJUSB" Entries="2">
+        <TRACK Key="1" />
+        <TRACK Key="2" />
+      </NODE>
+    </NODE>
+  </PLAYLISTS>
+</DJ_PLAYLISTS>

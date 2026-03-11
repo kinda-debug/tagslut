@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import re
 import sqlite3
 from pathlib import Path
 from types import ModuleType
@@ -9,6 +10,7 @@ from typing import Callable
 from tagslut.storage.v3.db import open_db_v3
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
+_VERSION_PREFIX_RE = re.compile(r"^(?P<version>\d+)")
 
 
 def _iter_migration_files(migrations_dir: Path) -> list[Path]:
@@ -18,7 +20,7 @@ def _iter_migration_files(migrations_dir: Path) -> list[Path]:
         path
         for path in migrations_dir.iterdir()
         if path.is_file()
-        and path.suffix == ".py"
+        and path.suffix in {".py", ".sql"}
         and path.name != "__init__.py"
     ]
     return sorted(files, key=lambda path: path.name)
@@ -55,6 +57,49 @@ def _schema_version(conn: sqlite3.Connection) -> int:
     return int(row[0]) if row is not None and row[0] is not None else 0
 
 
+def _require_base_schema(conn: sqlite3.Connection) -> None:
+    required = ("schema_migrations",)
+    missing = [name for name in required if not _table_exists(conn, name)]
+    if missing:
+        missing_text = ", ".join(missing)
+        raise RuntimeError(f"v3 base schema missing required tables: {missing_text}")
+
+
+def _version_from_filename(path: Path) -> int:
+    match = _VERSION_PREFIX_RE.match(path.stem)
+    if match is None:
+        raise RuntimeError(f"V3 migration filename must start with a numeric version: {path.name}")
+    return int(match.group("version"))
+
+
+def _record_applied_version(conn: sqlite3.Connection, *, version: int, note: str) -> None:
+    conn.execute(
+        """
+        INSERT INTO schema_migrations (schema_name, version, note)
+        VALUES ('v3', ?, ?)
+        ON CONFLICT(schema_name, version) DO UPDATE SET note = excluded.note
+        """,
+        (version, note),
+    )
+
+
+def _migration_recorded(conn: sqlite3.Connection, *, version: int, note: str) -> bool:
+    row = conn.execute(
+        """
+        SELECT 1
+        FROM schema_migrations
+        WHERE schema_name = 'v3' AND version = ? AND note = ?
+        """,
+        (version, note),
+    ).fetchone()
+    return row is not None
+
+
+def _apply_sql_migration(conn: sqlite3.Connection, path: Path, *, version: int) -> None:
+    conn.executescript(path.read_text(encoding="utf-8"))
+    _record_applied_version(conn, version=version, note=path.name)
+
+
 def verify_v3_migration(conn: sqlite3.Connection) -> None:
     conn.execute("PRAGMA foreign_keys = ON")
     fk_rows = conn.execute("PRAGMA foreign_key_check").fetchall()
@@ -66,27 +111,40 @@ def verify_v3_migration(conn: sqlite3.Connection) -> None:
     conn.execute("PRAGMA optimize")
 
 
-def run_pending_v3(db_path: str | Path, migrations_dir: Path | None = None) -> list[str]:
+def run_pending_v3(
+    db_path: str | Path | sqlite3.Connection,
+    migrations_dir: Path | None = None,
+) -> list[str]:
     applied: list[str] = []
-    conn = open_db_v3(db_path)
+    owns_connection = not isinstance(db_path, sqlite3.Connection)
+    conn = open_db_v3(db_path) if owns_connection else db_path
     try:
+        _require_base_schema(conn)
         current_version = _schema_version(conn)
         for migration_path in _iter_migration_files(migrations_dir or MIGRATIONS_DIR):
-            module = _load_migration(migration_path)
-            migration_version = getattr(module, "VERSION", None)
-            up = getattr(module, "up", None)
-            if not isinstance(migration_version, int):
-                raise RuntimeError(f"V3 migration must define integer VERSION: {migration_path.name}")
-            if not callable(up):
-                raise RuntimeError(f"V3 migration must define up(conn): {migration_path.name}")
-            if migration_version <= current_version:
-                continue
-            up_fn: Callable[[sqlite3.Connection], None] = up
             with conn:
-                up_fn(conn)
+                if migration_path.suffix == ".sql":
+                    migration_version = _version_from_filename(migration_path)
+                    if _migration_recorded(conn, version=migration_version, note=migration_path.name):
+                        continue
+                    _apply_sql_migration(conn, migration_path, version=migration_version)
+                else:
+                    module = _load_migration(migration_path)
+                    migration_version = getattr(module, "VERSION", _version_from_filename(migration_path))
+                    if not isinstance(migration_version, int):
+                        raise RuntimeError(f"V3 migration VERSION must be an integer: {migration_path.name}")
+                    if migration_version <= current_version:
+                        continue
+                    up = getattr(module, "up", None)
+                    if not callable(up):
+                        raise RuntimeError(f"V3 migration must define up(conn): {migration_path.name}")
+                    up_fn: Callable[[sqlite3.Connection], None] = up
+                    up_fn(conn)
+                    _record_applied_version(conn, version=migration_version, note=migration_path.name)
             applied.append(migration_path.name)
             current_version = migration_version
         verify_v3_migration(conn)
     finally:
-        conn.close()
+        if owns_connection:
+            conn.close()
     return applied

@@ -359,9 +359,12 @@ def _create_identity(
 
 def _identity_duration_ms(identity_row: sqlite3.Row) -> int | None:
     duration_s = _to_float(identity_row["canonical_duration"])
-    if duration_s is None:
-        return None
-    return int(round(duration_s * 1000.0))
+    if duration_s is not None:
+        return int(round(duration_s * 1000.0))
+    duration_ref_ms = _to_float(identity_row["duration_ref_ms"])
+    if duration_ref_ms is not None:
+        return int(round(duration_ref_ms))
+    return None
 
 
 def _mirror_file_paths(conn: sqlite3.Connection, identity_id: int, asset_id: int | None) -> list[str]:
@@ -408,6 +411,7 @@ def _mirror_to_files(
 
     file_values: dict[str, Any] = {
         "library_track_key": identity_row["identity_key"],
+        "beatport_id": identity_row["beatport_id"],
         "canonical_title": identity_row["canonical_title"],
         "canonical_artist": identity_row["canonical_artist"],
         "canonical_album": identity_row["canonical_album"],
@@ -496,7 +500,7 @@ def _mirror_to_library_tracks(conn: sqlite3.Connection, identity_row: sqlite3.Ro
     )
 
 
-def resolve_active_identity(conn: sqlite3.Connection, identity_id: int) -> sqlite3.Row:
+def resolve_active_identity(conn: sqlite3.Connection, identity_id: int | str) -> sqlite3.Row:
     """Resolve an identity row to the active canonical row.
 
     The function follows ``merged_into_id`` until it reaches a row whose
@@ -506,7 +510,19 @@ def resolve_active_identity(conn: sqlite3.Connection, identity_id: int) -> sqlit
         raise RuntimeError("track_identity table is missing")
 
     has_merged_into = _column_exists(conn, "track_identity", "merged_into_id")
-    current_id = int(identity_id)
+    if isinstance(identity_id, str):
+        try:
+            current_id = int(identity_id)
+        except ValueError:
+            row = conn.execute(
+                "SELECT id FROM track_identity WHERE identity_key = ?",
+                (identity_id,),
+            ).fetchone()
+            if row is None:
+                raise LookupError(f"identity not found: {identity_id}")
+            current_id = int(row["id"])
+    else:
+        current_id = int(identity_id)
     seen_ids: set[int] = set()
 
     while True:

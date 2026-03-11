@@ -25,6 +25,8 @@ dependencies = [
     "rich>=13.7,<14.0",
     "matplotlib>=3.8,<4.0",
     "pyrekordbox>=0.3,<1.0",
+    "sqlalchemy>=2.0,<3.0",
+    "alembic>=1.14,<2.0",
 ]
 
 [project.scripts]

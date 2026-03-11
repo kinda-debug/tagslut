@@ -36,7 +36,8 @@ export DJ_PLAYLIST_ROOT="${DJ_PLAYLIST_ROOT:-$DJ_LIBRARY}"
 
 Preferred v3 pipeline (identity-based, deterministic):
 - Follow `docs/OPERATIONS.md` for `dj-candidates` → `dj-profile` → `dj-ready` → `dj-pool-plan/run`.
-- Use `scripts/dj/build_pool_v3.py` or the `make dj-pool-*` targets for plan/execute.
+- For operator use, prefer `poetry run tagslut dj pool-wizard` for plan/execute.
+- Use `scripts/dj/build_pool_v3.py` or the `make dj-pool-*` targets only when you explicitly need the lower-level builder.
 
 Legacy v2 pipeline (XLSX/overrides-based):
 - Uses `tagslut dj curate/export` with `config/dj/track_overrides.csv`.
@@ -57,7 +58,7 @@ poetry run tagslut dj pool-wizard \
   --dj-cache-root "$DJ_LIBRARY" \
   --out-root /tmp/dj_pool_runs \
   --non-interactive \
-  --profile config/dj/pool_profile.json
+  --profile "$VOLUME_WORK/gig_runs/gig_2026_03_13/profile.json"
 ```
 
 Interactive TTY wizard:

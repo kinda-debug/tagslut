@@ -36,7 +36,9 @@ bash scripts/gig/01_plan_mode.sh
 bash scripts/gig/02_execute.sh
 
 # Phase 3: Validate (T-24 to T-20)
-bash scripts/gig/03_validate_pool.sh
+# Use the exact "Resolved execute run directory" printed by 02_execute.sh
+RUN_DIR="/absolute/path/to/gig_2026_03_13_<timestamp>"
+bash scripts/gig/03_validate_pool.sh "$RUN_DIR"
 # After validation passes, manually create POOL_VERIFIED.txt
 
 # Phase 4: Import to Rekordbox and curate (T-20 to T-8)
@@ -91,6 +93,7 @@ scripts/gig/
 - **Script:** `02_execute.sh`
 
 ### Phase 3: Validate Pool (T-24 to T-20)
+- Validate the exact canonical execute run directory
 - Check for zero-byte files
 - Check for truncated files
 - Check for non-MP3 files
@@ -182,6 +185,7 @@ Do NOT export USBs unless:
 ## References
 
 - [GIG_EXECUTION_PLAN_v3.3.md](./GIG_EXECUTION_PLAN_v3.3.md) - Complete detailed plan
-- [tagslut dj documentation](../dj/) - DJ subsystem docs
+- [DJ_WORKFLOW.md](../DJ_WORKFLOW.md) - DJ subsystem workflow docs
+- [DJ_POOL.md](../DJ_POOL.md) - DJ pool contract and boundaries
 - [pool-wizard CLI command](../../tagslut/cli/commands/dj.py) - CLI entry point (`dj pool-wizard` subcommand)
 - [pool-wizard implementation](../../tagslut/exec/dj_pool_wizard.py) - Core execution logic

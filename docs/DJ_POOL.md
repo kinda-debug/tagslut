@@ -69,7 +69,15 @@ Tracks selected for the DJ pool must resolve to a preferred asset.
 
 ## Pool Builder (B2)
 
-Primary implementation:
+Primary operator entrypoint:
+
+`poetry run tagslut dj pool-wizard`
+
+Live workflow implementation:
+
+`tagslut/exec/dj_pool_wizard.py`
+
+Lower-level builder:
 
 `scripts/dj/build_pool_v3.py`
 
@@ -99,10 +107,14 @@ No files are modified.
 
 Example:
 
-```
-python scripts/dj/build_pool_v3.py \
-  --db <path> \
-  --out-dir <pool_dir>
+```bash
+poetry run tagslut dj pool-wizard \
+  --db "$TAGSLUT_DB" \
+  --master-root "$MASTER_LIBRARY" \
+  --dj-cache-root "$DJ_LIBRARY" \
+  --out-root /tmp/dj_pool_runs \
+  --non-interactive \
+  --profile /path/to/profile.json
 ```
 
 ### Execute Mode
@@ -113,11 +125,15 @@ Execution must be explicit.
 
 Example:
 
-```
-python scripts/dj/build_pool_v3.py \
-  --db <path> \
-  --out-dir <pool_dir> \
-  --execute
+```bash
+poetry run tagslut dj pool-wizard \
+  --db "$TAGSLUT_DB" \
+  --master-root "$MASTER_LIBRARY" \
+  --dj-cache-root "$DJ_LIBRARY" \
+  --out-root /tmp/dj_pool_runs \
+  --execute \
+  --non-interactive \
+  --profile /path/to/profile.json
 ```
 
 Make targets may wrap this behavior.

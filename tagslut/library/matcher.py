@@ -58,6 +58,7 @@ class TrackQuery:
     file_path: str | None = None
     isrc: str | None = None
     fingerprint: str | None = None
+    spotify_id: str | None = None
 
 
 @dataclass
@@ -235,6 +236,16 @@ class TrackMatcher:
                     track=track,
                     score=1.0,
                     reasons=["exact isrc alias hit"],
+                    alias_hit=True,
+                )
+
+        if query.spotify_id:
+            track = self._lookup_alias_track("spotify_id", query.spotify_id)
+            if track is not None:
+                return MatchResult(
+                    track=track,
+                    score=1.0,
+                    reasons=["exact spotify_id alias hit"],
                     alias_hit=True,
                 )
         return None

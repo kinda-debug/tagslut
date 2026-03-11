@@ -6,6 +6,10 @@ from typing import Any, Protocol
 from tagslut.library.matcher import TrackQuery
 
 
+class ProviderConfigError(Exception):
+    """Raised when a provider is missing required configuration."""
+
+
 @dataclass(frozen=True)
 class RawResult:
     provider: str

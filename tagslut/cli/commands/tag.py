@@ -34,9 +34,10 @@ from tagslut.library.models import (
     TrackAlias,
     TrackFile,
 )
-from tagslut.library.repositories import record_audit_event
+from tagslut.library.repositories import get_track_by_alias, record_audit_event, upsert_track_alias
 from tagslut.tag.providers import get_provider
-from tagslut.tag.providers.base import FieldCandidate, RawResult
+from tagslut.tag.providers.base import FieldCandidate, ProviderConfigError, RawResult
+from tagslut.tag.providers.spotify import SpotifyProvider
 from tagslut.tag.rekordbox_compat import REKORDBOX_TESTED_FIELDS, REKORDBOX_XML_FIELD_MAP
 from tagslut.utils.config import get_config
 
@@ -60,6 +61,12 @@ class _AutoApprovalDecision:
     winner_id: str | None
     status_by_candidate_id: dict[str, str]
     rationale_by_candidate_id: dict[str, dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class _BatchWorkItem:
+    provenance: SourceProvenance
+    track: Track | None
 
 
 def _utcnow() -> datetime:
@@ -87,26 +94,39 @@ def _create_job_run(session: Session, *, job_type: str, dry_run: bool) -> JobRun
     return job_run
 
 
-def _tracks_for_batch(session: Session, batch_id: str) -> list[Track]:
-    return list(
+def _batch_items_for_batch(session: Session, batch_id: str) -> list[_BatchWorkItem]:
+    rows = list(
         session.scalars(
-            select(Track)
-            .join(SourceProvenance, SourceProvenance.track_id == Track.id)
+            select(SourceProvenance)
             .where(
-                Track.status == "active",
                 SourceProvenance.source_type.in_(_BATCH_SOURCE_TYPES),
                 SourceProvenance.source_key == batch_id,
             )
             .options(
-                selectinload(Track.aliases),
-                selectinload(Track.files),
+                selectinload(SourceProvenance.track).selectinload(Track.aliases),
+                selectinload(SourceProvenance.track).selectinload(Track.files),
             )
-            .order_by(Track.created_at.asc())
+            .order_by(SourceProvenance.first_seen_at.asc(), SourceProvenance.id.asc())
         )
     )
+    items: list[_BatchWorkItem] = []
+    for provenance in rows:
+        track = provenance.track
+        if track is not None and track.status != "active":
+            continue
+        items.append(_BatchWorkItem(provenance=provenance, track=track))
+    return items
 
 
-def _build_track_query(track: Track) -> TrackQuery:
+def _build_track_query(item: _BatchWorkItem) -> TrackQuery:
+    if item.track is None:
+        return TrackQuery(
+            title="",
+            artist="",
+            spotify_id=item.provenance.payload_ref or None,
+        )
+
+    track = item.track
     aliases_by_type = {alias.alias_type: alias.value for alias in track.aliases}
     preferred_file = next(
         (
@@ -130,6 +150,7 @@ def _build_track_query(track: Track) -> TrackQuery:
             if track_file is not None and track_file.acoustic_fingerprint
             else (track_file.file_hash_sha256 if track_file is not None else None)
         ),
+        spotify_id=aliases_by_type.get("spotify_id"),
     )
 
 
@@ -149,6 +170,7 @@ def _match_query_for_raw(
     artist = _first_field_value(field_candidates, "canonical_artist_credit")
     isrc = _first_field_value(field_candidates, "isrc")
     file_path = _first_field_value(field_candidates, "file_path")
+    spotify_id = _first_field_value(field_candidates, "spotify_id")
     fingerprint = (
         _first_field_value(field_candidates, "fingerprint")
         or _first_field_value(field_candidates, "acoustic_fingerprint")
@@ -164,6 +186,7 @@ def _match_query_for_raw(
         file_path=str(file_path) if isinstance(file_path, str) else source_query.file_path,
         isrc=str(isrc) if isinstance(isrc, str) else source_query.isrc,
         fingerprint=str(fingerprint) if isinstance(fingerprint, str) else source_query.fingerprint,
+        spotify_id=str(spotify_id) if isinstance(spotify_id, str) else source_query.spotify_id,
     )
 
 
@@ -202,7 +225,7 @@ def _insert_match_candidate(
 def _insert_metadata_candidate(
     session: Session,
     *,
-    track_id: str,
+    track_id: str | None,
     raw_result_id: str,
     field_candidate: FieldCandidate,
     status: str = "pending",
@@ -247,6 +270,12 @@ def _candidate_rows_for_batch(
 
 def _value_key(value: Any) -> str:
     return json.dumps(value, ensure_ascii=True, sort_keys=True)
+
+
+def _candidate_group_track_key(candidate: MetadataCandidate) -> str:
+    if candidate.track_id is not None:
+        return candidate.track_id
+    return f"raw:{candidate.raw_result_id}"
 
 
 def _resolve_auto_approval(
@@ -303,9 +332,9 @@ def _resolve_auto_approval(
 
 
 def _apply_auto_approval_rules(session: Session, batch_id: str) -> None:
-    grouped: dict[tuple[str | None, str], list[tuple[MetadataCandidate, RawProviderResult]]] = defaultdict(list)
+    grouped: dict[tuple[str, str], list[tuple[MetadataCandidate, RawProviderResult]]] = defaultdict(list)
     for candidate, raw_result in _candidate_rows_for_batch(session, batch_id):
-        grouped[(candidate.track_id, candidate.field_name)].append((candidate, raw_result))
+        grouped[(_candidate_group_track_key(candidate), candidate.field_name)].append((candidate, raw_result))
 
     for candidates in grouped.values():
         decision = _resolve_auto_approval(candidates)
@@ -351,7 +380,7 @@ def run_tag_fetch(
 
     session_factory = _session_factory(db_url)
     with session_factory() as session:
-        tracks = _tracks_for_batch(session, batch_id)
+        items = _batch_items_for_batch(session, batch_id)
         matcher = TrackMatcher(session)
         job_run = _create_job_run(session, job_type="tag_fetch", dry_run=dry_run)
 
@@ -359,9 +388,12 @@ def run_tag_fetch(
         metadata_candidate_count = 0
         match_candidate_count = 0
 
-        for track in tracks:
-            track_query = _build_track_query(track)
-            raw_results = provider.search(track_query)
+        for item in items:
+            track_query = _build_track_query(item)
+            try:
+                raw_results = provider.search(track_query)
+            except ProviderConfigError as exc:
+                raise click.ClickException(str(exc)) from exc
             track_raw_count = 0
             track_metadata_count = 0
             track_match_count = 0
@@ -371,6 +403,14 @@ def run_tag_fetch(
                 match_result = matcher.match(
                     _match_query_for_raw(track_query, raw_result, field_candidates)
                 )
+                resolved_track = item.track or match_result.track
+                if (
+                    not dry_run
+                    and item.track is None
+                    and match_result.track is not None
+                    and item.provenance.track_id is None
+                ):
+                    item.provenance.track_id = match_result.track.id
                 track_raw_count += 1
                 track_metadata_count += len(field_candidates)
                 if match_result.track is not None:
@@ -388,7 +428,7 @@ def run_tag_fetch(
                 for field_candidate in field_candidates:
                     _insert_metadata_candidate(
                         session,
-                        track_id=track.id,
+                        track_id=resolved_track.id if resolved_track is not None else None,
                         raw_result_id=raw_row.id,
                         field_candidate=field_candidate,
                     )
@@ -399,8 +439,8 @@ def run_tag_fetch(
             record_audit_event(
                 session,
                 job_run.id,
-                "track",
-                track.id,
+                "track" if item.track is not None else "source_provenance",
+                item.track.id if item.track is not None else item.provenance.id,
                 "tag_fetch_preview" if dry_run else "tag_fetch",
                 {
                     "batch_id": batch_id,
@@ -425,7 +465,7 @@ def run_tag_fetch(
             _job_summary_payload(
                 batch_id=batch_id,
                 provider_name=provider.name,
-                tracks_seen=len(tracks),
+                tracks_seen=len(items),
                 raw_results=raw_result_count,
                 metadata_candidates=metadata_candidate_count,
                 match_candidates=match_candidate_count,
@@ -433,6 +473,76 @@ def run_tag_fetch(
         )
         session.commit()
         return job_run
+
+
+def _upsert_batch_source_provenance(
+    session: Session,
+    *,
+    batch_id: str,
+    track_id: str | None,
+    payload_ref: str,
+) -> None:
+    existing = session.scalar(
+        select(SourceProvenance).where(
+            SourceProvenance.source_type == "tag_batch",
+            SourceProvenance.source_key == batch_id,
+            SourceProvenance.payload_ref == payload_ref,
+        )
+    )
+    if existing is not None:
+        if existing.track_id is None and track_id is not None:
+            existing.track_id = track_id
+        return
+
+    session.add(
+        SourceProvenance(
+            track_id=track_id,
+            source_type="tag_batch",
+            source_key=batch_id,
+            payload_ref=payload_ref,
+        )
+    )
+    session.flush()
+
+
+def run_tag_batch_create(
+    source: str,
+    playlist_id: str,
+    batch_id: str,
+    *,
+    db_url: str | None = None,
+) -> int:
+    if source != "spotify-playlist":
+        raise click.ClickException(f"Unsupported batch source: {source}")
+
+    provider = SpotifyProvider()
+    try:
+        playlist_tracks = provider.fetch_playlist_tracks(playlist_id)
+    except ProviderConfigError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    session_factory = _session_factory(db_url)
+    queued = 0
+    with session_factory() as session:
+        for track_payload in playlist_tracks:
+            spotify_track_id = track_payload.get("id")
+            if not isinstance(spotify_track_id, str) or not spotify_track_id.strip():
+                continue
+            track = get_track_by_alias(
+                session,
+                alias_type="spotify_id",
+                value=spotify_track_id.strip(),
+                provider="spotify",
+            )
+            _upsert_batch_source_provenance(
+                session,
+                batch_id=batch_id,
+                track_id=track.id if track is not None else None,
+                payload_ref=spotify_track_id.strip(),
+            )
+            queued += 1
+        session.commit()
+    return queued
 
 
 def _review_grouped_candidates(
@@ -555,6 +665,58 @@ def _choose_candidate_for_apply(candidates: list[MetadataCandidate]) -> Metadata
     return max(candidates, key=lambda candidate: (candidate.confidence, candidate.id))
 
 
+def _apply_metadata_candidate(session: Session, winner: MetadataCandidate) -> tuple[bool, str]:
+    if winner.track_id is None:
+        return False, "skipped_unlinked"
+
+    if winner.field_name == "spotify_id":
+        value = winner.normalized_value_json
+        if not isinstance(value, str) or not value.strip():
+            return False, "skipped_invalid_alias"
+        upsert_track_alias(
+            session,
+            TrackAlias(
+                track_id=winner.track_id,
+                alias_type="spotify_id",
+                value=value.strip(),
+                provider="spotify",
+                source="tag_fetch",
+                confidence=winner.confidence,
+            ),
+        )
+        return True, "alias_upserted"
+
+    existing = session.scalar(
+        select(ApprovedMetadata).where(
+            ApprovedMetadata.track_id == winner.track_id,
+            ApprovedMetadata.field_name == winner.field_name,
+        )
+    )
+    if existing is None:
+        session.add(
+            ApprovedMetadata(
+                track_id=winner.track_id,
+                field_name=winner.field_name,
+                value_json=winner.normalized_value_json,
+                approved_from_candidate_id=winner.id,
+                approved_by=str(winner.rationale_json.get("approved_by") or "auto"),
+                approved_at=_utcnow(),
+                is_user_override=bool(winner.is_user_override),
+            )
+        )
+        return True, "inserted"
+
+    if winner.is_user_override:
+        existing.value_json = winner.normalized_value_json
+        existing.approved_from_candidate_id = winner.id
+        existing.approved_by = str(winner.rationale_json.get("approved_by") or "override")
+        existing.approved_at = _utcnow()
+        existing.is_user_override = True
+        return True, "overridden"
+
+    return False, "skipped_existing"
+
+
 def run_tag_apply(batch_id: str, *, db_url: str | None = None) -> JobRun:
     session_factory = _session_factory(db_url)
 
@@ -564,37 +726,7 @@ def run_tag_apply(batch_id: str, *, db_url: str | None = None) -> JobRun:
 
         for (track_id, field_name), candidates in _approved_candidate_groups(session, batch_id).items():
             winner = _choose_candidate_for_apply(candidates)
-            existing = session.scalar(
-                select(ApprovedMetadata).where(
-                    ApprovedMetadata.track_id == track_id,
-                    ApprovedMetadata.field_name == field_name,
-                )
-            )
-
-            applied = False
-            action = "skipped_existing"
-            if existing is None:
-                session.add(
-                    ApprovedMetadata(
-                        track_id=track_id,
-                        field_name=field_name,
-                        value_json=winner.normalized_value_json,
-                        approved_from_candidate_id=winner.id,
-                        approved_by=str(winner.rationale_json.get("approved_by") or "auto"),
-                        approved_at=_utcnow(),
-                        is_user_override=bool(winner.is_user_override),
-                    )
-                )
-                applied = True
-                action = "inserted"
-            elif winner.is_user_override:
-                existing.value_json = winner.normalized_value_json
-                existing.approved_from_candidate_id = winner.id
-                existing.approved_by = str(winner.rationale_json.get("approved_by") or "override")
-                existing.approved_at = _utcnow()
-                existing.is_user_override = True
-                applied = True
-                action = "overridden"
+            applied, action = _apply_metadata_candidate(session, winner)
 
             record_audit_event(
                 session,
@@ -998,6 +1130,19 @@ def register_tag_group(cli: click.Group) -> None:
         job_run = run_tag_fetch(provider_name, batch_id, dry_run=dry_run)
         click.echo(f"Job: {job_run.id}")
         click.echo(f"Status: {job_run.status}")
+
+    @tag.command("batch-create")
+    @click.option(
+        "--source",
+        required=True,
+        type=click.Choice(["spotify-playlist"], case_sensitive=False),
+        help="Batch source type",
+    )
+    @click.option("--playlist-id", required=True, help="Spotify playlist identifier")
+    @click.option("--batch", "batch_id", required=True, help="Batch identifier")
+    def tag_batch_create_command(source: str, playlist_id: str, batch_id: str) -> None:  # type: ignore[misc]
+        queued = run_tag_batch_create(source, playlist_id, batch_id)
+        click.echo(f"Created batch {batch_id}: {queued} tracks queued.")
 
     @tag.command("review")
     @click.option("--batch", "batch_id", required=True, help="Batch identifier")

@@ -1,3 +1,7 @@
+# DEPRECATED: This script's tagging behavior is superseded by
+# `tagslut tag fetch --provider spotify`. This file will be removed
+# in a future cleanup pass.
+
 """
 Spotify API provider.
 

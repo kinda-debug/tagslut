@@ -94,7 +94,12 @@ class TrackAlias(Base):
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    track_id: Mapped[str] = mapped_column(String(36), ForeignKey("track.id"), nullable=False, index=True)
+    track_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("track.id"),
+        nullable=True,
+        index=True,
+    )
     alias_type: Mapped[str] = mapped_column(String(64), nullable=False)
     value: Mapped[str] = mapped_column(String(1024), nullable=False)
     provider: Mapped[str] = mapped_column(String(128), nullable=False, default="")
@@ -114,7 +119,12 @@ class TrackFile(Base):
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    track_id: Mapped[str] = mapped_column(String(36), ForeignKey("track.id"), nullable=False, index=True)
+    track_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("track.id"),
+        nullable=True,
+        index=True,
+    )
     path: Mapped[str] = mapped_column(String(2048), nullable=False, unique=True)
     file_hash_sha256: Mapped[str | None] = mapped_column(String(64))
     acoustic_fingerprint: Mapped[str | None] = mapped_column(Text())
@@ -147,13 +157,18 @@ class SourceProvenance(Base):
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    track_id: Mapped[str] = mapped_column(String(36), ForeignKey("track.id"), nullable=False, index=True)
+    track_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("track.id"),
+        nullable=True,
+        index=True,
+    )
     source_type: Mapped[str] = mapped_column(String(64), nullable=False)
     source_key: Mapped[str] = mapped_column(String(255), nullable=False)
     payload_ref: Mapped[str | None] = mapped_column(String(2048))
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
-    track: Mapped[Track] = relationship(back_populates="source_provenance")
+    track: Mapped[Track | None] = relationship(back_populates="source_provenance")
 
 
 class JobRun(Base):

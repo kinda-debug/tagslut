@@ -392,6 +392,41 @@ class TokenManager:
         logger.debug("No Beatport token configured; falling back to public endpoints.")
         return None
 
+    def refresh_spotify_token(self) -> Optional[TokenInfo]:
+        """Refresh Spotify access token using stored client credentials."""
+        creds = self.get_credentials("spotify")
+        client_id = creds.get("client_id", "")
+        client_secret = creds.get("client_secret", "")
+        if not client_id or not client_secret:
+            logger.error("Spotify not configured. Add client_id/client_secret to tokens.json.")
+            return None
+
+        try:
+            response = httpx.post(
+                "https://accounts.spotify.com/api/token",
+                data={"grant_type": "client_credentials"},
+                auth=(client_id, client_secret),
+                timeout=30.0,
+            )
+            response.raise_for_status()
+
+            data = response.json()
+            expires_at = time.time() + data.get("expires_in", 3600)
+            self.set_token(
+                "spotify",
+                access_token=data["access_token"],
+                expires_at=expires_at,
+                token_type=data.get("token_type", "Bearer"),
+                client_id=client_id,
+                client_secret=client_secret,
+            )
+            logger.info("Refreshed Spotify token (expires in %ds)", data.get("expires_in", 3600))
+            return self.get_token("spotify")
+
+        except httpx.HTTPError as e:
+            logger.error("Failed to refresh Spotify token: %s", e)
+            return None
+
     def login_qobuz(self, email: str, password: str, app_id: Optional[str] = None) -> Optional[TokenInfo]:
         """
         Login to Qobuz with email/password to get user_auth_token.
@@ -459,6 +494,7 @@ class TokenManager:
         Ensure we have a valid token for a provider.
 
         Refreshes if expired or missing. Supports auto-refresh for:
+        - spotify (client credentials) - needs client_id + client_secret
         - tidal (refresh token) - needs initial device auth, then auto-refreshes
         - beatport (client credentials) - needs client_id + client_secret
 
@@ -472,7 +508,9 @@ class TokenManager:
         token = self.get_token(provider)
 
         if token is None or token.is_expired:
-            if provider == "tidal":
+            if provider == "spotify":
+                return self.refresh_spotify_token()
+            elif provider == "tidal":
                 # Tidal needs refresh_token from device auth
                 if self._tokens.get("tidal", {}).get("refresh_token"):
                     return self.refresh_tidal_token()
@@ -501,7 +539,7 @@ class TokenManager:
 
     def status(self) -> Dict[str, Dict[str, Any]]:
         """Get status of all configured providers."""
-        all_providers = ["beatport", "tidal", "qobuz", "itunes", "apple_music"]
+        all_providers = ["spotify", "beatport", "tidal", "qobuz", "itunes", "apple_music"]
         result = {}
 
         for provider in all_providers:
@@ -552,6 +590,8 @@ class TokenManager:
             # Add auth type info
             if provider == "beatport":
                 result[provider]["auth_type"] = "client_credentials"
+            elif provider == "spotify":
+                result[provider]["auth_type"] = "client_credentials"
             elif provider == "tidal":
                 result[provider]["auth_type"] = "device_auth"
             elif provider == "qobuz":
@@ -574,6 +614,11 @@ class TokenManager:
         - Or manually copy refresh_token from another authenticated session
         """
         template = {
+            "spotify": {
+                "_comment": "Add client_id/client_secret from https://developer.spotify.com/dashboard",
+                "client_id": "",
+                "client_secret": "",
+            },
             "beatport": {
                 "_comment": "Get credentials from https://api.beatport.com (if you have access)",
                 "client_id": "",
@@ -609,6 +654,12 @@ class TokenManager:
 
     def is_configured(self, provider: str) -> bool:
         """Check if a provider is properly configured for use."""
+        if provider == "spotify":
+            if provider not in self._tokens:
+                return False
+            data = self._tokens[provider]
+            return bool(data.get("client_id")) and bool(data.get("client_secret"))
+
         if provider == "itunes":
             return True  # Always configured (public API)
 

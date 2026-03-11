@@ -69,7 +69,7 @@ _ENHARMONIC_ALIASES = {
     "Ab minor": "G# minor",
 }
 
-_CAMELOT_PATTERN = re.compile(r"^(?:[1-9]|1[0-2])[AB]$")
+_CAMELOT_PATTERN = re.compile(r"^(?:[1-9]|1[0-2])[AB]$", re.IGNORECASE)
 
 
 def normalize_key(raw: str | None) -> str | None:

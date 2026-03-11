@@ -1,0 +1,11 @@
+{
+  "pool_name": "gig_2026_03_13",
+  "layout": "by_role",
+  "filename_template": "{artist} - {title}.mp3",
+  "require_flac_ok": true,
+  "integrity_states": ["ok"],
+  "require_artist_title": false,
+  "only_profiled": false,
+  "create_playlist": false,
+  "pool_overwrite_policy": "always"
+}

@@ -1,0 +1,28 @@
+# SCOPE FREEZE — Gig 2026-03-13
+
+This gig window is frozen to the following scope. Any deviation requires explicit re-approval.
+
+## In Scope
+- One executed MP3 pool from MASTER_LIBRARY
+- One Rekordbox import from that pool only
+- Five intent playlists (PRIME, CLUB RESERVE, BRIDGE, FAMILIAR VOCALS, EMERGENCY)
+- Seven time-of-night playlists (Warmup through Closing)
+- Two verified USBs
+
+## Explicitly Out of Scope
+- No schema work or DB migrations
+- No tag refactoring campaigns
+- No DB cleanup operations
+- No new tooling development
+- No last-mile Rekordbox automation attempts
+- No modifications to MASTER_LIBRARY structure or content
+- No parallel digging projects
+- No architectural experiments
+
+## Small-Adds Lane (Controlled Exception)
+- Maximum 10-15 tracks for clear gaps in BRIDGE, FAMILIAR VOCALS, or EMERGENCY only
+- Cut off at T-24 (24 hours before gig)
+- Requires plan mode rerun and re-evaluation before execute
+
+Scope frozen: 2026-03-11
+Gig date: 2026-03-13

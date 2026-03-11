@@ -42,7 +42,8 @@ def _create_files_table(conn: sqlite3.Connection) -> None:
             acoustid TEXT,
             is_dj_material INTEGER DEFAULT 0,
             duration_status TEXT,
-            dj_pool_path TEXT
+            dj_pool_path TEXT,
+            dj_set_role TEXT
         );
         """
     )
@@ -87,6 +88,7 @@ def insert_track(
     year: int | None = 2023,
     rating: int | None = None,
     energy: int | None = None,
+    dj_set_role: str | None = None,
     set_role: str | None = None,
     flac_ok: int = 1,
     integrity_state: str = "ok",
@@ -94,8 +96,8 @@ def insert_track(
     uid = int(hashlib.md5(path.encode("utf-8")).hexdigest()[:8], 16) % 100000
 
     conn.execute(
-        "INSERT OR IGNORE INTO files (path, is_dj_material, dj_pool_path) VALUES (?, ?, ?)",
-        (path, is_dj_material, dj_pool_path),
+        "INSERT OR IGNORE INTO files (path, is_dj_material, dj_pool_path, dj_set_role) VALUES (?, ?, ?, ?)",
+        (path, is_dj_material, dj_pool_path, dj_set_role),
     )
     conn.execute(
         """
@@ -422,6 +424,48 @@ def test_select_filter_only_profiled(wizard_db: sqlite3.Connection) -> None:
     assert [row["master_path"] for row in result] == ["/MASTER/a.flac"]
 
 
+def test_select_filter_only_roles(wizard_db: sqlite3.Connection) -> None:
+    insert_track(
+        wizard_db,
+        "/MASTER/a.flac",
+        is_dj_material=1,
+        identity_id=1,
+        dj_set_role="groove",
+    )
+    insert_track(
+        wizard_db,
+        "/MASTER/b.flac",
+        is_dj_material=1,
+        identity_id=2,
+        dj_set_role="prime",
+    )
+    insert_track(
+        wizard_db,
+        "/MASTER/c.flac",
+        is_dj_material=1,
+        identity_id=3,
+        dj_set_role=None,
+    )
+
+    result = wizard.select_flagged_master_paths(
+        wizard_db, MASTER, {"only_roles": ["groove", "prime"]}
+    )
+    assert [row["master_path"] for row in result] == ["/MASTER/a.flac", "/MASTER/b.flac"]
+
+
+def test_select_filter_only_roles_invalid_value_raises_before_query() -> None:
+    class QueryFailConnection:
+        def execute(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+            raise AssertionError("unexpected DB query")
+
+    with pytest.raises(ValueError, match="Invalid only_roles value"):
+        wizard.select_flagged_master_paths(
+            QueryFailConnection(),  # type: ignore[arg-type]
+            MASTER,
+            {"only_roles": ["groove", "emergency"]},
+        )
+
+
 def test_resolve_prefers_relink_over_legacy(tmp_path: Path, wizard_db: sqlite3.Connection) -> None:
     relink_path = tmp_path / "relink.mp3"
     relink_path.write_bytes(b"new")
@@ -510,7 +554,7 @@ def test_build_flat_layout(tmp_path: Path) -> None:
             "title": "Track B",
             "genre": "House",
             "label": "X",
-            "dj_set_role": "peak",
+            "dj_set_role": "groove",
         },
         {"layout": "flat"},
     )
@@ -526,7 +570,7 @@ def test_build_layout_variants(tmp_path: Path) -> None:
     )
     role_dest = wizard.build_pool_dest_path(
         tmp_path,
-        {"artist": "DJ A", "title": "Track B", "genre": "House", "label": "X", "dj_set_role": "peak"},
+        {"artist": "DJ A", "title": "Track B", "genre": "House", "label": "X", "dj_set_role": "groove"},
         {"layout": "by_role"},
     )
     label_dest = wizard.build_pool_dest_path(
@@ -535,8 +579,30 @@ def test_build_layout_variants(tmp_path: Path) -> None:
         {"layout": "by_label"},
     )
     assert "Techno" in str(genre_dest)
-    assert "peak" in str(role_dest)
+    assert "groove" in str(role_dest)
     assert "Drumcode" in str(label_dest)
+
+
+def test_build_by_role_null_role_routes_to_unassigned_with_warning(
+    caplog: pytest.LogCaptureFixture,
+    tmp_path: Path,
+) -> None:
+    with caplog.at_level("WARNING"):
+        dest = wizard.build_pool_dest_path(
+            tmp_path,
+            {
+                "master_path": "/MASTER/a.flac",
+                "artist": "DJ A",
+                "title": "Track B",
+                "genre": "House",
+                "label": "X",
+                "dj_set_role": None,
+            },
+            {"layout": "by_role"},
+        )
+
+    assert dest.parent == tmp_path / "pool" / "_unassigned"
+    assert "routing to _unassigned" in caplog.text
 
 
 def test_build_sanitizes_special_chars(tmp_path: Path) -> None:
@@ -938,6 +1004,102 @@ def test_integration_duplicate_identity_one_copy(tmp_path: Path, db_path: Path) 
         if line.strip()
     ]
     assert len(receipts) == 1
+
+
+@pytest.mark.integration
+def test_integration_by_role_creates_playlists_only_for_non_empty_roles(
+    tmp_path: Path,
+    db_path: Path,
+) -> None:
+    conn = open_db(db_path)
+    master_root = tmp_path / "MASTER"
+    rows = [
+        (1, "a.flac", "a.mp3", "Alpha", "Groove", "groove"),
+        (2, "b.flac", "b.mp3", "Beta", "Bridge", "bridge"),
+        (3, "c.flac", "c.mp3", "Gamma", "Unassigned", None),
+    ]
+    for identity_id, source_name, mp3_name, artist, title, dj_set_role in rows:
+        source_path = master_root / source_name
+        source_path.parent.mkdir(parents=True, exist_ok=True)
+        source_path.write_bytes(b"flac")
+        relink_mp3 = tmp_path / "cache" / mp3_name
+        relink_mp3.parent.mkdir(parents=True, exist_ok=True)
+        relink_mp3.write_bytes(b"x")
+        insert_track(
+            conn,
+            str(source_path),
+            is_dj_material=1,
+            identity_id=identity_id,
+            artist=artist,
+            title=title,
+            dj_set_role=dj_set_role,
+        )
+        conn.execute(
+            """
+            INSERT INTO provenance_event
+            (event_type, status, identity_id, source_path, dest_path, event_time)
+            VALUES ('dj_pool_relink', 'success', ?, ?, ?, CURRENT_TIMESTAMP)
+            """,
+            (identity_id, str(source_path), str(relink_mp3)),
+        )
+    conn.commit()
+    conn.close()
+
+    out_root = tmp_path / "out"
+    profile_path = tmp_path / "profile.json"
+    profile_path.write_text(
+        json.dumps(
+            {
+                "pool_name": "role-playlists",
+                "layout": "by_role",
+                "create_playlist": True,
+                "playlist_mode": "relative",
+                "pool_overwrite_policy": "always",
+            }
+        ),
+        encoding="utf-8",
+    )
+    result = CliRunner().invoke(
+        dj_group,
+        [
+            "pool-wizard",
+            "--db",
+            str(db_path),
+            "--master-root",
+            str(master_root),
+            "--dj-cache-root",
+            str(tmp_path / "DJ"),
+            "--out-root",
+            str(out_root),
+            "--execute",
+            "--non-interactive",
+            "--profile",
+            str(profile_path),
+        ],
+    )
+    assert result.exit_code == 0
+
+    run_dir = _run_dir(out_root)
+    pool_root = run_dir / "pool"
+    groove_playlist = pool_root / "10_GROOVE.m3u"
+    bridge_playlist = pool_root / "30_BRIDGE.m3u"
+    assert groove_playlist.exists()
+    assert bridge_playlist.exists()
+    assert not (pool_root / "20_PRIME.m3u").exists()
+    assert not (pool_root / "40_CLUB.m3u").exists()
+    assert not (run_dir / "playlist.m3u8").exists()
+
+    groove_lines = [
+        line for line in groove_playlist.read_text(encoding="utf-8").splitlines()
+        if line and not line.startswith("#")
+    ]
+    bridge_lines = [
+        line for line in bridge_playlist.read_text(encoding="utf-8").splitlines()
+        if line and not line.startswith("#")
+    ]
+    assert groove_lines == ["groove/Alpha_-_Groove.mp3"]
+    assert bridge_lines == ["bridge/Beta_-_Bridge.mp3"]
+    assert (pool_root / "_unassigned").is_dir()
 
 
 @pytest.mark.integration

@@ -11,6 +11,7 @@ from typing import Iterable
 
 import click
 
+from tagslut.cli.dj_role import role_group
 from tagslut.dj.curation import load_dj_curation_config, resolve_track_override
 from tagslut.dj.export import get_audio_duration, plan_export, run_export
 from tagslut.dj.lexicon import (
@@ -236,6 +237,9 @@ def _lexicon_tracks(output_root: Path) -> list[dict]:  # type: ignore  # TODO: m
 @click.group("dj")
 def dj_group() -> None:
     """DJ library curation and USB export commands."""
+
+
+dj_group.add_command(role_group, name="role")
 
 
 @dj_group.command("curate")

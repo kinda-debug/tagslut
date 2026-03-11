@@ -789,6 +789,46 @@ def get_all_checksums(conn: sqlite3.Connection) -> List[str]:
     return [row["checksum"] for row in cursor.fetchall()]
 
 
+def query_dj_candidates(
+    conn: sqlite3.Connection,
+    *,
+    unassigned_only: bool = False,
+    bpm_min: float | None = None,
+    bpm_max: float | None = None,
+) -> List[sqlite3.Row]:
+    """Return DJ role candidate rows from the legacy files table."""
+    clauses = ["(is_dj_material = 1 OR dj_flag = 1)"]
+    params: list[object] = []
+
+    if unassigned_only:
+        clauses.append("dj_set_role IS NULL")
+    if bpm_min is not None:
+        clauses.append("bpm >= ?")
+        params.append(float(bpm_min))
+    if bpm_max is not None:
+        clauses.append("bpm <= ?")
+        params.append(float(bpm_max))
+
+    cursor = conn.execute(
+        f"""
+        SELECT
+            path,
+            canonical_artist AS artist,
+            canonical_title AS title,
+            bpm,
+            COALESCE(key_camelot, canonical_key) AS key_camelot,
+            COALESCE(genre, canonical_genre) AS genre,
+            dj_set_role,
+            dj_subrole
+        FROM files
+        WHERE {" AND ".join(clauses)}
+        ORDER BY path
+        """,
+        params,
+    )
+    return cast(List[sqlite3.Row], cursor.fetchall())
+
+
 def _row_to_audiofile(row: sqlite3.Row) -> AudioFile:
     """Helper to convert a DB row back to an AudioFile object."""
     row_keys = set(row.keys())

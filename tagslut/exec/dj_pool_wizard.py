@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import logging
 import os
 import sqlite3
 from datetime import datetime
@@ -11,10 +12,20 @@ import shutil
 
 import click
 from tagslut.exec.transcoder import transcode_to_mp3_from_snapshot
+from tagslut.storage.models import DJ_SET_ROLES
 from tagslut.storage.v3 import record_provenance_event, resolve_asset_id_by_path
 from tagslut.storage.v3.analysis_service import resolve_dj_tag_snapshot
 
 WIZARD_VERSION = "0.1.0"
+logger = logging.getLogger(__name__)
+_ROLE_PLAYLIST_PRIORITY = ("groove", "prime", "bridge", "club")
+_ROLE_PLAYLIST_ORDER = tuple(role for role in _ROLE_PLAYLIST_PRIORITY if role in DJ_SET_ROLES) + tuple(
+    sorted(DJ_SET_ROLES.difference(_ROLE_PLAYLIST_PRIORITY))
+)
+_ROLE_PLAYLIST_FILENAMES = {
+    role: f"{index * 10}_{role.upper()}.m3u"
+    for index, role in enumerate(_ROLE_PLAYLIST_ORDER, start=1)
+}
 
 
 def sanitize_component(value: str | None) -> str:
@@ -44,6 +55,51 @@ def _failure(row: dict, error_type: str, message: str) -> dict:
         "error_message": message,
         "timestamp": _iso_now(),
     }
+
+
+def _normalize_dj_set_role(value: object) -> str | None:
+    role = str(value or "").strip().lower()
+    if not role:
+        return None
+    if role not in DJ_SET_ROLES:
+        return None
+    return role
+
+
+def _validated_only_roles(profile: dict) -> tuple[bool, list[str]]:
+    raw_roles = profile.get("only_roles")
+    if raw_roles is None:
+        return False, []
+    if isinstance(raw_roles, str) or not isinstance(raw_roles, (list, tuple, set, frozenset)):
+        raise ValueError(
+            f"only_roles must be a list of DJ set roles: {sorted(DJ_SET_ROLES)}"
+        )
+
+    normalized: list[str] = []
+    for value in raw_roles:
+        role = str(value).strip().lower()
+        if not role:
+            continue
+        if role not in DJ_SET_ROLES:
+            raise ValueError(
+                f"Invalid only_roles value {role!r}. Allowed: {sorted(DJ_SET_ROLES)}"
+            )
+        if role not in normalized:
+            normalized.append(role)
+    return True, normalized
+
+
+def _role_subfolder(track: dict) -> Path:
+    role = _normalize_dj_set_role(track.get("dj_set_role"))
+    if role is not None:
+        return Path("pool") / role
+
+    logger.warning(
+        "Track %s has invalid or missing dj_set_role %r; routing to _unassigned",
+        track.get("master_path") or track.get("title") or "<unknown>",
+        track.get("dj_set_role"),
+    )
+    return Path("pool") / "_unassigned"
 
 
 def _build_cache_dest(run_dir: Path, row: dict, profile: dict) -> Path:
@@ -341,6 +397,7 @@ def select_flagged_master_paths(
     master_root: Path,
     profile: dict,
 ) -> list[dict]:
+    only_roles_supplied, only_roles = _validated_only_roles(profile)
     prefix = str(master_root).rstrip("/") + "/%"
     files_has_duration_status = _column_exists(conn, "files", "duration_status")
 
@@ -348,6 +405,7 @@ def select_flagged_master_paths(
         "f.path AS master_path",
         "f.is_dj_material",
         "f.dj_pool_path",
+        "f.dj_set_role",
     ]
     if files_has_duration_status:
         select_columns.append("f.duration_status")
@@ -367,7 +425,7 @@ def select_flagged_master_paths(
             "ti.canonical_year AS year",
             "dj.rating AS dj_rating",
             "dj.energy AS dj_energy",
-            "dj.set_role AS dj_set_role",
+            "dj.set_role AS profile_set_role",
         ]
     )
 
@@ -473,6 +531,14 @@ def select_flagged_master_paths(
         query.append("  AND dj.energy >= ?")
         params.append(int(min_energy))
 
+    if only_roles_supplied:
+        if only_roles:
+            placeholders = ", ".join("?" for _ in only_roles)
+            query.append(f"  AND f.dj_set_role IN ({placeholders})")
+            params.extend(only_roles)
+        else:
+            query.append("  AND 0")
+
     set_role_include = [str(value) for value in (profile.get("set_role_include") or []) if str(value).strip()]
     if set_role_include:
         placeholders = ", ".join("?" for _ in set_role_include)
@@ -500,7 +566,6 @@ def build_pool_dest_path(
     title = sanitize_component(track.get("title") or "Unknown Title")
     genre = sanitize_component(track.get("genre") or "Unknown Genre")
     label = sanitize_component(track.get("label") or "Unknown Label")
-    role = sanitize_component(track.get("dj_set_role") or "Unknown Role")
 
     filename = template.format(artist=artist, title=title)
     if not filename.endswith(".mp3"):
@@ -512,7 +577,7 @@ def build_pool_dest_path(
     elif layout == "by_genre":
         subfolder = Path("pool") / genre
     elif layout == "by_role":
-        subfolder = Path("pool") / role
+        subfolder = _role_subfolder(track)
     elif layout == "by_label":
         subfolder = Path("pool") / label
     else:
@@ -541,13 +606,18 @@ def plan_actions(
         has_identity = identity_id is not None
 
         if has_identity:
-            source_type, source_path, _event_id, source_warning = resolve_mp3_source(
+            source_info = resolve_mp3_source(
                 conn,
                 track["master_path"],
                 int(identity_id),
             )
+            source_type, source_path, source_warning = (
+                source_info[0],
+                source_info[1],
+                source_info[3],
+            )
         else:
-            source_type, source_path, event_id, source_warning = ("none", None, None, None)
+            source_type, source_path, source_warning = ("none", None, None)
 
         identity_key = str(identity_id) if identity_id is not None else None
         if identity_key is not None and identity_key in seen_identities:
@@ -870,6 +940,7 @@ def build_pool_manifest(
             "playlist_rel_path": None,
             "bpm": row.get("bpm"),
             "musical_key": row.get("musical_key"),
+            "dj_set_role": row.get("dj_set_role"),
             "energy_1_10": receipt.get("energy_1_10"),
             "bpm_source": receipt.get("bpm_source"),
             "key_source": receipt.get("key_source"),
@@ -922,6 +993,37 @@ def generate_playlist(
     playlist_path.write_text(
         "\n".join(lines) + "\n", encoding="utf-8"
     )
+
+
+def generate_role_playlists(
+    manifest: dict,
+    pool_root: Path,
+    mode: str,
+) -> list[Path]:
+    written: list[Path] = []
+    rows_by_role = {role: [] for role in _ROLE_PLAYLIST_ORDER}
+
+    for row in manifest["rows"]:
+        if row["status"] != "executed":
+            continue
+        if row.get("final_dest_path") is None:
+            continue
+        role = _normalize_dj_set_role(row.get("dj_set_role"))
+        if role is None:
+            continue
+        rows_by_role.setdefault(role, []).append(row)
+
+    for role in _ROLE_PLAYLIST_ORDER:
+        role_rows = rows_by_role.get(role) or []
+        if not role_rows:
+            continue
+
+        role_manifest = {"rows": role_rows}
+        playlist_path = pool_root / _ROLE_PLAYLIST_FILENAMES[role]
+        generate_playlist(role_manifest, playlist_path, mode=mode)
+        written.append(playlist_path)
+
+    return written
 
 
 def run_interactive_wizard(
@@ -1354,7 +1456,11 @@ def run_pool_wizard(
             json.dumps(dups, indent=2), encoding="utf-8"
         )
 
-        selected = select_flagged_master_paths(conn, master_root_resolved, profile)
+        try:
+            selected = select_flagged_master_paths(conn, master_root_resolved, profile)
+        except ValueError as exc:
+            click.echo(f"Error: {exc}", err=True)
+            return 2
 
         if not selected:
             if non_interactive:
@@ -1418,11 +1524,18 @@ def run_pool_wizard(
 
             if profile.get("create_playlist", False):
                 playlist_mode = profile.get("playlist_mode", "relative")
-                generate_playlist(
-                    manifest,
-                    run_dir / "playlist.m3u8",
-                    mode=playlist_mode,
-                )
+                if str(profile.get("layout", "by_genre") or "by_genre") == "by_role":
+                    generate_role_playlists(
+                        manifest,
+                        run_dir / "pool",
+                        mode=playlist_mode,
+                    )
+                else:
+                    generate_playlist(
+                        manifest,
+                        run_dir / "playlist.m3u8",
+                        mode=playlist_mode,
+                    )
 
         s = manifest["execution_summary"]
         click.echo(

@@ -26,6 +26,12 @@ from tagslut.storage.v3.identity_status import (
     summary_counts,
     upsert_identity_statuses,
 )
+from tagslut.storage.v3.identity_service import (
+    link_asset_to_identity,
+    mirror_identity_to_legacy,
+    resolve_active_identity,
+    resolve_or_create_identity,
+)
 from tagslut.storage.v3.dj_profile import (
     ensure_schema as ensure_dj_profile_schema,
     get_profile,
@@ -51,6 +57,10 @@ __all__ = [
     "doctor_v3",
     "ClassificationCandidate",
     "Phase2ClassificationPolicy",
+    "resolve_active_identity",
+    "resolve_or_create_identity",
+    "link_asset_to_identity",
+    "mirror_identity_to_legacy",
     "PreferredChoice",
     "compute_candidate_score",
     "choose_preferred_asset_for_identity",

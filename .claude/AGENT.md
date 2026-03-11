@@ -73,6 +73,7 @@ Before editing:
 1. Read the active docs relevant to the target area (at minimum from `docs/`).
 2. Read the source files that implement the behavior being changed.
 3. Confirm command/help behavior directly when changing CLI surface.
+4. Do not summarize or describe the contents of a file you have not opened.
 
 During edits:
 1. Prefer `tagslut/` and `tools/review/` for active logic.

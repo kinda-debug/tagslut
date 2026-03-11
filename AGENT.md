@@ -493,6 +493,7 @@ Do not:
 	•	chase `merged_into_id` outside the identity service
 	•	perform per-file `library_track_sources` lookups in loops when a bulk preload is possible
 	•	use filesystem discovery as the DJ candidate source once the Phase 1 gate is closed
+	•	summarize or describe the contents of a file you have not opened
 
 Required rule:
 	•	the filesystem stores audio

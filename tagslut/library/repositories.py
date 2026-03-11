@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from .models import AuditEvent, Track, TrackAlias, TrackFile
 
@@ -139,3 +139,18 @@ def record_audit_event(
         )
     )
     session.flush()
+
+
+def get_tracks_for_matching(session: Session) -> list[Track]:
+    return list(
+        session.scalars(
+            select(Track)
+            .where(Track.status == "active")
+            .options(
+                selectinload(Track.aliases),
+                selectinload(Track.files),
+                selectinload(Track.canonical_release),
+            )
+            .order_by(Track.created_at.asc())
+        )
+    )

@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from tagslut.library import create_library_session_factory, ensure_library_schema
+from tagslut.library.matcher import MIN_SCORE_THRESHOLD, TrackMatcher, TrackQuery
 from tagslut.library.models import JobRun, Release, SourceProvenance, Track, TrackAlias, TrackFile
 from tagslut.library.repositories import (
     get_track_by_alias,
@@ -18,6 +19,7 @@ from tagslut.library.repositories import (
     upsert_track_alias,
     upsert_track_file,
 )
+from tagslut.utils.config import get_config
 
 _REKORDBOX_PROVIDER = "rekordbox"
 _REKORDBOX_SOURCE = "rekordbox_xml"
@@ -190,13 +192,33 @@ def _match_existing_track(session: Session, parsed_track: _ParsedTrack) -> Track
     if existing is not None:
         return existing
     if parsed_track.path:
-        return get_track_by_alias(
+        existing = get_track_by_alias(
             session,
             alias_type="file_path",
             value=parsed_track.path,
             provider=_REKORDBOX_PROVIDER,
         )
+    if existing is not None:
+        return existing
+    if not _canonical_matcher_enabled():
+        return None
+
+    match_result = TrackMatcher(session).match(
+        TrackQuery(
+            title=parsed_track.title,
+            artist=parsed_track.artist_credit,
+            duration_ms=parsed_track.duration_ms,
+            rekordbox_id=parsed_track.source_key,
+            file_path=parsed_track.path or None,
+        )
+    )
+    if match_result.track is not None and match_result.score >= MIN_SCORE_THRESHOLD:
+        return match_result.track
     return None
+
+
+def _canonical_matcher_enabled() -> bool:
+    return bool(get_config().get("rekordbox.use_canonical_matcher", False))
 
 
 def _track_payload(parsed_track: _ParsedTrack) -> dict[str, object]:

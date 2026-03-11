@@ -16,6 +16,7 @@ from tagslut.storage.v3.merge_identities import (
     find_duplicate_beatport_groups,
     merge_group_by_repointing_assets,
 )
+from tagslut.storage.v3.identity_service import resolve_active_identity
 from tagslut.storage.v3.schema import create_schema_v3
 
 
@@ -23,6 +24,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = PROJECT_ROOT / "scripts" / "db" / "merge_identities_by_beatport_v3.py"
 
 _SPEC = _ilu.spec_from_file_location("merge_identities_by_beatport_v3", SCRIPT_PATH)
+assert _SPEC is not None
+assert _SPEC.loader is not None
 _SCRIPT_MOD = _ilu.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(_SCRIPT_MOD)
 
@@ -202,6 +205,14 @@ def test_execute_mode_merges_repoints_and_logs(tmp_path: Path) -> None:
             HAVING COUNT(*) > 1
             """
         ).fetchall()
+        active_links_to_merged = conn.execute(
+            """
+            SELECT COUNT(*) AS n
+            FROM asset_link al
+            JOIN track_identity ti ON ti.id = al.identity_id
+            WHERE al.active = 1 AND ti.merged_into_id IS NOT NULL
+            """
+        ).fetchone()["n"]
         merge_log_count = conn.execute(
             "SELECT COUNT(*) AS n FROM identity_merge_log"
         ).fetchone()["n"]
@@ -219,8 +230,25 @@ def test_execute_mode_merges_repoints_and_logs(tmp_path: Path) -> None:
     assert int(winner_assets) == 3
     assert int(loser_assets) == 0
     assert dup_asset_rows == []
+    assert int(active_links_to_merged) == 0
     assert int(merge_log_count) == 1
     assert int(prov_count) == 1
+
+
+def test_resolve_active_identity_returns_canonical_row_after_merge(tmp_path: Path) -> None:
+    db = _create_case1_db(tmp_path)
+    conn = sqlite3.connect(str(db))
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys=ON")
+    try:
+        merge_group_by_repointing_assets(conn, 2, [1], dry_run=False)
+        conn.commit()
+        canonical = resolve_active_identity(conn, "isrc:AA1")
+    finally:
+        conn.close()
+
+    assert int(canonical["id"]) == 2
+    assert str(canonical["identity_key"]) == "beatport:BP-1"
 
 
 def test_tie_breaker_prefers_lowest_identity_id(tmp_path: Path) -> None:
@@ -268,6 +296,62 @@ def test_asset_link_unique_invariant_preserved_after_direct_merge(tmp_path: Path
         conn.close()
 
     assert dup_asset_rows == []
+
+
+def test_merge_blocks_self_reference(tmp_path: Path) -> None:
+    db = _create_case1_db(tmp_path)
+    conn = sqlite3.connect(str(db))
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys=ON")
+    try:
+        with pytest.raises(RuntimeError, match="winner_id cannot be included in loser_ids"):
+            merge_group_by_repointing_assets(conn, 1, [1], dry_run=False)
+    finally:
+        conn.close()
+
+
+def test_merge_blocks_winner_that_is_already_merged(tmp_path: Path) -> None:
+    db = _create_case1_db(tmp_path)
+    conn = sqlite3.connect(str(db))
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys=ON")
+    try:
+        conn.execute("UPDATE track_identity SET merged_into_id = 2 WHERE id = 1")
+        conn.commit()
+        with pytest.raises(RuntimeError, match="winner identity cannot already be merged"):
+            merge_group_by_repointing_assets(conn, 1, [2], dry_run=False)
+    finally:
+        conn.close()
+
+
+def test_merge_syncs_legacy_file_keys(tmp_path: Path) -> None:
+    db = _create_case1_db(tmp_path)
+    conn = sqlite3.connect(str(db))
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys=ON")
+    try:
+        conn.execute("CREATE TABLE files (path TEXT PRIMARY KEY, library_track_key TEXT)")
+        conn.executemany(
+            "INSERT INTO files (path, library_track_key) VALUES (?, ?)",
+            [
+                ("/music/a1.flac", "isrc:AA1"),
+                ("/music/a2.flac", "beatport:BP-1"),
+                ("/music/a3.flac", "isrc:AA1"),
+            ],
+        )
+        merge_group_by_repointing_assets(conn, 2, [1], dry_run=False)
+        conn.commit()
+        rows = conn.execute(
+            "SELECT path, library_track_key FROM files ORDER BY path"
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert [tuple(row) for row in rows] == [
+        ("/music/a1.flac", "beatport:BP-1"),
+        ("/music/a2.flac", "beatport:BP-1"),
+        ("/music/a3.flac", "beatport:BP-1"),
+    ]
 
 
 def test_plan_connection_is_query_only_and_rejects_writes(tmp_path: Path) -> None:

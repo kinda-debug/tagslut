@@ -20,6 +20,7 @@ from tagslut.storage.v3.dual_write import (
     upsert_asset_link,
     upsert_track_identity,
 )
+from tagslut.storage.v3.identity_service import resolve_active_identity
 from tagslut.storage.v3.identity_status import (
     IdentityStatusRow,
     compute_identity_statuses,
@@ -85,6 +86,7 @@ __all__ = [
     "move_asset_path",
     "record_provenance_event",
     "resolve_asset_id_by_path",
+    "resolve_active_identity",
     "upsert_asset_file",
     "upsert_asset_link",
     "upsert_track_identity",

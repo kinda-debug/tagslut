@@ -107,6 +107,7 @@ def _identity_rows_by_id(
         "id",
         "identity_key",
         "beatport_id",
+        "merged_into_id" if _column_exists(conn, "track_identity", "merged_into_id") else "NULL AS merged_into_id",
         "isrc",
         "canonical_artist",
         "canonical_title",
@@ -195,6 +196,48 @@ def _assert_asset_link_unique(conn: sqlite3.Connection) -> None:
         raise RuntimeError(
             f"asset_link uniqueness violated: asset_id={int(row['asset_id'])} has {int(row['n'])} rows"
         )
+
+
+def _assert_active_links_resolve_to_canonical(conn: sqlite3.Connection) -> None:
+    if not _column_exists(conn, "track_identity", "merged_into_id"):
+        return
+    where_active = _active_link_where(conn)
+    row = conn.execute(
+        f"""
+        SELECT al.asset_id, al.identity_id, ti.merged_into_id
+        FROM asset_link al
+        JOIN track_identity ti ON ti.id = al.identity_id
+        WHERE {where_active}
+          AND ti.merged_into_id IS NOT NULL
+        LIMIT 1
+        """
+    ).fetchone()
+    if row is not None:
+        raise RuntimeError(
+            "active asset_link points to merged identity: "
+            f"asset_id={int(row['asset_id'])} identity_id={int(row['identity_id'])} "
+            f"merged_into_id={int(row['merged_into_id'])}"
+        )
+
+
+def _sync_legacy_file_keys(
+    conn: sqlite3.Connection, winner_key: str, loser_keys: tuple[str, ...]
+) -> None:
+    if not _table_exists(conn, "files"):
+        return
+    if not _column_exists(conn, "files", "library_track_key"):
+        return
+    if not loser_keys:
+        return
+    placeholders = ",".join("?" for _ in loser_keys)
+    conn.execute(
+        f"""
+        UPDATE files
+        SET library_track_key = ?
+        WHERE library_track_key IN ({placeholders})
+        """,
+        (winner_key, *loser_keys),
+    )
 
 
 def find_duplicate_beatport_groups(conn: sqlite3.Connection) -> list[Group]:
@@ -298,6 +341,8 @@ def merge_group_by_repointing_assets(
     all_ids = tuple(sorted({int(winner_id), *normalized_losers}))
     rows_by_id = _identity_rows_by_id(conn, all_ids)
     winner_row = rows_by_id[int(winner_id)]
+    if _column_exists(conn, "track_identity", "merged_into_id") and winner_row["merged_into_id"] is not None:
+        raise RuntimeError("winner identity cannot already be merged")
 
     beatport_id = str(winner_row["beatport_id"] or "").strip()
     if not beatport_id:
@@ -323,6 +368,7 @@ def merge_group_by_repointing_assets(
 
     existing_fields = _existing_canonical_fields(conn)
     fields_copied: dict[str, Any] = {}
+    loser_keys = tuple(str(rows_by_id[int(loser_id)]["identity_key"]) for loser_id in normalized_losers)
     for field in existing_fields:
         winner_value = winner_row[field]
         if not _is_blank(winner_value):
@@ -332,6 +378,11 @@ def merge_group_by_repointing_assets(
             if not _is_blank(loser_value):
                 fields_copied[field] = loser_value
                 break
+
+    if _column_exists(conn, "track_identity", "merged_into_id"):
+        for loser_id in normalized_losers:
+            if rows_by_id[int(loser_id)]["merged_into_id"] is not None:
+                raise RuntimeError(f"loser identity is already merged: {int(loser_id)}")
 
     if not dry_run:
         conn.execute(
@@ -374,6 +425,11 @@ def merge_group_by_repointing_assets(
                 """,
                 (*normalized_losers, int(winner_id)),
             )
+            _sync_legacy_file_keys(
+                conn,
+                str(winner_row["identity_key"]),
+                loser_keys,
+            )
 
     if not dry_run:
         where_active_identity = _active_identity_where(conn)
@@ -392,6 +448,7 @@ def merge_group_by_repointing_assets(
             )
 
         _assert_asset_link_unique(conn)
+        _assert_active_links_resolve_to_canonical(conn)
         _assert_foreign_keys_on(conn)
 
     rationale = {

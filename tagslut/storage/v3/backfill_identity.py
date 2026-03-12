@@ -39,6 +39,7 @@ _SAMPLE_CATEGORIES = (
     "skipped",
     "conflicted",
     "fuzzy_near_collision",
+    "fingerprint_matched",
     "errors",
 )
 
@@ -174,6 +175,7 @@ class BackfillStats:
     conflicted: int = 0
     fuzzy_near_collision: int = 0
     errors: int = 0
+    fingerprint_matched: int = 0
     committed_batches: int = 0
     last_file_id: int = 0
     samples: dict[str, list[dict[str, Any]]] = field(
@@ -190,6 +192,7 @@ class BackfillStats:
             "conflicted": self.conflicted,
             "fuzzy_near_collision": self.fuzzy_near_collision,
             "errors": self.errors,
+            "fingerprint_matched": self.fingerprint_matched,
             "committed_batches": self.committed_batches,
             "last_file_id": self.last_file_id,
             "samples": self.samples,
@@ -605,6 +608,35 @@ def _link_asset(conn: sqlite3.Connection, asset_id: int, identity_id: int, confi
     )
 
 
+
+def _seed_legacy_fingerprint(conn, asset_id, file_row, file_columns):
+    """Copy legacy files.fingerprint to asset_file.chromaprint_fingerprint if not yet set."""
+    if "fingerprint" not in file_columns:
+        return
+    fp = _norm_text(file_row["fingerprint"])
+    if not fp:
+        return
+    if not _column_exists(conn, V3_ASSET_FILE_TABLE, "chromaprint_fingerprint"):
+        return
+    conn.execute(
+        f"UPDATE {V3_ASSET_FILE_TABLE} SET chromaprint_fingerprint = ? WHERE id = ? AND chromaprint_fingerprint IS NULL",
+        (fp, asset_id),
+    )
+
+
+def _find_identity_by_legacy_fingerprint(conn, file_row, file_columns, asset_id):
+    """Tier-4 identity lookup via legacy files.fingerprint -> asset_file.chromaprint_fingerprint."""
+    if "fingerprint" not in file_columns:
+        return None
+    fp = _norm_text(file_row["fingerprint"])
+    if not fp:
+        return None
+    if not _column_exists(conn, V3_ASSET_FILE_TABLE, "chromaprint_fingerprint"):
+        return None
+    from tagslut.storage.v3.chromaprint import find_identity_by_fingerprint
+    return find_identity_by_fingerprint(conn, fp, exclude_asset_id=asset_id)
+
+
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
@@ -678,6 +710,7 @@ def backfill_v3_identity_links(
             asset_id: int | None = None
             if config.execute:
                 asset_id = upsert_asset_file(conn, **asset_payload)
+                _seed_legacy_fingerprint(conn, asset_id, row, file_columns)
 
             resolved_identity_id: int | None = None
             merged = False
@@ -737,6 +770,18 @@ def backfill_v3_identity_links(
                 continue
             if resolved_identity_id is None and len(fuzzy_candidates) == 1:
                 resolved_identity_id = fuzzy_candidates[0]
+
+            if resolved_identity_id is None:
+                resolved_identity_id = _find_identity_by_legacy_fingerprint(
+                    conn, row, file_columns, asset_id
+                )
+                if resolved_identity_id is not None:
+                    stats.fingerprint_matched += 1
+                    _append_sample(
+                        stats.samples,
+                        "fingerprint_matched",
+                        {"file_id": file_id, "path": row["path"], "identity_id": resolved_identity_id},
+                    )
 
             if resolved_identity_id is None:
                 if config.execute:

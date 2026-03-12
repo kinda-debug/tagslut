@@ -9,7 +9,7 @@ from __future__ import annotations
 import sqlite3
 
 V3_SCHEMA_NAME = "v3"
-V3_SCHEMA_VERSION = 8
+V3_SCHEMA_VERSION = 9
 V3_SCHEMA_VERSION_INITIAL = 1
 V3_SCHEMA_VERSION_IDENTITY_MERGE = 2
 V3_SCHEMA_VERSION_PREFERRED_ASSET = 3
@@ -18,6 +18,7 @@ V3_SCHEMA_VERSION_DJ_PROFILE = 5
 V3_SCHEMA_VERSION_TRACK_IDENTITY_PHASE1 = 6
 V3_SCHEMA_VERSION_TRACK_IDENTITY_PHASE1_RENAME = 7
 V3_SCHEMA_VERSION_ASSET_ANALYSIS = 8
+V3_SCHEMA_VERSION_CHROMAPRINT = 9
 
 
 def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
@@ -56,6 +57,8 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
             integrity_checked_at TEXT,
             sha256_checked_at TEXT,
             streaminfo_checked_at TEXT,
+            chromaprint_fingerprint TEXT,
+            chromaprint_duration_s REAL,
             first_seen_at TEXT DEFAULT CURRENT_TIMESTAMP,
             last_seen_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
@@ -282,6 +285,7 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_asset_file_streaminfo_md5 ON asset_file(streaminfo_md5);
         CREATE INDEX IF NOT EXISTS idx_asset_file_checksum ON asset_file(checksum);
         CREATE INDEX IF NOT EXISTS idx_asset_file_integrity_state ON asset_file(integrity_state);
+        CREATE INDEX IF NOT EXISTS idx_asset_file_chromaprint ON asset_file(chromaprint_fingerprint);
 
         CREATE INDEX IF NOT EXISTS idx_track_identity_key ON track_identity(identity_key);
         CREATE INDEX IF NOT EXISTS idx_track_identity_isrc ON track_identity(isrc);

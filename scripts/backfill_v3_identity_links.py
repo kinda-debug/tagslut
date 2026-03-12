@@ -76,7 +76,7 @@ def _verbose_printer(summary: dict, verbose: bool) -> None:
         return
     # Collect all sampled rows and sort by file_id for readable output
     rows: list[tuple[int, str, str]] = []
-    outcome_order = ("created", "reused", "merged", "skipped", "conflicted", "fuzzy_near_collision", "errors")
+    outcome_order = ("created", "reused", "merged", "skipped", "conflicted", "fuzzy_near_collision", "fingerprint_matched", "errors")
     for outcome in outcome_order:
         for sample in summary.get("samples", {}).get(outcome, []):
             file_id = sample.get("file_id", "?")
@@ -88,6 +88,8 @@ def _verbose_printer(summary: dict, verbose: bool) -> None:
                 extra = f" identity_id={sample.get('identity_id', '?')}"
             elif outcome == "conflicted":
                 extra = f" field={sample.get('field', '?')} value={sample.get('value', '?')}"
+            elif outcome == "fingerprint_matched":
+                extra = f" identity_id={sample.get('identity_id', '?')}"
             elif outcome == "errors":
                 extra = f" error={sample.get('error', '?')}"
             rows.append((int(file_id) if str(file_id).isdigit() else 0, outcome, f"  [{outcome.upper():<22}] file_id={file_id} {path}{extra}"))
@@ -129,7 +131,7 @@ def main(argv: list[str] | None = None) -> int:
         print(
             "created={created} reused={reused} merged={merged} skipped={skipped} "
             "conflicted={conflicted} fuzzy_near_collision={fuzzy_near_collision} "
-            "errors={errors}".format(**summary)
+            "fingerprint_matched={fingerprint_matched} errors={errors}".format(**summary)
         )
         print(f"last_file_id={summary['last_file_id']} committed_batches={summary['committed_batches']}")
         print(f"summary_artifact={summary['artifact_paths']['summary']}")

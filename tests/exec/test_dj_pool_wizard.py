@@ -933,6 +933,35 @@ def test_build_flat_layout(tmp_path: Path) -> None:
     assert dest.name == "DJ_A_-_Track_B.mp3"
 
 
+def test_build_layout_accepts_canonical_export_shape(tmp_path: Path) -> None:
+    dest = wizard.build_pool_dest_path(
+        tmp_path,
+        {
+            "canonical_artist": "DJ Canon",
+            "canonical_title": "Track Prime",
+            "canonical_genre": "Afro House",
+            "canonical_label": "Innervisions",
+            "dj_set_role": "groove",
+        },
+        {"layout": "by_genre"},
+    )
+    assert dest.parent == tmp_path / "pool" / "Afro_House"
+    assert dest.name == "DJ_Canon_-_Track_Prime.mp3"
+
+
+def test_build_cache_dest_accepts_canonical_export_shape(tmp_path: Path) -> None:
+    dest = wizard._build_cache_dest(
+        tmp_path,
+        {
+            "identity_id": 42,
+            "canonical_artist": "DJ Canon",
+            "canonical_title": "Track Prime",
+        },
+        {"bitrate": 320},
+    )
+    assert dest == tmp_path / "cache" / "DJ_Canon__Track_Prime__42_320k.mp3"
+
+
 def test_build_layout_variants(tmp_path: Path) -> None:
     genre_dest = wizard.build_pool_dest_path(
         tmp_path,

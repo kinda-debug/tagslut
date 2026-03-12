@@ -37,6 +37,21 @@ def sanitize_component(value: str | None) -> str:
     return sanitized or "_"
 
 
+def _track_value(track: dict, *keys: str) -> object | None:
+    for key in keys:
+        value = track.get(key)
+        if value is not None:
+            return value
+    return None
+
+
+def _track_text(track: dict, *keys: str) -> str:
+    value = _track_value(track, *keys)
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
 def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
     rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
     return any(str(row[1]) == column for row in rows)
@@ -154,7 +169,9 @@ def _role_subfolder(track: dict) -> Path:
 
     logger.warning(
         "Track %s has invalid or missing dj_set_role %r; routing to _unassigned",
-        track.get("master_path") or track.get("title") or "<unknown>",
+        track.get("master_path")
+        or _track_value(track, "canonical_title", "title")
+        or "<unknown>",
         track.get("dj_set_role"),
     )
     return Path("pool") / "_unassigned"
@@ -163,8 +180,8 @@ def _role_subfolder(track: dict) -> Path:
 def _build_cache_dest(run_dir: Path, row: dict, profile: dict) -> Path:
     """Cache dest inside run_dir/cache/ for transcoded files."""
     identity_id = row["identity_id"]
-    artist = sanitize_component(row.get("artist") or "Unknown_Artist")
-    title = sanitize_component(row.get("title") or "Unknown_Title")
+    artist = sanitize_component(_track_text(row, "canonical_artist", "artist") or "Unknown_Artist")
+    title = sanitize_component(_track_text(row, "canonical_title", "title") or "Unknown_Title")
     bitrate = profile.get("bitrate", 320)
     fname = f"{artist}__{title}__{identity_id}_{bitrate}k.mp3"
     return run_dir / "cache" / fname
@@ -879,10 +896,10 @@ def build_pool_dest_path(
     layout = str(profile.get("layout", "by_genre") or "by_genre")
     template = str(profile.get("filename_template", "{artist} - {title}.mp3") or "{artist} - {title}.mp3")
 
-    artist = sanitize_component(track.get("artist") or "Unknown Artist")
-    title = sanitize_component(track.get("title") or "Unknown Title")
-    genre = sanitize_component(track.get("genre") or "Unknown Genre")
-    label = sanitize_component(track.get("label") or "Unknown Label")
+    artist = sanitize_component(_track_text(track, "canonical_artist", "artist") or "Unknown Artist")
+    title = sanitize_component(_track_text(track, "canonical_title", "title") or "Unknown Title")
+    genre = sanitize_component(_track_text(track, "canonical_genre", "genre") or "Unknown Genre")
+    label = sanitize_component(_track_text(track, "canonical_label", "label") or "Unknown Label")
 
     filename = template.format(artist=artist, title=title)
     if not filename.endswith(".mp3"):
@@ -997,6 +1014,12 @@ def plan_actions(
         if selected and identity_key is not None:
             seen_identities[identity_key] = str(track["master_path"])
 
+        artist = _track_value(track, "canonical_artist", "artist")
+        title = _track_value(track, "canonical_title", "title")
+        genre = _track_value(track, "canonical_genre", "genre")
+        label = _track_value(track, "canonical_label", "label")
+        bpm = _track_value(track, "canonical_bpm", "bpm")
+        musical_key = _track_value(track, "canonical_key", "musical_key")
         row = {
             "master_path": track["master_path"],
             "identity_id": identity_id,
@@ -1012,12 +1035,12 @@ def plan_actions(
             "final_dest_path": final_dest_path,
             "reason": reason,
             "warning": warning,
-            "artist": track.get("artist"),
-            "title": track.get("title"),
-            "genre": track.get("genre"),
-            "label": track.get("label"),
-            "bpm": track.get("bpm"),
-            "musical_key": track.get("musical_key"),
+            "artist": artist,
+            "title": title,
+            "genre": genre,
+            "label": label,
+            "bpm": bpm,
+            "musical_key": musical_key,
             "dj_set_role": track.get("dj_set_role"),
         }
         plan_rows.append(row)

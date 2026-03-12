@@ -286,6 +286,7 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_asset_file_checksum ON asset_file(checksum);
         CREATE INDEX IF NOT EXISTS idx_asset_file_integrity_state ON asset_file(integrity_state);
         CREATE INDEX IF NOT EXISTS idx_asset_file_chromaprint ON asset_file(chromaprint_fingerprint);
+        CREATE INDEX IF NOT EXISTS idx_asset_file_chromaprint_duration ON asset_file(chromaprint_duration_s);
 
         CREATE INDEX IF NOT EXISTS idx_track_identity_key ON track_identity(identity_key);
         CREATE INDEX IF NOT EXISTS idx_track_identity_isrc ON track_identity(isrc);

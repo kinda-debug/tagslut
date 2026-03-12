@@ -41,6 +41,19 @@ def _create_files_table(conn: sqlite3.Connection) -> None:
             sha256_checked_at TEXT,
             acoustid TEXT,
             is_dj_material INTEGER DEFAULT 0,
+            dj_flag INTEGER DEFAULT 0,
+            canonical_artist TEXT,
+            canonical_title TEXT,
+            canonical_genre TEXT,
+            canonical_label TEXT,
+            canonical_bpm REAL,
+            canonical_key TEXT,
+            canonical_year INTEGER,
+            download_source TEXT,
+            download_date TEXT,
+            bpm REAL,
+            key_camelot TEXT,
+            genre TEXT,
             duration_status TEXT,
             quality_rank INTEGER,
             dj_pool_path TEXT,
@@ -78,6 +91,7 @@ def insert_track(
     conn: sqlite3.Connection,
     path: str,
     is_dj_material: int = 1,
+    dj_flag: int = 0,
     dj_pool_path: str | None = None,
     identity_id: int | None = None,
     artist: str | None = "Test Artist",
@@ -102,10 +116,34 @@ def insert_track(
     conn.execute(
         """
         INSERT OR IGNORE INTO files
-        (path, is_dj_material, quality_rank, dj_pool_path, dj_set_role)
-        VALUES (?, ?, ?, ?, ?)
+        (
+            path, is_dj_material, dj_flag, canonical_artist, canonical_title,
+            canonical_genre, canonical_label, canonical_bpm, canonical_key,
+            canonical_year, download_source, download_date, bpm, key_camelot,
+            genre, quality_rank, dj_pool_path, dj_set_role
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (path, is_dj_material, quality_rank, dj_pool_path, dj_set_role),
+        (
+            path,
+            is_dj_material,
+            dj_flag,
+            artist,
+            title,
+            genre,
+            label,
+            bpm,
+            musical_key,
+            year,
+            download_source,
+            download_date,
+            bpm,
+            musical_key,
+            genre,
+            quality_rank,
+            dj_pool_path,
+            dj_set_role,
+        ),
     )
     conn.execute(
         """
@@ -306,6 +344,18 @@ def test_select_returns_dj_pool_path_rows(wizard_db: sqlite3.Connection) -> None
     assert result[0]["master_path"] == "/MASTER/b.flac"
 
 
+def test_select_returns_dj_flag_rows(wizard_db: sqlite3.Connection) -> None:
+    insert_track(
+        wizard_db,
+        "/MASTER/c.flac",
+        is_dj_material=0,
+        dj_flag=1,
+        identity_id=None,
+    )
+    result = wizard.select_flagged_master_paths(wizard_db, MASTER, {})
+    assert [row["master_path"] for row in result] == ["/MASTER/c.flac"]
+
+
 def test_select_union_both_flags(wizard_db: sqlite3.Connection) -> None:
     insert_track(wizard_db, "/MASTER/a.flac", is_dj_material=1, identity_id=1)
     insert_track(
@@ -340,6 +390,24 @@ def test_select_filter_require_artist_title_excludes_missing(
         wizard_db, MASTER, {"require_artist_title": True}
     )
     assert result == []
+
+
+def test_select_filter_require_artist_title_uses_legacy_files_fallback(
+    wizard_db: sqlite3.Connection,
+) -> None:
+    insert_track(
+        wizard_db,
+        "/MASTER/legacy_title.flac",
+        is_dj_material=0,
+        dj_flag=1,
+        identity_id=None,
+        artist="Legacy Artist",
+        title="Legacy Title",
+    )
+    result = wizard.select_flagged_master_paths(
+        wizard_db, MASTER, {"require_artist_title": True}
+    )
+    assert [row["master_path"] for row in result] == ["/MASTER/legacy_title.flac"]
 
 
 def test_select_tolerates_missing_dj_set_role_column() -> None:
@@ -517,6 +585,29 @@ def test_select_filter_download_source_include(
     assert [row["master_path"] for row in result] == ["/MASTER/a.flac"]
 
 
+def test_select_filter_download_source_include_uses_legacy_files_fallback(
+    wizard_db: sqlite3.Connection,
+) -> None:
+    insert_track(
+        wizard_db,
+        "/MASTER/a.flac",
+        is_dj_material=0,
+        dj_flag=1,
+        identity_id=None,
+        download_source="bpdl",
+    )
+    wizard_db.execute(
+        "UPDATE asset_file SET download_source = NULL WHERE path = ?",
+        ("/MASTER/a.flac",),
+    )
+    wizard_db.commit()
+
+    result = wizard.select_flagged_master_paths(
+        wizard_db, MASTER, {"download_source_include": ["bpdl"]}
+    )
+    assert [row["master_path"] for row in result] == ["/MASTER/a.flac"]
+
+
 def test_select_filter_download_date_bounds(
     wizard_db: sqlite3.Connection,
 ) -> None:
@@ -552,6 +643,31 @@ def test_select_filter_download_date_bounds(
     assert [row["master_path"] for row in result] == ["/MASTER/b.flac"]
 
 
+def test_select_filter_download_date_bounds_use_legacy_files_fallback(
+    wizard_db: sqlite3.Connection,
+) -> None:
+    insert_track(
+        wizard_db,
+        "/MASTER/a.flac",
+        is_dj_material=0,
+        dj_flag=1,
+        identity_id=None,
+        download_date="2026-03-11T00:00:00Z",
+    )
+    wizard_db.execute(
+        "UPDATE asset_file SET download_date = NULL WHERE path = ?",
+        ("/MASTER/a.flac",),
+    )
+    wizard_db.commit()
+
+    result = wizard.select_flagged_master_paths(
+        wizard_db,
+        MASTER,
+        {"download_date_since": "2026-03-10", "download_date_until": "2026-03-12"},
+    )
+    assert [row["master_path"] for row in result] == ["/MASTER/a.flac"]
+
+
 def test_select_filter_quality_rank_max(
     wizard_db: sqlite3.Connection,
 ) -> None:
@@ -573,6 +689,29 @@ def test_select_filter_quality_rank_max(
         wizard_db, MASTER, {"quality_rank_max": 4}
     )
     assert [row["master_path"] for row in result] == ["/MASTER/a.flac"]
+
+
+def test_select_filter_genre_include_uses_legacy_files_fallback(
+    wizard_db: sqlite3.Connection,
+) -> None:
+    insert_track(
+        wizard_db,
+        "/MASTER/legacy_genre.flac",
+        is_dj_material=0,
+        dj_flag=1,
+        identity_id=1,
+        genre="Afro House",
+    )
+    wizard_db.execute(
+        "UPDATE track_identity SET canonical_genre = NULL WHERE id = ?",
+        (1,),
+    )
+    wizard_db.commit()
+
+    result = wizard.select_flagged_master_paths(
+        wizard_db, MASTER, {"genre_include": ["Afro House"]}
+    )
+    assert [row["master_path"] for row in result] == ["/MASTER/legacy_genre.flac"]
 
 
 def test_select_filter_set_role_include(wizard_db: sqlite3.Connection) -> None:

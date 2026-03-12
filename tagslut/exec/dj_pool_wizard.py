@@ -42,6 +42,63 @@ def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
     return any(str(row[1]) == column for row in rows)
 
 
+def _optional_column_expr(
+    conn: sqlite3.Connection,
+    table: str,
+    alias: str,
+    column: str,
+    *,
+    treat_blank_as_null: bool = False,
+) -> str | None:
+    if not _column_exists(conn, table, column):
+        return None
+    expr = f"{alias}.{column}"
+    if treat_blank_as_null:
+        return f"NULLIF(TRIM({expr}), '')"
+    return expr
+
+
+def _coalesce_expr(*exprs: str | None) -> str:
+    present = [expr for expr in exprs if expr]
+    if not present:
+        return "NULL"
+    if len(present) == 1:
+        return present[0]
+    return f"COALESCE({', '.join(present)})"
+
+
+def _locked_cohort_terms(
+    conn: sqlite3.Connection,
+    *,
+    alias: str,
+) -> list[str]:
+    terms: list[str] = []
+    if _column_exists(conn, "files", "is_dj_material"):
+        terms.append(f"{alias}.is_dj_material = 1")
+    if _column_exists(conn, "files", "dj_flag"):
+        terms.append(f"{alias}.dj_flag = 1")
+    if _column_exists(conn, "files", "dj_pool_path"):
+        terms.append(
+            f"({alias}.dj_pool_path IS NOT NULL AND TRIM({alias}.dj_pool_path) <> '')"
+        )
+    return terms
+
+
+def _locked_cohort_clause(
+    conn: sqlite3.Connection,
+    *,
+    alias: str,
+) -> str:
+    terms = _locked_cohort_terms(conn, alias=alias)
+    if not terms:
+        return "0"
+    return "(" + " OR ".join(terms) + ")"
+
+
+def _locked_cohort_definition(conn: sqlite3.Connection) -> str:
+    return _locked_cohort_clause(conn, alias="files")
+
+
 def _iso_now() -> str:
     from datetime import datetime, timezone
     return datetime.now(timezone.utc).isoformat()
@@ -167,19 +224,22 @@ def compute_cohort_health(
     master_root: Path,
 ) -> dict:
     prefix = str(master_root).rstrip("/") + "/%"
+    cohort_clause = _locked_cohort_clause(conn, alias="f")
+    cohort_definition = _locked_cohort_definition(conn)
+    files_has_is_dj_material = _column_exists(conn, "files", "is_dj_material")
+    files_has_dj_flag = _column_exists(conn, "files", "dj_flag")
+    files_has_dj_pool_path = _column_exists(conn, "files", "dj_pool_path")
 
     flagged_row = conn.execute(
-        """
+        f"""
         SELECT
-          SUM(CASE WHEN is_dj_material = 1 THEN 1 ELSE 0 END)
+          SUM(CASE WHEN {'is_dj_material = 1' if files_has_is_dj_material else '0'} THEN 1 ELSE 0 END)
             AS is_dj_material_count,
-          SUM(CASE WHEN dj_pool_path IS NOT NULL
-                        AND TRIM(dj_pool_path) <> ''
-                   THEN 1 ELSE 0 END)
+          SUM(CASE WHEN {'dj_flag = 1' if files_has_dj_flag else '0'} THEN 1 ELSE 0 END)
+            AS dj_flag_count,
+          SUM(CASE WHEN {'(dj_pool_path IS NOT NULL AND TRIM(dj_pool_path) <> \'\')' if files_has_dj_pool_path else '0'} THEN 1 ELSE 0 END)
             AS dj_pool_path_count,
-          SUM(CASE WHEN is_dj_material = 1
-                    OR (dj_pool_path IS NOT NULL AND TRIM(dj_pool_path) <> '')
-                   THEN 1 ELSE 0 END)
+          SUM(CASE WHEN {cohort_definition} THEN 1 ELSE 0 END)
             AS flagged_union_count
         FROM files
         WHERE path LIKE :prefix
@@ -188,7 +248,7 @@ def compute_cohort_health(
     ).fetchone()
 
     coverage_row = conn.execute(
-        """
+        f"""
         SELECT
           COUNT(*) AS cohort_total,
           SUM(CASE WHEN al.identity_id IS NOT NULL THEN 1 ELSE 0 END)
@@ -199,15 +259,14 @@ def compute_cohort_health(
         LEFT JOIN asset_file af ON af.path = f.path
         LEFT JOIN asset_link al
           ON al.asset_id = af.id AND al.active = 1
-        WHERE (f.is_dj_material = 1
-               OR (f.dj_pool_path IS NOT NULL AND TRIM(f.dj_pool_path) <> ''))
+        WHERE {cohort_clause}
           AND f.path LIKE :prefix
         """,
         {"prefix": prefix},
     ).fetchone()
 
     relink_row = conn.execute(
-        """
+        f"""
         SELECT COUNT(DISTINCT f.path) AS cohort_with_dj_pool_relink
         FROM files f
         JOIN asset_file af ON af.path = f.path
@@ -216,15 +275,14 @@ def compute_cohort_health(
           ON pe.identity_id = al.identity_id
          AND pe.event_type = 'dj_pool_relink'
          AND pe.status = 'success'
-        WHERE (f.is_dj_material = 1
-               OR (f.dj_pool_path IS NOT NULL AND TRIM(f.dj_pool_path) <> ''))
+        WHERE {cohort_clause}
           AND f.path LIKE :prefix
         """,
         {"prefix": prefix},
     ).fetchone()
 
     export_row = conn.execute(
-        """
+        f"""
         SELECT COUNT(DISTINCT f.path) AS cohort_with_dj_export
         FROM files f
         JOIN asset_file af ON af.path = f.path
@@ -233,14 +291,14 @@ def compute_cohort_health(
           ON pe.identity_id = al.identity_id
          AND pe.event_type = 'dj_export'
          AND pe.status = 'success'
-        WHERE (f.is_dj_material = 1
-               OR (f.dj_pool_path IS NOT NULL AND TRIM(f.dj_pool_path) <> ''))
+        WHERE {cohort_clause}
           AND f.path LIKE :prefix
         """,
         {"prefix": prefix},
     ).fetchone()
 
     is_dj_material_count = int(flagged_row["is_dj_material_count"] or 0)
+    dj_flag_count = int(flagged_row["dj_flag_count"] or 0)
     dj_pool_path_count = int(flagged_row["dj_pool_path_count"] or 0)
     flagged_union_count = int(flagged_row["flagged_union_count"] or 0)
     cohort_total = int(coverage_row["cohort_total"] or 0)
@@ -262,8 +320,10 @@ def compute_cohort_health(
     )
 
     notes: list[str] = []
-    if is_dj_material_count == 0:
+    if is_dj_material_count == 0 and dj_flag_count == 0 and dj_pool_path_count > 0:
         notes.append("Cohort is export-backed (dj_pool_path only); is_dj_material = 0 for all rows")
+    elif is_dj_material_count == 0 and dj_flag_count > 0:
+        notes.append("Cohort is legacy-flag-backed (dj_flag); is_dj_material = 0 for all rows")
     if identity_coverage_pct == 100.0:
         notes.append("Cohort is fully identity-backed (100% coverage)")
     if cohort_with_dj_pool_relink == cohort_total:
@@ -274,14 +334,12 @@ def compute_cohort_health(
         notes.append(f"{legacy_cache_only_rows} row(s) have legacy dj_pool_path cache only (no relink event)")
 
     return {
-        "cohort_definition": (
-            "files.is_dj_material = 1 OR "
-            "(files.dj_pool_path IS NOT NULL AND TRIM(files.dj_pool_path) <> '')"
-        ),
+        "cohort_definition": cohort_definition,
         "master_restricted": True,
         "master_root": str(master_root),
         "flagged_union_count": flagged_union_count,
         "is_dj_material_count": is_dj_material_count,
+        "dj_flag_count": dj_flag_count,
         "dj_pool_path_count": dj_pool_path_count,
         "cohort_total": cohort_total,
         "cohort_with_identity": cohort_with_identity,
@@ -300,9 +358,10 @@ def compute_cohort_duplicates(
     master_root: Path,
 ) -> dict:
     prefix = str(master_root).rstrip("/") + "/%"
+    cohort_clause = _locked_cohort_clause(conn, alias="f")
 
     rows = conn.execute(
-        """
+        f"""
         SELECT
           al.identity_id,
           COUNT(*) AS row_count,
@@ -310,8 +369,7 @@ def compute_cohort_duplicates(
         FROM files f
         JOIN asset_file af ON af.path = f.path
         JOIN asset_link al ON al.asset_id = af.id AND al.active = 1
-        WHERE (f.is_dj_material = 1
-               OR (f.dj_pool_path IS NOT NULL AND TRIM(f.dj_pool_path) <> ''))
+        WHERE {cohort_clause}
           AND f.path LIKE :prefix
         GROUP BY al.identity_id
         HAVING COUNT(*) > 1
@@ -523,14 +581,89 @@ def select_flagged_master_paths(
 ) -> list[dict]:
     only_roles_supplied, only_roles = _validated_only_roles(profile)
     prefix = str(master_root).rstrip("/") + "/%"
+    cohort_clause = _locked_cohort_clause(conn, alias="f")
+    files_has_dj_flag = _column_exists(conn, "files", "dj_flag")
     files_has_dj_set_role = _column_exists(conn, "files", "dj_set_role")
     files_has_duration_status = _column_exists(conn, "files", "duration_status")
     files_has_quality_rank = _column_exists(conn, "files", "quality_rank")
+    files_has_download_source = _column_exists(conn, "files", "download_source")
+    files_has_download_date = _column_exists(conn, "files", "download_date")
+    files_has_canonical_artist = _column_exists(conn, "files", "canonical_artist")
+    files_has_canonical_title = _column_exists(conn, "files", "canonical_title")
+    files_has_canonical_genre = _column_exists(conn, "files", "canonical_genre")
+    files_has_genre = _column_exists(conn, "files", "genre")
+    files_has_canonical_label = _column_exists(conn, "files", "canonical_label")
+    files_has_canonical_bpm = _column_exists(conn, "files", "canonical_bpm")
+    files_has_bpm = _column_exists(conn, "files", "bpm")
+    files_has_canonical_key = _column_exists(conn, "files", "canonical_key")
+    files_has_key_camelot = _column_exists(conn, "files", "key_camelot")
+    files_has_canonical_year = _column_exists(conn, "files", "canonical_year")
+
+    flac_ok_expr = _coalesce_expr(
+        _optional_column_expr(conn, "asset_file", "af", "flac_ok"),
+        _optional_column_expr(conn, "files", "f", "flac_ok"),
+    )
+    integrity_state_expr = _coalesce_expr(
+        _optional_column_expr(conn, "asset_file", "af", "integrity_state", treat_blank_as_null=True),
+        _optional_column_expr(conn, "files", "f", "integrity_state", treat_blank_as_null=True),
+    )
+    download_source_expr = _coalesce_expr(
+        _optional_column_expr(conn, "asset_file", "af", "download_source", treat_blank_as_null=True),
+        _optional_column_expr(conn, "files", "f", "download_source", treat_blank_as_null=True)
+        if files_has_download_source else None,
+    )
+    download_date_expr = _coalesce_expr(
+        _optional_column_expr(conn, "asset_file", "af", "download_date", treat_blank_as_null=True),
+        _optional_column_expr(conn, "files", "f", "download_date", treat_blank_as_null=True)
+        if files_has_download_date else None,
+    )
+    artist_expr = _coalesce_expr(
+        "NULLIF(TRIM(ti.canonical_artist), '')",
+        _optional_column_expr(conn, "files", "f", "canonical_artist", treat_blank_as_null=True)
+        if files_has_canonical_artist else None,
+    )
+    title_expr = _coalesce_expr(
+        "NULLIF(TRIM(ti.canonical_title), '')",
+        _optional_column_expr(conn, "files", "f", "canonical_title", treat_blank_as_null=True)
+        if files_has_canonical_title else None,
+    )
+    genre_expr = _coalesce_expr(
+        "NULLIF(TRIM(ti.canonical_genre), '')",
+        _optional_column_expr(conn, "files", "f", "canonical_genre", treat_blank_as_null=True)
+        if files_has_canonical_genre else None,
+        _optional_column_expr(conn, "files", "f", "genre", treat_blank_as_null=True)
+        if files_has_genre else None,
+    )
+    label_expr = _coalesce_expr(
+        "NULLIF(TRIM(ti.canonical_label), '')",
+        _optional_column_expr(conn, "files", "f", "canonical_label", treat_blank_as_null=True)
+        if files_has_canonical_label else None,
+    )
+    bpm_expr = _coalesce_expr(
+        "ti.canonical_bpm",
+        _optional_column_expr(conn, "files", "f", "canonical_bpm")
+        if files_has_canonical_bpm else None,
+        _optional_column_expr(conn, "files", "f", "bpm")
+        if files_has_bpm else None,
+    )
+    key_expr = _coalesce_expr(
+        "NULLIF(TRIM(ti.canonical_key), '')",
+        _optional_column_expr(conn, "files", "f", "canonical_key", treat_blank_as_null=True)
+        if files_has_canonical_key else None,
+        _optional_column_expr(conn, "files", "f", "key_camelot", treat_blank_as_null=True)
+        if files_has_key_camelot else None,
+    )
+    year_expr = _coalesce_expr(
+        "ti.canonical_year",
+        _optional_column_expr(conn, "files", "f", "canonical_year")
+        if files_has_canonical_year else None,
+    )
 
     select_columns = [
         "f.path AS master_path",
-        "f.is_dj_material",
-        "f.dj_pool_path",
+        "f.is_dj_material" if _column_exists(conn, "files", "is_dj_material") else "0 AS is_dj_material",
+        "f.dj_flag" if files_has_dj_flag else "0 AS dj_flag",
+        "f.dj_pool_path" if _column_exists(conn, "files", "dj_pool_path") else "NULL AS dj_pool_path",
     ]
     if files_has_dj_set_role:
         select_columns.append("f.dj_set_role")
@@ -542,18 +675,18 @@ def select_flagged_master_paths(
         select_columns.append("f.quality_rank")
     select_columns.extend(
         [
-            "af.flac_ok",
-            "af.integrity_state",
-            "af.download_source",
-            "af.download_date",
+            f"{flac_ok_expr} AS flac_ok",
+            f"{integrity_state_expr} AS integrity_state",
+            f"{download_source_expr} AS download_source",
+            f"{download_date_expr} AS download_date",
             "al.identity_id",
-            "ti.canonical_artist AS artist",
-            "ti.canonical_title AS title",
-            "ti.canonical_genre AS genre",
-            "ti.canonical_label AS label",
-            "ti.canonical_bpm AS bpm",
-            "ti.canonical_key AS musical_key",
-            "ti.canonical_year AS year",
+            f"{artist_expr} AS artist",
+            f"{title_expr} AS title",
+            f"{genre_expr} AS genre",
+            f"{label_expr} AS label",
+            f"{bpm_expr} AS bpm",
+            f"{key_expr} AS musical_key",
+            f"{year_expr} AS year",
             "dj.rating AS dj_rating",
             "dj.energy AS dj_energy",
             "dj.set_role AS profile_set_role",
@@ -568,19 +701,18 @@ def select_flagged_master_paths(
         "LEFT JOIN asset_link al ON al.asset_id = af.id AND al.active = 1",
         "LEFT JOIN track_identity ti ON ti.id = al.identity_id",
         "LEFT JOIN dj_track_profile dj ON dj.identity_id = al.identity_id",
-        "WHERE (f.is_dj_material = 1",
-        "       OR (f.dj_pool_path IS NOT NULL AND TRIM(f.dj_pool_path) <> ''))",
+        f"WHERE {cohort_clause}",
         "  AND f.path LIKE ?",
     ]
     params: list[object] = [prefix]
 
     if bool(profile.get("require_flac_ok", False)):
-        query.append("  AND af.flac_ok = 1")
+        query.append(f"  AND {flac_ok_expr} = 1")
 
     integrity_states = [str(value) for value in (profile.get("integrity_states") or []) if str(value).strip()]
     if integrity_states:
         placeholders = ", ".join("?" for _ in integrity_states)
-        query.append(f"  AND af.integrity_state IN ({placeholders})")
+        query.append(f"  AND {integrity_state_expr} IN ({placeholders})")
         params.extend(integrity_states)
 
     if bool(profile.get("require_duration_ok", False)) and files_has_duration_status:
@@ -589,29 +721,29 @@ def select_flagged_master_paths(
     if profile.get("require_artist_title") is True:
         query.extend(
             [
-                "  AND ti.canonical_artist IS NOT NULL",
-                "  AND ti.canonical_title IS NOT NULL",
-                "  AND TRIM(ti.canonical_artist) <> ''",
-                "  AND TRIM(ti.canonical_title) <> ''",
+                f"  AND {artist_expr} IS NOT NULL",
+                f"  AND {title_expr} IS NOT NULL",
+                f"  AND TRIM({artist_expr}) <> ''",
+                f"  AND TRIM({title_expr}) <> ''",
             ]
         )
 
     if profile.get("require_bpm") is True:
-        query.append("  AND ti.canonical_bpm IS NOT NULL")
+        query.append(f"  AND {bpm_expr} IS NOT NULL")
 
     if profile.get("require_key") is True:
         query.extend(
             [
-                "  AND ti.canonical_key IS NOT NULL",
-                "  AND TRIM(ti.canonical_key) <> ''",
+                f"  AND {key_expr} IS NOT NULL",
+                f"  AND TRIM({key_expr}) <> ''",
             ]
         )
 
     if profile.get("require_genre") is True:
         query.extend(
             [
-                "  AND ti.canonical_genre IS NOT NULL",
-                "  AND TRIM(ti.canonical_genre) <> ''",
+                f"  AND {genre_expr} IS NOT NULL",
+                f"  AND TRIM({genre_expr}) <> ''",
             ]
         )
 
@@ -622,75 +754,75 @@ def select_flagged_master_paths(
     ]
     if download_source_include:
         placeholders = ", ".join("?" for _ in download_source_include)
-        query.append(f"  AND af.download_source IN ({placeholders})")
+        query.append(f"  AND {download_source_expr} IN ({placeholders})")
         params.extend(download_source_include)
 
     download_date_since = str(profile.get("download_date_since") or "").strip()
     if download_date_since:
-        query.append("  AND af.download_date IS NOT NULL")
-        query.append("  AND SUBSTR(af.download_date, 1, 10) >= ?")
+        query.append(f"  AND {download_date_expr} IS NOT NULL")
+        query.append(f"  AND SUBSTR({download_date_expr}, 1, 10) >= ?")
         params.append(download_date_since)
 
     download_date_until = str(profile.get("download_date_until") or "").strip()
     if download_date_until:
-        query.append("  AND af.download_date IS NOT NULL")
-        query.append("  AND SUBSTR(af.download_date, 1, 10) <= ?")
+        query.append(f"  AND {download_date_expr} IS NOT NULL")
+        query.append(f"  AND SUBSTR({download_date_expr}, 1, 10) <= ?")
         params.append(download_date_until)
 
     genre_include = [str(value) for value in (profile.get("genre_include") or []) if str(value).strip()]
     if genre_include:
         placeholders = ", ".join("?" for _ in genre_include)
-        query.append(f"  AND ti.canonical_genre IN ({placeholders})")
+        query.append(f"  AND {genre_expr} IN ({placeholders})")
         params.extend(genre_include)
 
     genre_exclude = [str(value) for value in (profile.get("genre_exclude") or []) if str(value).strip()]
     if genre_exclude:
         placeholders = ", ".join("?" for _ in genre_exclude)
-        query.append(f"  AND (ti.canonical_genre IS NULL OR ti.canonical_genre NOT IN ({placeholders}))")
+        query.append(f"  AND ({genre_expr} IS NULL OR {genre_expr} NOT IN ({placeholders}))")
         params.extend(genre_exclude)
 
     bpm_min = profile.get("bpm_min")
     if bpm_min is not None:
-        query.append("  AND ti.canonical_bpm >= ?")
+        query.append(f"  AND {bpm_expr} >= ?")
         params.append(float(bpm_min))
 
     bpm_max = profile.get("bpm_max")
     if bpm_max is not None:
-        query.append("  AND ti.canonical_bpm <= ?")
+        query.append(f"  AND {bpm_expr} <= ?")
         params.append(float(bpm_max))
 
     key_include = [str(value) for value in (profile.get("key_include") or []) if str(value).strip()]
     if key_include:
         placeholders = ", ".join("?" for _ in key_include)
-        query.append(f"  AND ti.canonical_key IN ({placeholders})")
+        query.append(f"  AND {key_expr} IN ({placeholders})")
         params.extend(key_include)
 
     key_exclude = [str(value) for value in (profile.get("key_exclude") or []) if str(value).strip()]
     if key_exclude:
         placeholders = ", ".join("?" for _ in key_exclude)
-        query.append(f"  AND (ti.canonical_key IS NULL OR ti.canonical_key NOT IN ({placeholders}))")
+        query.append(f"  AND ({key_expr} IS NULL OR {key_expr} NOT IN ({placeholders}))")
         params.extend(key_exclude)
 
     label_include = [str(value) for value in (profile.get("label_include") or []) if str(value).strip()]
     if label_include:
         placeholders = ", ".join("?" for _ in label_include)
-        query.append(f"  AND ti.canonical_label IN ({placeholders})")
+        query.append(f"  AND {label_expr} IN ({placeholders})")
         params.extend(label_include)
 
     label_exclude = [str(value) for value in (profile.get("label_exclude") or []) if str(value).strip()]
     if label_exclude:
         placeholders = ", ".join("?" for _ in label_exclude)
-        query.append(f"  AND (ti.canonical_label IS NULL OR ti.canonical_label NOT IN ({placeholders}))")
+        query.append(f"  AND ({label_expr} IS NULL OR {label_expr} NOT IN ({placeholders}))")
         params.extend(label_exclude)
 
     year_min = profile.get("year_min")
     if year_min is not None:
-        query.append("  AND ti.canonical_year >= ?")
+        query.append(f"  AND {year_expr} >= ?")
         params.append(int(year_min))
 
     year_max = profile.get("year_max")
     if year_max is not None:
-        query.append("  AND ti.canonical_year <= ?")
+        query.append(f"  AND {year_expr} <= ?")
         params.append(int(year_max))
 
     quality_rank_max = profile.get("quality_rank_max")
@@ -1324,10 +1456,7 @@ def run_interactive_wizard(
         pool_name = "DJ Pool"
 
     click.echo("\n── Locked cohort ──────────────────────────────────")
-    click.echo(
-        "  files.is_dj_material = 1  OR  "
-        "files.dj_pool_path IS NOT NULL"
-    )
+    click.echo(f"  {health['cohort_definition']}")
     click.echo(f"  Restricted to: {master_root}")
     click.echo(f"  Total flagged: {health['flagged_union_count']}")
     for note in health.get("notes", []):

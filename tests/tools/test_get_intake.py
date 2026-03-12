@@ -91,6 +91,45 @@ def _read_lines(path: Path) -> list[str]:
     return [line for line in path.read_text(encoding="utf-8").splitlines() if line]
 
 
+def _run_precheck_candidate_quality_rank(
+    tmp_path: Path,
+    *,
+    source: str,
+    env_overrides: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    library_path = _write_shell_library(tmp_path)
+    harness = tmp_path / f"run-precheck-rank-{source}.sh"
+    harness.write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env bash",
+                "set -euo pipefail",
+                f"source {shlex.quote(str(library_path))}",
+                f"SOURCE={shlex.quote(source)}",
+                "precheck_candidate_quality_rank",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    harness.chmod(0o755)
+
+    env = os.environ.copy()
+    for key in ("PRECHECK_CANDIDATE_QUALITY_RANK", "TIDAL_PRECHECK_CANDIDATE_QUALITY_RANK"):
+        env.pop(key, None)
+    if env_overrides:
+        env.update(env_overrides)
+
+    return subprocess.run(
+        ["bash", str(harness)],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+
+
 def test_run_bpdl_batch_quit_mode_uses_config_workdir(tmp_path: Path) -> None:
     staging_root = tmp_path / "staging"
 
@@ -128,3 +167,21 @@ def test_run_bpdl_batch_compat_mode_logs_and_warns_for_legacy_staging_env(tmp_pa
     assert warning in proc.stderr
     assert proc.stderr.count(warning) == 1
     assert f"downloads_directory: {legacy_staging / 'bpdl'}" in cfg_path.read_text(encoding="utf-8")
+
+
+def test_precheck_candidate_quality_rank_defaults_tidal_to_cd_lossless(tmp_path: Path) -> None:
+    proc = _run_precheck_candidate_quality_rank(tmp_path, source="tidal")
+
+    assert proc.returncode == 0, f"STDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+    assert proc.stdout.strip() == "4"
+
+
+def test_precheck_candidate_quality_rank_uses_global_override(tmp_path: Path) -> None:
+    proc = _run_precheck_candidate_quality_rank(
+        tmp_path,
+        source="tidal",
+        env_overrides={"PRECHECK_CANDIDATE_QUALITY_RANK": "2"},
+    )
+
+    assert proc.returncode == 0, f"STDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+    assert proc.stdout.strip() == "2"

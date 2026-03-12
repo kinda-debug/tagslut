@@ -43,13 +43,14 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from tagslut.core.quality import is_upgrade
+from tagslut.core.quality import compute_quality_rank, is_upgrade
 from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
 
 # Confidence levels for match methods
 CONFIDENCE_LEVELS = {
     "isrc": "high",
     "beatport_id": "high",
+    "tidal_id": "high",
     "exact_title_artist_album": "medium",
     "exact_title_artist": "low",
 }
@@ -60,6 +61,7 @@ class DbRow:
     path: str
     isrc: str
     beatport_id: str
+    tidal_id: str
     title: str
     artist: str
     album: str
@@ -96,7 +98,49 @@ def first_meta(meta: dict[str, Any], keys: list[str]) -> str:
     return ""
 
 
-def load_db_rows(db_path: Path) -> tuple[dict[str, list[DbRow]], dict[str, list[DbRow]], dict[str, list[DbRow]], dict[str, list[DbRow]]]:
+def infer_quality_rank(
+    *,
+    path: str,
+    quality_rank: int | None,
+    bit_depth: int | None,
+    sample_rate: int | None,
+    bitrate: int | None,
+) -> int | None:
+    if quality_rank is not None:
+        return int(quality_rank)
+
+    bitrate_value = int(bitrate) if bitrate is not None else None
+    suffix = Path(path).suffix.lower()
+    if suffix in {".flac", ".wav", ".aif", ".aiff"}:
+        bitrate_value = 0
+
+    if bit_depth is not None and sample_rate is not None:
+        try:
+            return int(
+                compute_quality_rank(
+                    int(bit_depth),
+                    int(sample_rate),
+                    int(bitrate_value or 0),
+                )
+            )
+        except (TypeError, ValueError):
+            return None
+
+    if bitrate_value is not None:
+        return 6 if int(bitrate_value) >= 320000 else 7
+
+    return None
+
+
+def load_db_rows(
+    db_path: Path,
+) -> tuple[
+    dict[str, list[DbRow]],
+    dict[str, list[DbRow]],
+    dict[str, list[DbRow]],
+    dict[str, list[DbRow]],
+    dict[str, list[DbRow]],
+]:
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
@@ -106,9 +150,13 @@ def load_db_rows(db_path: Path) -> tuple[dict[str, list[DbRow]], dict[str, list[
             path,
             canonical_isrc,
             beatport_id,
+            tidal_id,
             canonical_title,
             canonical_artist,
             canonical_album,
+            bit_depth,
+            sample_rate,
+            bitrate,
             metadata_json,
             download_source,
             quality_rank
@@ -118,6 +166,7 @@ def load_db_rows(db_path: Path) -> tuple[dict[str, list[DbRow]], dict[str, list[
 
     by_isrc: dict[str, list[DbRow]] = defaultdict(list)
     by_beatport: dict[str, list[DbRow]] = defaultdict(list)
+    by_tidal: dict[str, list[DbRow]] = defaultdict(list)
     by_exact3: dict[str, list[DbRow]] = defaultdict(list)
     by_exact2: dict[str, list[DbRow]] = defaultdict(list)
 
@@ -126,6 +175,7 @@ def load_db_rows(db_path: Path) -> tuple[dict[str, list[DbRow]], dict[str, list[
 
         isrc = (r["canonical_isrc"] or first_meta(meta, ["isrc", "ISRC", "TSRC"])).strip()
         beatport_id = (str(r["beatport_id"]) if r["beatport_id"] else first_meta(meta, ["beatport_id", "beatport_track_id", "BP_TRACK_ID"]))
+        tidal_id = (str(r["tidal_id"]) if r["tidal_id"] else first_meta(meta, ["tidal_id", "tidal_track_id", "TD_TRACK_ID"]))
         title = (r["canonical_title"] or first_meta(meta, ["title", "TITLE", "track_title", "name"])).strip()
         artist = (r["canonical_artist"] or first_meta(meta, ["artist", "ARTIST", "albumartist", "ALBUMARTIST"])).strip()
         album = (r["canonical_album"] or first_meta(meta, ["album", "ALBUM", "release"])).strip()
@@ -134,17 +184,26 @@ def load_db_rows(db_path: Path) -> tuple[dict[str, list[DbRow]], dict[str, list[
             path=r["path"],
             isrc=isrc,
             beatport_id=str(beatport_id).strip(),
+            tidal_id=str(tidal_id).strip(),
             title=title,
             artist=artist,
             album=album,
             download_source=(r["download_source"] or "").strip(),
-            quality_rank=int(r["quality_rank"]) if r["quality_rank"] is not None else None,
+            quality_rank=infer_quality_rank(
+                path=r["path"],
+                quality_rank=int(r["quality_rank"]) if r["quality_rank"] is not None else None,
+                bit_depth=int(r["bit_depth"]) if r["bit_depth"] is not None else None,
+                sample_rate=int(r["sample_rate"]) if r["sample_rate"] is not None else None,
+                bitrate=int(r["bitrate"]) if r["bitrate"] is not None else None,
+            ),
         )
 
         if row.isrc:
             by_isrc[row.isrc].append(row)
         if row.beatport_id:
             by_beatport[row.beatport_id].append(row)
+        if row.tidal_id:
+            by_tidal[row.tidal_id].append(row)
 
         k3 = "|".join([norm_text(row.title), norm_text(row.artist), norm_text(row.album)])
         if k3.strip("|"):
@@ -155,7 +214,7 @@ def load_db_rows(db_path: Path) -> tuple[dict[str, list[DbRow]], dict[str, list[
             by_exact2[k2].append(row)
 
     conn.close()
-    return by_isrc, by_beatport, by_exact3, by_exact2
+    return by_isrc, by_beatport, by_tidal, by_exact3, by_exact2
 
 
 def build_keep_track_url(domain: str, track_id: str) -> str:
@@ -329,7 +388,7 @@ Match Methods (in priority order):
                 raise SystemExit(output) from exc
         raise
 
-    by_isrc, by_beatport, by_exact3, by_exact2 = load_db_rows(db_path)
+    by_isrc, by_beatport, by_tidal, by_exact3, by_exact2 = load_db_rows(db_path)
 
     decision_csv = out_dir / f"precheck_decisions_{ts}.csv"
     decision_summary_csv = out_dir / f"precheck_summary_{ts}.csv"
@@ -372,6 +431,9 @@ Match Methods (in priority order):
             elif domain == "beatport" and track_id and track_id in by_beatport:
                 matched = choose_best_match(by_beatport[track_id])
                 method = "beatport_id"
+            elif domain == "tidal" and track_id and track_id in by_tidal:
+                matched = choose_best_match(by_tidal[track_id])
+                method = "tidal_id"
             else:
                 k3 = "|".join([norm_text(title), norm_text(artist), norm_text(album)])
                 if k3 in by_exact3:

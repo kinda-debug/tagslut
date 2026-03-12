@@ -180,6 +180,23 @@ resolved_staging_root() {
   printf '%s\n' "$RESOLVED_STAGING_ROOT_CACHE"
 }
 
+precheck_candidate_quality_rank() {
+  if [[ -n "${PRECHECK_CANDIDATE_QUALITY_RANK:-}" ]]; then
+    printf '%s\n' "$PRECHECK_CANDIDATE_QUALITY_RANK"
+    return 0
+  fi
+
+  case "${SOURCE:-}" in
+    tidal)
+      # Tidal max quality is not knowable pre-download; default conservatively to CD lossless.
+      printf '%s\n' "${TIDAL_PRECHECK_CANDIDATE_QUALITY_RANK:-4}"
+      ;;
+    *)
+      printf '3\n'
+      ;;
+  esac
+}
+
 run_tiddl_download() {
   local tidal_url="${1:-}"
   shift || true
@@ -1658,12 +1675,13 @@ if [[ "$DOWNLOAD" -eq 1 ]]; then
   BATCH_AUDIO_BEFORE_DOWNLOAD="$(count_audio_files "$BATCH_ROOT")"
   if [[ "$USE_DOWNLOAD_PRECHECK" -eq 1 ]]; then
     step "$STEP" "$TOTAL_STEPS" "Pre-download check"
+    PRECHECK_CANDIDATE_QUALITY_RANK="$(precheck_candidate_quality_rank)"
     PRECHECK_ARGS=(
       "$PRE_DOWNLOAD_CHECK_SCRIPT"
       --input "$URL"
       --db "$DB_PATH"
       --out-dir "$OUT_DIR"
-      --candidate-quality-rank 3
+      --candidate-quality-rank "$PRECHECK_CANDIDATE_QUALITY_RANK"
     )
     if [[ "$VERBOSE" -eq 0 ]]; then
       PRECHECK_ARGS+=(--quiet)

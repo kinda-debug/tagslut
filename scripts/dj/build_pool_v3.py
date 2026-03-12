@@ -26,7 +26,7 @@ SAFE_MAX_NAME = 160
 @dataclass
 class ExportRow:
     identity_id: int
-    preferred_asset_id: int
+    selected_asset_id: int
     source_path: str
     dest_path: str
     action: str
@@ -267,7 +267,7 @@ def _write_manifest(path: Path, rows: list[ExportRow]) -> Path:
             handle,
             fieldnames=[
                 "identity_id",
-                "preferred_asset_id",
+                "selected_asset_id",
                 "source_path",
                 "dest_path",
                 "action",
@@ -461,7 +461,7 @@ def main(argv: list[str] | None = None) -> int:
                 manifest_rows.append(
                     ExportRow(
                         identity_id=int(row["identity_id"]),
-                        preferred_asset_id=int(_row_int(row, "selected_asset_id", "preferred_asset_id") or 0),
+                        selected_asset_id=int(_row_int(row, "selected_asset_id", "preferred_asset_id") or 0),
                         source_path=str(source),
                         dest_path="",
                         action="skip",
@@ -510,7 +510,7 @@ def main(argv: list[str] | None = None) -> int:
             manifest_rows.append(
                 ExportRow(
                     identity_id=int(row["identity_id"]),
-                    preferred_asset_id=int(_row_int(row, "selected_asset_id", "preferred_asset_id") or 0),
+                    selected_asset_id=int(_row_int(row, "selected_asset_id", "preferred_asset_id") or 0),
                     source_path=str(source),
                     dest_path=str(dest),
                     action=action,

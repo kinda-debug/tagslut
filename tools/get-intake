@@ -197,6 +197,31 @@ precheck_candidate_quality_rank() {
   esac
 }
 
+cross_root_audit_scope() {
+  local scope="${GET_INTAKE_CROSS_ROOT_AUDIT_SCOPE:-batch_only}"
+  case "$scope" in
+    batch_only|all_roots)
+      printf '%s\n' "$scope"
+      ;;
+    *)
+      err "Invalid GET_INTAKE_CROSS_ROOT_AUDIT_SCOPE=$scope (expected: batch_only|all_roots)"
+      ;;
+  esac
+}
+
+cross_root_audit_compute_root_args() {
+  local scope
+  scope="$(cross_root_audit_scope)"
+  case "$scope" in
+    batch_only)
+      [[ -n "${BATCH_ROOT:-}" ]] || err "BATCH_ROOT is required for batch-only cross-root audit"
+      printf '%s\n' "--compute-root" "$BATCH_ROOT"
+      ;;
+    all_roots)
+      ;;
+  esac
+}
+
 run_tiddl_download() {
   local tidal_url="${1:-}"
   shift || true
@@ -1906,13 +1931,20 @@ if [[ "$TAGGING_MODE" -eq 1 && "$EXECUTE" -eq 1 ]]; then
 fi
 
 step "$STEP" "$TOTAL_STEPS" "Cross-root fingerprint audit"
-run_cmd python "$AUDIT_SCRIPT" \
-  --db "$DB_PATH" \
-  --root "$LIBRARY_ROOT" \
-  --root "$BATCH_ROOT" \
-  --execute \
-  --progress \
+AUDIT_CMD=(
+  python "$AUDIT_SCRIPT"
+  --db "$DB_PATH"
+  --root "$LIBRARY_ROOT"
+  --root "$BATCH_ROOT"
+  --execute
+  --progress
   --workers "$WORKERS"
+)
+while IFS= read -r audit_arg; do
+  [[ -n "$audit_arg" ]] || continue
+  AUDIT_CMD+=("$audit_arg")
+done < <(cross_root_audit_compute_root_args)
+run_cmd "${AUDIT_CMD[@]}"
 STEP=$((STEP + 1))
 
 step "$STEP" "$TOTAL_STEPS" "Plan promote/fix/quarantine/discard"

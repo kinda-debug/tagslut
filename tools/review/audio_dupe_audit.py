@@ -19,6 +19,7 @@ Outputs (under --out-dir):
 
 This script does NOT move files.
 DB updates are optional and limited to writing `files.fingerprint` when --execute is supplied.
+Fingerprint computation can be limited to specific roots via `--compute-root`.
 """
 
 from __future__ import annotations
@@ -96,6 +97,16 @@ def _where_paths(prefixes: Iterable[Path]) -> tuple[str, list[str]]:
     if not parts:
         return "1=0", []
     return "(" + " OR ".join(parts) + ")", params
+
+
+def _matches_root_prefix(path_str: str, prefixes: Iterable[Path]) -> bool:
+    for prefix in prefixes:
+        expanded = str(prefix.expanduser().resolve())
+        if not expanded.endswith("/"):
+            expanded += "/"
+        if path_str.startswith(expanded):
+            return True
+    return False
 
 
 def _load_db_rows(conn: sqlite3.Connection, roots: list[Path]) -> list[DbFileRow]:
@@ -200,6 +211,13 @@ def parse_args() -> argparse.Namespace:
         required=True,
         help="Root prefix filter (repeatable)",
     )
+    ap.add_argument(
+        "--compute-root",
+        type=Path,
+        action="append",
+        default=[],
+        help="Root prefix eligible for missing fingerprint computation (default: all --root values)",
+    )
     ap.add_argument("--workers", type=int, default=None, help="Parallel workers (default: CPU-1)")
     ap.add_argument("--fp-length", type=int, default=120, help="fpcalc fingerprint length in seconds (default: 120)")
     ap.add_argument("--fp-timeout", type=int, default=180, help="fpcalc timeout per file in seconds (default: 180)")
@@ -256,6 +274,7 @@ def main() -> int:
         raise SystemExit(f"ERROR: DB not found: {db_path}")
 
     roots = [p.expanduser().resolve() for p in args.root]
+    compute_roots = [p.expanduser().resolve() for p in args.compute_root] if args.compute_root else list(roots)
     out_dir = args.out_dir.expanduser().resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -283,13 +302,22 @@ def main() -> int:
     # Determine fpcalc work list
     pending_paths: list[str] = []
     existing_fp = 0
+    skipped_scope = 0
     for row in db_rows:
         if not args.recompute and row.fingerprint:
             existing_fp += 1
             continue
+        if not _matches_root_prefix(row.path, compute_roots):
+            skipped_scope += 1
+            continue
         pending_paths.append(row.path)
 
-    logger.info("Fingerprints in DB: %d | To compute: %d", existing_fp, len(pending_paths))
+    logger.info(
+        "Fingerprints in DB: %d | Eligible missing: %d | To compute: %d",
+        existing_fp,
+        skipped_scope + len(pending_paths),
+        len(pending_paths),
+    )
 
     # Compute fingerprints in parallel
     fp_by_path: dict[str, FingerprintResult] = {}
@@ -530,12 +558,14 @@ def main() -> int:
     summary = {
         "db": str(db_path),
         "roots": [str(r) for r in roots],
+        "compute_roots": [str(r) for r in compute_roots],
         "total_files": len(db_rows),
         "integrity_valid": sum(1 for r in db_rows if (r.integrity_state or "").strip() == "valid"),
         "flac_ok": sum(1 for r in db_rows if r.flac_ok == 1),
         "streaminfo_md5_present": sum(1 for r in db_rows if (r.streaminfo_md5 or "").strip()),
         "streaminfo_md5_dupe_groups_nonzero": streaminfo_dupe_groups,
         "fingerprint_existing_in_db": existing_fp,
+        "fingerprint_missing_outside_compute_scope": skipped_scope,
         "fingerprint_computed_ok": computed_ok,
         "fingerprint_computed_fail": computed_fail,
         "fingerprint_dupe_groups": len(dupe_groups),
@@ -552,7 +582,10 @@ def main() -> int:
     out_summary.write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
     print(f"Files scoped: {len(db_rows)}")
-    print(f"fpcalc computed: ok={computed_ok} fail={computed_fail} (existing_in_db={existing_fp})")
+    print(
+        f"fpcalc computed: ok={computed_ok} fail={computed_fail} "
+        f"(existing_in_db={existing_fp} missing_outside_scope={skipped_scope})"
+    )
     print(f"Fingerprint dupe groups: {len(dupe_groups)} (files_in_groups={sum(len(m) for _, m in dupe_groups)})")
     print(f"STREAMINFO_MD5 dupe groups (non-zero): {streaminfo_dupe_groups}")
     if args.execute:

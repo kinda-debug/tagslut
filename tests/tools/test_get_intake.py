@@ -130,6 +130,43 @@ def _run_precheck_candidate_quality_rank(
     )
 
 
+def _run_cross_root_audit_compute_root_args(
+    tmp_path: Path,
+    *,
+    env_overrides: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    library_path = _write_shell_library(tmp_path)
+    harness = tmp_path / "run-cross-root-audit-compute-root-args.sh"
+    harness.write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env bash",
+                "set -euo pipefail",
+                f"source {shlex.quote(str(library_path))}",
+                "BATCH_ROOT=/tmp/batch-root",
+                "cross_root_audit_compute_root_args",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    harness.chmod(0o755)
+
+    env = os.environ.copy()
+    env.pop("GET_INTAKE_CROSS_ROOT_AUDIT_SCOPE", None)
+    if env_overrides:
+        env.update(env_overrides)
+
+    return subprocess.run(
+        ["bash", str(harness)],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+
+
 def test_run_bpdl_batch_quit_mode_uses_config_workdir(tmp_path: Path) -> None:
     staging_root = tmp_path / "staging"
 
@@ -185,3 +222,20 @@ def test_precheck_candidate_quality_rank_uses_global_override(tmp_path: Path) ->
 
     assert proc.returncode == 0, f"STDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
     assert proc.stdout.strip() == "2"
+
+
+def test_cross_root_audit_compute_root_args_defaults_to_batch_root(tmp_path: Path) -> None:
+    proc = _run_cross_root_audit_compute_root_args(tmp_path)
+
+    assert proc.returncode == 0, f"STDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+    assert proc.stdout.splitlines() == ["--compute-root", "/tmp/batch-root"]
+
+
+def test_cross_root_audit_compute_root_args_can_expand_to_all_roots(tmp_path: Path) -> None:
+    proc = _run_cross_root_audit_compute_root_args(
+        tmp_path,
+        env_overrides={"GET_INTAKE_CROSS_ROOT_AUDIT_SCOPE": "all_roots"},
+    )
+
+    assert proc.returncode == 0, f"STDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+    assert proc.stdout.strip() == ""

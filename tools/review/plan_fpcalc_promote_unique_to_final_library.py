@@ -4,13 +4,13 @@ plan_fpcalc_promote_unique_to_final_library.py
 
 Plan MOVE-only actions to build the FINAL_LIBRARY from one or more *source* roots:
 
-- Promote unique audio (by fpcalc fingerprint) into FINAL_LIBRARY strict naming convention
+- Promote unique audio (by fpcalc fingerprint or FLAC streaminfo_md5) into FINAL_LIBRARY strict naming convention
 - Stash healthy duplicates on the SAME source volume under /Volumes/<VOL>/_work/<stash-folder-name>/...
-- Quarantine files missing fingerprint (optional bucket) to a quarantine root
+- Quarantine files missing any exact-audio identity (optional bucket) to a quarantine root
 
-Crucially: this planner treats the FINAL_LIBRARY as **read-only**. If a fingerprint
-already exists under --final-root, the source copies are stashed and nothing in
-the FINAL_LIBRARY is moved.
+Crucially: this planner treats the FINAL_LIBRARY as **read-only**. If an exact-audio
+identity already exists under --final-root, the source copies are stashed and
+nothing in the FINAL_LIBRARY is moved.
 
 This script does NOT move files. It writes plan CSV(s) for move_from_plan.py.
 """
@@ -44,6 +44,7 @@ class FileRow:
     bit_depth: int
     bitrate: int
     fingerprint: str | None
+    streaminfo_md5: str | None
     flac_ok: int | None
     integrity_state: str | None
     metadata_json: str | None
@@ -137,6 +138,16 @@ def _prefer_rank(path_str: str, prefer_prefixes: list[str]) -> int:
         if path_str.startswith(prefix):
             return idx
     return 10_000
+
+
+def _audio_identity(row: FileRow) -> str | None:
+    fingerprint = (row.fingerprint or "").strip()
+    if fingerprint:
+        return f"fp:{fingerprint}"
+    streaminfo_md5 = (row.streaminfo_md5 or "").strip()
+    if streaminfo_md5:
+        return f"md5:{streaminfo_md5}"
+    return None
 
 
 def parse_args() -> argparse.Namespace:
@@ -237,20 +248,25 @@ def main() -> int:
         final_prefix = str(final_root)
         if not final_prefix.endswith("/"):
             final_prefix += "/"
-        final_fps = {
-            str(r[0]).strip()
-            for r in conn.execute(
+        final_audio_ids: set[str] = set()
+        final_fp_values: set[str] = set()
+        final_streaminfo_values: set[str] = set()
+        for r in conn.execute(
                 """
-                SELECT DISTINCT fingerprint
+                SELECT DISTINCT fingerprint, streaminfo_md5
                 FROM files
                 WHERE path LIKE ?
-                  AND fingerprint IS NOT NULL
-                  AND fingerprint != ''
                 """,
                 (final_prefix + "%",),
-            ).fetchall()
-            if r[0]
-        }
+            ).fetchall():
+            fingerprint = _norm_text(r[0])
+            streaminfo_md5 = _norm_text(r[1])
+            if fingerprint:
+                final_audio_ids.add(f"fp:{fingerprint}")
+                final_fp_values.add(fingerprint)
+            if streaminfo_md5:
+                final_audio_ids.add(f"md5:{streaminfo_md5}")
+                final_streaminfo_values.add(streaminfo_md5)
 
         where_src, params_src = _prefix_where(source_roots)
         rows = conn.execute(
@@ -263,12 +279,13 @@ def main() -> int:
                 bit_depth,
                 bitrate,
                 fingerprint,
+                streaminfo_md5,
                 flac_ok,
                 integrity_state,
                 metadata_json
             FROM files
             WHERE {where_src}
-            ORDER BY fingerprint, path
+            ORDER BY fingerprint, streaminfo_md5, path
             """,
             params_src,
         ).fetchall()
@@ -286,6 +303,7 @@ def main() -> int:
                 bit_depth=int(r["bit_depth"] or 0),
                 bitrate=int(r["bitrate"] or 0),
                 fingerprint=(r["fingerprint"] or "").strip() or None,
+                streaminfo_md5=(r["streaminfo_md5"] or "").strip() or None,
                 flac_ok=r["flac_ok"],
                 integrity_state=r["integrity_state"],
                 metadata_json=r["metadata_json"],
@@ -298,10 +316,15 @@ def main() -> int:
 
     missing_fp = [f for f in files if not f.fingerprint]
     with_fp = [f for f in files if f.fingerprint]
+    with_audio_id = [f for f in files if _audio_identity(f)]
+    missing_audio_id = [f for f in files if _audio_identity(f) is None]
 
     by_fp: dict[str, list[FileRow]] = {}
-    for f in with_fp:
-        by_fp.setdefault(f.fingerprint or "", []).append(f)
+    for f in with_audio_id:
+        audio_id = _audio_identity(f)
+        if audio_id is None:
+            continue
+        by_fp.setdefault(audio_id, []).append(f)
 
     fps = sorted(by_fp.keys(), key=lambda fp: (_sha1_text(fp), fp))
     if args.limit_fps and args.limit_fps > 0:
@@ -348,7 +371,7 @@ def main() -> int:
 
         fp_sha1 = _sha1_text(fp)
 
-        if fp in final_fps:
+        if fp in final_audio_ids:
             # Audio already present in FINAL_LIBRARY -> stash all healthy source copies.
             for m in healthy:
                 src_path = Path(m.path)
@@ -516,7 +539,7 @@ def main() -> int:
 
     # Quarantine missing fingerprints
     if args.quarantine_missing_fp:
-        for idx, m in enumerate(missing_fp, start=1):
+        for idx, m in enumerate(missing_audio_id, start=1):
             src_path = Path(m.path)
             if not src_path.exists():
                 missing_files_skipped += 1
@@ -582,7 +605,11 @@ def main() -> int:
         "scoped_files_total": len(files),
         "scoped_files_with_fp": len(with_fp),
         "scoped_files_missing_fp": len(missing_fp),
-        "final_fingerprints_distinct": len(final_fps),
+        "scoped_files_with_audio_id": len(with_audio_id),
+        "scoped_files_missing_audio_id": len(missing_audio_id),
+        "final_fingerprints_distinct": len(final_fp_values),
+        "final_streaminfo_md5_distinct": len(final_streaminfo_values),
+        "final_audio_ids_distinct": len(final_audio_ids),
         "planned": {
             "promote_move": promote_move,
             "promote_skip": promote_skip,
@@ -608,8 +635,15 @@ def main() -> int:
     }
     out_summary.write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
-    print(f"Scoped source rows: {len(files)} (with_fp={len(with_fp)} missing_fp={len(missing_fp)})")
-    print(f"FINAL_LIBRARY distinct fingerprints: {len(final_fps)}")
+    print(
+        f"Scoped source rows: {len(files)} "
+        f"(with_fp={len(with_fp)} missing_fp={len(missing_fp)} "
+        f"with_audio_id={len(with_audio_id)} missing_audio_id={len(missing_audio_id)})"
+    )
+    print(
+        f"FINAL_LIBRARY distinct audio ids: {len(final_audio_ids)} "
+        f"(fingerprints={len(final_fp_values)} streaminfo_md5={len(final_streaminfo_values)})"
+    )
     print(f"Planned promote: MOVE={promote_move} SKIP={promote_skip}")
     print(f"Planned stash MOVE rows: {len(stash_rows)}")
     print(f"Planned quarantine MOVE rows: {len(quarantine_rows)}")

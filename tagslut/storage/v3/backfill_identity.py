@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import sqlite3
+import sys
 import traceback
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -212,6 +213,7 @@ class BackfillConfig:
     abort_error_rate_per_1000: float
     artifacts_dir: Path
     limit: int | None = None
+    verbose: bool = False
 
 
 def _maybe_set(payload: dict[str, Any], key: str, value: Any) -> None:
@@ -653,6 +655,20 @@ def _checkpoint_payload(stats: BackfillStats, *, mode: str, db_path: str) -> dic
     }
 
 
+def _emit_progress(config: BackfillConfig, stats: BackfillStats, *, event: str) -> None:
+    if not config.verbose:
+        return
+    print(
+        "progress "
+        f"event={event} processed={stats.processed} last_file_id={stats.last_file_id} "
+        f"created={stats.created} reused={stats.reused} merged={stats.merged} "
+        f"skipped={stats.skipped} conflicted={stats.conflicted} errors={stats.errors} "
+        f"fingerprint_matched={stats.fingerprint_matched} committed_batches={stats.committed_batches}",
+        file=sys.stderr,
+        flush=True,
+    )
+
+
 def backfill_v3_identity_links(
     conn: sqlite3.Connection,
     *,
@@ -841,15 +857,18 @@ def backfill_v3_identity_links(
         if config.execute and stats.processed % config.commit_every == 0:
             conn.commit()
             stats.committed_batches += 1
+            _emit_progress(config, stats, event="commit")
             conn.execute("BEGIN")
         if stats.processed % config.checkpoint_every == 0:
             checkpoint_path = artifacts_dir / f"backfill_v3_checkpoint_{stamp}_{stats.last_file_id}.json"
             _write_json(checkpoint_path, _checkpoint_payload(stats, mode=mode, db_path=str(db_path)))
+            _emit_progress(config, stats, event="checkpoint")
 
     if config.execute:
         conn.commit()
         if stats.processed % config.commit_every != 0 and stats.processed > 0:
             stats.committed_batches += 1
+            _emit_progress(config, stats, event="commit")
 
     summary = _checkpoint_payload(stats, mode=mode, db_path=str(db_path))
     summary["artifact_paths"] = {
@@ -942,19 +961,29 @@ def main(argv: list[str] | None = None) -> int:
         abort_error_rate_per_1000=args.abort_error_rate,
         artifacts_dir=default_artifacts_dir(),
         limit=args.limit,
+        verbose=bool(args.verbose),
     )
 
-    conn = sqlite3.connect(str(db_path))
     try:
+        if args.verbose:
+            mode = "execute" if config.execute else "dry_run"
+            print(
+                f"starting backfill_identity mode={mode} db={db_path} "
+                f"resume_from_file_id={config.resume_from_file_id} limit={config.limit}",
+                file=sys.stderr,
+                flush=True,
+            )
+        conn = sqlite3.connect(str(db_path))
         summary = backfill_v3_identity_links(conn, db_path=db_path, config=config)
         print(json.dumps(summary, indent=2, sort_keys=True))
     except Exception as exc:  # noqa: BLE001
-        print(f"error: {exc}")
+        print(f"error: {exc}", file=sys.stderr, flush=True)
         if args.verbose:
             traceback.print_exc()
         return 1
     finally:
-        conn.close()
+        if "conn" in locals():
+            conn.close()
     return 0
 
 

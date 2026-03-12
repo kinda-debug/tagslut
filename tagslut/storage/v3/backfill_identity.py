@@ -449,6 +449,70 @@ def _resolve_active_identity_row(
     return canonical, True
 
 
+def _identity_row_score(row: sqlite3.Row) -> tuple[int, int]:
+    score = 0
+    for field_name in (
+        "isrc",
+        *(name for name, _ in _PROVIDER_COLUMNS),
+        "artist_norm",
+        "title_norm",
+        "album_norm",
+        "canonical_artist",
+        "canonical_title",
+        "canonical_album",
+        "canonical_genre",
+        "canonical_label",
+        "canonical_release_date",
+        "duration_ref_ms",
+        "ref_source",
+    ):
+        if field_name in row.keys() and _norm_text(row[field_name]) is not None:
+            score += 1
+    return (score, -int(row["id"]))
+
+
+def _rows_have_consistent_exact_fields(rows: list[sqlite3.Row]) -> bool:
+    for field_name in ("isrc", *(name for name, _ in _PROVIDER_COLUMNS)):
+        values = set()
+        for row in rows:
+            if field_name not in row.keys():
+                continue
+            value = _norm_text(row[field_name])
+            if value:
+                values.add(value.lower())
+        if len(values) > 1:
+            return False
+    return True
+
+
+def _rows_have_compatible_core_identity(rows: list[sqlite3.Row]) -> bool:
+    artist_values = {_norm_text(row["artist_norm"]) for row in rows if "artist_norm" in row.keys()}
+    artist_values.discard(None)
+    title_values = {_norm_text(row["title_norm"]) for row in rows if "title_norm" in row.keys()}
+    title_values.discard(None)
+    if len(artist_values) > 1 or len(title_values) > 1:
+        return False
+    durations = []
+    for row in rows:
+        if "duration_ref_ms" not in row.keys():
+            continue
+        value = row["duration_ref_ms"]
+        if value is None:
+            continue
+        durations.append(int(value))
+    if durations and max(durations) - min(durations) > _FUZZY_DURATION_TOLERANCE_MS:
+        return False
+    return True
+
+
+def _choose_equivalent_identity(rows: list[sqlite3.Row]) -> sqlite3.Row | None:
+    if not rows or not _rows_have_compatible_core_identity(rows):
+        return None
+    if not _rows_have_consistent_exact_fields(rows):
+        return None
+    return max(rows, key=_identity_row_score)
+
+
 def _find_identity_by_asset_path(conn: sqlite3.Connection, path: str) -> tuple[int | None, bool]:
     if not _table_exists(conn, V3_ASSET_FILE_TABLE) or not _table_exists(conn, V3_ASSET_LINK_TABLE):
         return None, False
@@ -484,15 +548,18 @@ def _find_identity_by_exact_field(
     ).fetchall()
     if not rows:
         return None, False, False
-    canonical_ids: set[int] = set()
+    canonical_rows: dict[int, sqlite3.Row] = {}
     followed_merge = False
     for row in rows:
         canonical, followed = _resolve_active_identity_row(conn, row)
-        canonical_ids.add(int(canonical["id"]))
+        canonical_rows[int(canonical["id"])] = canonical
         followed_merge = followed_merge or followed
-    if len(canonical_ids) > 1:
+    if len(canonical_rows) > 1:
+        equivalent = _choose_equivalent_identity(list(canonical_rows.values()))
+        if equivalent is not None:
+            return int(equivalent["id"]), followed_merge, False
         return None, followed_merge, True
-    return min(canonical_ids), followed_merge, False
+    return min(canonical_rows), followed_merge, False
 
 
 def _find_identity_by_identity_key(conn: sqlite3.Connection, identity_key: str | None) -> tuple[int | None, bool]:
@@ -543,6 +610,26 @@ def _find_fuzzy_candidates(conn: sqlite3.Connection, payload: dict[str, Any]) ->
         tuple(params),
     ).fetchall()
     return [int(row["id"]) for row in rows]
+
+
+def _resolve_equivalent_fuzzy_candidates(
+    conn: sqlite3.Connection, candidate_ids: list[int]
+) -> int | None:
+    if len(candidate_ids) <= 1:
+        return candidate_ids[0] if candidate_ids else None
+    rows = conn.execute(
+        f"""
+        SELECT *
+        FROM {V3_TRACK_IDENTITY_TABLE}
+        WHERE id IN ({", ".join("?" for _ in candidate_ids)})
+        ORDER BY id ASC
+        """,
+        tuple(candidate_ids),
+    ).fetchall()
+    equivalent = _choose_equivalent_identity(list(rows))
+    if equivalent is None:
+        return None
+    return int(equivalent["id"])
 
 
 def _update_identity(conn: sqlite3.Connection, identity_id: int, payload: dict[str, Any], *, fuzzy: bool) -> None:
@@ -804,6 +891,10 @@ def backfill_v3_identity_links(
                 merged = merged or identity_key_followed_merge
 
             fuzzy_candidates = _find_fuzzy_candidates(conn, payload)
+            equivalent_fuzzy_identity_id = _resolve_equivalent_fuzzy_candidates(conn, fuzzy_candidates)
+            if resolved_identity_id is None and equivalent_fuzzy_identity_id is not None:
+                resolved_identity_id = equivalent_fuzzy_identity_id
+                fuzzy_candidates = [equivalent_fuzzy_identity_id]
             if resolved_identity_id is None and len(fuzzy_candidates) > 1:
                 stats.fuzzy_near_collision += 1
                 stats.conflicted += 1

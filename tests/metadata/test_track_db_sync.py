@@ -14,6 +14,9 @@ def _create_work_db(path: Path) -> sqlite3.Connection:
         CREATE TABLE files (
             path TEXT PRIMARY KEY,
             dj_pool_path TEXT,
+            canonical_title TEXT,
+            canonical_artist TEXT,
+            canonical_album TEXT,
             canonical_genre TEXT,
             canonical_bpm REAL,
             canonical_key TEXT,
@@ -33,6 +36,9 @@ def _create_work_db(path: Path) -> sqlite3.Connection:
         );
         CREATE TABLE track_identity (
             id INTEGER PRIMARY KEY,
+            canonical_title TEXT,
+            canonical_artist TEXT,
+            canonical_album TEXT,
             canonical_genre TEXT,
             canonical_bpm REAL,
             canonical_key TEXT,
@@ -53,6 +59,9 @@ def _create_donor_db(path: Path) -> sqlite3.Connection:
         CREATE TABLE Track (
             id INTEGER PRIMARY KEY,
             location TEXT NOT NULL,
+            title TEXT,
+            artist TEXT,
+            albumTitle TEXT,
             genre TEXT NOT NULL,
             bpm REAL NOT NULL,
             key TEXT NOT NULL,
@@ -70,13 +79,17 @@ def test_sync_updates_files_and_identity_by_dj_pool_path(tmp_path: Path) -> None
         work_conn.execute(
             """
             INSERT INTO files (
-                path, dj_pool_path, canonical_genre, canonical_bpm, canonical_key, canonical_label,
+                path, dj_pool_path, canonical_title, canonical_artist, canonical_album,
+                canonical_genre, canonical_bpm, canonical_key, canonical_label,
                 enrichment_providers, enriched_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 "/music/source.flac",
                 "/Volumes/MUSIC/DJ_LIBRARY/Artist/Track.mp3",
+                None,
+                None,
+                None,
                 None,
                 120.0,
                 None,
@@ -90,15 +103,25 @@ def test_sync_updates_files_and_identity_by_dj_pool_path(tmp_path: Path) -> None
         work_conn.execute(
             """
             INSERT INTO track_identity (
-                id, canonical_genre, canonical_bpm, canonical_key, canonical_label, enriched_at, updated_at
-            ) VALUES (10, ?, ?, ?, ?, ?, ?)
+                id, canonical_title, canonical_artist, canonical_album,
+                canonical_genre, canonical_bpm, canonical_key, canonical_label, enriched_at, updated_at
+            ) VALUES (10, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (None, 120.0, None, None, None, None),
+            (None, None, None, None, 120.0, None, None, None, None),
         )
 
         donor_conn.execute(
-            "INSERT INTO Track (location, genre, bpm, key, label) VALUES (?, ?, ?, ?, ?)",
-            ("/Volumes/MUSIC/DJ_LIBRARY/Artist/Track.mp3", "Indie Dance", 123.0, "Em", "Life and Death"),
+            "INSERT INTO Track (location, title, artist, albumTitle, genre, bpm, key, label) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "/Volumes/MUSIC/DJ_LIBRARY/Artist/Track.mp3",
+                "Track",
+                "Artist",
+                "Album",
+                "Indie Dance",
+                123.0,
+                "Em",
+                "Life and Death",
+            ),
         )
         donor_conn.commit()
 
@@ -148,13 +171,14 @@ def test_sync_skips_conflicting_identity_fields(tmp_path: Path) -> None:
         work_conn.executemany(
             """
             INSERT INTO files (
-                path, dj_pool_path, canonical_genre, canonical_bpm, canonical_key, canonical_label,
+                path, dj_pool_path, canonical_title, canonical_artist, canonical_album,
+                canonical_genre, canonical_bpm, canonical_key, canonical_label,
                 enrichment_providers, enriched_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
-                ("/music/a.flac", "/Volumes/MUSIC/DJ_LIBRARY/A.mp3", None, None, None, None, None, None),
-                ("/music/b.flac", "/Volumes/MUSIC/DJ_LIBRARY/B.mp3", None, None, None, None, None, None),
+                ("/music/a.flac", "/Volumes/MUSIC/DJ_LIBRARY/A.mp3", None, None, None, None, None, None, None, None, None),
+                ("/music/b.flac", "/Volumes/MUSIC/DJ_LIBRARY/B.mp3", None, None, None, None, None, None, None, None, None),
             ],
         )
         work_conn.executemany(
@@ -168,17 +192,18 @@ def test_sync_skips_conflicting_identity_fields(tmp_path: Path) -> None:
         work_conn.execute(
             """
             INSERT INTO track_identity (
-                id, canonical_genre, canonical_bpm, canonical_key, canonical_label, enriched_at, updated_at
-            ) VALUES (20, ?, ?, ?, ?, ?, ?)
+                id, canonical_title, canonical_artist, canonical_album,
+                canonical_genre, canonical_bpm, canonical_key, canonical_label, enriched_at, updated_at
+            ) VALUES (20, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (None, None, None, None, None, None),
+            (None, None, None, None, None, None, None, None, None),
         )
 
         donor_conn.executemany(
-            "INSERT INTO Track (location, genre, bpm, key, label) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO Track (location, title, artist, albumTitle, genre, bpm, key, label) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             [
-                ("/Volumes/MUSIC/DJ_LIBRARY/A.mp3", "House", 124.0, "Gm", "Label A"),
-                ("/Volumes/MUSIC/DJ_LIBRARY/B.mp3", "House", 124.0, "Gm", "Label B"),
+                ("/Volumes/MUSIC/DJ_LIBRARY/A.mp3", "A", "Artist A", "Album A", "House", 124.0, "Gm", "Label A"),
+                ("/Volumes/MUSIC/DJ_LIBRARY/B.mp3", "B", "Artist B", "Album B", "House", 124.0, "Gm", "Label B"),
             ],
         )
         donor_conn.commit()
@@ -194,6 +219,93 @@ def test_sync_skips_conflicting_identity_fields(tmp_path: Path) -> None:
             "SELECT canonical_genre, canonical_bpm, canonical_key, canonical_label FROM track_identity WHERE id = 20"
         ).fetchone()
         assert tuple(identity_row) == ("House", 124.0, "Gm", None)
+    finally:
+        work_conn.close()
+        donor_conn.close()
+
+
+def test_sync_updates_by_normalized_title_artist_album_with_field_consensus(tmp_path: Path) -> None:
+    work_conn = _create_work_db(tmp_path / "work.db")
+    donor_conn = _create_donor_db(tmp_path / "donor.db")
+    try:
+        work_conn.execute(
+            """
+            INSERT INTO files (
+                path, dj_pool_path, canonical_title, canonical_artist, canonical_album,
+                canonical_genre, canonical_bpm, canonical_key, canonical_label,
+                enrichment_providers, enriched_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "/music/source.flac",
+                "/Volumes/MUSIC/DJ_LIBRARY/non-matching-path.mp3",
+                "Anywhere",
+                "Ratboys",
+                "The Window",
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            ),
+        )
+        work_conn.execute("INSERT INTO asset_file (id, path) VALUES (1, ?)", ("/music/source.flac",))
+        work_conn.execute("INSERT INTO asset_link (asset_id, identity_id, active) VALUES (1, 30, 1)")
+        work_conn.execute(
+            """
+            INSERT INTO track_identity (
+                id, canonical_title, canonical_artist, canonical_album,
+                canonical_genre, canonical_bpm, canonical_key, canonical_label, enriched_at, updated_at
+            ) VALUES (30, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("Anywhere", "Ratboys", "The Window", None, None, None, None, None, None),
+        )
+
+        donor_conn.executemany(
+            "INSERT INTO Track (location, title, artist, albumTitle, genre, bpm, key, label) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                (
+                    "/Volumes/MUSIC/DJ_LIBRARY/Anywhere-1.mp3",
+                    "Anywhere",
+                    "Ratboys",
+                    "The Window",
+                    "Indie Rock",
+                    120.0,
+                    "Am",
+                    "Top Shelf",
+                ),
+                (
+                    "/Volumes/MUSIC/DJ_LIBRARY/Anywhere-2.mp3",
+                    "Anywhere",
+                    "Ratboys",
+                    "The Window",
+                    "Indie Rock",
+                    120.0,
+                    "Am",
+                    "Different Label",
+                ),
+            ],
+        )
+        donor_conn.commit()
+
+        result = sync_v3_from_track_db(work_conn, donor_conn, match_mode="normalized_taa", execute=True)
+        work_conn.commit()
+
+        assert result.matched_files == 1
+        assert result.match_mode_counts["normalized_taa"] == 1
+        assert result.file_field_conflicts["label"] == 1
+        assert result.identity_field_conflicts["label"] == 0
+
+        file_row = work_conn.execute(
+            "SELECT canonical_genre, canonical_bpm, canonical_key, canonical_label FROM files WHERE path = '/music/source.flac'"
+        ).fetchone()
+        assert tuple(file_row) == ("Indie Rock", 120.0, "Am", None)
+
+        identity_row = work_conn.execute(
+            "SELECT canonical_genre, canonical_bpm, canonical_key, canonical_label FROM track_identity WHERE id = 30"
+        ).fetchone()
+        assert tuple(identity_row) == ("Indie Rock", 120.0, "Am", None)
     finally:
         work_conn.close()
         donor_conn.close()

@@ -39,6 +39,12 @@ def main() -> int:
         help="files column to match against donor Track.location",
     )
     parser.add_argument(
+        "--match-mode",
+        default="exact_path",
+        choices=("exact_path", "normalized_taa", "both"),
+        help="How to match donor Track rows to working DB rows",
+    )
+    parser.add_argument(
         "--provider-name",
         default=PROVIDER_NAME,
         help="Provider label to append to files.enrichment_providers",
@@ -75,19 +81,21 @@ def main() -> int:
             donor_conn,
             donor_location_like=args.donor_location_like,
             match_field=args.match_field,
+            match_mode=args.match_mode,
             provider_name=args.provider_name,
             execute=args.execute,
         )
 
     files_csv = out_dir / "file_updates.csv"
     with files_csv.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=["path", "dj_pool_path", "applied_fields"])
+        writer = csv.DictWriter(handle, fieldnames=["path", "dj_pool_path", "match_mode", "applied_fields"])
         writer.writeheader()
         for row in result.file_updates:
             writer.writerow(
                 {
                     "path": row.path,
                     "dj_pool_path": row.dj_pool_path,
+                    "match_mode": row.match_mode,
                     "applied_fields": ";".join(row.applied_fields),
                 }
             )
@@ -109,6 +117,7 @@ def main() -> int:
         "donor_db_path": str(donor_db_path),
         "donor_location_like": args.donor_location_like,
         "match_field": args.match_field,
+        "match_mode": args.match_mode,
         "execute": bool(args.execute),
         "donor_tracks": result.donor_tracks,
         "files_considered": result.files_considered,
@@ -118,6 +127,8 @@ def main() -> int:
         "identity_rows_updated": result.identity_rows_updated,
         "identity_fields_written": result.identity_fields_written,
         "identity_field_conflicts": result.identity_field_conflicts,
+        "file_field_conflicts": result.file_field_conflicts,
+        "match_mode_counts": result.match_mode_counts,
         "file_updates_csv": str(files_csv),
         "identity_updates_csv": str(identities_csv),
     }

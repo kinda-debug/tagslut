@@ -588,6 +588,8 @@ def select_flagged_master_paths(
     files_has_quality_rank = _column_exists(conn, "files", "quality_rank")
     files_has_download_source = _column_exists(conn, "files", "download_source")
     files_has_download_date = _column_exists(conn, "files", "download_date")
+    asset_file_has_first_seen_at = _column_exists(conn, "asset_file", "first_seen_at")
+    files_has_mtime = _column_exists(conn, "files", "mtime")
     files_has_canonical_artist = _column_exists(conn, "files", "canonical_artist")
     files_has_canonical_title = _column_exists(conn, "files", "canonical_title")
     files_has_canonical_genre = _column_exists(conn, "files", "canonical_genre")
@@ -616,6 +618,10 @@ def select_flagged_master_paths(
         _optional_column_expr(conn, "asset_file", "af", "download_date", treat_blank_as_null=True),
         _optional_column_expr(conn, "files", "f", "download_date", treat_blank_as_null=True)
         if files_has_download_date else None,
+        _optional_column_expr(conn, "asset_file", "af", "first_seen_at", treat_blank_as_null=True)
+        if asset_file_has_first_seen_at else None,
+        "datetime(f.mtime, 'unixepoch')"
+        if files_has_mtime else None,
     )
     artist_expr = _coalesce_expr(
         "NULLIF(TRIM(ti.canonical_artist), '')",

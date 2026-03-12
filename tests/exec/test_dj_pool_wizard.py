@@ -668,6 +668,33 @@ def test_select_filter_download_date_bounds_use_legacy_files_fallback(
     assert [row["master_path"] for row in result] == ["/MASTER/a.flac"]
 
 
+def test_select_filter_download_date_bounds_falls_back_to_first_seen_at(
+    wizard_db: sqlite3.Connection,
+) -> None:
+    insert_track(
+        wizard_db,
+        "/MASTER/a.flac",
+        is_dj_material=0,
+        dj_flag=1,
+        identity_id=None,
+        download_date=None,
+        artist="Legacy Artist",
+        title="Legacy Title",
+    )
+    wizard_db.execute(
+        "UPDATE asset_file SET download_date = NULL, first_seen_at = '2026-03-11 11:19:47' WHERE path = ?",
+        ("/MASTER/a.flac",),
+    )
+    wizard_db.commit()
+
+    result = wizard.select_flagged_master_paths(
+        wizard_db,
+        MASTER,
+        {"download_date_since": "2026-03-10", "download_date_until": "2026-03-12"},
+    )
+    assert [row["master_path"] for row in result] == ["/MASTER/a.flac"]
+
+
 def test_select_filter_quality_rank_max(
     wizard_db: sqlite3.Connection,
 ) -> None:

@@ -28,9 +28,6 @@ FIXTURE_DIR = ROOT / "tests" / "data"
 # Archived suites are preserved for history but excluded from active CI runs.
 collect_ignore = [
     "archive",
-    # Pre-existing: v3/schema.py no longer exports the legacy version constant
-    # expected by this outdated test module.
-    "storage/v3/test_migration_0006.py",
 ]
 
 # FLAC Header Fixtures (base64 encoded valid FLAC headers)

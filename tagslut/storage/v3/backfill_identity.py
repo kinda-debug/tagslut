@@ -495,6 +495,21 @@ def _find_identity_by_exact_field(
     return min(canonical_ids), followed_merge, False
 
 
+def _find_identity_by_identity_key(conn: sqlite3.Connection, identity_key: str | None) -> tuple[int | None, bool]:
+    if not _table_exists(conn, V3_TRACK_IDENTITY_TABLE):
+        return None, False
+    if not identity_key:
+        return None, False
+    row = conn.execute(
+        f"SELECT * FROM {V3_TRACK_IDENTITY_TABLE} WHERE identity_key = ?",
+        (identity_key,),
+    ).fetchone()
+    if row is None:
+        return None, False
+    canonical, followed = _resolve_active_identity_row(conn, row)
+    return int(canonical["id"]), followed
+
+
 def _find_fuzzy_candidates(conn: sqlite3.Connection, payload: dict[str, Any]) -> list[int]:
     if not _table_exists(conn, V3_TRACK_IDENTITY_TABLE):
         return []
@@ -565,6 +580,9 @@ def _insert_identity(conn: sqlite3.Connection, payload: dict[str, Any]) -> int:
     identity_key = _identity_key_for_payload(payload)
     if not identity_key:
         raise RuntimeError("cannot create identity without exact or fuzzy identity fields")
+    existing_id, _ = _find_identity_by_identity_key(conn, identity_key)
+    if existing_id is not None:
+        return existing_id
     full_payload = dict(payload)
     full_payload["identity_key"] = identity_key
     available_columns = _load_track_identity_columns(conn)
@@ -572,10 +590,16 @@ def _insert_identity(conn: sqlite3.Connection, payload: dict[str, Any]) -> int:
         key for key, value in full_payload.items() if value is not None and key in available_columns
     ]
     placeholders = ", ".join("?" for _ in columns)
-    conn.execute(
-        f"INSERT INTO {V3_TRACK_IDENTITY_TABLE} ({', '.join(columns)}) VALUES ({placeholders})",
-        tuple(full_payload[column] for column in columns),
-    )
+    try:
+        conn.execute(
+            f"INSERT INTO {V3_TRACK_IDENTITY_TABLE} ({', '.join(columns)}) VALUES ({placeholders})",
+            tuple(full_payload[column] for column in columns),
+        )
+    except sqlite3.IntegrityError as exc:
+        existing_id, _ = _find_identity_by_identity_key(conn, identity_key)
+        if existing_id is not None:
+            return existing_id
+        raise exc
     row = conn.execute(
         f"SELECT id FROM {V3_TRACK_IDENTITY_TABLE} WHERE identity_key = ?",
         (identity_key,),
@@ -771,6 +795,13 @@ def backfill_v3_identity_links(
                 stats.conflicted += 1
                 stats.processed += 1
                 continue
+
+            identity_key_match_id, identity_key_followed_merge = _find_identity_by_identity_key(
+                conn, identity_key
+            )
+            if resolved_identity_id is None and identity_key_match_id is not None:
+                resolved_identity_id = identity_key_match_id
+                merged = merged or identity_key_followed_merge
 
             fuzzy_candidates = _find_fuzzy_candidates(conn, payload)
             if resolved_identity_id is None and len(fuzzy_candidates) > 1:

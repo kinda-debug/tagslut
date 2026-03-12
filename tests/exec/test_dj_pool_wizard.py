@@ -42,6 +42,7 @@ def _create_files_table(conn: sqlite3.Connection) -> None:
             acoustid TEXT,
             is_dj_material INTEGER DEFAULT 0,
             duration_status TEXT,
+            quality_rank INTEGER,
             dj_pool_path TEXT,
             dj_set_role TEXT
         );
@@ -90,22 +91,29 @@ def insert_track(
     energy: int | None = None,
     dj_set_role: str | None = None,
     set_role: str | None = None,
+    download_source: str | None = None,
+    download_date: str | None = None,
     flac_ok: int = 1,
     integrity_state: str = "ok",
+    quality_rank: int | None = None,
 ) -> None:
     uid = int(hashlib.md5(path.encode("utf-8")).hexdigest()[:8], 16) % 100000
 
     conn.execute(
-        "INSERT OR IGNORE INTO files (path, is_dj_material, dj_pool_path, dj_set_role) VALUES (?, ?, ?, ?)",
-        (path, is_dj_material, dj_pool_path, dj_set_role),
+        """
+        INSERT OR IGNORE INTO files
+        (path, is_dj_material, quality_rank, dj_pool_path, dj_set_role)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (path, is_dj_material, quality_rank, dj_pool_path, dj_set_role),
     )
     conn.execute(
         """
         INSERT OR IGNORE INTO asset_file
-        (id, path, flac_ok, integrity_state)
-        VALUES (?, ?, ?, ?)
+        (id, path, flac_ok, integrity_state, download_source, download_date)
+        VALUES (?, ?, ?, ?, ?, ?)
         """,
-        (uid, path, flac_ok, integrity_state),
+        (uid, path, flac_ok, integrity_state, download_source, download_date),
     )
 
     if identity_id is not None:
@@ -334,6 +342,86 @@ def test_select_filter_require_artist_title_excludes_missing(
     assert result == []
 
 
+def test_select_tolerates_missing_dj_set_role_column() -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    create_schema_v3(conn)
+    conn.executescript(
+        """
+        CREATE TABLE files (
+            path TEXT PRIMARY KEY,
+            is_dj_material INTEGER DEFAULT 0,
+            dj_pool_path TEXT
+        );
+        """
+    )
+    conn.execute(
+        "INSERT INTO files (path, is_dj_material, dj_pool_path) VALUES (?, ?, ?)",
+        ("/MASTER/a.flac", 1, None),
+    )
+    conn.execute(
+        """
+        INSERT INTO asset_file (id, path, flac_ok, integrity_state)
+        VALUES (?, ?, ?, ?)
+        """,
+        (1, "/MASTER/a.flac", 1, "ok"),
+    )
+    conn.commit()
+    try:
+        result = wizard.select_flagged_master_paths(conn, MASTER, {})
+    finally:
+        conn.close()
+
+    assert len(result) == 1
+    assert result[0]["dj_set_role"] is None
+
+
+def test_select_filter_require_bpm_excludes_missing(
+    wizard_db: sqlite3.Connection,
+) -> None:
+    insert_track(wizard_db, "/MASTER/a.flac", is_dj_material=1, identity_id=1, bpm=None)
+    insert_track(wizard_db, "/MASTER/b.flac", is_dj_material=1, identity_id=2, bpm=128.0)
+    result = wizard.select_flagged_master_paths(
+        wizard_db, MASTER, {"require_bpm": True}
+    )
+    assert [row["master_path"] for row in result] == ["/MASTER/b.flac"]
+
+
+def test_select_filter_require_key_excludes_missing(
+    wizard_db: sqlite3.Connection,
+) -> None:
+    insert_track(
+        wizard_db,
+        "/MASTER/a.flac",
+        is_dj_material=1,
+        identity_id=1,
+        musical_key=None,
+    )
+    insert_track(
+        wizard_db,
+        "/MASTER/b.flac",
+        is_dj_material=1,
+        identity_id=2,
+        musical_key="8A",
+    )
+    result = wizard.select_flagged_master_paths(
+        wizard_db, MASTER, {"require_key": True}
+    )
+    assert [row["master_path"] for row in result] == ["/MASTER/b.flac"]
+
+
+def test_select_filter_require_genre_excludes_missing(
+    wizard_db: sqlite3.Connection,
+) -> None:
+    insert_track(wizard_db, "/MASTER/a.flac", is_dj_material=1, identity_id=1, genre=None)
+    insert_track(wizard_db, "/MASTER/b.flac", is_dj_material=1, identity_id=2, genre="House")
+    result = wizard.select_flagged_master_paths(
+        wizard_db, MASTER, {"require_genre": True}
+    )
+    assert [row["master_path"] for row in result] == ["/MASTER/b.flac"]
+
+
 def test_select_filter_genre_include(wizard_db: sqlite3.Connection) -> None:
     insert_track(wizard_db, "/MASTER/a.flac", is_dj_material=1, identity_id=1, genre="House")
     insert_track(wizard_db, "/MASTER/b.flac", is_dj_material=1, identity_id=2, genre="Techno")
@@ -406,6 +494,87 @@ def test_select_filter_min_energy(wizard_db: sqlite3.Connection) -> None:
     assert [row["master_path"] for row in result] == ["/MASTER/a.flac"]
 
 
+def test_select_filter_download_source_include(
+    wizard_db: sqlite3.Connection,
+) -> None:
+    insert_track(
+        wizard_db,
+        "/MASTER/a.flac",
+        is_dj_material=1,
+        identity_id=1,
+        download_source="bpdl",
+    )
+    insert_track(
+        wizard_db,
+        "/MASTER/b.flac",
+        is_dj_material=1,
+        identity_id=2,
+        download_source="qobuz",
+    )
+    result = wizard.select_flagged_master_paths(
+        wizard_db, MASTER, {"download_source_include": ["bpdl"]}
+    )
+    assert [row["master_path"] for row in result] == ["/MASTER/a.flac"]
+
+
+def test_select_filter_download_date_bounds(
+    wizard_db: sqlite3.Connection,
+) -> None:
+    insert_track(
+        wizard_db,
+        "/MASTER/a.flac",
+        is_dj_material=1,
+        identity_id=1,
+        download_date="2026-03-01T00:00:00Z",
+    )
+    insert_track(
+        wizard_db,
+        "/MASTER/b.flac",
+        is_dj_material=1,
+        identity_id=2,
+        download_date="2026-03-10T00:00:00Z",
+    )
+    insert_track(
+        wizard_db,
+        "/MASTER/c.flac",
+        is_dj_material=1,
+        identity_id=3,
+        download_date="2026-03-15T00:00:00Z",
+    )
+    result = wizard.select_flagged_master_paths(
+        wizard_db,
+        MASTER,
+        {
+            "download_date_since": "2026-03-05",
+            "download_date_until": "2026-03-12",
+        },
+    )
+    assert [row["master_path"] for row in result] == ["/MASTER/b.flac"]
+
+
+def test_select_filter_quality_rank_max(
+    wizard_db: sqlite3.Connection,
+) -> None:
+    insert_track(
+        wizard_db,
+        "/MASTER/a.flac",
+        is_dj_material=1,
+        identity_id=1,
+        quality_rank=2,
+    )
+    insert_track(
+        wizard_db,
+        "/MASTER/b.flac",
+        is_dj_material=1,
+        identity_id=2,
+        quality_rank=6,
+    )
+    result = wizard.select_flagged_master_paths(
+        wizard_db, MASTER, {"quality_rank_max": 4}
+    )
+    assert [row["master_path"] for row in result] == ["/MASTER/a.flac"]
+
+
 def test_select_filter_set_role_include(wizard_db: sqlite3.Connection) -> None:
     insert_track(wizard_db, "/MASTER/a.flac", is_dj_material=1, identity_id=1, set_role="peak")
     insert_track(wizard_db, "/MASTER/b.flac", is_dj_material=1, identity_id=2, set_role="warmup")
@@ -464,6 +633,42 @@ def test_select_filter_only_roles_invalid_value_raises_before_query() -> None:
             MASTER,
             {"only_roles": ["groove", "emergency"]},
         )
+
+
+def test_prompt_available_value_filter_supports_search_and_number_selection(
+    wizard_db: sqlite3.Connection,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    insert_track(wizard_db, "/MASTER/a.flac", is_dj_material=1, identity_id=1, genre="House")
+    insert_track(
+        wizard_db,
+        "/MASTER/b.flac",
+        is_dj_material=1,
+        identity_id=2,
+        genre="Afro House",
+    )
+    insert_track(wizard_db, "/MASTER/c.flac", is_dj_material=1, identity_id=3, genre="Techno")
+
+    answers = iter(["/house", "2,1"])
+    monkeypatch.setattr(
+        wizard.click,
+        "prompt",
+        lambda *args, **kwargs: next(answers),
+    )
+
+    result = wizard._prompt_available_value_filter(
+        wizard_db,
+        MASTER,
+        {},
+        field="genre",
+        label="genre include",
+        value_label="genre",
+    )
+    output = capsys.readouterr().out
+
+    assert result == ["House", "Afro House"]
+    assert "Available genre values matching 'house'" in output
 
 
 def test_resolve_prefers_relink_over_legacy(tmp_path: Path, wizard_db: sqlite3.Connection) -> None:

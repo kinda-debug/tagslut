@@ -26,6 +26,7 @@ _ROLE_PLAYLIST_FILENAMES = {
     role: f"{index * 10}_{role.upper()}.m3u"
     for index, role in enumerate(_ROLE_PLAYLIST_ORDER, start=1)
 }
+_INTERACTIVE_VALUE_PREVIEW_LIMIT = 12
 
 
 def sanitize_component(value: str | None) -> str:
@@ -335,6 +336,129 @@ def compute_cohort_duplicates(
     }
 
 
+def _collect_available_value_counts(
+    conn: sqlite3.Connection,
+    master_root: Path,
+    profile: dict,
+    *,
+    field: str,
+) -> list[tuple[str, int]]:
+    rows = select_flagged_master_paths(conn, master_root, profile)
+    counts: dict[str, int] = {}
+    for row in rows:
+        value = str(row.get(field) or "").strip()
+        if not value:
+            continue
+        counts[value] = counts.get(value, 0) + 1
+    return sorted(
+        counts.items(),
+        key=lambda item: (-item[1], item[0].casefold()),
+    )
+
+
+def _prompt_available_value_filter(
+    conn: sqlite3.Connection,
+    master_root: Path,
+    profile: dict,
+    *,
+    field: str,
+    label: str,
+    value_label: str,
+) -> list[str] | None:
+    value_counts = _collect_available_value_counts(
+        conn,
+        master_root,
+        profile,
+        field=field,
+    )
+    if not value_counts:
+        click.echo(f"  No {value_label} values found in current cohort")
+        return None
+
+    displayed = value_counts[:_INTERACTIVE_VALUE_PREVIEW_LIMIT]
+    search_term: str | None = None
+    exact_lookup = {
+        value.casefold(): value
+        for value, _ in value_counts
+    }
+
+    while True:
+        if search_term:
+            click.echo(
+                f"  Available {value_label} values matching {search_term!r} "
+                f"({len(displayed)} of {len(value_counts)}):"
+            )
+        else:
+            click.echo(
+                f"  Available {value_label} values in current cohort "
+                f"({len(value_counts)}):"
+            )
+        for index, (value, count) in enumerate(displayed, start=1):
+            click.echo(f"    {index}. {value} ({count})")
+        remaining = len(value_counts) - len(displayed)
+        if remaining > 0:
+            click.echo(f"    ... {remaining} more")
+        click.echo(
+            "  Enter numbers or exact values, comma-separated; "
+            "`/text` searches; `?` shows all; blank skips."
+        )
+
+        raw = click.prompt(label, default="").strip()
+        if not raw:
+            return None
+
+        if raw == "?":
+            displayed = value_counts
+            search_term = None
+            continue
+
+        if raw.startswith("/"):
+            term = raw[1:].strip()
+            if not term:
+                displayed = value_counts[:_INTERACTIVE_VALUE_PREVIEW_LIMIT]
+                search_term = None
+                continue
+            filtered = [
+                item
+                for item in value_counts
+                if term.casefold() in item[0].casefold()
+            ]
+            if not filtered:
+                click.echo(f"  No {value_label} values match {term!r}")
+                continue
+            displayed = filtered
+            search_term = term
+            continue
+
+        selected: list[str] = []
+        invalid: list[str] = []
+        for token in [part.strip() for part in raw.split(",") if part.strip()]:
+            selected_value = None
+            if token.isdigit():
+                index = int(token)
+                if 1 <= index <= len(displayed):
+                    selected_value = displayed[index - 1][0]
+            else:
+                selected_value = exact_lookup.get(token.casefold())
+
+            if selected_value is None:
+                invalid.append(token)
+                continue
+            if selected_value not in selected:
+                selected.append(selected_value)
+
+        if invalid:
+            click.echo(
+                f"  Unknown {value_label} selection(s): {', '.join(invalid)}"
+            )
+            click.echo(
+                "  Use numbered options, exact values, `?`, or `/text`."
+            )
+            continue
+
+        return selected or None
+
+
 def resolve_mp3_source(
     conn: sqlite3.Connection,
     master_path: str | Path,
@@ -399,16 +523,23 @@ def select_flagged_master_paths(
 ) -> list[dict]:
     only_roles_supplied, only_roles = _validated_only_roles(profile)
     prefix = str(master_root).rstrip("/") + "/%"
+    files_has_dj_set_role = _column_exists(conn, "files", "dj_set_role")
     files_has_duration_status = _column_exists(conn, "files", "duration_status")
+    files_has_quality_rank = _column_exists(conn, "files", "quality_rank")
 
     select_columns = [
         "f.path AS master_path",
         "f.is_dj_material",
         "f.dj_pool_path",
-        "f.dj_set_role",
     ]
+    if files_has_dj_set_role:
+        select_columns.append("f.dj_set_role")
+    else:
+        select_columns.append("NULL AS dj_set_role")
     if files_has_duration_status:
         select_columns.append("f.duration_status")
+    if files_has_quality_rank:
+        select_columns.append("f.quality_rank")
     select_columns.extend(
         [
             "af.flac_ok",
@@ -464,6 +595,47 @@ def select_flagged_master_paths(
                 "  AND TRIM(ti.canonical_title) <> ''",
             ]
         )
+
+    if profile.get("require_bpm") is True:
+        query.append("  AND ti.canonical_bpm IS NOT NULL")
+
+    if profile.get("require_key") is True:
+        query.extend(
+            [
+                "  AND ti.canonical_key IS NOT NULL",
+                "  AND TRIM(ti.canonical_key) <> ''",
+            ]
+        )
+
+    if profile.get("require_genre") is True:
+        query.extend(
+            [
+                "  AND ti.canonical_genre IS NOT NULL",
+                "  AND TRIM(ti.canonical_genre) <> ''",
+            ]
+        )
+
+    download_source_include = [
+        str(value)
+        for value in (profile.get("download_source_include") or [])
+        if str(value).strip()
+    ]
+    if download_source_include:
+        placeholders = ", ".join("?" for _ in download_source_include)
+        query.append(f"  AND af.download_source IN ({placeholders})")
+        params.extend(download_source_include)
+
+    download_date_since = str(profile.get("download_date_since") or "").strip()
+    if download_date_since:
+        query.append("  AND af.download_date IS NOT NULL")
+        query.append("  AND SUBSTR(af.download_date, 1, 10) >= ?")
+        params.append(download_date_since)
+
+    download_date_until = str(profile.get("download_date_until") or "").strip()
+    if download_date_until:
+        query.append("  AND af.download_date IS NOT NULL")
+        query.append("  AND SUBSTR(af.download_date, 1, 10) <= ?")
+        params.append(download_date_until)
 
     genre_include = [str(value) for value in (profile.get("genre_include") or []) if str(value).strip()]
     if genre_include:
@@ -521,6 +693,11 @@ def select_flagged_master_paths(
         query.append("  AND ti.canonical_year <= ?")
         params.append(int(year_max))
 
+    quality_rank_max = profile.get("quality_rank_max")
+    if quality_rank_max is not None and files_has_quality_rank:
+        query.append("  AND f.quality_rank <= ?")
+        params.append(int(quality_rank_max))
+
     min_rating = profile.get("min_rating")
     if min_rating is not None:
         query.append("  AND dj.rating >= ?")
@@ -532,7 +709,9 @@ def select_flagged_master_paths(
         params.append(int(min_energy))
 
     if only_roles_supplied:
-        if only_roles:
+        if not files_has_dj_set_role:
+            query.append("  AND 0")
+        elif only_roles:
             placeholders = ", ".join("?" for _ in only_roles)
             query.append(f"  AND f.dj_set_role IN ({placeholders})")
             params.extend(only_roles)
@@ -1032,13 +1211,6 @@ def run_interactive_wizard(
     health: dict,
     dups: dict,
 ) -> dict:
-    def _prompt_list(label: str) -> list[str] | None:
-        raw = click.prompt(
-            f"{label} (comma-separated, blank = no filter)",
-            default="",
-        ).strip()
-        return [value.strip() for value in raw.split(",") if value.strip()] or None
-
     def _prompt_float_or_none(label: str) -> float | None:
         raw = click.prompt(f"{label} (blank = no limit)", default="").strip()
         try:
@@ -1054,6 +1226,98 @@ def run_interactive_wizard(
         except ValueError:
             click.echo(f"  Invalid number, skipping {label}")
             return None
+
+    files_has_duration_status = _column_exists(conn, "files", "duration_status")
+    files_has_quality_rank = _column_exists(conn, "files", "quality_rank")
+    preview_profile: dict[str, object] = {}
+
+    def _set_preview_value(key: str, value: object) -> None:
+        if value is None or value == [] or value == "":
+            preview_profile.pop(key, None)
+            return
+        preview_profile[key] = value
+
+    def _echo_value_counts(
+        field: str,
+        value_label: str,
+        *,
+        max_items: int = 12,
+    ) -> None:
+        value_counts = _collect_available_value_counts(
+            conn,
+            master_root,
+            preview_profile,
+            field=field,
+        )
+        if not value_counts:
+            click.echo(f"  No {value_label} values found in current cohort")
+            return
+
+        shown = value_counts[:max_items]
+        rendered = ", ".join(
+            f"{value} ({count})"
+            for value, count in shown
+        )
+        click.echo(f"  Available {value_label} values: {rendered}")
+        remaining = len(value_counts) - len(shown)
+        if remaining > 0:
+            click.echo(
+                f"  ... {remaining} more. Use `?` or `/text` in the prompt to explore."
+            )
+
+    def _echo_numeric_range(
+        field: str,
+        value_label: str,
+        *,
+        integer: bool = False,
+    ) -> None:
+        values: list[float] = []
+        for row in select_flagged_master_paths(conn, master_root, preview_profile):
+            value = row.get(field)
+            if value is None or value == "":
+                continue
+            try:
+                values.append(float(value))
+            except (TypeError, ValueError):
+                continue
+
+        if not values:
+            click.echo(f"  No {value_label} values found in current cohort")
+            return
+
+        if integer:
+            distinct = sorted({int(value) for value in values})
+            if len(distinct) <= 12:
+                click.echo(
+                    f"  Available {value_label} values: "
+                    f"{', '.join(str(value) for value in distinct)}"
+                )
+                return
+            click.echo(
+                f"  Available {value_label} range: "
+                f"{int(min(values))} to {int(max(values))}"
+            )
+            return
+
+        click.echo(
+            f"  Available {value_label} range: "
+            f"{min(values):.1f} to {max(values):.1f}"
+        )
+
+    def _echo_date_range(field: str, value_label: str) -> None:
+        dates = sorted(
+            {
+                str(row.get(field) or "").strip()[:10]
+                for row in select_flagged_master_paths(conn, master_root, preview_profile)
+                if str(row.get(field) or "").strip()
+            }
+        )
+        if not dates:
+            click.echo(f"  No {value_label} values found in current cohort")
+            return
+        click.echo(
+            f"  Available {value_label} range: {dates[0]} to {dates[-1]}"
+        )
 
     pool_name = click.prompt("Pool name", default="DJ Pool").strip()
     if not pool_name:
@@ -1084,20 +1348,29 @@ def run_interactive_wizard(
 
     click.echo("\n── Integrity gates ─────────────────────────────────")
     require_flac_ok = click.confirm("Require flac_ok = 1?", default=False)
+    _set_preview_value("require_flac_ok", require_flac_ok)
 
-    integrity_input = click.prompt(
-        "Acceptable integrity_state values "
-        "(comma-separated, blank = no filter)",
-        default="",
-    ).strip()
-    integrity_states = (
-        [value.strip() for value in integrity_input.split(",") if value.strip()]
-        if integrity_input else None
+    integrity_states = _prompt_available_value_filter(
+        conn,
+        master_root,
+        preview_profile,
+        field="integrity_state",
+        label="integrity_state include",
+        value_label="integrity_state",
     )
+    _set_preview_value("integrity_states", integrity_states)
 
-    require_duration_ok = click.confirm(
-        "Require duration_status = 'ok'?", default=False
-    )
+    require_duration_ok = False
+    if files_has_duration_status:
+        _echo_value_counts("duration_status", "duration_status")
+        require_duration_ok = click.confirm(
+            "Require duration_status = 'ok'?", default=False
+        )
+    else:
+        click.echo(
+            "  duration_status column not found in files — duration gate skipped"
+        )
+    _set_preview_value("require_duration_ok", require_duration_ok)
 
     click.echo("\n── Metadata gates ──────────────────────────────────")
     require_artist_title = click.confirm(
@@ -1106,41 +1379,118 @@ def run_interactive_wizard(
     require_bpm = click.confirm("Require BPM?", default=False)
     require_key = click.confirm("Require musical key?", default=False)
     require_genre = click.confirm("Require genre?", default=False)
+    _set_preview_value("require_artist_title", require_artist_title)
+    _set_preview_value("require_bpm", require_bpm)
+    _set_preview_value("require_key", require_key)
+    _set_preview_value("require_genre", require_genre)
 
     click.echo("\n── Source / date filters ────────────────────────────")
-    source_input = click.prompt(
-        "download_source include (comma-separated, blank = all)",
-        default="",
-    ).strip()
-    download_source_include = (
-        [value.strip() for value in source_input.split(",") if value.strip()]
-        if source_input else None
+    download_source_include = _prompt_available_value_filter(
+        conn,
+        master_root,
+        preview_profile,
+        field="download_source",
+        label="download_source include",
+        value_label="download_source",
     )
+    _set_preview_value("download_source_include", download_source_include)
 
+    _echo_date_range("download_date", "download_date")
     since_input = click.prompt(
         "download_date since (YYYY-MM-DD, blank = none)",
         default="",
     ).strip()
     download_date_since = since_input if since_input else None
+    _set_preview_value("download_date_since", download_date_since)
 
+    _echo_date_range("download_date", "download_date")
     until_input = click.prompt(
         "download_date until (YYYY-MM-DD, blank = none)",
         default="",
     ).strip()
     download_date_until = until_input if until_input else None
+    _set_preview_value("download_date_until", download_date_until)
 
     click.echo("\n── Musical filters ─────────────────────────────────")
-    genre_include = _prompt_list("genre include")
-    genre_exclude = _prompt_list("genre exclude")
+    genre_include = _prompt_available_value_filter(
+        conn,
+        master_root,
+        preview_profile,
+        field="genre",
+        label="genre include",
+        value_label="genre",
+    )
+    _set_preview_value("genre_include", genre_include)
+    genre_exclude = _prompt_available_value_filter(
+        conn,
+        master_root,
+        preview_profile,
+        field="genre",
+        label="genre exclude",
+        value_label="genre",
+    )
+    _set_preview_value("genre_exclude", genre_exclude)
+    _echo_numeric_range("bpm", "BPM")
     bpm_min = _prompt_float_or_none("BPM min")
+    _set_preview_value("bpm_min", bpm_min)
+    _echo_numeric_range("bpm", "BPM")
     bpm_max = _prompt_float_or_none("BPM max")
-    key_include = _prompt_list("musical key include")
-    key_exclude = _prompt_list("musical key exclude")
-    label_include = _prompt_list("label include")
-    label_exclude = _prompt_list("label exclude")
-    quality_rank_max = _prompt_int_or_none("quality_rank max")
+    _set_preview_value("bpm_max", bpm_max)
+    key_include = _prompt_available_value_filter(
+        conn,
+        master_root,
+        preview_profile,
+        field="musical_key",
+        label="musical key include",
+        value_label="musical key",
+    )
+    _set_preview_value("key_include", key_include)
+    key_exclude = _prompt_available_value_filter(
+        conn,
+        master_root,
+        preview_profile,
+        field="musical_key",
+        label="musical key exclude",
+        value_label="musical key",
+    )
+    _set_preview_value("key_exclude", key_exclude)
+    label_include = _prompt_available_value_filter(
+        conn,
+        master_root,
+        preview_profile,
+        field="label",
+        label="label include",
+        value_label="label",
+    )
+    _set_preview_value("label_include", label_include)
+    label_exclude = _prompt_available_value_filter(
+        conn,
+        master_root,
+        preview_profile,
+        field="label",
+        label="label exclude",
+        value_label="label",
+    )
+    _set_preview_value("label_exclude", label_exclude)
+    quality_rank_max = None
+    if files_has_quality_rank:
+        click.echo(
+            "  quality_rank is the legacy source-quality score "
+            "(1 = best, 7 = worst)"
+        )
+        _echo_numeric_range("quality_rank", "quality_rank", integer=True)
+        quality_rank_max = _prompt_int_or_none("quality_rank max")
+        _set_preview_value("quality_rank_max", quality_rank_max)
+    else:
+        click.echo(
+            "  quality_rank column not found in files — quality_rank filter skipped"
+        )
+    _echo_numeric_range("year", "year", integer=True)
     year_min = _prompt_int_or_none("year min")
+    _set_preview_value("year_min", year_min)
+    _echo_numeric_range("year", "year", integer=True)
     year_max = _prompt_int_or_none("year max")
+    _set_preview_value("year_max", year_max)
 
     click.echo("\n── DJ profile filters ──────────────────────────────")
     profile_count = conn.execute(
@@ -1163,33 +1513,32 @@ def run_interactive_wizard(
         if click.confirm("  Enable DJ profile filters?", default=False):
             profile_filter_active = True
 
+            _echo_numeric_range("dj_rating", "DJ rating", integer=True)
             min_rating = _prompt_int_or_none("  min rating (0–5)")
             if min_rating is not None:
                 min_rating = max(0, min(5, min_rating))
+            _set_preview_value("min_rating", min_rating)
 
+            _echo_numeric_range("dj_energy", "DJ energy", integer=True)
             min_energy = _prompt_int_or_none("  min energy (0–10)")
             if min_energy is not None:
                 min_energy = max(0, min(10, min_energy))
+            _set_preview_value("min_energy", min_energy)
 
-            valid_roles = [
-                "warmup", "builder", "peak", "tool",
-                "closer", "ambient", "break", "unknown",
-            ]
-            click.echo(f"  Valid set_role values: {', '.join(valid_roles)}")
-            set_role_include = _prompt_list("  set_role include")
-            if set_role_include:
-                invalid = [role for role in set_role_include if role not in valid_roles]
-                if invalid:
-                    click.echo(
-                        f"  ⚠  Unknown role(s) ignored: {invalid}"
-                    )
-                    set_role_include = [
-                        role for role in set_role_include if role in valid_roles
-                    ] or None
+            set_role_include = _prompt_available_value_filter(
+                conn,
+                master_root,
+                preview_profile,
+                field="profile_set_role",
+                label="  set_role include",
+                value_label="set_role",
+            )
+            _set_preview_value("set_role_include", set_role_include)
 
             only_profiled = click.confirm(
                 "  Only include profiled tracks?", default=False
             )
+            _set_preview_value("only_profiled", only_profiled)
 
     default_layout = "by_role" if profile_filter_active else "by_genre"
 

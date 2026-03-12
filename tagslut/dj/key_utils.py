@@ -127,6 +127,35 @@ def camelot_to_classical(camelot: str | None) -> str | None:
     return _CAMELOT_TO_CLASSICAL.get(value)
 
 
+def compatible_keys(camelot: str | None) -> list[str]:
+    """
+    Return the harmonically compatible Camelot keys for a given key.
+
+    Compatibility is defined as:
+    - same number, same letter
+    - same number +/- 1, same letter
+    - same number, other letter
+    """
+    if camelot is None:
+        return []
+
+    value = camelot.strip().upper()
+    if not value or not _CAMELOT_PATTERN.fullmatch(value):
+        return []
+
+    number = int(value[:-1])
+    letter = value[-1]
+    other_letter = "B" if letter == "A" else "A"
+    previous_number = 12 if number == 1 else number - 1
+    next_number = 1 if number == 12 else number + 1
+    return [
+        f"{previous_number}{letter}",
+        f"{number}{letter}",
+        f"{next_number}{letter}",
+        f"{number}{other_letter}",
+    ]
+
+
 def _normalize_tonic(raw_tonic: str) -> str | None:
     match = re.fullmatch(r"([A-Ga-g])([#bB]?)", raw_tonic.strip())
     if match is None:

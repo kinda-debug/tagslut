@@ -691,6 +691,82 @@ def review_app(
     run_python_script("tools/dj_review_app.py", tuple(args))
 
 
+@dj_group.command("gig-prep")
+@click.option(
+    "--date",
+    "gig_date",
+    required=True,
+    type=click.DateTime(formats=["%Y-%m-%d"]),
+    help="Gig date in YYYY-MM-DD format",
+)
+@click.option("--venue", default=None, help="Optional venue name")
+@click.option("--bpm-min", type=int, default=98, show_default=True, help="Minimum BPM filter")
+@click.option("--bpm-max", type=int, default=130, show_default=True, help="Maximum BPM filter")
+@click.option("--roles", default=None, help="Comma-separated DJ set roles to include")
+@click.option(
+    "--output",
+    "output_path",
+    type=click.Path(dir_okay=False, path_type=Path),  # type: ignore  # TODO: mypy-strict
+    default=None,
+    help="Optional output file path",
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["csv", "json", "text"], case_sensitive=False),
+    default="text",
+    show_default=True,
+    help="Output format",
+)
+@click.option("--db", "db_path", type=click.Path(), default=None, help="SQLite DB path (or TAGSLUT_DB env)")
+def gig_prep(
+    gig_date,
+    venue: str | None,
+    bpm_min: int,
+    bpm_max: int,
+    roles: str | None,
+    output_path: Path | None,
+    output_format: str,
+    db_path: str | None,
+) -> None:
+    """Build a gig-ready set plan from DJ-tagged inventory."""
+    import sqlite3
+
+    from tagslut.dj.gig_prep import parse_roles_filter, run_gig_prep
+    from tagslut.storage.schema import init_db
+    from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
+
+    if bpm_min > bpm_max:
+        raise click.ClickException("--bpm-min cannot be greater than --bpm-max")
+
+    try:
+        resolved_db = resolve_cli_env_db_path(db_path, purpose="write", source_label="--db").path
+        roles_filter = parse_roles_filter(roles)
+    except (DbResolutionError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    output_format = output_format.lower()
+    normalized_date = gig_date.date()
+
+    with sqlite3.connect(str(resolved_db)) as conn:
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
+        with conn:
+            rendered = run_gig_prep(
+                conn,
+                gig_date=normalized_date,
+                venue=venue,
+                bpm_min=bpm_min,
+                bpm_max=bpm_max,
+                roles_filter=roles_filter,
+                output_format=output_format,
+                output_path=output_path,
+            )
+
+    if output_path is None:
+        click.echo(rendered, nl=False)
+
+
 @dj_group.group("crates")
 def crates_group() -> None:
     """Manage DJ crate assignments."""

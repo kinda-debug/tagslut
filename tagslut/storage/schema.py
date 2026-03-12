@@ -912,6 +912,24 @@ def _ensure_scan_tables(conn: sqlite3.Connection) -> None:
 def _ensure_gig_tables(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
+        CREATE TABLE IF NOT EXISTS gigs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            venue TEXT,
+            bpm_min INTEGER,
+            bpm_max INTEGER,
+            roles_filter TEXT,
+            track_count INTEGER,
+            output_path TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_gigs_date ON gigs(date);")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_gigs_created_at ON gigs(created_at);")
+
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS gig_sets (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
@@ -944,6 +962,20 @@ def _ensure_gig_tables(conn: sqlite3.Connection) -> None:
     )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_gig_set_tracks_set ON gig_set_tracks(gig_set_id);")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_gig_set_tracks_file ON gig_set_tracks(file_path);")
+    _add_missing_columns(
+        conn,
+        "gigs",
+        {
+            "date": "TEXT",
+            "venue": "TEXT",
+            "bpm_min": "INTEGER",
+            "bpm_max": "INTEGER",
+            "roles_filter": "TEXT",
+            "track_count": "INTEGER",
+            "output_path": "TEXT",
+            "created_at": "TEXT DEFAULT CURRENT_TIMESTAMP",
+        },
+    )
     _add_missing_columns(
         conn,
         "gig_sets",

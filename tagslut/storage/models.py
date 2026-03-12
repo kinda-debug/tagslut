@@ -6,6 +6,10 @@ from tagslut.zones import Zone, coerce_zone
 
 IntegrityState = Literal["valid", "recoverable", "corrupt"]
 DJ_SET_ROLES = frozenset({"groove", "prime", "bridge", "club"})
+_DJ_SET_ROLE_PRIORITY = ("groove", "prime", "bridge", "club")
+DJ_SET_ROLE_ORDER = tuple(role for role in _DJ_SET_ROLE_PRIORITY if role in DJ_SET_ROLES) + tuple(
+    sorted(DJ_SET_ROLES.difference(_DJ_SET_ROLE_PRIORITY))
+)
 DJ_SUBROLES = frozenset({
     "opener", "builder", "vocal", "left_turn",
     "closer", "classic", "tool"

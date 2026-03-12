@@ -11,10 +11,27 @@ from typing import Callable
 
 from tagslut.dj.curation import CurationResult, DjCurationConfig, filter_candidates
 from tagslut.dj.key_detection import detect_key, is_keyfinder_available
-from tagslut.dj.transcode import TrackRow, transcode_one
+from tagslut.dj.transcode import TrackRow, build_output_path, sanitize_component, transcode_one
+from tagslut.storage.models import DJ_SET_ROLES, DJ_SET_ROLE_ORDER
 
 logger = logging.getLogger(__name__)
 log = logger
+_ROLE_PLAYLIST_FILENAMES = {
+    role: f"{index * 10}_{role.upper()}.m3u"
+    for index, role in enumerate(DJ_SET_ROLE_ORDER, start=1)
+}
+
+
+@dataclass
+class PoolProfile:
+    pool_name: str = ""
+    layout: str = "flat"
+    filename_template: str = "{artist} - {title}.mp3"
+    bpm_min: int | None = None
+    bpm_max: int | None = None
+    only_roles: list[str] | None = None
+    create_playlist: bool = False
+    pool_overwrite_policy: str = "always"
 
 
 @dataclass
@@ -38,15 +55,155 @@ class ExportPlan:
     curation_result: CurationResult | None = None
     stats: ExportStats = field(default_factory=ExportStats)
     dry_run: bool = True
+    profile: PoolProfile | None = None
+
+
+def pool_profile_from_dict(d: dict) -> PoolProfile:
+    """Construct PoolProfile from a profile JSON dict."""
+    if not isinstance(d, dict):
+        raise TypeError("Pool profile must be a dict.")
+
+    layout = str(d.get("layout") or "flat").strip().lower() or "flat"
+    if layout not in {"flat", "by_role"}:
+        raise ValueError("Pool profile layout must be 'flat' or 'by_role'.")
+
+    pool_overwrite_policy = str(d.get("pool_overwrite_policy") or "always").strip().lower() or "always"
+    if pool_overwrite_policy not in {"always", "skip"}:
+        raise ValueError("Pool profile overwrite policy must be 'always' or 'skip'.")
+
+    raw_only_roles = d.get("only_roles")
+    only_roles: list[str] | None = None
+    if raw_only_roles is not None:
+        if isinstance(raw_only_roles, str) or not isinstance(raw_only_roles, (list, tuple, set, frozenset)):
+            raise ValueError(f"only_roles must be a list of DJ set roles: {sorted(DJ_SET_ROLES)}")
+        only_roles = []
+        for value in raw_only_roles:
+            role = _normalize_dj_set_role(value)
+            if role is None:
+                raise ValueError(f"Invalid only_roles value {value!r}. Allowed: {sorted(DJ_SET_ROLES)}")
+            if role not in only_roles:
+                only_roles.append(role)
+
+    return PoolProfile(
+        pool_name=str(d.get("pool_name") or ""),
+        layout=layout,
+        filename_template=str(d.get("filename_template") or "{artist} - {title}.mp3"),
+        bpm_min=int(d["bpm_min"]) if d.get("bpm_min") is not None else None,
+        bpm_max=int(d["bpm_max"]) if d.get("bpm_max") is not None else None,
+        only_roles=only_roles,
+        create_playlist=bool(d.get("create_playlist", False)),
+        pool_overwrite_policy=pool_overwrite_policy,
+    )
+
+
+def _normalize_dj_set_role(value: object) -> str | None:
+    role = str(value or "").strip().lower()
+    if not role or role not in DJ_SET_ROLES:
+        return None
+    return role
+
+
+def _fallback_filename(track: TrackRow, output_root: Path) -> str:
+    if track.output_path is not None:
+        return track.output_path.name
+    return build_output_path(output_root, track).name
+
+
+def _render_profile_filename(track: TrackRow, output_root: Path, profile: PoolProfile) -> str:
+    fallback_name = _fallback_filename(track, output_root)
+    artist = track.track_artist or track.album_artist or track.source_path.stem
+    title = track.title or track.source_path.stem
+    try:
+        rendered = str(profile.filename_template).format_map({"artist": artist, "title": title}).strip()
+    except Exception as exc:
+        log.warning("Failed to render filename template for %s: %s", track.source_path, exc)
+        return fallback_name
+
+    if not rendered:
+        return fallback_name
+
+    candidate = sanitize_component(Path(rendered).name, fallback_name)
+    if "." not in candidate:
+        suffix = Path(fallback_name).suffix or ".mp3"
+        candidate = f"{candidate}{suffix}"
+    return candidate
+
+
+def _resolve_output_path(
+    track: TrackRow,
+    output_root: Path,
+    profile: PoolProfile,
+) -> Path:
+    """
+    Resolve the destination path for a track under the supplied pool profile.
+    """
+    base_root = output_root
+    if profile.layout == "by_role":
+        role = _normalize_dj_set_role(track.dj_set_role)
+        if role is None:
+            log.warning(
+                "Track %s has invalid or missing dj_set_role %r; routing to _unassigned",
+                track.source_path,
+                track.dj_set_role,
+            )
+            base_root = output_root / "_unassigned"
+        else:
+            base_root = output_root / role
+    elif profile.layout != "flat":
+        raise ValueError(f"Unsupported pool layout {profile.layout!r}")
+
+    return base_root / _render_profile_filename(track, output_root, profile)
+
+
+def _apply_profile_output_paths(
+    tracks: list[TrackRow],
+    output_root: Path,
+    profile: PoolProfile,
+) -> None:
+    used_paths: dict[Path, int] = {}
+    for track in tracks:
+        proposed = _resolve_output_path(track, output_root, profile)
+        count = used_paths.get(proposed, 0)
+        if count > 0:
+            proposed = proposed.with_name(f"{proposed.stem}__{count + 1}{proposed.suffix}")
+        used_paths[proposed] = count + 1
+        track.output_path = proposed
+
+
+def _apply_profile_role_filter(tracks: list[TrackRow], profile: PoolProfile | None) -> list[TrackRow]:
+    if profile is None or profile.only_roles is None:
+        return tracks
+
+    allowed_roles = set(profile.only_roles)
+    filtered = [track for track in tracks if _normalize_dj_set_role(track.dj_set_role) in allowed_roles]
+    excluded = len(tracks) - len(filtered)
+    if excluded:
+        log.info("Excluded %d track(s) via profile.only_roles filter", excluded)
+    return filtered
+
+
+def _write_role_playlists(
+    output_root: Path,
+    tracks_by_role: dict[str, list[Path]],
+) -> None:
+    output_root.mkdir(parents=True, exist_ok=True)
+    for role in DJ_SET_ROLE_ORDER:
+        playlist_path = output_root / _ROLE_PLAYLIST_FILENAMES[role]
+        lines = [
+            str(path.relative_to(output_root))
+            for path in sorted(tracks_by_role.get(role, []))
+        ]
+        playlist_path.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
 
 
 def plan_export(
     tracks: list[TrackRow],
     config: DjCurationConfig,
     output_root: Path,
+    *,
+    profile: PoolProfile | None = None,
 ) -> ExportPlan:
     """Dry-run: apply curation filters and build export plan without transcoding."""
-    _ = output_root
     candidates = _build_candidates(tracks, allow_duration_estimation=False)
 
     curation = filter_candidates(candidates, config)
@@ -60,12 +217,16 @@ def plan_export(
     )
 
     passed_tracks = [c["_track"] for c in curation.passed]
+    passed_tracks = _apply_profile_role_filter(passed_tracks, profile)
+    if profile is not None:
+        _apply_profile_output_paths(passed_tracks, output_root, profile)
 
     return ExportPlan(
         tracks=passed_tracks,
         curation_result=curation,
         stats=stats,
         dry_run=True,
+        profile=profile,
     )
 
 
@@ -82,6 +243,7 @@ def run_export(
     transcode_timeout_s: int | None = None,
     fail_fast: bool = False,
     progress_callback: Callable[[int, int], None] | None = None,
+    profile: PoolProfile | None = None,
 ) -> ExportStats:
     """Run full DJ export: curate → (key detect) → transcode → place.
 
@@ -109,6 +271,9 @@ def run_export(
     print("Running curation filters...", flush=True)
     curation = filter_candidates(candidates, config)
     passed_tracks = [c["_track"] for c in curation.passed]
+    passed_tracks = _apply_profile_role_filter(passed_tracks, profile)
+    if profile is not None:
+        _apply_profile_output_paths(passed_tracks, output_root, profile)
 
     stats = ExportStats(
         total_candidates=len(tracks),
@@ -181,6 +346,7 @@ def run_export(
 
     total = len(passed_tracks)
     completed = 0
+    successful_role_paths: dict[str, list[Path]] = {role: [] for role in DJ_SET_ROLE_ORDER}
 
     with ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
         futures = [
@@ -192,6 +358,10 @@ def run_export(
             completed += 1
             if status == "ok":
                 stats.transcoded_ok += 1
+                if profile is not None and profile.layout == "by_role":
+                    role = _normalize_dj_set_role(track.dj_set_role)
+                    if role in successful_role_paths and track.output_path is not None:
+                        successful_role_paths[role].append(track.output_path)
             elif status == "skipped_existing":
                 stats.transcoded_skipped += 1
             else:
@@ -238,6 +408,8 @@ def run_export(
         with failure_path.open("w", encoding="utf-8") as handle:
             for row in for_write:
                 handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+    if profile is not None and profile.create_playlist and profile.layout == "by_role":
+        _write_role_playlists(output_root, successful_role_paths)
 
     log.info(
         "Export complete: %d ok, %d skipped, %d failed",

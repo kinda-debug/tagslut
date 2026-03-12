@@ -101,6 +101,7 @@ class TrackRow:
     dedupe_key: Tuple[str, ...]
     output_path: Optional[Path] = None
     canonical_key: Optional[str] = None
+    dj_set_role: Optional[str] = None
 
 
 def make_dedupe_key(track: TrackRow) -> Tuple[str, ...]:

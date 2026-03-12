@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import argparse
 import json
+import os
 import sqlite3
+import traceback
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -859,3 +862,101 @@ def backfill_v3_identity_links(
 
 def default_artifacts_dir() -> Path:
     return Path(env_paths.get_artifacts_dir())
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Backfill v3 asset/identity/link rows from legacy file inventory."
+    )
+    parser.add_argument(
+        "--db",
+        type=Path,
+        default=None,
+        help="Path to SQLite DB (defaults to TAGSLUT_DB)",
+    )
+    parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Apply changes (default: dry-run)",
+    )
+    parser.add_argument(
+        "--resume-from-file-id",
+        type=int,
+        default=0,
+        help="Resume processing after the given files.rowid",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Optional maximum number of rows to process",
+    )
+    parser.add_argument(
+        "--commit-every",
+        type=int,
+        default=500,
+        help="Commit every N processed rows in execute mode",
+    )
+    parser.add_argument(
+        "--checkpoint-every",
+        type=int,
+        default=500,
+        help="Write a checkpoint artifact every N processed rows",
+    )
+    parser.add_argument(
+        "--busy-timeout-ms",
+        type=int,
+        default=10_000,
+        help="SQLite busy timeout in milliseconds",
+    )
+    parser.add_argument(
+        "--abort-error-rate",
+        type=float,
+        default=50.0,
+        help="Abort when errors per 1000 processed rows exceed this threshold",
+    )
+    parser.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Print exception traceback on error",
+    )
+    args = parser.parse_args(argv)
+
+    db_path_arg = args.db
+    if db_path_arg is None:
+        env_db = os.environ.get("TAGSLUT_DB")
+        if env_db:
+            db_path_arg = Path(env_db)
+    if db_path_arg is None:
+        print("error: --db is required unless TAGSLUT_DB is set")
+        return 1
+
+    db_path = db_path_arg.expanduser().resolve()
+    config = BackfillConfig(
+        execute=bool(args.execute),
+        resume_from_file_id=args.resume_from_file_id,
+        commit_every=args.commit_every,
+        checkpoint_every=args.checkpoint_every,
+        busy_timeout_ms=args.busy_timeout_ms,
+        abort_error_rate_per_1000=args.abort_error_rate,
+        artifacts_dir=default_artifacts_dir(),
+        limit=args.limit,
+    )
+
+    conn = sqlite3.connect(str(db_path))
+    try:
+        summary = backfill_v3_identity_links(conn, db_path=db_path, config=config)
+        print(json.dumps(summary, indent=2, sort_keys=True))
+    except Exception as exc:  # noqa: BLE001
+        print(f"error: {exc}")
+        if args.verbose:
+            traceback.print_exc()
+        return 1
+    finally:
+        conn.close()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

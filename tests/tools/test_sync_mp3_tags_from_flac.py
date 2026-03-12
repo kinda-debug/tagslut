@@ -179,3 +179,91 @@ def test_sync_script_repairs_core_tags_from_master_match(tmp_path, monkeypatch) 
     tags = ID3(mp3_path)
     assert tags["TRCK"].text[0] == "06"
     assert str(tags["TDRC"].text[0]) == "2024"
+
+
+def test_sync_script_uses_dj_snapshot_for_missing_dj_tags(tmp_path, monkeypatch) -> None:
+    module = _load_module()
+    mp3_root = tmp_path / "dj"
+    mp3_path = mp3_root / "Snapshot Artist - Snapshot Track.mp3"
+    flac_path = tmp_path / "master" / "snapshot.flac"
+    _write_minimal_mp3(mp3_path)
+    flac_path.parent.mkdir(parents=True, exist_ok=True)
+    flac_path.write_bytes(b"flac")
+
+    monkeypatch.setattr(module, "resolve_cli_env_db_path", lambda *args, **kwargs: SimpleNamespace(path=tmp_path / "music.db"))
+    monkeypatch.setattr(
+        module,
+        "read_audio_metadata",
+        lambda path: SimpleNamespace(
+            title="Snapshot Track",
+            artist="Snapshot Artist",
+            album="Snapshot Album",
+            albumartist="Snapshot Artist",
+            duration_s=210.0,
+        )
+        if path.resolve() == mp3_path.resolve()
+        else None,
+    )
+    monkeypatch.setattr(
+        module,
+        "load_master_index",
+        lambda flac_root, wanted_keys: {
+            (module._norm("Snapshot Track"), module._norm("Snapshot Artist")): [
+                SimpleNamespace(path=flac_path.resolve(), album="Snapshot Album", duration_s=210.0)
+            ]
+        },
+    )
+    monkeypatch.setattr(
+        module,
+        "pick_best_master_match",
+        lambda metadata, candidates, duration_tol: candidates[0],
+    )
+    monkeypatch.setattr(module, "FLAC", lambda path: _FakeFlac({}))
+    monkeypatch.setattr(
+        module,
+        "resolve_dj_tag_snapshot_for_path",
+        lambda conn, path, **kwargs: SimpleNamespace(
+            title="Snapshot Track",
+            artist="Snapshot Artist",
+            album="Snapshot Album",
+            genre="Indie Dance",
+            label="My Label",
+            year=2026,
+            isrc="ISRC123",
+            bpm="124",
+            musical_key="Am",
+            energy_1_10=7,
+        ),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "sync_mp3_tags_from_flac.py",
+            "--db",
+            str(tmp_path / "music.db"),
+            "--mp3-root",
+            str(mp3_root),
+            "--match-source",
+            "master",
+            "--no-copy-core-tags",
+            "--copy-dj-tags",
+            "--execute",
+            "--out",
+            str(tmp_path / "report.csv"),
+            "--backup",
+            str(tmp_path / "backup.jsonl"),
+        ],
+    )
+
+    result = module.main()
+
+    assert result == 0
+    tags = ID3(mp3_path)
+    assert tags["TCON"].text[0] == "Indie Dance"
+    assert tags["TBPM"].text[0] == "124"
+    assert tags["TKEY"].text[0] == "Am"
+    assert tags["TXXX:INITIALKEY"].text[0] == "Am"
+    assert tags["TXXX:LABEL"].text[0] == "My Label"
+    assert tags["TSRC"].text[0] == "ISRC123"
+    assert tags["TXXX:ENERGY"].text[0] == "7"

@@ -384,6 +384,40 @@ def test_export_groups_merged_identities_and_respects_preferred_asset(tmp_path: 
     assert row_alpha["selected_asset_bitrate"] == "256000"
 
 
+def test_merged_identity_asset_does_not_override_canonical_preferred(tmp_path: Path) -> None:
+    """Identity 5 is merged into identity 1.
+
+    Identity 5 has its own preferred_asset row pointing to asset 12 (alpha_merged.flac).
+    Identity 1 has its own preferred_asset row pointing to asset 11 (alpha_preferred.m4a).
+
+    The export must:
+    - Emit exactly one row for identity 1 (the canonical root).
+    - Select asset 11 for identity 1, NOT asset 12 from the merged identity.
+    - Omit identity 5 entirely from the output.
+    """
+    db = _create_fixture_db(tmp_path)
+    out = tmp_path / "merge_isolation.csv"
+
+    proc = _run_export(db=db, out=out, extra_args=["--scope", "active"])
+    assert proc.returncode == 0, f"STDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+
+    rows = _read_csv(out)
+    ids = [row["identity_id"] for row in rows]
+
+    # merged identity must not appear
+    assert "5" not in ids
+
+    # canonical identity appears exactly once
+    assert ids.count("1") == 1
+
+    row_1 = next(row for row in rows if row["identity_id"] == "1")
+    # must use canonical's own preferred asset, not the merged identity's asset
+    assert row_1["selected_asset_path"] == "/root/alpha_preferred.m4a"
+    assert row_1["selected_asset_id"] == "11"
+    # must not select the merged identity's flac (asset 12)
+    assert row_1["selected_asset_path"] != "/root/alpha_merged.flac"
+
+
 def test_fallback_asset_selection_prefers_flac_then_highest_mp3_then_remaining(tmp_path: Path) -> None:
     db = _create_fixture_db(tmp_path)
     out = tmp_path / "fallbacks.csv"

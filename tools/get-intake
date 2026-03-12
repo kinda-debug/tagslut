@@ -125,6 +125,61 @@ run_cmd() {
   "$@"
 }
 
+run_cmd_in_dir() {
+  local workdir="$1"
+  shift
+  printf '→ '
+  printf '%q ' "$@"
+  printf '\n'
+  env -C "$workdir" "$@"
+}
+
+resolved_volume_path() {
+  local volume_name="$1"
+  python3 - "$volume_name" <<'PY'
+from __future__ import annotations
+
+import sys
+import warnings
+
+try:
+    from tagslut.utils import env_paths
+except Exception:
+    print("")
+    raise SystemExit(0)
+
+name = sys.argv[1]
+with warnings.catch_warnings(record=True) as caught:
+    warnings.simplefilter("default", DeprecationWarning)
+    value = env_paths.get_volume(name)
+
+for item in caught:
+    print(f"WARNING: {item.message}", file=sys.stderr)
+
+print("" if value is None else str(value))
+PY
+}
+
+RESOLVED_STAGING_ROOT_CACHE=""
+RESOLVED_STAGING_ROOT_CACHE_SET=0
+
+resolved_staging_root() {
+  if [[ "${RESOLVED_STAGING_ROOT_CACHE_SET:-0}" -eq 1 ]]; then
+    printf '%s\n' "$RESOLVED_STAGING_ROOT_CACHE"
+    return 0
+  fi
+  local staging_root=""
+  staging_root="$(resolved_volume_path staging || true)"
+  if [[ -z "$staging_root" ]]; then
+    staging_root="$(first_nonempty \
+      "${STAGING_ROOT:-}" \
+      "${VOLUME_STAGING:-}" || true)"
+  fi
+  RESOLVED_STAGING_ROOT_CACHE="$staging_root"
+  RESOLVED_STAGING_ROOT_CACHE_SET=1
+  printf '%s\n' "$RESOLVED_STAGING_ROOT_CACHE"
+}
+
 run_tiddl_download() {
   local tidal_url="${1:-}"
   shift || true
@@ -466,12 +521,10 @@ bpdl_workdir_from_config() {
 
 default_batch_root() {
   local staging_root=""
-  local volume_staging=""
   local local_staging=""
   local bpdl_root=""
   local tiddl_root=""
-  staging_root="${STAGING_ROOT:-}"
-  volume_staging="${VOLUME_STAGING:-}"
+  staging_root="$(resolved_staging_root)"
   local_staging="${LOCAL_STAGING:-$HOME/Music/mdl}"
   bpdl_root="$(bpdl_downloads_dir_from_config)"
   tiddl_root="$(tiddl_downloads_dir_from_config)"
@@ -482,7 +535,6 @@ default_batch_root() {
       "${TIDDL_DOWNLOAD_ROOT:-}" \
       "${tiddl_root:-}" \
       "${staging_root:+$staging_root/tidal}" \
-      "${volume_staging:+$volume_staging/tidal}" \
       "${local_staging:+$local_staging/tidal}" \
       "$HOME/Downloads/tiddl" \
       "$REPO_ROOT/output/downloads/tidal"
@@ -493,7 +545,6 @@ default_batch_root() {
     "${ROOT_BP:-}" \
     "${bpdl_root:-}" \
     "${staging_root:+$staging_root/bpdl}" \
-    "${volume_staging:+$volume_staging/bpdl}" \
     "${local_staging:+$local_staging/bpdl}" \
     "$REPO_ROOT/output/downloads/bpdl"
 }
@@ -620,15 +671,16 @@ ensure_bpdl_download_target() {
 
   local configured_target=""
   local target=""
+  local staging_root=""
   local local_staging=""
   configured_target="$(bpdl_downloads_dir_from_config)"
+  staging_root="$(resolved_staging_root)"
   local_staging="${LOCAL_STAGING:-$HOME/Music/mdl}"
 
   target="$(first_usable_path \
     "${ROOT_BP:-}" \
     "${configured_target:-}" \
-    "${STAGING_ROOT:+$STAGING_ROOT/bpdl}" \
-    "${VOLUME_STAGING:+$VOLUME_STAGING/bpdl}" \
+    "${staging_root:+$staging_root/bpdl}" \
     "${local_staging:+$local_staging/bpdl}" \
     "$REPO_ROOT/output/downloads/bpdl" \
   )"
@@ -676,9 +728,9 @@ run_bpdl_batch() {
 
   if [[ "$supports_quit" -eq 1 ]]; then
     if [[ ${#extra_args[@]} -gt 0 ]]; then
-      run_cmd bash -lc "cd \"\$1\" && shift && exec \"\$@\"" _ "$bpdl_workdir" "$BPDL_BIN" -q "${extra_args[@]}" "$url_list"
+      run_cmd_in_dir "$bpdl_workdir" "$BPDL_BIN" -q "${extra_args[@]}" "$url_list"
     else
-      run_cmd bash -lc "cd \"\$1\" && shift && exec \"\$@\"" _ "$bpdl_workdir" "$BPDL_BIN" -q "$url_list"
+      run_cmd_in_dir "$bpdl_workdir" "$BPDL_BIN" -q "$url_list"
     fi
     return 0
   fi
@@ -689,18 +741,12 @@ run_bpdl_batch() {
     printf '→ '
     printf '%q ' "$BPDL_BIN" "${extra_args[@]}" "$url_list"
     printf '\n'
-    (
-      cd "$bpdl_workdir" &&
-      "$BPDL_BIN" "${extra_args[@]}" "$url_list" < /dev/null
-    ) 2>&1 | tee "$log_file"
+    env -C "$bpdl_workdir" "$BPDL_BIN" "${extra_args[@]}" "$url_list" < /dev/null 2>&1 | tee "$log_file"
   else
     printf '→ '
     printf '%q ' "$BPDL_BIN" "$url_list"
     printf '\n'
-    (
-      cd "$bpdl_workdir" &&
-      "$BPDL_BIN" "$url_list" < /dev/null
-    ) 2>&1 | tee "$log_file"
+    env -C "$bpdl_workdir" "$BPDL_BIN" "$url_list" < /dev/null 2>&1 | tee "$log_file"
   fi
   local bpdl_code=${PIPESTATUS[0]}
   set -e

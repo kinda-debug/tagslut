@@ -1,9 +1,6 @@
-"""Helpers for v3 Chromaprint-backed identity resolution."""
-
+"""Chromaprint-backed identity resolution for v3."""
 from __future__ import annotations
-
 import sqlite3
-
 from tagslut.storage.schema import V3_ASSET_FILE_TABLE, V3_ASSET_LINK_TABLE
 
 
@@ -21,7 +18,6 @@ def find_identity_by_fingerprint(
     *,
     exclude_asset_id: int | None = None,
 ) -> int | None:
-    """Resolve a single identity by exact Chromaprint fingerprint."""
     if not fingerprint:
         return None
     if not _column_exists(conn, V3_ASSET_FILE_TABLE, "chromaprint_fingerprint"):

@@ -48,12 +48,17 @@ Top-level commands hidden by policy until promoted:
 2. `tagslut enrich-file ...`
 3. `tagslut explain-keeper ...`
 4. `tagslut show-zone ...`
-5. `tagslut recovery ...`
 
 Compatibility scripts still allowed, but not canonical:
 1. `tools/review/move_from_plan.py`
 2. `tools/review/quarantine_from_plan.py`
 3. `tools/review/promote_by_tags.py`
+
+Retired hidden compatibility shims that may remain callable only to fail clearly:
+1. `tagslut recovery ...`
+2. `tagslut verify recovery ...`
+3. `tagslut report recovery ...`
+4. `tagslut _recover ...`
 
 Current rule for `tagslut intake process-root`:
 - on a v3 DB, use only `identify,enrich,art,promote,dj`

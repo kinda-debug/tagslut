@@ -19,9 +19,18 @@ from tagslut.cli.commands._enrich_helpers import (
     _local_file_info_from_path,
     _print_enrichment_result,
 )
-from tagslut.cli.runtime import collect_flac_paths as _collect_flac_paths
+from tagslut.cli.runtime import (
+    WRAPPER_CONTEXT,
+    collect_flac_paths as _collect_flac_paths,
+)
 
 logger = logging.getLogger("tagslut")
+
+
+def _raise_recovery_retired() -> None:
+    raise click.ClickException(
+        "tagslut.recovery is archived. Use legacy/tagslut_recovery/ for the old recovery workflow."
+    )
 
 
 def _default_canon_rules_path() -> Path:
@@ -791,79 +800,20 @@ def register_misc_commands(cli: click.Group) -> None:
         click.echo("     tagslut decide plan --policy library_balanced --input candidates.json")
         click.echo("")
 
-    @cli.command(name="_recover", hidden=True)
-    @click.argument('path', required=False, type=click.Path(exists=True))
-    @click.option('--db', type=click.Path(), help='Recovery database path')
-    @click.option(
-        '--phase',
-        type=click.Choice(['scan', 'repair', 'verify', 'report', 'all']),
-        default='all',
-        help='Pipeline phase to run (default: all)'
-    )
-    @click.option('--output', type=click.Path(), help='Report output path (CSV or JSON)')
-    @click.option('--workers', default=4, help='Parallel workers for scan phase')
-    @click.option('--execute', is_flag=True, help='Actually perform repairs (default: dry-run)')
-    @click.option('--include-valid', is_flag=True, help='Include valid files in reports')
-    @click.option('--init', 'interactive', is_flag=True, help='Interactive session initialization')
-    @click.option('--enrich', is_flag=True, help='Enrich salvaged files with metadata after verification')
-    @click.option('-v', '--verbose', is_flag=True, help='Verbose output')
-    def recover(
-        path: Any, db: Any, phase: Any, output: Any, workers: Any,
-        execute: Any, include_valid: Any, interactive: Any, enrich: Any, verbose: Any
-    ) -> None:
+    @cli.command(name="_recover", hidden=True, context_settings=WRAPPER_CONTEXT)
+    @click.argument("args", nargs=-1, type=click.UNPROCESSED)
+    def recover(args: Any) -> None:
         """
-        Recover corrupted FLAC files.
-
-        Scans for integrity issues, attempts FFmpeg-based salvage,
-        verifies repairs, and generates reports.
-
-        Internal command used by canonical verify/report wrappers.
+        Retired compatibility wrapper for the archived recovery workflow.
         """
-        raise click.ClickException(
-            "tagslut.recovery is archived. Use legacy/tagslut_recovery/ for the old recovery workflow."
-        )
+        del args
+        _raise_recovery_retired()
 
-    @cli.command("recovery", hidden=True)
-    @click.argument("paths", nargs=-1, type=click.Path(exists=True))
-    @click.option("--db", type=click.Path(), help="Database path (auto-detect from env if not provided)")
-    @click.option("--zone", help="Target zone (accepted, staging, etc.)")
-    @click.option("--move/--no-move", default=False, help="Move files (default: dry-run)")
-    @click.option("--require-duration-ok", is_flag=True, help="Block promotion unless duration_status is ok")
-    @click.option("--allow-duration-warn", is_flag=True, help="Allow warn status for manual override")
-    @click.option("--dj-only", is_flag=True, help="Treat all paths as DJ material")
-    @click.option("--log", type=click.Path(), help="Log file path (JSONL)")
-    def recovery(  # type: ignore  # TODO: mypy-strict
-        paths,
-        db,
-        zone,
-        move,
-        require_duration_ok,
-        allow_duration_warn,
-        dj_only,
-        log,
-    ):
+    @cli.command("recovery", hidden=True, context_settings=WRAPPER_CONTEXT)
+    @click.argument("args", nargs=-1, type=click.UNPROCESSED)
+    def recovery(args):  # type: ignore  # TODO: mypy-strict
         """
-        Stub for DJ-safe promotion (duration-aware recovery mode).
+        Retired compatibility wrapper for the archived recovery workflow.
         """
-        from tagslut.utils.audit_log import append_jsonl, resolve_log_path, now_iso
-
-        log_path = Path(log) if log else resolve_log_path("recovery_decisions")
-        append_jsonl(
-            log_path,
-            {
-                "event": "promotion_decision",
-                "timestamp": now_iso(),
-                "duplicate_group_id": None,
-                "is_dj_material": bool(dj_only),
-                "chosen_track_path": None,
-                "reason": "stub_not_implemented",
-                "alternatives": [],
-            },
-        )
-
-        click.echo("tagslut recovery is a stub (promotion logic not implemented yet).")
-        click.echo(f"  Paths: {len(paths)} | zone={zone} | move={move}")
-        if require_duration_ok:
-            click.echo("  Duration gate: require duration_status=ok")
-        if allow_duration_warn:
-            click.echo("  Override: allow duration_status=warn (manual)")
+        del args
+        _raise_recovery_retired()

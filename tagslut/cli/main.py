@@ -38,7 +38,7 @@ logger = logging.getLogger("tagslut")
 _TRANSITIONAL_COMMAND_REPLACEMENTS: dict[str, str] = {
     "tagslut _mgmt": "tagslut index ... / tagslut report m3u ...",
     "tagslut _metadata": "tagslut auth ... / tagslut index enrich ...",
-    "tagslut _recover": "tagslut verify recovery ... / tagslut report recovery ...",
+    "tagslut _recover": "Recovery is retired; see legacy/tagslut_recovery/ for the archived workflow.",
 }
 
 

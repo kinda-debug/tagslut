@@ -22,10 +22,10 @@ Role: Policy-profile listing and deterministic plan generation.
 Role: Execute move/quarantine/promote workflows from plans.
 
 5. `poetry run tagslut verify ...`
-Role: Validate duration/recovery/parity and move receipt consistency.
+Role: Validate duration/parity and move receipt consistency.
 
 6. `poetry run tagslut report ...`
-Role: M3U and operational reports (duration, recovery, plan summaries).
+Role: M3U and operational reports (duration, plan summaries).
 
 7. `poetry run tagslut auth ...`
 Role: Provider authentication and token lifecycle flows.
@@ -125,13 +125,18 @@ Hidden top-level commands by policy:
 - `tagslut enrich-file ...`
 - `tagslut explain-keeper ...`
 - `tagslut show-zone ...`
-- `tagslut recovery ...`
 
 Use `tagslut intake/index/decide/execute/verify/report/auth/dj/gig/export/init` for new work.
 
 ## Recovery Command Status
 
-- `tagslut recovery` is a hidden minimal stub logger and does not implement the full move pipeline described in some historical docs.
+- `tagslut.recovery` is decommissioned and intentionally non-importable.
+- Hidden compatibility shims still exist for old invocations:
+  - `tagslut recovery ...`
+  - `tagslut verify recovery ...`
+  - `tagslut report recovery ...`
+  - `tagslut _recover ...`
+- Those shims are not active recovery functionality. They exist only to fail clearly and point to `legacy/tagslut_recovery/`.
 - Canonical operator path for end-to-end root processing:
   - `tagslut intake process-root --root <folder> [--db <db>]`
 - Current v3-safe `process-root` usage is `identify,enrich,art,promote,dj`; legacy scan phases are blocked when `--db` points at a v3 database.

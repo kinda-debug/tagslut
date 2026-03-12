@@ -1,4 +1,4 @@
-<!-- Status: Active document. Synced 2026-03-09 after recent code/doc review. Historical or superseded material belongs in docs/archive/. -->
+<!-- Status: Active document. Synced 2026-03-12 after DJ role/profile documentation refresh. Historical or superseded material belongs in docs/archive/. -->
 
 # DJ Pool Contract (v3)
 
@@ -137,6 +137,38 @@ poetry run tagslut dj pool-wizard \
 ```
 
 Make targets may wrap this behavior.
+
+## Pool Profile Reference
+
+The JSON passed via `--profile /path/to/profile.json` is part of the operator-facing pool contract.
+
+For the export-layer profile in `tagslut/dj/export.py`, `pool_profile_from_dict()` honors the fields below. Higher-level workflows such as `tagslut dj pool-wizard` may carry additional workflow keys, but those are outside this `PoolProfile` subset.
+
+| Field | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `pool_name` | string | `""` | Optional label carried on `PoolProfile`. `tagslut dj pool-wizard` expects this in non-interactive profiles. |
+| `layout` | string | `"flat"` | Supported values: `flat`, `by_role`. `by_role` writes into role subdirectories and routes missing or invalid `dj_set_role` values to `_unassigned/`. |
+| `filename_template` | string | `"{artist} - {title}.mp3"` | Format string with `{artist}` and `{title}` placeholders. If rendering fails or produces an empty name, export falls back to the normal output filename. |
+| `bpm_min` | integer or `null` | `null` | Optional minimum BPM filter applied before export. |
+| `bpm_max` | integer or `null` | `null` | Optional maximum BPM filter applied before export. |
+| `only_roles` | array of strings or `null` | `null` | Optional allowlist of `files.dj_set_role` values: `groove`, `prime`, `bridge`, `club`. Tracks outside the set are excluded before output paths are assigned. |
+| `create_playlist` | boolean | `false` | When `true` and `layout` is `by_role`, write per-role M3U files at the pool root such as `10_GROOVE.m3u` and `20_PRIME.m3u`. |
+| `pool_overwrite_policy` | string | `"always"` | Supported values: `always`, `skip`. Other values fail validation. |
+
+Reference JSON:
+
+```json
+{
+  "pool_name": "gig_2026_03_13",
+  "layout": "by_role",
+  "filename_template": "{artist} - {title}.mp3",
+  "bpm_min": 98,
+  "bpm_max": 128,
+  "only_roles": ["groove", "prime", "bridge", "club"],
+  "create_playlist": true,
+  "pool_overwrite_policy": "always"
+}
+```
 
 ## Upstream Tag Preparation
 

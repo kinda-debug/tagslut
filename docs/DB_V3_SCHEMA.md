@@ -1,4 +1,4 @@
-<!-- Status: Active document. Synced 2026-03-09 after recent code/doc review. Historical or superseded material belongs in docs/archive/. -->
+<!-- Status: Active document. Synced 2026-03-12 after DJ role/profile documentation refresh. Historical or superseded material belongs in docs/archive/. -->
 
 # DB V3 Schema (Core)
 
@@ -218,6 +218,8 @@ Key columns:
 
 DJ-focused tables/flows (for example `gig_sets`, `gig_set_tracks`, DJ export state) are optional.
 Core indexing, identity linking, moves, and audit must work without DJ workflows.
+
+Note: `files.dj_set_role` on the flat `files` table is a separate downstream export field with values `groove | prime | bridge | club`. It is not the same field as `dj_track_profile.set_role`, which is an identity-layer v3 curation overlay with values `warmup | builder | peak | tool | closer | ambient | break | unknown`.
 
 ## Forbidden Patterns
 

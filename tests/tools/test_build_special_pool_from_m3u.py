@@ -117,3 +117,29 @@ def test_build_special_pool_writes_tag_sync_report_when_db_mapping_exists(tmp_pa
     assert tag_sync_report.exists()
     report_text = tag_sync_report.read_text(encoding="utf-8")
     assert str(flac_path.resolve()) in report_text
+
+
+def test_build_special_pool_resolves_relative_playlist_entries_from_playlist_dir(tmp_path: Path) -> None:
+    module = _load_module()
+    source_root = tmp_path / "DJ_LIBRARY"
+    song_a = source_root / "Artist A" / "Album A" / "Artist A - Song A.mp3"
+    _write_dummy_mp3(song_a, title="Song A", artist="Artist A", album="Album A")
+
+    playlist_dir = tmp_path / "playlists"
+    playlist_dir.mkdir(parents=True, exist_ok=True)
+    relative_entry = Path("..") / "DJ_LIBRARY" / "Artist A" / "Album A" / "Artist A - Song A.mp3"
+    playlist = playlist_dir / "Relative Playlist.m3u"
+    playlist.write_text(f"#EXTM3U\n{relative_entry}\n", encoding="utf-8")
+
+    out_root = tmp_path / "gig_runs" / "gig_2026_03_13"
+    summary = module.build_special_pool(
+        playlist_paths=[playlist],
+        out_root=out_root,
+        pool_name="tomorrow-special",
+        source_root=source_root,
+    )
+
+    assert summary["unique_tracks"] == 1
+    assert summary["missing_sources"] == 0
+    copied_a = Path(str(summary["run_root"])) / "pool" / "Artist A" / "Album A" / "Artist A - Song A.mp3"
+    assert copied_a.exists()

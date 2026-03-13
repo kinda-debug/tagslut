@@ -28,11 +28,15 @@ def _safe_slug(value: str) -> str:
 
 def _read_playlist(path: Path) -> list[Path]:
     items: list[Path] = []
+    playlist_dir = path.expanduser().resolve().parent
     for raw_line in path.read_text(encoding="utf-8", errors="replace").splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#"):
             continue
-        items.append(Path(line).expanduser().resolve())
+        item_path = Path(line).expanduser()
+        if not item_path.is_absolute():
+            item_path = playlist_dir / item_path
+        items.append(item_path.resolve())
     return items
 
 

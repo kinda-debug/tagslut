@@ -1,0 +1,98 @@
+version: 1
+
+colour_palette:
+  none: null
+  blue: 0x0000FF
+  green: 0x00FF00
+  yellow: 0xFFFF00
+  pink: 0xFF66CC
+  purple: 0x800080
+  orange: 0xFF8000
+  red: 0xFF0000
+
+state_defaults:
+  arriving:
+    rating: 1
+    colour: blue
+    priority: 10
+  warming_up:
+    rating: 2
+    colour: green
+    priority: 20
+  transition:
+    rating: 2
+    colour: green
+    priority: 30
+  adventurous:
+    rating: 2
+    colour: purple
+    priority: 35
+  needs_reset:
+    rating: 2
+    colour: purple
+    priority: 40
+  safety_net:
+    rating: 3
+    colour: yellow
+    priority: 45
+  wants_recognition:
+    rating: 3
+    colour: pink
+    priority: 50
+  locked_in:
+    rating: 4
+    colour: orange
+    priority: 70
+  ready_for_peak:
+    rating: 4
+    colour: orange
+    priority: 80
+  late_night_open:
+    rating: 5
+    colour: red
+    priority: 90
+  utility:
+    rating: 2
+    colour: none
+    priority: 15
+
+playlist_state_hints:
+  01_WARMUP_GROOVE: arriving
+  02_BUILDERS: warming_up
+  03_BRIDGE_RECORDS: transition
+  04_PEAK_FLOOR: locked_in
+  05_SINGALONG_CROWD: wants_recognition
+  06_RESET_TRACKS: needs_reset
+  07_SECRET_WEAPONS: ready_for_peak
+  08_LAST_HOUR_DESTROYERS: late_night_open
+  09_MIX_TOOLS: utility
+  10_VOCAL_OVERLAYS: utility
+  11_CLASSICS: safety_net
+  12_REMIXES_OF_FAMILIAR_SONGS: wants_recognition
+  13_LEFTFIELD_COOL: adventurous
+
+heuristics:
+  preserve_existing_overlay: true
+  duration_min_seconds: 90
+  duration_max_seconds: 720
+  utility_title_markers:
+    - tool
+    - dub
+    - instrumental
+    - acapella
+    - intro
+    - outro
+  recognition_title_markers:
+    - edit
+    - rework
+    - bootleg
+    - remix
+    - live
+
+manual_overrides: []
+
+recognition_artists: []
+recognition_titles: []
+never_peak_artists: []
+never_peak_titles: []
+utility_only_titles: []

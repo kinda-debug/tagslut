@@ -1187,7 +1187,7 @@ def dj_backfill(
     db_path: str | None,
     dry_run: bool,
 ) -> None:
-    """Auto-admit all mp3_asset rows with status='ok' that have no dj_admission yet.
+    """Auto-admit all mp3_asset rows with status='verified' that have no dj_admission yet.
 
     Useful for bringing an existing MP3 library under the new DJ admission model
     after running 'tagslut mp3 reconcile'.
@@ -1211,7 +1211,7 @@ def dj_backfill(
             count = conn.execute(
                 """
                 SELECT COUNT(*) FROM mp3_asset ma
-                WHERE ma.status = 'ok'
+                WHERE ma.status = 'verified'
                   AND NOT EXISTS (
                     SELECT 1 FROM dj_admission da
                     WHERE da.identity_id = ma.identity_id AND da.status = 'admitted'

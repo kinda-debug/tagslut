@@ -251,7 +251,7 @@ def emit_rekordbox_xml(
 
     conn.execute(
         """
-        INSERT INTO dj_export_state (kind, output_path, manifest_hash, emitted_at, details_json)
+        INSERT INTO dj_export_state (kind, output_path, manifest_hash, emitted_at, scope_json)
         VALUES ('rekordbox_xml', ?, ?, ?, ?)
         """,
         (

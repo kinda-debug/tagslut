@@ -59,7 +59,7 @@ def build_mp3_from_identity(
         JOIN asset_file af ON af.id = best_link.asset_id
         WHERE NOT EXISTS (
             SELECT 1 FROM mp3_asset ma
-            WHERE ma.identity_id = ti.id AND ma.status = 'ok'
+            WHERE ma.identity_id = ti.id AND ma.status = 'verified'
         )
     """
     if identity_ids:
@@ -82,7 +82,7 @@ def build_mp3_from_identity(
             continue
 
         try:
-            mp3_path = transcode_to_mp3(Path(flac_path), out_dir=dj_root)
+            mp3_path = transcode_to_mp3(Path(flac_path), dest_dir=dj_root)
         except Exception as exc:
             result.failed += 1
             result.errors.append(f"identity {identity_id}: transcode error: {exc}")
@@ -95,8 +95,8 @@ def build_mp3_from_identity(
         conn.execute(
             """
             INSERT OR IGNORE INTO mp3_asset
-              (identity_id, master_asset_id, profile, path, status, transcoded_at)
-            VALUES (?, ?, 'mp3_320_cbr', ?, 'ok', datetime('now'))
+              (identity_id, asset_id, profile, path, status, transcoded_at)
+            VALUES (?, ?, 'mp3_320_cbr', ?, 'verified', datetime('now'))
             """,
             (identity_id, asset_id, str(mp3_path)),
         )
@@ -226,8 +226,8 @@ def reconcile_mp3_library(
         conn.execute(
             """
             INSERT OR IGNORE INTO mp3_asset
-              (identity_id, master_asset_id, profile, path, status, transcoded_at)
-            VALUES (?, ?, 'mp3_320_cbr_reconciled', ?, 'ok', datetime('now'))
+              (identity_id, asset_id, profile, path, status, transcoded_at)
+            VALUES (?, ?, 'mp3_320_cbr_reconciled', ?, 'verified', datetime('now'))
             """,
             (identity_id, master_row[0], str(mp3_file)),
         )

@@ -82,7 +82,7 @@ def admit_track(
 
 
 def backfill_admissions(conn: sqlite3.Connection) -> tuple[int, int]:
-    """Auto-admit all mp3_asset rows with status='ok' that have no dj_admission yet.
+    """Auto-admit all mp3_asset rows with status='verified' that have no dj_admission yet.
 
     Returns (admitted_count, skipped_count).
     Skips identities that already have an admitted admission.
@@ -91,7 +91,7 @@ def backfill_admissions(conn: sqlite3.Connection) -> tuple[int, int]:
         """
         SELECT ma.id, ma.identity_id
         FROM mp3_asset ma
-        WHERE ma.status = 'ok'
+        WHERE ma.status = 'verified'
           AND NOT EXISTS (
             SELECT 1 FROM dj_admission da
             WHERE da.identity_id = ma.identity_id AND da.status = 'admitted'
@@ -165,7 +165,7 @@ def validate_dj_library(conn: sqlite3.Connection) -> DjValidationReport:
         """
     ).fetchall()
     for da_id, identity_id, ma_id, mp3_path, mp3_status in rows:
-        if mp3_status != "ok":
+        if mp3_status != "verified":
             report.add(
                 "BAD_MP3_STATUS",
                 f"dj_admission {da_id}: mp3_asset {ma_id} has status={mp3_status!r}",

@@ -46,6 +46,7 @@ Examples:
 from __future__ import annotations
 
 import argparse
+import csv
 import os
 import sqlite3
 import subprocess
@@ -110,6 +111,7 @@ ALL_STAGES: list[str] = ["precheck", "intake", "enrich", "transcode", "dj"]
 DEFAULT_PROVIDERS = "beatport,tidal,deezer,traxsource,musicbrainz"
 DEFAULT_XML_OUT   = "output/dj/rekordbox.xml"
 ARTIFACTS_DIR     = REPO_ROOT / "artifacts" / "compare"
+PRECHECK_OUT_DIR  = REPO_ROOT / "output" / "precheck"
 ENRICH_WHEN_CHOICES = ("background", "foreground", "skip")
 
 
@@ -237,9 +239,16 @@ class Pipeline:
         active = [s for s in ALL_STAGES if s not in cfg.skip_stages]
         self._active_stages = active
         self._step = 0
-        # Set by _stage_intake() after a successful real (non-dry-run) intake run.
-        # Used by _stage_transcode() to scope MP3 builds to this run's promoted files.
+
+        # Set by _stage_intake() after a successful real (non-dry-run) intake
+        # run.  Used by transcode/enrich to scope work to this run's promoted
+        # files only.
         self._promoted_flacs_path: Path | None = None
+
+        # Set by _stage_precheck() after a successful real run.  Used by
+        # transcode as a fallback scope when intake promoted nothing new —
+        # covers tracks that were already in the DB but never transcoded.
+        self._precheck_decisions_path: Path | None = None
 
     # ── Helpers ──────────────────────────────────────────────────────────
 
@@ -289,12 +298,29 @@ class Pipeline:
         )
         return candidates[0] if candidates else None
 
+    def _latest_precheck_decisions_file(self) -> Path | None:
+        """Find the most recently written precheck_decisions_*.csv in output/precheck."""
+        if not PRECHECK_OUT_DIR.exists():
+            return None
+        candidates = sorted(
+            PRECHECK_OUT_DIR.glob("precheck_decisions_*.csv"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        return candidates[0] if candidates else None
+
     def _resolve_identity_ids_from_flacs(self, paths_file: Path) -> list[int]:
         """Resolve FLAC absolute paths in a promoted_flacs_*.txt to track_identity IDs.
 
-        Queries asset_file → asset_link to find the identity that owns each path.
-        Paths not found in the DB are silently skipped (they may have been moved or
-        are not yet registered).  Returns a deduplicated list preserving order.
+        Queries in priority order:
+          1. preferred_asset — updated immediately after promotion; the authoritative
+             link between a MASTER_LIBRARY asset_file row and its identity.  A newly
+             promoted file will have a preferred_asset row but may not yet have an
+             asset_link row (asset_link retains the old staging-path asset_file).
+          2. asset_link — fallback for files not yet promoted to preferred status.
+
+        Paths not found in either table are silently skipped.  Returns a
+        deduplicated list preserving order.
         """
         paths = [
             line.strip()
@@ -309,20 +335,95 @@ class Pipeline:
             ids: list[int] = []
             seen: set[int] = set()
             for path in paths:
+                # Primary: preferred_asset is recomputed after every promotion and
+                # reliably maps the MASTER_LIBRARY asset_file.id to its identity.
                 row = conn.execute(
                     """
-                    SELECT al.identity_id
+                    SELECT pa.identity_id
                     FROM asset_file af
-                    JOIN asset_link al ON al.asset_id = af.id
+                    JOIN preferred_asset pa ON pa.asset_id = af.id
                     WHERE af.path = ?
-                    ORDER BY al.confidence DESC, al.id ASC
                     LIMIT 1
                     """,
                     (path,),
                 ).fetchone()
+
+                if row is None:
+                    # Fallback: asset_link covers files that pre-date the
+                    # preferred_asset computation or weren't promoted via intake.
+                    row = conn.execute(
+                        """
+                        SELECT al.identity_id
+                        FROM asset_file af
+                        JOIN asset_link al ON al.asset_id = af.id
+                        WHERE af.path = ?
+                        ORDER BY al.confidence DESC, al.id ASC
+                        LIMIT 1
+                        """,
+                        (path,),
+                    ).fetchone()
+
                 if row is not None and row[0] not in seen:
                     seen.add(row[0])
                     ids.append(row[0])
+        finally:
+            conn.close()
+
+        return ids
+
+    def _resolve_identity_ids_from_precheck(self, decisions_csv: Path) -> list[int]:
+        """Look up track_identity IDs for every track in a precheck decisions CSV.
+
+        Reads the provider track_id (beatport_id / tidal_id) and isrc columns,
+        then queries track_identity to map them to DB identity IDs.  Used as a
+        fallback scoping source for transcode when intake produced no new
+        promotions — e.g. because all tracks at the URL were already in the
+        library but had never been transcoded to MP3.
+
+        Returns a deduplicated list preserving CSV row order.
+        """
+        try:
+            with decisions_csv.open("r", encoding="utf-8", newline="") as f:
+                rows = list(csv.DictReader(f))
+        except Exception:
+            return []
+
+        if not rows:
+            return []
+
+        conn = sqlite3.connect(self.cfg.db)
+        try:
+            ids: list[int] = []
+            seen: set[int] = set()
+            for row in rows:
+                domain   = (row.get("domain")   or "").strip()
+                track_id = (row.get("track_id") or "").strip()
+                isrc     = (row.get("isrc")     or "").strip()
+
+                id_row = None
+
+                # Try provider ID first (most precise)
+                if domain == "beatport" and track_id:
+                    id_row = conn.execute(
+                        "SELECT id FROM track_identity WHERE beatport_id = ? LIMIT 1",
+                        (track_id,),
+                    ).fetchone()
+                elif domain == "tidal" and track_id:
+                    id_row = conn.execute(
+                        "SELECT id FROM track_identity WHERE tidal_id = ? LIMIT 1",
+                        (track_id,),
+                    ).fetchone()
+
+                # Fall back to ISRC
+                if id_row is None and isrc:
+                    id_row = conn.execute(
+                        "SELECT id FROM track_identity WHERE isrc = ? LIMIT 1",
+                        (isrc,),
+                    ).fetchone()
+
+                if id_row is not None and id_row[0] not in seen:
+                    seen.add(id_row[0])
+                    ids.append(id_row[0])
         finally:
             conn.close()
 
@@ -370,6 +471,10 @@ class Pipeline:
     # Standalone pre-download DB match check.  Informational: shows keep/skip
     # decisions by ISRC > provider ID > title+artist.  Non-fatal on failure;
     # get-intake runs its own internal precheck unless --no-precheck is set.
+    #
+    # After a successful real run, captures the decisions CSV path so the
+    # transcode stage can use it as a fallback scope for tracks that are
+    # already in the DB but have never been transcoded.
 
     def _stage_precheck(self) -> int:
         self._header("precheck", "Match URL tracks against DB before download")
@@ -388,6 +493,12 @@ class Pipeline:
         rc = self._run(cmd)
         if rc != 0:
             print(f"  precheck exited {rc}  (non-fatal; continuing)")
+
+        # Capture the decisions CSV written by this run.  Used by transcode as
+        # a fallback when intake produced no new promotions.
+        if not self.cfg.dry_run:
+            self._precheck_decisions_path = self._latest_precheck_decisions_file()
+
         return 0  # always continue — precheck is advisory
 
     # ── Stage: intake ─────────────────────────────────────────────────────
@@ -498,17 +609,22 @@ class Pipeline:
 
     # ── Stage: transcode ─────────────────────────────────────────────────
     #
-    # Calls tagslut mp3 build scoped to the identities promoted by this run.
+    # Calls tagslut mp3 build scoped to the identities relevant to this run.
     #
-    # Scoping works as follows:
-    #   1. Use self._promoted_flacs_path if intake ran in this session.
-    #   2. Otherwise fall back to the most recently written promoted_flacs_*.txt
-    #      (relevant for --only transcode after a prior intake run).
-    #   3. Resolve each FLAC path → track_identity.id via asset_file/asset_link.
-    #   4. Pass the resolved IDs as --identity-ids to tagslut mp3 build.
+    # Identity IDs are resolved from two sources (in priority order):
     #
-    # This prevents the full-DB rebuild that would occur without --identity-ids,
-    # which causes failures on large libraries with stale file records.
+    #   Source A — promoted_flacs_*.txt  (primary)
+    #     Tracks newly promoted to MASTER_LIBRARY in this intake session.
+    #     Set by _stage_intake() on success; falls back to the most recently
+    #     written file on disk for --only transcode reruns.
+    #
+    #   Source B — precheck_decisions_*.csv  (fallback)
+    #     All tracks at the current URL as returned by the precheck stage.
+    #     Used when source A yields zero IDs — which happens when intake
+    #     found nothing new to promote because every track was already in the
+    #     DB (precheck said skip=N, download=0).  In that case the tracks may
+    #     still need their first MP3 transcode, and the precheck CSV gives us
+    #     the exact set of identities to target without a full-DB rebuild.
     #
     # tagslut mp3 build accepted flags:
     #   --db TEXT  --dj-root DIRECTORY  --identity-ids TEXT  --dry-run/--execute
@@ -523,7 +639,7 @@ class Pipeline:
                 "tools/get-all: transcode stage requested but no DJ root was resolved"
             )
 
-        # ── Locate the promoted file list ──────────────────────────────────
+        # ── Source A: promoted_flacs_*.txt ────────────────────────────────
         paths_file = self._promoted_flacs_path or self._latest_promoted_flacs_file()
         if paths_file is None:
             raise SystemExit(
@@ -533,38 +649,99 @@ class Pipeline:
             )
 
         if self._promoted_flacs_path is None:
-            # We are using a file from a prior run (e.g. --only transcode).
             print(
                 f"  Note: intake did not run in this session; "
                 f"using most recent promoted file: {paths_file.name}"
             )
 
-        # ── Resolve identity IDs from promoted FLAC paths ─────────────────
-        #
-        # In dry-run mode we attempt the DB query anyway (read-only) so the
-        # displayed command is realistic.  If the DB is unavailable we fall back
-        # to a placeholder and still show the command shape.
+        # ── Resolve identity IDs ──────────────────────────────────────────
         if cfg.dry_run:
+            # In dry-run: attempt DB queries (read-only) for a realistic command
+            # preview; gracefully degrade if either source is unavailable.
             try:
                 identity_ids = self._resolve_identity_ids_from_flacs(paths_file)
-                ids_str = ",".join(str(i) for i in identity_ids) if identity_ids else None
             except Exception as exc:
-                print(f"  (dry-run: could not resolve identity IDs: {exc})")
-                ids_str = None
+                print(f"  (dry-run: could not resolve IDs from promoted_flacs: {exc})")
+                identity_ids = []
+
+            if not identity_ids and self._precheck_decisions_path is not None:
+                try:
+                    identity_ids = self._resolve_identity_ids_from_precheck(
+                        self._precheck_decisions_path
+                    )
+                    if identity_ids:
+                        print(
+                            f"  (dry-run: no promoted IDs; "
+                            f"would use {len(identity_ids)} ID(s) from precheck)"
+                        )
+                except Exception as exc:
+                    print(f"  (dry-run: could not resolve IDs from precheck: {exc})")
+
+            ids_str: str | None = ",".join(str(i) for i in identity_ids) if identity_ids else None
+
         else:
+            # Real run: resolve from promoted_flacs first.
+            #
+            # Read the raw paths from the file to distinguish two cases:
+            #   (a) file is non-empty  → intake ran and promoted ≥1 FLAC this session
+            #   (b) file is empty / intake skipped → no new promotions
+            #
+            # The precheck-CSV fallback is ONLY permitted in case (b).  If intake
+            # promoted real files but the DB lookup returns zero IDs, that indicates
+            # a data-registration gap (e.g. preferred_asset not yet computed), not
+            # an empty promotion set — falling back to precheck IDs in that situation
+            # would scope transcode to a stale, unrelated set of identities.
+            promoted_paths = [
+                line.strip()
+                for line in paths_file.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+            intake_promoted_this_session = (
+                self._promoted_flacs_path is not None and bool(promoted_paths)
+            )
+
             identity_ids = self._resolve_identity_ids_from_flacs(paths_file)
+
+            if not identity_ids:
+                if intake_promoted_this_session:
+                    # Intake promoted files but the preferred_asset + asset_link
+                    # lookup still returned zero IDs.  This should not happen after
+                    # the preferred_asset fix, but guard against it rather than
+                    # silently switching scope to stale precheck IDs.
+                    print(
+                        f"  WARNING: {len(promoted_paths)} file(s) listed in "
+                        f"{paths_file.name} but none resolved to a DB identity.\n"
+                        "  preferred_asset rows may not yet be computed for this run.\n"
+                        "  Skipping transcode — re-run after enrichment completes, or\n"
+                        "  run 'tagslut dj backfill --execute' manually once enrichment\n"
+                        "  has registered the preferred asset."
+                    )
+                    return 0
+
+                if self._precheck_decisions_path is not None:
+                    # Intake was skipped or genuinely promoted nothing.  Fall back
+                    # to the precheck CSV (tracks already in MASTER_LIBRARY that
+                    # have never been transcoded).
+                    identity_ids = self._resolve_identity_ids_from_precheck(
+                        self._precheck_decisions_path
+                    )
+                    if identity_ids:
+                        print(
+                            f"  No promoted files this session; falling back to "
+                            f"{len(identity_ids)} identity ID(s) from precheck "
+                            f"({self._precheck_decisions_path.name})"
+                        )
+
             if not identity_ids:
                 print(
-                    f"  No unregistered identity IDs found in {paths_file.name}.\n"
-                    "  All promoted tracks may already have mp3_asset rows (idempotent).\n"
+                    "  No identity IDs resolved from promoted_flacs or precheck.\n"
+                    "  All tracks may already be transcoded (idempotent).\n"
                     "  Skipping transcode."
                 )
                 return 0
+
             ids_str = ",".join(str(i) for i in identity_ids)
-            print(
-                f"  Scoped to {len(identity_ids)} identity ID(s) "
-                f"from {paths_file.name}"
-            )
+            print(f"  Scoped to {len(identity_ids)} identity ID(s)")
 
         # ── Build and run the command ─────────────────────────────────────
         cmd: list[str] = [
@@ -586,6 +763,24 @@ class Pipeline:
     #   2. dj validate   — check for missing files or empty metadata
     #   3. dj xml emit   — first run; or
     #      dj xml patch  — subsequent runs (preserves stable Rekordbox TrackIDs)
+
+    def _has_prior_xml_export(self) -> bool:
+        """Return True iff dj_export_state has at least one rekordbox_xml row.
+
+        Uses the DB as the source of truth rather than filesystem presence.
+        A prior 'emit' that crashed after writing the file but before
+        committing to dj_export_state would otherwise cause 'patch' to fail.
+        """
+        try:
+            conn = sqlite3.connect(self.cfg.db)
+            row = conn.execute(
+                "SELECT id FROM dj_export_state"
+                " WHERE kind = 'rekordbox_xml' ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            conn.close()
+            return row is not None
+        except Exception:
+            return False
 
     def _stage_dj(self) -> int:
         self._header("dj", "Backfill → validate → Rekordbox XML")
@@ -611,15 +806,18 @@ class Pipeline:
             return rc
 
         # 3. xml emit or patch
+        # Decision is based on dj_export_state (DB), not file presence on disk.
+        # A prior emit that crashed after writing the file but before recording
+        # to the DB would otherwise cause 'patch' to fail on the next run.
         xml_out = cfg.xml_out
         if not cfg.dry_run:
             xml_out.parent.mkdir(parents=True, exist_ok=True)
 
-        if xml_out.exists():
-            print(f"  Prior XML found → patching  {xml_out}")
+        if not cfg.dry_run and self._has_prior_xml_export():
+            print(f"  Prior XML export found in DB → patching  {xml_out}")
             xml_subcommand = "patch"
         else:
-            print(f"  No prior XML found → emitting  {xml_out}")
+            print(f"  No prior XML export in DB → emitting  {xml_out}")
             xml_subcommand = "emit"
 
         rc = self._run([

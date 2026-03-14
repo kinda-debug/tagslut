@@ -3,14 +3,21 @@
 
 Flow:
 1) Extract tracklists from links (using scripts/extract_tracklists_from_links.py)
-2) Match each track against DB (isrc -> beatport_id -> normalized tags)
-3) Emit per-track decisions and keep-URL list for download tools
+2) Check each track against already-downloaded source records (asset_file/track_identity)
+3) Match remaining candidates against the files table (quality-rank comparison)
+4) Emit per-track decisions and keep-URL list for download tools
 
 Match strategy (in priority order):
-- ISRC match (confidence: high)
-- Beatport track ID match (confidence: high, Beatport only)
-- Normalized title + artist + album (confidence: medium)
-- Normalized title + artist (confidence: low)
+Phase 1 — previously-downloaded source match (skips re-download regardless of quality):
+  - provider + track_id match in track_identity (beatport_id / tidal_id)
+  - ISRC match in track_identity with an associated asset_file
+
+Phase 2 — canonical/final-library quality-rank match (skips if equal-or-better exists):
+  - ISRC match in files (confidence: high)
+  - Beatport track ID match in files (confidence: high, Beatport only)
+  - Tidal track ID match in files (confidence: high, Tidal only)
+  - Normalized title + artist + album (confidence: medium)
+  - Normalized title + artist (confidence: low)
 
 Usage:
     python tools/review/pre_download_check.py \\
@@ -131,6 +138,74 @@ def infer_quality_rank(
 
     return None
 
+
+# ---------------------------------------------------------------------------
+# Phase 1 — previously-downloaded source lookup
+# ---------------------------------------------------------------------------
+
+def load_downloaded_track_ids(
+    db_path: Path,
+) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
+    """Return dicts mapping previously-downloaded provider IDs to a representative path.
+
+    Queries track_identity joined with asset_link + asset_file to find every
+    identity that has at least one registered asset file in the DB — regardless
+    of whether that file was promoted, stashed, or is still in staging.
+
+    Returns:
+        by_beatport_id  — beatport_id  → asset_file.path
+        by_tidal_id     — tidal_id     → asset_file.path
+        by_isrc         — isrc         → asset_file.path
+    """
+    by_beatport_id: dict[str, str] = {}
+    by_tidal_id: dict[str, str] = {}
+    by_isrc: dict[str, str] = {}
+
+    try:
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT
+                ti.beatport_id,
+                ti.tidal_id,
+                ti.isrc,
+                af.path
+            FROM track_identity ti
+            INNER JOIN asset_link al
+                    ON al.identity_id = ti.id
+                   AND (al.active IS NULL OR al.active = 1)
+            INNER JOIN asset_file af ON af.id = al.asset_id
+            WHERE (ti.beatport_id IS NOT NULL AND ti.beatport_id != '')
+               OR (ti.tidal_id   IS NOT NULL AND ti.tidal_id   != '')
+               OR (ti.isrc       IS NOT NULL AND ti.isrc       != '')
+            ORDER BY al.confidence DESC, al.id ASC
+            """
+        ).fetchall()
+        conn.close()
+    except sqlite3.OperationalError:
+        # track_identity / asset_link / asset_file tables may not exist on old DBs.
+        return by_beatport_id, by_tidal_id, by_isrc
+
+    for r in rows:
+        bp_id = (r["beatport_id"] or "").strip()
+        td_id = (r["tidal_id"] or "").strip()
+        isrc  = (r["isrc"] or "").strip()
+        path  = r["path"] or ""
+        # First row per identity (highest confidence) wins; subsequent rows ignored.
+        if bp_id and bp_id not in by_beatport_id:
+            by_beatport_id[bp_id] = path
+        if td_id and td_id not in by_tidal_id:
+            by_tidal_id[td_id] = path
+        if isrc and isrc not in by_isrc:
+            by_isrc[isrc] = path
+
+    return by_beatport_id, by_tidal_id, by_isrc
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 — files-table quality-rank lookup
+# ---------------------------------------------------------------------------
 
 def load_db_rows(
     db_path: Path,
@@ -293,10 +368,15 @@ Examples:
   python tools/review/pre_download_check.py --input ~/links.txt --db ~/db/music.db --out-dir output/precheck
 
 Match Methods (in priority order):
-  1. ISRC match (confidence: high)
-  2. Beatport track ID match (confidence: high, Beatport links only)
-  3. Title + Artist + Album exact match (confidence: medium)
-  4. Title + Artist exact match (confidence: low)
+  Phase 1 — previously-downloaded source check (short-circuits Phase 2):
+    1. beatport_id / tidal_id in track_identity + asset_file
+    2. ISRC in track_identity + asset_file
+
+  Phase 2 — canonical/quality-rank check against files table:
+    3. ISRC match (confidence: high)
+    4. Beatport track ID match (confidence: high, Beatport links only)
+    5. Title + Artist + Album exact match (confidence: medium)
+    6. Title + Artist exact match (confidence: low)
 """,
     )
     ap.add_argument("input_arg", nargs="?", help="Text file or single URL (positional)")
@@ -314,7 +394,7 @@ Match Methods (in priority order):
     ap.add_argument(
         "--force-keep-matched",
         action="store_true",
-        help="Keep matched URLs instead of skipping them",
+        help="Keep matched URLs instead of skipping them (bypasses both Phase 1 and Phase 2 skip decisions)",
     )
     ap.add_argument("--out-dir", default="output/precheck", help="Output directory (default: output/precheck)")
     ap.add_argument("--quiet", action="store_true", help="Suppress progress/output details; emit files only")
@@ -388,6 +468,13 @@ Match Methods (in priority order):
                 raise SystemExit(output) from exc
         raise
 
+    # ── Phase 1: load previously-downloaded source IDs from track_identity ──
+    # These are tracks the DB already knows about via the new-schema tables
+    # (asset_file / asset_link / track_identity), regardless of whether the
+    # downloaded file was later promoted, stashed, or is still in staging.
+    ti_by_beatport, ti_by_tidal, ti_by_isrc = load_downloaded_track_ids(db_path)
+
+    # ── Phase 2: load files-table rows for quality-rank comparison ───────────
     by_isrc, by_beatport, by_tidal, by_exact3, by_exact2 = load_db_rows(db_path)
 
     decision_csv = out_dir / f"precheck_decisions_{ts}.csv"
@@ -421,46 +508,89 @@ Match Methods (in priority order):
             artist = (row.get("artist") or "").strip()
             album = (row.get("album") or "").strip()
 
-            matched: DbRow | None = None
-            method = ""
+            decision: str
+            reason: str
+            confidence: str
+            db_path_val: str
+            db_source: str
+            existing_quality_rank: int | str
+            method: str
 
-            # Match hierarchy: ISRC (high) > Beatport ID (high) > title+artist+album (medium) > title+artist (low)
-            if isrc and isrc in by_isrc:
-                matched = choose_best_match(by_isrc[isrc])
-                method = "isrc"
-            elif domain == "beatport" and track_id and track_id in by_beatport:
-                matched = choose_best_match(by_beatport[track_id])
-                method = "beatport_id"
-            elif domain == "tidal" and track_id and track_id in by_tidal:
-                matched = choose_best_match(by_tidal[track_id])
-                method = "tidal_id"
-            else:
-                k3 = "|".join([norm_text(title), norm_text(artist), norm_text(album)])
-                if k3 in by_exact3:
-                    matched = choose_best_match(by_exact3[k3])
-                    method = "exact_title_artist_album"
-                else:
-                    k2 = "|".join([norm_text(title), norm_text(artist)])
-                    if k2 in by_exact2:
-                        matched = choose_best_match(by_exact2[k2])
-                        method = "exact_title_artist"
+            # ── Phase 1: previously-downloaded source match ───────────────
+            #
+            # Short-circuits Phase 2.  Checks whether a prior run already
+            # fetched this exact upstream item and registered it in the DB
+            # via asset_file/asset_link/track_identity — even if that run
+            # later stashed the file instead of promoting it.
+            #
+            # Priority: provider track_id (beatport/tidal) > ISRC
+            # Bypassed when --force-keep-matched is set.
 
-            decision, reason = decide_match_action(
-                matched,
-                match_method=method or "unknown",
-                candidate_quality_rank=int(args.candidate_quality_rank),
-                force_keep_matched=bool(args.force_keep_matched),
-            )
-            if matched:
-                confidence = CONFIDENCE_LEVELS.get(method, "unknown")
-                db_path_val = matched.path
-                db_source = matched.download_source
-                existing_quality_rank: int | str = matched.quality_rank if matched.quality_rank is not None else ""
-            else:
-                confidence = ""
-                db_path_val = ""
-                db_source = ""
+            phase1_asset_path: str | None = None
+            phase1_match_kind: str | None = None
+
+            if not args.force_keep_matched:
+                if domain == "beatport" and track_id and track_id in ti_by_beatport:
+                    phase1_asset_path = ti_by_beatport[track_id]
+                    phase1_match_kind = "beatport_id"
+                elif domain == "tidal" and track_id and track_id in ti_by_tidal:
+                    phase1_asset_path = ti_by_tidal[track_id]
+                    phase1_match_kind = "tidal_id"
+                elif isrc and isrc in ti_by_isrc:
+                    phase1_asset_path = ti_by_isrc[isrc]
+                    phase1_match_kind = "isrc"
+
+            if phase1_match_kind is not None:
+                decision = "skip"
+                reason = f"already_downloaded_source_match:{phase1_match_kind}"
+                confidence = "high"
+                method = phase1_match_kind
+                db_path_val = phase1_asset_path or ""
+                db_source = "asset_file"
                 existing_quality_rank = ""
+
+            else:
+                # ── Phase 2: canonical/files-table quality-rank match ─────────
+                matched: DbRow | None = None
+                method = ""
+
+                if isrc and isrc in by_isrc:
+                    matched = choose_best_match(by_isrc[isrc])
+                    method = "isrc"
+                elif domain == "beatport" and track_id and track_id in by_beatport:
+                    matched = choose_best_match(by_beatport[track_id])
+                    method = "beatport_id"
+                elif domain == "tidal" and track_id and track_id in by_tidal:
+                    matched = choose_best_match(by_tidal[track_id])
+                    method = "tidal_id"
+                else:
+                    k3 = "|".join([norm_text(title), norm_text(artist), norm_text(album)])
+                    if k3 in by_exact3:
+                        matched = choose_best_match(by_exact3[k3])
+                        method = "exact_title_artist_album"
+                    else:
+                        k2 = "|".join([norm_text(title), norm_text(artist)])
+                        if k2 in by_exact2:
+                            matched = choose_best_match(by_exact2[k2])
+                            method = "exact_title_artist"
+
+                decision, reason = decide_match_action(
+                    matched,
+                    match_method=method or "unknown",
+                    candidate_quality_rank=int(args.candidate_quality_rank),
+                    force_keep_matched=bool(args.force_keep_matched),
+                )
+                if matched:
+                    confidence = CONFIDENCE_LEVELS.get(method, "unknown")
+                    db_path_val = matched.path
+                    db_source = matched.download_source
+                    existing_quality_rank = matched.quality_rank if matched.quality_rank is not None else ""
+                else:
+                    confidence = ""
+                    db_path_val = ""
+                    db_source = ""
+                    existing_quality_rank = ""
+
             if decision == "keep":
                 keep_url = build_keep_track_url(domain, track_id)
                 if keep_url:
@@ -513,12 +643,15 @@ Match Methods (in priority order):
         f.write(f"- **Keep URLs (for downloader):** `{keep_urls_txt}`\n\n")
         f.write(f"- **Candidate quality rank:** `{int(args.candidate_quality_rank)}`\n\n")
         f.write("## Match Methods\n\n")
-        f.write("| Method | Confidence | Description |\n")
-        f.write("|--------|------------|-------------|\n")
-        f.write("| isrc | high | Exact ISRC match |\n")
-        f.write("| beatport_id | high | Exact Beatport track ID match |\n")
-        f.write("| exact_title_artist_album | medium | Normalized title+artist+album match |\n")
-        f.write("| exact_title_artist | low | Normalized title+artist match (no album) |\n")
+        f.write("| Method | Confidence | Phase | Description |\n")
+        f.write("|--------|------------|-------|-------------|\n")
+        f.write("| already_downloaded_source_match:beatport_id | high | 1 | Provider track ID found in track_identity + asset_file |\n")
+        f.write("| already_downloaded_source_match:tidal_id    | high | 1 | Provider track ID found in track_identity + asset_file |\n")
+        f.write("| already_downloaded_source_match:isrc        | high | 1 | ISRC found in track_identity + asset_file |\n")
+        f.write("| isrc | high | 2 | Exact ISRC match in files table |\n")
+        f.write("| beatport_id | high | 2 | Exact Beatport track ID match in files table |\n")
+        f.write("| exact_title_artist_album | medium | 2 | Normalized title+artist+album match in files table |\n")
+        f.write("| exact_title_artist | low | 2 | Normalized title+artist match in files table (no album) |\n")
 
     if not args.quiet:
         print("Pre-download check complete")

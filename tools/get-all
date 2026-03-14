@@ -20,6 +20,8 @@ Options:
   --xml-out PATH         Rekordbox XML output path
                            default: $REKORDBOX_XML
                                  or output/dj/rekordbox.xml
+  --dj-root PATH         DJ MP3 root for transcode stage
+                           default: $DJ_ROOT or $DJ_MP3_ROOT
   --enrich-when WHEN     background  enrich launches in background inside intake (default)
                          foreground  block on enrich after promote; providers apply
                          skip        no enrich at all
@@ -45,6 +47,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import sqlite3
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -120,6 +123,7 @@ class Config:
     db:             str
     providers:      list[str]
     xml_out:        Path
+    dj_root:        Path | None
     enrich_when:    str           # background | foreground | skip
     hoard_pre:      bool          # run local tag prep before promote
     skip_stages:    set[str]
@@ -160,6 +164,17 @@ def _resolve_config(args: argparse.Namespace) -> Config:
     if not xml_out.is_absolute():
         xml_out = REPO_ROOT / xml_out
 
+    # DJ MP3 root
+    raw_dj_root = (
+        args.dj_root
+        or os.environ.get("DJ_ROOT", "")
+        or os.environ.get("DJ_MP3_ROOT", "")
+        or os.environ.get("MP3_ROOT", "")
+    ).strip()
+    dj_root = Path(raw_dj_root).expanduser() if raw_dj_root else None
+    if dj_root is not None and not dj_root.is_absolute():
+        dj_root = (REPO_ROOT / dj_root).resolve()
+
     # Stage skip set
     skip_stages: set[str] = set()
     if args.skip:
@@ -183,6 +198,13 @@ def _resolve_config(args: argparse.Namespace) -> Config:
             )
         skip_stages = {x for x in ALL_STAGES if x != s}
 
+    if "transcode" not in skip_stages and dj_root is None:
+        raise SystemExit(
+            "tools/get-all: DJ MP3 root required for transcode stage.\n"
+            "  Set $DJ_ROOT, $DJ_MP3_ROOT, or $MP3_ROOT, or pass --dj-root <path>.\n"
+            "  Or skip transcode with --skip transcode."
+        )
+
     # enrich_when drives auto-skip of the enrich stage
     enrich_when = args.enrich_when
     if enrich_when == "background":
@@ -194,6 +216,7 @@ def _resolve_config(args: argparse.Namespace) -> Config:
         db=db,
         providers=providers,
         xml_out=xml_out,
+        dj_root=dj_root,
         enrich_when=enrich_when,
         hoard_pre=not args.no_hoard_pre,
         skip_stages=skip_stages,
@@ -214,6 +237,9 @@ class Pipeline:
         active = [s for s in ALL_STAGES if s not in cfg.skip_stages]
         self._active_stages = active
         self._step = 0
+        # Set by _stage_intake() after a successful real (non-dry-run) intake run.
+        # Used by _stage_transcode() to scope MP3 builds to this run's promoted files.
+        self._promoted_flacs_path: Path | None = None
 
     # ── Helpers ──────────────────────────────────────────────────────────
 
@@ -263,6 +289,45 @@ class Pipeline:
         )
         return candidates[0] if candidates else None
 
+    def _resolve_identity_ids_from_flacs(self, paths_file: Path) -> list[int]:
+        """Resolve FLAC absolute paths in a promoted_flacs_*.txt to track_identity IDs.
+
+        Queries asset_file → asset_link to find the identity that owns each path.
+        Paths not found in the DB are silently skipped (they may have been moved or
+        are not yet registered).  Returns a deduplicated list preserving order.
+        """
+        paths = [
+            line.strip()
+            for line in paths_file.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        if not paths:
+            return []
+
+        conn = sqlite3.connect(self.cfg.db)
+        try:
+            ids: list[int] = []
+            seen: set[int] = set()
+            for path in paths:
+                row = conn.execute(
+                    """
+                    SELECT al.identity_id
+                    FROM asset_file af
+                    JOIN asset_link al ON al.asset_id = af.id
+                    WHERE af.path = ?
+                    ORDER BY al.confidence DESC, al.id ASC
+                    LIMIT 1
+                    """,
+                    (path,),
+                ).fetchone()
+                if row is not None and row[0] not in seen:
+                    seen.add(row[0])
+                    ids.append(row[0])
+        finally:
+            conn.close()
+
+        return ids
+
     # ── Entry point ───────────────────────────────────────────────────────
 
     def run(self) -> int:
@@ -289,6 +354,7 @@ class Pipeline:
         print(f"  db            {cfg.db}")
         print(f"  providers     {','.join(cfg.providers)}")
         print(f"  xml-out       {cfg.xml_out}")
+        print(f"  dj-root       {cfg.dj_root or '(unset)'}")
         print(f"  enrich-when   {cfg.enrich_when}")
         print(f"  hoard-pre     {cfg.hoard_pre}")
         active   = [s for s in ALL_STAGES if s not in cfg.skip_stages]
@@ -330,6 +396,9 @@ class Pipeline:
     #   download → fingerprint audit → promote plan → execute promotes
     #   → (when hoard is on) local tag prep pre-promote
     #   → (when hoard is on and enrich_when==background) background enrich+art
+    #
+    # After a successful real run, captures the most recently written
+    # promoted_flacs_*.txt so the transcode stage can scope to this run only.
 
     def _stage_intake(self) -> int:
         self._header("intake", "Download → tag-prep → promote to master library")
@@ -377,7 +446,14 @@ class Pipeline:
             cmd += ["--source", source]
 
         cmd.append(cfg.url)
-        return self._run(cmd)
+        rc = self._run(cmd)
+
+        # Capture the promoted_flacs file written by this run so transcode can
+        # scope to just these identities.  Skip in dry-run: get-intake didn't run.
+        if rc == 0 and not cfg.dry_run:
+            self._promoted_flacs_path = self._latest_promoted_flacs_file()
+
+        return rc
 
     # ── Stage: enrich ─────────────────────────────────────────────────────
     #
@@ -396,7 +472,7 @@ class Pipeline:
         enrich_script = REPO_ROOT / "tools" / "review" / "post_move_enrich_art.py"
         self._check_tool(enrich_script)
 
-        paths_file = self._latest_promoted_flacs_file()
+        paths_file = self._promoted_flacs_path or self._latest_promoted_flacs_file()
         if paths_file is None:
             print(
                 "  No promoted_flacs_*.txt found under artifacts/compare.\n"
@@ -422,18 +498,85 @@ class Pipeline:
 
     # ── Stage: transcode ─────────────────────────────────────────────────
     #
-    # Calls tagslut mp3 build which transcodes preferred FLAC master(s)
-    # to MP3 and registers them in the mp3_asset table.
+    # Calls tagslut mp3 build scoped to the identities promoted by this run.
+    #
+    # Scoping works as follows:
+    #   1. Use self._promoted_flacs_path if intake ran in this session.
+    #   2. Otherwise fall back to the most recently written promoted_flacs_*.txt
+    #      (relevant for --only transcode after a prior intake run).
+    #   3. Resolve each FLAC path → track_identity.id via asset_file/asset_link.
+    #   4. Pass the resolved IDs as --identity-ids to tagslut mp3 build.
+    #
+    # This prevents the full-DB rebuild that would occur without --identity-ids,
+    # which causes failures on large libraries with stale file records.
+    #
+    # tagslut mp3 build accepted flags:
+    #   --db TEXT  --dj-root DIRECTORY  --identity-ids TEXT  --dry-run/--execute
+    # No --verbose flag exists on this command.
 
     def _stage_transcode(self) -> int:
         self._header("transcode", "FLAC → MP3 for DJ library  (tagslut mp3 build)")
+        cfg = self.cfg
+
+        if cfg.dj_root is None:
+            raise SystemExit(
+                "tools/get-all: transcode stage requested but no DJ root was resolved"
+            )
+
+        # ── Locate the promoted file list ──────────────────────────────────
+        paths_file = self._promoted_flacs_path or self._latest_promoted_flacs_file()
+        if paths_file is None:
+            raise SystemExit(
+                "tools/get-all: transcode stage requires a promoted_flacs_*.txt file\n"
+                "  under artifacts/compare/ but none was found.\n"
+                "  Run intake first, or use --skip transcode to skip this stage."
+            )
+
+        if self._promoted_flacs_path is None:
+            # We are using a file from a prior run (e.g. --only transcode).
+            print(
+                f"  Note: intake did not run in this session; "
+                f"using most recent promoted file: {paths_file.name}"
+            )
+
+        # ── Resolve identity IDs from promoted FLAC paths ─────────────────
+        #
+        # In dry-run mode we attempt the DB query anyway (read-only) so the
+        # displayed command is realistic.  If the DB is unavailable we fall back
+        # to a placeholder and still show the command shape.
+        if cfg.dry_run:
+            try:
+                identity_ids = self._resolve_identity_ids_from_flacs(paths_file)
+                ids_str = ",".join(str(i) for i in identity_ids) if identity_ids else None
+            except Exception as exc:
+                print(f"  (dry-run: could not resolve identity IDs: {exc})")
+                ids_str = None
+        else:
+            identity_ids = self._resolve_identity_ids_from_flacs(paths_file)
+            if not identity_ids:
+                print(
+                    f"  No unregistered identity IDs found in {paths_file.name}.\n"
+                    "  All promoted tracks may already have mp3_asset rows (idempotent).\n"
+                    "  Skipping transcode."
+                )
+                return 0
+            ids_str = ",".join(str(i) for i in identity_ids)
+            print(
+                f"  Scoped to {len(identity_ids)} identity ID(s) "
+                f"from {paths_file.name}"
+            )
+
+        # ── Build and run the command ─────────────────────────────────────
         cmd: list[str] = [
             "poetry", "run", "tagslut",
             "mp3", "build",
-            "--db", self.cfg.db,
+            "--db",      cfg.db,
+            "--dj-root", str(cfg.dj_root),
+            "--execute",
         ]
-        if self.cfg.verbose:
-            cmd += ["--verbose"]
+        if ids_str:
+            cmd += ["--identity-ids", ids_str]
+
         return self._run(cmd)
 
     # ── Stage: dj ────────────────────────────────────────────────────────
@@ -528,6 +671,12 @@ def _build_parser() -> argparse.ArgumentParser:
         default="",
         metavar="PATH",
         help=f"Rekordbox XML output path  (default: $REKORDBOX_XML or {DEFAULT_XML_OUT})",
+    )
+    p.add_argument(
+        "--dj-root",
+        default="",
+        metavar="PATH",
+        help="DJ MP3 root for transcode stage  (default: $DJ_ROOT or $DJ_MP3_ROOT)",
     )
     p.add_argument(
         "--enrich-when",

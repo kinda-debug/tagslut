@@ -1,4 +1,4 @@
-<!-- Status: Active document. Synced 2026-03-12 after DJ role/profile documentation refresh. Historical or superseded material belongs in docs/archive/. -->
+<!-- Status: Active document. Synced 2026-03-14 after migration 0010 applied (DJ pipeline tables). Historical or superseded material belongs in docs/archive/. -->
 
 # DB V3 Schema (Core)
 
@@ -138,65 +138,111 @@ Key columns:
 - `energy` (CHECK: `0..10`)
 - `set_role` (CHECK: `warmup`, `builder`, `peak`, `tool`, `closer`, `ambient`, `break`, `unknown`)
 
-## DJ Pipeline Tables (migration 0009)
+## DJ Pipeline Tables (migration 0010)
 
-These tables power the explicit 4-stage DJ pipeline introduced in the 2026-03-14 refactor.
-Source SQL: `tagslut/storage/migrations/0009_add_mp3_dj_tables.sql`.
+These tables power the explicit 4-stage DJ pipeline (register → admit → emit → patch).
+Applied via `tagslut/storage/migrations/0010_add_dj_pipeline_tables.sql`.
+Migration 0009 (`0009_add_mp3_dj_tables.sql`) defined earlier stubs for the same table names
+but was superseded before being applied; 0010 is the authoritative DDL for all DJ pipeline tables.
+Verification checkpoint: `data/checkpoints/reconcile_schema_0010.json`.
 
 ### `mp3_asset`
-One row per registered MP3 derivative asset.
+One row per registered MP3 derivative asset. May exist without a canonical `identity_id`
+for legacy imports; `content_sha256` is the primary integrity anchor.
 
 Key columns:
-- `id` (PK), `identity_id` (FK -> `track_identity.id`), `master_asset_id` (FK -> `asset_file.id`)
-- `profile` (e.g. `mp3_320_cbr`, `mp3_320_cbr_reconciled`)
-- `path` (UNIQUE), `status` (`ok`, `failed`, `pending`)
-- `transcoded_at`, `checksum_sha256`
+- `id` (PK, AUTOINCREMENT)
+- `identity_id` (FK -> `track_identity.id`, nullable)
+- `asset_id` (FK -> `asset_file.id`, nullable — master FLAC source)
+- `path` (NOT NULL UNIQUE)
+- `content_sha256`, `size_bytes`, `bitrate`, `sample_rate`, `duration_s`
+- `profile` (DEFAULT `standard`)
+- `status` CHECK (`unverified` | `verified` | `missing` | `superseded`), DEFAULT `unverified`
+- `source` (DEFAULT `unknown`), `zone`
+- `transcoded_at`, `reconciled_at`
+- `lexicon_track_id` (Lexicon cross-reference, nullable)
+- `created_at`, `updated_at`
 
-Ownership: one-row-per-file; all DJ MP3 derivatives live here, not in `files` or `asset_file`.
+Indexes: `identity_id`, `zone`, `lexicon_track_id`.
+
+Ownership: all DJ MP3 derivatives live here, not in `files` or `asset_file`.
 
 ### `dj_admission`
-Curated DJ library membership per identity.
+Curated DJ library membership — one row per `track_identity` admitted to the live DJ library.
 
 Key columns:
-- `id` (PK), `identity_id` (FK -> `track_identity.id`), `preferred_mp3_asset_id` (FK -> `mp3_asset.id`)
-- `status` (`active`, `retired`), `admitted_at`, `notes_json`
+- `id` (PK, AUTOINCREMENT)
+- `identity_id` (UNIQUE FK -> `track_identity.id`, nullable)
+- `mp3_asset_id` (FK -> `mp3_asset.id`, nullable — preferred MP3 for this admission)
+- `status` CHECK (`pending` | `admitted` | `rejected` | `needs_review`), DEFAULT `pending`
+- `source` (DEFAULT `unknown`), `notes`
+- `admitted_at`, `created_at`, `updated_at`
+
+Index: `identity_id`.
 
 Ownership: one active row per identity in the DJ library.
 
 ### `dj_track_id_map`
-Stable Rekordbox TrackID assignments.
+Stable Rekordbox TrackID assignments — decoupled from admission so IDs survive re-admission
+or asset swaps.
 
 Key columns:
-- `id` (PK), `dj_admission_id` (UNIQUE FK -> `dj_admission.id`)
-- `rekordbox_track_id` (INTEGER, assigned sequentially and never reassigned)
-- `assigned_at`
+- `id` (PK, AUTOINCREMENT)
+- `dj_admission_id` (UNIQUE FK -> `dj_admission.id`)
+- `rekordbox_track_id` (INTEGER NOT NULL UNIQUE, assigned sequentially, never reassigned)
+- `assigned_at` (DEFAULT CURRENT_TIMESTAMP)
 
 Invariant: once assigned, `rekordbox_track_id` is never changed for the same `dj_admission_id`.
 This ensures Rekordbox cue points survive XML re-imports.
 
 ### `dj_playlist`
-Named DJ playlists for Rekordbox XML projection.
+Hierarchical playlist tree mirroring the Rekordbox folder/playlist layout.
 
 Key columns:
-- `id` (PK), `name` (UNIQUE), `sort_key`, `created_at`
+- `id` (PK, AUTOINCREMENT)
+- `name` (NOT NULL), `parent_id` (self-FK -> `dj_playlist.id`, nullable for root nodes)
+- `lexicon_playlist_id` (Lexicon cross-reference, nullable)
+- `sort_key`, `playlist_type` (DEFAULT `standard`)
+- `created_at`
+- UNIQUE `(name, parent_id)`
 
 ### `dj_playlist_track`
 Ordered track membership within a DJ playlist.
 
 Key columns:
-- `id` (PK), `playlist_id` (FK -> `dj_playlist.id`), `dj_admission_id` (FK -> `dj_admission.id`)
-- `ordinal` (sort order within playlist)
-- Unique pair: (`playlist_id`, `dj_admission_id`)
+- `playlist_id` (NOT NULL FK -> `dj_playlist.id`)
+- `dj_admission_id` (NOT NULL FK -> `dj_admission.id`)
+- `ordinal` (NOT NULL — sort order within playlist)
+- PRIMARY KEY `(playlist_id, dj_admission_id)`
 
 ### `dj_export_state`
-Manifest record for each Rekordbox XML emit/patch operation.
+One row per XML/NML/M3U emit — enables diff computation and tamper detection on re-export.
 
 Key columns:
-- `id` (PK), `kind` (`rekordbox_xml`), `output_path`, `manifest_hash` (SHA-256 of output file)
-- `emitted_at`, `details_json` (track/playlist counts)
+- `id` (PK, AUTOINCREMENT)
+- `kind` (NOT NULL — e.g. `rekordbox_xml`)
+- `output_path` (NOT NULL), `manifest_hash` (SHA-256 of emitted file)
+- `scope_json` (serialised filter/scope used for this emit)
+- `emitted_at` (DEFAULT CURRENT_TIMESTAMP)
 
 Invariant: `patch_rekordbox_xml()` verifies that the on-disk file at `output_path`
 matches `manifest_hash` before re-emitting. Mismatch raises `ValueError` loudly.
+
+### `reconcile_log`
+Append-only log of every reconciliation decision: file→identity linking, confidence scoring,
+manual overrides. Never updated in-place; always inserted.
+
+Key columns:
+- `id` (PK, AUTOINCREMENT)
+- `run_id` (NOT NULL — groups all events from a single reconcile run)
+- `event_time` (DEFAULT CURRENT_TIMESTAMP)
+- `source` (NOT NULL — e.g. `mp3_reconcile`, `manual`)
+- `action` (NOT NULL — e.g. `linked`, `skipped`, `conflict`)
+- `confidence` (e.g. `isrc_exact`, `title_artist_fuzzy`)
+- `mp3_path`, `identity_id`, `lexicon_track_id`
+- `details_json` (arbitrary structured payload)
+
+Indexes: `run_id`, `identity_id`.
 
 ### `scan_runs`
 Top-level scan job records.

@@ -1,0 +1,14 @@
+{
+  "migration": "0010_add_dj_pipeline_tables.sql",
+  "applied_to": "EPOCH_2026-03-04/music_v3.db",
+  "created_tables": [
+    "dj_admission",
+    "dj_export_state",
+    "dj_playlist",
+    "dj_playlist_track",
+    "dj_track_id_map",
+    "mp3_asset",
+    "reconcile_log"
+  ],
+  "verified_at": "2026-03-14T09:59:29Z"
+}

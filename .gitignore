@@ -76,6 +76,7 @@ logs/
 !tools/rules/library_canon.json
 !tools/baselines/mypy.txt
 !config/blocklists/*.txt
+!data/checkpoints/*.json
 
 # -- Generated output / runtime artifacts -------------------------
 output/

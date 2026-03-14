@@ -57,10 +57,9 @@ tools/get "https://www.beatport.com/release/.../..." --verbose
 ```
 
 High-level workflow flags:
-- `--dj` builds DJ MP3 copies after promote
 - `--m3u` writes Roon-friendly relative-path playlists into `PLAYLIST_ROOT`
-- `--dj` also writes DJ absolute-path playlists into `DJ_PLAYLIST_ROOT`
 - local identify/tag prep runs before promote; external enrich + cover art are launched in the background after promote
+- `--dj` is **legacy** (emits a deprecation warning). Use the 4-stage DJ pipeline for curated DJ library builds.
 - `--hoard` keeps the tagging/enrich/art pipeline on (default)
 - `--no-hoard` disables tagging/enrich/art
 - `--no-precheck` bypasses same-or-better duplicate filtering

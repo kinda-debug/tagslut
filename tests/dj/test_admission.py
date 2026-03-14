@@ -8,7 +8,6 @@ import pytest
 
 from tagslut.dj.admission import (
     DjAdmissionError,
-    DjValidationReport,
     admit_track,
     backfill_admissions,
     validate_dj_library,

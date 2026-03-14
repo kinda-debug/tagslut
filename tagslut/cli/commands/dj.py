@@ -1137,7 +1137,6 @@ def dj_admit(
     actively admitted.
     """
     import sqlite3
-    import sys
 
     from tagslut.dj.admission import DjAdmissionError, admit_track
     from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
@@ -1194,7 +1193,6 @@ def dj_backfill(
     after running 'tagslut mp3 reconcile'.
     """
     import sqlite3
-    import sys
 
     from tagslut.dj.admission import backfill_admissions
     from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
@@ -1333,7 +1331,6 @@ def dj_xml_emit(
     Records export manifest in dj_export_state for patch integrity checking.
     """
     import sqlite3
-    import sys
     from pathlib import Path
 
     from tagslut.dj.xml_emit import emit_rekordbox_xml
@@ -1413,7 +1410,6 @@ def dj_xml_patch(
     Use 'tagslut dj xml emit' for a clean initial emit.
     """
     import sqlite3
-    import sys
     from pathlib import Path
 
     from tagslut.dj.xml_emit import patch_rekordbox_xml

@@ -32,6 +32,7 @@ Use these CLI groups for new work:
 
 Specialized but still canonical:
 
+- `tagslut mp3`
 - `tagslut dj`
 - `tagslut gig`
 - `tagslut export`
@@ -45,10 +46,29 @@ Policy-hidden commands such as `canonize`, `enrich-file`, `show-zone`, and `expl
 
 Use `tools/get <provider-url>` for normal intake.
 
-- `tools/get --dj` adds downstream DJ MP3 creation and DJ playlists.
 - `tools/get --no-hoard` skips the tagging/enrich/art path.
 - `tools/get --verbose` prints internal paths, artifacts, and batch snapshots.
+- `tools/get --dj` is **legacy** (prints a deprecation warning at runtime). Use the 4-stage DJ pipeline below for curated DJ library work.
 - Beatport download flows are tokenless. Do not describe Beatport downloading as requiring tokens.
+
+### DJ Pipeline (Canonical 4-Stage Workflow)
+
+The 4-stage pipeline is the only recommended path for building a curated DJ library.
+
+```
+Stage 1: tagslut mp3 reconcile --db <DB> --mp3-root <DJ_ROOT> --execute
+Stage 2: tagslut dj backfill   --db <DB>
+Stage 3: tagslut dj validate   --db <DB>
+Stage 4: tagslut dj xml emit   --db <DB> --out rekordbox.xml
+         tagslut dj xml patch  --db <DB> --out rekordbox_v2.xml  (after changes)
+```
+
+Rules:
+- `mp3_asset` rows are the source of truth for registered MP3 derivatives.
+- `dj_admission` rows are the source of truth for what is in the DJ library.
+- `dj_track_id_map` persists Rekordbox TrackIDs so cue points survive re-imports.
+- `dj_export_state` stores a manifest hash of each emitted XML; `patch` verifies it.
+- Never use `tools/get --dj` for scripted or repeatable DJ library maintenance.
 
 ### Root processing
 

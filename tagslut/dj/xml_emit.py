@@ -299,7 +299,8 @@ def patch_rekordbox_xml(
             )
     else:
         prior = conn.execute(
-            "SELECT id, output_path, manifest_hash FROM dj_export_state WHERE kind = 'rekordbox_xml' ORDER BY id DESC LIMIT 1"
+            "SELECT id, output_path, manifest_hash FROM dj_export_state"
+            " WHERE kind = 'rekordbox_xml' ORDER BY id DESC LIMIT 1"
         ).fetchone()
         if prior is None:
             raise ValueError(

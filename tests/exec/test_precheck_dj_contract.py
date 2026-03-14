@@ -20,8 +20,6 @@ import sqlite3
 import subprocess
 from pathlib import Path
 
-import pytest
-
 from tagslut.exec import precheck_inventory_dj
 from tagslut.storage.schema import init_db
 

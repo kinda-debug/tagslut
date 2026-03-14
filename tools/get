@@ -45,7 +45,8 @@ usage() {
     echo "  --simple: downloader-only behavior"
     echo ""
     echo "Common high-level options:"
-    echo "  --dj                 create DJ MP3 copies after promote"
+    echo "  --dj                 [LEGACY] deprecated — use the 4-stage pipeline instead"
+    echo "                       See docs/DJ_WORKFLOW.md or: tagslut dj --help"
     echo "  --hoard              local tag prep before promote; enrich/art continue in background after promote (default)"
     echo "  --no-hoard           skip local tag prep and background enrich/art"
     echo "  --no-precheck        skip duplicate-quality precheck"
@@ -117,6 +118,18 @@ build_intake_cmd() {
                 ;;
             --no-hoard)
                 intake_args+=(--no-tagging)
+                shift
+                ;;
+            --dj)
+                echo "[LEGACY] WARNING: tools/get --dj is deprecated." >&2
+                echo "  The --dj flag has two divergent code paths and may produce non-deterministic results." >&2
+                echo "  For a curated DJ library, use the explicit 4-stage pipeline:" >&2
+                echo "    tagslut mp3 reconcile  --db \$TAGSLUT_DB --mp3-root \$DJ_LIBRARY --execute" >&2
+                echo "    tagslut dj backfill    --db \$TAGSLUT_DB" >&2
+                echo "    tagslut dj validate    --db \$TAGSLUT_DB" >&2
+                echo "    tagslut dj xml emit    --db \$TAGSLUT_DB --out rekordbox.xml" >&2
+                echo "  See: docs/DJ_WORKFLOW.md" >&2
+                intake_args+=("$arg")
                 shift
                 ;;
             *)

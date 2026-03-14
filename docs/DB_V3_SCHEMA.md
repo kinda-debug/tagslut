@@ -138,6 +138,66 @@ Key columns:
 - `energy` (CHECK: `0..10`)
 - `set_role` (CHECK: `warmup`, `builder`, `peak`, `tool`, `closer`, `ambient`, `break`, `unknown`)
 
+## DJ Pipeline Tables (migration 0009)
+
+These tables power the explicit 4-stage DJ pipeline introduced in the 2026-03-14 refactor.
+Source SQL: `tagslut/storage/migrations/0009_add_mp3_dj_tables.sql`.
+
+### `mp3_asset`
+One row per registered MP3 derivative asset.
+
+Key columns:
+- `id` (PK), `identity_id` (FK -> `track_identity.id`), `master_asset_id` (FK -> `asset_file.id`)
+- `profile` (e.g. `mp3_320_cbr`, `mp3_320_cbr_reconciled`)
+- `path` (UNIQUE), `status` (`ok`, `failed`, `pending`)
+- `transcoded_at`, `checksum_sha256`
+
+Ownership: one-row-per-file; all DJ MP3 derivatives live here, not in `files` or `asset_file`.
+
+### `dj_admission`
+Curated DJ library membership per identity.
+
+Key columns:
+- `id` (PK), `identity_id` (FK -> `track_identity.id`), `preferred_mp3_asset_id` (FK -> `mp3_asset.id`)
+- `status` (`active`, `retired`), `admitted_at`, `notes_json`
+
+Ownership: one active row per identity in the DJ library.
+
+### `dj_track_id_map`
+Stable Rekordbox TrackID assignments.
+
+Key columns:
+- `id` (PK), `dj_admission_id` (UNIQUE FK -> `dj_admission.id`)
+- `rekordbox_track_id` (INTEGER, assigned sequentially and never reassigned)
+- `assigned_at`
+
+Invariant: once assigned, `rekordbox_track_id` is never changed for the same `dj_admission_id`.
+This ensures Rekordbox cue points survive XML re-imports.
+
+### `dj_playlist`
+Named DJ playlists for Rekordbox XML projection.
+
+Key columns:
+- `id` (PK), `name` (UNIQUE), `sort_key`, `created_at`
+
+### `dj_playlist_track`
+Ordered track membership within a DJ playlist.
+
+Key columns:
+- `id` (PK), `playlist_id` (FK -> `dj_playlist.id`), `dj_admission_id` (FK -> `dj_admission.id`)
+- `ordinal` (sort order within playlist)
+- Unique pair: (`playlist_id`, `dj_admission_id`)
+
+### `dj_export_state`
+Manifest record for each Rekordbox XML emit/patch operation.
+
+Key columns:
+- `id` (PK), `kind` (`rekordbox_xml`), `output_path`, `manifest_hash` (SHA-256 of output file)
+- `emitted_at`, `details_json` (track/playlist counts)
+
+Invariant: `patch_rekordbox_xml()` verifies that the on-disk file at `output_path`
+matches `manifest_hash` before re-emitting. Mismatch raises `ValueError` loudly.
+
 ### `scan_runs`
 Top-level scan job records.
 

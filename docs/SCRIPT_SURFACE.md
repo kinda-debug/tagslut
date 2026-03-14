@@ -30,16 +30,27 @@ Role: M3U and operational reports (duration, plan summaries).
 7. `poetry run tagslut auth ...`
 Role: Provider authentication and token lifecycle flows.
 
-8. `poetry run tagslut dj ...`
-Role: DJ library curation and USB export workflows.
+8. `poetry run tagslut mp3 ...`
+Role: MP3 derivative asset management (Stage 2 of the 4-stage DJ pipeline).
+- `mp3 build` — transcode preferred FLAC master(s) to MP3 and register in `mp3_asset`
+- `mp3 reconcile` — scan an existing MP3 root and register files in `mp3_asset` without re-transcoding
 
-9. `poetry run tagslut gig ...`
+9. `poetry run tagslut dj ...`
+Role: DJ library curation, admission, validation, and Rekordbox XML export.
+- `dj admit` — admit a single identity into the DJ library (`dj_admission` row)
+- `dj backfill` — admit all `mp3_asset` rows not yet in `dj_admission`
+- `dj validate` — validate DJ library state (missing files, empty metadata)
+- `dj xml emit` — emit deterministic Rekordbox XML from `dj_admission` state
+- `dj xml patch` — re-emit XML verifying prior manifest, preserving stable TrackIDs
+- legacy subcommands (`curate`, `export`, `pool-wizard`, `role`) remain available
+
+10. `poetry run tagslut gig ...`
 Role: Build and manage DJ gig sets.
 
-10. `poetry run tagslut export ...`
+11. `poetry run tagslut export ...`
 Role: Export tracks to USB or DJ pools.
 
-11. `poetry run tagslut init ...`
+12. `poetry run tagslut init ...`
 Role: First-run interactive initialization wizard.
 
 ## Rebrand Invocation

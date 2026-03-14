@@ -468,6 +468,7 @@ def init_db(
         _ensure_v3_schema(connection)
         _ensure_gig_tables(connection)
         _ensure_scan_tables(connection)
+        _ensure_mp3_dj_tables(connection)
         _record_schema_version(connection, schema_name="integrity",
                                version=INTEGRITY_SCHEMA_VERSION)
         _record_schema_version(connection, schema_name="v3", version=V3_SCHEMA_VERSION)
@@ -1373,3 +1374,97 @@ def _record_schema_version(
         """,
         (schema_name, version, f"init_{schema_name}_schema"),
     )
+
+
+def _ensure_mp3_dj_tables(conn: sqlite3.Connection) -> None:
+    """Create mp3_asset and dj_* tables introduced in migration 0009."""
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS mp3_asset (
+          id              INTEGER PRIMARY KEY,
+          identity_id     INTEGER NOT NULL,
+          master_asset_id INTEGER NOT NULL,
+          profile         TEXT    NOT NULL DEFAULT 'mp3_320_cbr',
+          path            TEXT    NOT NULL UNIQUE,
+          sha256          TEXT,
+          bitrate         INTEGER,
+          sample_rate     INTEGER,
+          status          TEXT    NOT NULL DEFAULT 'ok',
+          transcoded_at   TEXT,
+          FOREIGN KEY(identity_id)     REFERENCES track_identity(id),
+          FOREIGN KEY(master_asset_id) REFERENCES asset_file(id)
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_mp3_asset_identity ON mp3_asset(identity_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_mp3_asset_path     ON mp3_asset(path)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_mp3_asset_status   ON mp3_asset(status)")
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS dj_admission (
+          id                     INTEGER PRIMARY KEY,
+          identity_id            INTEGER NOT NULL UNIQUE,
+          preferred_mp3_asset_id INTEGER NOT NULL,
+          status                 TEXT    NOT NULL DEFAULT 'active',
+          admitted_at            TEXT,
+          notes_json             TEXT,
+          FOREIGN KEY(identity_id)            REFERENCES track_identity(id),
+          FOREIGN KEY(preferred_mp3_asset_id) REFERENCES mp3_asset(id)
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_dj_admission_identity ON dj_admission(identity_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_dj_admission_status   ON dj_admission(status)")
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS dj_track_id_map (
+          id                 INTEGER PRIMARY KEY,
+          dj_admission_id    INTEGER NOT NULL UNIQUE,
+          rekordbox_track_id INTEGER NOT NULL UNIQUE,
+          assigned_at        TEXT,
+          FOREIGN KEY(dj_admission_id) REFERENCES dj_admission(id)
+        )
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS dj_playlist (
+          id        INTEGER PRIMARY KEY,
+          name      TEXT    NOT NULL,
+          parent_id INTEGER,
+          sort_key  TEXT,
+          UNIQUE(name, parent_id),
+          FOREIGN KEY(parent_id) REFERENCES dj_playlist(id)
+        )
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS dj_playlist_track (
+          playlist_id     INTEGER NOT NULL,
+          dj_admission_id INTEGER NOT NULL,
+          ordinal         INTEGER NOT NULL,
+          PRIMARY KEY (playlist_id, dj_admission_id),
+          FOREIGN KEY(playlist_id)     REFERENCES dj_playlist(id),
+          FOREIGN KEY(dj_admission_id) REFERENCES dj_admission(id)
+        )
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS dj_export_state (
+          id            INTEGER PRIMARY KEY,
+          kind          TEXT NOT NULL,
+          output_path   TEXT NOT NULL,
+          manifest_hash TEXT,
+          emitted_at    TEXT,
+          details_json  TEXT
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_dj_export_state_kind ON dj_export_state(kind)")

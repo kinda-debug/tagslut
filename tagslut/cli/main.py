@@ -18,6 +18,7 @@ import click
 from tagslut.cli.commands.auth import register_auth_group
 from tagslut.cli.commands.decide import register_decide_group
 from tagslut.cli.commands.dj import dj_group
+from tagslut.cli.commands.mp3 import mp3_group
 from tagslut.cli.commands.export import export_group
 from tagslut.cli.commands.execute import register_execute_group
 from tagslut.cli.commands.gig import gig_group
@@ -82,10 +83,11 @@ register_ops_group(cli)
 register_library_group(cli)
 register_tag_group(cli)
 
-# Register DJ, export, and gig groups
+# Register DJ, export, gig, and MP3 groups
 cli.add_command(dj_group)
 cli.add_command(export_group, name="export")
 cli.add_command(gig_group, name="gig")
+cli.add_command(mp3_group, name="mp3")
 
 # Register standalone misc commands (`init` is operator-facing; debug/stub
 # helpers are hidden from top-level help).

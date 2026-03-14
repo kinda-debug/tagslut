@@ -1815,6 +1815,10 @@ PY
     if [[ "${PREFILTER_KEEP:-0}" -eq 0 ]]; then
       echo "All candidates already have same-or-better inventory matches; skipping download."
       if [[ "$DJ_MODE" -eq 1 ]]; then
+        echo "CONTRACT NOTE: All tracks are precheck-hit inventory. DJ output will be produced via" >&2
+        echo "  the precheck-inventory fallback path (link_precheck_inventory_to_dj), NOT the" >&2
+        echo "  promotion-driven build_pool_v3 path. Results may differ from a first-time intake run." >&2
+        echo "  For a deterministic DJ build from canonical state, use: tagslut dj pool-wizard" >&2
         step "$((STEP + 1))" "$TOTAL_STEPS" "Link existing inventory to DJ"
         link_precheck_inventory_to_dj "$PRECHECK_DECISIONS_CSV" "$PRECHECK_PLAYLIST_TITLE"
       fi
@@ -2271,7 +2275,10 @@ if [[ "$DJ_MODE" -eq 1 ]]; then
 
   DJ_INPUT_COUNT="$(wc -l < "$PROMOTED_FLACS_FILE" | tr -d ' ')"
   if [[ "$DJ_INPUT_COUNT" -eq 0 ]]; then
-    echo "No promoted FLAC files found on disk for DJ export; skipping."
+    echo "WARNING: --dj was requested but PROMOTED_FLACS_FILE is empty — no FLAC files were promoted in this run." >&2
+    echo "WARNING: No DJ MP3 copies were created." >&2
+    echo "WARNING: To build DJ copies for already-promoted masters, run: tagslut dj pool-wizard" >&2
+    DJ_EXPORT_COUNT=0
   else
     DJ_IDENTITY_IDS_FILE="$OUT_DIR/dj_identity_ids_$(date +%Y%m%d_%H%M%S).txt"
     DJ_MANIFEST_FILE="$OUT_DIR/dj_manifest_$(date +%Y%m%d_%H%M%S).csv"

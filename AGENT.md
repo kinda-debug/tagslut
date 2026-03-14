@@ -1,6 +1,16 @@
-<!-- Status: Active document. Synced 2026-03-09 after recent code/doc review. Historical or superseded material belongs in docs/archive/. -->
+<!-- Status: Active document. Synced 2026-03-14. Historical or superseded material belongs in docs/archive/. -->
 
 # AGENT.md - tagslut Repository Guide
+
+## Role of this file
+
+`AGENT.md` is the **vendor-neutral canonical instruction file** for all coding agents working in this repository — Claude, Copilot, Cursor, and any other automated tool. All agents must read this file first. Tool-specific overrides live in:
+
+- `CLAUDE.md` + `.claude/CLAUDE.md` — Claude Code (CLI and GitHub Action)
+- `.github/workflows/claude.yml` — how Claude is wired into GitHub Actions
+- `.github/prompts/` — agent prompt customizations for specific workflows
+
+When this file and a tool-specific override conflict, the tool-specific override wins for that tool only; all other agents follow this file.
 
 ## Purpose
 
@@ -148,19 +158,6 @@ tools/review/sync_phase1_prs.sh
 ```
 
 It force-pushes the current migration, identity, and DJ-enrichment worktrees with `--force-with-lease` while keeping PR scope boundaries intact. See `README.md` and `docs/PHASE1_STATUS.md` for the current stack note.
-
-## Documentation Rules
-
-When behavior changes, update the active docs that define operator or developer truth:
-
-- `README.md`
-- `REPORT.md`
-- `docs/OPERATIONS.md`
-- `docs/WORKFLOWS.md`
-- `docs/SCRIPT_SURFACE.md`
-- `docs/SURFACE_POLICY.md`
-
-If a document is no longer authoritative, archive it instead of leaving stale guidance in `docs/`.
 
 ## Quick Checks
 

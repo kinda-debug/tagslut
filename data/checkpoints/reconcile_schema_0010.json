@@ -1,6 +1,9 @@
 {
   "migration": "0010_add_dj_pipeline_tables.sql",
   "applied_to": "EPOCH_2026-03-04/music_v3.db",
+  "runner": "tagslut.storage.migration_runner",
+  "prerequisite_migration": "0009_add_mp3_dj_tables.sql",
+  "note": "0009 ran first and created 6 tables with IF NOT EXISTS; 0010 created reconcile_log and is idempotent for the rest. Both recorded in migrations_applied at 2026-03-14T09:59:29Z.",
   "created_tables": [
     "dj_admission",
     "dj_export_state",
@@ -10,5 +13,5 @@
     "mp3_asset",
     "reconcile_log"
   ],
-  "verified_at": "2026-03-14T09:59:29Z"
+  "verified_at": "2026-03-14T10:46:00+02:00"
 }

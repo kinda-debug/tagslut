@@ -1,0 +1,575 @@
+#!/usr/bin/env python3
+"""tools/get-all — End-to-end intake + DJ pipeline.
+
+Orchestrates the full lifecycle from URL to Rekordbox XML:
+
+  Stage 1  precheck    Pre-download DB match (ISRC / provider ID / title+artist)
+  Stage 2  intake      Download → local tag prep → promote to master library
+  Stage 3  enrich      External metadata + cover art (post-promote)
+  Stage 4  transcode   Master FLAC → DJ MP3  (tagslut mp3 build)
+  Stage 5  dj          Backfill admission → validate → emit/patch Rekordbox XML
+
+Usage:
+  tools/get-all <provider-url> [options]
+
+Options:
+  --db PATH              SQLite DB path  (default: $TAGSLUT_DB)
+  --providers LIST       Enrich providers, comma-separated
+                           default: $ENRICH_PROVIDERS
+                                 or beatport,tidal,deezer,traxsource,musicbrainz
+  --xml-out PATH         Rekordbox XML output path
+                           default: $REKORDBOX_XML
+                                 or output/dj/rekordbox.xml
+  --enrich-when WHEN     background  enrich launches in background inside intake (default)
+                         foreground  block on enrich after promote; providers apply
+                         skip        no enrich at all
+  --no-hoard-pre         Skip local tag prep before promote
+  --skip STAGE,...       Comma-separated stages to skip
+                           choices: precheck, intake, enrich, transcode, dj
+  --only STAGE           Run exactly one stage (skips all others)
+  --dry-run              Print commands; do not execute anything
+  --no-precheck          Skip pre-download DB match check
+  --force-download       Download even if equal-or-better copy exists in DB
+  --verbose              Show full command output + internal paths
+  -h, --help             Show this help
+
+Examples:
+  tools/get-all https://www.beatport.com/release/some-release/12345
+  tools/get-all https://tidal.com/browse/album/12345 --providers beatport,tidal
+  tools/get-all https://www.beatport.com/release/x/1 --skip transcode,dj
+  tools/get-all https://www.beatport.com/release/x/1 --only dj
+  tools/get-all https://www.beatport.com/release/x/1 --enrich-when foreground
+  tools/get-all https://www.beatport.com/release/x/1 --dry-run --verbose
+"""
+from __future__ import annotations
+
+import argparse
+import os
+import subprocess
+import sys
+from dataclasses import dataclass, field
+from pathlib import Path
+
+
+# ---------------------------------------------------------------------------
+# Repo root + sys.path
+# ---------------------------------------------------------------------------
+
+def _find_repo_root() -> Path:
+    current = Path(__file__).resolve().parent
+    for _ in range(8):
+        if (current / "pyproject.toml").exists():
+            return current
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+    env_root = os.environ.get("TAGSLUT_ROOT", "")
+    if env_root:
+        return Path(env_root).resolve()
+    raise SystemExit("tools/get-all: cannot locate repo root (pyproject.toml not found)")
+
+
+REPO_ROOT: Path = _find_repo_root()
+
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+
+# ---------------------------------------------------------------------------
+# .env loader  (mirrors _load_env.sh: set -a; source .env; set +a)
+# ---------------------------------------------------------------------------
+
+def _load_dotenv() -> None:
+    env_file = REPO_ROOT / ".env"
+    if not env_file.exists():
+        return
+    for raw in env_file.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip().lstrip("export ").strip()
+        value = value.strip()
+        if len(value) >= 2 and value[0] in ('"', "'") and value[-1] == value[0]:
+            value = value[1:-1]
+        os.environ.setdefault(key, value)
+
+
+_load_dotenv()
+
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+ALL_STAGES: list[str] = ["precheck", "intake", "enrich", "transcode", "dj"]
+DEFAULT_PROVIDERS = "beatport,tidal,deezer,traxsource,musicbrainz"
+DEFAULT_XML_OUT   = "output/dj/rekordbox.xml"
+ARTIFACTS_DIR     = REPO_ROOT / "artifacts" / "compare"
+ENRICH_WHEN_CHOICES = ("background", "foreground", "skip")
+
+
+# ---------------------------------------------------------------------------
+# Config
+# ---------------------------------------------------------------------------
+
+@dataclass
+class Config:
+    url:            str
+    db:             str
+    providers:      list[str]
+    xml_out:        Path
+    enrich_when:    str           # background | foreground | skip
+    hoard_pre:      bool          # run local tag prep before promote
+    skip_stages:    set[str]
+    dry_run:        bool
+    no_precheck:    bool
+    force_download: bool
+    verbose:        bool
+
+
+def _resolve_config(args: argparse.Namespace) -> Config:
+    # DB
+    db = (
+        args.db
+        or os.environ.get("TAGSLUT_DB", "")
+        or os.environ.get("V3_DB", "")
+    ).strip()
+    if not db:
+        raise SystemExit(
+            "tools/get-all: DB path required.\n"
+            "  Set $TAGSLUT_DB, $V3_DB, or pass --db <path>."
+        )
+
+    # Providers
+    raw_providers = (
+        args.providers
+        or os.environ.get("ENRICH_PROVIDERS", "")
+        or DEFAULT_PROVIDERS
+    )
+    providers = [p.strip() for p in raw_providers.split(",") if p.strip()]
+
+    # XML output path
+    raw_xml = (
+        args.xml_out
+        or os.environ.get("REKORDBOX_XML", "")
+        or os.environ.get("DJ_REKORDBOX_XML", "")
+    ).strip()
+    xml_out = Path(raw_xml) if raw_xml else REPO_ROOT / DEFAULT_XML_OUT
+    if not xml_out.is_absolute():
+        xml_out = REPO_ROOT / xml_out
+
+    # Stage skip set
+    skip_stages: set[str] = set()
+    if args.skip:
+        for item in args.skip.split(","):
+            s = item.strip()
+            if not s:
+                continue
+            if s not in ALL_STAGES:
+                raise SystemExit(
+                    f"tools/get-all: unknown stage {s!r}.\n"
+                    f"  Choices: {', '.join(ALL_STAGES)}"
+                )
+            skip_stages.add(s)
+
+    if args.only:
+        s = args.only.strip()
+        if s not in ALL_STAGES:
+            raise SystemExit(
+                f"tools/get-all: unknown --only stage {s!r}.\n"
+                f"  Choices: {', '.join(ALL_STAGES)}"
+            )
+        skip_stages = {x for x in ALL_STAGES if x != s}
+
+    # enrich_when drives auto-skip of the enrich stage
+    enrich_when = args.enrich_when
+    if enrich_when == "background":
+        # enrich runs inside intake (get-intake background); skip the explicit enrich stage
+        skip_stages.add("enrich")
+
+    return Config(
+        url=args.url,
+        db=db,
+        providers=providers,
+        xml_out=xml_out,
+        enrich_when=enrich_when,
+        hoard_pre=not args.no_hoard_pre,
+        skip_stages=skip_stages,
+        dry_run=args.dry_run,
+        no_precheck=args.no_precheck,
+        force_download=args.force_download,
+        verbose=args.verbose,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Pipeline runner
+# ---------------------------------------------------------------------------
+
+class Pipeline:
+    def __init__(self, cfg: Config) -> None:
+        self.cfg = cfg
+        active = [s for s in ALL_STAGES if s not in cfg.skip_stages]
+        self._active_stages = active
+        self._step = 0
+
+    # ── Helpers ──────────────────────────────────────────────────────────
+
+    def _header(self, stage: str, description: str) -> None:
+        self._step += 1
+        total = len(self._active_stages)
+        label = f"[{self._step}/{total}] {stage}"
+        print(f"\n{'─' * 60}")
+        print(f"  {label}  {description}")
+        print(f"{'─' * 60}")
+
+    def _run(self, cmd: list[str], *, cwd: Path | None = None) -> int:
+        display = " ".join(str(c) for c in cmd)
+        print(f"→ {display}")
+        if self.cfg.dry_run:
+            print("  (dry-run: not executed)")
+            return 0
+        result = subprocess.run(
+            [str(c) for c in cmd],
+            cwd=str(cwd or REPO_ROOT),
+            env=os.environ.copy(),
+        )
+        return result.returncode
+
+    def _check_tool(self, path: Path) -> None:
+        if not path.exists():
+            raise SystemExit(f"tools/get-all: required tool not found: {path}")
+
+    def _infer_source(self) -> str:
+        url = self.cfg.url.lower()
+        if "beatport.com" in url:
+            return "bpdl"
+        if "tidal.com" in url:
+            return "tidal"
+        if "deezer.com" in url or "dzr.page" in url:
+            return "deezer"
+        return ""
+
+    def _latest_promoted_flacs_file(self) -> Path | None:
+        """Find the most recently written promoted_flacs_*.txt in artifacts/compare."""
+        if not ARTIFACTS_DIR.exists():
+            return None
+        candidates = sorted(
+            ARTIFACTS_DIR.glob("promoted_flacs_*.txt"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        return candidates[0] if candidates else None
+
+    # ── Entry point ───────────────────────────────────────────────────────
+
+    def run(self) -> int:
+        cfg = self.cfg
+
+        if cfg.verbose or cfg.dry_run:
+            self._print_config()
+
+        for stage in ALL_STAGES:
+            if stage in cfg.skip_stages:
+                continue
+            rc = getattr(self, f"_stage_{stage}".replace("-", "_"))()
+            if rc != 0:
+                print(f"\n✗ get-all: stage '{stage}' failed (exit {rc})", file=sys.stderr)
+                return rc
+
+        print("\n✓ get-all complete")
+        return 0
+
+    def _print_config(self) -> None:
+        cfg = self.cfg
+        print("Config:")
+        print(f"  url           {cfg.url}")
+        print(f"  db            {cfg.db}")
+        print(f"  providers     {','.join(cfg.providers)}")
+        print(f"  xml-out       {cfg.xml_out}")
+        print(f"  enrich-when   {cfg.enrich_when}")
+        print(f"  hoard-pre     {cfg.hoard_pre}")
+        active   = [s for s in ALL_STAGES if s not in cfg.skip_stages]
+        skipped  = [s for s in ALL_STAGES if s in cfg.skip_stages]
+        print(f"  active stages {', '.join(active)}")
+        if skipped:
+            print(f"  skipped       {', '.join(skipped)}")
+        print(f"  dry-run       {cfg.dry_run}")
+        print()
+
+    # ── Stage: precheck ──────────────────────────────────────────────────
+    #
+    # Standalone pre-download DB match check.  Informational: shows keep/skip
+    # decisions by ISRC > provider ID > title+artist.  Non-fatal on failure;
+    # get-intake runs its own internal precheck unless --no-precheck is set.
+
+    def _stage_precheck(self) -> int:
+        self._header("precheck", "Match URL tracks against DB before download")
+        script = REPO_ROOT / "tools" / "review" / "pre_download_check.py"
+        if not script.exists():
+            print(f"  precheck script not found: {script}  (skipping)")
+            return 0
+
+        cmd: list[str] = [
+            sys.executable, str(script),
+            "--input",  self.cfg.url,
+            "--db",     self.cfg.db,
+        ]
+        if self.cfg.verbose:
+            pass  # pre_download_check has no --verbose; output is always printed
+        rc = self._run(cmd)
+        if rc != 0:
+            print(f"  precheck exited {rc}  (non-fatal; continuing)")
+        return 0  # always continue — precheck is advisory
+
+    # ── Stage: intake ─────────────────────────────────────────────────────
+    #
+    # Delegates to tools/get-intake which runs:
+    #   download → fingerprint audit → promote plan → execute promotes
+    #   → (when hoard is on) local tag prep pre-promote
+    #   → (when hoard is on and enrich_when==background) background enrich+art
+
+    def _stage_intake(self) -> int:
+        self._header("intake", "Download → tag-prep → promote to master library")
+        cfg = self.cfg
+
+        # Deezer: delegate entirely to tools/deemix (deemix wrapper handles its own pipeline)
+        if "deezer.com" in cfg.url.lower() or "dzr.page" in cfg.url.lower():
+            deemix = REPO_ROOT / "tools" / "deemix"
+            self._check_tool(deemix)
+            return self._run([str(deemix), cfg.url])
+
+        get_intake = REPO_ROOT / "tools" / "get-intake"
+        self._check_tool(get_intake)
+
+        cmd: list[str] = [
+            str(get_intake),
+            "--db",              cfg.db,
+            "--missing-policy",  "download",
+            "--execute",
+            "--m3u",
+            "--providers",      ",".join(cfg.providers),
+        ]
+
+        # Hoard / enrich timing
+        if cfg.enrich_when == "skip":
+            # skip both local tag prep and post-promote background enrich
+            cmd += ["--no-hoard"]
+        elif cfg.enrich_when == "foreground":
+            # We will run enrich ourselves in the next stage; tell get-intake to skip it
+            cmd += ["--no-hoard"]
+        elif not cfg.hoard_pre:
+            # hoard is on but local pre-promote tag prep is disabled
+            cmd += ["--no-tagging"]
+        # else: default --hoard — local tag prep on, background enrich after promote
+
+        if cfg.no_precheck:
+            cmd += ["--no-precheck"]
+        if cfg.force_download:
+            cmd += ["--force-download"]
+        if cfg.verbose:
+            cmd += ["--verbose"]
+
+        source = self._infer_source()
+        if source and source not in ("deezer",):
+            cmd += ["--source", source]
+
+        cmd.append(cfg.url)
+        return self._run(cmd)
+
+    # ── Stage: enrich ─────────────────────────────────────────────────────
+    #
+    # Only runs when --enrich-when=foreground.  Finds the most recently
+    # written promoted_flacs_*.txt file from the intake run and calls
+    # post_move_enrich_art.py directly, blocking until it completes.
+    #
+    # When --enrich-when=background this stage is skipped automatically
+    # (added to skip_stages by _resolve_config); enrich runs inside intake.
+    # When --enrich-when=skip this stage is also skipped.
+
+    def _stage_enrich(self) -> int:
+        self._header("enrich", "External metadata + cover art (foreground, post-promote)")
+        cfg = self.cfg
+
+        enrich_script = REPO_ROOT / "tools" / "review" / "post_move_enrich_art.py"
+        self._check_tool(enrich_script)
+
+        paths_file = self._latest_promoted_flacs_file()
+        if paths_file is None:
+            print(
+                "  No promoted_flacs_*.txt found under artifacts/compare.\n"
+                "  Enrich stage requires a prior intake run with --execute.\n"
+                "  Skipping enrich."
+            )
+            return 0
+
+        if not self.cfg.dry_run:
+            count = sum(
+                1 for line in paths_file.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            )
+            print(f"  Using promoted paths file: {paths_file}  ({count} files)")
+
+        cmd: list[str] = [
+            sys.executable, str(enrich_script),
+            "--db",         cfg.db,
+            "--paths-file", str(paths_file),
+            "--providers",  ",".join(cfg.providers),
+        ]
+        return self._run(cmd)
+
+    # ── Stage: transcode ─────────────────────────────────────────────────
+    #
+    # Calls tagslut mp3 build which transcodes preferred FLAC master(s)
+    # to MP3 and registers them in the mp3_asset table.
+
+    def _stage_transcode(self) -> int:
+        self._header("transcode", "FLAC → MP3 for DJ library  (tagslut mp3 build)")
+        cmd: list[str] = [
+            "poetry", "run", "tagslut",
+            "mp3", "build",
+            "--db", self.cfg.db,
+        ]
+        if self.cfg.verbose:
+            cmd += ["--verbose"]
+        return self._run(cmd)
+
+    # ── Stage: dj ────────────────────────────────────────────────────────
+    #
+    # Runs the canonical 3-step post-transcode DJ pipeline:
+    #   1. dj backfill   — admit all ok mp3_asset rows into dj_admission
+    #   2. dj validate   — check for missing files or empty metadata
+    #   3. dj xml emit   — first run; or
+    #      dj xml patch  — subsequent runs (preserves stable Rekordbox TrackIDs)
+
+    def _stage_dj(self) -> int:
+        self._header("dj", "Backfill → validate → Rekordbox XML")
+        cfg = self.cfg
+
+        # 1. backfill
+        rc = self._run([
+            "poetry", "run", "tagslut",
+            "dj", "backfill",
+            "--db", cfg.db,
+        ])
+        if rc != 0:
+            return rc
+
+        # 2. validate
+        rc = self._run([
+            "poetry", "run", "tagslut",
+            "dj", "validate",
+            "--db", cfg.db,
+        ])
+        if rc != 0:
+            return rc
+
+        # 3. xml emit or patch
+        xml_out = cfg.xml_out
+        if not cfg.dry_run:
+            xml_out.parent.mkdir(parents=True, exist_ok=True)
+
+        if xml_out.exists():
+            print(f"  Prior XML found → patching  {xml_out}")
+            xml_subcommand = "patch"
+        else:
+            print(f"  No prior XML found → emitting  {xml_out}")
+            xml_subcommand = "emit"
+
+        rc = self._run([
+            "poetry", "run", "tagslut",
+            "dj", "xml", xml_subcommand,
+            "--db",     cfg.db,
+            "--output", str(xml_out),
+        ])
+        return rc
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+def _build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="tools/get-all",
+        description="End-to-end intake + DJ pipeline",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            f"Stages (in order): {', '.join(ALL_STAGES)}\n\n"
+            "Examples:\n"
+            "  tools/get-all https://www.beatport.com/release/my-release/12345\n"
+            "  tools/get-all https://tidal.com/browse/album/12345 --providers beatport,tidal\n"
+            "  tools/get-all https://beatport.com/release/x/1 --skip transcode,dj\n"
+            "  tools/get-all https://beatport.com/release/x/1 --only dj\n"
+            "  tools/get-all https://beatport.com/release/x/1 --enrich-when foreground\n"
+            "  tools/get-all https://beatport.com/release/x/1 --dry-run --verbose\n"
+        ),
+    )
+    p.add_argument("url", help="Provider URL (Beatport, Tidal, Deezer)")
+    p.add_argument(
+        "--db",
+        default="",
+        metavar="PATH",
+        help="SQLite DB path  (default: $TAGSLUT_DB)",
+    )
+    p.add_argument(
+        "--providers",
+        default="",
+        metavar="LIST",
+        help=(
+            f"Comma-separated enrich providers  "
+            f"(default: $ENRICH_PROVIDERS or {DEFAULT_PROVIDERS})"
+        ),
+    )
+    p.add_argument(
+        "--xml-out",
+        default="",
+        metavar="PATH",
+        help=f"Rekordbox XML output path  (default: $REKORDBOX_XML or {DEFAULT_XML_OUT})",
+    )
+    p.add_argument(
+        "--enrich-when",
+        default="background",
+        choices=ENRICH_WHEN_CHOICES,
+        metavar="WHEN",
+        help="background (default) | foreground | skip",
+    )
+    p.add_argument(
+        "--no-hoard-pre",
+        action="store_true",
+        help="Skip local tag prep before promote",
+    )
+    p.add_argument(
+        "--skip",
+        default="",
+        metavar="STAGE,...",
+        help=f"Skip stages, comma-separated.  Choices: {', '.join(ALL_STAGES)}",
+    )
+    p.add_argument(
+        "--only",
+        default="",
+        metavar="STAGE",
+        help=f"Run exactly one stage.  Choices: {', '.join(ALL_STAGES)}",
+    )
+    p.add_argument("--dry-run",        action="store_true", help="Print commands; do not execute")
+    p.add_argument("--no-precheck",    action="store_true", help="Skip pre-download DB match check")
+    p.add_argument("--force-download", action="store_true", help="Download even if equal-or-better copy exists")
+    p.add_argument("--verbose",        action="store_true", help="Show full command output + internal paths")
+    return p
+
+
+def main() -> int:
+    parser = _build_parser()
+    args = parser.parse_args()
+    try:
+        cfg = _resolve_config(args)
+    except SystemExit as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    return Pipeline(cfg).run()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

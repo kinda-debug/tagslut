@@ -100,6 +100,23 @@ listed in §6.
   `tagslut/storage/migrations/0010_add_dj_pipeline_tables.sql`,
   `data/checkpoints/reconcile_schema_0010.json`
 
+### Lexicon DJ metadata backfill
+- **Status:** complete
+- **Outcome:** `tagslut/dj/reconcile/lexicon_backfill.py` was written and
+  executed against `/Volumes/MUSIC/lexicondj.db` on 2026-03-14
+  (run_id `4efccd9c2f3c46089d3be775e14999b2`). Matched 20,517 of 32,196
+  identities (63.8%) via normalized artist+title text join. Backfilled
+  `lexicon_energy`, `lexicon_danceability`, `lexicon_happiness`,
+  `lexicon_popularity`, and where canonical fields were NULL: `lexicon_bpm`,
+  `lexicon_key` — all stored as `lexicon_*` prefixed keys inside
+  `track_identity.canonical_payload_json`. Beat-grid data for 8,925
+  Lexicon tracks logged to `reconcile_log` as `backfill_tempomarkers`
+  rows. 29,442 total `reconcile_log` rows written. Script is idempotent:
+  re-running with the same Lexicon DB overwrites only `lexicon_*` keys.
+- **Source of truth:** [DJ_WORKFLOW.md](DJ_WORKFLOW.md),
+  `tagslut/dj/reconcile/lexicon_backfill.py`,
+  `reconcile_log` (source=`lexicondj`)
+
 ---
 
 ## 4. Open Streams

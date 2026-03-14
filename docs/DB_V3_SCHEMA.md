@@ -1,4 +1,4 @@
-<!-- Status: Active document. Synced 2026-03-14 after migration 0010 applied (DJ pipeline tables). Historical or superseded material belongs in docs/archive/. -->
+<!-- Status: Active document. Synced 2026-03-14 after migration 0010 applied + Lexicon metadata backfill. Historical or superseded material belongs in docs/archive/. -->
 
 # DB V3 Schema (Core)
 
@@ -38,6 +38,14 @@ Key columns:
 - Canonical metadata fields: `canonical_title`, `canonical_artist`, `canonical_album`, `canonical_genre`, `canonical_sub_genre`, `canonical_label`, `canonical_catalog_number`, `canonical_mix_name`, `canonical_duration`, `canonical_year`, `canonical_release_date`, `canonical_bpm`, `canonical_key`, `canonical_payload_json`
 - Enrichment / timing: `enriched_at`, `duration_ref_ms`, `ref_source`
 - Merge / lifecycle: `merged_into_id`, `created_at`, `updated_at`
+
+`canonical_payload_json` extended keys (Lexicon backfill, 2026-03-14):
+- `lexicon_track_id` — Lexicon DB primary key for this track
+- `lexicon_energy`, `lexicon_danceability`, `lexicon_happiness`, `lexicon_popularity` — Lexicon 1-10 scores
+- `lexicon_bpm` — only written if `canonical_bpm` is NULL
+- `lexicon_key` — only written if `canonical_key` is NULL
+Access via `json_extract(canonical_payload_json, '$.lexicon_energy')` etc.
+Source module: `tagslut/dj/reconcile/lexicon_backfill.py`.
 
 Ownership:
 - Canonical identity facts only.
@@ -236,9 +244,9 @@ Key columns:
 - `id` (PK, AUTOINCREMENT)
 - `run_id` (NOT NULL — groups all events from a single reconcile run)
 - `event_time` (DEFAULT CURRENT_TIMESTAMP)
-- `source` (NOT NULL — e.g. `mp3_reconcile`, `manual`)
-- `action` (NOT NULL — e.g. `linked`, `skipped`, `conflict`)
-- `confidence` (e.g. `isrc_exact`, `title_artist_fuzzy`)
+- `source` (NOT NULL — e.g. `mp3_reconcile`, `manual`, `lexicondj`)
+- `action` (NOT NULL — e.g. `linked`, `skipped`, `conflict`, `backfill_metadata`, `backfill_tempomarkers`)
+- `confidence` (e.g. `isrc_exact`, `title_artist_fuzzy`, `high`, `medium`, `low`)
 - `mp3_path`, `identity_id`, `lexicon_track_id`
 - `details_json` (arbitrary structured payload)
 

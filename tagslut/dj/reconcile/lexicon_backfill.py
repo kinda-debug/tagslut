@@ -261,12 +261,9 @@ def run_backfill(
             continue
 
         lt = m.lex_track
-        stats[f"matched_{m.method.replace('_id','')}"] = \
-            stats.get(f"matched_{m.method.replace('_id','')}", 0) + 1
-        # simpler explicit counting:
-        if m.method == "beatport_id": stats["matched_beatport"] += 1
-        elif m.method == "spotify_id": stats["matched_spotify"] += 1
-        else:                          stats["matched_text"]    += 1
+        if   m.method == "beatport_id": stats["matched_beatport"] += 1
+        elif m.method == "spotify_id":  stats["matched_spotify"]  += 1
+        else:                           stats["matched_text"]     += 1
 
         matched_lex_ids.append(lt.lex_id)
 

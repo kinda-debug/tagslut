@@ -1,4 +1,4 @@
-<!-- Status: Active document. Synced 2026-03-14 after DJ pipeline explicit-stages refactor. Historical or superseded material belongs in docs/archive/. -->
+<!-- Status: Active document. Synced 2026-03-14 after DJ pipeline explicit-stages refactor + Lexicon metadata backfill. Historical or superseded material belongs in docs/archive/. -->
 
 # DJ Workflow
 
@@ -80,6 +80,46 @@ At any point, check for inconsistencies (missing files, empty metadata):
 ```bash
 poetry run tagslut dj validate \
   --db "$TAGSLUT_DB"
+```
+
+---
+
+## Lexicon Metadata Backfill
+
+Backfills `energy`, `danceability`, `happiness`, `popularity`, `bpm`, and `key` from a
+Lexicon DJ SQLite export into `track_identity.canonical_payload_json`. Also logs beat-grid
+(tempomarker) coverage to `reconcile_log`. Safe to run repeatedly — overwrites only
+`lexicon_*` prefixed keys, never canonical fields.
+
+```bash
+# Dry run — preview match counts, no DB writes
+python -m tagslut.dj.reconcile.lexicon_backfill --dry-run
+
+# Live run (defaults to EPOCH_2026-03-04/music_v3.db + /Volumes/MUSIC/lexicondj.db)
+python -m tagslut.dj.reconcile.lexicon_backfill
+
+# Custom paths
+python -m tagslut.dj.reconcile.lexicon_backfill \
+  --db  /path/to/music_v3.db \
+  --lex /Volumes/MUSIC/lexicondj_update.db
+```
+
+Match strategy (in priority order):
+1. `beatport_id` — if Lexicon has `streamingService='beatport'`
+2. `spotify_id`  — if Lexicon has `streamingService='spotify'`
+3. Normalized `artist + title` text match
+
+All match decisions are appended to `reconcile_log` with `source='lexicondj'`,
+`run_id`, `confidence` (`high` / `medium` / `low`), and `details_json`.
+
+Verify after run:
+```bash
+sqlite3 "$TAGSLUT_DB" "
+SELECT action, confidence, COUNT(*) n
+FROM reconcile_log
+WHERE source='lexicondj'
+GROUP BY 1,2 ORDER BY 3 DESC;
+"
 ```
 
 ---

@@ -1,14 +1,9 @@
-<!-- Status: Active document. Synced 2026-03-09 after recent code/doc review. Historical or superseded material belongs in docs/archive/. -->
+<!-- Status: ARCHIVED stub. Moved to docs/archive/PHASE5_LEGACY_DECOMMISSION.md on 2026-03-14.
+     This file is retained only so that links from REDESIGN_TRACKER.md §4/§5 do not 404.
+     Do not update this file. All content lives in the archive copy. -->
 
-ARCHIVED DOCUMENT
-This document describes pre-v3 architecture and is retained for historical reference.
+> **This document has been archived.**
+> Full content: [`docs/archive/PHASE5_LEGACY_DECOMMISSION.md`](archive/PHASE5_LEGACY_DECOMMISSION.md)
 
-Moved to:
-- docs/archive/PHASE5_LEGACY_DECOMMISSION.md
-
-## Recovery Package Decommissioned — 2026-03-07
-
-`tagslut/recovery/` has been fully retired. The stub package (which raised ImportError) has been
-deleted. All recovery implementation is archived at `legacy/tagslut_recovery/`.
-
-The recovery phase is complete per REPORT.md. No active code imports `tagslut.recovery`.
+Summary: `tagslut/recovery/` was fully retired on 2026-03-07. All recovery implementation
+is archived at `legacy/tagslut_recovery/`. No active code imports `tagslut.recovery`.

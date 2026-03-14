@@ -220,3 +220,6 @@ artifacts/
 !artifacts/reports/.gitkeep
 docs/archive/20260301_perplexity_chat_log.md
 docs/Now I have all the documents needed.md
+.github/prompts/lexicon-reconcile.prompt.md
+.github/prompts/dj-workflow-audit.prompt.md
+.github/prompts/dj-pipeline-hardening.prompt.md

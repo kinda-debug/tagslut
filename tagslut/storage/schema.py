@@ -1403,14 +1403,16 @@ def _ensure_mp3_dj_tables(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS dj_admission (
-          id                     INTEGER PRIMARY KEY,
-          identity_id            INTEGER NOT NULL UNIQUE,
-          preferred_mp3_asset_id INTEGER NOT NULL,
-          status                 TEXT    NOT NULL DEFAULT 'active',
-          admitted_at            TEXT,
-          notes_json             TEXT,
-          FOREIGN KEY(identity_id)            REFERENCES track_identity(id),
-          FOREIGN KEY(preferred_mp3_asset_id) REFERENCES mp3_asset(id)
+          id           INTEGER PRIMARY KEY AUTOINCREMENT,
+          identity_id  INTEGER UNIQUE REFERENCES track_identity(id),
+          mp3_asset_id INTEGER REFERENCES mp3_asset(id),
+          status       TEXT    NOT NULL DEFAULT 'pending'
+                         CHECK(status IN ('pending','admitted','rejected','needs_review')),
+          source       TEXT    NOT NULL DEFAULT 'unknown',
+          notes        TEXT,
+          admitted_at  TEXT,
+          created_at   TEXT    DEFAULT CURRENT_TIMESTAMP,
+          updated_at   TEXT    DEFAULT CURRENT_TIMESTAMP
         )
         """
     )

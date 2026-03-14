@@ -94,11 +94,11 @@ def _fetch_active_admissions(
             f.bpm,
             f.key_camelot
         FROM dj_admission da
-        JOIN mp3_asset      ma   ON ma.id  = da.preferred_mp3_asset_id
+        JOIN mp3_asset      ma   ON ma.id  = da.mp3_asset_id
         JOIN track_identity ti   ON ti.id  = da.identity_id
         LEFT JOIN dj_track_id_map dmap ON dmap.dj_admission_id = da.id
         LEFT JOIN files f ON f.isrc = ti.isrc
-        WHERE da.status = 'active'
+        WHERE da.status = 'admitted'
         ORDER BY dmap.rekordbox_track_id ASC, da.id ASC
         """
     ).fetchall()
@@ -233,7 +233,7 @@ def emit_rekordbox_xml(
             SELECT pt.dj_admission_id
             FROM dj_playlist_track pt
             JOIN dj_admission da ON da.id = pt.dj_admission_id
-            WHERE pt.playlist_id = ? AND da.status = 'active'
+            WHERE pt.playlist_id = ? AND da.status = 'admitted'
             ORDER BY pt.ordinal ASC
             """,
             (pl_id,),

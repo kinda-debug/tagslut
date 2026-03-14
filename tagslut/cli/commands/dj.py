@@ -1154,7 +1154,7 @@ def dj_admit(
         admission_id = admit_track(
             conn,
             identity_id=identity_id,
-            preferred_mp3_asset_id=mp3_asset_id,
+            mp3_asset_id=mp3_asset_id,
             notes=notes_dict,
         )
         conn.commit()
@@ -1214,7 +1214,7 @@ def dj_backfill(
                 WHERE ma.status = 'ok'
                   AND NOT EXISTS (
                     SELECT 1 FROM dj_admission da
-                    WHERE da.identity_id = ma.identity_id AND da.status = 'active'
+                    WHERE da.identity_id = ma.identity_id AND da.status = 'admitted'
                   )
                 """
             ).fetchone()[0]

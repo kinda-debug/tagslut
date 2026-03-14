@@ -591,11 +591,12 @@ class Pipeline:
         self._header("dj", "Backfill → validate → Rekordbox XML")
         cfg = self.cfg
 
-        # 1. backfill
+        # 1. backfill  (--execute required; default is dry-run)
         rc = self._run([
             "poetry", "run", "tagslut",
             "dj", "backfill",
             "--db", cfg.db,
+            "--execute",
         ])
         if rc != 0:
             return rc
@@ -624,8 +625,8 @@ class Pipeline:
         rc = self._run([
             "poetry", "run", "tagslut",
             "dj", "xml", xml_subcommand,
-            "--db",     cfg.db,
-            "--output", str(xml_out),
+            "--db",  cfg.db,
+            "--out", str(xml_out),
         ])
         return rc
 

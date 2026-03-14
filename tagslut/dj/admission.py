@@ -26,13 +26,13 @@ def admit_track(
     conn: sqlite3.Connection,
     *,
     identity_id: int,
-    preferred_mp3_asset_id: int,
+    mp3_asset_id: int,
     notes: dict | None = None,
 ) -> int:
     """Admit an identity into the DJ library.
 
     Returns the dj_admission.id.
-    Raises DjAdmissionError if the identity is already actively admitted.
+    Raises DjAdmissionError if the identity is already admitted.
     """
     existing = conn.execute(
         "SELECT id, status FROM dj_admission WHERE identity_id = ?",
@@ -40,24 +40,24 @@ def admit_track(
     ).fetchone()
     if existing:
         admission_id, status = existing
-        if status == "active":
+        if status == "admitted":
             raise DjAdmissionError(
                 f"Identity {identity_id} is already admitted "
                 f"(dj_admission.id={admission_id}). "
                 "To update, use 'tagslut dj backfill'."
             )
-        # Re-activate a previously retired admission
+        # Re-admit a previously rejected/needs_review admission
         conn.execute(
             """
             UPDATE dj_admission
-            SET preferred_mp3_asset_id = ?,
-                status     = 'active',
+            SET mp3_asset_id = ?,
+                status      = 'admitted',
                 admitted_at = ?,
-                notes_json  = ?
+                notes       = ?
             WHERE id = ?
             """,
             (
-                preferred_mp3_asset_id,
+                mp3_asset_id,
                 _now_iso(),
                 json.dumps(notes) if notes else None,
                 admission_id,
@@ -68,12 +68,12 @@ def admit_track(
     cur = conn.execute(
         """
         INSERT INTO dj_admission
-          (identity_id, preferred_mp3_asset_id, status, admitted_at, notes_json)
-        VALUES (?, ?, 'active', ?, ?)
+          (identity_id, mp3_asset_id, status, admitted_at, notes)
+        VALUES (?, ?, 'admitted', ?, ?)
         """,
         (
             identity_id,
-            preferred_mp3_asset_id,
+            mp3_asset_id,
             _now_iso(),
             json.dumps(notes) if notes else None,
         ),
@@ -85,7 +85,7 @@ def backfill_admissions(conn: sqlite3.Connection) -> tuple[int, int]:
     """Auto-admit all mp3_asset rows with status='ok' that have no dj_admission yet.
 
     Returns (admitted_count, skipped_count).
-    Skips identities that already have an active admission.
+    Skips identities that already have an admitted admission.
     """
     rows = conn.execute(
         """
@@ -94,7 +94,7 @@ def backfill_admissions(conn: sqlite3.Connection) -> tuple[int, int]:
         WHERE ma.status = 'ok'
           AND NOT EXISTS (
             SELECT 1 FROM dj_admission da
-            WHERE da.identity_id = ma.identity_id AND da.status = 'active'
+            WHERE da.identity_id = ma.identity_id AND da.status = 'admitted'
           )
         ORDER BY ma.id
         """
@@ -104,7 +104,7 @@ def backfill_admissions(conn: sqlite3.Connection) -> tuple[int, int]:
     skipped = 0
     for mp3_id, identity_id in rows:
         try:
-            admit_track(conn, identity_id=identity_id, preferred_mp3_asset_id=mp3_id)
+            admit_track(conn, identity_id=identity_id, mp3_asset_id=mp3_id)
             admitted += 1
         except DjAdmissionError:
             skipped += 1
@@ -149,10 +149,9 @@ def validate_dj_library(conn: sqlite3.Connection) -> DjValidationReport:
     """Run consistency checks over dj_* and mp3_asset tables.
 
     Checks performed:
-    1. Every active admission's preferred MP3 asset has status='ok' and exists on disk.
-    2. No two active admissions share the same MP3 path.
-    3. All dj_playlist_track entries reference active admissions.
-    4. Every active admission's identity has non-empty title and artist.
+    1. Every admitted admission's MP3 asset has status='ok' and exists on disk.
+    2. All dj_playlist_track entries reference admitted admissions.
+    3. Every admitted admission's identity has non-empty title and artist.
     """
     report = DjValidationReport()
 
@@ -161,15 +160,15 @@ def validate_dj_library(conn: sqlite3.Connection) -> DjValidationReport:
         """
         SELECT da.id, da.identity_id, ma.id, ma.path, ma.status
         FROM dj_admission da
-        JOIN mp3_asset ma ON ma.id = da.preferred_mp3_asset_id
-        WHERE da.status = 'active'
+        JOIN mp3_asset ma ON ma.id = da.mp3_asset_id
+        WHERE da.status = 'admitted'
         """
     ).fetchall()
     for da_id, identity_id, ma_id, mp3_path, mp3_status in rows:
         if mp3_status != "ok":
             report.add(
                 "BAD_MP3_STATUS",
-                f"dj_admission {da_id}: preferred mp3_asset {ma_id} has status={mp3_status!r}",
+                f"dj_admission {da_id}: mp3_asset {ma_id} has status={mp3_status!r}",
                 identity_id=identity_id,
                 mp3_asset_id=ma_id,
                 dj_admission_id=da_id,
@@ -183,13 +182,13 @@ def validate_dj_library(conn: sqlite3.Connection) -> DjValidationReport:
                 dj_admission_id=da_id,
             )
 
-    # 3. Playlist members must be active admissions
+    # 2. Playlist members must be admitted admissions
     orphan_rows = conn.execute(
         """
         SELECT pt.playlist_id, pt.dj_admission_id, da.status
         FROM dj_playlist_track pt
         JOIN dj_admission da ON da.id = pt.dj_admission_id
-        WHERE da.status != 'active'
+        WHERE da.status != 'admitted'
         """
     ).fetchall()
     for playlist_id, da_id, status in orphan_rows:
@@ -200,13 +199,13 @@ def validate_dj_library(conn: sqlite3.Connection) -> DjValidationReport:
             dj_admission_id=da_id,
         )
 
-    # 4. Required metadata: title and artist must be non-empty
+    # 3. Required metadata: title and artist must be non-empty
     meta_rows = conn.execute(
         """
         SELECT da.id, da.identity_id, ti.title_norm, ti.artist_norm
         FROM dj_admission da
         JOIN track_identity ti ON ti.id = da.identity_id
-        WHERE da.status = 'active'
+        WHERE da.status = 'admitted'
           AND (
                ti.title_norm  IS NULL OR trim(ti.title_norm)  = ''
             OR ti.artist_norm IS NULL OR trim(ti.artist_norm) = ''

@@ -28,6 +28,7 @@ dependencies = [
     "sqlalchemy>=2.0,<3.0",
     "alembic>=1.14,<2.0",
     "pytest (>=9.0.2,<10.0.0)",
+    "psycopg (>=3.3.3,<4.0.0)",
 ]
 
 [project.scripts]

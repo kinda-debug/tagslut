@@ -48,7 +48,7 @@ Notes:
 - `MASTER_LIBRARY` is the canonical master library stored as FLAC.
 - `PLAYLIST_ROOT` is the Roon-visible playlist folder inside the master library. `tools/get` writes relative-path M3Us there.
 - `DJ_LIBRARY` is the derived DJ library.
-- `DJ_PLAYLIST_ROOT` is the DJ playlist destination. `tools/get --dj` writes absolute-path M3Us there for Rekordbox/Lexicon.
+- `DJ_PLAYLIST_ROOT` is the DJ playlist destination. If you invoke the deprecated legacy path `tools/get --dj`, it writes absolute-path M3Us there for Rekordbox/Lexicon. See `docs/DJ_WORKFLOW.md` for the canonical 4-stage pipeline.
 - work output is split:
   - `FIX_ROOT=/Volumes/MUSIC/_work/fix` for salvageable metadata/tag issues
   - `QUARANTINE_ROOT` / `VOLUME_QUARANTINE=/Volumes/MUSIC/_work/quarantine` for risky files only

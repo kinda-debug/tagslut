@@ -11,7 +11,7 @@ Active-doc policy:
 
 - [WORKFLOWS.md](WORKFLOWS.md) — end-to-end operating procedures
 - [OPERATIONS.md](OPERATIONS.md) — day-to-day commands and recipes
-- [DJ_WORKFLOW.md](DJ_WORKFLOW.md) — DJ pool build and USB sync
+- [DJ_WORKFLOW.md](DJ_WORKFLOW.md) — canonical 4-stage DJ pipeline; `tools/get --dj` is deprecated legacy
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — known issues and fixes
 
 ## Architecture And Policy

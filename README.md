@@ -86,7 +86,14 @@ Notes:
 - `tools/get-sync` is a deprecated Beatport compatibility alias.
 - `tools/get --dj` is **legacy** — emits a deprecation warning and may produce non-deterministic results. Use the DJ pipeline below.
 
-## DJ Pipeline (Canonical 4-Stage Workflow)
+## 4-Stage DJ Pipeline
+
+`tools/get --dj` is deprecated. Use the 4-stage DJ pipeline instead.
+
+For a curated DJ library, the only supported workflow is:
+`tagslut mp3 reconcile` or `tagslut mp3 build` -> `tagslut dj admit` or
+`tagslut dj backfill` -> `tagslut dj validate` -> `tagslut dj xml emit` or
+`tagslut dj xml patch`. See `docs/DJ_WORKFLOW.md` for the canonical reference.
 
 Building a curated DJ library follows a deterministic 4-stage pipeline.
 Each stage is safe to re-run and leaves explicit DB state as output.

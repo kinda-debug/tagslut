@@ -2,6 +2,11 @@
 
 # DJ Pool Contract (v3)
 
+## Deprecation Notice
+
+`tools/get --dj` is deprecated. Use the canonical 4-stage DJ pipeline in
+`docs/DJ_WORKFLOW.md` instead.
+
 ## Purpose
 
 The DJ pool is a derived output generated from `MASTER_LIBRARY` and the v3 identity database.
@@ -172,10 +177,14 @@ Reference JSON:
 
 ## Upstream Tag Preparation
 
-Two upstream paths can feed DJ MP3 creation:
+Canonical upstream path for curated DJ libraries:
 
-1. `tools/get --dj` / `tools/get-intake --dj` for wrapper-driven downstream output after promote
-2. `tagslut intake process-root --phases dj` for staged-root DJ preparation
+1. Follow `docs/DJ_WORKFLOW.md` and use Stage 1 (`tagslut mp3 reconcile` or `tagslut mp3 build`)
+
+Legacy or transitional upstream paths:
+
+1. `tools/get --dj` / `tools/get-intake --dj` remain deprecated wrapper-driven outputs after promote. See `docs/DJ_WORKFLOW.md` for the canonical 4-stage pipeline.
+2. `tagslut intake process-root --phases dj` is staged-root DJ preparation, not the primary curated-library contract.
 
 The staged-root DJ phase can enrich FLAC BPM/key from v3 identity data and use Essentia as fallback before MP3 transcode. Use `--phases dj --dry-run` to preview that work.
 

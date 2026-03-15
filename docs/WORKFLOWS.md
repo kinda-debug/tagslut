@@ -43,9 +43,6 @@ This is the normal day-to-day operator path.
 tools/get "https://www.beatport.com/release/.../..."
 tools/get "https://tidal.com/browse/album/..."
 
-# Also create DJ MP3 copies
-tools/get "https://www.beatport.com/release/.../..." --dj
-
 # Skip duplicate-quality precheck
 tools/get "https://tidal.com/browse/album/..." --no-precheck
 
@@ -56,10 +53,19 @@ tools/get "https://www.beatport.com/release/.../..." --no-hoard
 tools/get "https://www.beatport.com/release/.../..." --verbose
 ```
 
+Deprecated legacy path:
+
+```bash
+tools/get "https://www.beatport.com/release/.../..." --dj
+```
+
+`tools/get --dj` is deprecated. Use the 4-stage DJ pipeline instead.
+See `docs/DJ_WORKFLOW.md` for the canonical pipeline.
+
 High-level workflow flags:
 - `--m3u` writes Roon-friendly relative-path playlists into `PLAYLIST_ROOT`
 - local identify/tag prep runs before promote; external enrich + cover art are launched in the background after promote
-- `--dj` is **legacy** (emits a deprecation warning). Use the 4-stage DJ pipeline for curated DJ library builds.
+- `--dj` is **legacy** (emits a deprecation warning). See `docs/DJ_WORKFLOW.md` for the canonical 4-stage DJ pipeline.
 - `--hoard` keeps the tagging/enrich/art pipeline on (default)
 - `--no-hoard` disables tagging/enrich/art
 - `--no-precheck` bypasses same-or-better duplicate filtering

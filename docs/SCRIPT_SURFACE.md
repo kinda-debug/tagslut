@@ -71,6 +71,7 @@ Role: Primary user-facing download workflow.
 - default behavior: precheck + download + tagging/enrich/art + promote + merged M3U
 - default output is concise; `--verbose` enables internal paths, artifact files, and batch snapshots
 - high-level workflow flags: `--dj`, `--hoard`, `--no-hoard`, `--no-precheck`, `--force-download`, `--providers`, `--verbose`
+- `--dj` is deprecated legacy behavior. See `docs/DJ_WORKFLOW.md` for the canonical 4-stage DJ pipeline.
 - work roots are split by intent: `FIX_ROOT`, `QUARANTINE_ROOT`, `DISCARD_ROOT`
 - `--simple` keeps downloader-only behavior
 

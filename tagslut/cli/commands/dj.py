@@ -234,7 +234,32 @@ def _lexicon_tracks(output_root: Path) -> list[dict]:  # type: ignore  # TODO: m
     return output
 
 
-@click.group("dj")
+@click.group(
+    "dj",
+    help="""
+DJ library operations (Stages 2–4 of the 4-stage pipeline).
+
+Stages:
+  Stage 2: admit   → Select tracks for DJ library
+           backfill → Auto-admit verified MP3s
+           validate → Verify DJ library state
+  Stage 3: xml emit → Generate Rekordbox XML
+           xml patch → Update prior XML after changes
+
+Prerequisite: Stage 1 (tagslut mp3 reconcile)
+
+See: docs/DJ_WORKFLOW.md
+""",
+    epilog="""
+Example workflow:
+  1. tagslut mp3 reconcile --db music_v3.db --mp3-root /path/to/dj_root
+  2. tagslut dj backfill --db music_v3.db
+  3. tagslut dj validate --db music_v3.db
+  4. tagslut dj xml emit --db music_v3.db --out rekordbox.xml
+
+Docs: docs/DJ_WORKFLOW.md
+""",
+)
 def dj_group() -> None:
     """DJ library curation and USB export commands."""
 
@@ -1109,7 +1134,7 @@ def pool_wizard(
 # ---------------------------------------------------------------------------
 
 
-@dj_group.command("admit")
+@dj_group.command("admit", help="Admit individual track to DJ library. Stage 2a.")
 @click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
 @click.option(
     "--identity-id",
@@ -1175,7 +1200,10 @@ def dj_admit(
 # ---------------------------------------------------------------------------
 
 
-@dj_group.command("backfill")
+@dj_group.command(
+    "backfill",
+    help="Auto-admit all verified MP3s to DJ library. Stage 2b (idempotent).",
+)
 @click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
 @click.option(
     "--dry-run/--execute",
@@ -1237,7 +1265,10 @@ def dj_backfill(
 # ---------------------------------------------------------------------------
 
 
-@dj_group.command("validate")
+@dj_group.command(
+    "validate",
+    help="Validate DJ library state (files, metadata, consistency). Stage 2c.",
+)
 @click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
 @click.option("--verbose", "-v", is_flag=True, default=False)
 def dj_validate(
@@ -1290,7 +1321,10 @@ def dj_validate(
 # ---------------------------------------------------------------------------
 
 
-@dj_group.group("xml")
+@dj_group.group(
+    "xml",
+    help="Emit or patch Rekordbox XML. Stage 4. Requires: dj backfill + dj validate.",
+)
 def dj_xml_group() -> None:
     """Rekordbox XML emit and patch commands."""
 

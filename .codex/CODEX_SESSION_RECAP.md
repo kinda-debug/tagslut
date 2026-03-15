@@ -36,3 +36,8 @@
 - Output: tests/exec/test_precheck_dj_contract.py (   10098 bytes)
 - Evidence: [Review logs/diffs below]
 
+### Session — Task 1.2 (Completed)
+- Date: 2026-03-15 14:34:32 EET
+- Output: tests/dj/test_dj_pipeline_e2e.py (17223 bytes)
+- Tests: 15 passed, 0 failed
+- Next: Task 1.3

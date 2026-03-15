@@ -10,9 +10,9 @@ Versioning: [Semantic Versioning](https://semver.org/)
 
 ### Added — Explicit 4-Stage DJ Pipeline
 - **`tagslut mp3` command group** (`mp3 build`, `mp3 reconcile`): Stage 2 of the canonical DJ pipeline. `mp3 build` transcodes preferred FLAC masters to MP3 and registers results in `mp3_asset`. `mp3 reconcile` scans an existing MP3 root and registers files in `mp3_asset` by matching ISRC then title+artist, without re-transcoding.
-- **`tagslut dj admit/backfill/validate`**: Stage 3 commands. `admit` creates a single `dj_admission` row; `backfill` auto-admits all unadmitted `mp3_asset` rows with status=ok; `validate` checks for missing MP3 files and empty metadata.
+- **`tagslut dj admit/backfill/validate`**: Stage 3 commands. `admit` creates a single `dj_admission` row; `backfill` auto-admits all unadmitted `mp3_asset` rows with `status=verified`; `validate` checks for missing MP3 files and empty metadata.
 - **`tagslut dj xml emit/patch`**: Stage 4 commands. `emit` produces deterministic Rekordbox-compatible XML from `dj_admission` state, assigns stable `rekordbox_track_id` values in `dj_track_id_map`, and records a SHA-256 manifest in `dj_export_state`. `patch` verifies the prior manifest hash before re-emitting (fails loudly on tampering), preserving existing TrackIDs so Rekordbox cue points survive re-imports.
-- **Schema migration `0009_add_mp3_dj_tables.sql`**: six new tables — `mp3_asset`, `dj_admission`, `dj_track_id_map`, `dj_playlist`, `dj_playlist_track`, `dj_export_state` — integrated into `init_db()` via `_ensure_mp3_dj_tables()`.
+- **Schema migration `0010_add_dj_pipeline_tables.sql`**: seven DJ pipeline tables — `mp3_asset`, `dj_admission`, `dj_track_id_map`, `dj_playlist`, `dj_playlist_track`, `dj_export_state`, `reconcile_log` — integrated into `init_db()` via `_ensure_mp3_dj_tables()`.
 - **`tagslut/dj/admission.py`**: `admit_track`, `backfill_admissions`, `validate_dj_library` with `DjValidationReport`.
 - **`tagslut/dj/xml_emit.py`**: `emit_rekordbox_xml`, `patch_rekordbox_xml` with manifest integrity checking.
 - **`tagslut/exec/mp3_build.py`**: `build_mp3_from_identity`, `reconcile_mp3_library`.
@@ -23,7 +23,7 @@ Versioning: [Semantic Versioning](https://semver.org/)
 ### Changed
 - **`tools/get --dj`** demoted to **legacy**: emits a runtime deprecation warning on stderr when `--dj` is passed, pointing operators to the 4-stage pipeline. The flag still forwards to `tools/get-intake` for backwards compatibility.
 - **`docs/DJ_WORKFLOW.md`**: "Explicit 4-Stage Pipeline" section added at the top as the canonical workflow. `tools/get --dj` section clearly marked as legacy.
-- **`docs/DB_V3_SCHEMA.md`**: new "DJ Pipeline Tables (migration 0009)" section documenting `mp3_asset`, `dj_admission`, `dj_track_id_map`, `dj_playlist`, `dj_playlist_track`, `dj_export_state` with ownership rules and invariants.
+- **`docs/DB_V3_SCHEMA.md`**: new "DJ Pipeline Tables (migration 0010)" section documenting `mp3_asset`, `dj_admission`, `dj_track_id_map`, `dj_playlist`, `dj_playlist_track`, `dj_export_state`, `reconcile_log` with ownership rules and invariants.
 - **`AGENT.md`**: `tagslut mp3` added to canonical surface; new "DJ Pipeline (Canonical 4-Stage Workflow)" section replaces the former `tools/get --dj` shortcut.
 - **`README.md`**, **`docs/OPERATIONS.md`**, **`docs/WORKFLOWS.md`**, **`docs/SCRIPT_SURFACE.md`**: `tools/get --dj` marked as legacy, 4-stage pipeline added as the primary DJ workflow reference.
 

@@ -83,17 +83,17 @@ def _insert_mp3_asset(
     conn: sqlite3.Connection,
     *,
     identity_id: int,
-    master_asset_id: int,
+    asset_id: int,
     path: str,
-    status: str = "ok",
+    status: str = "verified",
 ) -> int:
     cur = conn.execute(
         """
         INSERT INTO mp3_asset
-          (identity_id, master_asset_id, profile, path, status, transcoded_at)
+          (identity_id, asset_id, profile, path, status, transcoded_at)
         VALUES (?, ?, 'mp3_320_cbr', ?, ?, datetime('now'))
         """,
-        (identity_id, master_asset_id, path, status),
+        (identity_id, asset_id, path, status),
     )
     conn.commit()
     return cur.lastrowid  # type: ignore[return-value]
@@ -181,7 +181,7 @@ def test_reconcile_skips_existing_mp3_asset(tmp_path: Path) -> None:
 
     mp3_file = tmp_path / "dj" / "track_d.mp3"
     _write_minimal_mp3(mp3_file, title="Track D", artist="Artist D", isrc="ISRC-RD1")
-    _insert_mp3_asset(conn, identity_id=identity_id, master_asset_id=asset_id, path=str(mp3_file))
+    _insert_mp3_asset(conn, identity_id=identity_id, asset_id=asset_id, path=str(mp3_file))
 
     result = reconcile_mp3_library(conn, mp3_root=tmp_path / "dj", dry_run=False)
 
@@ -195,7 +195,7 @@ def test_reconcile_skips_existing_mp3_asset(tmp_path: Path) -> None:
 
 
 def test_backfill_then_admission_count(tmp_path: Path) -> None:
-    """After backfill, every ok mp3_asset has a corresponding active dj_admission."""
+    """After backfill, every verified mp3_asset has a corresponding admitted dj_admission."""
     conn = _make_db(tmp_path)
 
     for n in range(3):
@@ -204,7 +204,7 @@ def test_backfill_then_admission_count(tmp_path: Path) -> None:
         )
         asset_id = _insert_asset_file(conn, path=f"/lib/song_{n}.flac")
         _insert_mp3_asset(
-            conn, identity_id=identity_id, master_asset_id=asset_id,
+            conn, identity_id=identity_id, asset_id=asset_id,
             path=f"/dj/song_{n}.mp3"
         )
 
@@ -213,7 +213,7 @@ def test_backfill_then_admission_count(tmp_path: Path) -> None:
 
     assert admitted == 3
     count = conn.execute(
-        "SELECT COUNT(*) FROM dj_admission WHERE status = 'active'"
+        "SELECT COUNT(*) FROM dj_admission WHERE status = 'admitted'"
     ).fetchone()[0]
     assert count == 3
 
@@ -238,9 +238,9 @@ def _setup_one_admitted_track(
     )
     asset_id = _insert_asset_file(conn, path=f"/lib/track_{n}.flac")
     mp3_id = _insert_mp3_asset(
-        conn, identity_id=identity_id, master_asset_id=asset_id, path=str(mp3_file)
+        conn, identity_id=identity_id, asset_id=asset_id, path=str(mp3_file)
     )
-    return admit_track(conn, identity_id=identity_id, preferred_mp3_asset_id=mp3_id)
+    return admit_track(conn, identity_id=identity_id, mp3_asset_id=mp3_id)
 
 
 def test_emit_writes_valid_xml(tmp_path: Path) -> None:

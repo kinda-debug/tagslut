@@ -43,7 +43,7 @@ def mp3_build(
     """Transcode preferred FLAC masters to MP3 and register in mp3_asset.
 
     Only processes identities that do not already have an mp3_asset row
-    with status='ok'. Safe to re-run (idempotent).
+    with status='verified'. Safe to re-run (idempotent).
     """
     import sqlite3
     from pathlib import Path

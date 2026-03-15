@@ -26,7 +26,7 @@ Registers the file in `mp3_asset`. Use `--dry-run` (default) to preview matches.
 
 ### Stage 2 — Admit tracks to the DJ library (`dj backfill` or `dj admit`)
 
-Promote all registered `mp3_asset` rows (status=ok) into the curated DJ admission table:
+Promote all registered `mp3_asset` rows (`status=verified`) into the curated DJ admission table:
 
 ```bash
 poetry run tagslut dj backfill \
@@ -46,7 +46,7 @@ Writes rows to `dj_admission`. Idempotent: already-admitted tracks are skipped.
 
 ### Stage 3 — Emit Rekordbox XML (`dj xml emit`)
 
-Write a deterministic Rekordbox-compatible XML from all active `dj_admission` rows:
+Write a deterministic Rekordbox-compatible XML from all admitted `dj_admission` rows:
 
 ```bash
 poetry run tagslut dj xml emit \

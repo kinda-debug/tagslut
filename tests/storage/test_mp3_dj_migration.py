@@ -1,4 +1,4 @@
-"""Tests for migration 0009_add_mp3_dj_tables — verifies all new tables
+"""Tests for the authoritative DJ pipeline layout — verifies all new tables
 and indexes are created correctly and that the migration is idempotent."""
 from __future__ import annotations
 
@@ -71,8 +71,8 @@ def test_migration_creates_mp3_asset_indexes(tmp_path: Path) -> None:
     conn.commit()
     indexes = _index_names(conn)
     assert "idx_mp3_asset_identity" in indexes
-    assert "idx_mp3_asset_path" in indexes
-    assert "idx_mp3_asset_status" in indexes
+    assert "idx_mp3_asset_zone" in indexes
+    assert "idx_mp3_asset_lexicon" in indexes
 
 
 def test_migration_creates_dj_admission_indexes(tmp_path: Path) -> None:
@@ -81,9 +81,6 @@ def test_migration_creates_dj_admission_indexes(tmp_path: Path) -> None:
     conn.commit()
     indexes = _index_names(conn)
     assert "idx_dj_admission_identity" in indexes
-    assert "idx_dj_admission_status" in indexes
-
-
 def test_migration_is_idempotent(tmp_path: Path) -> None:
     """Running init_db twice on the same database must not raise."""
     db_path = tmp_path / "test.db"
@@ -109,8 +106,8 @@ def test_mp3_asset_foreign_key_constraints(tmp_path: Path) -> None:
         conn.execute(
             """
             INSERT INTO mp3_asset
-              (identity_id, master_asset_id, profile, path, status)
-            VALUES (9999, 9999, 'mp3_320_cbr', '/tmp/bad.mp3', 'ok')
+              (identity_id, asset_id, profile, path, status)
+            VALUES (9999, 9999, 'mp3_320_cbr', '/tmp/bad.mp3', 'verified')
             """
         )
         conn.commit()

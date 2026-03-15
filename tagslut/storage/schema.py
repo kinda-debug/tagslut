@@ -1377,28 +1377,35 @@ def _record_schema_version(
 
 
 def _ensure_mp3_dj_tables(conn: sqlite3.Connection) -> None:
-    """Create mp3_asset and dj_* tables introduced in migration 0009."""
+    """Create mp3_asset and dj_* tables using the authoritative 0010 layout."""
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS mp3_asset (
-          id              INTEGER PRIMARY KEY,
-          identity_id     INTEGER NOT NULL,
-          master_asset_id INTEGER NOT NULL,
-          profile         TEXT    NOT NULL DEFAULT 'mp3_320_cbr',
-          path            TEXT    NOT NULL UNIQUE,
-          sha256          TEXT,
-          bitrate         INTEGER,
-          sample_rate     INTEGER,
-          status          TEXT    NOT NULL DEFAULT 'ok',
-          transcoded_at   TEXT,
-          FOREIGN KEY(identity_id)     REFERENCES track_identity(id),
-          FOREIGN KEY(master_asset_id) REFERENCES asset_file(id)
+          id               INTEGER PRIMARY KEY AUTOINCREMENT,
+          identity_id      INTEGER REFERENCES track_identity(id),
+          asset_id         INTEGER REFERENCES asset_file(id),
+          path             TEXT    NOT NULL UNIQUE,
+          content_sha256   TEXT,
+          size_bytes       INTEGER,
+          bitrate          INTEGER,
+          sample_rate      INTEGER,
+          duration_s       REAL,
+          profile          TEXT    NOT NULL DEFAULT 'standard',
+          status           TEXT    NOT NULL DEFAULT 'unverified'
+                             CHECK(status IN ('unverified','verified','missing','superseded')),
+          source           TEXT    NOT NULL DEFAULT 'unknown',
+          zone             TEXT,
+          transcoded_at    TEXT,
+          reconciled_at    TEXT,
+          lexicon_track_id INTEGER,
+          created_at       TEXT    DEFAULT CURRENT_TIMESTAMP,
+          updated_at       TEXT    DEFAULT CURRENT_TIMESTAMP
         )
         """
     )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_mp3_asset_identity ON mp3_asset(identity_id)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_mp3_asset_path     ON mp3_asset(path)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_mp3_asset_status   ON mp3_asset(status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_mp3_asset_zone     ON mp3_asset(zone)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_mp3_asset_lexicon  ON mp3_asset(lexicon_track_id)")
 
     conn.execute(
         """
@@ -1417,16 +1424,14 @@ def _ensure_mp3_dj_tables(conn: sqlite3.Connection) -> None:
         """
     )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_dj_admission_identity ON dj_admission(identity_id)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_dj_admission_status   ON dj_admission(status)")
 
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS dj_track_id_map (
-          id                 INTEGER PRIMARY KEY,
-          dj_admission_id    INTEGER NOT NULL UNIQUE,
+          id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+          dj_admission_id    INTEGER UNIQUE REFERENCES dj_admission(id),
           rekordbox_track_id INTEGER NOT NULL UNIQUE,
-          assigned_at        TEXT,
-          FOREIGN KEY(dj_admission_id) REFERENCES dj_admission(id)
+          assigned_at        TEXT    DEFAULT CURRENT_TIMESTAMP
         )
         """
     )
@@ -1434,12 +1439,14 @@ def _ensure_mp3_dj_tables(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS dj_playlist (
-          id        INTEGER PRIMARY KEY,
-          name      TEXT    NOT NULL,
-          parent_id INTEGER,
-          sort_key  TEXT,
-          UNIQUE(name, parent_id),
-          FOREIGN KEY(parent_id) REFERENCES dj_playlist(id)
+          id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+          name                TEXT    NOT NULL,
+          parent_id           INTEGER REFERENCES dj_playlist(id),
+          lexicon_playlist_id INTEGER,
+          sort_key            TEXT,
+          playlist_type       TEXT    DEFAULT 'standard',
+          created_at          TEXT    DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(name, parent_id)
         )
         """
     )
@@ -1460,13 +1467,31 @@ def _ensure_mp3_dj_tables(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS dj_export_state (
-          id            INTEGER PRIMARY KEY,
-          kind          TEXT NOT NULL,
-          output_path   TEXT NOT NULL,
+          id            INTEGER PRIMARY KEY AUTOINCREMENT,
+          kind          TEXT    NOT NULL,
+          output_path   TEXT    NOT NULL,
           manifest_hash TEXT,
-          emitted_at    TEXT,
-          details_json  TEXT
+          scope_json    TEXT,
+          emitted_at    TEXT    DEFAULT CURRENT_TIMESTAMP
         )
         """
     )
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_dj_export_state_kind ON dj_export_state(kind)")
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS reconcile_log (
+          id               INTEGER PRIMARY KEY AUTOINCREMENT,
+          run_id           TEXT    NOT NULL,
+          event_time       TEXT    DEFAULT CURRENT_TIMESTAMP,
+          source           TEXT    NOT NULL,
+          action           TEXT    NOT NULL,
+          confidence       TEXT,
+          mp3_path         TEXT,
+          identity_id      INTEGER,
+          lexicon_track_id INTEGER,
+          details_json     TEXT
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_reconcile_log_run      ON reconcile_log(run_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_reconcile_log_identity ON reconcile_log(identity_id)")

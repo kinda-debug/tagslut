@@ -82,17 +82,17 @@ def _insert_mp3_asset(
     conn: sqlite3.Connection,
     *,
     identity_id: int,
-    master_asset_id: int,
+    asset_id: int,
     path: str,
-    status: str = "ok",
+    status: str = "verified",
 ) -> int:
     cur = conn.execute(
         """
         INSERT INTO mp3_asset
-          (identity_id, master_asset_id, profile, path, status, transcoded_at)
+          (identity_id, asset_id, profile, path, status, transcoded_at)
         VALUES (?, ?, 'mp3_320_cbr', ?, ?, datetime('now'))
         """,
-        (identity_id, master_asset_id, path, status),
+        (identity_id, asset_id, path, status),
     )
     conn.commit()
     return cur.lastrowid  # type: ignore[return-value]
@@ -219,7 +219,7 @@ def test_e2e2_reconcile_creates_mp3_asset_rows(tmp_path: Path) -> None:
 
     # mp3_asset rows must exist for matched tracks
     count = conn.execute(
-        "SELECT COUNT(*) FROM mp3_asset WHERE status = 'ok'"
+        "SELECT COUNT(*) FROM mp3_asset WHERE status = 'verified'"
     ).fetchone()[0]
     assert count == 2
 
@@ -240,7 +240,7 @@ def test_e2e2_reconcile_skips_already_registered(tmp_path: Path) -> None:
 
     mp3 = dj_root / "known.mp3"
     _write_tagged_mp3(mp3, title="Known", artist="Artist", isrc="ISRC-KNOWN")
-    _insert_mp3_asset(conn, identity_id=identity_id, master_asset_id=asset_id, path=str(mp3))
+    _insert_mp3_asset(conn, identity_id=identity_id, asset_id=asset_id, path=str(mp3))
 
     result = reconcile_mp3_library(conn, mp3_root=dj_root, dry_run=False)
 
@@ -269,7 +269,7 @@ def test_e2e3_backfill_then_validate_passes(tmp_path: Path) -> None:
         )
         asset_id = _insert_asset_file(conn, path=f"/lib/track_{n}.flac")
         _insert_mp3_asset(
-            conn, identity_id=identity_id, master_asset_id=asset_id, path=str(mp3)
+            conn, identity_id=identity_id, asset_id=asset_id, path=str(mp3)
         )
 
     admitted, skipped = backfill_admissions(conn)
@@ -278,9 +278,9 @@ def test_e2e3_backfill_then_validate_passes(tmp_path: Path) -> None:
     assert admitted == 3
     assert skipped == 0
 
-    # All admitted rows must be active
+    # All admitted rows must be admitted
     count = conn.execute(
-        "SELECT COUNT(*) FROM dj_admission WHERE status = 'active'"
+        "SELECT COUNT(*) FROM dj_admission WHERE status = 'admitted'"
     ).fetchone()[0]
     assert count == 3
 
@@ -297,7 +297,7 @@ def test_e2e3_backfill_idempotent(tmp_path: Path) -> None:
     asset_id = _insert_asset_file(conn, path="/lib/idem.flac")
     (tmp_path / "idem.mp3").write_bytes(b"")
     _insert_mp3_asset(
-        conn, identity_id=identity_id, master_asset_id=asset_id,
+        conn, identity_id=identity_id, asset_id=asset_id,
         path=str(tmp_path / "idem.mp3")
     )
 
@@ -333,9 +333,9 @@ def test_e2e4_xml_byte_identical_across_two_emits(tmp_path: Path) -> None:
         )
         asset_id = _insert_asset_file(conn, path=f"/lib/track_{n}.flac")
         mp3_id = _insert_mp3_asset(
-            conn, identity_id=identity_id, master_asset_id=asset_id, path=str(mp3)
+            conn, identity_id=identity_id, asset_id=asset_id, path=str(mp3)
         )
-        admit_track(conn, identity_id=identity_id, preferred_mp3_asset_id=mp3_id)
+        admit_track(conn, identity_id=identity_id, mp3_asset_id=mp3_id)
     conn.commit()
 
     # First emit
@@ -353,7 +353,7 @@ def test_e2e4_xml_byte_identical_across_two_emits(tmp_path: Path) -> None:
 
 
 def test_e2e4_xml_contains_all_admitted_tracks(tmp_path: Path) -> None:
-    """emit_rekordbox_xml includes exactly all active admissions in COLLECTION."""
+    """emit_rekordbox_xml includes exactly all admitted admissions in COLLECTION."""
     conn = _make_db(tmp_path)
 
     da_ids = []
@@ -365,14 +365,14 @@ def test_e2e4_xml_contains_all_admitted_tracks(tmp_path: Path) -> None:
         )
         asset_id = _insert_asset_file(conn, path=f"/lib/track_{n}.flac")
         mp3_id = _insert_mp3_asset(
-            conn, identity_id=identity_id, master_asset_id=asset_id, path=str(mp3)
+            conn, identity_id=identity_id, asset_id=asset_id, path=str(mp3)
         )
-        da_ids.append(admit_track(conn, identity_id=identity_id, preferred_mp3_asset_id=mp3_id))
+        da_ids.append(admit_track(conn, identity_id=identity_id, mp3_asset_id=mp3_id))
     conn.commit()
 
-    # Retire one admission
+    # Reject one admission so it drops out of active export state
     conn.execute(
-        "UPDATE dj_admission SET status = 'retired' WHERE id = ?", (da_ids[-1],)
+        "UPDATE dj_admission SET status = 'rejected' WHERE id = ?", (da_ids[-1],)
     )
     conn.commit()
 
@@ -382,7 +382,7 @@ def test_e2e4_xml_contains_all_admitted_tracks(tmp_path: Path) -> None:
     tree = ET.parse(str(xml_path))
     tracks = tree.getroot().findall("COLLECTION/TRACK")
     assert len(tracks) == 3, (
-        "COLLECTION must contain exactly the 3 active admissions, not the retired one."
+        "COLLECTION must contain exactly the 3 admitted admissions, not the rejected one."
     )
 
 
@@ -394,8 +394,8 @@ def test_e2e4_manifest_hash_matches_file(tmp_path: Path) -> None:
     mp3.write_bytes(b"")
     identity_id = _insert_identity(conn, title="Track", artist="Artist", isrc="ISRC-HASH")
     asset_id = _insert_asset_file(conn, path="/lib/track.flac")
-    mp3_id = _insert_mp3_asset(conn, identity_id=identity_id, master_asset_id=asset_id, path=str(mp3))
-    admit_track(conn, identity_id=identity_id, preferred_mp3_asset_id=mp3_id)
+    mp3_id = _insert_mp3_asset(conn, identity_id=identity_id, asset_id=asset_id, path=str(mp3))
+    admit_track(conn, identity_id=identity_id, mp3_asset_id=mp3_id)
     conn.commit()
 
     xml_path = tmp_path / "out.xml"
@@ -430,9 +430,9 @@ def _setup_two_admitted_tracks(
         )
         asset_id = _insert_asset_file(conn, path=f"/lib/track_{n}.flac")
         mp3_id = _insert_mp3_asset(
-            conn, identity_id=identity_id, master_asset_id=asset_id, path=str(mp3)
+            conn, identity_id=identity_id, asset_id=asset_id, path=str(mp3)
         )
-        da_ids.append(admit_track(conn, identity_id=identity_id, preferred_mp3_asset_id=mp3_id))
+        da_ids.append(admit_track(conn, identity_id=identity_id, mp3_asset_id=mp3_id))
     conn.commit()
     return tuple(da_ids)  # type: ignore[return-value]
 
@@ -472,9 +472,9 @@ def test_e2e5_patch_adds_new_playlist_track(tmp_path: Path) -> None:
     )
     asset_new = _insert_asset_file(conn, path="/lib/new_track.flac")
     mp3_id_new = _insert_mp3_asset(
-        conn, identity_id=identity_new, master_asset_id=asset_new, path=str(mp3_new)
+        conn, identity_id=identity_new, asset_id=asset_new, path=str(mp3_new)
     )
-    da_id_new = admit_track(conn, identity_id=identity_new, preferred_mp3_asset_id=mp3_id_new)
+    da_id_new = admit_track(conn, identity_id=identity_new, mp3_asset_id=mp3_id_new)
 
     # Add new track to playlist
     conn.execute(

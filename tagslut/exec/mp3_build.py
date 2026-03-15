@@ -36,7 +36,7 @@ def build_mp3_from_identity(
     """Transcode preferred FLAC master(s) to MP3 and register in mp3_asset.
 
     Only processes identities that do not already have a mp3_asset row with
-    status='ok'. Uses the preferred_asset table to find the canonical FLAC.
+    status='verified'. Uses the active asset_link rows to find the source FLAC.
 
     When dry_run=True, counts what would be built without writing anything.
     """

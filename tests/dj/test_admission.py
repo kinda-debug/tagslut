@@ -50,16 +50,16 @@ def _insert_mp3_asset(
     conn: sqlite3.Connection,
     *,
     identity_id: int,
-    master_asset_id: int,
+    asset_id: int,
     path: str,
-    status: str = "ok",
+    status: str = "verified",
 ) -> int:
     cur = conn.execute(
         """
-        INSERT INTO mp3_asset (identity_id, master_asset_id, profile, path, status, transcoded_at)
+        INSERT INTO mp3_asset (identity_id, asset_id, profile, path, status, transcoded_at)
         VALUES (?, ?, 'mp3_320_cbr', ?, ?, datetime('now'))
         """,
-        (identity_id, master_asset_id, path, status),
+        (identity_id, asset_id, path, status),
     )
     conn.commit()
     return cur.lastrowid  # type: ignore[return-value]
@@ -74,45 +74,45 @@ def test_admit_track_creates_row(tmp_path: Path) -> None:
     conn = _make_db(tmp_path)
     identity_id = _insert_identity(conn, title="Song A", artist="Artist A", isrc="ISRC-A")
     asset_id = _insert_asset_file(conn, path="/lib/song_a.flac")
-    mp3_id = _insert_mp3_asset(conn, identity_id=identity_id, master_asset_id=asset_id, path="/dj/song_a.mp3")
+    mp3_id = _insert_mp3_asset(conn, identity_id=identity_id, asset_id=asset_id, path="/dj/song_a.mp3")
 
-    admission_id = admit_track(conn, identity_id=identity_id, preferred_mp3_asset_id=mp3_id)
+    admission_id = admit_track(conn, identity_id=identity_id, mp3_asset_id=mp3_id)
 
     row = conn.execute("SELECT id, status FROM dj_admission WHERE id = ?", (admission_id,)).fetchone()
     assert row is not None
-    assert row[1] == "active"
+    assert row[1] == "admitted"
 
 
 def test_admit_track_raises_if_already_active(tmp_path: Path) -> None:
     conn = _make_db(tmp_path)
     identity_id = _insert_identity(conn, title="Song B", artist="Artist B", isrc="ISRC-B")
     asset_id = _insert_asset_file(conn, path="/lib/song_b.flac")
-    mp3_id = _insert_mp3_asset(conn, identity_id=identity_id, master_asset_id=asset_id, path="/dj/song_b.mp3")
+    mp3_id = _insert_mp3_asset(conn, identity_id=identity_id, asset_id=asset_id, path="/dj/song_b.mp3")
 
-    admit_track(conn, identity_id=identity_id, preferred_mp3_asset_id=mp3_id)
+    admit_track(conn, identity_id=identity_id, mp3_asset_id=mp3_id)
     conn.commit()
 
     with pytest.raises(DjAdmissionError, match="already admitted"):
-        admit_track(conn, identity_id=identity_id, preferred_mp3_asset_id=mp3_id)
+        admit_track(conn, identity_id=identity_id, mp3_asset_id=mp3_id)
 
 
 def test_admit_track_reactivates_retired_admission(tmp_path: Path) -> None:
     conn = _make_db(tmp_path)
     identity_id = _insert_identity(conn, title="Song C", artist="Artist C", isrc="ISRC-C")
     asset_id = _insert_asset_file(conn, path="/lib/song_c.flac")
-    mp3_id = _insert_mp3_asset(conn, identity_id=identity_id, master_asset_id=asset_id, path="/dj/song_c.mp3")
+    mp3_id = _insert_mp3_asset(conn, identity_id=identity_id, asset_id=asset_id, path="/dj/song_c.mp3")
 
-    admission_id = admit_track(conn, identity_id=identity_id, preferred_mp3_asset_id=mp3_id)
-    conn.execute("UPDATE dj_admission SET status = 'retired' WHERE id = ?", (admission_id,))
+    admission_id = admit_track(conn, identity_id=identity_id, mp3_asset_id=mp3_id)
+    conn.execute("UPDATE dj_admission SET status = 'rejected' WHERE id = ?", (admission_id,))
     conn.commit()
 
     # Should re-activate without raising
-    returned_id = admit_track(conn, identity_id=identity_id, preferred_mp3_asset_id=mp3_id)
+    returned_id = admit_track(conn, identity_id=identity_id, mp3_asset_id=mp3_id)
     conn.commit()
     assert returned_id == admission_id
 
     row = conn.execute("SELECT status FROM dj_admission WHERE id = ?", (admission_id,)).fetchone()
-    assert row[0] == "active"
+    assert row[0] == "admitted"
 
 
 # ---------------------------------------------------------------------------
@@ -124,14 +124,14 @@ def test_backfill_admits_unlinked_mp3_assets(tmp_path: Path) -> None:
     conn = _make_db(tmp_path)
     identity_id = _insert_identity(conn, title="Song D", artist="Artist D", isrc="ISRC-D")
     asset_id = _insert_asset_file(conn, path="/lib/song_d.flac")
-    _insert_mp3_asset(conn, identity_id=identity_id, master_asset_id=asset_id, path="/dj/song_d.mp3")
+    _insert_mp3_asset(conn, identity_id=identity_id, asset_id=asset_id, path="/dj/song_d.mp3")
 
     admitted, skipped = backfill_admissions(conn)
     conn.commit()
 
     assert admitted == 1
     assert skipped == 0
-    count = conn.execute("SELECT COUNT(*) FROM dj_admission WHERE status = 'active'").fetchone()[0]
+    count = conn.execute("SELECT COUNT(*) FROM dj_admission WHERE status = 'admitted'").fetchone()[0]
     assert count == 1
 
 
@@ -139,8 +139,8 @@ def test_backfill_skips_already_active(tmp_path: Path) -> None:
     conn = _make_db(tmp_path)
     identity_id = _insert_identity(conn, title="Song E", artist="Artist E", isrc="ISRC-E")
     asset_id = _insert_asset_file(conn, path="/lib/song_e.flac")
-    mp3_id = _insert_mp3_asset(conn, identity_id=identity_id, master_asset_id=asset_id, path="/dj/song_e.mp3")
-    admit_track(conn, identity_id=identity_id, preferred_mp3_asset_id=mp3_id)
+    mp3_id = _insert_mp3_asset(conn, identity_id=identity_id, asset_id=asset_id, path="/dj/song_e.mp3")
+    admit_track(conn, identity_id=identity_id, mp3_asset_id=mp3_id)
     conn.commit()
 
     admitted, skipped = backfill_admissions(conn)
@@ -148,11 +148,11 @@ def test_backfill_skips_already_active(tmp_path: Path) -> None:
     assert skipped == 0  # no new un-admitted rows to even encounter
 
 
-def test_backfill_ignores_non_ok_mp3_assets(tmp_path: Path) -> None:
+def test_backfill_ignores_non_verified_mp3_assets(tmp_path: Path) -> None:
     conn = _make_db(tmp_path)
     identity_id = _insert_identity(conn, title="Song F", artist="Artist F", isrc="ISRC-F")
     asset_id = _insert_asset_file(conn, path="/lib/song_f.flac")
-    _insert_mp3_asset(conn, identity_id=identity_id, master_asset_id=asset_id, path="/dj/song_f.mp3", status="failed")
+    _insert_mp3_asset(conn, identity_id=identity_id, asset_id=asset_id, path="/dj/song_f.mp3", status="missing")
 
     admitted, skipped = backfill_admissions(conn)
     assert admitted == 0
@@ -169,8 +169,8 @@ def test_validate_passes_when_clean(tmp_path: Path) -> None:
     asset_id = _insert_asset_file(conn, path="/lib/valid.flac")
     mp3_file = tmp_path / "valid.mp3"
     mp3_file.write_bytes(b"")
-    mp3_id = _insert_mp3_asset(conn, identity_id=identity_id, master_asset_id=asset_id, path=str(mp3_file))
-    admit_track(conn, identity_id=identity_id, preferred_mp3_asset_id=mp3_id)
+    mp3_id = _insert_mp3_asset(conn, identity_id=identity_id, asset_id=asset_id, path=str(mp3_file))
+    admit_track(conn, identity_id=identity_id, mp3_asset_id=mp3_id)
     conn.commit()
 
     report = validate_dj_library(conn)
@@ -184,10 +184,10 @@ def test_validate_detects_missing_mp3_file(tmp_path: Path) -> None:
     mp3_id = _insert_mp3_asset(
         conn,
         identity_id=identity_id,
-        master_asset_id=asset_id,
+        asset_id=asset_id,
         path="/nonexistent/path/missing.mp3",
     )
-    admit_track(conn, identity_id=identity_id, preferred_mp3_asset_id=mp3_id)
+    admit_track(conn, identity_id=identity_id, mp3_asset_id=mp3_id)
     conn.commit()
 
     report = validate_dj_library(conn)
@@ -210,9 +210,9 @@ def test_validate_detects_missing_metadata(tmp_path: Path) -> None:
     mp3_file = tmp_path / "no_title.mp3"
     mp3_file.write_bytes(b"")
     mp3_id = _insert_mp3_asset(
-        conn, identity_id=identity_id, master_asset_id=asset_id, path=str(mp3_file)
+        conn, identity_id=identity_id, asset_id=asset_id, path=str(mp3_file)
     )
-    admit_track(conn, identity_id=identity_id, preferred_mp3_asset_id=mp3_id)
+    admit_track(conn, identity_id=identity_id, mp3_asset_id=mp3_id)
     conn.commit()
 
     report = validate_dj_library(conn)
@@ -233,9 +233,9 @@ def test_validate_ok_with_multiple_distinct_admissions(tmp_path: Path) -> None:
         )
         asset_id = _insert_asset_file(conn, path=f"/lib/track_{n}.flac")
         mp3_id = _insert_mp3_asset(
-            conn, identity_id=identity_id, master_asset_id=asset_id, path=str(mp3_file)
+            conn, identity_id=identity_id, asset_id=asset_id, path=str(mp3_file)
         )
-        admit_track(conn, identity_id=identity_id, preferred_mp3_asset_id=mp3_id)
+        admit_track(conn, identity_id=identity_id, mp3_asset_id=mp3_id)
         conn.commit()
 
     report = validate_dj_library(conn)

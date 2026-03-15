@@ -1247,9 +1247,8 @@ def dj_validate(
     """Validate DJ library consistency.
 
     Checks performed:
-    - Every active admission's MP3 file exists on disk with status='ok'.
-    - No two active admissions share the same MP3 path.
-    - All dj_playlist_track entries reference active admissions.
+    - Every admitted admission's MP3 file exists on disk with status='verified'.
+    - All dj_playlist_track entries reference admitted admissions.
     - Every admitted identity has non-empty title and artist metadata.
 
     Exits non-zero when issues are found.

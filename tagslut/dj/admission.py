@@ -2,7 +2,7 @@
 
 Provides:
   admit_track()         — admit a single identity into the DJ library
-  backfill_admissions() — auto-admit all un-admitted mp3_asset rows with status='ok'
+  backfill_admissions() — auto-admit all un-admitted mp3_asset rows with status='verified'
   validate_dj_library() — run consistency checks over dj_* and mp3_asset tables
 """
 from __future__ import annotations
@@ -149,7 +149,7 @@ def validate_dj_library(conn: sqlite3.Connection) -> DjValidationReport:
     """Run consistency checks over dj_* and mp3_asset tables.
 
     Checks performed:
-    1. Every admitted admission's MP3 asset has status='ok' and exists on disk.
+    1. Every admitted admission's MP3 asset has status='verified' and exists on disk.
     2. All dj_playlist_track entries reference admitted admissions.
     3. Every admitted admission's identity has non-empty title and artist.
     """

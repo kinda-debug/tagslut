@@ -1,4 +1,4 @@
-<!-- Status: Active document. Synced 2026-03-09 after recent code/doc review. Historical or superseded material belongs in docs/archive/. -->
+<!-- Status: Active document. Synced 2026-03-15 after intake url command addition. Historical or superseded material belongs in docs/archive/. -->
 
 # WORKFLOWS.md
 
@@ -34,9 +34,53 @@ Important current guardrail:
 
 ---
 
-## Primary Downloader (Standard Run)
+## Primary URL Intake (Canonical)
 
-This is the normal day-to-day operator path.
+This is the normal day-to-day operator path for URL-based downloads.
+
+```bash
+# Default: precheck + download + promote (no MP3)
+poetry run tagslut intake url "https://www.beatport.com/release/.../..."
+poetry run tagslut intake url "https://tidal.com/browse/album/..."
+
+# Precheck only (dry run, no download)
+poetry run tagslut intake url "https://tidal.com/browse/album/..." --dry-run
+
+# With MP3 transcode (requires --dj-root)
+poetry run tagslut intake url "https://www.beatport.com/release/.../..." \
+  --mp3 --dj-root "$DJ_LIBRARY"
+```
+
+**Orchestration stages:**
+1. **Precheck** - Runs `tools/review/pre_download_check.py` to decide what to download
+2. **Download** - Calls `tools/get --no-precheck` for approved tracks only
+3. **MP3** (optional) - Transcodes to DJ library if `--mp3` passed
+
+**Exit codes:**
+- `0` = completed (all stages succeeded)
+- `2` = blocked (precheck found 0 tracks to download)
+- `1` = failed (any stage error)
+
+**Artifacts:**
+Every invocation writes a structured JSON artifact to `artifacts/intake/intake_url_<timestamp>.json` with:
+- Precheck summary (new/upgrade/blocked counts)
+- Per-stage status (ok/skipped/blocked/failed)
+- Disposition (completed/blocked/failed)
+- Path to precheck CSV for per-track decisions
+
+**MP3 stage requirements:**
+- `--mp3` requires `--dj-root <path>` (CLI enforces this)
+- Processes all identities without MP3 files
+- Uses identity-driven `build_mp3_from_identity()` logic
+
+**Compatibility wrapper:**
+`tools/get` remains available as a compatibility wrapper but internally routes to provider-specific download logic. For new workflows, prefer `tagslut intake url` for artifact-driven structured orchestration.
+
+---
+
+## Legacy: tools/get Wrapper
+
+Legacy compatibility wrapper. For new work, use `tagslut intake url` above.
 
 ```bash
 # Default: precheck + download + local tag prep + promote + merged M3U
@@ -149,7 +193,7 @@ sqlite3 "$V3_DB" "PRAGMA integrity_check;"
 
 ## Manual Phase Workflow (Advanced)
 
-This is the explicit phase-by-phase loop. Use it when you intentionally want manual control rather than `tools/get`.
+This is the explicit phase-by-phase loop. Use it when you intentionally want manual control rather than `tagslut intake url` or `tools/get`.
 
 ```
 1. precheck    → decide what to download
@@ -183,7 +227,7 @@ tools/get-auto --links-file ~/links.txt
 
 Outputs: `output/precheck/precheck_decisions_*.csv`, `precheck_keep_track_urls_*.txt`
 
-Use `--quiet` for script-level automation, or run through `tools/get` for the normal concise operator flow.
+Use `--quiet` for script-level automation, or run through `tagslut intake url` or `tools/get` for the normal concise operator flow.
 
 ### 2 · Download
 
@@ -571,10 +615,14 @@ ls -lh "$TAGSLUT_DB"
 
 # Command reference
 poetry run tagslut --help
-poetry run tagslut index --help
+poetry run tagslut intake --help
+poetry run tagslut intake url --help
 
 # Latest precheck output
 ls -lt output/precheck | head
+
+# Latest intake artifacts
+ls -lt artifacts/intake | head
 ```
 
 See `docs/TROUBLESHOOTING.md` for failure modes and fixes.

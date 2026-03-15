@@ -274,3 +274,19 @@ See: .codex/CODEX_PROMPTS.md Prompt 6 (Update CLI Help Text)
 This work item provides exact file locations and text replacements.
 Implement as single PR.
 ```
+
+### P0-D: Promotion Success But DJ Output Silently Skipped (NEW)
+
+**Evidence:** docs/audit/TOOLS_GET_DJ_RUNTIME_TRACE_2026-03-15.md
+- Downloaded and promoted "done-up" successfully
+- PROMOTED_FLACS_FILE written (1 file)
+- DJ phase ran but: "Resolved 0 promoted identity ids" + "No promoted identities resolved for DJ export; skipping."
+- Result: exit 0, zero DJ MP3
+
+**Test requirement:**
+- Fixture: Download + promote a new track (promotion succeeds)
+- Action: Capture promoted FLAC list, then run DJ phase
+- Assert: DJ phase does NOT silently skip
+  - Option A: Fail loudly if promoted IDs don't resolve
+  - Option B: Auto-admit the promoted FLAC to DJ  
+  - Current behavior: Silent skip (bad) → must change

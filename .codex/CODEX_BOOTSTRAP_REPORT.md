@@ -533,6 +533,11 @@ tagslut dj xml patch --db <DB> --output rekordbox_v2.xml --prior-export-id <id>
 
 ### Gap 1: Two Divergent DJ Paths in `tools/get --dj`
 
+**Runtime Evidence (2026-03-15):** See `docs/audit/TOOLS_GET_DJ_RUNTIME_TRACE_2026-03-15.md`
+- New track run: Promotion-fed path executed, DJ stage skipped (resolved 0 promoted IDs)
+- Existing track run: Precheck-hit fallback executed, found no MP3, left row unresolved
+- Both scenarios: exit 0, zero DJ MP3 output
+
 **Evidence:** DJ_WORKFLOW_TRACE.md (full path map), DJ_WORKFLOW_AUDIT.md (sections 2–4)
 
 **Path A: Promotion-Fed (Primary Intake)**

@@ -240,22 +240,28 @@ def _lexicon_tracks(output_root: Path) -> list[dict]:  # type: ignore  # TODO: m
 DJ library operations (Stages 2–4 of the 4-stage pipeline).
 
 Stages:
-  Stage 2: admit   → Select tracks for DJ library
-           backfill → Auto-admit verified MP3s
-           validate → Verify DJ library state
-  Stage 3: xml emit → Generate Rekordbox XML
+  Stage 2: admit     → Select tracks for DJ library
+           backfill  → Auto-admit verified MP3s
+  Stage 3: validate  → Verify DJ library state
+  Stage 4: xml emit  → Generate Rekordbox XML
            xml patch → Update prior XML after changes
 
-Prerequisite: Stage 1 (tagslut mp3 reconcile)
+Common subcommands:
+  admit, backfill, validate, xml emit, xml patch
+
+Prerequisite: Stage 1 (tagslut mp3 reconcile or tagslut mp3 build)
 
 See: docs/DJ_WORKFLOW.md
 """,
     epilog="""
 Example workflow:
-  1. tagslut mp3 reconcile --db music_v3.db --mp3-root /path/to/dj_root
-  2. tagslut dj backfill --db music_v3.db
+  1. tagslut mp3 reconcile --db <path> --mp3-root <path>
+  2. tagslut dj backfill --db <path>
   3. tagslut dj validate --db music_v3.db
   4. tagslut dj xml emit --db music_v3.db --out rekordbox.xml
+
+Quick example:
+  tagslut dj backfill --db <path>
 
 Docs: docs/DJ_WORKFLOW.md
 """,

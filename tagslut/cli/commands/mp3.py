@@ -16,10 +16,14 @@ import click
 Build and reconcile MP3 derivative assets.
 
 Part of the 4-stage DJ pipeline:
-  Stage 1 (mp3):  register/reconcile MP3 derivatives
-  Stage 2 (dj):   admit tracks to DJ library
-  Stage 3 (dj):   validate DJ library state
-  Stage 4 (dj):   emit or patch Rekordbox XML
+  Stage 1: build      → Transcode canonical FLAC masters to DJ MP3s
+           reconcile  → Register existing DJ MP3s against canonical identities
+  Stage 2: dj admit / dj backfill
+  Stage 3: dj validate
+  Stage 4: dj xml emit / dj xml patch
+
+Common subcommands:
+  build, reconcile
 
 See: tagslut dj --help (Stages 2–4)
 Docs: docs/DJ_WORKFLOW.md
@@ -27,13 +31,13 @@ Docs: docs/DJ_WORKFLOW.md
     epilog="""
 Examples:
   # Reconcile existing MP3 directory
-  tagslut mp3 reconcile --db music_v3.db --mp3-root /path/to/dj_root
+  tagslut mp3 reconcile --db <path> --mp3-root <path>
 
   # Build from FLAC masters
-  tagslut mp3 build --db music_v3.db --master-root /path/to/flacs --dj-root /path/to/mp3s
+  tagslut mp3 build --db <path> --master-root <path> --dj-root <path>
 
 Next: tagslut dj --help (Stages 2–4)
-Then: tagslut dj backfill --db music_v3.db
+Then: tagslut dj backfill --db <path>
 """,
 )
 def mp3_group() -> None:
@@ -120,7 +124,7 @@ def mp3_build(
 
 @mp3_group.command(
     "reconcile",
-    help="Reconcile existing MP3 directory with database. Stage 1b of DJ pipeline. Prerequisite: Stage 2 (dj backfill).",
+    help="Reconcile existing MP3 directory with database. Stage 1 of the 4-stage DJ pipeline. Next step: tagslut dj backfill.",
 )
 @click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
 @click.option(

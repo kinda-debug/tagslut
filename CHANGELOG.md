@@ -6,6 +6,15 @@ All notable changes to this project are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 Versioning: [Semantic Versioning](https://semver.org/)
 
+## [Unreleased] - 2026-03-15
+
+### Added
+- `tagslut intake url` command: canonical URL intake workflow that runs
+  `tools/review/pre_download_check.py` for precheck, then `tools/get --no-precheck`
+  for downloads, and optionally `build_mp3_from_identity` for MP3 assets. Every
+  invocation writes a structured JSON artifact under `artifacts/intake/` with
+  precheck summary, per-stage status, and final disposition.
+
 ## [Unreleased] - 2026-03-14
 
 ### Added — Explicit 4-Stage DJ Pipeline

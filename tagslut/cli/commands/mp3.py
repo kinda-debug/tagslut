@@ -13,6 +13,7 @@ import click
 @click.group(
     "mp3",
     help="""
+\b
 Build and reconcile MP3 derivative assets.
 
 Part of the 4-stage DJ pipeline:
@@ -29,12 +30,10 @@ See: tagslut dj --help (Stages 2–4)
 Docs: docs/DJ_WORKFLOW.md
 """,
     epilog="""
+\b
 Examples:
-  # Reconcile existing MP3 directory
   tagslut mp3 reconcile --db <path> --mp3-root <path>
-
-  # Build from FLAC masters
-  tagslut mp3 build --db <path> --master-root <path> --dj-root <path>
+  tagslut mp3 build --db <path> --dj-root <path> --execute
 
 Next: tagslut dj --help (Stages 2–4)
 Then: tagslut dj backfill --db <path>
@@ -46,7 +45,7 @@ def mp3_group() -> None:
 
 @mp3_group.command(
     "build",
-    help="Build (transcode) MP3s from canonical FLAC masters. Stage 1a of DJ pipeline.",
+    help="Build MP3s from canonical FLAC masters. Stage 1a of the 4-stage pipeline.",
 )
 @click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
 @click.option(
@@ -124,7 +123,7 @@ def mp3_build(
 
 @mp3_group.command(
     "reconcile",
-    help="Reconcile existing MP3 directory with database. Stage 1 of the 4-stage DJ pipeline. Next step: tagslut dj backfill.",
+    help="Reconcile an existing MP3 root with the database. Stage 1b of the 4-stage pipeline. Next: tagslut dj backfill.",
 )
 @click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
 @click.option(

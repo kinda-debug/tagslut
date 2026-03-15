@@ -237,6 +237,7 @@ def _lexicon_tracks(output_root: Path) -> list[dict]:  # type: ignore  # TODO: m
 @click.group(
     "dj",
     help="""
+\b
 DJ library operations (Stages 2–4 of the 4-stage pipeline).
 
 Stages:
@@ -254,11 +255,12 @@ Prerequisite: Stage 1 (tagslut mp3 reconcile or tagslut mp3 build)
 See: docs/DJ_WORKFLOW.md
 """,
     epilog="""
+\b
 Example workflow:
   1. tagslut mp3 reconcile --db <path> --mp3-root <path>
   2. tagslut dj backfill --db <path>
-  3. tagslut dj validate --db music_v3.db
-  4. tagslut dj xml emit --db music_v3.db --out rekordbox.xml
+  3. tagslut dj validate --db <path>
+  4. tagslut dj xml emit --db <path> --out rekordbox.xml
 
 Quick example:
   tagslut dj backfill --db <path>
@@ -1140,7 +1142,10 @@ def pool_wizard(
 # ---------------------------------------------------------------------------
 
 
-@dj_group.command("admit", help="Admit individual track to DJ library. Stage 2a.")
+@dj_group.command(
+    "admit",
+    help="Admit one track into the DJ library. Stage 2a of the 4-stage pipeline.",
+)
 @click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
 @click.option(
     "--identity-id",
@@ -1208,7 +1213,7 @@ def dj_admit(
 
 @dj_group.command(
     "backfill",
-    help="Auto-admit all verified MP3s to DJ library. Stage 2b (idempotent).",
+    help="Auto-admit all verified MP3s to the DJ library. Stage 2b of the 4-stage pipeline.",
 )
 @click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
 @click.option(
@@ -1273,7 +1278,7 @@ def dj_backfill(
 
 @dj_group.command(
     "validate",
-    help="Validate DJ library state (files, metadata, consistency). Stage 2c.",
+    help="Validate DJ library state. Stage 3 of the 4-stage pipeline.",
 )
 @click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
 @click.option("--verbose", "-v", is_flag=True, default=False)
@@ -1329,13 +1334,16 @@ def dj_validate(
 
 @dj_group.group(
     "xml",
-    help="Emit or patch Rekordbox XML. Stage 4. Requires: dj backfill + dj validate.",
+    help="Stage 4 Rekordbox XML commands: emit and patch. Requires dj backfill + dj validate.",
 )
 def dj_xml_group() -> None:
     """Rekordbox XML emit and patch commands."""
 
 
-@dj_xml_group.command("emit")
+@dj_xml_group.command(
+    "emit",
+    help="Emit Rekordbox XML from admitted tracks. Stage 4a of the 4-stage pipeline.",
+)
 @click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
 @click.option(
     "--out",
@@ -1407,7 +1415,10 @@ def dj_xml_emit(
     click.echo(f"  manifest_hash: {manifest_hash}")
 
 
-@dj_xml_group.command("patch")
+@dj_xml_group.command(
+    "patch",
+    help="Patch a prior Rekordbox XML export while preserving TrackIDs. Stage 4b of the 4-stage pipeline.",
+)
 @click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
 @click.option(
     "--out",

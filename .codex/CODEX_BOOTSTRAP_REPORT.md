@@ -81,14 +81,14 @@ The tagslut project has **transitioned from ambiguous "DJ mode" behavior to an e
 
 ### Tier 2: Tool-Specific Overrides
 
-**CLAUDE.md and/or .codex/AGENT.md and/or .codex/AGENT.md** — Behavioral constraints for Claude-family tools:
+**.codex/CODEX_AGENT.md and/or .codex/AGENT.md** — Behavioral constraints for Claude-family tools:
 - Minimal reversible changes
 - Docs before code when they diverge
 - No destructive git operations (no force-push, no rebase, no history rewriting)
 - Explicit comparison of intended vs actual behavior
 - Guardrails: move-only semantics, zone-based file management, audit prompts
 
-**→ Read CLAUDE.md and/or .codex/AGENT.md for procedural rules, not architecture.**
+**→ Read .codex/CODEX_AGENT.md for procedural rules, not architecture.**
 
 ### Tier 3: Operator Model
 
@@ -974,7 +974,7 @@ tagslut dj xml patch --db <DB> --output rekordbox_v2.xml --prior-export-id <id>
 #### C1: Trust AGENT.md as Primary Source
 - Read AGENT.md first for all work
 - When in doubt, defer to AGENT.md doctrine
-- If CLAUDE.md and/or .codex/AGENT.md conflicts with AGENT.md, AGENT.md wins (except tool-specific behavior)
+- If .codex/CODEX_AGENT.md conflicts with AGENT.md, AGENT.md wins (except tool-specific behavior)
 
 #### C2: Maintain Master → DJ Layering
 - ✅ **DO** write changes to dj_* tables
@@ -1053,7 +1053,7 @@ tagslut dj xml patch --db <DB> --output rekordbox_v2.xml --prior-export-id <id>
 Before beginning a task, verify:
 
 - [ ] Read AGENT.md (sections 1–3: role, canonical surface, invariants)
-- [ ] Read CLAUDE.md and/or .codex/AGENT.md if applicable (tool-specific rules)
+- [ ] Read .codex/CODEX_AGENT.md if applicable (tool-specific rules)
 - [ ] If DJ-related: Read DJ_WORKFLOW_AUDIT.md + GAP_TABLE.md (gap evidence)
 - [ ] If schema-touching: Read DB_V3_SCHEMA.md + AGENT.md migration checklist
 - [ ] If Phase 1 stack: Run `git fetch origin && git log --oneline origin/dev..HEAD` (upstream status)
@@ -1159,7 +1159,7 @@ Everything else either supports those contracts or gets out of the way.
 ### Quick Reference (During Work)
 
 - **AGENT.md** — Doctrine, constraints, git rules, migration checklist
-- **CLAUDE.md and/or .codex/AGENT.md** — Procedural rules (docs-first, reversibility, etc.)
+- **.codex/CODEX_AGENT.md** — Procedural rules (docs-first, reversibility, etc.)
 - **MISSING_TESTS.md** — Test priorities (P0, P1, P2)
 - **DJ_WORKFLOW_GAP_TABLE.md** — Gaps at a glance (1 page)
 

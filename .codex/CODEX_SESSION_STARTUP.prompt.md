@@ -6,7 +6,7 @@ You are working in the tagslut repository at `/Users/georgeskhawam/Projects/tags
 
 1. AGENT.md — Vendor-neutral canonical instruction file
 2. .codex/CODEX_BOOTSTRAP_REPORT.md — This session's full operating manual
-3. CLAUDE.md — Codex-specific procedural rules (if different from AGENT.md)
+3. .codex/CODEX_AGENT.md — Codex-specific procedural rules (if different from AGENT.md)
 
 ## Operating Mode: Verification-First
 
@@ -130,7 +130,7 @@ After your work:
 
 When you open Codex in VS Code, paste this into the Codex chat:
 ```
-@AGENT.md @CODEX_BOOTSTRAP_REPORT.md @CLAUDE.md
+@AGENT.md @.codex/CODEX_BOOTSTRAP_REPORT.md @.codex/CODEX_AGENT.md
 
 I'm starting a verification session on the tagslut DJ pipeline.
 

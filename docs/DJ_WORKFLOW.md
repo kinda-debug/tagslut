@@ -4,12 +4,32 @@
 
 DJ pool contract: see `docs/DJ_POOL.md` for the downstream-only boundary and defaults.
 
+## Deprecation Notice
+
+`tools/get --dj` is deprecated. Use the 4-stage DJ pipeline instead.
+
+For a curated DJ library, the only supported workflow is:
+`tagslut mp3 reconcile` or `tagslut mp3 build` -> `tagslut dj admit` or
+`tagslut dj backfill` -> `tagslut dj validate` -> `tagslut dj xml emit` or
+`tagslut dj xml patch`.
+
+Why this exists: `tools/get --dj` still follows legacy wrapper logic with two
+divergent runtime paths. For diagnosis and evidence, see
+`docs/audit/DJ_WORKFLOW_AUDIT.md`.
+
+## Overview
+
+The 4-stage DJ pipeline is the only supported workflow for building a curated,
+repeatable DJ library. Each stage writes explicit DB-backed state and is safe
+to re-run. Use this document as the canonical operator reference without
+needing to read any other DJ doc first.
+
 ## Explicit 4-Stage Pipeline (Canonical)
 
 The canonical DJ workflow is a linear, auditable pipeline. Each stage is safe to re-run
 and has explicit DB state as output. Run stages in order:
 
-### Stage 1 — Register existing MP3s (`mp3 reconcile`)
+### Stage 1 — MP3 Registration (`mp3 reconcile` or `mp3 build`)
 
 If you already have DJ MP3s on disk and want to register them against canonical
 identities without re-transcoding:
@@ -24,7 +44,21 @@ poetry run tagslut mp3 reconcile \
 Matches each MP3 to a `track_identity` row via ISRC (preferred) or title+artist.
 Registers the file in `mp3_asset`. Use `--dry-run` (default) to preview matches.
 
-### Stage 2 — Admit tracks to the DJ library (`dj backfill` or `dj admit`)
+If you need to generate DJ MP3s from canonical FLAC masters instead of reconciling
+an existing MP3 library, use `mp3 build`:
+
+```bash
+poetry run tagslut mp3 build \
+  --db "$TAGSLUT_DB" \
+  --master-root "$MASTER_LIBRARY" \
+  --dj-root "$DJ_LIBRARY" \
+  --execute
+```
+
+Use `mp3 reconcile` when MP3 files already exist. Use `mp3 build` when the DJ MP3
+layer still needs to be created from canonical masters.
+
+### Stage 2 — DJ Admission (`dj backfill` or `dj admit`)
 
 Promote all registered `mp3_asset` rows (`status=verified`) into the curated DJ admission table:
 
@@ -44,7 +78,21 @@ poetry run tagslut dj admit \
 
 Writes rows to `dj_admission`. Idempotent: already-admitted tracks are skipped.
 
-### Stage 3 — Emit Rekordbox XML (`dj xml emit`)
+### Stage 3 — DJ Validation (`dj validate`)
+
+Before export, validate that admitted tracks still have the expected files and metadata:
+
+```bash
+poetry run tagslut dj validate \
+  --db "$TAGSLUT_DB"
+```
+
+Use this stage after admission and before XML export. Validation is the contract check
+that keeps Stage 4 deterministic.
+
+### Stage 4 — Rekordbox Export (`dj xml emit` and `dj xml patch`)
+
+Use `dj xml emit` for a fresh deterministic export:
 
 Write a deterministic Rekordbox-compatible XML from all admitted `dj_admission` rows:
 
@@ -58,10 +106,8 @@ poetry run tagslut dj xml emit \
 - Records a SHA-256 manifest hash in `dj_export_state`
 - Raises if validation finds missing MP3 files or empty metadata (use `--skip-validation` to override)
 
-### Stage 4 — Re-emit after library changes (`dj xml patch`)
-
-When the DJ library has changed (new tracks admitted, metadata updated) and you need a
-fresh XML without resetting Rekordbox cue points:
+Use `dj xml patch` when the DJ library has changed and you need a fresh XML
+without resetting Rekordbox cue points:
 
 ```bash
 poetry run tagslut dj xml patch \
@@ -73,16 +119,19 @@ poetry run tagslut dj xml patch \
 - All existing `rekordbox_track_id` values are preserved from `dj_track_id_map`
 - Adds a new row to `dj_export_state` with the updated manifest hash
 
-### Validate DJ library state (`dj validate`)
-
-At any point, check for inconsistencies (missing files, empty metadata):
-
-```bash
-poetry run tagslut dj validate \
-  --db "$TAGSLUT_DB"
-```
-
 ---
+
+## Why The 4-Stage Model
+
+The explicit pipeline exists because `tools/get --dj` does not provide a stable
+or auditable contract for curated DJ library builds. The audit diagnosis is:
+
+- the wrapper has two hidden runtime paths depending on whether promote or precheck wins
+- there is no durable MP3 registration layer unless you use `mp3_asset`
+- validation and export state become implicit side effects instead of explicit tables
+
+For the full diagnosis, read `docs/audit/DJ_WORKFLOW_AUDIT.md`. For day-to-day
+operator use, stay on the 4-stage pipeline above.
 
 ## Lexicon Metadata Backfill
 
@@ -130,9 +179,9 @@ GROUP BY 1,2 ORDER BY 3 DESC;
 promote, and DJ MP3 export in a single flow. It has two divergent code paths depending on
 whether tracks were newly promoted or already existed in inventory (precheck-hit).
 
-**This path is not recommended for building a final curated DJ library.** Use the explicit
-4-stage pipeline above for a deterministic, auditable result. Use `tools/get --dj` only for
-quick ad-hoc download-and-export during active intake sessions.
+**Deprecated:** this path is not supported for building a final curated DJ library.
+See `docs/DJ_WORKFLOW.md` for the canonical 4-stage pipeline. Use `tools/get --dj`
+only for legacy ad-hoc intake where non-deterministic wrapper behavior is acceptable.
 
 To build DJ copies for already-promoted masters outside of a download flow, run:
 
@@ -159,7 +208,10 @@ export DJ_PLAYLIST_ROOT="${DJ_PLAYLIST_ROOT:-$DJ_LIBRARY}"
 
 ## Pipeline Choice
 
-Preferred v3 pipeline (identity-based, deterministic):
+Canonical curated-library pipeline:
+- Follow the 4-stage workflow in this document for `mp3` → `dj admission` → `dj validate` → `dj xml`.
+
+Preferred v3 pool-builder pipeline for cohort exports:
 - Follow `docs/OPERATIONS.md` for `dj-candidates` → `dj-profile` → `dj-ready` → `dj-pool-plan/run`.
 - For operator use, prefer `poetry run tagslut dj pool-wizard` for plan/execute.
 - Use `scripts/dj/build_pool_v3.py` or the `make dj-pool-*` targets only when you explicitly need the lower-level builder.

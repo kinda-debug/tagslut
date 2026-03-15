@@ -13,3 +13,11 @@
 **Ready:** Yes
 
 ---
+
+### Session 4 — Task 1.1 (P0 Contract Tests)
+- Status: ✅ Completed
+- Output: tests/exec/test_precheck_dj_contract.py (P0-A through P0-D)
+- Tests: poetry run pytest -q tests/exec/test_precheck_dj_contract.py
+- Result: [X passed, Y failed]
+
+---

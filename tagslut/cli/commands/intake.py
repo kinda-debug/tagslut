@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,7 @@ import httpx
 
 from tagslut.cli.runtime import run_python_script, WRAPPER_CONTEXT
 from tagslut.core.download_manifest import DownloadManifest, build_manifest
+from tagslut.exec.intake_orchestrator import run_intake
 from tagslut.filters.identity_resolver import TrackIntent
 from tagslut.storage.schema import get_connection
 from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
@@ -126,6 +128,82 @@ def register_intake_group(cli: click.Group) -> None:
     @cli.group()
     def intake():  # type: ignore  # TODO: mypy-strict
         """Canonical intake commands."""
+
+    @intake.command("url")
+    @click.argument("url")
+    @click.option("--db", "db_path", default=None, help="Path to tagslut DB (or set TAGSLUT_DB)")
+    @click.option(
+        "--mp3",
+        is_flag=True,
+        default=False,
+        help="Also transcode to mp3_asset after promote.",
+    )
+    @click.option(
+        "--dj-root",
+        default=None,
+        type=click.Path(file_okay=False, writable=True),
+        help="DJ MP3 output root. Required with --mp3.",
+    )
+    @click.option(
+        "--dry-run",
+        is_flag=True,
+        default=False,
+        help="Precheck only — no download, no writes.",
+    )
+    @click.option(
+        "--artifact-dir",
+        default=None,
+        type=click.Path(),
+        help="Directory for JSON artifact output (default: artifacts/intake)",
+    )
+    def intake_url(
+        url: str,
+        db_path: str | None,
+        mp3: bool,
+        dj_root: str | None,
+        dry_run: bool,
+        artifact_dir: str | None,
+    ):  # type: ignore  # TODO: mypy-strict
+        """Precheck → download → promote → [mp3] for a single provider URL."""
+        # Guard: --mp3 requires --dj-root
+        if mp3 and not dj_root:
+            raise click.ClickException(
+                "--mp3 requires --dj-root to be specified.\n"
+                "Example: tagslut intake url <URL> --mp3 --dj-root /path/to/dj/mp3"
+            )
+
+        # Resolve DB path
+        try:
+            db_resolution = resolve_cli_env_db_path(db_path, purpose="write", source_label="--db")
+        except DbResolutionError as exc:
+            raise click.ClickException(str(exc)) from exc
+
+        resolved_db_path = db_resolution.path
+
+        # Convert paths
+        dj_root_path = Path(dj_root).expanduser().resolve() if dj_root else None
+        artifact_dir_path = Path(artifact_dir).expanduser().resolve() if artifact_dir else None
+
+        # Run orchestration
+        result = run_intake(
+            url=url,
+            db_path=resolved_db_path,
+            mp3=mp3,
+            dry_run=dry_run,
+            dj_root=dj_root_path,
+            artifact_dir=artifact_dir_path,
+        )
+
+        # Print summary
+        click.echo(result.summary())
+        if result.artifact_path:
+            click.echo(f"Artifact: {result.artifact_path}")
+        if result.precheck_csv:
+            click.echo(f"Precheck CSV: {result.precheck_csv}")
+
+        # Exit with mapped code
+        _EXIT = {"completed": 0, "blocked": 2, "failed": 1}
+        sys.exit(_EXIT[result.disposition])
 
     @intake.command("resolve")
     @click.option("--db", "db_path", required=True, type=click.Path(), help="Path to tagslut DB")

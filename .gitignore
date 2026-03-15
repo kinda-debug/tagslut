@@ -13,7 +13,8 @@ venv/
 .ipynb_checkpoints/
 .coverage
 coverage.xml
-
+*.dump
+tagslut_postgres_baseline.dump
 # -- OS / Editor --------------------------------------------------
 .DS_Store
 Thumbs.db
@@ -224,3 +225,5 @@ docs/Now I have all the documents needed.md
 .github/prompts/lexicon-reconcile.prompt.md
 .github/prompts/dj-workflow-audit.prompt.md
 .github/prompts/dj-pipeline-hardening.prompt.md
+
+*.dump

@@ -21,7 +21,7 @@ Versioning: [Semantic Versioning](https://semver.org/)
 - **Pipeline E2E tests** (`tests/dj/test_dj_pipeline_e2e.py`, `tests/e2e/test_dj_pipeline.py`): 28 tests covering all 5 E2E scenarios including byte-identical XML determinism, manifest hash integrity, stable TrackIDs across patch cycles, and loud failure on tampered XML.
 
 ### Changed
-- **`tools/get --dj`** demoted to **legacy**: emits a runtime deprecation warning on stderr when `--dj` is passed, pointing operators to the 4-stage pipeline. The flag still forwards to `tools/get-intake` for backwards compatibility.
+- **`tools/get --dj`** is now a hard deprecation: the flag fails immediately with a terminal error that points operators to the canonical 4-stage DJ pipeline in `docs/DJ_WORKFLOW.md`. The legacy forwarding path to `tools/get-intake` has been removed.
 - **`docs/DJ_WORKFLOW.md`**: "Explicit 4-Stage Pipeline" section added at the top as the canonical workflow. `tools/get --dj` section clearly marked as legacy.
 - **`docs/DB_V3_SCHEMA.md`**: new "DJ Pipeline Tables (migration 0010)" section documenting `mp3_asset`, `dj_admission`, `dj_track_id_map`, `dj_playlist`, `dj_playlist_track`, `dj_export_state`, `reconcile_log` with ownership rules and invariants.
 - **`AGENT.md`**: `tagslut mp3` added to canonical surface; new "DJ Pipeline (Canonical 4-Stage Workflow)" section replaces the former `tools/get --dj` shortcut.
@@ -32,6 +32,9 @@ Versioning: [Semantic Versioning](https://semver.org/)
 - `patch_rekordbox_xml` verifies SHA-256 of prior output file against `dj_export_state.manifest_hash` before writing.
 - `emit_rekordbox_xml` is byte-deterministic: same DB state → identical XML file on repeated emits.
 - `dj validate` is required before `dj xml emit` unless `--skip-validation` is passed explicitly.
+
+### Removed
+- `tools/get --dj` legacy execution path; operators must run the explicit 4-stage DJ pipeline instead.
 
 ## [Unreleased] - 2026-03-12
 ### Added

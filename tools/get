@@ -122,16 +122,15 @@ build_intake_cmd() {
                 shift
                 ;;
             --dj)
-                echo "[LEGACY] WARNING: tools/get --dj is deprecated." >&2
-                echo "  The --dj flag has two divergent code paths and may produce non-deterministic results." >&2
-                echo "  For a curated DJ library, use the explicit 4-stage pipeline:" >&2
-                echo "    tagslut mp3 reconcile  --db \$TAGSLUT_DB --mp3-root \$DJ_LIBRARY --execute" >&2
-                echo "    tagslut dj backfill    --db \$TAGSLUT_DB" >&2
-                echo "    tagslut dj validate    --db \$TAGSLUT_DB" >&2
-                echo "    tagslut dj xml emit    --db \$TAGSLUT_DB --out rekordbox.xml" >&2
-                echo "  See: docs/DJ_WORKFLOW.md" >&2
-                intake_args+=("$arg")
-                shift
+                echo "ERROR: tools/get --dj is deprecated and will be removed in v3.1." >&2
+                echo "Use the 4-stage DJ pipeline instead:" >&2
+                echo "1. tagslut mp3 reconcile --db <DB> --mp3-root <DJ_ROOT>" >&2
+                echo "2. tagslut dj backfill --db <DB>" >&2
+                echo "3. tagslut dj validate --db <DB>" >&2
+                echo "4. tagslut dj xml emit --db <DB> --output rekordbox.xml" >&2
+                echo "" >&2
+                echo "See docs/DJ_WORKFLOW.md for details." >&2
+                exit 1
                 ;;
             *)
                 intake_args+=("$arg")

@@ -1,6 +1,6 @@
 # TASK_PROMPTS.md — Master Task Index
 
-**Last Updated:** 2026-03-15 14:57 UTC
+**Last Updated:** 2026-03-15 14:59 UTC
 **Phase:** Phase 1 (Closure)  
 **Usage:** Copy prompt for current task, paste into Codex, execute, commit, update status below, repeat.
 
@@ -13,7 +13,7 @@
 | 1.1 | Write P0 Contract Tests | ✅ COMPLETE | 1–2 hrs | 2026-03-15 |
 | 1.2 | Write P1 E2E Tests | ✅ COMPLETE | 2–3 hrs | 2026-03-15 |
 | **1.3** | **Normalize Docs (4-Stage Contract)** | **⏳ READY** | **1–2 hrs** | — |
-| 1.4 | Update CLI Help Text | ⏳ READY (on 1.3) | 20 min | — |
+| 1.4 | Update CLI Help Text | ✅ COMPLETE (on 1.3) | 20 min | — |
 | 2.1 | Deprecate tools/get --dj | ⏸️ BLOCKED (on 1.4) | 30 min | — |
 | 2.2 | Enforce Import Layering | ⏸️ BLOCKED (on 2.1) | 30 min | — |
 

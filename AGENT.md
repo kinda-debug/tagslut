@@ -48,7 +48,7 @@ Use `tools/get <provider-url>` for normal intake.
 
 - `tools/get --no-hoard` skips the tagging/enrich/art path.
 - `tools/get --verbose` prints internal paths, artifacts, and batch snapshots.
-- `tools/get --dj` is **legacy** (prints a deprecation warning at runtime). Use the 4-stage DJ pipeline below for curated DJ library work.
+- `tools/get --dj` is **deprecated** (fails immediately at runtime). Use the 4-stage DJ pipeline below for curated DJ library work.
 - Beatport download flows are tokenless. Do not describe Beatport downloading as requiring tokens.
 
 ### DJ Pipeline (Canonical 4-Stage Workflow)
@@ -134,6 +134,14 @@ The lightweight staged-root DJ phase also exists inside `tools/review/process_ro
 5. Runtime outputs belong under `artifacts/` or `output/`, not scattered across repo root.
 6. Archive and historical docs must live under `docs/archive/`.
 7. DJ workflows must not mutate the master library in ways that make it depend on DJ outputs.
+
+## Import Layering (Enforced by Flake8)
+
+This repository currently enforces the historical `tagslutcore -> tagslutdj` boundary using the live package paths `tagslut.core` and `tagslut.dj`.
+
+- `tagslut.core*` can only depend on core/shared infrastructure such as `tagslut.core`, `tagslut.storage`, and `tagslut.db`-equivalent storage layers. It must not import `tagslut.dj*`.
+- `tagslut.dj*` can depend on broader `tagslut.*` infrastructure, but it must not import `tagslut.core*` business logic.
+- Violations fail flake8 via the import-rule plugin configured in [`.flake8`](/Users/georgeskhawam/Projects/tagslut/.flake8).
 
 ## Storage Model
 

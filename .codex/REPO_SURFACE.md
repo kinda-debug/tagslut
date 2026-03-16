@@ -118,3 +118,44 @@ Avoid reading unless the task explicitly requires it:
 
 ## Working rule
 Inspect the smallest relevant surface first.
+
+## Objectives
+
+Primary objective
+Maintain a working CLI tool for managing the music library and DJ workflow.
+
+Key goals
+- Preserve current CLI behavior.
+- Keep the database schema valid and migrations safe.
+- Maintain the DJ pipeline (mp3 → dj → XML export).
+- Fix bugs with minimal changes.
+
+Avoid
+- large refactors
+- speculative redesigns
+- changing database structure unless required.
+
+
+## Task types
+
+Bug fix
+- reproduce the error
+- inspect the relevant module
+- apply the smallest patch
+- verify with pytest
+
+CLI change
+- inspect the command module
+- update argument parsing or behavior
+- update tests if needed
+
+Database task
+- inspect storage/v3
+- verify migration safety
+- update schema or queries if required
+
+DJ pipeline task
+- inspect dj/ and exec/
+- modify only the stage involved
+- verify using DJ tests
+

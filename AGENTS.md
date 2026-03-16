@@ -1,87 +1,18 @@
 # AGENTS.md
 
-## Repository identity
+tagslut is a CLI-first Python project. Canonical command: `poetry run tagslut`.
 
-tagslut is a CLI-first Python project used to manage a canonical music library and produce DJ-ready exports.
+For v3 identity hardening, use these docs as the source of record:
 
-The canonical command is:
+- `docs/architecture/V3_IDENTITY_HARDENING.md`
+- `docs/operations/V3_IDENTITY_HARDENING_RUNBOOK.md`
+- `docs/testing/V3_IDENTITY_HARDENING.md`
 
-poetry run tagslut
-
-The `dedupe` alias has been removed.
-
----
-
-## Current database reality
-
-The repository already contains meaningful v3 storage work.
-
-Migration `0006` exists and adds:
-
-- label
-- catalog_number
-- canonical_duration_s
-- identity lookup indexes
-- normalized artist/title composite index
-
-Migration verification is implemented through the v3 migration runner.
-
-Do not describe the database layer as hypothetical.
-
----
-
-## Working rules
-
-When implementing changes:
+Implementation rule:
 
 1. start from a failing command, traceback, or test
 2. inspect the smallest relevant module
 3. apply the smallest possible patch
 4. verify with a targeted pytest run
 
-Avoid:
-
-- large refactors
-- speculative redesigns
-- schema changes unless required
-- modifying unrelated files
-
----
-
-## Code surface
-
-CLI  
-tagslut/cli/
-
-Execution layer  
-tagslut/exec/
-
-DJ logic  
-tagslut/dj/
-
-Storage and migrations  
-tagslut/storage/  
-tagslut/storage/v3/
-
-Tests  
-tests/dj/  
-tests/storage/  
-
----
-
-## Testing
-
-Prefer targeted tests over full suite runs.
-
-Example:
-
-pytest tests/dj -q
-pytest tests/storage -q
-
----
-
-## Goal
-
-Maintain a deterministic pipeline:
-
-FLAC → mp3 → dj → Rekordbox XML export
+Avoid large refactors, speculative redesigns, and unrelated file changes.

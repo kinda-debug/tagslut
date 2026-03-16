@@ -9,7 +9,7 @@ from __future__ import annotations
 import sqlite3
 
 V3_SCHEMA_NAME = "v3"
-V3_SCHEMA_VERSION = 10
+V3_SCHEMA_VERSION = 11
 V3_SCHEMA_VERSION_INITIAL = 1
 V3_SCHEMA_VERSION_IDENTITY_MERGE = 2
 V3_SCHEMA_VERSION_PREFERRED_ASSET = 3
@@ -20,6 +20,7 @@ V3_SCHEMA_VERSION_TRACK_IDENTITY_PHASE1_RENAME = 7
 V3_SCHEMA_VERSION_ASSET_ANALYSIS = 8
 V3_SCHEMA_VERSION_CHROMAPRINT = 9
 V3_SCHEMA_VERSION_PROVIDER_UNIQUENESS = 10
+V3_SCHEMA_VERSION_PROVIDER_UNIQUENESS_HARDENING = 11
 
 
 def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
@@ -320,6 +321,21 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
             WHERE spotify_id IS NOT NULL
               AND TRIM(spotify_id) != ''
               AND merged_into_id IS NULL;
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_track_identity_active_apple_music_id
+            ON track_identity(apple_music_id)
+            WHERE apple_music_id IS NOT NULL
+              AND TRIM(apple_music_id, ' \t\n\r') != ''
+              AND merged_into_id IS NULL;
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_track_identity_active_deezer_id
+            ON track_identity(deezer_id)
+            WHERE deezer_id IS NOT NULL
+              AND TRIM(deezer_id, ' \t\n\r') != ''
+              AND merged_into_id IS NULL;
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_track_identity_active_traxsource_id
+            ON track_identity(traxsource_id)
+            WHERE traxsource_id IS NOT NULL
+              AND TRIM(traxsource_id, ' \t\n\r') != ''
+              AND merged_into_id IS NULL;
 
         CREATE INDEX IF NOT EXISTS idx_asset_link_identity ON asset_link(identity_id);
         CREATE INDEX IF NOT EXISTS idx_identity_merge_log_key_value ON identity_merge_log(key_value);
@@ -562,5 +578,30 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
         VALUES (?, ?, ?)
         """,
         (V3_SCHEMA_NAME, V3_SCHEMA_VERSION_ASSET_ANALYSIS, "asset analysis and dj export metadata views"),
+    )
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO schema_migrations (schema_name, version, note)
+        VALUES (?, ?, ?)
+        """,
+        (V3_SCHEMA_NAME, V3_SCHEMA_VERSION_CHROMAPRINT, "add chromaprint columns and indexes to asset_file"),
+    )
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO schema_migrations (schema_name, version, note)
+        VALUES (?, ?, ?)
+        """,
+        (V3_SCHEMA_NAME, V3_SCHEMA_VERSION_PROVIDER_UNIQUENESS, "active provider-id unique partial indexes"),
+    )
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO schema_migrations (schema_name, version, note)
+        VALUES (?, ?, ?)
+        """,
+        (
+            V3_SCHEMA_NAME,
+            V3_SCHEMA_VERSION_PROVIDER_UNIQUENESS_HARDENING,
+            "active provider-id unique partial indexes hardening pass",
+        ),
     )
     conn.commit()

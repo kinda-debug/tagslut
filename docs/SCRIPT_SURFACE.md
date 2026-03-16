@@ -11,9 +11,10 @@ Policy and deprecation rules are defined in:
 
 1. `poetry run tagslut intake ...`
 Role: Canonical intake orchestration. Includes URL-based intake
-(`tagslut intake url`) and root processing (`tagslut intake process-root`).
-Use `tagslut intake url` as the primary entry point for Beatport/Tidal
-release URLs; `tools/get` is kept as a compatibility wrapper.
+(`tagslut intake <URL>`; alias: `tagslut intake url <URL>`) and root processing
+(`tagslut intake process-root`).
+Use `tagslut intake <URL>` as the primary entry point for Beatport/Tidal URLs;
+`tools/get` is kept as a compatibility wrapper.
 
 2. `poetry run tagslut index ...`
 Role: Inventory registration, duplicate checks, duration checks, and metadata enrichment for indexed files.
@@ -71,7 +72,7 @@ These wrappers are active convenience entrypoints around canonical intake/report
 
 1. `tools/get <url>`
 Role: Legacy-compatible download wrapper around the canonical intake
-pipeline. For new work, prefer `poetry run tagslut intake url <url>`
+pipeline. For new work, prefer `poetry run tagslut intake <url>`
 so you get structured artifacts and explicit precheck/download/MP3
 stages.
 - default behavior: precheck + download + tagging/enrich/art + promote + merged M3U

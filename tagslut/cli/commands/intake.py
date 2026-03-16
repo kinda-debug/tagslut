@@ -141,7 +141,10 @@ def _intent_reference(intent_dict: dict[str, Any]) -> str:
 def register_intake_group(cli: click.Group) -> None:
     @cli.group(cls=_IntakeGroup)
     def intake():  # type: ignore  # TODO: mypy-strict
-        """Canonical intake commands."""
+        """Canonical intake commands.
+
+        Shortcut: `tagslut intake <URL>` is an alias for `tagslut intake url <URL>`.
+        """
 
     @intake.command("url")
     @click.argument("url")
@@ -156,7 +159,9 @@ def register_intake_group(cli: click.Group) -> None:
         "--dj",
         is_flag=True,
         default=False,
-        help="Also build DJ copies after MP3 assets (implies --mp3, requires --dj-root).",
+        help=(
+            "Also build DJ copies after MP3 assets (implies --mp3; requires --mp3-root and --dj-root)."
+        ),
     )
     @click.option(
         "--mp3-root",
@@ -235,8 +240,8 @@ def register_intake_group(cli: click.Group) -> None:
         if mp3 and not dj:
             if mp3_root_path is None and dj_root_path is not None:
                 click.echo(
-                    "DEPRECATION: In MP3 mode, --dj-root is deprecated as an alias for --mp3-root. "
-                    "Use --mp3-root. (--dj-root is DJ-output-only when --dj is active.)",
+                    "DEPRECATION: In MP3-only mode (--mp3 without --dj), --dj-root is deprecated as an alias "
+                    "for --mp3-root. Use --mp3-root. (--dj-root is DJ-output-only when --dj is active.)",
                     err=True,
                 )
                 mp3_root_path = dj_root_path

@@ -9,11 +9,13 @@ Versioning: [Semantic Versioning](https://semver.org/)
 ## [Unreleased] - 2026-03-15
 
 ### Added
-- `tagslut intake url` command: canonical URL intake workflow that runs
-  `tools/review/pre_download_check.py` for precheck, then `tools/get --no-precheck`
-  for downloads, and optionally `build_mp3_from_identity` for MP3 assets. Every
-  invocation writes a structured JSON artifact under `artifacts/intake/` with
-  precheck summary, per-stage status, and final disposition.
+- `tagslut intake <URL>` (alias: `tagslut intake url <URL>`): canonical URL intake
+  workflow that runs `tools/review/pre_download_check.py` for precheck, then
+  `tools/get` for downloads/promote. Supports `--mp3 --mp3-root <dir>` for full-tag
+  MP3 assets and `--dj --dj-root <dir>` for separate DJ copies (implies `--mp3`;
+  MP3 asset library and DJ library are distinct roots). Every invocation writes a
+  structured JSON artifact under `artifacts/intake/` with precheck summary,
+  per-stage status, and final disposition.
 
 ## [Unreleased] - 2026-03-16
 

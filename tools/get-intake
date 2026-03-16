@@ -1824,13 +1824,77 @@ PY
 	        echo "No new candidates to download; intake pipeline finished (DJ mode)."
 	        exit 0
 	      fi
-	      if [[ "$BATCH_AUDIO_BEFORE_DOWNLOAD" -gt 0 ]]; then
-	        echo "Resume mode: batch already contains $BATCH_AUDIO_BEFORE_DOWNLOAD audio file(s); continuing pipeline."
-	      else
-	        echo "No new candidates to download and batch is empty; intake pipeline finished."
-	        exit 0
-	      fi
-	    else
+		      if [[ "$BATCH_AUDIO_BEFORE_DOWNLOAD" -gt 0 ]]; then
+		        echo "Resume mode: batch already contains $BATCH_AUDIO_BEFORE_DOWNLOAD audio file(s); continuing pipeline."
+		      else
+		        if [[ "$M3U_MODE" -eq 1 && -n "${PRECHECK_DECISIONS_CSV:-}" && -f "$PRECHECK_DECISIONS_CSV" ]]; then
+		          step "$((STEP + 1))" "$TOTAL_STEPS" "Generate Roon M3U (inventory-backed)"
+		          INVENTORY_M3U_INPUT_FILE="$OUT_DIR/roon_inventory_flacs_$(date +%Y%m%d_%H%M%S).txt"
+		          python - "$PRECHECK_DECISIONS_CSV" "$INVENTORY_M3U_INPUT_FILE" <<'PY'
+import csv
+import sys
+from pathlib import Path
+
+decisions_csv = Path(sys.argv[1]).expanduser().resolve()
+out_file = Path(sys.argv[2]).expanduser().resolve()
+
+seen = set()
+selected = []
+
+if decisions_csv.exists():
+    with decisions_csv.open(newline="", encoding="utf-8", errors="replace") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            decision = (row.get("decision") or row.get("action") or "").strip().lower()
+            if decision != "skip":
+                continue
+            db_path = (row.get("db_path") or "").strip()
+            if not db_path:
+                continue
+            path = Path(db_path)
+            if path.suffix.lower() != ".flac" or not path.exists():
+                continue
+            resolved = str(path.expanduser().resolve())
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            selected.append(resolved)
+
+out_file.parent.mkdir(parents=True, exist_ok=True)
+out_file.write_text("\n".join(selected) + ("\n" if selected else ""), encoding="utf-8")
+PY
+		          INVENTORY_M3U_INPUT_COUNT="$(wc -l < "$INVENTORY_M3U_INPUT_FILE" | tr -d ' ')"
+		          if [[ "$INVENTORY_M3U_INPUT_COUNT" -eq 0 ]]; then
+		            echo "No inventory FLAC paths resolved; skipping M3U generation."
+		          else
+		            ROON_M3U_MARKER="$OUT_DIR/roon_m3u_inventory_marker_$(date +%Y%m%d_%H%M%S)"
+		            : > "$ROON_M3U_MARKER"
+		            M3U_PATH_ARGS=()
+		            while IFS= read -r m3u_path; do
+		              [[ -n "$m3u_path" ]] || continue
+		              M3U_PATH_ARGS+=("$m3u_path")
+		            done < "$INVENTORY_M3U_INPUT_FILE"
+
+		            run_cmd poetry run python -m tagslut report m3u \
+		              --merge \
+		              --m3u-dir "$M3U_DIR" \
+		              --path-mode relative \
+		              --name-prefix "$ROON_PLAYLIST_PREFIX" \
+		              --name-suffix "$ROON_PLAYLIST_SUFFIX" \
+		              --db "$DB_PATH" \
+		              --source "$SOURCE" \
+		              "${M3U_PATH_ARGS[@]}"
+		            if [[ -n "$M3U_NAME_HINT" ]]; then
+		              rename_latest_m3u_from_marker "$M3U_DIR" "$ROON_M3U_MARKER" "$M3U_NAME_HINT" "$ROON_PLAYLIST_PREFIX" "$ROON_PLAYLIST_SUFFIX"
+		            fi
+		            ROON_M3U_OUTPUT="$(latest_file_after_marker "$M3U_DIR" "$ROON_M3U_MARKER")"
+		            rm -f "$ROON_M3U_MARKER"
+		          fi
+		        fi
+		        echo "No new candidates to download and batch is empty; intake pipeline finished."
+		        exit 0
+		      fi
+		    else
 	      if [[ "$SOURCE" == "tidal" ]]; then
 	        if [[ "${PREFILTER_SKIP:-0}" -eq 0 && -n "$URL" ]]; then
 	          if [[ "$VERBOSE" -eq 1 ]]; then
@@ -2242,21 +2306,65 @@ if [[ "$VERBOSE" -eq 1 ]]; then
   fi
 fi
 
-if [[ "$M3U_MODE" -eq 1 ]]; then
-  STEP=$((STEP + 1))
-  step "$STEP" "$TOTAL_STEPS" "Generate Roon M3U"
+	if [[ "$M3U_MODE" -eq 1 ]]; then
+	  STEP=$((STEP + 1))
+	  step "$STEP" "$TOTAL_STEPS" "Generate Roon M3U"
 
-  M3U_INPUT_COUNT="$(wc -l < "$PROMOTED_FLACS_FILE" | tr -d ' ')"
-  if [[ "$M3U_INPUT_COUNT" -eq 0 ]]; then
-    echo "No promoted files found on disk for M3U generation; skipping."
-  else
-    ROON_M3U_MARKER="$OUT_DIR/roon_m3u_marker_$(date +%Y%m%d_%H%M%S)"
-    : > "$ROON_M3U_MARKER"
-    M3U_PATH_ARGS=()
-    while IFS= read -r m3u_path; do
-      [[ -n "$m3u_path" ]] || continue
-      M3U_PATH_ARGS+=("$m3u_path")
-    done < "$PROMOTED_FLACS_FILE"
+	  ROON_M3U_INPUT_FILE="$OUT_DIR/roon_m3u_inputs_$(date +%Y%m%d_%H%M%S).txt"
+	  python - "$PROMOTED_FLACS_FILE" "${PRECHECK_DECISIONS_CSV:-}" "$ROON_M3U_INPUT_FILE" <<'PY'
+import csv
+import sys
+from pathlib import Path
+
+promoted_file = Path(sys.argv[1]).expanduser().resolve()
+decisions_arg = (sys.argv[2] or "").strip()
+decisions_csv = Path(decisions_arg).expanduser().resolve() if decisions_arg else None
+out_file = Path(sys.argv[3]).expanduser().resolve()
+
+seen = set()
+selected = []
+
+def add_path(text: str) -> None:
+    value = (text or "").strip()
+    if not value:
+        return
+    path = Path(value)
+    if path.suffix.lower() != ".flac" or not path.exists():
+        return
+    resolved = str(path.expanduser().resolve())
+    if resolved in seen:
+        return
+    seen.add(resolved)
+    selected.append(resolved)
+
+if promoted_file.exists():
+    for raw in promoted_file.read_text(encoding="utf-8", errors="replace").splitlines():
+        add_path(raw)
+
+if decisions_csv and decisions_csv.exists():
+    with decisions_csv.open(newline="", encoding="utf-8", errors="replace") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            decision = (row.get("decision") or row.get("action") or "").strip().lower()
+            if decision != "skip":
+                continue
+            add_path(row.get("db_path") or "")
+
+out_file.parent.mkdir(parents=True, exist_ok=True)
+out_file.write_text("\n".join(selected) + ("\n" if selected else ""), encoding="utf-8")
+PY
+
+	  M3U_INPUT_COUNT="$(wc -l < "$ROON_M3U_INPUT_FILE" | tr -d ' ')"
+	  if [[ "$M3U_INPUT_COUNT" -eq 0 ]]; then
+	    echo "No promoted files or inventory matches found for M3U generation; skipping."
+	  else
+	    ROON_M3U_MARKER="$OUT_DIR/roon_m3u_marker_$(date +%Y%m%d_%H%M%S)"
+	    : > "$ROON_M3U_MARKER"
+	    M3U_PATH_ARGS=()
+	    while IFS= read -r m3u_path; do
+	      [[ -n "$m3u_path" ]] || continue
+	      M3U_PATH_ARGS+=("$m3u_path")
+	    done < "$ROON_M3U_INPUT_FILE"
 
     run_cmd poetry run python -m tagslut report m3u \
       --merge \

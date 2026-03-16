@@ -103,6 +103,54 @@ def _read_text_lines(path: Path) -> list[str]:
         return []
 
 
+def _parse_precheck_decisions_details(
+    decisions_csv: Path,
+) -> tuple[list[str], list[str], dict[str, int]]:
+    """Return (keep_labels, skip_labels, skip_reason_counts) from a precheck decisions CSV.
+
+    Labels are path-free: "Artist - Title" (best-effort).
+    """
+    keep: list[str] = []
+    skip: list[str] = []
+    reason_counts: dict[str, int] = {}
+
+    if not decisions_csv.exists():
+        return keep, skip, reason_counts
+
+    def _label(row: dict[str, str]) -> str:
+        artist = (row.get("artist") or "").strip()
+        title = (row.get("title") or "").strip()
+        if artist and title:
+            return f"{artist} - {title}"
+        return title or artist or "unknown-track"
+
+    def _reason_bucket(reason: str) -> str:
+        lowered = reason.lower()
+        if "same or better" in lowered or "equal or better" in lowered:
+            return "same_or_better_inventory"
+        if "no inventory match" in lowered:
+            return "no_inventory_match"
+        if "improves existing" in lowered or "upgrade" in lowered:
+            return "upgrade"
+        if not reason.strip():
+            return "unknown"
+        # Keep buckets stable-ish but short.
+        return (reason.strip().split(";")[0] or reason.strip())[:80]
+
+    with decisions_csv.open("r", encoding="utf-8", newline="") as fh:
+        reader = csv.DictReader(fh)
+        for row in reader:
+            decision = (row.get("decision") or row.get("action") or "").strip().lower()
+            if decision == "keep":
+                keep.append(_label(row))
+            elif decision == "skip":
+                skip.append(_label(row))
+                bucket = _reason_bucket((row.get("reason") or "").strip())
+                reason_counts[bucket] = reason_counts.get(bucket, 0) + 1
+
+    return keep, skip, reason_counts
+
+
 class _GetIntakeHumanSummarizer:
     """Parse tools/get-intake output and emit path-free, operator-friendly summaries."""
 
@@ -126,6 +174,9 @@ class _GetIntakeHumanSummarizer:
         self._precheck_keep: int | None = None
         self._precheck_skip: int | None = None
         self._precheck_total: int | None = None
+        self._precheck_keep_labels: list[str] = []
+        self._precheck_skip_labels: list[str] = []
+        self._precheck_skip_reason_counts: dict[str, int] = {}
 
         # Download
         self._selected_for_download: int | None = None
@@ -167,9 +218,14 @@ class _GetIntakeHumanSummarizer:
         self._moved_promote: int | None = None
         self._moved_stash: int | None = None
         self._moved_failed: int | None = None
+        self._moved_promote_skipped_exists: int | None = None
+        self._moved_promote_skipped_missing: int | None = None
+        self._moved_stash_skipped_exists: int | None = None
+        self._moved_stash_skipped_missing: int | None = None
 
         # M3U / background
         self._named_playlist: str | None = None
+        self._m3u_skip_reason: str | None = None
         self._background_pid: int | None = None
 
         # Final run summary (counts only)
@@ -370,6 +426,8 @@ class _GetIntakeHumanSummarizer:
             # Example: "EXECUTE: planned=22 moved=22 skipped_missing=0 skipped_exists=0 failed=0"
             planned_m = re.search(r"planned=(\d+)", stripped)
             moved_m = re.search(r"moved=(\d+)", stripped)
+            skipped_missing_m = re.search(r"skipped_missing=(\d+)", stripped)
+            skipped_exists_m = re.search(r"skipped_exists=(\d+)", stripped)
             failed_m = re.search(r"failed=(\d+)", stripped)
             if planned_m and moved_m:
                 planned = int(planned_m.group(1))
@@ -377,8 +435,16 @@ class _GetIntakeHumanSummarizer:
                 # Heuristic: first EXECUTE block is promote, second is stash
                 if self._moved_promote is None and (self._planned_promote == planned or self._planned_promote is None):
                     self._moved_promote = moved
+                    if skipped_exists_m:
+                        self._moved_promote_skipped_exists = int(skipped_exists_m.group(1))
+                    if skipped_missing_m:
+                        self._moved_promote_skipped_missing = int(skipped_missing_m.group(1))
                 else:
                     self._moved_stash = moved
+                    if skipped_exists_m:
+                        self._moved_stash_skipped_exists = int(skipped_exists_m.group(1))
+                    if skipped_missing_m:
+                        self._moved_stash_skipped_missing = int(skipped_missing_m.group(1))
             if failed_m:
                 self._moved_failed = int(failed_m.group(1))
             return
@@ -388,6 +454,11 @@ class _GetIntakeHumanSummarizer:
             m2 = re.search(r"Named playlist:\s*(.+)$", stripped)
             if m2:
                 self._named_playlist = Path(m2.group(1)).name
+            return
+
+        if "m3u" in stripped.lower() and "skipping" in stripped.lower():
+            # Example: "No promoted files found on disk for M3U generation; skipping."
+            self._m3u_skip_reason = stripped
             return
 
         if stripped.startswith("Background enrich/art started: pid="):
@@ -421,6 +492,40 @@ class _GetIntakeHumanSummarizer:
             total = self._precheck_total
             if keep is not None and skip is not None and total is not None:
                 self._emit(f"Precheck: {keep} keep, {skip} blocked (total {total}).")
+                if self.verbose and not (self._precheck_keep_labels or self._precheck_skip_labels):
+                    decisions_csv = _find_latest_precheck_csv(get_artifacts_dir(), url="")
+                    if decisions_csv and decisions_csv.exists():
+                        try:
+                            if decisions_csv.stat().st_mtime >= self.run_started - 1.0:
+                                (
+                                    self._precheck_keep_labels,
+                                    self._precheck_skip_labels,
+                                    self._precheck_skip_reason_counts,
+                                ) = _parse_precheck_decisions_details(decisions_csv)
+                        except Exception:
+                            self._precheck_keep_labels = []
+                            self._precheck_skip_labels = []
+                            self._precheck_skip_reason_counts = {}
+
+                if self.verbose and self._precheck_keep_labels:
+                    self._emit(
+                        f"Keep: {_short_list(self._precheck_keep_labels, limit=50)}"
+                    )
+                if self.verbose and self._precheck_skip_labels:
+                    self._emit(
+                        f"Blocked: {_short_list(self._precheck_skip_labels, limit=50)}"
+                    )
+                if self.verbose and self._precheck_skip_reason_counts:
+                    top = sorted(
+                        self._precheck_skip_reason_counts.items(),
+                        key=lambda kv: kv[1],
+                        reverse=True,
+                    )[:6]
+                    self._emit(
+                        "Blocked reasons: "
+                        + ", ".join(f"{name}={count}" for name, count in top)
+                        + "."
+                    )
         elif "download from" in label:
             downloaded = len(self._downloaded_titles)
             existed = len(self._exists_titles)
@@ -439,6 +544,10 @@ class _GetIntakeHumanSummarizer:
                     self._emit(
                         f"Downloaded: {_short_list(self._downloaded_titles, limit=(50 if self.verbose else 12))}"
                     )
+            if self._exists_titles and (self.verbose or len(self._exists_titles) <= 5):
+                self._emit(
+                    f"Already present: {_short_list(self._exists_titles, limit=(50 if self.verbose else 5))}"
+                )
         elif "quick duplicate check" in label:
             if self._index_total is not None:
                 dups = self._index_duplicates or 0
@@ -447,7 +556,14 @@ class _GetIntakeHumanSummarizer:
         elif "trust scan" in label:
             if self._scan_discovered is not None:
                 succ = self._scan_succeeded if self._scan_succeeded is not None else "?"
-                fail = self._scan_failed if self._scan_failed is not None else "?"
+                fail: int | str
+                if self._scan_failed is not None:
+                    fail = self._scan_failed
+                elif self._scan_succeeded is not None:
+                    inferred = self._scan_discovered - self._scan_succeeded
+                    fail = inferred if inferred >= 0 else "?"
+                else:
+                    fail = "?"
                 extra = ""
                 if self._scan_failure_inputs_skipped:
                     extra = f" (InputSkipped={self._scan_failure_inputs_skipped})"
@@ -492,10 +608,29 @@ class _GetIntakeHumanSummarizer:
             promote = self._moved_promote if self._moved_promote is not None else "?"
             stash = self._moved_stash if self._moved_stash is not None else "?"
             failed = self._moved_failed if self._moved_failed is not None else 0
-            self._emit(f"Apply: promoted {promote}; stashed {stash}; move failures {failed}.")
+            promote_extra = ""
+            if self._moved_promote_skipped_exists is not None or self._moved_promote_skipped_missing is not None:
+                promote_extra = (
+                    f" (skipped_exists={self._moved_promote_skipped_exists or 0}, "
+                    f"skipped_missing={self._moved_promote_skipped_missing or 0})"
+                )
+            stash_extra = ""
+            if self._moved_stash_skipped_exists is not None or self._moved_stash_skipped_missing is not None:
+                stash_extra = (
+                    f" (skipped_exists={self._moved_stash_skipped_exists or 0}, "
+                    f"skipped_missing={self._moved_stash_skipped_missing or 0})"
+                )
+            self._emit(
+                f"Apply: promoted {promote}{promote_extra}; stashed {stash}{stash_extra}; move failures {failed}."
+            )
         elif "generate roon m3u" in label:
             if self._named_playlist:
                 self._emit(f"M3U: wrote {self._named_playlist}.")
+            else:
+                if self._m3u_skip_reason:
+                    self._emit("M3U: skipped (no inputs).")
+                else:
+                    self._emit("M3U: skipped.")
         elif "launch background enrich" in label:
             if self._background_pid is not None:
                 self._emit(f"Enrich/art: started in background (pid {self._background_pid}).")

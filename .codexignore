@@ -6,3 +6,13 @@
 *.xml
 artifacts/
 exports/
+.codex/*.log
+.codex/*.bak
+.codex/CODEX_SESSION_RECAP.md
+.codex/task_*.md
+.codex/*.log
+.codex/*.bak
+.codex/task_*.md
+.codex/CODEX_SESSION_RECAP.md
+
+.claude/settings.local.json

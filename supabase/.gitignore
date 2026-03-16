@@ -6,3 +6,8 @@
 .env.keys
 .env.local
 .env.*.local
+.codex/*.log
+.codex/*.bak
+.codex/CODEX_SESSION_RECAP.md
+.codex/task_*.md
+settings.local.json

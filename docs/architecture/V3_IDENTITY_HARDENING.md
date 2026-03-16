@@ -186,6 +186,29 @@ Identifiers not enforced as unique in SQLite storage:
 - `itunes_id`
 - `musicbrainz_id`
 
+## Provider Repair Policy (Intentional Asymmetry)
+
+This repository intentionally enforces provider uniqueness more broadly than it provides automated duplicate repair tooling.
+
+Schema-level enforcement:
+
+- active-row uniqueness is enforced for exactly seven provider ids: `beatport_id`, `tidal_id`, `qobuz_id`,
+  `spotify_id`, `apple_music_id`, `deezer_id`, `traxsource_id`
+
+Helper-level lookup/reuse:
+
+- `identity_service.py` performs helper-level lookup/reuse by `isrc`, then by provider ids in `PROVIDER_COLUMNS`
+- `PROVIDER_COLUMNS` is broader than schema uniqueness and includes `itunes_id` and `musicbrainz_id` in addition to
+  the seven schema-enforced provider ids
+
+Automated duplicate repair:
+
+- duplicate discovery and merge automation are Beatport-only:
+  - discovery: `find_duplicate_beatport_groups()`
+  - merge: `merge_group_by_repointing_assets()` requires a nonblank `beatport_id` winner and rechecks active
+    duplicate `beatport_id` after merge
+- non-Beatport enforced-provider duplicate repair is operator-driven (no repository-provided generic merge tooling)
+
 Reason these remain policy-only identifiers:
 
 - `isrc` is used heavily for lookup, reuse, key derivation, and winner scoring, but duplicate `isrc` rows still exist as an operational conflict class; see `tests/storage/v3/test_plan_backfill_identity_conflicts_v3.py`

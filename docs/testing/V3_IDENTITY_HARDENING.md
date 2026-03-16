@@ -97,6 +97,11 @@ Covers:
 - `asset_link`
 - `preferred_asset`
 
+Important scope limit:
+
+- this is the Beatport merge path only; the repository has no provider-generic merge automation for the other
+  schema-enforced provider ids (`tidal_id`, `qobuz_id`, `spotify_id`, `apple_music_id`, `deezer_id`, `traxsource_id`)
+
 This file is the authoritative proof that transaction ownership logic is part of identity hardening, not an incidental implementation detail.
 
 ## Identity Resolution Coverage
@@ -162,8 +167,8 @@ Storage-enforced identifiers with migration coverage:
 Policy-only identifiers with behavioral coverage:
 
 - `isrc`: `test_identity_service.py`, `test_plan_backfill_identity_conflicts_v3.py`
-- `itunes_id`: schema and payload-path only, no uniqueness test because no uniqueness constraint exists
-- `musicbrainz_id`: schema and payload-path only, no uniqueness test because no uniqueness constraint exists
+- `itunes_id`: helper-level lookup participation only; no schema uniqueness enforcement and no direct uniqueness/merge tests
+- `musicbrainz_id`: helper-level lookup participation only; no schema uniqueness enforcement and no direct uniqueness/merge tests
 
 Transaction-boundary coverage:
 
@@ -187,4 +192,3 @@ pytest tests/storage/v3/test_migration_0011.py -q
 pytest tests/storage/v3/test_transaction_boundaries.py -q
 pytest tests/storage/v3/test_backfill_v3_identity_links.py -q
 ```
-

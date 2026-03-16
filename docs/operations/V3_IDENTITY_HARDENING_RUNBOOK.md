@@ -141,11 +141,35 @@ If `0010` or `0011` fails with `duplicate active provider ids block migration ..
 
 1. identify the duplicate provider field and normalized value
 2. inspect all rows with that value and `merged_into_id IS NULL`
-3. merge rows when they represent one canonical track
+3. resolve the duplicate set using the provider-specific guidance below
 4. leave only one canonical winner active
 5. rerun the migration
 
 Do not bypass the migration by creating the unique indexes manually without resolving the duplicate set.
+
+### Provider-Specific Resolution Guidance
+
+Beatport duplicate blockers (`beatport_id`):
+
+- repository helper exists: `tagslut/storage/v3/merge_identities.py`
+- use `merge_group_by_repointing_assets(conn, winner_id, loser_ids, dry_run=False)` to merge a duplicate set
+- merge automation is Beatport-specific by design (winner must retain a nonblank `beatport_id`; loser `beatport_id`
+  is cleared; post-merge validation checks only active `beatport_id`)
+
+Non-Beatport enforced-provider duplicate blockers (`tidal_id`, `qobuz_id`, `spotify_id`, `apple_music_id`,
+`deezer_id`, `traxsource_id`):
+
+- no repository-provided provider-generic duplicate merge automation exists today
+- operator-driven repair steps:
+  - inspect the duplicate rows (`merged_into_id IS NULL`) for the normalized provider value
+  - choose the canonical winner identity id
+  - repair the other rows manually so only one canonical winner remains active for that provider value
+  - rerun the migration
+
+Non-enforced identifiers (`isrc`, `itunes_id`, `musicbrainz_id`):
+
+- these are not schema-enforced uniqueness surfaces in v3
+- treat duplicates for these fields as operator-review / policy-only conflicts, not migration blockers
 
 ## Canonical Duplicate Inspection SQL
 
@@ -277,4 +301,3 @@ On a database created with `create_schema_v3()`:
 - versions `10` and `11` must already exist in `schema_migrations`
 - all seven active-provider unique partial indexes must already exist
 - `run_pending_v3()` must not attempt to reapply `0010` or `0011`
-

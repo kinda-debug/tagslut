@@ -591,7 +591,11 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
         INSERT OR IGNORE INTO schema_migrations (schema_name, version, note)
         VALUES (?, ?, ?)
         """,
-        (V3_SCHEMA_NAME, V3_SCHEMA_VERSION_PROVIDER_UNIQUENESS, "active provider-id unique partial indexes"),
+        (
+            V3_SCHEMA_NAME,
+            V3_SCHEMA_VERSION_PROVIDER_UNIQUENESS,
+            "0010_track_identity_provider_uniqueness.py",
+        ),
     )
     conn.execute(
         """
@@ -601,7 +605,7 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
         (
             V3_SCHEMA_NAME,
             V3_SCHEMA_VERSION_PROVIDER_UNIQUENESS_HARDENING,
-            "active provider-id unique partial indexes hardening pass",
+            "0011_track_identity_provider_uniqueness_hardening.py",
         ),
     )
     conn.commit()

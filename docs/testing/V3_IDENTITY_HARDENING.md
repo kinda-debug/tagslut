@@ -121,6 +121,10 @@ Identity-hardening relevance:
 - shows the repository still uses `isrc` as a strong lookup key without SQLite uniqueness enforcement
 - confirms provider-id lookup behavior aligns with storage uniqueness expectations
 
+Coverage gap:
+
+- no test asserts `resolve_active_identity()` raises on a `merged_into_id` cycle
+
 ## Backfill Execution Coverage
 
 ### `tests/storage/v3/test_backfill_v3_identity_links.py`

@@ -262,6 +262,15 @@ Use this behavior when debugging a merge failure:
 
 - if the call raised and no outer transaction existed, expect loser `merged_into_id`, repointed `asset_link`, copied canonical fields, and `preferred_asset` cleanup to be fully reverted
 
+## merged_into_id Cycle Handling
+
+`merged_into_id` has a foreign-key reference but no schema-level cycle prevention. The repository relies on:
+
+- write-path checks in `merge_group_by_repointing_assets()` (winner must not already be merged; losers must not already be merged)
+- runtime detection in `identity_service.py:resolve_active_identity()` (raises `RuntimeError` on a detected cycle)
+
+If you see a `merged_into_id cycle detected ...` error, treat it as a data-integrity issue that must be repaired in the database before identity resolution can proceed reliably.
+
 ### Backfill
 
 `tagslut/storage/v3/backfill_identity.py` execute mode:

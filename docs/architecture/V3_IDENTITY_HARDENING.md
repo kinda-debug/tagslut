@@ -241,6 +241,7 @@ Important details:
 
 - `derive_identity_key()` prefers `isrc`, then provider ids, then normalized text, then asset fallback
 - `resolve_active_identity()` follows `merged_into_id` so callers can resolve losers to winners
+- `resolve_active_identity()` detects `merged_into_id` cycles at runtime and raises `RuntimeError` if a cycle is encountered
 - `_matched_identity_id_by_field()` prefers active rows first and then calls `resolve_active_identity()`
 
 Storage consequence:

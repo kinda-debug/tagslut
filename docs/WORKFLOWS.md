@@ -39,26 +39,39 @@ Important current guardrail:
 This is the normal day-to-day operator path for URL-based downloads.
 
 ```bash
-# Default: precheck + download + promote (no MP3)
-poetry run tagslut intake url "https://www.beatport.com/release/.../..."
-poetry run tagslut intake url "https://tidal.com/browse/album/..."
+# Canonical: `tagslut intake <URL>` (alias: `tagslut intake url <URL>`)
+
+# Default: precheck + download + promote (no derivatives)
+poetry run tagslut intake "https://www.beatport.com/release/.../..."
+poetry run tagslut intake "https://tidal.com/browse/album/..."
 
 # Precheck only (dry run, no download)
-poetry run tagslut intake url "https://tidal.com/browse/album/..." --dry-run
+poetry run tagslut intake "https://tidal.com/browse/album/..." --dry-run
 
-# With MP3 transcode (requires --dj-root)
-poetry run tagslut intake url "https://www.beatport.com/release/.../..." \
-  --mp3 --dj-root "$DJ_LIBRARY"
+# Full-tag MP3 assets
+poetry run tagslut intake "https://www.beatport.com/release/.../..." \
+  --mp3 --mp3-root "/path/to/mp3_assets"
+
+# DJ copies (implies --mp3)
+poetry run tagslut intake "https://www.beatport.com/release/.../..." \
+  --dj --mp3-root "/path/to/mp3_assets" --dj-root "/path/to/dj_library"
 ```
 
 **Orchestration stages:**
 1. **Precheck** - Runs `tools/review/pre_download_check.py` to decide what to download
-2. **Download** - Calls `tools/get --no-precheck` for approved tracks only
-3. **MP3** (optional) - Transcodes to DJ library if `--mp3` passed
+2. **Download** - Calls `tools/get` for approved tracks only
+3. **Promote** - Observes the promoted cohort for this run (from `tools/get`)
+4. **MP3** (optional) - Full-tag MP3 assets written under `--mp3-root`
+5. **DJ** (optional) - Separate DJ copies written under `--dj-root`
+
+**Roots and invariants:**
+- MP3 asset library (`--mp3-root`) and DJ library (`--dj-root`) are different things.
+- Do not point `--mp3-root` and `--dj-root` at the same directory.
+- In MP3-only mode (`--mp3` without `--dj`), `--dj-root` is accepted only as a deprecated alias for `--mp3-root` when `--mp3-root` is omitted.
 
 **Exit codes:**
 - `0` = completed (all stages succeeded)
-- `2` = blocked (precheck found 0 tracks to download)
+- `2` = blocked (precheck found 0 tracks to download, and there was nothing else to do)
 - `1` = failed (any stage error)
 
 **Artifacts:**
@@ -67,20 +80,17 @@ Every invocation writes a structured JSON artifact to `artifacts/intake/intake_u
 - Per-stage status (ok/skipped/blocked/failed)
 - Disposition (completed/blocked/failed)
 - Path to precheck CSV for per-track decisions
-
-**MP3 stage requirements:**
-- `--mp3` requires `--dj-root <path>` (CLI enforces this)
-- Processes all identities without MP3 files
-- Uses identity-driven `build_mp3_from_identity()` logic
+- Requested roots (`mp3_root`, `dj_root`) and mode flags (`mp3`, `dj`)
+- MP3/DJ cohort artifacts (when stages run): `artifacts/intake/intake_<timestamp>_{mp3,dj}_cohort.json`
 
 **Compatibility wrapper:**
-`tools/get` remains available as a compatibility wrapper but internally routes to provider-specific download logic. For new workflows, prefer `tagslut intake url` for artifact-driven structured orchestration.
+`tools/get` remains available as a compatibility wrapper but internally routes to provider-specific download logic. For new workflows, prefer `tagslut intake <URL>` for artifact-driven structured orchestration.
 
 ---
 
 ## Legacy: tools/get Wrapper
 
-Legacy compatibility wrapper. For new work, use `tagslut intake url` above.
+Legacy compatibility wrapper. For new work, use `tagslut intake <URL>` above.
 
 ```bash
 # Default: precheck + download + local tag prep + promote + merged M3U
@@ -193,7 +203,7 @@ sqlite3 "$V3_DB" "PRAGMA integrity_check;"
 
 ## Manual Phase Workflow (Advanced)
 
-This is the explicit phase-by-phase loop. Use it when you intentionally want manual control rather than `tagslut intake url` or `tools/get`.
+This is the explicit phase-by-phase loop. Use it when you intentionally want manual control rather than `tagslut intake <URL>` (alias: `tagslut intake url <URL>`) or `tools/get`.
 
 ```
 1. precheck    → decide what to download
@@ -227,7 +237,7 @@ tools/get-auto --links-file ~/links.txt
 
 Outputs: `output/precheck/precheck_decisions_*.csv`, `precheck_keep_track_urls_*.txt`
 
-Use `--quiet` for script-level automation, or run through `tagslut intake url` or `tools/get` for the normal concise operator flow.
+Use `--quiet` for script-level automation, or run through `tagslut intake <URL>` (alias: `tagslut intake url <URL>`) or `tools/get` for the normal concise operator flow.
 
 ### 2 · Download
 

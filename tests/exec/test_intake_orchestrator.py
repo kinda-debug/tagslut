@@ -14,7 +14,6 @@ from click.testing import CliRunner
 from tagslut.cli.commands.intake import register_intake_group
 from tagslut.exec.intake_orchestrator import (
     IntakeResult,
-    IntakeStageResult,
     _parse_precheck_csv,
     run_intake,
 )
@@ -107,8 +106,12 @@ def mock_precheck_csv(tmp_path: Path) -> Path:
     csv_path.parent.mkdir(parents=True, exist_ok=True)
 
     csv_content = (
-        "domain,source_link,track_id,isrc,title,artist,album,decision,confidence,match_method,reason,db_path,db_download_source,existing_quality_rank,candidate_quality_rank\n"
-        'beatport,https://www.beatport.com/release/test/123,456,USTEST001,Test Track,Test Artist,Test Album,skip,high,isrc,"matched by isrc; existing rank 3 is equal or better than candidate rank 3",/path/to/file.flac,beatport,3,3\n'
+        "domain,source_link,track_id,isrc,title,artist,album,decision,confidence,match_method,"
+        "reason,db_path,db_download_source,existing_quality_rank,candidate_quality_rank\n"
+        "beatport,https://www.beatport.com/release/test/123,456,USTEST001,Test Track,Test Artist,"
+        "Test Album,skip,high,isrc,"
+        "\"matched by isrc; existing rank 3 is equal or better than candidate rank 3\","
+        "/path/to/file.flac,beatport,3,3\n"
     )
     csv_path.write_text(csv_content, encoding="utf-8")
 
@@ -122,9 +125,12 @@ def mock_precheck_csv_new(tmp_path: Path) -> Path:
     csv_path.parent.mkdir(parents=True, exist_ok=True)
 
     csv_content = (
-        "domain,source_link,track_id,isrc,title,artist,album,decision,confidence,match_method,reason,db_path,db_download_source,existing_quality_rank,candidate_quality_rank\n"
-        'beatport,https://www.beatport.com/release/test/123,456,USTEST001,Test Track,Test Artist,Test Album,keep,,,,"no inventory match",,,3\n'
-        'beatport,https://www.beatport.com/release/test/123,789,USTEST002,Test Track 2,Test Artist 2,Test Album,keep,,,,"no inventory match",,,3\n'
+        "domain,source_link,track_id,isrc,title,artist,album,decision,confidence,match_method,"
+        "reason,db_path,db_download_source,existing_quality_rank,candidate_quality_rank\n"
+        "beatport,https://www.beatport.com/release/test/123,456,USTEST001,Test Track,Test Artist,"
+        "Test Album,keep,,,," "\"no inventory match\"" ",,,3\n"
+        "beatport,https://www.beatport.com/release/test/123,789,USTEST002,Test Track 2,"
+        "Test Artist 2,Test Album,keep,,,," "\"no inventory match\"" ",,,3\n"
     )
     csv_path.write_text(csv_content, encoding="utf-8")
 
@@ -455,8 +461,12 @@ def test_mp3_placeholder_falls_back_to_precheck_skip_db_paths_when_no_promoted_f
     decisions_csv = tmp_path / "artifacts" / "compare" / "precheck_decisions_20260315_150000.csv"
     decisions_csv.parent.mkdir(parents=True, exist_ok=True)
     decisions_csv.write_text(
-        "domain,source_link,track_id,isrc,title,artist,album,decision,confidence,match_method,reason,db_path,db_download_source,existing_quality_rank,candidate_quality_rank\n"
-        f'beatport,https://www.beatport.com/release/test/123,456,USTEST001,Test Track,Test Artist,Test Album,skip,high,isrc,"matched","{flac_path}",beatport,3,3\n',
+        (
+            "domain,source_link,track_id,isrc,title,artist,album,decision,confidence,match_method,"
+            "reason,db_path,db_download_source,existing_quality_rank,candidate_quality_rank\n"
+            "beatport,https://www.beatport.com/release/test/123,456,USTEST001,Test Track,Test Artist,"
+            "Test Album,skip,high,isrc," "\"matched\"" f",\"{flac_path}\",beatport,3,3\n"
+        ),
         encoding="utf-8",
     )
     os.utime(decisions_csv, (time.time() + 5, time.time() + 5))
@@ -641,7 +651,6 @@ def test_backfill_prefers_dj_copy_profile_when_both_exist(temp_db: Path, tmp_pat
         """,
         (identity_id, asset_id, "mp3_asset_320_cbr_full", str(tmp_path / "full.mp3")),
     )
-    _full_id = int(cur.lastrowid)
     cur = conn.execute(
         """
         INSERT INTO mp3_asset (identity_id, asset_id, profile, path, status, transcoded_at)

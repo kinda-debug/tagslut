@@ -78,12 +78,48 @@ The final CSV contains exactly these columns:
 Match metadata:
 
 - `match_method=isrc`, `match_confidence=1.0`
-- `match_method=title_artist_fallback`, `match_confidence=0.6`
+- `match_method=title_artist_fallback`, confidence mapped from the existing classifier:
+  - `exact -> 0.95`
+  - `strong -> 0.85`
+  - `medium -> 0.70`
+  - `weak -> 0.55`
+  - `none -> 0.0`
 - `match_method=no_match`, `match_confidence=0.0`
+
+## Summary Output
+
+`tidal-seed` prints:
+
+- playlist id
+- tracks exported
+- rows missing ISRC
+- malformed playlist items skipped
+- rows missing required fields skipped
+- duplicate rows skipped
+- pages fetched
+- endpoint fallback usage
+- pagination stop counts for:
+  - non-200
+  - empty page
+  - repeated next
+  - short page with no next
+
+`beatport-enrich` prints:
+
+- input rows
+- discarded input rows
+- rows written
+- matched by ISRC
+- matched by title/artist fallback
+- unmatched
+- ambiguous ISRC rows
+- ambiguous fallback rows
+- equal-rank fallback ties
 
 ## Known Failure Modes
 
 - Missing or expired TIDAL auth: seed export returns no rows or fails to fetch playlist items.
 - Missing or expired Beatport auth: ISRC lookup may return no results; fallback can still use the provider's existing non-auth search path if available.
-- Playlist item shape drift: the parser only extracts the required seed fields and skips unusable rows with debug logging instead of fabricating values.
+- Playlist item shape drift: the parser only extracts the required seed fields and skips unusable rows instead of fabricating values; those skips are counted in summary telemetry.
 - Missing ISRC on TIDAL rows: those rows are still exported and can still match through title/artist fallback.
+- Beatport search remains first-page only for both ISRC and title/artist lookup because it intentionally reuses the current provider methods.

@@ -17,13 +17,16 @@ from pathlib import Path
 from types import TracebackType
 from typing import Any, Callable, Dict, Iterator, List, Optional, cast
 
-from tagslut.metadata.models import (
+from tagslut.metadata.models.types import (
     TIDAL_BEATPORT_MERGED_COLUMNS,
     TIDAL_SEED_COLUMNS,
+    TidalBeatportEnrichmentStats,
     TidalBeatportMergedRow,
+    TidalSeedExportStats,
     TidalSeedRow,
+    EnrichmentResult,
+    LocalFileInfo,
 )
-from tagslut.metadata.models.types import EnrichmentResult, LocalFileInfo
 from tagslut.metadata.auth import TokenManager
 from tagslut.metadata.providers.base import AbstractProvider as BaseProvider
 from tagslut.metadata.pipeline import runner, stages
@@ -138,11 +141,14 @@ class Enricher:
         return text or None
 
     @staticmethod
-    def _load_tidal_seed_rows(input_csv: Path) -> List[TidalSeedRow]:
+    def _load_tidal_seed_rows(input_csv: Path) -> tuple[List[TidalSeedRow], int, int]:
         rows: List[TidalSeedRow] = []
+        input_rows = 0
+        discarded_rows = 0
         with input_csv.open("r", encoding="utf-8", newline="") as handle:
             reader = csv.DictReader(handle)
             for raw in reader:
+                input_rows += 1
                 tidal_playlist_id = (raw.get("tidal_playlist_id") or "").strip()
                 tidal_track_id = (raw.get("tidal_track_id") or "").strip()
                 tidal_url = (raw.get("tidal_url") or "").strip()
@@ -150,6 +156,7 @@ class Enricher:
                 artist = (raw.get("artist") or "").strip()
                 if not tidal_playlist_id or not tidal_track_id or not tidal_url or not title or not artist:
                     logger.debug("Skipping incomplete TIDAL seed row: %s", raw)
+                    discarded_rows += 1
                     continue
                 rows.append(
                     TidalSeedRow(
@@ -161,7 +168,7 @@ class Enricher:
                         isrc=Enricher._optional_csv_value(raw.get("isrc")),
                     )
                 )
-        return rows
+        return rows, input_rows, discarded_rows
 
     @staticmethod
     def _write_csv_rows(output_csv: Path, fieldnames: tuple[str, ...], rows: List[dict[str, Any]]) -> None:
@@ -207,46 +214,85 @@ class Enricher:
         """Fetch a single file by path."""
         return db_reader.get_file_info(self.db_path, path)
 
-    def export_tidal_seed_csv(self, playlist_url: str, output_csv: Path) -> None:
+    def export_tidal_seed_csv(self, playlist_url: str, output_csv: Path) -> TidalSeedExportStats:
         """Export one stable TIDAL playlist seed CSV."""
         provider = self._get_provider("tidal")
         if provider is None or not hasattr(provider, "export_playlist_seed_rows"):
             raise RuntimeError("TIDAL provider is unavailable for playlist seed export")
 
-        seed_rows = cast(List[TidalSeedRow], provider.export_playlist_seed_rows(playlist_url))
+        seed_rows, stats = cast(
+            tuple[List[TidalSeedRow], TidalSeedExportStats],
+            provider.export_playlist_seed_rows(playlist_url),
+        )
         self._write_csv_rows(output_csv, TIDAL_SEED_COLUMNS, [asdict(row) for row in seed_rows])
 
-        playlist_id = seed_rows[0].tidal_playlist_id if seed_rows else playlist_url
-        missing_isrc = sum(1 for row in seed_rows if not row.isrc)
         logger.info(
-            "TIDAL seed export complete: playlist_id=%s total_tracks=%d rows_missing_isrc=%d output=%s",
-            playlist_id,
-            len(seed_rows),
-            missing_isrc,
+            "TIDAL seed export complete: playlist_id=%s exported=%d missing_isrc=%d malformed=%d missing_required=%d duplicates=%d pages=%d fallback=%d stop_non_200=%d stop_empty=%d stop_repeated_next=%d stop_short_no_next=%d output=%s",
+            stats.playlist_id,
+            stats.exported_rows,
+            stats.missing_isrc_rows,
+            stats.malformed_playlist_items,
+            stats.rows_missing_required_fields,
+            stats.duplicate_rows,
+            stats.pages_fetched,
+            stats.endpoint_fallback_used,
+            stats.pagination_stop_non_200,
+            stats.pagination_stop_empty_page,
+            stats.pagination_stop_repeated_next,
+            stats.pagination_stop_short_page_no_next,
             output_csv,
         )
+        return stats
 
-    def enrich_tidal_seed_csv(self, input_csv: Path, output_csv: Path) -> None:
+    def enrich_tidal_seed_csv(
+        self,
+        input_csv: Path,
+        output_csv: Path,
+    ) -> TidalBeatportEnrichmentStats:
         """Enrich a TIDAL seed CSV row-by-row using Beatport-only lookup."""
         provider = self._get_provider("beatport")
         if provider is None or not hasattr(provider, "enrich_tidal_seed_row"):
             raise RuntimeError("Beatport provider is unavailable for seed enrichment")
 
-        seed_rows = self._load_tidal_seed_rows(input_csv)
-        merged_rows = [
-            cast(TidalBeatportMergedRow, provider.enrich_tidal_seed_row(seed_row))
-            for seed_row in seed_rows
-        ]
+        seed_rows, input_rows, discarded_rows = self._load_tidal_seed_rows(input_csv)
+        stats = TidalBeatportEnrichmentStats(
+            input_rows=input_rows,
+            discarded_seed_rows=discarded_rows,
+        )
+        merged_rows: List[TidalBeatportMergedRow] = []
+        for seed_row in seed_rows:
+            merged_row, telemetry = cast(
+                tuple[TidalBeatportMergedRow, Dict[str, int]],
+                provider.enrich_tidal_seed_row(seed_row),
+            )
+            merged_rows.append(merged_row)
+            stats.output_rows += 1
+            stats.ambiguous_isrc_rows += telemetry.get("ambiguous_isrc_rows", 0)
+            stats.ambiguous_fallback_rows += telemetry.get("ambiguous_fallback_rows", 0)
+            stats.fallback_equal_rank_ties += telemetry.get("fallback_equal_rank_ties", 0)
+            if merged_row.match_method == "isrc":
+                stats.isrc_matches += 1
+            elif merged_row.match_method == "title_artist_fallback":
+                stats.title_artist_fallback_matches += 1
+            elif merged_row.match_method == "no_match":
+                stats.no_match_rows += 1
+
         self._write_csv_rows(output_csv, TIDAL_BEATPORT_MERGED_COLUMNS, [asdict(row) for row in merged_rows])
 
         logger.info(
-            "Beatport enrichment complete: total_rows=%d matched_isrc=%d matched_fallback=%d unmatched=%d output=%s",
-            len(merged_rows),
-            sum(1 for row in merged_rows if row.match_method == "isrc"),
-            sum(1 for row in merged_rows if row.match_method == "title_artist_fallback"),
-            sum(1 for row in merged_rows if row.match_method == "no_match"),
+            "Beatport enrichment complete: input=%d discarded=%d output=%d matched_isrc=%d matched_fallback=%d unmatched=%d ambiguous_isrc=%d ambiguous_fallback=%d fallback_ties=%d output_path=%s",
+            stats.input_rows,
+            stats.discarded_seed_rows,
+            stats.output_rows,
+            stats.isrc_matches,
+            stats.title_artist_fallback_matches,
+            stats.no_match_rows,
+            stats.ambiguous_isrc_rows,
+            stats.ambiguous_fallback_rows,
+            stats.fallback_equal_rank_ties,
             output_csv,
         )
+        return stats
 
     def resolve_file(self, file_info: LocalFileInfo) -> EnrichmentResult:
         """

@@ -2,7 +2,7 @@
 Data models for metadata enrichment.
 """
 
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field
 from typing import Optional, Dict, Any, List
 from enum import Enum
 
@@ -254,5 +254,67 @@ class TidalBeatportMergedRow:
     last_synced_at: Optional[str] = None
 
 
-TIDAL_SEED_COLUMNS = tuple(field.name for field in fields(TidalSeedRow))
-TIDAL_BEATPORT_MERGED_COLUMNS = tuple(field.name for field in fields(TidalBeatportMergedRow))
+TIDAL_SEED_COLUMNS = (
+    "tidal_playlist_id",
+    "tidal_track_id",
+    "tidal_url",
+    "title",
+    "artist",
+    "isrc",
+)
+
+TIDAL_BEATPORT_MERGED_COLUMNS = (
+    "tidal_playlist_id",
+    "tidal_track_id",
+    "tidal_url",
+    "title",
+    "artist",
+    "isrc",
+    "beatport_track_id",
+    "beatport_release_id",
+    "beatport_url",
+    "beatport_bpm",
+    "beatport_key",
+    "beatport_genre",
+    "beatport_subgenre",
+    "beatport_label",
+    "beatport_catalog_number",
+    "beatport_upc",
+    "beatport_release_date",
+    "match_method",
+    "match_confidence",
+    "last_synced_at",
+)
+
+
+@dataclass(slots=True)
+class TidalSeedExportStats:
+    """Telemetry for TIDAL playlist seed export."""
+
+    playlist_id: str
+    exported_rows: int = 0
+    missing_isrc_rows: int = 0
+    malformed_playlist_items: int = 0
+    rows_missing_required_fields: int = 0
+    duplicate_rows: int = 0
+    pages_fetched: int = 0
+    endpoint_fallback_used: int = 0
+    pagination_stop_non_200: int = 0
+    pagination_stop_empty_page: int = 0
+    pagination_stop_repeated_next: int = 0
+    pagination_stop_short_page_no_next: int = 0
+
+
+@dataclass(slots=True)
+class TidalBeatportEnrichmentStats:
+    """Telemetry for Beatport enrichment of a TIDAL seed CSV."""
+
+    input_rows: int = 0
+    discarded_seed_rows: int = 0
+    output_rows: int = 0
+    isrc_matches: int = 0
+    title_artist_fallback_matches: int = 0
+    no_match_rows: int = 0
+    ambiguous_isrc_rows: int = 0
+    ambiguous_fallback_rows: int = 0
+    fallback_equal_rank_ties: int = 0

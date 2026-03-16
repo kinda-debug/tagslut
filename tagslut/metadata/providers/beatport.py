@@ -24,8 +24,12 @@ import httpx
 from tagslut.metadata.auth import TokenManager
 from tagslut.metadata.beatport_normalize import normalize_beatport_track
 from tagslut.metadata.genre_normalization import GenreNormalizer
-from tagslut.metadata.models import TidalBeatportMergedRow, TidalSeedRow
-from tagslut.metadata.models.types import ProviderTrack, MatchConfidence
+from tagslut.metadata.models.types import (
+    MatchConfidence,
+    ProviderTrack,
+    TidalBeatportMergedRow,
+    TidalSeedRow,
+)
 from tagslut.metadata.providers.base import (
     AbstractProvider,
     RateLimitConfig,
@@ -33,6 +37,14 @@ from tagslut.metadata.providers.base import (
 )
 
 logger = logging.getLogger("tagslut.metadata.providers.beatport")
+
+_FALLBACK_CONFIDENCE_NUMERIC = {
+    MatchConfidence.EXACT: 0.95,
+    MatchConfidence.STRONG: 0.85,
+    MatchConfidence.MEDIUM: 0.70,
+    MatchConfidence.WEAK: 0.55,
+    MatchConfidence.NONE: 0.0,
+}
 
 
 def _normalize_vendor_text(value: Any) -> Optional[str]:
@@ -465,14 +477,20 @@ class BeatportProvider(AbstractProvider):
         }
         return rank.get(match_confidence, 0)
 
-    def _select_best_title_artist_match(self, seed_row: TidalSeedRow) -> Optional[ProviderTrack]:
+    def _select_best_title_artist_match(
+        self,
+        seed_row: TidalSeedRow,
+    ) -> tuple[Optional[ProviderTrack], MatchConfidence, dict[str, int]]:
         """Select the strongest Beatport title/artist fallback match for a seed row."""
         candidates = self.search_by_artist_and_title(seed_row.artist, seed_row.title, limit=5)
+        telemetry = {
+            "ambiguous_fallback_rows": 1 if len(candidates) > 1 else 0,
+            "fallback_equal_rank_ties": 0,
+        }
         if not candidates:
-            return None
+            return None, MatchConfidence.NONE, telemetry
 
-        best_track: Optional[ProviderTrack] = None
-        best_rank = -1
+        scored_candidates: List[tuple[int, MatchConfidence, ProviderTrack]] = []
         for track in candidates:
             track.match_confidence = classify_match_confidence(
                 seed_row.title,
@@ -481,13 +499,36 @@ class BeatportProvider(AbstractProvider):
                 track,
             )
             rank = self._fallback_match_rank(track.match_confidence)
-            if rank > best_rank:
-                best_rank = rank
-                best_track = track
+            scored_candidates.append((rank, track.match_confidence, track))
 
-        if best_track is None or best_rank <= 0:
-            return None
-        return best_track
+        if telemetry["ambiguous_fallback_rows"]:
+            logger.info(
+                "Beatport fallback ambiguity for '%s' - '%s': %d candidates, selecting highest rank",
+                seed_row.artist,
+                seed_row.title,
+                len(candidates),
+            )
+
+        best_rank = max(rank for rank, _, _ in scored_candidates)
+        if best_rank <= 0:
+            return None, MatchConfidence.NONE, telemetry
+
+        best_candidates = [
+            (confidence, track)
+            for rank, confidence, track in scored_candidates
+            if rank == best_rank
+        ]
+        if len(best_candidates) > 1:
+            telemetry["fallback_equal_rank_ties"] = 1
+            logger.info(
+                "Beatport fallback tie for '%s' - '%s': %d top-rank candidates, keeping first",
+                seed_row.artist,
+                seed_row.title,
+                len(best_candidates),
+            )
+
+        best_confidence, best_track = best_candidates[0]
+        return best_track, best_confidence, telemetry
 
     def _merged_row_from_match(
         self,
@@ -544,7 +585,10 @@ class BeatportProvider(AbstractProvider):
         )
         return merged
 
-    def enrich_tidal_seed_row(self, seed_row: TidalSeedRow) -> TidalBeatportMergedRow:
+    def enrich_tidal_seed_row(
+        self,
+        seed_row: TidalSeedRow,
+    ) -> tuple[TidalBeatportMergedRow, dict[str, int]]:
         """
         Enrich a TIDAL seed row using Beatport-only lookup.
 
@@ -552,21 +596,37 @@ class BeatportProvider(AbstractProvider):
         1. ISRC
         2. title/artist fallback
         """
+        telemetry = {
+            "ambiguous_isrc_rows": 0,
+            "ambiguous_fallback_rows": 0,
+            "fallback_equal_rank_ties": 0,
+        }
         if seed_row.isrc:
             isrc_matches = self.search_by_isrc(seed_row.isrc)
+            if len(isrc_matches) > 1:
+                telemetry["ambiguous_isrc_rows"] = 1
+                logger.info(
+                    "Beatport ISRC ambiguity for %s: %d candidates, keeping first",
+                    seed_row.isrc,
+                    len(isrc_matches),
+                )
             if isrc_matches:
-                return self._merged_row_from_match(seed_row, isrc_matches[0], "isrc", 1.0)
+                return self._merged_row_from_match(seed_row, isrc_matches[0], "isrc", 1.0), telemetry
 
-        fallback_match = self._select_best_title_artist_match(seed_row)
+        fallback_match, fallback_confidence, fallback_telemetry = self._select_best_title_artist_match(seed_row)
+        telemetry.update(fallback_telemetry)
         if fallback_match is not None:
-            return self._merged_row_from_match(
-                seed_row,
-                fallback_match,
-                "title_artist_fallback",
-                0.6,
+            return (
+                self._merged_row_from_match(
+                    seed_row,
+                    fallback_match,
+                    "title_artist_fallback",
+                    _FALLBACK_CONFIDENCE_NUMERIC.get(fallback_confidence, 0.0),
+                ),
+                telemetry,
             )
 
-        return self._merged_row_from_match(seed_row, None, "no_match", 0.0)
+        return self._merged_row_from_match(seed_row, None, "no_match", 0.0), telemetry
 
     def fetch_by_id(self, track_id: str) -> Optional[ProviderTrack]:
         """

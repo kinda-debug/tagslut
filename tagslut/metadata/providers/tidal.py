@@ -10,8 +10,13 @@ import os
 import re
 from typing import Optional, List, Dict, Any
 
-from tagslut.metadata.models import TidalSeedRow
-from tagslut.metadata.models.types import ProviderTrack, MatchConfidence
+from tagslut.metadata.models.types import (
+    MatchConfidence,
+    ProviderTrack,
+    TIDAL_SEED_COLUMNS,
+    TidalSeedExportStats,
+    TidalSeedRow,
+)
 from tagslut.metadata.providers.base import AbstractProvider, RateLimitConfig
 
 logger = logging.getLogger("tagslut.metadata.providers.tidal")
@@ -141,21 +146,21 @@ class TidalProvider(AbstractProvider):
             return []
 
     @staticmethod
-    def _extract_playlist_items(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _extract_playlist_items(payload: Dict[str, Any]) -> List[Any]:
         """Extract playlist items from the response payload."""
         items = payload.get("items")
         if isinstance(items, list):
-            return [item for item in items if isinstance(item, dict)]
+            return items
 
         data = payload.get("data")
         if isinstance(data, list):
-            return [item for item in data if isinstance(item, dict)]
+            return data
 
         tracks = payload.get("tracks")
         if isinstance(tracks, dict):
             track_items = tracks.get("items") or tracks.get("data")
             if isinstance(track_items, list):
-                return [item for item in track_items if isinstance(item, dict)]
+                return track_items
 
         return []
 
@@ -202,14 +207,18 @@ class TidalProvider(AbstractProvider):
     def _seed_row_from_playlist_item(
         self,
         playlist_id: str,
-        item: Dict[str, Any],
-    ) -> Optional[TidalSeedRow]:
+        item: Any,
+    ) -> tuple[Optional[TidalSeedRow], Optional[str]]:
         """Convert a playlist item payload into a stable TIDAL seed row."""
+        if not isinstance(item, dict):
+            logger.debug("Skipping malformed TIDAL playlist item: not a dict")
+            return None, "malformed"
+
         track_payload = self._unwrap_playlist_item(item)
         track = self._normalize_track(track_payload)
         if track is None:
             logger.debug("Skipping unusable TIDAL playlist item: missing normalized track")
-            return None
+            return None, "malformed"
         if not track.service_track_id or not track.title or not track.artist or not track.url:
             logger.debug(
                 "Skipping TIDAL playlist item with missing required seed fields: id=%s title=%s artist=%s url=%s",
@@ -218,18 +227,24 @@ class TidalProvider(AbstractProvider):
                 track.artist,
                 track.url,
             )
-            return None
+            return None, "missing_required"
 
-        return TidalSeedRow(
-            tidal_playlist_id=playlist_id,
-            tidal_track_id=track.service_track_id,
-            tidal_url=track.url,
-            title=track.title,
-            artist=track.artist,
-            isrc=track.isrc,
+        return (
+            TidalSeedRow(
+                tidal_playlist_id=playlist_id,
+                tidal_track_id=track.service_track_id,
+                tidal_url=track.url,
+                title=track.title,
+                artist=track.artist,
+                isrc=track.isrc,
+            ),
+            None,
         )
 
-    def export_playlist_seed_rows(self, playlist_url_or_id: str) -> List[TidalSeedRow]:
+    def export_playlist_seed_rows(
+        self,
+        playlist_url_or_id: str,
+    ) -> tuple[List[TidalSeedRow], TidalSeedExportStats]:
         """
         Export stable seed rows for a TIDAL playlist.
 
@@ -240,24 +255,27 @@ class TidalProvider(AbstractProvider):
         playlist_id = self._parse_playlist_id(playlist_url_or_id)
         if not playlist_id:
             logger.warning("Unable to parse TIDAL playlist identifier from: %s", playlist_url_or_id)
-            return []
+            return [], TidalSeedExportStats(playlist_id=playlist_url_or_id)
 
         seed_rows: List[TidalSeedRow] = []
+        stats = TidalSeedExportStats(playlist_id=playlist_id)
         next_url = f"{self.BASE_URL}/playlists/{playlist_id}/items"
         fallback_url = f"{self.BASE_URL}/playlists/{playlist_id}/tracks"
         params: Optional[Dict[str, Any]] = {"limit": 100, "offset": 0}
-        visited_next_urls: set[str] = set()
+        seen_next_urls: set[str] = set()
+        seen_row_keys: set[tuple[str, ...]] = set()
         attempted_fallback = False
 
         while next_url:
-            request_params = None if next_url in visited_next_urls else params
-            response = self._make_request("GET", next_url, params=request_params)
+            response = self._make_request("GET", next_url, params=params)
             if response is None or response.status_code != 200:
                 if not attempted_fallback and next_url.endswith("/items"):
                     attempted_fallback = True
+                    stats.endpoint_fallback_used += 1
                     next_url = fallback_url
                     params = {"limit": 100, "offset": 0}
                     continue
+                stats.pagination_stop_non_200 += 1
                 logger.warning("Failed to fetch TIDAL playlist %s", playlist_id)
                 break
 
@@ -267,23 +285,47 @@ class TidalProvider(AbstractProvider):
                 logger.error("Failed to parse TIDAL playlist response: %s", e)
                 break
 
+            stats.pages_fetched += 1
             items = self._extract_playlist_items(payload)
             if not items:
+                stats.pagination_stop_empty_page += 1
                 break
 
             for item in items:
-                seed_row = self._seed_row_from_playlist_item(playlist_id, item)
-                if seed_row is not None:
-                    seed_rows.append(seed_row)
+                seed_row, skip_reason = self._seed_row_from_playlist_item(playlist_id, item)
+                if seed_row is None:
+                    if skip_reason == "malformed":
+                        stats.malformed_playlist_items += 1
+                    elif skip_reason == "missing_required":
+                        stats.rows_missing_required_fields += 1
+                    continue
+
+                row_key = tuple(str(getattr(seed_row, column) or "") for column in TIDAL_SEED_COLUMNS)
+                if row_key in seen_row_keys:
+                    stats.duplicate_rows += 1
+                    logger.debug(
+                        "Skipping duplicate TIDAL seed row: playlist=%s track=%s",
+                        seed_row.tidal_playlist_id,
+                        seed_row.tidal_track_id,
+                    )
+                    continue
+
+                seen_row_keys.add(row_key)
+                seed_rows.append(seed_row)
+                stats.exported_rows += 1
+                if not seed_row.isrc:
+                    stats.missing_isrc_rows += 1
 
             next_candidate = self._extract_next_playlist_url(payload)
             if next_candidate:
-                if next_candidate in visited_next_urls:
+                if next_candidate.startswith("/"):
+                    next_candidate = f"https://api.tidal.com{next_candidate}"
+                if next_candidate in seen_next_urls:
+                    stats.pagination_stop_repeated_next += 1
+                    logger.warning("Stopping TIDAL playlist pagination due to repeated next link: %s", next_candidate)
                     break
-                visited_next_urls.add(next_url)
+                seen_next_urls.add(next_candidate)
                 next_url = next_candidate
-                if next_url.startswith("/"):
-                    next_url = f"https://api.tidal.com{next_url}"
                 params = None
                 continue
 
@@ -293,10 +335,11 @@ class TidalProvider(AbstractProvider):
             offset = int(params.get("offset", 0))
             limit = int(params.get("limit", 100))
             if len(items) < limit:
+                stats.pagination_stop_short_page_no_next += 1
                 break
             params = {"limit": limit, "offset": offset + len(items)}
 
-        return seed_rows
+        return seed_rows, stats
 
     @staticmethod
     def _cover_to_url(cover_id: Optional[str], size: int = 640) -> Optional[str]:

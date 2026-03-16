@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import csv
 import logging
 import os
 from datetime import datetime
@@ -169,15 +168,21 @@ def register_misc_commands(cli: click.Group) -> None:
             dry_run=True,
             mode="hoarding",
         ) as enricher:
-            enricher.export_tidal_seed_csv(playlist_url, output_csv)
-            seed_rows = enricher._load_tidal_seed_rows(output_csv)
+            stats = enricher.export_tidal_seed_csv(playlist_url, output_csv)
 
-        playlist_id = seed_rows[0].tidal_playlist_id if seed_rows else playlist_url
-        missing_isrc = sum(1 for row in seed_rows if not row.isrc)
         click.echo(f"Wrote TIDAL seed CSV: {output_csv}")
-        click.echo(f"Playlist id: {playlist_id}")
-        click.echo(f"Tracks exported: {len(seed_rows)}")
-        click.echo(f"Rows missing ISRC: {missing_isrc}")
+        click.echo(f"Playlist id: {stats.playlist_id}")
+        click.echo(f"Tracks exported: {stats.exported_rows}")
+        click.echo(f"Rows missing ISRC: {stats.missing_isrc_rows}")
+        click.echo(f"Malformed playlist items skipped: {stats.malformed_playlist_items}")
+        click.echo(f"Rows missing required fields skipped: {stats.rows_missing_required_fields}")
+        click.echo(f"Duplicate rows skipped: {stats.duplicate_rows}")
+        click.echo(f"Pages fetched: {stats.pages_fetched}")
+        click.echo(f"Endpoint fallback usage: {stats.endpoint_fallback_used}")
+        click.echo(f"Pagination stop - non-200: {stats.pagination_stop_non_200}")
+        click.echo(f"Pagination stop - empty page: {stats.pagination_stop_empty_page}")
+        click.echo(f"Pagination stop - repeated next: {stats.pagination_stop_repeated_next}")
+        click.echo(f"Pagination stop - short page with no next: {stats.pagination_stop_short_page_no_next}")
 
     @cli.command("beatport-enrich")
     @click.option(
@@ -211,29 +216,18 @@ def register_misc_commands(cli: click.Group) -> None:
             dry_run=True,
             mode="hoarding",
         ) as enricher:
-            enricher.enrich_tidal_seed_csv(input_csv, output_csv)
-
-        total_rows = 0
-        isrc_matches = 0
-        fallback_matches = 0
-        unmatched = 0
-        with output_csv.open("r", encoding="utf-8", newline="") as handle:
-            reader = csv.DictReader(handle)
-            for row in reader:
-                total_rows += 1
-                method = (row.get("match_method") or "").strip()
-                if method == "isrc":
-                    isrc_matches += 1
-                elif method == "title_artist_fallback":
-                    fallback_matches += 1
-                elif method == "no_match":
-                    unmatched += 1
+            stats = enricher.enrich_tidal_seed_csv(input_csv, output_csv)
 
         click.echo(f"Wrote Beatport-enriched CSV: {output_csv}")
-        click.echo(f"Total rows: {total_rows}")
-        click.echo(f"Matched by ISRC: {isrc_matches}")
-        click.echo(f"Matched by title/artist fallback: {fallback_matches}")
-        click.echo(f"Unmatched: {unmatched}")
+        click.echo(f"Input rows: {stats.input_rows}")
+        click.echo(f"Discarded input rows: {stats.discarded_seed_rows}")
+        click.echo(f"Rows written: {stats.output_rows}")
+        click.echo(f"Matched by ISRC: {stats.isrc_matches}")
+        click.echo(f"Matched by title/artist fallback: {stats.title_artist_fallback_matches}")
+        click.echo(f"Unmatched: {stats.no_match_rows}")
+        click.echo(f"Ambiguous ISRC rows: {stats.ambiguous_isrc_rows}")
+        click.echo(f"Ambiguous fallback rows: {stats.ambiguous_fallback_rows}")
+        click.echo(f"Equal-rank fallback ties: {stats.fallback_equal_rank_ties}")
 
     @cli.command("canonize", hidden=True)
     @click.argument("path", type=click.Path(exists=True))

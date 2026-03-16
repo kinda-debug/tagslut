@@ -5,7 +5,12 @@ from pathlib import Path
 from typing import Any
 
 from tagslut.metadata.enricher import Enricher
-from tagslut.metadata.models.types import MatchConfidence, ProviderTrack
+from tagslut.metadata.models.types import (
+    MatchConfidence,
+    ProviderTrack,
+    TIDAL_BEATPORT_MERGED_COLUMNS,
+    TIDAL_SEED_COLUMNS,
+)
 from tagslut.metadata.providers.beatport import BeatportProvider
 from tagslut.metadata.providers.tidal import TidalProvider
 
@@ -19,9 +24,12 @@ class DummyResponse:
         return self._payload
 
 
-def _mock_tidal_playlist_export(monkeypatch, track_payload: dict[str, Any]) -> None:
+def _mock_tidal_make_request(monkeypatch, responses: list[DummyResponse]) -> None:
+    queue = list(responses)
+
     def fake_make_request(self, method: str, url: str, params=None, **kwargs):  # type: ignore[no-untyped-def]
-        return DummyResponse({"items": [{"item": track_payload}]})
+        assert queue, f"Unexpected extra TIDAL request for {url}"
+        return queue.pop(0)
 
     monkeypatch.setattr(TidalProvider, "_make_request", fake_make_request)
 
@@ -29,6 +37,19 @@ def _mock_tidal_playlist_export(monkeypatch, track_payload: dict[str, Any]) -> N
 def _read_csv_rows(path: Path) -> list[dict[str, str]]:
     with path.open("r", encoding="utf-8", newline="") as handle:
         return list(csv.DictReader(handle))
+
+
+def _read_csv_header(path: Path) -> list[str]:
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        return next(csv.reader(handle))
+
+
+def _write_seed_csv(path: Path, rows: list[dict[str, str]]) -> None:
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(TIDAL_SEED_COLUMNS))
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(row)
 
 
 def _provider_track_from_raw(raw: dict[str, Any]) -> ProviderTrack:
@@ -54,38 +75,159 @@ def _provider_track_from_raw(raw: dict[str, Any]) -> ProviderTrack:
     )
 
 
-def test_tidal_seed_to_beatport_enrichment_happy_path(tmp_path: Path, monkeypatch) -> None:
-    _mock_tidal_playlist_export(
+def test_header_constants_are_stable() -> None:
+    assert TIDAL_SEED_COLUMNS == (
+        "tidal_playlist_id",
+        "tidal_track_id",
+        "tidal_url",
+        "title",
+        "artist",
+        "isrc",
+    )
+    assert TIDAL_BEATPORT_MERGED_COLUMNS == (
+        "tidal_playlist_id",
+        "tidal_track_id",
+        "tidal_url",
+        "title",
+        "artist",
+        "isrc",
+        "beatport_track_id",
+        "beatport_release_id",
+        "beatport_url",
+        "beatport_bpm",
+        "beatport_key",
+        "beatport_genre",
+        "beatport_subgenre",
+        "beatport_label",
+        "beatport_catalog_number",
+        "beatport_upc",
+        "beatport_release_date",
+        "match_method",
+        "match_confidence",
+        "last_synced_at",
+    )
+
+
+def test_tidal_seed_export_counts_malformed_missing_duplicate_and_short_page_stop(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    valid_item = {
+        "id": "tidal-track-1",
+        "title": "Track One",
+        "artists": [{"name": "Artist One"}],
+        "isrc": "AAA111111111",
+        "url": "https://tidal.com/browse/track/tidal-track-1",
+    }
+    missing_required_item = {
+        "id": "tidal-track-2",
+        "artists": [{"name": "Artist Two"}],
+    }
+    _mock_tidal_make_request(
         monkeypatch,
-        {
-            "id": "tidal-track-1",
-            "title": "High Street",
-            "artists": [{"name": "Charlotte de Witte"}],
-            "isrc": "BE4JP2300002",
-            "url": "https://tidal.com/browse/track/tidal-track-1",
-        },
+        [
+            DummyResponse(
+                {
+                    "items": [
+                        {"item": valid_item},
+                        {"item": valid_item},
+                        {"item": missing_required_item},
+                        "malformed",
+                    ]
+                }
+            )
+        ],
+    )
+
+    seed_csv = tmp_path / "tidal_seed.csv"
+    with Enricher(Path("__vendor_only__"), providers=["tidal"], dry_run=True, mode="hoarding") as enricher:
+        stats = enricher.export_tidal_seed_csv(
+            "https://tidal.com/browse/playlist/test-playlist-1",
+            seed_csv,
+        )
+
+    assert _read_csv_header(seed_csv) == list(TIDAL_SEED_COLUMNS)
+    assert stats.playlist_id == "test-playlist-1"
+    assert stats.exported_rows == 1
+    assert stats.missing_isrc_rows == 0
+    assert stats.malformed_playlist_items == 1
+    assert stats.rows_missing_required_fields == 1
+    assert stats.duplicate_rows == 1
+    assert stats.pages_fetched == 1
+    assert stats.endpoint_fallback_used == 0
+    assert stats.pagination_stop_non_200 == 0
+    assert stats.pagination_stop_empty_page == 0
+    assert stats.pagination_stop_repeated_next == 0
+    assert stats.pagination_stop_short_page_no_next == 1
+
+
+def test_tidal_seed_export_surfaces_non_200_pagination_stop(tmp_path: Path, monkeypatch) -> None:
+    first_page_track = {
+        "id": "tidal-track-1",
+        "title": "Track One",
+        "artists": [{"name": "Artist One"}],
+        "url": "https://tidal.com/browse/track/tidal-track-1",
+    }
+    _mock_tidal_make_request(
+        monkeypatch,
+        [
+            DummyResponse(
+                {
+                    "items": [{"item": first_page_track}],
+                    "next": "/v1/playlists/test-playlist-2/items?offset=1",
+                }
+            ),
+            DummyResponse({}, status_code=500),
+        ],
+    )
+
+    seed_csv = tmp_path / "tidal_seed.csv"
+    with Enricher(Path("__vendor_only__"), providers=["tidal"], dry_run=True, mode="hoarding") as enricher:
+        stats = enricher.export_tidal_seed_csv(
+            "https://tidal.com/browse/playlist/test-playlist-2",
+            seed_csv,
+        )
+
+    assert stats.pages_fetched == 1
+    assert stats.pagination_stop_non_200 == 1
+    assert stats.pagination_stop_short_page_no_next == 0
+
+
+def test_beatport_enrichment_discards_incomplete_seed_rows_and_preserves_header(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    seed_csv = tmp_path / "tidal_seed.csv"
+    _write_seed_csv(
+        seed_csv,
+        [
+            {
+                "tidal_playlist_id": "playlist-1",
+                "tidal_track_id": "123",
+                "tidal_url": "https://tidal.com/browse/track/123",
+                "title": "Track",
+                "artist": "Artist",
+                "isrc": "AAA111111111",
+            },
+            {
+                "tidal_playlist_id": "playlist-1",
+                "tidal_track_id": "124",
+                "tidal_url": "https://tidal.com/browse/track/124",
+                "title": "",
+                "artist": "Artist",
+                "isrc": "BBB222222222",
+            },
+        ],
     )
 
     beatport_raw = {
-        "id": 17606729,
-        "name": "High Street",
-        "artists": [{"name": "Charlotte de Witte"}],
-        "isrc": "BE4JP2300002",
-        "bpm": 138,
-        "key": {"name": "C Minor"},
-        "genre": {"name": "Techno (Peak Time / Driving)"},
-        "sub_genre": {"name": "Peak Time / Driving"},
-        "url": "https://www.beatport.com/track/high-street/17606729",
-        "release": {
-            "id": 4089968,
-            "name": "High Street",
-            "label": {"name": "KNTXT"},
-            "catalog_number": "KNTXT021S",
-            "upc": "123456789012",
-            "new_release_date": "2023-04-21",
-        },
+        "id": 999,
+        "name": "Track",
+        "artists": [{"name": "Artist"}],
+        "isrc": "AAA111111111",
+        "url": "https://www.beatport.com/track/example/999",
+        "release": {"id": 1000, "name": "Release"},
     }
-
     monkeypatch.setattr(
         BeatportProvider,
         "search_by_isrc",
@@ -97,97 +239,86 @@ def test_tidal_seed_to_beatport_enrichment_happy_path(tmp_path: Path, monkeypatc
         lambda self, artist, title, limit=5: [],
     )
 
-    seed_csv = tmp_path / "tidal_seed.csv"
     output_csv = tmp_path / "tidal_beatport_enriched.csv"
+    with Enricher(Path("__vendor_only__"), providers=["beatport"], dry_run=True, mode="hoarding") as enricher:
+        stats = enricher.enrich_tidal_seed_csv(seed_csv, output_csv)
 
-    with Enricher(Path("__vendor_only__"), providers=["tidal", "beatport"], dry_run=True, mode="hoarding") as enricher:
-        enricher.export_tidal_seed_csv("https://tidal.com/browse/playlist/test-playlist-1", seed_csv)
-        enricher.enrich_tidal_seed_csv(seed_csv, output_csv)
-
-    rows = _read_csv_rows(output_csv)
-    assert len(rows) == 1
-
-    row = rows[0]
-    assert row["tidal_playlist_id"] == "test-playlist-1"
-    assert row["tidal_track_id"] == "tidal-track-1"
-    assert row["tidal_url"] == "https://tidal.com/browse/track/tidal-track-1"
-    assert row["title"] == "High Street"
-    assert row["artist"] == "Charlotte de Witte"
-    assert row["isrc"] == "BE4JP2300002"
-    assert row["beatport_track_id"] == "17606729"
-    assert row["beatport_release_id"] == "4089968"
-    assert row["beatport_url"] == "https://www.beatport.com/track/high-street/17606729"
-    assert row["beatport_bpm"] == "138"
-    assert row["beatport_key"] == "C Minor"
-    assert row["beatport_genre"] == "Techno (Peak Time / Driving)"
-    assert row["beatport_subgenre"] == "Peak Time / Driving"
-    assert row["beatport_label"] == "KNTXT"
-    assert row["beatport_catalog_number"] == "KNTXT021S"
-    assert row["beatport_upc"] == "123456789012"
-    assert row["beatport_release_date"] == "2023-04-21"
-    assert row["match_method"] == "isrc"
-    assert float(row["match_confidence"]) == 1.0
+    assert _read_csv_header(output_csv) == list(TIDAL_BEATPORT_MERGED_COLUMNS)
+    assert stats.input_rows == 2
+    assert stats.discarded_seed_rows == 1
+    assert stats.output_rows == 1
 
 
-def test_tidal_seed_to_beatport_enrichment_no_match(tmp_path: Path, monkeypatch) -> None:
-    _mock_tidal_playlist_export(
-        monkeypatch,
-        {
-            "id": "tidal-track-2",
-            "title": "Unknown Track",
-            "artists": [{"name": "Unknown Artist"}],
-            "isrc": "US1234567890",
-            "url": "https://tidal.com/browse/track/tidal-track-2",
-        },
+def test_beatport_enrichment_surfaces_ambiguous_isrc_rows(tmp_path: Path, monkeypatch) -> None:
+    seed_csv = tmp_path / "tidal_seed.csv"
+    _write_seed_csv(
+        seed_csv,
+        [
+            {
+                "tidal_playlist_id": "playlist-1",
+                "tidal_track_id": "123",
+                "tidal_url": "https://tidal.com/browse/track/123",
+                "title": "Track",
+                "artist": "Artist",
+                "isrc": "AAA111111111",
+            }
+        ],
     )
 
-    monkeypatch.setattr(BeatportProvider, "search_by_isrc", lambda self, isrc: [])
+    beatport_raw_1 = {
+        "id": 999,
+        "name": "Track",
+        "artists": [{"name": "Artist"}],
+        "isrc": "AAA111111111",
+        "url": "https://www.beatport.com/track/example/999",
+        "release": {"id": 1000, "name": "Release"},
+    }
+    beatport_raw_2 = {
+        "id": 1001,
+        "name": "Track",
+        "artists": [{"name": "Artist"}],
+        "isrc": "AAA111111111",
+        "url": "https://www.beatport.com/track/example/1001",
+        "release": {"id": 1002, "name": "Release"},
+    }
+    monkeypatch.setattr(
+        BeatportProvider,
+        "search_by_isrc",
+        lambda self, isrc: [
+            _provider_track_from_raw(beatport_raw_1),
+            _provider_track_from_raw(beatport_raw_2),
+        ],
+    )
     monkeypatch.setattr(
         BeatportProvider,
         "search_by_artist_and_title",
         lambda self, artist, title, limit=5: [],
     )
 
-    seed_csv = tmp_path / "tidal_seed.csv"
     output_csv = tmp_path / "tidal_beatport_enriched.csv"
-
-    with Enricher(Path("__vendor_only__"), providers=["tidal", "beatport"], dry_run=True, mode="hoarding") as enricher:
-        enricher.export_tidal_seed_csv("https://tidal.com/browse/playlist/test-playlist-2", seed_csv)
-        enricher.enrich_tidal_seed_csv(seed_csv, output_csv)
+    with Enricher(Path("__vendor_only__"), providers=["beatport"], dry_run=True, mode="hoarding") as enricher:
+        stats = enricher.enrich_tidal_seed_csv(seed_csv, output_csv)
 
     rows = _read_csv_rows(output_csv)
-    assert len(rows) == 1
-
-    row = rows[0]
-    assert row["tidal_playlist_id"] == "test-playlist-2"
-    assert row["tidal_track_id"] == "tidal-track-2"
-    assert row["title"] == "Unknown Track"
-    assert row["artist"] == "Unknown Artist"
-    assert row["isrc"] == "US1234567890"
-    assert row["beatport_track_id"] == ""
-    assert row["beatport_release_id"] == ""
-    assert row["beatport_url"] == ""
-    assert row["beatport_bpm"] == ""
-    assert row["beatport_key"] == ""
-    assert row["beatport_genre"] == ""
-    assert row["beatport_subgenre"] == ""
-    assert row["beatport_label"] == ""
-    assert row["beatport_catalog_number"] == ""
-    assert row["beatport_upc"] == ""
-    assert row["beatport_release_date"] == ""
-    assert row["match_method"] == "no_match"
-    assert float(row["match_confidence"]) == 0.0
+    assert rows[0]["match_method"] == "isrc"
+    assert stats.isrc_matches == 1
+    assert stats.ambiguous_isrc_rows == 1
 
 
-def test_tidal_seed_to_beatport_enrichment_title_artist_fallback(tmp_path: Path, monkeypatch) -> None:
-    _mock_tidal_playlist_export(
-        monkeypatch,
-        {
-            "id": "tidal-track-3",
-            "title": "Fallback Track",
-            "artists": [{"name": "Fallback Artist"}],
-            "url": "https://tidal.com/browse/track/tidal-track-3",
-        },
+def test_beatport_enrichment_propagates_fallback_confidence(tmp_path: Path, monkeypatch) -> None:
+    seed_csv = tmp_path / "tidal_seed.csv"
+    _write_seed_csv(
+        seed_csv,
+        [
+            {
+                "tidal_playlist_id": "playlist-1",
+                "tidal_track_id": "123",
+                "tidal_url": "https://tidal.com/browse/track/123",
+                "title": "Fallback Track",
+                "artist": "Fallback Artist",
+                "isrc": "",
+            }
+        ],
     )
 
     beatport_raw = {
@@ -203,7 +334,6 @@ def test_tidal_seed_to_beatport_enrichment_title_artist_fallback(tmp_path: Path,
             "new_release_date": "2024-01-01",
         },
     }
-
     monkeypatch.setattr(BeatportProvider, "search_by_isrc", lambda self, isrc: [])
     monkeypatch.setattr(
         BeatportProvider,
@@ -211,17 +341,12 @@ def test_tidal_seed_to_beatport_enrichment_title_artist_fallback(tmp_path: Path,
         lambda self, artist, title, limit=5: [_provider_track_from_raw(beatport_raw)],
     )
 
-    seed_csv = tmp_path / "tidal_seed.csv"
     output_csv = tmp_path / "tidal_beatport_enriched.csv"
-
-    with Enricher(Path("__vendor_only__"), providers=["tidal", "beatport"], dry_run=True, mode="hoarding") as enricher:
-        enricher.export_tidal_seed_csv("https://tidal.com/browse/playlist/test-playlist-3", seed_csv)
-        enricher.enrich_tidal_seed_csv(seed_csv, output_csv)
+    with Enricher(Path("__vendor_only__"), providers=["beatport"], dry_run=True, mode="hoarding") as enricher:
+        stats = enricher.enrich_tidal_seed_csv(seed_csv, output_csv)
 
     rows = _read_csv_rows(output_csv)
-    assert len(rows) == 1
+    assert rows[0]["match_method"] == "title_artist_fallback"
+    assert float(rows[0]["match_confidence"]) == 0.85
+    assert stats.title_artist_fallback_matches == 1
 
-    row = rows[0]
-    assert row["match_method"] == "title_artist_fallback"
-    assert float(row["match_confidence"]) == 0.6
-    assert row["beatport_track_id"] == "9999"

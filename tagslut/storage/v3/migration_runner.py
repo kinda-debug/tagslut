@@ -22,6 +22,7 @@ def _iter_migration_files(migrations_dir: Path) -> list[Path]:
         if path.is_file()
         and path.suffix in {".py", ".sql"}
         and path.name != "__init__.py"
+        and not path.name.startswith("_")
     ]
     return sorted(files, key=lambda path: path.name)
 

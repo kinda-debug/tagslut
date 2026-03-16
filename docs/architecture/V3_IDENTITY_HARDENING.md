@@ -17,6 +17,12 @@ Primary implementation files:
 - `tagslut/storage/v3/migrations/0010_track_identity_provider_uniqueness.py`
 - `tagslut/storage/v3/migrations/0011_track_identity_provider_uniqueness_hardening.py`
 
+Migration-runner policy:
+
+- `tagslut/storage/v3/migration_runner.py` applies only numbered migration files
+- underscore-prefixed modules in `tagslut/storage/v3/migrations/` are helper modules, not part of the default runner contract
+- `_0009_chromaprint.py` is excluded from default migration discovery; `0009_chromaprint.py` is the numbered migration entrypoint
+
 Primary test files:
 
 - `tests/storage/v3/test_migration_0006.py`
@@ -308,4 +314,3 @@ Operator implication:
 
 - schema version records in fresh-schema creation and migration files are part of the hardening contract
 - duplicate-provider migrations fail before index creation, inside the migration transaction
-

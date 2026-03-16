@@ -1852,7 +1852,7 @@ if decisions_csv.exists():
             if not db_path:
                 continue
             path = Path(db_path)
-            if path.suffix.lower() != ".flac" or not path.exists():
+            if not path.exists() or not path.is_file():
                 continue
             resolved = str(path.expanduser().resolve())
             if resolved in seen:
@@ -1865,7 +1865,7 @@ out_file.write_text("\n".join(selected) + ("\n" if selected else ""), encoding="
 PY
 		          INVENTORY_M3U_INPUT_COUNT="$(wc -l < "$INVENTORY_M3U_INPUT_FILE" | tr -d ' ')"
 		          if [[ "$INVENTORY_M3U_INPUT_COUNT" -eq 0 ]]; then
-		            echo "No inventory FLAC paths resolved; skipping M3U generation."
+		            echo "No inventory paths resolved; skipping M3U generation."
 		          else
 		            ROON_M3U_MARKER="$OUT_DIR/roon_m3u_inventory_marker_$(date +%Y%m%d_%H%M%S)"
 		            : > "$ROON_M3U_MARKER"
@@ -2329,7 +2329,7 @@ def add_path(text: str) -> None:
     if not value:
         return
     path = Path(value)
-    if path.suffix.lower() != ".flac" or not path.exists():
+    if not path.exists() or not path.is_file():
         return
     resolved = str(path.expanduser().resolve())
     if resolved in seen:

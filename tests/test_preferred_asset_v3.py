@@ -11,8 +11,10 @@ from pathlib import Path
 import pytest
 
 from tagslut.storage.v3.preferred_asset import (
+    PreferredChoice,
     choose_preferred_asset_for_identity,
     compute_preferred_assets,
+    upsert_preferred_assets,
 )
 from tagslut.storage.v3.schema import create_schema_v3
 
@@ -134,6 +136,17 @@ def test_compute_preferred_assets_excludes_merged_identities(tmp_path: Path) -> 
     assert 5 not in by_identity  # active identity with zero assets is skipped
 
 
+def test_choose_preferred_asset_rejects_merged_identity(tmp_path: Path) -> None:
+    db = _create_fixture_db(tmp_path)
+    conn = sqlite3.connect(str(db))
+    conn.row_factory = sqlite3.Row
+    try:
+        with pytest.raises(LookupError, match="identity is merged: 4"):
+            choose_preferred_asset_for_identity(conn, 4)
+    finally:
+        conn.close()
+
+
 def test_execute_mode_upserts_and_preserves_fk_integrity(tmp_path: Path) -> None:
     db = _create_fixture_db(tmp_path)
 
@@ -163,6 +176,30 @@ def test_execute_mode_upserts_and_preserves_fk_integrity(tmp_path: Path) -> None
     assert int(preferred_count) == 3
     assert chosen_path_id2 == "/music/a_tie.flac"
     assert fk_issues == []
+
+
+def test_upsert_preferred_assets_rejects_merged_identity(tmp_path: Path) -> None:
+    db = _create_fixture_db(tmp_path)
+    conn = sqlite3.connect(str(db))
+    conn.row_factory = sqlite3.Row
+    try:
+        with pytest.raises(LookupError, match="identity is merged: 4"):
+            upsert_preferred_assets(
+                conn,
+                [
+                    PreferredChoice(
+                        identity_id=4,
+                        identity_key="id:four-merged",
+                        asset_id=7,
+                        chosen_path="/music/merged_four.flac",
+                        score=1.0,
+                        reason_json="{}",
+                    )
+                ],
+                version=1,
+            )
+    finally:
+        conn.close()
 
 
 def test_plan_mode_connection_uses_query_only_and_rejects_writes(tmp_path: Path) -> None:

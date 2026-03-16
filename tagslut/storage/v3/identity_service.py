@@ -11,6 +11,7 @@ from difflib import SequenceMatcher
 from typing import Any
 
 __all__ = [
+    "derive_identity_key",
     "resolve_active_identity",
     "resolve_or_create_identity",
     "link_asset_to_identity",
@@ -193,7 +194,7 @@ def _identity_value_map(
     return values
 
 
-def _create_identity_key(fields: Mapping[str, Any], asset_row: sqlite3.Row) -> str:
+def derive_identity_key(fields: Mapping[str, Any], asset_row: sqlite3.Row | Mapping[str, Any]) -> str:
     isrc = _norm_text(fields.get("isrc"))
     if isrc:
         return f"isrc:{isrc.lower()}"
@@ -337,7 +338,7 @@ def _create_identity(
     fields: Mapping[str, Any],
 ) -> int:
     insert_fields = dict(fields)
-    insert_fields["identity_key"] = _create_identity_key(insert_fields, asset_row)
+    insert_fields["identity_key"] = derive_identity_key(insert_fields, asset_row)
     columns = [column for column, value in insert_fields.items() if value is not None]
     params = [insert_fields[column] for column in columns]
     placeholders = ", ".join("?" for _ in columns)
@@ -643,6 +644,7 @@ def link_asset_to_identity(
     link_source: str,
 ) -> None:
     """Create or update the canonical asset-to-identity link for an asset."""
+    resolved_identity = resolve_active_identity(conn, int(identity_id))
     conn.execute(
         """
         INSERT INTO asset_link (asset_id, identity_id, confidence, link_source, active)
@@ -654,7 +656,7 @@ def link_asset_to_identity(
             active = 1,
             updated_at = CURRENT_TIMESTAMP
         """,
-        (int(asset_id), int(identity_id), float(confidence), link_source),
+        (int(asset_id), int(resolved_identity["id"]), float(confidence), link_source),
     )
 
 

@@ -546,3 +546,31 @@ def test_link_asset_to_identity_upserts_single_active_row_per_asset(tmp_path) ->
     assert float(row["confidence"]) == 0.95
     assert str(row["link_source"]) == "second-pass"
     assert int(row["active"]) == 1
+
+
+def test_link_asset_to_identity_resolves_merged_identity_to_active_row(tmp_path) -> None:
+    conn = _open_fixture_db(tmp_path)
+    try:
+        _asset_row(conn, 111, "/music/link-merged.flac")
+        conn.executemany(
+            """
+            INSERT INTO track_identity (id, identity_key, merged_into_id)
+            VALUES (?, ?, ?)
+            """,
+            [
+                (40, "id:active", None),
+                (41, "id:merged", 40),
+            ],
+        )
+
+        link_asset_to_identity(conn, 111, 41, 0.85, "merge-test")
+
+        row = conn.execute(
+            "SELECT identity_id FROM asset_link WHERE asset_id = ?",
+            (111,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert row is not None
+    assert int(row["identity_id"]) == 40

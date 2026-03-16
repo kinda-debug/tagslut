@@ -9,7 +9,7 @@ from __future__ import annotations
 import sqlite3
 
 V3_SCHEMA_NAME = "v3"
-V3_SCHEMA_VERSION = 9
+V3_SCHEMA_VERSION = 10
 V3_SCHEMA_VERSION_INITIAL = 1
 V3_SCHEMA_VERSION_IDENTITY_MERGE = 2
 V3_SCHEMA_VERSION_PREFERRED_ASSET = 3
@@ -19,6 +19,7 @@ V3_SCHEMA_VERSION_TRACK_IDENTITY_PHASE1 = 6
 V3_SCHEMA_VERSION_TRACK_IDENTITY_PHASE1_RENAME = 7
 V3_SCHEMA_VERSION_ASSET_ANALYSIS = 8
 V3_SCHEMA_VERSION_CHROMAPRINT = 9
+V3_SCHEMA_VERSION_PROVIDER_UNIQUENESS = 10
 
 
 def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
@@ -299,6 +300,26 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_track_identity_traxsource ON track_identity(traxsource_id);
         CREATE INDEX IF NOT EXISTS idx_track_identity_itunes ON track_identity(itunes_id);
         CREATE INDEX IF NOT EXISTS idx_track_identity_musicbrainz ON track_identity(musicbrainz_id);
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_track_identity_active_beatport_id
+            ON track_identity(beatport_id)
+            WHERE beatport_id IS NOT NULL
+              AND TRIM(beatport_id) != ''
+              AND merged_into_id IS NULL;
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_track_identity_active_tidal_id
+            ON track_identity(tidal_id)
+            WHERE tidal_id IS NOT NULL
+              AND TRIM(tidal_id) != ''
+              AND merged_into_id IS NULL;
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_track_identity_active_qobuz_id
+            ON track_identity(qobuz_id)
+            WHERE qobuz_id IS NOT NULL
+              AND TRIM(qobuz_id) != ''
+              AND merged_into_id IS NULL;
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_track_identity_active_spotify_id
+            ON track_identity(spotify_id)
+            WHERE spotify_id IS NOT NULL
+              AND TRIM(spotify_id) != ''
+              AND merged_into_id IS NULL;
 
         CREATE INDEX IF NOT EXISTS idx_asset_link_identity ON asset_link(identity_id);
         CREATE INDEX IF NOT EXISTS idx_identity_merge_log_key_value ON identity_merge_log(key_value);

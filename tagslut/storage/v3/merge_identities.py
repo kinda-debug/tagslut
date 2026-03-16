@@ -430,6 +430,14 @@ def merge_group_by_repointing_assets(
                 str(winner_row["identity_key"]),
                 loser_keys,
             )
+            if _table_exists(conn, "preferred_asset"):
+                conn.execute(
+                    f"""
+                    DELETE FROM preferred_asset
+                    WHERE identity_id IN ({loser_placeholders})
+                    """,
+                    tuple(normalized_losers),
+                )
 
     if not dry_run:
         where_active_identity = _active_identity_where(conn)

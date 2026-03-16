@@ -21,6 +21,7 @@ from tagslut.storage.schema import (
     V3_PROVENANCE_EVENT_TABLE,
     V3_TRACK_IDENTITY_TABLE,
 )
+from tagslut.storage.v3.identity_service import derive_identity_key, resolve_active_identity
 from tagslut.utils.config import get_config
 
 _TRUTHY = {"1", "true", "yes", "y", "on"}
@@ -266,15 +267,17 @@ def upsert_track_identity(
     bpm_norm = _norm_text(bpm)
     key_norm = _norm_text(key)
 
-    identity_key: str | None = None
-    if isrc_norm:
-        identity_key = f"isrc:{isrc_norm.lower()}"
-    elif beatport_norm:
-        identity_key = f"beatport:{beatport_norm}"
-    elif artist_norm and title_norm:
-        identity_key = f"text:{artist_norm}|{title_norm}"
-
-    if not identity_key:
+    try:
+        identity_key = derive_identity_key(
+            {
+                "isrc": isrc_norm,
+                "beatport_id": beatport_norm,
+                "artist_norm": artist_norm,
+                "title_norm": title_norm,
+            },
+            {},
+        )
+    except RuntimeError:
         return None
 
     columns = [
@@ -343,6 +346,11 @@ def upsert_asset_link(
     link_source: str,
     active: bool = True,
 ) -> int:
+    resolved_identity = resolve_active_identity(conn, int(identity_id))
+    try:
+        resolved_identity_id = int(resolved_identity["id"])
+    except (TypeError, KeyError, IndexError):
+        resolved_identity_id = int(resolved_identity[0])
     existing_rows = conn.execute(
         f"SELECT id FROM {V3_ASSET_LINK_TABLE} WHERE asset_id = ? ORDER BY id ASC",
         (asset_id,),
@@ -364,7 +372,7 @@ def upsert_asset_link(
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
             """,
-            (identity_id, confidence, link_source, 1 if active else 0, keep_id),
+            (resolved_identity_id, confidence, link_source, 1 if active else 0, keep_id),
         )
     else:
         conn.execute(
@@ -373,7 +381,7 @@ def upsert_asset_link(
                 asset_id, identity_id, confidence, link_source, active
             ) VALUES (?, ?, ?, ?, ?)
             """,
-            (asset_id, identity_id, confidence, link_source, 1 if active else 0),
+            (asset_id, resolved_identity_id, confidence, link_source, 1 if active else 0),
         )
 
     row = conn.execute(

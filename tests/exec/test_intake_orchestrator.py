@@ -605,7 +605,17 @@ def test_dj_build_registers_separate_profile_and_path(
     assert len(rows) == 2
     full = next(p for p in rows if p[0] == "mp3_asset_320_cbr_full")
     dj = next(p for p in rows if p[0] == "dj_copy_320_cbr")
-    assert Path(full[1]).resolve() != Path(dj[1]).resolve()
+    full_path = Path(full[1]).resolve()
+    dj_path = Path(dj[1]).resolve()
+    assert full_path.is_relative_to(mp3_root.resolve())
+    assert dj_path.is_relative_to(dj_root.resolve())
+    assert full_path != dj_path
+
+    # `tagslut intake --dj` must not silently auto-admit to DJ (`dj_admission` is separate, opt-in stage).
+    conn = sqlite3.connect(str(temp_db))
+    admitted = conn.execute("SELECT COUNT(*) FROM dj_admission").fetchone()[0]
+    conn.close()
+    assert admitted == 0
 
 
 def test_backfill_prefers_dj_copy_profile_when_both_exist(temp_db: Path, tmp_path: Path) -> None:

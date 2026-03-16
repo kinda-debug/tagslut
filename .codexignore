@@ -1,0 +1,8 @@
+*.db
+*.sqlite*
+*.mp3
+*.flac
+*.aiff
+*.xml
+artifacts/
+exports/

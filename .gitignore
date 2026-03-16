@@ -227,3 +227,19 @@ docs/Now I have all the documents needed.md
 .github/prompts/dj-pipeline-hardening.prompt.md
 
 *.dump
+artifacts/
+exports/
+data/
+*.db
+*.sqlite
+*.sqlite3
+*.log
+*.wav
+*.flac
+*.mp3
+*.aiff
+*.xml
+*.json
+dist/
+build/
+node_modules/

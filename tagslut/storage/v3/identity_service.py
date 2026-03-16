@@ -233,6 +233,8 @@ def _merge_identity_fields_if_empty(
     for column, value in fields.items():
         if column == "identity_key" or value is None:
             continue
+        if not _column_exists(conn, "track_identity", column):
+            continue
         if _is_blank_db(_row_value(row, column)):
             updates[column] = value
 
@@ -292,6 +294,16 @@ def _fuzzy_match_identity_id(
     has_merged_into = _column_exists(conn, "track_identity", "merged_into_id")
     where_active = "AND merged_into_id IS NULL" if has_merged_into else ""
     artist_prefix = f"{artist_norm[:4]}%"
+    duration_column = (
+        "canonical_duration"
+        if _column_exists(conn, "track_identity", "canonical_duration")
+        else "NULL"
+    )
+    duration_ref_ms_column = (
+        "duration_ref_ms"
+        if _column_exists(conn, "track_identity", "duration_ref_ms")
+        else "NULL"
+    )
 
     rows = conn.execute(
         f"""
@@ -299,8 +311,8 @@ def _fuzzy_match_identity_id(
             id,
             artist_norm,
             title_norm,
-            canonical_duration,
-            duration_ref_ms
+            {duration_column} AS canonical_duration,
+            {duration_ref_ms_column} AS duration_ref_ms
         FROM track_identity
         WHERE artist_norm LIKE ?
           AND title_norm IS NOT NULL
@@ -339,7 +351,11 @@ def _create_identity(
 ) -> int:
     insert_fields = dict(fields)
     insert_fields["identity_key"] = derive_identity_key(insert_fields, asset_row)
-    columns = [column for column, value in insert_fields.items() if value is not None]
+    columns = [
+        column
+        for column, value in insert_fields.items()
+        if value is not None and _column_exists(conn, "track_identity", column)
+    ]
     params = [insert_fields[column] for column in columns]
     placeholders = ", ".join("?" for _ in columns)
     conn.execute(
@@ -645,16 +661,35 @@ def link_asset_to_identity(
 ) -> None:
     """Create or update the canonical asset-to-identity link for an asset."""
     resolved_identity = resolve_active_identity(conn, int(identity_id))
+    existing_rows = conn.execute(
+        "SELECT id FROM asset_link WHERE asset_id = ? ORDER BY id ASC",
+        (int(asset_id),),
+    ).fetchall()
+    if existing_rows:
+        keep_id = int(existing_rows[0]["id"])
+        if len(existing_rows) > 1:
+            conn.execute(
+                "DELETE FROM asset_link WHERE asset_id = ? AND id != ?",
+                (int(asset_id), keep_id),
+            )
+        conn.execute(
+            """
+            UPDATE asset_link
+            SET identity_id = ?,
+                confidence = ?,
+                link_source = ?,
+                active = 1,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (int(resolved_identity["id"]), float(confidence), link_source, keep_id),
+        )
+        return
+
     conn.execute(
         """
         INSERT INTO asset_link (asset_id, identity_id, confidence, link_source, active)
         VALUES (?, ?, ?, ?, 1)
-        ON CONFLICT(asset_id) DO UPDATE SET
-            identity_id = excluded.identity_id,
-            confidence = excluded.confidence,
-            link_source = excluded.link_source,
-            active = 1,
-            updated_at = CURRENT_TIMESTAMP
         """,
         (int(asset_id), int(resolved_identity["id"]), float(confidence), link_source),
     )

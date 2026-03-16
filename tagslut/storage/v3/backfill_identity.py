@@ -21,6 +21,10 @@ from tagslut.storage.schema import (
     init_db,
 )
 from tagslut.storage.v3.dual_write import upsert_asset_file
+from tagslut.storage.v3.identity_service import (
+    link_asset_to_identity,
+    resolve_or_create_identity,
+)
 from tagslut.utils import env_paths
 
 _PROVIDER_COLUMNS: tuple[tuple[str, tuple[str, ...]], ...] = (
@@ -632,95 +636,24 @@ def _resolve_equivalent_fuzzy_candidates(
     return int(equivalent["id"])
 
 
-def _update_identity(conn: sqlite3.Connection, identity_id: int, payload: dict[str, Any], *, fuzzy: bool) -> None:
-    current = conn.execute(
-        f"SELECT * FROM {V3_TRACK_IDENTITY_TABLE} WHERE id = ?",
-        (identity_id,),
-    ).fetchone()
-    if current is None:
-        raise LookupError(f"identity not found: {identity_id}")
-    available_columns = _load_track_identity_columns(conn)
-    updates: dict[str, Any] = {}
-    exact_fields = {"isrc", *(name for name, _ in _PROVIDER_COLUMNS)}
-    for field_name, value in payload.items():
-        if field_name not in available_columns:
-            continue
-        if value is None:
-            continue
-        current_value = current[field_name] if field_name in current.keys() else None
-        if fuzzy and field_name in exact_fields and _norm_text(current_value):
-            continue
-        if current_value is None or str(current_value).strip() == "":
-            updates[field_name] = value
-    if not updates:
-        return
-    assignments = ", ".join(f"{field} = ?" for field in updates)
-    params = [updates[field] for field in updates]
-    params.append(identity_id)
-    conn.execute(
-        f"UPDATE {V3_TRACK_IDENTITY_TABLE} SET {assignments}, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-        tuple(params),
-    )
-
-
-def _insert_identity(conn: sqlite3.Connection, payload: dict[str, Any]) -> int:
-    identity_key = _identity_key_for_payload(payload)
-    if not identity_key:
-        raise RuntimeError("cannot create identity without exact or fuzzy identity fields")
-    existing_id, _ = _find_identity_by_identity_key(conn, identity_key)
-    if existing_id is not None:
-        return existing_id
-    full_payload = dict(payload)
-    full_payload["identity_key"] = identity_key
-    available_columns = _load_track_identity_columns(conn)
-    columns = [
-        key for key, value in full_payload.items() if value is not None and key in available_columns
-    ]
-    placeholders = ", ".join("?" for _ in columns)
-    try:
-        conn.execute(
-            f"INSERT INTO {V3_TRACK_IDENTITY_TABLE} ({', '.join(columns)}) VALUES ({placeholders})",
-            tuple(full_payload[column] for column in columns),
+def _resolve_identity_via_service(
+    conn: sqlite3.Connection,
+    file_row: sqlite3.Row,
+    asset_id: int | None,
+    payload: dict[str, Any],
+) -> int:
+    asset_row = {
+        "id": asset_id,
+        "path": file_row["path"],
+        "duration_s": file_row["duration"] if "duration" in file_row.keys() else None,
+    }
+    return int(
+        resolve_or_create_identity(
+            conn,
+            asset_row,
+            payload,
+            {"source": "backfill_v3", "ref_source": payload.get("ref_source")},
         )
-    except sqlite3.IntegrityError as exc:
-        existing_id, _ = _find_identity_by_identity_key(conn, identity_key)
-        if existing_id is not None:
-            return existing_id
-        raise exc
-    row = conn.execute(
-        f"SELECT id FROM {V3_TRACK_IDENTITY_TABLE} WHERE identity_key = ?",
-        (identity_key,),
-    ).fetchone()
-    if row is None:
-        raise RuntimeError("failed to create track identity")
-    return int(row["id"])
-
-
-def _link_asset(conn: sqlite3.Connection, asset_id: int, identity_id: int, confidence: float, link_source: str) -> None:
-    conn.execute(
-        f"UPDATE {V3_ASSET_LINK_TABLE} SET active = 0, updated_at = CURRENT_TIMESTAMP WHERE asset_id = ?",
-        (asset_id,),
-    )
-    existing = conn.execute(
-        f"SELECT id FROM {V3_ASSET_LINK_TABLE} WHERE asset_id = ? AND identity_id = ?",
-        (asset_id, identity_id),
-    ).fetchone()
-    if existing is None:
-        conn.execute(
-            f"""
-            INSERT INTO {V3_ASSET_LINK_TABLE} (asset_id, identity_id, confidence, link_source, active)
-            VALUES (?, ?, ?, ?, 1)
-            """,
-            (asset_id, identity_id, confidence, link_source),
-        )
-        return
-    conn.execute(
-        f"""
-        UPDATE {V3_ASSET_LINK_TABLE}
-        SET confidence = ?, link_source = ?, active = 1, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-        """,
-        (confidence, link_source, int(existing["id"])),
     )
 
 
@@ -926,7 +859,7 @@ def backfill_v3_identity_links(
 
             if resolved_identity_id is None:
                 if config.execute:
-                    resolved_identity_id = _insert_identity(conn, payload)
+                    resolved_identity_id = _resolve_identity_via_service(conn, row, asset_id, payload)
                 stats.created += 1
                 _append_sample(
                     stats.samples,
@@ -935,7 +868,7 @@ def backfill_v3_identity_links(
                 )
             else:
                 if config.execute:
-                    _update_identity(conn, resolved_identity_id, payload, fuzzy=len(fuzzy_candidates) == 1)
+                    resolved_identity_id = _resolve_identity_via_service(conn, row, asset_id, payload)
                 stats.reused += 1
                 _append_sample(
                     stats.samples,
@@ -954,7 +887,7 @@ def backfill_v3_identity_links(
                 confidence = 1.0 if _norm_text(payload.get("isrc")) else 0.9 if any(
                     _norm_text(payload.get(provider)) for provider, _ in _PROVIDER_COLUMNS
                 ) else 0.7
-                _link_asset(conn, asset_id, resolved_identity_id, confidence, "backfill_v3")
+                link_asset_to_identity(conn, asset_id, resolved_identity_id, confidence, "backfill_v3")
             stats.processed += 1
         except Exception as exc:  # pragma: no cover - exercised via abort threshold tests
             stats.errors += 1

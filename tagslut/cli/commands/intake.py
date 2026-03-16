@@ -206,7 +206,13 @@ def register_intake_group(cli: click.Group) -> None:
         "--verbose",
         is_flag=True,
         default=False,
-        help="Show internal paths and stage output.",
+        help="Show a more detailed per-step summary (still path-free).",
+    )
+    @click.option(
+        "--debug-raw",
+        is_flag=True,
+        default=False,
+        help="Stream raw internal stage output (very noisy; includes paths).",
     )
     def intake_url(
         url: str,
@@ -220,6 +226,7 @@ def register_intake_group(cli: click.Group) -> None:
         force_download: bool,
         artifact_dir: str | None,
         verbose: bool,
+        debug_raw: bool,
     ):  # type: ignore  # TODO: mypy-strict
         """Precheck → download → promote → [mp3] → [dj] for a single provider URL."""
         if dj:
@@ -288,6 +295,7 @@ def register_intake_group(cli: click.Group) -> None:
             dj_root=dj_root_path,
             artifact_dir=artifact_dir_path,
             verbose=verbose,
+            debug_raw=debug_raw,
             no_precheck=no_precheck,
             force_download=force_download,
         )
@@ -295,9 +303,13 @@ def register_intake_group(cli: click.Group) -> None:
         # Print summary
         click.echo(result.summary())
         if result.artifact_path:
-            click.echo(f"Artifact: {result.artifact_path}")
+            click.echo(
+                f"Artifact: {result.artifact_path if debug_raw else result.artifact_path.name}"
+            )
         if result.precheck_csv:
-            click.echo(f"Precheck CSV: {result.precheck_csv}")
+            click.echo(
+                f"Precheck CSV: {result.precheck_csv if debug_raw else result.precheck_csv.name}"
+            )
 
         # Exit with mapped code
         _EXIT = {"completed": 0, "blocked": 2, "failed": 1}

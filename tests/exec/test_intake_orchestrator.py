@@ -14,6 +14,7 @@ from click.testing import CliRunner
 from tagslut.cli.commands.intake import register_intake_group
 from tagslut.exec.intake_orchestrator import (
     IntakeResult,
+    _GetIntakeHumanSummarizer,
     _parse_precheck_csv,
     run_intake,
 )
@@ -157,17 +158,63 @@ def test_parse_precheck_csv_new(mock_precheck_csv_new: Path) -> None:
     assert summary["blocked"] == 0
 
 
+def test_get_intake_human_summarizer_is_path_free() -> None:
+    emitted: list[str] = []
+    summarizer = _GetIntakeHumanSummarizer(
+        verbose=False,
+        run_started=time.time(),
+        emit=emitted.append,
+    )
+
+    sample = [
+        "[1/10] Pre-download check\n",
+        "Precheck summary: keep=23 skip=1 total=24\n",
+        "[2/10] Download from Tidal\n",
+        "Selected for download: 23 track(s)\n",
+        "Downloaded Disorientation  16-bit, 44.1 kHz /Volumes/MUSIC/mdl/tidal/Simon & Shaker/foo.flac\n",
+        "Exists Tokyo Shanghai /Volumes/MUSIC/mdl/tidal/Shlomi Aber/Tokyo Shanghai EP\n",
+        "Error: Response payload is not completed: <ContentLengthError> (track/85305930)\n",
+        "[3/10] Quick duplicate check (index check, strict)\n",
+        "Total:            24\n",
+        "Duplicates:        0\n",
+        "Errors:            0\n",
+        "[5/10] Local identify + tag prep\n",
+        "OK: scanned_files=27\n",
+        "OK: wrote /Users/me/Projects/tagslut/tag_hoard_out/tags_keys.txt\n",
+        "[9/10] Generate Roon M3U\n",
+        "Named playlist: /Volumes/MUSIC/MASTER_LIBRARY/playlists/roon-foo.m3u\n",
+        "[10/10] Launch background enrich + art\n",
+        "Background enrich/art started: pid=75512\n",
+        "Run summary\n",
+        "  promoted:     22\n",
+        "  stashed:      2\n",
+        "  quarantined:  0\n",
+        "  discarded:    0\n",
+    ]
+    for line in sample:
+        summarizer.feed_line(line)
+    summarizer.finalize()
+
+    out = "\n".join(emitted)
+    assert "/Volumes/" not in out
+    assert "/Users/" not in out
+    assert "Precheck:" in out
+    assert "Download:" in out
+    assert "Downloaded:" in out
+    assert "Index check:" in out
+    assert "M3U:" in out
+    assert "Enrich/art:" in out
+
+
 def test_precheck_block_returns_disposition_blocked(
     temp_db: Path, tmp_path: Path, mock_precheck_csv: Path
 ) -> None:
     """Test that when all tracks blocked, disposition is 'blocked'."""
     os.utime(mock_precheck_csv, (time.time() + 5, time.time() + 5))
-    with patch("tagslut.exec.intake_orchestrator.subprocess.run") as mock_run:
-        mock_run.return_value = Mock(returncode=0, stdout="", stderr="")
+    with patch("tagslut.exec.intake_orchestrator._run_tools_get") as mock_get:
+        mock_get.return_value = None
 
-        with patch(
-            "tagslut.exec.intake_orchestrator._find_latest_precheck_csv"
-        ) as mock_find:
+        with patch("tagslut.exec.intake_orchestrator._find_latest_precheck_csv") as mock_find:
             mock_find.return_value = mock_precheck_csv
 
             result = run_intake(
@@ -226,12 +273,10 @@ def test_download_does_not_waive_precheck_by_default(
     """Non-dry-run should not implicitly pass --no-precheck to tools/get."""
     os.utime(mock_precheck_csv_new, (time.time() + 5, time.time() + 5))
 
-    with patch("tagslut.exec.intake_orchestrator.subprocess.run") as mock_run:
-        mock_run.return_value = Mock(returncode=0, stdout="", stderr="")
+    with patch("tagslut.exec.intake_orchestrator._run_tools_get") as mock_get:
+        mock_get.return_value = None
 
-        with patch(
-            "tagslut.exec.intake_orchestrator._find_latest_precheck_csv"
-        ) as mock_find:
+        with patch("tagslut.exec.intake_orchestrator._find_latest_precheck_csv") as mock_find:
             mock_find.return_value = mock_precheck_csv_new
 
             run_intake(
@@ -242,8 +287,8 @@ def test_download_does_not_waive_precheck_by_default(
                 artifact_dir=tmp_path / "artifacts",
             )
 
-    assert mock_run.call_count == 1
-    called_cmd = mock_run.call_args.args[0]
+    assert mock_get.call_count == 1
+    called_cmd = mock_get.call_args.args[0]
     assert "--no-precheck" not in called_cmd
 
 
@@ -253,12 +298,10 @@ def test_artifact_written_on_block(
     """Test that artifact JSON is written even when all tracks blocked."""
     artifact_dir = tmp_path / "artifacts"
 
-    with patch("tagslut.exec.intake_orchestrator.subprocess.run") as mock_run:
-        mock_run.return_value = Mock(returncode=0, stdout="", stderr="")
+    with patch("tagslut.exec.intake_orchestrator._run_tools_get") as mock_get:
+        mock_get.return_value = None
 
-        with patch(
-            "tagslut.exec.intake_orchestrator._find_latest_precheck_csv"
-        ) as mock_find:
+        with patch("tagslut.exec.intake_orchestrator._find_latest_precheck_csv") as mock_find:
             mock_find.return_value = mock_precheck_csv
 
             result = run_intake(
@@ -342,8 +385,8 @@ def test_mp3_flag_calls_build_mp3_from_identity(
     promoted_txt.write_text(str(flac_path) + "\n", encoding="utf-8")
     os.utime(promoted_txt, (time.time() + 5, time.time() + 5))
 
-    with patch("tagslut.exec.intake_orchestrator.subprocess.run") as mock_run:
-        mock_run.return_value = Mock(returncode=0, stdout="", stderr="")
+    with patch("tagslut.exec.intake_orchestrator._run_tools_get") as mock_get:
+        mock_get.return_value = None
 
         with patch("tagslut.exec.intake_orchestrator._find_latest_precheck_csv") as mock_find:
             mock_find.return_value = mock_precheck_csv_new
@@ -393,8 +436,8 @@ def test_mp3_skips_gracefully_if_identity_not_registered(
     """PR1: --dj must imply --mp3 stage ordering, even as placeholders."""
     os.utime(mock_precheck_csv_new, (time.time() + 5, time.time() + 5))
 
-    with patch("tagslut.exec.intake_orchestrator.subprocess.run") as mock_run:
-        mock_run.return_value = Mock(returncode=0, stdout="", stderr="")
+    with patch("tagslut.exec.intake_orchestrator._run_tools_get") as mock_get:
+        mock_get.return_value = None
 
         with patch("tagslut.exec.intake_orchestrator._find_latest_precheck_csv") as mock_find:
             mock_find.return_value = mock_precheck_csv_new
@@ -489,8 +532,8 @@ def test_mp3_placeholder_falls_back_to_precheck_skip_db_paths_when_no_promoted_f
     conn.commit()
     conn.close()
 
-    with patch("tagslut.exec.intake_orchestrator.subprocess.run") as mock_run:
-        mock_run.return_value = Mock(returncode=0, stdout="", stderr="")
+    with patch("tagslut.exec.intake_orchestrator._run_tools_get") as mock_get:
+        mock_get.return_value = None
 
         with patch("tagslut.exec.intake_orchestrator._find_latest_precheck_csv") as mock_find:
             mock_find.return_value = decisions_csv
@@ -567,8 +610,8 @@ def test_dj_build_registers_separate_profile_and_path(
     mp3_root.mkdir(parents=True, exist_ok=True)
     dj_root.mkdir(parents=True, exist_ok=True)
 
-    with patch("tagslut.exec.intake_orchestrator.subprocess.run") as mock_run:
-        mock_run.return_value = Mock(returncode=0, stdout="", stderr="")
+    with patch("tagslut.exec.intake_orchestrator._run_tools_get") as mock_get:
+        mock_get.return_value = None
 
         with patch("tagslut.exec.intake_orchestrator._find_latest_precheck_csv") as mock_find:
             mock_find.return_value = mock_precheck_csv_new

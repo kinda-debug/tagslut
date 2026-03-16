@@ -87,22 +87,33 @@ def backfill_admissions(conn: sqlite3.Connection) -> tuple[int, int]:
     Returns (admitted_count, skipped_count).
     Skips identities that already have an admitted admission.
     """
+    dj_copy_profiles = ("dj_copy_320_cbr",)
     rows = conn.execute(
         """
-        SELECT ma.id, ma.identity_id
+        SELECT ma.id, ma.identity_id, ma.profile
         FROM mp3_asset ma
         WHERE ma.status = 'verified'
+          AND ma.identity_id IS NOT NULL
           AND NOT EXISTS (
             SELECT 1 FROM dj_admission da
             WHERE da.identity_id = ma.identity_id AND da.status = 'admitted'
           )
-        ORDER BY ma.id
+        ORDER BY
+          ma.identity_id,
+          CASE WHEN ma.profile IN (?) THEN 0 ELSE 1 END,
+          ma.id
         """
+        ,
+        (dj_copy_profiles[0],),
     ).fetchall()
 
     admitted = 0
     skipped = 0
-    for mp3_id, identity_id in rows:
+    seen_identities: set[int] = set()
+    for mp3_id, identity_id, _profile in rows:
+        if identity_id in seen_identities:
+            continue
+        seen_identities.add(identity_id)
         try:
             admit_track(conn, identity_id=identity_id, mp3_asset_id=mp3_id)
             admitted += 1

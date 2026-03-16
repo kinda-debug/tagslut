@@ -18,6 +18,20 @@ from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
 from tagslut.utils.env_paths import get_artifacts_dir
 
 
+def _looks_like_url(value: str) -> bool:
+    lowered = (value or "").strip().lower()
+    return lowered.startswith("http://") or lowered.startswith("https://")
+
+
+class _IntakeGroup(click.Group):
+    """Click group that defaults `tagslut intake <URL>` to `tagslut intake url <URL>`."""
+
+    def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
+        if args and _looks_like_url(args[0]):
+            args.insert(0, "url")
+        return super().parse_args(ctx, args)
+
+
 def _load_jsonl_lines(path: Path) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     for line_no, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
@@ -125,7 +139,7 @@ def _intent_reference(intent_dict: dict[str, Any]) -> str:
 
 
 def register_intake_group(cli: click.Group) -> None:
-    @cli.group()
+    @cli.group(cls=_IntakeGroup)
     def intake():  # type: ignore  # TODO: mypy-strict
         """Canonical intake commands."""
 
@@ -136,13 +150,28 @@ def register_intake_group(cli: click.Group) -> None:
         "--mp3",
         is_flag=True,
         default=False,
-        help="Also transcode to mp3_asset after promote.",
+        help="Also build MP3 assets after promote (requires --mp3-root).",
+    )
+    @click.option(
+        "--dj",
+        is_flag=True,
+        default=False,
+        help="Also build DJ copies after MP3 assets (implies --mp3, requires --dj-root).",
+    )
+    @click.option(
+        "--mp3-root",
+        default=None,
+        type=click.Path(file_okay=False, writable=True),
+        help="MP3 asset output root (required with --mp3).",
     )
     @click.option(
         "--dj-root",
         default=None,
         type=click.Path(file_okay=False, writable=True),
-        help="DJ MP3 output root. Required with --mp3.",
+        help=(
+            "DJ output root (required with --dj). "
+            "Deprecated alias for --mp3-root in MP3-only mode when --mp3-root is omitted."
+        ),
     )
     @click.option(
         "--dry-run",
@@ -178,6 +207,8 @@ def register_intake_group(cli: click.Group) -> None:
         url: str,
         db_path: str | None,
         mp3: bool,
+        dj: bool,
+        mp3_root: str | None,
         dj_root: str | None,
         dry_run: bool,
         no_precheck: bool,
@@ -185,13 +216,9 @@ def register_intake_group(cli: click.Group) -> None:
         artifact_dir: str | None,
         verbose: bool,
     ):  # type: ignore  # TODO: mypy-strict
-        """Precheck → download → promote → [mp3] for a single provider URL."""
-        # Guard: --mp3 requires --dj-root
-        if mp3 and not dj_root:
-            raise click.ClickException(
-                "--mp3 requires --dj-root to be specified.\n"
-                "Example: tagslut intake url <URL> --mp3 --dj-root /path/to/dj/mp3"
-            )
+        """Precheck → download → promote → [mp3] → [dj] for a single provider URL."""
+        if dj:
+            mp3 = True
 
         # Resolve DB path
         try:
@@ -201,8 +228,48 @@ def register_intake_group(cli: click.Group) -> None:
 
         resolved_db_path = db_resolution.path
 
-        # Convert paths
+        # Convert roots + enforce contract
+        mp3_root_path = Path(mp3_root).expanduser().resolve() if mp3_root else None
         dj_root_path = Path(dj_root).expanduser().resolve() if dj_root else None
+
+        if mp3 and not dj:
+            if mp3_root_path is None and dj_root_path is not None:
+                click.echo(
+                    "DEPRECATION: In MP3 mode, --dj-root is deprecated as an alias for --mp3-root. "
+                    "Use --mp3-root. (--dj-root is DJ-output-only when --dj is active.)",
+                    err=True,
+                )
+                mp3_root_path = dj_root_path
+                dj_root_path = None
+
+            if mp3_root_path is None:
+                raise click.ClickException(
+                    "--mp3 requires --mp3-root.\n"
+                    "Example: tagslut intake <URL> --mp3 --mp3-root /path/to/mp3_assets"
+                )
+
+            if dj_root_path is not None:
+                raise click.ClickException(
+                    "--dj-root is DJ-output-only; do not pass it without --dj.\n"
+                    "Use --mp3-root for MP3 assets, or pass --dj to enable DJ output."
+                )
+
+        if dj:
+            if mp3_root_path is None:
+                raise click.ClickException(
+                    "--dj implies --mp3 and requires --mp3-root.\n"
+                    "Example: tagslut intake <URL> --dj --mp3-root /path/to/mp3_assets --dj-root /path/to/dj_library"
+                )
+            if dj_root_path is None:
+                raise click.ClickException(
+                    "--dj requires --dj-root.\n"
+                    "Example: tagslut intake <URL> --dj --mp3-root /path/to/mp3_assets --dj-root /path/to/dj_library"
+                )
+            if mp3_root_path == dj_root_path:
+                raise click.ClickException(
+                    "--mp3-root and --dj-root must be different when --dj is active."
+                )
+
         artifact_dir_path = Path(artifact_dir).expanduser().resolve() if artifact_dir else None
 
         # Run orchestration
@@ -210,7 +277,9 @@ def register_intake_group(cli: click.Group) -> None:
             url=url,
             db_path=resolved_db_path,
             mp3=mp3,
+            dj=dj,
             dry_run=dry_run,
+            mp3_root=mp3_root_path,
             dj_root=dj_root_path,
             artifact_dir=artifact_dir_path,
             verbose=verbose,

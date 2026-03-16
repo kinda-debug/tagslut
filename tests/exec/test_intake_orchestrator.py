@@ -4,10 +4,9 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
-import subprocess
 import time
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 from click.testing import CliRunner
@@ -19,6 +18,11 @@ from tagslut.exec.intake_orchestrator import (
     _parse_precheck_csv,
     run_intake,
 )
+
+
+@pytest.fixture(autouse=True)
+def _set_artifacts_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("TAGSLUT_ARTIFACTS", str(tmp_path / "artifacts"))
 
 
 @pytest.fixture
@@ -73,6 +77,19 @@ def temp_db(tmp_path: Path) -> Path:
             path TEXT,
             status TEXT,
             transcoded_at TEXT
+        )
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS dj_admission (
+            id INTEGER PRIMARY KEY,
+            identity_id INTEGER UNIQUE,
+            mp3_asset_id INTEGER,
+            status TEXT,
+            admitted_at TEXT,
+            notes TEXT
         )
         """
     )
@@ -289,30 +306,24 @@ def test_precheck_csv_path_in_artifact(
 def test_mp3_flag_calls_build_mp3_from_identity(
     temp_db: Path, tmp_path: Path, mock_precheck_csv_new: Path
 ) -> None:
-    """Test --mp3 with identity in DB calls build_mp3_from_identity."""
-    dj_root = tmp_path / "dj"
-    dj_root.mkdir()
-
+    """PR2: --mp3 builds full-tag MP3 assets and registers them in mp3_asset."""
     os.utime(mock_precheck_csv_new, (time.time() + 5, time.time() + 5))
 
-    # Add a test identity to DB
+    # Register a master FLAC in DB and mark it as promoted for this run.
+    flac_path = tmp_path / "master.flac"
+    flac_path.write_text("not a real flac", encoding="utf-8")
+
     conn = sqlite3.connect(str(temp_db))
     cur = conn.execute(
         "INSERT INTO track_identity (isrc, beatport_id, title_norm, artist_norm) VALUES (?, ?, ?, ?)",
         ("USTEST001", "456", "test track", "test artist"),
     )
     identity_id = int(cur.lastrowid)
-
-    # Add asset
-    asset_path = tmp_path / "test.flac"
-    asset_path.write_text("fake flac", encoding="utf-8")
     cur = conn.execute(
         "INSERT INTO asset_file (path, file_hash) VALUES (?, ?)",
-        (str(asset_path), "fakehash123"),
+        (str(flac_path), "fakehash123"),
     )
     asset_id = int(cur.lastrowid)
-
-    # Link asset to identity
     conn.execute(
         "INSERT INTO asset_link (identity_id, asset_id, confidence, active) VALUES (?, ?, ?, ?)",
         (identity_id, asset_id, 0.95, 1),
@@ -320,104 +331,93 @@ def test_mp3_flag_calls_build_mp3_from_identity(
     conn.commit()
     conn.close()
 
-    promoted_txt = tmp_path / "promoted_flacs_20260315_140002.txt"
-    promoted_txt.write_text(str(asset_path) + "\n", encoding="utf-8")
+    promoted_txt = tmp_path / "artifacts" / "compare" / "promoted_flacs_20260315_140002.txt"
+    promoted_txt.parent.mkdir(parents=True, exist_ok=True)
+    promoted_txt.write_text(str(flac_path) + "\n", encoding="utf-8")
     os.utime(promoted_txt, (time.time() + 5, time.time() + 5))
 
     with patch("tagslut.exec.intake_orchestrator.subprocess.run") as mock_run:
         mock_run.return_value = Mock(returncode=0, stdout="", stderr="")
 
-        with patch(
-            "tagslut.exec.intake_orchestrator._find_latest_precheck_csv"
-        ) as mock_find:
+        with patch("tagslut.exec.intake_orchestrator._find_latest_precheck_csv") as mock_find:
             mock_find.return_value = mock_precheck_csv_new
 
             with patch(
-                "tagslut.exec.intake_orchestrator.build_mp3_from_identity"
-            ) as mock_mp3_build:
-                mock_mp3_build.return_value = Mock(built=1, skipped=0, failed=0, errors=[])
+                "tagslut.exec.intake_orchestrator._find_latest_promoted_flacs_txt"
+            ) as mock_find_promoted:
+                mock_find_promoted.return_value = promoted_txt
 
-                with patch(
-                    "tagslut.exec.intake_orchestrator._find_latest_promoted_flacs_txt"
-                ) as mock_find_promoted:
-                    mock_find_promoted.return_value = promoted_txt
+                def _fake_transcode(source: Path, dest_path: Path, **_kwargs: object) -> Path:
+                    dest_path.parent.mkdir(parents=True, exist_ok=True)
+                    dest_path.write_text("mp3-bytes", encoding="utf-8")
+                    return dest_path
+
+                with patch("tagslut.exec.transcoder.transcode_to_mp3_full_tags", new=_fake_transcode):
 
                     result = run_intake(
                         url="https://www.beatport.com/release/test/123",
                         db_path=temp_db,
                         mp3=True,
                         dry_run=False,
-                        dj_root=dj_root,
+                        mp3_root=tmp_path / "mp3_assets",
                         artifact_dir=tmp_path / "artifacts",
                     )
 
-    # Verify build_mp3_from_identity was called
-    assert mock_mp3_build.called
-    assert mock_mp3_build.call_count == 1
-    call_kwargs = mock_mp3_build.call_args.kwargs
-    assert call_kwargs["dj_root"] == dj_root
-    assert call_kwargs["dry_run"] is False
-    assert call_kwargs["identity_ids"] == [identity_id]
-
-    # Find MP3 stage
+    assert result.disposition == "completed"
     mp3_stage = next((s for s in result.stages if s.stage == "mp3"), None)
     assert mp3_stage is not None
     assert mp3_stage.status == "ok"
-    assert "1 built" in mp3_stage.detail
+
+    conn = sqlite3.connect(str(temp_db))
+    row = conn.execute(
+        "SELECT identity_id, asset_id, profile, path, status FROM mp3_asset ORDER BY id LIMIT 1"
+    ).fetchone()
+    conn.close()
+
+    assert row is not None
+    assert row[0] == identity_id
+    assert row[1] == asset_id
+    assert row[2] == "mp3_asset_320_cbr_full"
+    assert row[4] == "verified"
 
 
 def test_mp3_skips_gracefully_if_identity_not_registered(
     temp_db: Path, tmp_path: Path, mock_precheck_csv_new: Path
 ) -> None:
-    """Test --mp3 when no identity exists in DB (promote produced nothing)."""
-    dj_root = tmp_path / "dj"
-    dj_root.mkdir()
-
+    """PR1: --dj must imply --mp3 stage ordering, even as placeholders."""
     os.utime(mock_precheck_csv_new, (time.time() + 5, time.time() + 5))
-    promoted_txt = tmp_path / "promoted_flacs_20260315_140003.txt"
-    promoted_txt.write_text(str(tmp_path / "missing.flac") + "\n", encoding="utf-8")
-    os.utime(promoted_txt, (time.time() + 5, time.time() + 5))
 
     with patch("tagslut.exec.intake_orchestrator.subprocess.run") as mock_run:
         mock_run.return_value = Mock(returncode=0, stdout="", stderr="")
 
-        with patch(
-            "tagslut.exec.intake_orchestrator._find_latest_precheck_csv"
-        ) as mock_find:
+        with patch("tagslut.exec.intake_orchestrator._find_latest_precheck_csv") as mock_find:
             mock_find.return_value = mock_precheck_csv_new
 
             with patch(
-                "tagslut.exec.intake_orchestrator.build_mp3_from_identity"
-            ) as mock_mp3_build:
-                # No identities found, nothing built
-                mock_mp3_build.return_value = Mock(built=0, skipped=0, failed=0, errors=[])
+                "tagslut.exec.intake_orchestrator._find_latest_promoted_flacs_txt"
+            ) as mock_find_promoted:
+                mock_find_promoted.return_value = None
 
-                with patch(
-                    "tagslut.exec.intake_orchestrator._find_latest_promoted_flacs_txt"
-                ) as mock_find_promoted:
-                    mock_find_promoted.return_value = promoted_txt
+                result = run_intake(
+                    url="https://www.beatport.com/release/test/123",
+                    db_path=temp_db,
+                    mp3=False,
+                    dj=True,
+                    dry_run=False,
+                    mp3_root=tmp_path / "mp3_assets",
+                    dj_root=tmp_path / "dj_library",
+                    artifact_dir=tmp_path / "artifacts",
+                )
 
-                    result = run_intake(
-                        url="https://www.beatport.com/release/test/123",
-                        db_path=temp_db,
-                        mp3=True,
-                        dry_run=False,
-                        dj_root=dj_root,
-                        artifact_dir=tmp_path / "artifacts",
-                    )
-
-    # MP3 stage should be skipped because cohort does not resolve to any identities.
-    assert result.disposition == "completed"
-    mp3_stage = next((s for s in result.stages if s.stage == "mp3"), None)
-    assert mp3_stage is not None
-    assert mp3_stage.status == "skipped"
-    assert mock_mp3_build.call_count == 0
+    mp3_idx = next(i for i, s in enumerate(result.stages) if s.stage == "mp3")
+    dj_idx = next(i for i, s in enumerate(result.stages) if s.stage == "dj")
+    assert mp3_idx < dj_idx
 
 
 def test_mp3_without_dj_root_raises_click_exception(
     temp_db: Path, tmp_path: Path
 ) -> None:
-    """Test --mp3 without --dj-root raises ClickException before subprocess."""
+    """Test --mp3 without --mp3-root raises ClickException before subprocess."""
     import click
 
     runner = CliRunner()
@@ -442,7 +442,461 @@ def test_mp3_without_dj_root_raises_click_exception(
     )
 
     assert result.exit_code != 0
-    assert "--mp3 requires --dj-root" in result.output
+    assert "--mp3 requires --mp3-root" in result.output
+
+
+def test_mp3_placeholder_falls_back_to_precheck_skip_db_paths_when_no_promoted_file(
+    temp_db: Path, tmp_path: Path, mock_precheck_csv: Path
+) -> None:
+    # Override the fixture CSV so the skip db_path points to a real FLAC on disk.
+    flac_path = tmp_path / "existing.flac"
+    flac_path.write_text("not a real flac", encoding="utf-8")
+
+    decisions_csv = tmp_path / "artifacts" / "compare" / "precheck_decisions_20260315_150000.csv"
+    decisions_csv.parent.mkdir(parents=True, exist_ok=True)
+    decisions_csv.write_text(
+        "domain,source_link,track_id,isrc,title,artist,album,decision,confidence,match_method,reason,db_path,db_download_source,existing_quality_rank,candidate_quality_rank\n"
+        f'beatport,https://www.beatport.com/release/test/123,456,USTEST001,Test Track,Test Artist,Test Album,skip,high,isrc,"matched","{flac_path}",beatport,3,3\n',
+        encoding="utf-8",
+    )
+    os.utime(decisions_csv, (time.time() + 5, time.time() + 5))
+
+    conn = sqlite3.connect(str(temp_db))
+    cur = conn.execute(
+        "INSERT INTO track_identity (isrc, beatport_id, title_norm, artist_norm) VALUES (?, ?, ?, ?)",
+        ("USTEST001", "456", "test track", "test artist"),
+    )
+    identity_id = int(cur.lastrowid)
+    cur = conn.execute(
+        "INSERT INTO asset_file (path, file_hash) VALUES (?, ?)",
+        (str(flac_path), "fakehash123"),
+    )
+    asset_id = int(cur.lastrowid)
+    conn.execute(
+        "INSERT INTO asset_link (identity_id, asset_id, confidence, active) VALUES (?, ?, ?, ?)",
+        (identity_id, asset_id, 0.95, 1),
+    )
+    conn.commit()
+    conn.close()
+
+    with patch("tagslut.exec.intake_orchestrator.subprocess.run") as mock_run:
+        mock_run.return_value = Mock(returncode=0, stdout="", stderr="")
+
+        with patch("tagslut.exec.intake_orchestrator._find_latest_precheck_csv") as mock_find:
+            mock_find.return_value = decisions_csv
+
+            with patch(
+                "tagslut.exec.intake_orchestrator._find_latest_promoted_flacs_txt"
+            ) as mock_find_promoted:
+                mock_find_promoted.return_value = None
+
+                def _fake_transcode(source: Path, dest_path: Path, **_kwargs: object) -> Path:
+                    dest_path.parent.mkdir(parents=True, exist_ok=True)
+                    dest_path.write_text("mp3-bytes", encoding="utf-8")
+                    return dest_path
+
+                with patch("tagslut.exec.transcoder.transcode_to_mp3_full_tags", new=_fake_transcode):
+                    result = run_intake(
+                        url="https://www.beatport.com/release/test/123",
+                        db_path=temp_db,
+                        mp3=True,
+                        dry_run=False,
+                        mp3_root=tmp_path / "mp3_assets",
+                        artifact_dir=tmp_path / "artifacts",
+                    )
+
+    # Precheck blocked, but --mp3 fallback cohort exists => completed (resume semantics).
+    assert result.disposition == "completed"
+    precheck_stage = next(s for s in result.stages if s.stage == "precheck")
+    assert precheck_stage.status == "blocked"
+
+    mp3_stage = next(s for s in result.stages if s.stage == "mp3")
+    assert mp3_stage.status == "ok"
+
+    conn = sqlite3.connect(str(temp_db))
+    row = conn.execute(
+        "SELECT identity_id, asset_id, profile, status FROM mp3_asset ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    conn.close()
+    assert row == (identity_id, asset_id, "mp3_asset_320_cbr_full", "verified")
+
+
+def test_dj_build_registers_separate_profile_and_path(
+    temp_db: Path, tmp_path: Path, mock_precheck_csv_new: Path
+) -> None:
+    os.utime(mock_precheck_csv_new, (time.time() + 5, time.time() + 5))
+
+    flac_path = tmp_path / "master.flac"
+    flac_path.write_text("not a real flac", encoding="utf-8")
+
+    conn = sqlite3.connect(str(temp_db))
+    cur = conn.execute(
+        "INSERT INTO track_identity (isrc, beatport_id, title_norm, artist_norm) VALUES (?, ?, ?, ?)",
+        ("USTEST001", "456", "test track", "test artist"),
+    )
+    identity_id = int(cur.lastrowid)
+    cur = conn.execute(
+        "INSERT INTO asset_file (path, file_hash) VALUES (?, ?)",
+        (str(flac_path), "fakehash123"),
+    )
+    asset_id = int(cur.lastrowid)
+    conn.execute(
+        "INSERT INTO asset_link (identity_id, asset_id, confidence, active) VALUES (?, ?, ?, ?)",
+        (identity_id, asset_id, 0.95, 1),
+    )
+    conn.commit()
+    conn.close()
+
+    promoted_txt = tmp_path / "artifacts" / "compare" / "promoted_flacs_20260315_140010.txt"
+    promoted_txt.parent.mkdir(parents=True, exist_ok=True)
+    promoted_txt.write_text(str(flac_path) + "\n", encoding="utf-8")
+    os.utime(promoted_txt, (time.time() + 5, time.time() + 5))
+
+    mp3_root = tmp_path / "mp3_assets"
+    dj_root = tmp_path / "dj_library"
+    mp3_root.mkdir(parents=True, exist_ok=True)
+    dj_root.mkdir(parents=True, exist_ok=True)
+
+    with patch("tagslut.exec.intake_orchestrator.subprocess.run") as mock_run:
+        mock_run.return_value = Mock(returncode=0, stdout="", stderr="")
+
+        with patch("tagslut.exec.intake_orchestrator._find_latest_precheck_csv") as mock_find:
+            mock_find.return_value = mock_precheck_csv_new
+
+            with patch(
+                "tagslut.exec.intake_orchestrator._find_latest_promoted_flacs_txt"
+            ) as mock_find_promoted:
+                mock_find_promoted.return_value = promoted_txt
+
+                def _fake_transcode(source: Path, dest_path: Path, **_kwargs: object) -> Path:
+                    dest_path.parent.mkdir(parents=True, exist_ok=True)
+                    dest_path.write_text("mp3-bytes", encoding="utf-8")
+                    return dest_path
+
+                with patch("tagslut.exec.transcoder.transcode_to_mp3_full_tags", new=_fake_transcode):
+                    with patch("tagslut.exec.transcoder.build_dj_copy_filename") as mock_name:
+                        mock_name.return_value = "dj-copy.mp3"
+                        with patch("tagslut.exec.transcoder.tag_mp3_as_dj_copy") as mock_tag:
+                            result = run_intake(
+                                url="https://www.beatport.com/release/test/123",
+                                db_path=temp_db,
+                                mp3=False,
+                                dj=True,
+                                dry_run=False,
+                                mp3_root=mp3_root,
+                                dj_root=dj_root,
+                                artifact_dir=tmp_path / "artifacts",
+                            )
+
+    assert result.disposition == "completed"
+    mp3_stage = next(s for s in result.stages if s.stage == "mp3")
+    dj_stage = next(s for s in result.stages if s.stage == "dj")
+    assert mp3_stage.status == "ok"
+    assert dj_stage.status == "ok"
+    assert mock_tag.call_count == 1
+
+    conn = sqlite3.connect(str(temp_db))
+    rows = conn.execute(
+        "SELECT profile, path FROM mp3_asset WHERE identity_id = ? ORDER BY id",
+        (identity_id,),
+    ).fetchall()
+    conn.close()
+
+    assert len(rows) == 2
+    full = next(p for p in rows if p[0] == "mp3_asset_320_cbr_full")
+    dj = next(p for p in rows if p[0] == "dj_copy_320_cbr")
+    assert Path(full[1]).resolve() != Path(dj[1]).resolve()
+
+
+def test_backfill_prefers_dj_copy_profile_when_both_exist(temp_db: Path, tmp_path: Path) -> None:
+    from tagslut.dj.admission import backfill_admissions
+
+    conn = sqlite3.connect(str(temp_db))
+    cur = conn.execute(
+        "INSERT INTO track_identity (isrc, beatport_id, title_norm, artist_norm) VALUES (?, ?, ?, ?)",
+        ("USTEST001", "456", "test track", "test artist"),
+    )
+    identity_id = int(cur.lastrowid)
+    cur = conn.execute(
+        "INSERT INTO asset_file (path, file_hash) VALUES (?, ?)",
+        (str(tmp_path / "master.flac"), "fakehash123"),
+    )
+    asset_id = int(cur.lastrowid)
+
+    # Full-tag MP3 asset and DJ copy both present; backfill must pick DJ copy.
+    cur = conn.execute(
+        """
+        INSERT INTO mp3_asset (identity_id, asset_id, profile, path, status, transcoded_at)
+        VALUES (?, ?, ?, ?, 'verified', datetime('now'))
+        """,
+        (identity_id, asset_id, "mp3_asset_320_cbr_full", str(tmp_path / "full.mp3")),
+    )
+    _full_id = int(cur.lastrowid)
+    cur = conn.execute(
+        """
+        INSERT INTO mp3_asset (identity_id, asset_id, profile, path, status, transcoded_at)
+        VALUES (?, ?, ?, ?, 'verified', datetime('now'))
+        """,
+        (identity_id, asset_id, "dj_copy_320_cbr", str(tmp_path / "dj.mp3")),
+    )
+    dj_id = int(cur.lastrowid)
+    conn.commit()
+
+    admitted, skipped = backfill_admissions(conn)
+    assert admitted == 1
+    assert skipped == 0
+
+    row = conn.execute(
+        "SELECT identity_id, mp3_asset_id, status FROM dj_admission WHERE identity_id = ?",
+        (identity_id,),
+    ).fetchone()
+    conn.close()
+
+    assert row == (identity_id, dj_id, "admitted")
+
+
+def test_cli_intake_direct_url_routes_to_intake_url_command(temp_db: Path) -> None:
+    import click
+
+    runner = CliRunner()
+
+    @click.group()
+    def cli():
+        pass
+
+    register_intake_group(cli)
+
+    url = "https://tidal.com/playlist/abc"
+    fake_result = IntakeResult(
+        url=url,
+        stages=[],
+        disposition="completed",
+        precheck_summary={},
+        precheck_csv=None,
+        artifact_path=None,
+    )
+
+    with patch("tagslut.cli.commands.intake.run_intake") as mock_run:
+        mock_run.return_value = fake_result
+        result = runner.invoke(cli, ["intake", url, "--db", str(temp_db)])
+
+    assert result.exit_code == 0
+    assert mock_run.call_count == 1
+    assert mock_run.call_args.kwargs["url"] == url
+
+
+def test_cli_intake_url_alias_still_works(temp_db: Path) -> None:
+    import click
+
+    runner = CliRunner()
+
+    @click.group()
+    def cli():
+        pass
+
+    register_intake_group(cli)
+
+    url = "https://tidal.com/playlist/abc"
+    fake_result = IntakeResult(
+        url=url,
+        stages=[],
+        disposition="completed",
+        precheck_summary={},
+        precheck_csv=None,
+        artifact_path=None,
+    )
+
+    with patch("tagslut.cli.commands.intake.run_intake") as mock_run:
+        mock_run.return_value = fake_result
+        result = runner.invoke(cli, ["intake", "url", url, "--db", str(temp_db)])
+
+    assert result.exit_code == 0
+    assert mock_run.call_count == 1
+    assert mock_run.call_args.kwargs["url"] == url
+
+
+def test_cli_intake_subcommands_not_hijacked() -> None:
+    import click
+
+    runner = CliRunner()
+
+    @click.group()
+    def cli():
+        pass
+
+    register_intake_group(cli)
+
+    with patch("tagslut.cli.commands.intake.run_intake") as mock_run:
+        result = runner.invoke(cli, ["intake", "resolve"])
+
+    assert result.exit_code != 0
+    assert "Missing option '--db'" in result.output
+    assert mock_run.call_count == 0
+
+
+def test_cli_mp3_root_deprecated_alias_is_dj_root_in_mp3_only_mode(
+    temp_db: Path, tmp_path: Path
+) -> None:
+    import click
+
+    runner = CliRunner()
+
+    @click.group()
+    def cli():
+        pass
+
+    register_intake_group(cli)
+
+    url = "https://tidal.com/playlist/abc"
+    mp3_root = tmp_path / "mp3_assets"
+    mp3_root.mkdir(parents=True, exist_ok=True)
+
+    fake_result = IntakeResult(
+        url=url,
+        stages=[],
+        disposition="completed",
+        precheck_summary={},
+        precheck_csv=None,
+        artifact_path=None,
+    )
+
+    with patch("tagslut.cli.commands.intake.run_intake") as mock_run:
+        mock_run.return_value = fake_result
+        result = runner.invoke(
+            cli,
+            [
+                "intake",
+                url,
+                "--db",
+                str(temp_db),
+                "--mp3",
+                "--dj-root",
+                str(mp3_root),
+            ],
+        )
+
+    assert result.exit_code == 0
+    assert "DEPRECATION:" in result.stderr
+    assert mock_run.call_args.kwargs["mp3_root"] == mp3_root.resolve()
+    assert mock_run.call_args.kwargs["dj_root"] is None
+
+
+def test_cli_both_roots_without_dj_fails(temp_db: Path, tmp_path: Path) -> None:
+    import click
+
+    runner = CliRunner()
+
+    @click.group()
+    def cli():
+        pass
+
+    register_intake_group(cli)
+
+    url = "https://tidal.com/playlist/abc"
+    mp3_root = tmp_path / "mp3_assets"
+    dj_root = tmp_path / "dj_library"
+    mp3_root.mkdir(parents=True, exist_ok=True)
+    dj_root.mkdir(parents=True, exist_ok=True)
+
+    result = runner.invoke(
+        cli,
+        [
+            "intake",
+            url,
+            "--db",
+            str(temp_db),
+            "--mp3",
+            "--mp3-root",
+            str(mp3_root),
+            "--dj-root",
+            str(dj_root),
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "--dj-root is DJ-output-only" in result.output
+
+
+def test_cli_dj_requires_both_roots(temp_db: Path, tmp_path: Path) -> None:
+    import click
+
+    runner = CliRunner()
+
+    @click.group()
+    def cli():
+        pass
+
+    register_intake_group(cli)
+
+    url = "https://tidal.com/playlist/abc"
+    mp3_root = tmp_path / "mp3_assets"
+    dj_root = tmp_path / "dj_library"
+    mp3_root.mkdir(parents=True, exist_ok=True)
+    dj_root.mkdir(parents=True, exist_ok=True)
+
+    result_missing_mp3_root = runner.invoke(
+        cli,
+        [
+            "intake",
+            url,
+            "--db",
+            str(temp_db),
+            "--dj",
+            "--dj-root",
+            str(dj_root),
+        ],
+    )
+    assert result_missing_mp3_root.exit_code != 0
+    assert "requires --mp3-root" in result_missing_mp3_root.output
+
+    result_missing_dj_root = runner.invoke(
+        cli,
+        [
+            "intake",
+            url,
+            "--db",
+            str(temp_db),
+            "--dj",
+            "--mp3-root",
+            str(mp3_root),
+        ],
+    )
+    assert result_missing_dj_root.exit_code != 0
+    assert "requires --dj-root" in result_missing_dj_root.output
+
+
+def test_cli_dj_rejects_equal_roots(temp_db: Path, tmp_path: Path) -> None:
+    import click
+
+    runner = CliRunner()
+
+    @click.group()
+    def cli():
+        pass
+
+    register_intake_group(cli)
+
+    url = "https://tidal.com/playlist/abc"
+    root = tmp_path / "root"
+    root.mkdir(parents=True, exist_ok=True)
+
+    result = runner.invoke(
+        cli,
+        [
+            "intake",
+            url,
+            "--db",
+            str(temp_db),
+            "--dj",
+            "--mp3-root",
+            str(root),
+            "--dj-root",
+            str(root),
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "must be different" in result.output
 
 
 def test_exit_code_mapping(temp_db: Path, tmp_path: Path, mock_precheck_csv: Path) -> None:

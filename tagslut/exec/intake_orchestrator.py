@@ -3,7 +3,8 @@
 Orchestrates:
 1. Precheck (binding by default for non-dry-run; owned by tools/get-intake)
 2. Download + local tag prep + promote (via tools/get-intake, called via tools/get)
-3. MP3 transcode (scoped to this intake's promoted cohort if --mp3 passed)
+3. MP3 stage (full-tag mp3_asset generation; scoped to promoted cohort with resume fallback)
+4. DJ stage  (DJ-copy mp3_asset generation; extends MP3 stage)
 
 Emits structured JSON artifact on every invocation.
 """
@@ -12,7 +13,7 @@ from __future__ import annotations
 import json
 import subprocess
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -20,7 +21,6 @@ from typing import Any
 import csv
 import sqlite3
 
-from tagslut.exec.mp3_build import build_mp3_from_identity
 from tagslut.utils.env_paths import get_artifacts_dir
 
 
@@ -28,7 +28,7 @@ from tagslut.utils.env_paths import get_artifacts_dir
 class IntakeStageResult:
     """Result of a single intake stage."""
 
-    stage: str  # "precheck" | "download" | "promote" | "mp3"
+    stage: str  # "precheck" | "download" | "promote" | "mp3" | "dj"
     status: str  # "ok" | "skipped" | "blocked" | "failed"
     detail: str | None = None
     artifact_path: Path | None = None
@@ -153,6 +153,35 @@ def _load_promoted_flac_paths(path: Path) -> list[str]:
     return [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
+def _load_precheck_skip_db_paths(decisions_csv: Path) -> list[str]:
+    """Load existing inventory paths (db_path) from precheck skip rows.
+
+    Used as a resume/fallback cohort when nothing was promoted in this run.
+    """
+    if not decisions_csv.exists():
+        return []
+
+    seen: set[str] = set()
+    out: list[str] = []
+    with decisions_csv.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        for raw in reader:
+            decision = (raw.get("decision") or raw.get("action") or "").strip().lower()
+            if decision != "skip":
+                continue
+            db_path = (raw.get("db_path") or "").strip()
+            if not db_path:
+                continue
+            # Derivative stages operate over FLAC inputs.
+            if Path(db_path).suffix.lower() != ".flac":
+                continue
+            if db_path in seen:
+                continue
+            seen.add(db_path)
+            out.append(db_path)
+    return out
+
+
 def _resolve_identity_ids_for_paths(conn: sqlite3.Connection, paths: list[str]) -> list[int]:
     if not paths:
         return []
@@ -171,26 +200,51 @@ def _resolve_identity_ids_for_paths(conn: sqlite3.Connection, paths: list[str]) 
     return sorted({int(r[0]) for r in rows if r and r[0] is not None})
 
 
+def _write_stage_cohort_artifact(
+    *,
+    artifact_dir: Path,
+    stamp: str,
+    stage: str,
+    paths: list[str],
+    identity_ids: list[int],
+) -> Path:
+    artifact_path = artifact_dir / f"intake_{stamp}_{stage}_cohort.json"
+    payload = {
+        "stage": stage,
+        "paths": paths,
+        "identity_ids": identity_ids,
+    }
+    artifact_path.write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    return artifact_path
+
+
 def run_intake(
     url: str,
     *,
     db_path: Path,
     mp3: bool = False,
+    dj: bool = False,
     dry_run: bool = False,
+    mp3_root: Path | None = None,
     dj_root: Path | None = None,
     artifact_dir: Path | None = None,
     verbose: bool = False,
     no_precheck: bool = False,
     force_download: bool = False,
 ) -> IntakeResult:
-    """Run intake orchestration: precheck → download → promote → [mp3].
+    """Run intake orchestration: precheck → download → promote → [mp3] → [dj].
 
     Args:
         url: Provider URL (Beatport, Tidal, Deezer)
         db_path: Path to tagslut database
-        mp3: If True, transcode to MP3 after promote
+        mp3: If True, run MP3 stage after promote
+        dj: If True, run DJ stage after MP3 stage (implies mp3)
         dry_run: If True, precheck only (no download, no writes)
-        dj_root: DJ MP3 output root (required if mp3=True)
+        mp3_root: MP3 asset output root (required if mp3=True; contract enforced by CLI)
+        dj_root: DJ output root (required if dj=True; contract enforced by CLI)
         artifact_dir: Directory for JSON artifact output
         no_precheck: If True, explicitly waive precheck gating for the download pipeline.
         force_download: If True, keep matched tracks anyway during precheck (cohort expansion).
@@ -198,8 +252,13 @@ def run_intake(
     Returns:
         IntakeResult with disposition, stages, and artifact paths
     """
+    if dj:
+        mp3 = True
+
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     stages: list[IntakeStageResult] = []
     disposition = "completed"
+    precheck_blocked = False
     precheck_summary: dict[str, int] = {}
     precheck_csv_path: Path | None = None
 
@@ -208,14 +267,17 @@ def run_intake(
         artifact_dir = get_artifacts_dir() / "intake"
     artifact_dir.mkdir(parents=True, exist_ok=True)
 
+    artifacts_root = get_artifacts_dir()
+
     repo_root = Path(__file__).resolve().parents[2]
     precheck_script = repo_root / "tools" / "review" / "pre_download_check.py"
     get_script = repo_root / "tools" / "get"
 
+    run_started = time.time()
+
     # ────────────────────────────────────────────────────────────────────
     # Stage 1: Precheck
     # ────────────────────────────────────────────────────────────────────
-    run_started = time.time()
     if dry_run:
         if no_precheck:
             stages.append(
@@ -227,7 +289,7 @@ def run_intake(
             )
         else:
             try:
-                precheck_out_dir = get_artifacts_dir() / "compare"
+                precheck_out_dir = artifacts_root / "compare"
                 precheck_out_dir.mkdir(parents=True, exist_ok=True)
 
                 precheck_cmd = [
@@ -249,16 +311,19 @@ def run_intake(
                     check=True,
                     capture_output=not verbose,
                     text=True if not verbose else None,
+                    cwd=str(repo_root),
                 )
 
-                precheck_csv_path = _find_latest_precheck_csv(get_artifacts_dir(), url)
+                precheck_csv_path = _find_latest_precheck_csv(artifacts_root, url)
                 if precheck_csv_path and precheck_csv_path.exists():
                     precheck_summary = _parse_precheck_csv(precheck_csv_path)
                 else:
                     precheck_summary = {"total": 0, "new": 0, "upgrade": 0, "blocked": 0}
 
                 total_keep = precheck_summary.get("new", 0) + precheck_summary.get("upgrade", 0)
-                if total_keep == 0 and precheck_summary.get("blocked", 0) > 0:
+                precheck_blocked = total_keep == 0 and precheck_summary.get("blocked", 0) > 0
+
+                if precheck_blocked:
                     stages.append(
                         IntakeStageResult(
                             stage="precheck",
@@ -303,9 +368,9 @@ def run_intake(
             )
 
     # ────────────────────────────────────────────────────────────────────
-    # Stage 2: Download (only if precheck has tracks to download)
+    # Stage 2: Download
     # ────────────────────────────────────────────────────────────────────
-    if disposition == "completed" and not dry_run:
+    if not dry_run and disposition == "completed":
         try:
             download_cmd = [str(get_script), url]
             if no_precheck:
@@ -327,12 +392,11 @@ def run_intake(
                 IntakeStageResult(
                     stage="download",
                     status="ok",
-                    detail=None,
                 )
             )
 
             if not no_precheck:
-                precheck_csv_path = _find_latest_precheck_csv(get_artifacts_dir(), url)
+                precheck_csv_path = _find_latest_precheck_csv(artifacts_root, url)
                 if precheck_csv_path and precheck_csv_path.exists():
                     if precheck_csv_path.stat().st_mtime < (run_started - 1.0):
                         precheck_csv_path = None
@@ -343,14 +407,14 @@ def run_intake(
                     precheck_summary = {"total": 0, "new": 0, "upgrade": 0, "blocked": 0}
 
                 total_keep = precheck_summary.get("new", 0) + precheck_summary.get("upgrade", 0)
-                if total_keep == 0 and precheck_summary.get("blocked", 0) > 0:
+                precheck_blocked = total_keep == 0 and precheck_summary.get("blocked", 0) > 0
+                if precheck_blocked:
                     precheck_stage = IntakeStageResult(
                         stage="precheck",
                         status="blocked",
                         detail=f"{precheck_summary.get('blocked', 0)} tracks blocked, 0 to download",
                         artifact_path=precheck_csv_path,
                     )
-                    disposition = "blocked"
                 else:
                     precheck_stage = IntakeStageResult(
                         stage="precheck",
@@ -375,8 +439,7 @@ def run_intake(
                 )
             )
             disposition = "failed"
-
-    elif dry_run and disposition == "completed":
+    elif dry_run:
         stages.append(
             IntakeStageResult(
                 stage="download",
@@ -386,93 +449,71 @@ def run_intake(
         )
 
     # ────────────────────────────────────────────────────────────────────
-    # Stage 3: MP3 (only if --mp3 passed and download succeeded)
+    # Stage 3: Promote (observe promoted cohort file for this run)
     # ────────────────────────────────────────────────────────────────────
-    if mp3 and disposition == "completed" and not dry_run:
-        if dj_root is None:
+    promoted_txt: Path | None = None
+    promoted_paths: list[str] = []
+    if dry_run:
+        stages.append(
+            IntakeStageResult(
+                stage="promote",
+                status="skipped",
+                detail="--dry-run passed",
+            )
+        )
+    elif disposition == "failed":
+        stages.append(
+            IntakeStageResult(
+                stage="promote",
+                status="skipped",
+                detail="blocked by earlier failure",
+            )
+        )
+    else:
+        promoted_txt = _find_latest_promoted_flacs_txt(artifacts_root)
+        if promoted_txt and promoted_txt.exists() and promoted_txt.stat().st_mtime >= (run_started - 1.0):
+            promoted_paths = _load_promoted_flac_paths(promoted_txt)
+
+        if promoted_txt is None or not promoted_txt.exists() or promoted_txt.stat().st_mtime < (run_started - 1.0):
             stages.append(
                 IntakeStageResult(
-                    stage="mp3",
-                    status="failed",
-                    detail="--mp3 requires --dj-root",
+                    stage="promote",
+                    status="skipped",
+                    detail="No promoted cohort file found for this run.",
                 )
             )
-            disposition = "failed"
-        else:
-            try:
-                artifacts_dir = get_artifacts_dir()
-                promoted_txt = _find_latest_promoted_flacs_txt(artifacts_dir)
-                if (
-                    promoted_txt is None
-                    or not promoted_txt.exists()
-                    or promoted_txt.stat().st_mtime < (run_started - 1.0)
-                ):
-                    stages.append(
-                        IntakeStageResult(
-                            stage="mp3",
-                            status="skipped",
-                            detail="No promoted cohort file found for this run; MP3 build not run.",
-                        )
-                    )
-                else:
-                    promoted_paths = _load_promoted_flac_paths(promoted_txt)
-                    if not promoted_paths:
-                        stages.append(
-                            IntakeStageResult(
-                                stage="mp3",
-                                status="skipped",
-                                detail="Promoted cohort file was empty; MP3 build not run.",
-                            )
-                        )
-                    else:
-                        conn = sqlite3.connect(str(db_path))
-                        try:
-                            identity_ids = _resolve_identity_ids_for_paths(conn, promoted_paths)
-                            if not identity_ids:
-                                stages.append(
-                                    IntakeStageResult(
-                                        stage="mp3",
-                                        status="skipped",
-                                        detail="Promoted cohort did not resolve to any track_identity rows; MP3 build not run.",
-                                    )
-                                )
-                            else:
-                                mp3_result = build_mp3_from_identity(
-                                    conn,
-                                    identity_ids=identity_ids,
-                                    dj_root=dj_root,
-                                    dry_run=False,
-                                )
-
-                                if mp3_result.failed > 0:
-                                    stages.append(
-                                        IntakeStageResult(
-                                            stage="mp3",
-                                            status="ok",
-                                            detail=f"{mp3_result.built} built, {mp3_result.skipped} skipped, {mp3_result.failed} failed",
-                                        )
-                                    )
-                                else:
-                                    stages.append(
-                                        IntakeStageResult(
-                                            stage="mp3",
-                                            status="ok",
-                                            detail=f"{mp3_result.built} built, {mp3_result.skipped} skipped",
-                                        )
-                                    )
-                        finally:
-                            conn.close()
-
-            except Exception as exc:
-                stages.append(
-                    IntakeStageResult(
-                        stage="mp3",
-                        status="failed",
-                        detail=f"MP3 build error: {exc}",
-                    )
+        elif not promoted_paths:
+            stages.append(
+                IntakeStageResult(
+                    stage="promote",
+                    status="skipped",
+                    detail="Promoted cohort file was empty.",
+                    artifact_path=promoted_txt,
                 )
-                disposition = "failed"
+            )
+        else:
+            stages.append(
+                IntakeStageResult(
+                    stage="promote",
+                    status="ok",
+                    detail=f"{len(promoted_paths)} promoted",
+                    artifact_path=promoted_txt,
+                )
+            )
 
+    # ────────────────────────────────────────────────────────────────────
+    # Stage 4: MP3 (full-tag mp3_asset)
+    # ────────────────────────────────────────────────────────────────────
+    mp3_inputs: list[str] = []
+    mp3_inputs_source: str | None = None
+    if dry_run:
+        stages.append(
+            IntakeStageResult(
+                stage="mp3",
+                status="skipped",
+                detail="--dry-run passed" if mp3 else "--mp3 not passed",
+            )
+        )
     elif not mp3:
         stages.append(
             IntakeStageResult(
@@ -481,6 +522,162 @@ def run_intake(
                 detail="--mp3 not passed",
             )
         )
+    elif disposition == "failed":
+        stages.append(
+            IntakeStageResult(
+                stage="mp3",
+                status="skipped",
+                detail="blocked by earlier failure",
+            )
+        )
+    else:
+        if mp3_root is None:
+            stages.append(
+                IntakeStageResult(
+                    stage="mp3",
+                    status="failed",
+                    detail="--mp3 requires --mp3-root",
+                )
+            )
+            disposition = "failed"
+            mp3_inputs = []
+        else:
+            if promoted_paths:
+                mp3_inputs = list(promoted_paths)
+                mp3_inputs_source = "promoted_flacs"
+            elif precheck_csv_path is not None:
+                mp3_inputs = _load_precheck_skip_db_paths(precheck_csv_path)
+                mp3_inputs_source = "precheck_skip_db_paths"
+
+            if mp3_inputs:
+                from tagslut.exec.mp3_build import build_full_tag_mp3_assets_from_flac_paths
+
+                conn = sqlite3.connect(str(db_path))
+                try:
+                    identity_ids = _resolve_identity_ids_for_paths(conn, mp3_inputs)
+                    artifact_path = _write_stage_cohort_artifact(
+                        artifact_dir=artifact_dir,
+                        stamp=stamp,
+                        stage="mp3",
+                        paths=mp3_inputs,
+                        identity_ids=identity_ids,
+                    )
+                    build_result = build_full_tag_mp3_assets_from_flac_paths(
+                        conn,
+                        flac_paths=[Path(p) for p in mp3_inputs],
+                        mp3_root=mp3_root,
+                        dry_run=False,
+                    )
+                finally:
+                    conn.close()
+
+                status = "ok" if build_result.failed == 0 else "failed"
+                stages.append(
+                    IntakeStageResult(
+                        stage="mp3",
+                        status=status,
+                        detail=f"{build_result.summary()} (inputs={len(mp3_inputs)} from {mp3_inputs_source})",
+                        artifact_path=artifact_path,
+                    )
+                )
+                if build_result.failed > 0:
+                    disposition = "failed"
+            else:
+                stages.append(
+                    IntakeStageResult(
+                        stage="mp3",
+                        status="skipped",
+                        detail="no FLAC inputs selected",
+                    )
+                )
+
+    # ────────────────────────────────────────────────────────────────────
+    # Stage 5: DJ (DJ-copy mp3_asset; extends MP3 stage)
+    # ────────────────────────────────────────────────────────────────────
+    if dry_run:
+        stages.append(
+            IntakeStageResult(
+                stage="dj",
+                status="skipped",
+                detail="--dry-run passed" if dj else "--dj not passed",
+            )
+        )
+    elif not dj:
+        stages.append(
+            IntakeStageResult(
+                stage="dj",
+                status="skipped",
+                detail="--dj not passed",
+            )
+        )
+    elif disposition == "failed":
+        stages.append(
+            IntakeStageResult(
+                stage="dj",
+                status="skipped",
+                detail="blocked by earlier failure",
+            )
+        )
+    else:
+        if dj_root is None:
+            stages.append(
+                IntakeStageResult(
+                    stage="dj",
+                    status="failed",
+                    detail="--dj requires --dj-root",
+                )
+            )
+            disposition = "failed"
+        elif mp3_inputs:
+            from tagslut.exec.mp3_build import build_dj_copies_from_full_tag_mp3_assets
+
+            conn = sqlite3.connect(str(db_path))
+            try:
+                identity_ids = _resolve_identity_ids_for_paths(conn, mp3_inputs)
+                artifact_path = _write_stage_cohort_artifact(
+                    artifact_dir=artifact_dir,
+                    stamp=stamp,
+                    stage="dj",
+                    paths=mp3_inputs,
+                    identity_ids=identity_ids,
+                )
+                build_result = build_dj_copies_from_full_tag_mp3_assets(
+                    conn,
+                    flac_paths=[Path(p) for p in mp3_inputs],
+                    dj_root=dj_root,
+                    dry_run=False,
+                )
+            finally:
+                conn.close()
+
+            status = "ok" if build_result.failed == 0 else "failed"
+            stages.append(
+                IntakeStageResult(
+                    stage="dj",
+                    status=status,
+                    detail=build_result.summary(),
+                    artifact_path=artifact_path,
+                )
+            )
+            if build_result.failed > 0:
+                disposition = "failed"
+        else:
+            stages.append(
+                IntakeStageResult(
+                    stage="dj",
+                    status="skipped",
+                    detail="no FLAC inputs selected",
+                )
+            )
+
+    # ────────────────────────────────────────────────────────────────────
+    # Final disposition (resume semantics)
+    # ────────────────────────────────────────────────────────────────────
+    if disposition != "failed" and not dry_run and precheck_blocked:
+        if not mp3 and not dj:
+            disposition = "blocked"
+        elif not mp3_inputs:
+            disposition = "blocked"
 
     # ────────────────────────────────────────────────────────────────────
     # Write JSON artifact
@@ -494,10 +691,13 @@ def run_intake(
         artifact_path=None,
     )
 
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    artifact_path = artifact_dir / f"intake_url_{ts}.json"
+    artifact_path = artifact_dir / f"intake_url_{stamp}.json"
     artifact_data = result.to_dict()
     artifact_data["dry_run"] = dry_run
+    artifact_data["mp3"] = mp3
+    artifact_data["dj"] = dj
+    artifact_data["mp3_root"] = str(mp3_root) if mp3_root is not None else None
+    artifact_data["dj_root"] = str(dj_root) if dj_root is not None else None
 
     artifact_path.write_text(
         json.dumps(artifact_data, indent=2, ensure_ascii=False),

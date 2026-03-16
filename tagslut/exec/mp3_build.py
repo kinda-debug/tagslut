@@ -13,6 +13,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
+MP3_ASSET_PROFILE_FULL_TAGS = "mp3_asset_320_cbr_full"
+DJ_COPY_PROFILE = "dj_copy_320_cbr"
+
+
 @dataclass
 class Mp3BuildResult:
     built: int = 0
@@ -24,6 +28,213 @@ class Mp3BuildResult:
         return (
             f"mp3 build: built={self.built} skipped={self.skipped} failed={self.failed}"
         )
+
+
+def _resolve_identity_and_asset_for_flac_path(
+    conn: sqlite3.Connection,
+    *,
+    flac_path: Path,
+) -> tuple[int | None, int | None]:
+    row = conn.execute(
+        """
+        SELECT af.id AS asset_id, al.identity_id
+        FROM asset_file af
+        LEFT JOIN asset_link al
+          ON al.asset_id = af.id
+         AND (al.active IS NULL OR al.active = 1)
+        WHERE af.path = ?
+        ORDER BY al.confidence DESC, al.id ASC
+        LIMIT 1
+        """,
+        (str(flac_path),),
+    ).fetchone()
+    if not row:
+        return None, None
+    asset_id = int(row[0]) if row[0] is not None else None
+    identity_id = int(row[1]) if row[1] is not None else None
+    return identity_id, asset_id
+
+
+def _mp3_asset_dest_for_flac_path(
+    *,
+    flac_path: Path,
+    mp3_root: Path,
+    library_root: Path | None,
+) -> Path:
+    rel: Path
+    if library_root is not None:
+        try:
+            rel = flac_path.resolve().relative_to(library_root.resolve())
+        except ValueError:
+            rel = Path(flac_path.name)
+    else:
+        rel = Path(flac_path.name)
+    return (mp3_root / rel).with_suffix(".mp3")
+
+
+def build_full_tag_mp3_assets_from_flac_paths(
+    conn: sqlite3.Connection,
+    *,
+    flac_paths: list[Path],
+    mp3_root: Path,
+    dry_run: bool = True,
+    overwrite: bool = False,
+) -> Mp3BuildResult:
+    """Build full-tag MP3 assets under mp3_root and register as mp3_asset rows."""
+    from tagslut.exec.transcoder import transcode_to_mp3_full_tags
+    from tagslut.utils.env_paths import get_volume
+
+    result = Mp3BuildResult()
+    library_root = get_volume("library", required=False)
+
+    for flac_path in flac_paths:
+        try:
+            flac_path = Path(flac_path)
+            if not flac_path.exists():
+                result.failed += 1
+                result.errors.append(f"FLAC not found on disk: {flac_path}")
+                continue
+
+            identity_id, asset_id = _resolve_identity_and_asset_for_flac_path(conn, flac_path=flac_path)
+            if asset_id is None:
+                result.failed += 1
+                result.errors.append(f"FLAC not registered in asset_file: {flac_path}")
+                continue
+
+            dest_path = _mp3_asset_dest_for_flac_path(
+                flac_path=flac_path,
+                mp3_root=mp3_root,
+                library_root=library_root,
+            )
+            dest_path.parent.mkdir(parents=True, exist_ok=True)
+
+            existing = conn.execute(
+                "SELECT id FROM mp3_asset WHERE path = ? LIMIT 1",
+                (str(dest_path),),
+            ).fetchone()
+            if existing and dest_path.exists() and not overwrite:
+                result.skipped += 1
+                continue
+
+            if dry_run:
+                result.built += 1
+                continue
+
+            transcode_to_mp3_full_tags(
+                flac_path,
+                dest_path,
+                bitrate=320,
+                overwrite=overwrite,
+                ffmpeg_path=None,
+            )
+
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO mp3_asset
+                  (identity_id, asset_id, profile, path, status, transcoded_at)
+                VALUES (?, ?, ?, ?, 'verified', datetime('now'))
+                """,
+                (identity_id, asset_id, MP3_ASSET_PROFILE_FULL_TAGS, str(dest_path)),
+            )
+            conn.commit()
+            result.built += 1
+        except Exception as exc:
+            result.failed += 1
+            result.errors.append(f"{flac_path}: {exc}")
+
+    return result
+
+
+def build_dj_copies_from_full_tag_mp3_assets(
+    conn: sqlite3.Connection,
+    *,
+    flac_paths: list[Path],
+    dj_root: Path,
+    dry_run: bool = True,
+    overwrite: bool = False,
+) -> Mp3BuildResult:
+    """Create DJ copies by copying from full-tag MP3 assets (no re-encode)."""
+    import shutil
+
+    from tagslut.exec.transcoder import build_dj_copy_filename, tag_mp3_as_dj_copy
+
+    result = Mp3BuildResult()
+    for flac_path in flac_paths:
+        try:
+            flac_path = Path(flac_path)
+            if not flac_path.exists():
+                result.failed += 1
+                result.errors.append(f"FLAC not found on disk: {flac_path}")
+                continue
+
+            identity_id, asset_id = _resolve_identity_and_asset_for_flac_path(conn, flac_path=flac_path)
+            if identity_id is None or asset_id is None:
+                result.failed += 1
+                result.errors.append(f"FLAC not registered with an active identity: {flac_path}")
+                continue
+
+            mp3_row = conn.execute(
+                """
+                SELECT id, path
+                FROM mp3_asset
+                WHERE identity_id = ?
+                  AND asset_id = ?
+                  AND profile = ?
+                  AND status = 'verified'
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (identity_id, asset_id, MP3_ASSET_PROFILE_FULL_TAGS),
+            ).fetchone()
+            if not mp3_row:
+                result.failed += 1
+                result.errors.append(f"No full-tag mp3_asset found for identity {identity_id} ({flac_path})")
+                continue
+
+            src_mp3_path = Path(str(mp3_row[1]))
+            if not src_mp3_path.exists():
+                result.failed += 1
+                result.errors.append(f"Full-tag MP3 not found on disk: {src_mp3_path}")
+                continue
+
+            dj_root.mkdir(parents=True, exist_ok=True)
+            dj_dest_path = (dj_root / build_dj_copy_filename(flac_path)).resolve()
+            if dj_dest_path == src_mp3_path.resolve():
+                raise RuntimeError("DJ copy path would equal mp3_asset path (roots or naming conflict)")
+
+            existing = conn.execute(
+                "SELECT id FROM mp3_asset WHERE path = ? LIMIT 1",
+                (str(dj_dest_path),),
+            ).fetchone()
+            if existing and dj_dest_path.exists() and not overwrite:
+                result.skipped += 1
+                continue
+
+            if dry_run:
+                result.built += 1
+                continue
+
+            if not dj_dest_path.exists() or overwrite:
+                dj_dest_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src_mp3_path, dj_dest_path)
+
+            tag_mp3_as_dj_copy(dj_dest_path, flac_path)
+
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO mp3_asset
+                  (identity_id, asset_id, profile, path, status, transcoded_at)
+                VALUES (?, ?, ?, ?, 'verified', datetime('now'))
+                """,
+                (identity_id, asset_id, DJ_COPY_PROFILE, str(dj_dest_path)),
+            )
+            conn.commit()
+            result.built += 1
+        except Exception as exc:
+            result.failed += 1
+            result.errors.append(f"{flac_path}: {exc}")
+
+    return result
 
 
 def build_mp3_from_identity(

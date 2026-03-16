@@ -558,54 +558,65 @@ def dual_write_registered_file(
     duration_ref_source: str | None,
     event_time: str | None = None,
 ) -> tuple[int, int | None]:
-    asset_id = upsert_asset_file(
-        conn,
-        path=path,
-        content_sha256=content_sha256,
-        streaminfo_md5=streaminfo_md5,
-        checksum=checksum,
-        size_bytes=size_bytes,
-        mtime=mtime,
-        duration_s=duration_s,
-        sample_rate=sample_rate,
-        bit_depth=bit_depth,
-        bitrate=bitrate,
-        library=library,
-        zone=zone,
-        download_source=download_source,
-        download_date=download_date,
-        mgmt_status=mgmt_status,
-    )
+    owns_transaction = not conn.in_transaction
+    if owns_transaction:
+        conn.execute("BEGIN IMMEDIATE")
 
-    identity_hints = identity_hints_from_metadata(metadata)
-    identity_id = upsert_track_identity(
-        conn,
-        isrc=identity_hints["isrc"],
-        beatport_id=identity_hints["beatport_id"],
-        artist=identity_hints["artist"],
-        title=identity_hints["title"],
-        bpm=identity_hints["bpm"],
-        key=identity_hints["key"],
-        duration_ref_ms=duration_ref_ms,
-        ref_source=duration_ref_source or download_source,
-    )
-    if identity_id is not None:
-        upsert_asset_link(
+    try:
+        asset_id = upsert_asset_file(
             conn,
-            asset_id=asset_id,
-            identity_id=identity_id,
-            confidence=1.0 if identity_hints["isrc"] else 0.8,
-            link_source="register",
+            path=path,
+            content_sha256=content_sha256,
+            streaminfo_md5=streaminfo_md5,
+            checksum=checksum,
+            size_bytes=size_bytes,
+            mtime=mtime,
+            duration_s=duration_s,
+            sample_rate=sample_rate,
+            bit_depth=bit_depth,
+            bitrate=bitrate,
+            library=library,
+            zone=zone,
+            download_source=download_source,
+            download_date=download_date,
+            mgmt_status=mgmt_status,
         )
 
-    record_provenance_event(
-        conn,
-        event_type="registered",
-        status=mgmt_status,
-        asset_id=asset_id,
-        identity_id=identity_id,
-        source_path=str(path),
-        details={"source": download_source},
-        event_time=event_time,
-    )
-    return asset_id, identity_id
+        identity_hints = identity_hints_from_metadata(metadata)
+        identity_id = upsert_track_identity(
+            conn,
+            isrc=identity_hints["isrc"],
+            beatport_id=identity_hints["beatport_id"],
+            artist=identity_hints["artist"],
+            title=identity_hints["title"],
+            bpm=identity_hints["bpm"],
+            key=identity_hints["key"],
+            duration_ref_ms=duration_ref_ms,
+            ref_source=duration_ref_source or download_source,
+        )
+        if identity_id is not None:
+            upsert_asset_link(
+                conn,
+                asset_id=asset_id,
+                identity_id=identity_id,
+                confidence=1.0 if identity_hints["isrc"] else 0.8,
+                link_source="register",
+            )
+
+        record_provenance_event(
+            conn,
+            event_type="registered",
+            status=mgmt_status,
+            asset_id=asset_id,
+            identity_id=identity_id,
+            source_path=str(path),
+            details={"source": download_source},
+            event_time=event_time,
+        )
+        if owns_transaction:
+            conn.commit()
+        return asset_id, identity_id
+    except Exception:
+        if owns_transaction:
+            conn.rollback()
+        raise

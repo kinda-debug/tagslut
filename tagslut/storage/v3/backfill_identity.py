@@ -746,7 +746,7 @@ def backfill_v3_identity_links(
     rows = conn.execute(query, tuple(params)).fetchall()
 
     if config.execute:
-        conn.execute("BEGIN")
+        conn.execute("BEGIN IMMEDIATE")
 
     for row in rows:
         file_id = int(row["file_id"])
@@ -913,7 +913,7 @@ def backfill_v3_identity_links(
             conn.commit()
             stats.committed_batches += 1
             _emit_progress(config, stats, event="commit")
-            conn.execute("BEGIN")
+            conn.execute("BEGIN IMMEDIATE")
         if stats.processed % config.checkpoint_every == 0:
             checkpoint_path = artifacts_dir / f"backfill_v3_checkpoint_{stamp}_{stats.last_file_id}.json"
             _write_json(checkpoint_path, _checkpoint_payload(stats, mode=mode, db_path=str(db_path)))

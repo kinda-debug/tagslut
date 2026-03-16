@@ -332,149 +332,161 @@ def merge_group_by_repointing_assets(
     dry_run: bool,
 ) -> MergeResult:
     """Merge one duplicate identity group by repointing asset_link rows."""
-    normalized_losers = _normalize_ids(loser_ids)
-    if int(winner_id) in normalized_losers:
-        raise RuntimeError("winner_id cannot be included in loser_ids")
+    owns_transaction = not conn.in_transaction
+    if owns_transaction:
+        conn.execute("BEGIN IMMEDIATE")
 
-    _assert_foreign_keys_on(conn)
+    try:
+        normalized_losers = _normalize_ids(loser_ids)
+        if int(winner_id) in normalized_losers:
+            raise RuntimeError("winner_id cannot be included in loser_ids")
 
-    all_ids = tuple(sorted({int(winner_id), *normalized_losers}))
-    rows_by_id = _identity_rows_by_id(conn, all_ids)
-    winner_row = rows_by_id[int(winner_id)]
-    if _column_exists(conn, "track_identity", "merged_into_id") and winner_row["merged_into_id"] is not None:
-        raise RuntimeError("winner identity cannot already be merged")
+        _assert_foreign_keys_on(conn)
 
-    beatport_id = str(winner_row["beatport_id"] or "").strip()
-    if not beatport_id:
-        raise RuntimeError("winner identity must have non-empty beatport_id")
+        all_ids = tuple(sorted({int(winner_id), *normalized_losers}))
+        rows_by_id = _identity_rows_by_id(conn, all_ids)
+        winner_row = rows_by_id[int(winner_id)]
+        if _column_exists(conn, "track_identity", "merged_into_id") and winner_row["merged_into_id"] is not None:
+            raise RuntimeError("winner identity cannot already be merged")
 
-    selection = choose_winner_identity(conn, all_ids)
-    if selection.winner_id != int(winner_id):
-        raise RuntimeError(
-            f"winner mismatch: expected {winner_id}, deterministic selector chose {selection.winner_id}"
-        )
+        beatport_id = str(winner_row["beatport_id"] or "").strip()
+        if not beatport_id:
+            raise RuntimeError("winner identity must have non-empty beatport_id")
 
-    loser_placeholders = ",".join("?" for _ in normalized_losers)
-    where_active_link = _active_link_where(conn)
-    assets_moved_row = conn.execute(
-        f"""
-        SELECT COUNT(*) AS n
-        FROM asset_link
-        WHERE identity_id IN ({loser_placeholders}) AND {where_active_link}
-        """,
-        tuple(normalized_losers),
-    ).fetchone()
-    assets_moved = int(assets_moved_row["n"]) if assets_moved_row else 0
-
-    existing_fields = _existing_canonical_fields(conn)
-    fields_copied: dict[str, Any] = {}
-    loser_keys = tuple(str(rows_by_id[int(loser_id)]["identity_key"]) for loser_id in normalized_losers)
-    for field in existing_fields:
-        winner_value = winner_row[field]
-        if not _is_blank(winner_value):
-            continue
-        for loser_id in normalized_losers:
-            loser_value = rows_by_id[int(loser_id)][field]
-            if not _is_blank(loser_value):
-                fields_copied[field] = loser_value
-                break
-
-    if _column_exists(conn, "track_identity", "merged_into_id"):
-        for loser_id in normalized_losers:
-            if rows_by_id[int(loser_id)]["merged_into_id"] is not None:
-                raise RuntimeError(f"loser identity is already merged: {int(loser_id)}")
-
-    if not dry_run:
-        conn.execute(
-            f"""
-            UPDATE asset_link
-            SET identity_id = ?
-            WHERE identity_id IN ({loser_placeholders})
-            """,
-            (int(winner_id), *normalized_losers),
-        )
-
-        if fields_copied:
-            set_clause = ", ".join(f"{field} = ?" for field in fields_copied)
-            params: list[Any] = list(fields_copied.values())
-            params.append(int(winner_id))
-            conn.execute(
-                f"""
-                UPDATE track_identity
-                SET {set_clause}
-                WHERE id = ?
-                """,
-                tuple(params),
+        selection = choose_winner_identity(conn, all_ids)
+        if selection.winner_id != int(winner_id):
+            raise RuntimeError(
+                f"winner mismatch: expected {winner_id}, deterministic selector chose {selection.winner_id}"
             )
 
+        loser_placeholders = ",".join("?" for _ in normalized_losers)
+        where_active_link = _active_link_where(conn)
+        assets_moved_row = conn.execute(
+            f"""
+            SELECT COUNT(*) AS n
+            FROM asset_link
+            WHERE identity_id IN ({loser_placeholders}) AND {where_active_link}
+            """,
+            tuple(normalized_losers),
+        ).fetchone()
+        assets_moved = int(assets_moved_row["n"]) if assets_moved_row else 0
+
+        existing_fields = _existing_canonical_fields(conn)
+        fields_copied: dict[str, Any] = {}
+        loser_keys = tuple(str(rows_by_id[int(loser_id)]["identity_key"]) for loser_id in normalized_losers)
+        for field in existing_fields:
+            winner_value = winner_row[field]
+            if not _is_blank(winner_value):
+                continue
+            for loser_id in normalized_losers:
+                loser_value = rows_by_id[int(loser_id)][field]
+                if not _is_blank(loser_value):
+                    fields_copied[field] = loser_value
+                    break
+
         if _column_exists(conn, "track_identity", "merged_into_id"):
+            for loser_id in normalized_losers:
+                if rows_by_id[int(loser_id)]["merged_into_id"] is not None:
+                    raise RuntimeError(f"loser identity is already merged: {int(loser_id)}")
+
+        if not dry_run:
             conn.execute(
                 f"""
-                UPDATE track_identity
-                SET merged_into_id = ?
-                WHERE id IN ({loser_placeholders})
+                UPDATE asset_link
+                SET identity_id = ?
+                WHERE identity_id IN ({loser_placeholders})
                 """,
                 (int(winner_id), *normalized_losers),
             )
-            conn.execute(
-                f"""
-                UPDATE track_identity
-                SET beatport_id = NULL
-                WHERE id IN ({loser_placeholders})
-                  AND merged_into_id = ?
-                """,
-                (*normalized_losers, int(winner_id)),
-            )
-            _sync_legacy_file_keys(
-                conn,
-                str(winner_row["identity_key"]),
-                loser_keys,
-            )
-            if _table_exists(conn, "preferred_asset"):
+
+            if fields_copied:
+                set_clause = ", ".join(f"{field} = ?" for field in fields_copied)
+                params: list[Any] = list(fields_copied.values())
+                params.append(int(winner_id))
                 conn.execute(
                     f"""
-                    DELETE FROM preferred_asset
-                    WHERE identity_id IN ({loser_placeholders})
+                    UPDATE track_identity
+                    SET {set_clause}
+                    WHERE id = ?
                     """,
-                    tuple(normalized_losers),
+                    tuple(params),
                 )
 
-    if not dry_run:
-        where_active_identity = _active_identity_where(conn)
-        duplicate_row = conn.execute(
-            f"""
-            SELECT COUNT(*) AS n
-            FROM track_identity
-            WHERE beatport_id = ? AND {where_active_identity}
-            """,
-            (beatport_id,),
-        ).fetchone()
-        duplicate_count = int(duplicate_row["n"]) if duplicate_row else 0
-        if duplicate_count > 1:
-            raise RuntimeError(
-                f"duplicate beatport_id remains after merge: beatport_id={beatport_id} active_count={duplicate_count}"
-            )
+            if _column_exists(conn, "track_identity", "merged_into_id"):
+                conn.execute(
+                    f"""
+                    UPDATE track_identity
+                    SET merged_into_id = ?
+                    WHERE id IN ({loser_placeholders})
+                    """,
+                    (int(winner_id), *normalized_losers),
+                )
+                conn.execute(
+                    f"""
+                    UPDATE track_identity
+                    SET beatport_id = NULL
+                    WHERE id IN ({loser_placeholders})
+                      AND merged_into_id = ?
+                    """,
+                    (*normalized_losers, int(winner_id)),
+                )
+                _sync_legacy_file_keys(
+                    conn,
+                    str(winner_row["identity_key"]),
+                    loser_keys,
+                )
+                if _table_exists(conn, "preferred_asset"):
+                    conn.execute(
+                        f"""
+                        DELETE FROM preferred_asset
+                        WHERE identity_id IN ({loser_placeholders})
+                        """,
+                        tuple(normalized_losers),
+                    )
 
-        _assert_asset_link_unique(conn)
-        _assert_active_links_resolve_to_canonical(conn)
-        _assert_foreign_keys_on(conn)
+        if not dry_run:
+            where_active_identity = _active_identity_where(conn)
+            duplicate_row = conn.execute(
+                f"""
+                SELECT COUNT(*) AS n
+                FROM track_identity
+                WHERE beatport_id = ? AND {where_active_identity}
+                """,
+                (beatport_id,),
+            ).fetchone()
+            duplicate_count = int(duplicate_row["n"]) if duplicate_row else 0
+            if duplicate_count > 1:
+                raise RuntimeError(
+                    f"duplicate beatport_id remains after merge: beatport_id={beatport_id} active_count={duplicate_count}"
+                )
 
-    rationale = {
-        "winner_selection": selection.rationale,
-        "candidate_scores": [
-            _candidate_to_dict(candidate) for candidate in selection.candidate_scores
-        ],
-    }
-    return MergeResult(
-        merge_type="beatport_id",
-        key_value=beatport_id,
-        winner_identity_id=int(winner_id),
-        loser_identity_ids=tuple(int(identity_id) for identity_id in normalized_losers),
-        assets_moved=assets_moved,
-        fields_copied=fields_copied,
-        rationale=rationale,
-        dry_run=bool(dry_run),
-    )
+            _assert_asset_link_unique(conn)
+            _assert_active_links_resolve_to_canonical(conn)
+            _assert_foreign_keys_on(conn)
+
+        rationale = {
+            "winner_selection": selection.rationale,
+            "candidate_scores": [
+                _candidate_to_dict(candidate) for candidate in selection.candidate_scores
+            ],
+        }
+        result = MergeResult(
+            merge_type="beatport_id",
+            key_value=beatport_id,
+            winner_identity_id=int(winner_id),
+            loser_identity_ids=tuple(int(identity_id) for identity_id in normalized_losers),
+            assets_moved=assets_moved,
+            fields_copied=fields_copied,
+            rationale=rationale,
+            dry_run=bool(dry_run),
+        )
+        if owns_transaction:
+            conn.commit()
+        return result
+    except Exception:
+        if owns_transaction:
+            conn.rollback()
+        raise
 
 
 def record_identity_merge_provenance(

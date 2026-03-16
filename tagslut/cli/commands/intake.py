@@ -151,6 +151,18 @@ def register_intake_group(cli: click.Group) -> None:
         help="Precheck only — no download, no writes.",
     )
     @click.option(
+        "--no-precheck",
+        is_flag=True,
+        default=False,
+        help="Explicitly waive precheck gating (downloads may proceed even if duplicates exist).",
+    )
+    @click.option(
+        "--force-download",
+        is_flag=True,
+        default=False,
+        help="Keep matched tracks anyway during precheck (cohort expansion).",
+    )
+    @click.option(
         "--artifact-dir",
         default=None,
         type=click.Path(),
@@ -168,6 +180,8 @@ def register_intake_group(cli: click.Group) -> None:
         mp3: bool,
         dj_root: str | None,
         dry_run: bool,
+        no_precheck: bool,
+        force_download: bool,
         artifact_dir: str | None,
         verbose: bool,
     ):  # type: ignore  # TODO: mypy-strict
@@ -200,6 +214,8 @@ def register_intake_group(cli: click.Group) -> None:
             dj_root=dj_root_path,
             artifact_dir=artifact_dir_path,
             verbose=verbose,
+            no_precheck=no_precheck,
+            force_download=force_download,
         )
 
         # Print summary

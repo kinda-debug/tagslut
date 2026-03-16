@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import subprocess
+import time
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
@@ -136,6 +138,7 @@ def test_precheck_block_returns_disposition_blocked(
     temp_db: Path, tmp_path: Path, mock_precheck_csv: Path
 ) -> None:
     """Test that when all tracks blocked, disposition is 'blocked'."""
+    os.utime(mock_precheck_csv, (time.time() + 5, time.time() + 5))
     with patch("tagslut.exec.intake_orchestrator.subprocess.run") as mock_run:
         mock_run.return_value = Mock(returncode=0, stdout="", stderr="")
 
@@ -192,6 +195,33 @@ def test_precheck_new_dry_run_no_subprocess(
     assert download_stage is not None
     assert download_stage.status == "skipped"
     assert "--dry-run" in download_stage.detail
+
+
+def test_download_does_not_waive_precheck_by_default(
+    temp_db: Path, tmp_path: Path, mock_precheck_csv_new: Path
+) -> None:
+    """Non-dry-run should not implicitly pass --no-precheck to tools/get."""
+    os.utime(mock_precheck_csv_new, (time.time() + 5, time.time() + 5))
+
+    with patch("tagslut.exec.intake_orchestrator.subprocess.run") as mock_run:
+        mock_run.return_value = Mock(returncode=0, stdout="", stderr="")
+
+        with patch(
+            "tagslut.exec.intake_orchestrator._find_latest_precheck_csv"
+        ) as mock_find:
+            mock_find.return_value = mock_precheck_csv_new
+
+            run_intake(
+                url="https://www.beatport.com/release/test/123",
+                db_path=temp_db,
+                mp3=False,
+                dry_run=False,
+                artifact_dir=tmp_path / "artifacts",
+            )
+
+    assert mock_run.call_count == 1
+    called_cmd = mock_run.call_args.args[0]
+    assert "--no-precheck" not in called_cmd
 
 
 def test_artifact_written_on_block(
@@ -263,22 +293,24 @@ def test_mp3_flag_calls_build_mp3_from_identity(
     dj_root = tmp_path / "dj"
     dj_root.mkdir()
 
+    os.utime(mock_precheck_csv_new, (time.time() + 5, time.time() + 5))
+
     # Add a test identity to DB
     conn = sqlite3.connect(str(temp_db))
-    conn.execute(
+    cur = conn.execute(
         "INSERT INTO track_identity (isrc, beatport_id, title_norm, artist_norm) VALUES (?, ?, ?, ?)",
         ("USTEST001", "456", "test track", "test artist"),
     )
-    identity_id = conn.lastrowid
+    identity_id = int(cur.lastrowid)
 
     # Add asset
     asset_path = tmp_path / "test.flac"
     asset_path.write_text("fake flac", encoding="utf-8")
-    conn.execute(
+    cur = conn.execute(
         "INSERT INTO asset_file (path, file_hash) VALUES (?, ?)",
         (str(asset_path), "fakehash123"),
     )
-    asset_id = conn.lastrowid
+    asset_id = int(cur.lastrowid)
 
     # Link asset to identity
     conn.execute(
@@ -287,6 +319,10 @@ def test_mp3_flag_calls_build_mp3_from_identity(
     )
     conn.commit()
     conn.close()
+
+    promoted_txt = tmp_path / "promoted_flacs_20260315_140002.txt"
+    promoted_txt.write_text(str(asset_path) + "\n", encoding="utf-8")
+    os.utime(promoted_txt, (time.time() + 5, time.time() + 5))
 
     with patch("tagslut.exec.intake_orchestrator.subprocess.run") as mock_run:
         mock_run.return_value = Mock(returncode=0, stdout="", stderr="")
@@ -301,14 +337,19 @@ def test_mp3_flag_calls_build_mp3_from_identity(
             ) as mock_mp3_build:
                 mock_mp3_build.return_value = Mock(built=1, skipped=0, failed=0, errors=[])
 
-                result = run_intake(
-                    url="https://www.beatport.com/release/test/123",
-                    db_path=temp_db,
-                    mp3=True,
-                    dry_run=False,
-                    dj_root=dj_root,
-                    artifact_dir=tmp_path / "artifacts",
-                )
+                with patch(
+                    "tagslut.exec.intake_orchestrator._find_latest_promoted_flacs_txt"
+                ) as mock_find_promoted:
+                    mock_find_promoted.return_value = promoted_txt
+
+                    result = run_intake(
+                        url="https://www.beatport.com/release/test/123",
+                        db_path=temp_db,
+                        mp3=True,
+                        dry_run=False,
+                        dj_root=dj_root,
+                        artifact_dir=tmp_path / "artifacts",
+                    )
 
     # Verify build_mp3_from_identity was called
     assert mock_mp3_build.called
@@ -316,6 +357,7 @@ def test_mp3_flag_calls_build_mp3_from_identity(
     call_kwargs = mock_mp3_build.call_args.kwargs
     assert call_kwargs["dj_root"] == dj_root
     assert call_kwargs["dry_run"] is False
+    assert call_kwargs["identity_ids"] == [identity_id]
 
     # Find MP3 stage
     mp3_stage = next((s for s in result.stages if s.stage == "mp3"), None)
@@ -331,6 +373,11 @@ def test_mp3_skips_gracefully_if_identity_not_registered(
     dj_root = tmp_path / "dj"
     dj_root.mkdir()
 
+    os.utime(mock_precheck_csv_new, (time.time() + 5, time.time() + 5))
+    promoted_txt = tmp_path / "promoted_flacs_20260315_140003.txt"
+    promoted_txt.write_text(str(tmp_path / "missing.flac") + "\n", encoding="utf-8")
+    os.utime(promoted_txt, (time.time() + 5, time.time() + 5))
+
     with patch("tagslut.exec.intake_orchestrator.subprocess.run") as mock_run:
         mock_run.return_value = Mock(returncode=0, stdout="", stderr="")
 
@@ -345,20 +392,26 @@ def test_mp3_skips_gracefully_if_identity_not_registered(
                 # No identities found, nothing built
                 mock_mp3_build.return_value = Mock(built=0, skipped=0, failed=0, errors=[])
 
-                result = run_intake(
-                    url="https://www.beatport.com/release/test/123",
-                    db_path=temp_db,
-                    mp3=True,
-                    dry_run=False,
-                    dj_root=dj_root,
-                    artifact_dir=tmp_path / "artifacts",
-                )
+                with patch(
+                    "tagslut.exec.intake_orchestrator._find_latest_promoted_flacs_txt"
+                ) as mock_find_promoted:
+                    mock_find_promoted.return_value = promoted_txt
 
-    # Should complete successfully even with 0 built
+                    result = run_intake(
+                        url="https://www.beatport.com/release/test/123",
+                        db_path=temp_db,
+                        mp3=True,
+                        dry_run=False,
+                        dj_root=dj_root,
+                        artifact_dir=tmp_path / "artifacts",
+                    )
+
+    # MP3 stage should be skipped because cohort does not resolve to any identities.
     assert result.disposition == "completed"
     mp3_stage = next((s for s in result.stages if s.stage == "mp3"), None)
     assert mp3_stage is not None
-    assert mp3_stage.status == "ok"
+    assert mp3_stage.status == "skipped"
+    assert mock_mp3_build.call_count == 0
 
 
 def test_mp3_without_dj_root_raises_click_exception(

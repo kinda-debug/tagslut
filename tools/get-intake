@@ -1811,24 +1811,30 @@ PY
     echo "Download context:"
     echo "  batch before: $BATCH_AUDIO_BEFORE_DOWNLOAD audio files under $BATCH_ROOT"
   fi
-  if [[ "$USE_DOWNLOAD_PRECHECK" -eq 1 ]]; then
-    if [[ "${PREFILTER_KEEP:-0}" -eq 0 ]]; then
-      echo "All candidates already have same-or-better inventory matches; skipping download."
-      if [[ "$DJ_MODE" -eq 1 ]]; then
-        echo "CONTRACT NOTE: All tracks are precheck-hit inventory. DJ output will be produced via" >&2
-        echo "  the precheck-inventory fallback path (link_precheck_inventory_to_dj), NOT the" >&2
-        echo "  promotion-driven build_pool_v3 path. Results may differ from a first-time intake run." >&2
-        echo "  For a deterministic DJ build from canonical state, use: tagslut dj pool-wizard" >&2
-        step "$((STEP + 1))" "$TOTAL_STEPS" "Link existing inventory to DJ"
-        link_precheck_inventory_to_dj "$PRECHECK_DECISIONS_CSV" "$PRECHECK_PLAYLIST_TITLE"
-      fi
-      echo "No new candidates to process; intake pipeline finished."
-      exit 0
-    else
-      if [[ "$SOURCE" == "tidal" ]]; then
-        if [[ "${PREFILTER_SKIP:-0}" -eq 0 && -n "$URL" ]]; then
-          if [[ "$VERBOSE" -eq 1 ]]; then
-            echo "  Tidal mode:         direct URL (no filtered skips)"
+	  if [[ "$USE_DOWNLOAD_PRECHECK" -eq 1 ]]; then
+	    if [[ "${PREFILTER_KEEP:-0}" -eq 0 ]]; then
+	      echo "All candidates already have same-or-better inventory matches; skipping download."
+	      if [[ "$DJ_MODE" -eq 1 ]]; then
+	        echo "CONTRACT NOTE: All tracks are precheck-hit inventory. DJ output will be produced via" >&2
+	        echo "  the precheck-inventory fallback path (link_precheck_inventory_to_dj), NOT the" >&2
+	        echo "  promotion-driven build_pool_v3 path. Results may differ from a first-time intake run." >&2
+	        echo "  For a deterministic DJ build from canonical state, use: tagslut dj pool-wizard" >&2
+	        step "$((STEP + 1))" "$TOTAL_STEPS" "Link existing inventory to DJ"
+	        link_precheck_inventory_to_dj "$PRECHECK_DECISIONS_CSV" "$PRECHECK_PLAYLIST_TITLE"
+	        echo "No new candidates to download; intake pipeline finished (DJ mode)."
+	        exit 0
+	      fi
+	      if [[ "$BATCH_AUDIO_BEFORE_DOWNLOAD" -gt 0 ]]; then
+	        echo "Resume mode: batch already contains $BATCH_AUDIO_BEFORE_DOWNLOAD audio file(s); continuing pipeline."
+	      else
+	        echo "No new candidates to download and batch is empty; intake pipeline finished."
+	        exit 0
+	      fi
+	    else
+	      if [[ "$SOURCE" == "tidal" ]]; then
+	        if [[ "${PREFILTER_SKIP:-0}" -eq 0 && -n "$URL" ]]; then
+	          if [[ "$VERBOSE" -eq 1 ]]; then
+	            echo "  Tidal mode:         direct URL (no filtered skips)"
             echo "  Tidal batch root:   $BATCH_ROOT"
           fi
           if [[ ${#DOWNLOADER_ARGS[@]} -gt 0 ]]; then

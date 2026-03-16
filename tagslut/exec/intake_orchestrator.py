@@ -180,6 +180,8 @@ def run_intake(
     dj_root: Path | None = None,
     artifact_dir: Path | None = None,
     verbose: bool = False,
+    no_precheck: bool = False,
+    force_download: bool = False,
 ) -> IntakeResult:
     """Run intake orchestration: precheck → download → promote → [mp3].
 
@@ -190,6 +192,8 @@ def run_intake(
         dry_run: If True, precheck only (no download, no writes)
         dj_root: DJ MP3 output root (required if mp3=True)
         artifact_dir: Directory for JSON artifact output
+        no_precheck: If True, explicitly waive precheck gating for the download pipeline.
+        force_download: If True, keep matched tracks anyway during precheck (cohort expansion).
 
     Returns:
         IntakeResult with disposition, stages, and artifact paths
@@ -211,118 +215,166 @@ def run_intake(
     # ────────────────────────────────────────────────────────────────────
     # Stage 1: Precheck
     # ────────────────────────────────────────────────────────────────────
-    try:
-        precheck_out_dir = get_artifacts_dir() / "compare"
-        precheck_out_dir.mkdir(parents=True, exist_ok=True)
-
-        precheck_cmd = [
-            "python3",
-            str(precheck_script),
-            url,
-            "--db",
-            str(db_path),
-            "--out-dir",
-            str(precheck_out_dir),
-        ]
-        if not verbose:
-            precheck_cmd.append("--quiet")
-
-        result = subprocess.run(
-            precheck_cmd,
-            check=True,
-            capture_output=not verbose,
-            text=True if not verbose else None,
-        )
-
-        # Find the generated precheck_decisions_*.csv
-        precheck_csv_path = _find_latest_precheck_csv(get_artifacts_dir(), url)
-
-        if precheck_csv_path and precheck_csv_path.exists():
-            precheck_summary = _parse_precheck_csv(precheck_csv_path)
-        else:
-            precheck_summary = {"total": 0, "new": 0, "upgrade": 0, "blocked": 0}
-
-        # Determine precheck stage status
-        total_keep = precheck_summary.get("new", 0) + precheck_summary.get("upgrade", 0)
-        if total_keep == 0:
-            # All tracks blocked
+    run_started = time.time()
+    if dry_run:
+        if no_precheck:
             stages.append(
                 IntakeStageResult(
                     stage="precheck",
-                    status="blocked",
-                    detail=f"{precheck_summary.get('blocked', 0)} tracks blocked, 0 to download",
-                    artifact_path=precheck_csv_path,
+                    status="skipped",
+                    detail="waived by --no-precheck (dry-run)",
                 )
             )
-            disposition = "blocked"
         else:
+            try:
+                precheck_out_dir = get_artifacts_dir() / "compare"
+                precheck_out_dir.mkdir(parents=True, exist_ok=True)
+
+                precheck_cmd = [
+                    "python3",
+                    str(precheck_script),
+                    url,
+                    "--db",
+                    str(db_path),
+                    "--out-dir",
+                    str(precheck_out_dir),
+                ]
+                if not verbose:
+                    precheck_cmd.append("--quiet")
+                if force_download:
+                    precheck_cmd.append("--force-keep-matched")
+
+                subprocess.run(
+                    precheck_cmd,
+                    check=True,
+                    capture_output=not verbose,
+                    text=True if not verbose else None,
+                )
+
+                precheck_csv_path = _find_latest_precheck_csv(get_artifacts_dir(), url)
+                if precheck_csv_path and precheck_csv_path.exists():
+                    precheck_summary = _parse_precheck_csv(precheck_csv_path)
+                else:
+                    precheck_summary = {"total": 0, "new": 0, "upgrade": 0, "blocked": 0}
+
+                total_keep = precheck_summary.get("new", 0) + precheck_summary.get("upgrade", 0)
+                if total_keep == 0 and precheck_summary.get("blocked", 0) > 0:
+                    stages.append(
+                        IntakeStageResult(
+                            stage="precheck",
+                            status="blocked",
+                            detail=f"{precheck_summary.get('blocked', 0)} tracks blocked, 0 to download",
+                            artifact_path=precheck_csv_path,
+                        )
+                    )
+                    disposition = "blocked"
+                else:
+                    stages.append(
+                        IntakeStageResult(
+                            stage="precheck",
+                            status="ok",
+                            detail=(
+                                f"{precheck_summary.get('new', 0)} new, "
+                                f"{precheck_summary.get('upgrade', 0)} upgrade, "
+                                f"{precheck_summary.get('blocked', 0)} blocked"
+                            ),
+                            artifact_path=precheck_csv_path,
+                        )
+                    )
+
+            except subprocess.CalledProcessError as exc:
+                stages.append(
+                    IntakeStageResult(
+                        stage="precheck",
+                        status="failed",
+                        detail=f"Precheck subprocess failed: {exc}",
+                    )
+                )
+                disposition = "failed"
+    else:
+        # Non-dry-run: tools/get-intake owns the binding precheck unless explicitly waived.
+        if no_precheck:
             stages.append(
                 IntakeStageResult(
                     stage="precheck",
-                    status="ok",
-                    detail=f"{precheck_summary.get('new', 0)} new, {precheck_summary.get('upgrade', 0)} upgrade, {precheck_summary.get('blocked', 0)} blocked",
-                    artifact_path=precheck_csv_path,
+                    status="skipped",
+                    detail="waived by --no-precheck",
                 )
             )
-
-    except subprocess.CalledProcessError as exc:
-        stages.append(
-            IntakeStageResult(
-                stage="precheck",
-                status="failed",
-                detail=f"Precheck subprocess failed: {exc}",
-            )
-        )
-        disposition = "failed"
 
     # ────────────────────────────────────────────────────────────────────
     # Stage 2: Download (only if precheck has tracks to download)
     # ────────────────────────────────────────────────────────────────────
     if disposition == "completed" and not dry_run:
-        total_keep = precheck_summary.get("new", 0) + precheck_summary.get("upgrade", 0)
-        if total_keep > 0:
-            try:
-                download_cmd = [
-                    str(get_script),
-                    url,
-                    "--no-precheck",
-                ]
-                if verbose:
-                    download_cmd.append("--verbose")
+        try:
+            download_cmd = [str(get_script), url]
+            if no_precheck:
+                download_cmd.append("--no-precheck")
+            if force_download:
+                download_cmd.append("--force-download")
+            if verbose:
+                download_cmd.append("--verbose")
 
-                result = subprocess.run(
-                    download_cmd,
-                    check=True,
-                    capture_output=not verbose,
-                    text=True if not verbose else None,
-                    cwd=str(repo_root),
-                )
+            subprocess.run(
+                download_cmd,
+                check=True,
+                capture_output=not verbose,
+                text=True if not verbose else None,
+                cwd=str(repo_root),
+            )
 
-                stages.append(
-                    IntakeStageResult(
-                        stage="download",
-                        status="ok",
-                        detail=None,
-                    )
-                )
-
-            except subprocess.CalledProcessError as exc:
-                stages.append(
-                    IntakeStageResult(
-                        stage="download",
-                        status="failed",
-                        detail=f"Download subprocess failed: exit {exc.returncode}",
-                    )
-                )
-                disposition = "failed"
-        else:
             stages.append(
                 IntakeStageResult(
                     stage="download",
-                    status="skipped",
-                    detail="No tracks to download",
+                    status="ok",
+                    detail=None,
                 )
             )
+
+            if not no_precheck:
+                precheck_csv_path = _find_latest_precheck_csv(get_artifacts_dir(), url)
+                if precheck_csv_path and precheck_csv_path.exists():
+                    if precheck_csv_path.stat().st_mtime < (run_started - 1.0):
+                        precheck_csv_path = None
+
+                if precheck_csv_path and precheck_csv_path.exists():
+                    precheck_summary = _parse_precheck_csv(precheck_csv_path)
+                else:
+                    precheck_summary = {"total": 0, "new": 0, "upgrade": 0, "blocked": 0}
+
+                total_keep = precheck_summary.get("new", 0) + precheck_summary.get("upgrade", 0)
+                if total_keep == 0 and precheck_summary.get("blocked", 0) > 0:
+                    precheck_stage = IntakeStageResult(
+                        stage="precheck",
+                        status="blocked",
+                        detail=f"{precheck_summary.get('blocked', 0)} tracks blocked, 0 to download",
+                        artifact_path=precheck_csv_path,
+                    )
+                    disposition = "blocked"
+                else:
+                    precheck_stage = IntakeStageResult(
+                        stage="precheck",
+                        status="ok",
+                        detail=(
+                            f"{precheck_summary.get('new', 0)} new, "
+                            f"{precheck_summary.get('upgrade', 0)} upgrade, "
+                            f"{precheck_summary.get('blocked', 0)} blocked"
+                        ),
+                        artifact_path=precheck_csv_path,
+                    )
+
+                if not stages or stages[0].stage != "precheck":
+                    stages.insert(0, precheck_stage)
+
+        except subprocess.CalledProcessError as exc:
+            stages.append(
+                IntakeStageResult(
+                    stage="download",
+                    status="failed",
+                    detail=f"Download subprocess failed: exit {exc.returncode}",
+                )
+            )
+            disposition = "failed"
 
     elif dry_run and disposition == "completed":
         stages.append(
@@ -348,31 +400,68 @@ def run_intake(
             disposition = "failed"
         else:
             try:
-                conn = sqlite3.connect(str(db_path))
-                mp3_result = build_mp3_from_identity(
-                    conn,
-                    identity_ids=None,  # Process all identities without MP3
-                    dj_root=dj_root,
-                    dry_run=False,
-                )
-                conn.close()
-
-                if mp3_result.failed > 0:
+                artifacts_dir = get_artifacts_dir()
+                promoted_txt = _find_latest_promoted_flacs_txt(artifacts_dir)
+                if (
+                    promoted_txt is None
+                    or not promoted_txt.exists()
+                    or promoted_txt.stat().st_mtime < (run_started - 1.0)
+                ):
                     stages.append(
                         IntakeStageResult(
                             stage="mp3",
-                            status="ok",
-                            detail=f"{mp3_result.built} built, {mp3_result.skipped} skipped, {mp3_result.failed} failed",
+                            status="skipped",
+                            detail="No promoted cohort file found for this run; MP3 build not run.",
                         )
                     )
                 else:
-                    stages.append(
-                        IntakeStageResult(
-                            stage="mp3",
-                            status="ok",
-                            detail=f"{mp3_result.built} built, {mp3_result.skipped} skipped",
+                    promoted_paths = _load_promoted_flac_paths(promoted_txt)
+                    if not promoted_paths:
+                        stages.append(
+                            IntakeStageResult(
+                                stage="mp3",
+                                status="skipped",
+                                detail="Promoted cohort file was empty; MP3 build not run.",
+                            )
                         )
-                    )
+                    else:
+                        conn = sqlite3.connect(str(db_path))
+                        try:
+                            identity_ids = _resolve_identity_ids_for_paths(conn, promoted_paths)
+                            if not identity_ids:
+                                stages.append(
+                                    IntakeStageResult(
+                                        stage="mp3",
+                                        status="skipped",
+                                        detail="Promoted cohort did not resolve to any track_identity rows; MP3 build not run.",
+                                    )
+                                )
+                            else:
+                                mp3_result = build_mp3_from_identity(
+                                    conn,
+                                    identity_ids=identity_ids,
+                                    dj_root=dj_root,
+                                    dry_run=False,
+                                )
+
+                                if mp3_result.failed > 0:
+                                    stages.append(
+                                        IntakeStageResult(
+                                            stage="mp3",
+                                            status="ok",
+                                            detail=f"{mp3_result.built} built, {mp3_result.skipped} skipped, {mp3_result.failed} failed",
+                                        )
+                                    )
+                                else:
+                                    stages.append(
+                                        IntakeStageResult(
+                                            stage="mp3",
+                                            status="ok",
+                                            detail=f"{mp3_result.built} built, {mp3_result.skipped} skipped",
+                                        )
+                                    )
+                        finally:
+                            conn.close()
 
             except Exception as exc:
                 stages.append(

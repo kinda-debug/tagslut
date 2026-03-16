@@ -6,6 +6,10 @@ from tagslut.metadata.models.types import (
     ProviderTrack,
     EnrichmentResult,
     LocalFileInfo,
+    TidalSeedRow,
+    TidalBeatportMergedRow,
+    TIDAL_SEED_COLUMNS,
+    TIDAL_BEATPORT_MERGED_COLUMNS,
 )
 from tagslut.metadata.models.precedence import (
     DURATION_PRECEDENCE,
@@ -28,6 +32,10 @@ __all__ = [
     "ProviderTrack",
     "EnrichmentResult",
     "LocalFileInfo",
+    "TidalSeedRow",
+    "TidalBeatportMergedRow",
+    "TIDAL_SEED_COLUMNS",
+    "TIDAL_BEATPORT_MERGED_COLUMNS",
     "DURATION_PRECEDENCE",
     "BPM_PRECEDENCE",
     "KEY_PRECEDENCE",

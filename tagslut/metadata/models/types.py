@@ -2,7 +2,7 @@
 Data models for metadata enrichment.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from typing import Optional, Dict, Any, List
 from enum import Enum
 
@@ -214,3 +214,45 @@ class LocalFileInfo:
     # Fingerprint info
     acoustid_id: Optional[str] = None
     musicbrainz_id: Optional[str] = None
+
+
+@dataclass(slots=True)
+class TidalSeedRow:
+    """Stable TIDAL-only intake row for vendor enrichment flows."""
+
+    tidal_playlist_id: str
+    tidal_track_id: str
+    tidal_url: str
+    title: str
+    artist: str
+    isrc: Optional[str] = None
+
+
+@dataclass(slots=True)
+class TidalBeatportMergedRow:
+    """Merged vendor row with TIDAL intake fields and Beatport enrichment fields."""
+
+    tidal_playlist_id: str
+    tidal_track_id: str
+    tidal_url: str
+    title: str
+    artist: str
+    isrc: Optional[str] = None
+    beatport_track_id: Optional[str] = None
+    beatport_release_id: Optional[str] = None
+    beatport_url: Optional[str] = None
+    beatport_bpm: Optional[str] = None
+    beatport_key: Optional[str] = None
+    beatport_genre: Optional[str] = None
+    beatport_subgenre: Optional[str] = None
+    beatport_label: Optional[str] = None
+    beatport_catalog_number: Optional[str] = None
+    beatport_upc: Optional[str] = None
+    beatport_release_date: Optional[str] = None
+    match_method: str = "no_match"
+    match_confidence: float = 0.0
+    last_synced_at: Optional[str] = None
+
+
+TIDAL_SEED_COLUMNS = tuple(field.name for field in fields(TidalSeedRow))
+TIDAL_BEATPORT_MERGED_COLUMNS = tuple(field.name for field in fields(TidalBeatportMergedRow))

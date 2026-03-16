@@ -2022,6 +2022,62 @@ run_cmd python "$SCAN_SCRIPT" \
   --allow-accepted \
   --trust "$TRUST" \
   --trust-post "$TRUST_POST"
+
+CONVERTED_ORIGINALS_FILE="$OUT_DIR/converted_lossless_originals_$(date +%Y%m%d_%H%M%S).txt"
+python - "$DB_PATH" "$BATCH_ROOT" "$CONVERTED_ORIGINALS_FILE" <<'PY'
+import sqlite3
+import sys
+from pathlib import Path
+
+db_path = Path(sys.argv[1]).expanduser().resolve()
+batch_root = Path(sys.argv[2]).expanduser().resolve()
+out_file = Path(sys.argv[3]).expanduser().resolve()
+
+removed = []
+seen = set()
+
+conn = sqlite3.connect(str(db_path))
+try:
+    rows = conn.execute(
+        """
+        SELECT path, original_path
+        FROM files
+        WHERE path LIKE ?
+          AND original_path IS NOT NULL
+          AND original_path != ''
+        """,
+        (f"{batch_root}%",),
+    ).fetchall()
+finally:
+    conn.close()
+
+for path_text, original_text in rows:
+    current_path = Path(str(path_text)).expanduser().resolve()
+    original_path = Path(str(original_text)).expanduser().resolve()
+    if current_path.suffix.lower() != ".flac":
+        continue
+    if original_path.suffix.lower() not in {".m4a", ".mp4"}:
+        continue
+    if current_path == original_path:
+        continue
+    if original_path in seen:
+        continue
+    try:
+        current_path.relative_to(batch_root)
+        original_path.relative_to(batch_root)
+    except ValueError:
+        continue
+    if not current_path.exists() or not original_path.exists():
+        continue
+    original_path.unlink(missing_ok=True)
+    if original_path.exists():
+        continue
+    seen.add(original_path)
+    removed.append(str(original_path))
+
+out_file.parent.mkdir(parents=True, exist_ok=True)
+out_file.write_text("\n".join(removed) + ("\n" if removed else ""), encoding="utf-8")
+PY
 STEP=$((STEP + 1))
 
 if [[ "$TAGGING_MODE" -eq 1 && "$EXECUTE" -eq 1 ]]; then
@@ -2260,16 +2316,21 @@ if [[ "$VERBOSE" -eq 1 && "$EXECUTE" -eq 1 ]]; then
   print_batch_snapshot "Batch after apply" "$BATCH_ROOT"
 fi
 
+PROMOTED_AUDIO_FILE="$OUT_DIR/promoted_audio_$(date +%Y%m%d_%H%M%S).txt"
 PROMOTED_FLACS_FILE="$OUT_DIR/promoted_flacs_$(date +%Y%m%d_%H%M%S).txt"
-python - "$PROMOTE_PLAN" "$PROMOTED_FLACS_FILE" <<'PY'
+python - "$PROMOTE_PLAN" "$PROMOTED_AUDIO_FILE" "$PROMOTED_FLACS_FILE" <<'PY'
 import csv
 import sys
 from pathlib import Path
 
 plan_csv = Path(sys.argv[1])
-out_file = Path(sys.argv[2])
-selected = []
-seen = set()
+audio_out_file = Path(sys.argv[2])
+flac_out_file = Path(sys.argv[3])
+selected_audio = []
+selected_flacs = []
+seen_audio = set()
+seen_flacs = set()
+AUDIO_EXTS = {".flac", ".mp3", ".wav", ".aif", ".aiff", ".m4a", ".mp4"}
 
 with plan_csv.open(newline="", encoding="utf-8") as handle:
     reader = csv.DictReader(handle)
@@ -2284,34 +2345,42 @@ with plan_csv.open(newline="", encoding="utf-8") as handle:
             candidate = dest
         elif str(src) and src.exists():
             candidate = src
-        if candidate is None or candidate.suffix.lower() != ".flac":
+        if candidate is None:
             continue
         key = str(candidate.resolve())
-        if key in seen:
-            continue
-        seen.add(key)
-        selected.append(key)
+        suffix = candidate.suffix.lower()
+        if suffix in AUDIO_EXTS and key not in seen_audio:
+            seen_audio.add(key)
+            selected_audio.append(key)
+        if suffix == ".flac" and key not in seen_flacs:
+            seen_flacs.add(key)
+            selected_flacs.append(key)
 
-with out_file.open("w", encoding="utf-8") as handle:
-    for item in selected:
+with audio_out_file.open("w", encoding="utf-8") as handle:
+    for item in selected_audio:
+        handle.write(f"{item}\n")
+
+with flac_out_file.open("w", encoding="utf-8") as handle:
+    for item in selected_flacs:
         handle.write(f"{item}\n")
 PY
 
+PROMOTED_AUDIO_COUNT="$(wc -l < "$PROMOTED_AUDIO_FILE" | tr -d ' ')"
 PROMOTED_FLACS_COUNT="$(wc -l < "$PROMOTED_FLACS_FILE" | tr -d ' ')"
 if [[ "$VERBOSE" -eq 1 ]]; then
-  echo "Promoted file list: $PROMOTED_FLACS_FILE ($PROMOTED_FLACS_COUNT files)"
-  if [[ "$PROMOTED_FLACS_COUNT" -gt 0 ]]; then
-    echo "Promoted preview:"
-    preview_file_lines "$PROMOTED_FLACS_FILE" 5
+  echo "Promoted audio list: $PROMOTED_AUDIO_FILE ($PROMOTED_AUDIO_COUNT files)"
+  if [[ "$PROMOTED_AUDIO_COUNT" -gt 0 ]]; then
+    echo "Promoted audio preview:"
+    preview_file_lines "$PROMOTED_AUDIO_FILE" 5
   fi
 fi
 
-	if [[ "$M3U_MODE" -eq 1 ]]; then
-	  STEP=$((STEP + 1))
-	  step "$STEP" "$TOTAL_STEPS" "Generate Roon M3U"
+		if [[ "$M3U_MODE" -eq 1 ]]; then
+		  STEP=$((STEP + 1))
+		  step "$STEP" "$TOTAL_STEPS" "Generate Roon M3U"
 
-	  ROON_M3U_INPUT_FILE="$OUT_DIR/roon_m3u_inputs_$(date +%Y%m%d_%H%M%S).txt"
-	  python - "$PROMOTED_FLACS_FILE" "${PRECHECK_DECISIONS_CSV:-}" "$ROON_M3U_INPUT_FILE" <<'PY'
+		  ROON_M3U_INPUT_FILE="$OUT_DIR/roon_m3u_inputs_$(date +%Y%m%d_%H%M%S).txt"
+		  python - "$PROMOTED_AUDIO_FILE" "${PRECHECK_DECISIONS_CSV:-}" "$ROON_M3U_INPUT_FILE" <<'PY'
 import csv
 import sys
 from pathlib import Path

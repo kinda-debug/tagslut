@@ -158,10 +158,32 @@ def test_parse_precheck_csv_new(mock_precheck_csv_new: Path) -> None:
     assert summary["blocked"] == 0
 
 
-def test_get_intake_human_summarizer_is_path_free() -> None:
+def test_get_intake_human_summarizer_is_path_free(tmp_path: Path) -> None:
+    artifacts_dir = tmp_path / "artifacts" / "compare"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+    precheck_csv = artifacts_dir / "precheck_decisions_20260316_200000.csv"
+    precheck_csv.write_text(
+        (
+            "decision,title,artist,reason\n"
+            "keep,Bullet Time,Matt Egbert,no inventory match\n"
+            "skip,Korova Bar,Huerta,matched by isrc; existing rank 3 is equal or better than candidate rank 3\n"
+        ),
+        encoding="utf-8",
+    )
+
+    roon_inputs = artifacts_dir / "roon_m3u_inputs_20260316_200001.txt"
+    roon_inputs.write_text(
+        "library/Bullet Time.flac\nlibrary/Korova Bar.flac\n",
+        encoding="utf-8",
+    )
+
+    tag_keys = tmp_path / "tags_keys.txt"
+    tag_keys.write_text("artist\ntitle\nisrc\n", encoding="utf-8")
+
     emitted: list[str] = []
     summarizer = _GetIntakeHumanSummarizer(
-        verbose=False,
+        verbose=True,
         run_started=time.time(),
         emit=emitted.append,
     )
@@ -171,16 +193,28 @@ def test_get_intake_human_summarizer_is_path_free() -> None:
         "Precheck summary: keep=23 skip=1 total=24\n",
         "[2/10] Download from Tidal\n",
         "Selected for download: 23 track(s)\n",
+        "[1/23] https://tidal.com/browse/track/123\n",
+        "│ ⠧ Disorientation  16-bit, 44.1 kHz 17.1 MB 176.1 kB/s                                │\n",
         "Downloaded Disorientation  16-bit, 44.1 kHz /Volumes/MUSIC/mdl/tidal/Simon & Shaker/foo.flac\n",
+        "[2/23] https://tidal.com/browse/track/456\n",
         "Exists Tokyo Shanghai /Volumes/MUSIC/mdl/tidal/Shlomi Aber/Tokyo Shanghai EP\n",
+        "[3/23] https://tidal.com/browse/track/789\n",
         "Error: Response payload is not completed: <ContentLengthError> (track/85305930)\n",
         "[3/10] Quick duplicate check (index check, strict)\n",
         "Total:            24\n",
         "Duplicates:        0\n",
         "Errors:            0\n",
+        "[4/10] Trust scan + integrity registration\n",
+        "Discovered: 24\n",
+        "Succeeded: 22\n",
+        "Failed: 2\n",
         "[5/10] Local identify + tag prep\n",
         "OK: scanned_files=27\n",
-        "OK: wrote /Users/me/Projects/tagslut/tag_hoard_out/tags_keys.txt\n",
+        f"OK: wrote {tag_keys}\n",
+        "Updated DB rows: 22\n",
+        "Tagged:  0\n",
+        "[8/10] Apply plans\n",
+        "EXECUTE: planned=22 moved=22 skipped_missing=0 skipped_exists=0 failed=0\n",
         "[9/10] Generate Roon M3U\n",
         "Named playlist: /Volumes/MUSIC/MASTER_LIBRARY/playlists/roon-foo.m3u\n",
         "[10/10] Launch background enrich + art\n",
@@ -197,13 +231,22 @@ def test_get_intake_human_summarizer_is_path_free() -> None:
 
     out = "\n".join(emitted)
     assert "/Volumes/" not in out
-    assert "/Users/" not in out
+    assert str(tmp_path) not in out
     assert "Precheck:" in out
     assert "Download:" in out
-    assert "Downloaded:" in out
     assert "Index check:" in out
     assert "M3U:" in out
     assert "Enrich/art:" in out
+    assert "decision" in out
+    assert "result" in out
+    assert "playlist items" in out
+    assert "-+-" in out
+    assert "[1/23] active: Disorientation at 176.1 kB/s" in out
+    assert "[1/23] downloaded: Disorientation" in out
+    assert "[2/23] present in staging: Tokyo Shanghai" in out
+    assert "[3/23] failed: track/85305930" in out
+    assert "already present in staging" in out
+    assert "resume candidate" in out
 
 
 def test_precheck_block_returns_disposition_blocked(
@@ -775,6 +818,36 @@ def test_cli_intake_url_alias_still_works(temp_db: Path) -> None:
     assert result.exit_code == 0
     assert mock_run.call_count == 1
     assert mock_run.call_args.kwargs["url"] == url
+
+
+def test_cli_hides_artifact_footers_without_debug_raw(temp_db: Path, tmp_path: Path) -> None:
+    import click
+
+    runner = CliRunner()
+
+    @click.group()
+    def cli():
+        pass
+
+    register_intake_group(cli)
+
+    url = "https://tidal.com/playlist/abc"
+    fake_result = IntakeResult(
+        url=url,
+        stages=[],
+        disposition="completed",
+        precheck_summary={},
+        precheck_csv=tmp_path / "precheck.csv",
+        artifact_path=tmp_path / "artifact.json",
+    )
+
+    with patch("tagslut.cli.commands.intake.run_intake") as mock_run:
+        mock_run.return_value = fake_result
+        result = runner.invoke(cli, ["intake", url, "--db", str(temp_db)])
+
+    assert result.exit_code == 0
+    assert "Artifact:" not in result.output
+    assert "Precheck CSV:" not in result.output
 
 
 def test_cli_intake_subcommands_not_hijacked() -> None:

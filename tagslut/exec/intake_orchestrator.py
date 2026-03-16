@@ -94,6 +94,45 @@ def _short_list(items: list[str], *, limit: int) -> str:
     return f"{head} (+{len(items) - limit} more)"
 
 
+def _truncate_cell(text: str, *, width: int) -> str:
+    value = (text or "").replace("\n", " ").strip()
+    if len(value) <= width:
+        return value
+    if width <= 3:
+        return value[:width]
+    return value[: width - 3] + "..."
+
+
+def _format_table(
+    headers: list[str],
+    rows: list[list[str]],
+    *,
+    max_widths: list[int] | None = None,
+) -> list[str]:
+    normalized_rows: list[list[str]] = []
+    for row in rows:
+        normalized: list[str] = []
+        for idx, cell in enumerate(row):
+            value = (cell or "").strip()
+            if max_widths and idx < len(max_widths):
+                value = _truncate_cell(value, width=max_widths[idx])
+            normalized.append(value)
+        normalized_rows.append(normalized)
+
+    widths = [len(header) for header in headers]
+    for row in normalized_rows:
+        for idx, cell in enumerate(row):
+            widths[idx] = max(widths[idx], len(cell))
+
+    def _render(parts: list[str]) -> str:
+        return "  " + " | ".join(part.ljust(widths[idx]) for idx, part in enumerate(parts))
+
+    separator = "  " + "-+-".join("-" * width for width in widths)
+    lines = [_render(headers), separator]
+    lines.extend(_render(row) for row in normalized_rows)
+    return lines
+
+
 def _read_text_lines(path: Path) -> list[str]:
     try:
         return [ln.strip() for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
@@ -105,17 +144,16 @@ def _read_text_lines(path: Path) -> list[str]:
 
 def _parse_precheck_decisions_details(
     decisions_csv: Path,
-) -> tuple[list[str], list[str], dict[str, int]]:
-    """Return (keep_labels, skip_labels, skip_reason_counts) from a precheck decisions CSV.
+) -> tuple[list[tuple[str, str, str]], dict[str, int]]:
+    """Return (rows, skip_reason_counts) from a precheck decisions CSV.
 
-    Labels are path-free: "Artist - Title" (best-effort).
+    Each row is (decision, track_label, reason_label), path-free.
     """
-    keep: list[str] = []
-    skip: list[str] = []
+    rows: list[tuple[str, str, str]] = []
     reason_counts: dict[str, int] = {}
 
     if not decisions_csv.exists():
-        return keep, skip, reason_counts
+        return rows, reason_counts
 
     def _label(row: dict[str, str]) -> str:
         artist = (row.get("artist") or "").strip()
@@ -137,18 +175,63 @@ def _parse_precheck_decisions_details(
         # Keep buckets stable-ish but short.
         return (reason.strip().split(";")[0] or reason.strip())[:80]
 
+    def _reason_label(reason: str) -> str:
+        bucket = _reason_bucket(reason)
+        if bucket == "same_or_better_inventory":
+            return "same/better inventory"
+        if bucket == "no_inventory_match":
+            return "new to acquire"
+        if bucket == "upgrade":
+            return "upgrade"
+        if bucket == "unknown":
+            return "unknown"
+        return bucket.replace("_", " ")
+
     with decisions_csv.open("r", encoding="utf-8", newline="") as fh:
         reader = csv.DictReader(fh)
         for row in reader:
             decision = (row.get("decision") or row.get("action") or "").strip().lower()
+            label = _label(row)
+            reason = (row.get("reason") or "").strip()
             if decision == "keep":
-                keep.append(_label(row))
+                rows.append(("keep", label, _reason_label(reason)))
             elif decision == "skip":
-                skip.append(_label(row))
-                bucket = _reason_bucket((row.get("reason") or "").strip())
+                rows.append(("blocked", label, _reason_label(reason)))
+                bucket = _reason_bucket(reason)
                 reason_counts[bucket] = reason_counts.get(bucket, 0) + 1
 
-    return keep, skip, reason_counts
+    return rows, reason_counts
+
+
+def _find_latest_compare_file(artifacts_dir: Path, pattern: str) -> Path | None:
+    compare_dir = artifacts_dir / "compare"
+    if not compare_dir.exists():
+        return None
+    files = sorted(
+        compare_dir.glob(pattern),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    return files[0] if files else None
+
+
+def _find_latest_promoted_audio_txt(artifacts_dir: Path) -> Path | None:
+    return _find_latest_compare_file(artifacts_dir, "promoted_audio_*.txt") or _find_latest_compare_file(
+        artifacts_dir,
+        "promoted_flacs_*.txt",
+    )
+
+
+def _find_latest_roon_m3u_inputs_txt(artifacts_dir: Path) -> Path | None:
+    return _find_latest_compare_file(artifacts_dir, "roon_m3u_inputs_*.txt")
+
+
+def _path_labels_from_text_file(path: Path) -> list[str]:
+    labels: list[str] = []
+    for raw in _read_text_lines(path):
+        candidate = Path(raw)
+        labels.append(candidate.stem or candidate.name or raw)
+    return labels
 
 
 class _GetIntakeHumanSummarizer:
@@ -174,8 +257,7 @@ class _GetIntakeHumanSummarizer:
         self._precheck_keep: int | None = None
         self._precheck_skip: int | None = None
         self._precheck_total: int | None = None
-        self._precheck_keep_labels: list[str] = []
-        self._precheck_skip_labels: list[str] = []
+        self._precheck_rows: list[tuple[str, str, str]] = []
         self._precheck_skip_reason_counts: dict[str, int] = {}
 
         # Download
@@ -184,6 +266,10 @@ class _GetIntakeHumanSummarizer:
         self._downloaded_qualities: list[str] = []
         self._exists_titles: list[str] = []
         self._download_errors: list[str] = []
+        self._download_rows: list[tuple[str, str, str]] = []
+        self._download_progress_current: int | None = None
+        self._download_progress_total: int | None = None
+        self._last_live_speed_line: str | None = None
 
         # Index check
         self._index_total: int | None = None
@@ -276,6 +362,36 @@ class _GetIntakeHumanSummarizer:
                 self._selected_for_download = int(m2.group(1))
             return
 
+        if "download from" in self._step_label.lower():
+            m2 = re.match(r"^\[(\d+)/(\d+)\]\s+https?://", stripped)
+            if m2:
+                self._download_progress_current = int(m2.group(1))
+                self._download_progress_total = int(m2.group(2))
+                if self.verbose:
+                    self._emit(
+                        f"Progress: {self._download_progress_current}/{self._download_progress_total}"
+                    )
+                return
+            if self.verbose and any(unit in stripped for unit in ("kB/s", "MB/s", "B/s")):
+                speed_match = re.search(r"([0-9]+(?:\.[0-9]+)?\s*(?:kB/s|MB/s|B/s))", stripped)
+                if speed_match:
+                    prefix = stripped[: speed_match.start()].strip(" |")
+                    prefix = re.sub(r"^[^A-Za-z0-9]+", "", prefix).strip()
+                    prefix = re.sub(
+                        r"\s+\d+-bit,\s+\d+(?:\.\d+)?\s*kHz.*$",
+                        "",
+                        prefix,
+                    ).strip()
+                    if prefix:
+                        progress = ""
+                        if self._download_progress_current is not None and self._download_progress_total is not None:
+                            progress = f"[{self._download_progress_current}/{self._download_progress_total}] "
+                        line = f"{progress}active: {prefix} at {speed_match.group(1)}"
+                        if line != self._last_live_speed_line:
+                            self._last_live_speed_line = line
+                            self._emit(line)
+                        return
+
         if stripped.startswith("Downloaded "):
             # Path-free prefix: cut any trailing " /Volumes/..." etc.
             prefix = stripped.split(" /", 1)[0].strip()
@@ -290,6 +406,13 @@ class _GetIntakeHumanSummarizer:
                 self._downloaded_titles.append(title)
             if quality:
                 self._downloaded_qualities.append(f"{title} ({quality})")
+            self._download_rows.append(("downloaded", title or "unknown-track", quality or ""))
+            if self.verbose:
+                progress = ""
+                if self._download_progress_current is not None and self._download_progress_total is not None:
+                    progress = f"[{self._download_progress_current}/{self._download_progress_total}] "
+                detail = f" ({quality})" if quality else ""
+                self._emit(f"{progress}downloaded: {title or 'unknown-track'}{detail}")
             return
 
         if stripped.startswith("Exists "):
@@ -297,11 +420,28 @@ class _GetIntakeHumanSummarizer:
             title = prefix[len("Exists ") :].strip()
             if title:
                 self._exists_titles.append(title)
+                self._download_rows.append(("present in staging", title, "resume candidate"))
+                if self.verbose:
+                    progress = ""
+                    if self._download_progress_current is not None and self._download_progress_total is not None:
+                        progress = f"[{self._download_progress_current}/{self._download_progress_total}] "
+                    self._emit(f"{progress}present in staging: {title}")
             return
 
         if stripped.startswith("Error:"):
             # Keep the message but avoid leaking any path-y wrap lines.
             self._download_errors.append(stripped)
+            detail = stripped[len("Error:") :].strip() or "download failed"
+            track_match = re.search(r"\((track/\d+)\)\s*$", detail)
+            item = track_match.group(1) if track_match else "download error"
+            if track_match:
+                detail = detail[: track_match.start()].strip() or "download failed"
+            self._download_rows.append(("failed", item, detail))
+            if self.verbose:
+                progress = ""
+                if self._download_progress_current is not None and self._download_progress_total is not None:
+                    progress = f"[{self._download_progress_current}/{self._download_progress_total}] "
+                self._emit(f"{progress}failed: {item} ({detail})")
             return
 
         if stripped.startswith("Total:") and "RESULTS" not in stripped:
@@ -492,29 +632,19 @@ class _GetIntakeHumanSummarizer:
             total = self._precheck_total
             if keep is not None and skip is not None and total is not None:
                 self._emit(f"Precheck: {keep} keep, {skip} blocked (total {total}).")
-                if self.verbose and not (self._precheck_keep_labels or self._precheck_skip_labels):
+                if self.verbose and not self._precheck_rows:
                     decisions_csv = _find_latest_precheck_csv(get_artifacts_dir(), url="")
                     if decisions_csv and decisions_csv.exists():
                         try:
                             if decisions_csv.stat().st_mtime >= self.run_started - 1.0:
                                 (
-                                    self._precheck_keep_labels,
-                                    self._precheck_skip_labels,
+                                    self._precheck_rows,
                                     self._precheck_skip_reason_counts,
                                 ) = _parse_precheck_decisions_details(decisions_csv)
                         except Exception:
-                            self._precheck_keep_labels = []
-                            self._precheck_skip_labels = []
+                            self._precheck_rows = []
                             self._precheck_skip_reason_counts = {}
 
-                if self.verbose and self._precheck_keep_labels:
-                    self._emit(
-                        f"Keep: {_short_list(self._precheck_keep_labels, limit=50)}"
-                    )
-                if self.verbose and self._precheck_skip_labels:
-                    self._emit(
-                        f"Blocked: {_short_list(self._precheck_skip_labels, limit=50)}"
-                    )
                 if self.verbose and self._precheck_skip_reason_counts:
                     top = sorted(
                         self._precheck_skip_reason_counts.items(),
@@ -526,33 +656,58 @@ class _GetIntakeHumanSummarizer:
                         + ", ".join(f"{name}={count}" for name, count in top)
                         + "."
                     )
+                if self.verbose and self._precheck_rows:
+                    for line in _format_table(
+                        ["decision", "track", "reason"],
+                        [[decision, track, reason] for decision, track, reason in self._precheck_rows],
+                        max_widths=[14, 46, 28],
+                    ):
+                        self._emit(line)
         elif "download from" in label:
             downloaded = len(self._downloaded_titles)
             existed = len(self._exists_titles)
             failed = len(self._download_errors)
             selected = self._selected_for_download
             selected_txt = f"{selected} selected; " if selected is not None else ""
-            self._emit(f"Download: {selected_txt}{downloaded} downloaded, {existed} already present, {failed} failed.")
-            if self._download_errors:
-                self._emit(
-                    f"Errors: {_short_list(self._download_errors, limit=(9999 if self.verbose else 3))}"
-                )
-            if self._downloaded_titles:
-                if self.verbose and self._downloaded_qualities:
-                    self._emit(f"Downloaded: {_short_list(self._downloaded_qualities, limit=50)}")
-                else:
+            self._emit(
+                f"Download: {selected_txt}{downloaded} downloaded, {existed} already present in staging, {failed} failed."
+            )
+            if self.verbose and self._download_rows:
+                for line in _format_table(
+                    ["result", "track", "detail"],
+                    [[result, track, detail] for result, track, detail in self._download_rows],
+                    max_widths=[15, 42, 44],
+                ):
+                    self._emit(line)
+            else:
+                if self._download_errors:
                     self._emit(
-                        f"Downloaded: {_short_list(self._downloaded_titles, limit=(50 if self.verbose else 12))}"
+                        f"Errors: {_short_list(self._download_errors, limit=3)}"
                     )
-            if self._exists_titles and (self.verbose or len(self._exists_titles) <= 5):
-                self._emit(
-                    f"Already present: {_short_list(self._exists_titles, limit=(50 if self.verbose else 5))}"
-                )
+                if self._downloaded_titles:
+                    self._emit(
+                        f"Downloaded: {_short_list(self._downloaded_titles, limit=12)}"
+                    )
+                if self._exists_titles and len(self._exists_titles) <= 5:
+                    self._emit(
+                        f"Already present in staging: {_short_list(self._exists_titles, limit=5)}"
+                    )
         elif "quick duplicate check" in label:
             if self._index_total is not None:
                 dups = self._index_duplicates or 0
                 errs = self._index_errors or 0
                 self._emit(f"Index check: {self._index_total} files; {dups} duplicates; {errs} errors.")
+                if self.verbose:
+                    for line in _format_table(
+                        ["metric", "count"],
+                        [
+                            ["checked", str(self._index_total)],
+                            ["duplicates", str(dups)],
+                            ["errors", str(errs)],
+                        ],
+                        max_widths=[16, 8],
+                    ):
+                        self._emit(line)
         elif "trust scan" in label:
             if self._scan_discovered is not None:
                 succ = self._scan_succeeded if self._scan_succeeded is not None else "?"
@@ -568,6 +723,16 @@ class _GetIntakeHumanSummarizer:
                 if self._scan_failure_inputs_skipped:
                     extra = f" (InputSkipped={self._scan_failure_inputs_skipped})"
                 self._emit(f"Scan/register: discovered {self._scan_discovered}; succeeded {succ}; failed {fail}{extra}.")
+                if self.verbose:
+                    rows = [
+                        ["discovered", str(self._scan_discovered)],
+                        ["registered", str(succ)],
+                        ["failed", str(fail)],
+                    ]
+                    if self._scan_failure_inputs_skipped:
+                        rows.append(["input skipped", str(self._scan_failure_inputs_skipped)])
+                    for line in _format_table(["metric", "count"], rows, max_widths=[16, 8]):
+                        self._emit(line)
         elif "local identify" in label:
             if self._hoard_scanned_files is not None:
                 self._emit(f"Tag hoard: scanned {self._hoard_scanned_files} files.")
@@ -580,11 +745,23 @@ class _GetIntakeHumanSummarizer:
                     self._tag_keys = []
             if self._tag_keys:
                 self._emit(
-                    f"Tag keys: {len(self._tag_keys)} ({_short_list(self._tag_keys, limit=(60 if self.verbose else 18))})."
+                    f"Tag keys: {len(self._tag_keys)}."
                 )
             if self._normalize_updated is not None:
                 scanned = self._normalize_scanned if self._normalize_scanned is not None else "?"
                 self._emit(f"Genre normalization: scanned {scanned}; updated {self._normalize_updated}; tagged {self._genres_tagged or 0}.")
+            if self.verbose:
+                rows: list[list[str]] = []
+                if self._hoard_scanned_files is not None:
+                    rows.append(["tag hoard scanned", str(self._hoard_scanned_files)])
+                if self._normalize_updated is not None:
+                    rows.append(["genre rows updated", str(self._normalize_updated)])
+                    rows.append(["genre tags written", str(self._genres_tagged or 0)])
+                if self._tag_keys:
+                    rows.append(["tag keys", ", ".join(self._tag_keys)])
+                if rows:
+                    for line in _format_table(["acquired", "value"], rows, max_widths=[22, 84]):
+                        self._emit(line)
         elif "cross-root fingerprint audit" in label:
             pieces: list[str] = []
             if self._fpcalc_to_compute is not None:
@@ -598,12 +775,37 @@ class _GetIntakeHumanSummarizer:
                 pieces.append(f"dupe_groups={self._fp_dupe_groups}{extra}")
             if pieces:
                 self._emit(f"Fingerprint audit: {', '.join(pieces)}.")
+            if self.verbose:
+                rows: list[list[str]] = []
+                if self._fpcalc_to_compute is not None:
+                    rows.append(["to compute", str(self._fpcalc_to_compute)])
+                if self._fpcalc_ok is not None:
+                    rows.append(["computed", str(self._fpcalc_ok)])
+                if self._fp_dupe_groups is not None:
+                    rows.append(["dupe groups", str(self._fp_dupe_groups)])
+                if self._fp_files_in_groups is not None:
+                    rows.append(["files in groups", str(self._fp_files_in_groups)])
+                if rows:
+                    for line in _format_table(["metric", "count"], rows, max_widths=[18, 10]):
+                        self._emit(line)
         elif "plan promote" in label:
             promote = self._planned_promote if self._planned_promote is not None else "?"
             stash = self._planned_stash if self._planned_stash is not None else "?"
             quarantine = self._planned_quarantine if self._planned_quarantine is not None else "?"
             discard = self._planned_discard if self._planned_discard is not None else "?"
             self._emit(f"Plan: promote {promote}, stash {stash}, quarantine {quarantine}, discard {discard}.")
+            if self.verbose:
+                for line in _format_table(
+                    ["action", "count"],
+                    [
+                        ["promote", str(promote)],
+                        ["stash", str(stash)],
+                        ["quarantine", str(quarantine)],
+                        ["discard", str(discard)],
+                    ],
+                    max_widths=[16, 8],
+                ):
+                    self._emit(line)
         elif "apply plans" in label:
             promote = self._moved_promote if self._moved_promote is not None else "?"
             stash = self._moved_stash if self._moved_stash is not None else "?"
@@ -623,9 +825,66 @@ class _GetIntakeHumanSummarizer:
             self._emit(
                 f"Apply: promoted {promote}{promote_extra}; stashed {stash}{stash_extra}; move failures {failed}."
             )
+            if self.verbose:
+                for line in _format_table(
+                    ["result", "count", "detail"],
+                    [
+                        [
+                            "promoted",
+                            str(promote),
+                            f"skipped_exists={self._moved_promote_skipped_exists or 0}, skipped_missing={self._moved_promote_skipped_missing or 0}",
+                        ],
+                        [
+                            "stashed",
+                            str(stash),
+                            f"skipped_exists={self._moved_stash_skipped_exists or 0}, skipped_missing={self._moved_stash_skipped_missing or 0}",
+                        ],
+                        ["move failures", str(failed), ""],
+                    ],
+                    max_widths=[16, 8, 44],
+                ):
+                    self._emit(line)
+                promoted_audio = _find_latest_promoted_audio_txt(get_artifacts_dir())
+                if promoted_audio and promoted_audio.exists():
+                    try:
+                        if promoted_audio.stat().st_mtime >= self.run_started - 1.0:
+                            promoted_items = _path_labels_from_text_file(promoted_audio)
+                            if promoted_items:
+                                for line in _format_table(
+                                    ["acquired"],
+                                    [[item] for item in promoted_items],
+                                    max_widths=[84],
+                                ):
+                                    self._emit(line)
+                    except Exception:
+                        pass
         elif "generate roon m3u" in label:
             if self._named_playlist:
                 self._emit(f"M3U: wrote {self._named_playlist}.")
+                if self.verbose:
+                    rows = [["playlist", self._named_playlist]]
+                    emitted_items = False
+                    m3u_inputs = _find_latest_roon_m3u_inputs_txt(get_artifacts_dir())
+                    if m3u_inputs and m3u_inputs.exists():
+                        try:
+                            if m3u_inputs.stat().st_mtime >= self.run_started - 1.0:
+                                labels = _path_labels_from_text_file(m3u_inputs)
+                                rows.append(["tracks", str(len(labels))])
+                                for line in _format_table(["artifact", "value"], rows, max_widths=[16, 72]):
+                                    self._emit(line)
+                                if labels:
+                                    for line in _format_table(
+                                        ["playlist items"],
+                                        [[label] for label in labels],
+                                        max_widths=[84],
+                                    ):
+                                        self._emit(line)
+                                    emitted_items = True
+                        except Exception:
+                            emitted_items = False
+                    if not emitted_items:
+                        for line in _format_table(["artifact", "value"], rows, max_widths=[16, 72]):
+                            self._emit(line)
             else:
                 if self._m3u_skip_reason:
                     self._emit("M3U: skipped (no inputs).")
@@ -634,6 +893,13 @@ class _GetIntakeHumanSummarizer:
         elif "launch background enrich" in label:
             if self._background_pid is not None:
                 self._emit(f"Enrich/art: started in background (pid {self._background_pid}).")
+                if self.verbose:
+                    for line in _format_table(
+                        ["status", "value"],
+                        [["background job", f"pid {self._background_pid}"]],
+                        max_widths=[18, 18],
+                    ):
+                        self._emit(line)
 
         self._step_idx = None
         self._step_total = None

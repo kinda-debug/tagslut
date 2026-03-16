@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import logging
 import os
 from datetime import datetime
@@ -138,6 +139,102 @@ def _write_toml_file(config: dict, path: Path) -> None:  # type: ignore  # TODO:
 
 
 def register_misc_commands(cli: click.Group) -> None:
+    @cli.command("tidal-seed")
+    @click.option(
+        "--playlist-url",
+        required=True,
+        help="TIDAL playlist URL or ID to export as a stable seed CSV.",
+    )
+    @click.option(
+        "--out",
+        "output_csv",
+        type=click.Path(path_type=Path, dir_okay=False),  # type: ignore  # TODO: mypy-strict
+        default=Path("tidal_seed.csv"),
+        show_default=True,
+        help="Output CSV path for TIDAL seed rows.",
+    )
+    @click.option("--tokens-path", type=click.Path(path_type=Path), help="Path to tokens.json")
+    def tidal_seed(playlist_url, output_csv, tokens_path):  # type: ignore  # TODO: mypy-strict
+        """Export one TIDAL playlist as seed CSV rows."""
+        from tagslut.metadata.auth import DEFAULT_TOKENS_PATH, TokenManager
+        from tagslut.metadata.enricher import Enricher
+
+        resolved_tokens_path = tokens_path or DEFAULT_TOKENS_PATH
+        token_manager = TokenManager(Path(resolved_tokens_path))
+
+        with Enricher(
+            db_path=Path("__vendor_only__"),
+            token_manager=token_manager,
+            providers=["tidal"],
+            dry_run=True,
+            mode="hoarding",
+        ) as enricher:
+            enricher.export_tidal_seed_csv(playlist_url, output_csv)
+            seed_rows = enricher._load_tidal_seed_rows(output_csv)
+
+        playlist_id = seed_rows[0].tidal_playlist_id if seed_rows else playlist_url
+        missing_isrc = sum(1 for row in seed_rows if not row.isrc)
+        click.echo(f"Wrote TIDAL seed CSV: {output_csv}")
+        click.echo(f"Playlist id: {playlist_id}")
+        click.echo(f"Tracks exported: {len(seed_rows)}")
+        click.echo(f"Rows missing ISRC: {missing_isrc}")
+
+    @cli.command("beatport-enrich")
+    @click.option(
+        "--in",
+        "input_csv",
+        required=True,
+        type=click.Path(exists=True, path_type=Path, dir_okay=False),  # type: ignore  # TODO: mypy-strict
+        help="Input TIDAL seed CSV path.",
+    )
+    @click.option(
+        "--out",
+        "output_csv",
+        type=click.Path(path_type=Path, dir_okay=False),  # type: ignore  # TODO: mypy-strict
+        default=Path("tidal_beatport_enriched.csv"),
+        show_default=True,
+        help="Output CSV path for merged TIDAL+Beatport rows.",
+    )
+    @click.option("--tokens-path", type=click.Path(path_type=Path), help="Path to tokens.json")
+    def beatport_enrich(input_csv, output_csv, tokens_path):  # type: ignore  # TODO: mypy-strict
+        """Enrich a TIDAL seed CSV with Beatport metadata."""
+        from tagslut.metadata.auth import DEFAULT_TOKENS_PATH, TokenManager
+        from tagslut.metadata.enricher import Enricher
+
+        resolved_tokens_path = tokens_path or DEFAULT_TOKENS_PATH
+        token_manager = TokenManager(Path(resolved_tokens_path))
+
+        with Enricher(
+            db_path=Path("__vendor_only__"),
+            token_manager=token_manager,
+            providers=["beatport"],
+            dry_run=True,
+            mode="hoarding",
+        ) as enricher:
+            enricher.enrich_tidal_seed_csv(input_csv, output_csv)
+
+        total_rows = 0
+        isrc_matches = 0
+        fallback_matches = 0
+        unmatched = 0
+        with output_csv.open("r", encoding="utf-8", newline="") as handle:
+            reader = csv.DictReader(handle)
+            for row in reader:
+                total_rows += 1
+                method = (row.get("match_method") or "").strip()
+                if method == "isrc":
+                    isrc_matches += 1
+                elif method == "title_artist_fallback":
+                    fallback_matches += 1
+                elif method == "no_match":
+                    unmatched += 1
+
+        click.echo(f"Wrote Beatport-enriched CSV: {output_csv}")
+        click.echo(f"Total rows: {total_rows}")
+        click.echo(f"Matched by ISRC: {isrc_matches}")
+        click.echo(f"Matched by title/artist fallback: {fallback_matches}")
+        click.echo(f"Unmatched: {unmatched}")
+
     @cli.command("canonize", hidden=True)
     @click.argument("path", type=click.Path(exists=True))
     @click.option("--canon/--no-canon", default=True, help="Enable canonical tag rules")

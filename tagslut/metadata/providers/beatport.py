@@ -12,6 +12,7 @@ This provider uses multiple methods (in order of preference):
 API Reference: https://api.beatport.com/v4/docs/
 """
 
+from datetime import datetime, timezone
 from urllib.parse import quote
 import logging
 import re
@@ -21,10 +22,41 @@ from typing import Any, Dict, List, Optional
 import httpx
 
 from tagslut.metadata.auth import TokenManager
+from tagslut.metadata.beatport_normalize import normalize_beatport_track
+from tagslut.metadata.genre_normalization import GenreNormalizer
+from tagslut.metadata.models import TidalBeatportMergedRow, TidalSeedRow
 from tagslut.metadata.models.types import ProviderTrack, MatchConfidence
-from tagslut.metadata.providers.base import AbstractProvider, RateLimitConfig
+from tagslut.metadata.providers.base import (
+    AbstractProvider,
+    RateLimitConfig,
+    classify_match_confidence,
+)
 
 logger = logging.getLogger("tagslut.metadata.providers.beatport")
+
+
+def _normalize_vendor_text(value: Any) -> Optional[str]:
+    """Normalize spacing for vendor text without inventing canonical values."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return GenreNormalizer._normalize_spacing(text)
+
+
+def _stringify_vendor_value(value: Any) -> Optional[str]:
+    """Serialize vendor metadata values consistently for CSV output."""
+    if value is None:
+        return None
+    if isinstance(value, float):
+        if value.is_integer():
+            return str(int(value))
+        return f"{value:.2f}".rstrip("0").rstrip(".")
+    if isinstance(value, int):
+        return str(value)
+    text = str(value).strip()
+    return text or None
 
 
 class BeatportProvider(AbstractProvider):
@@ -421,6 +453,120 @@ class BeatportProvider(AbstractProvider):
         except Exception as e:
             logger.error("Failed to parse bulk mapping response: %s", e)
             return {i: None for i in bs_track_ids}
+
+    @staticmethod
+    def _fallback_match_rank(match_confidence: MatchConfidence) -> int:
+        rank = {
+            MatchConfidence.EXACT: 4,
+            MatchConfidence.STRONG: 3,
+            MatchConfidence.MEDIUM: 2,
+            MatchConfidence.WEAK: 1,
+            MatchConfidence.NONE: 0,
+        }
+        return rank.get(match_confidence, 0)
+
+    def _select_best_title_artist_match(self, seed_row: TidalSeedRow) -> Optional[ProviderTrack]:
+        """Select the strongest Beatport title/artist fallback match for a seed row."""
+        candidates = self.search_by_artist_and_title(seed_row.artist, seed_row.title, limit=5)
+        if not candidates:
+            return None
+
+        best_track: Optional[ProviderTrack] = None
+        best_rank = -1
+        for track in candidates:
+            track.match_confidence = classify_match_confidence(
+                seed_row.title,
+                seed_row.artist,
+                None,
+                track,
+            )
+            rank = self._fallback_match_rank(track.match_confidence)
+            if rank > best_rank:
+                best_rank = rank
+                best_track = track
+
+        if best_track is None or best_rank <= 0:
+            return None
+        return best_track
+
+    def _merged_row_from_match(
+        self,
+        seed_row: TidalSeedRow,
+        match: Optional[ProviderTrack],
+        match_method: str,
+        match_confidence: float,
+    ) -> TidalBeatportMergedRow:
+        """Build the final merged CSV row while preserving TIDAL source fields."""
+        merged = TidalBeatportMergedRow(
+            tidal_playlist_id=seed_row.tidal_playlist_id,
+            tidal_track_id=seed_row.tidal_track_id,
+            tidal_url=seed_row.tidal_url,
+            title=seed_row.title,
+            artist=seed_row.artist,
+            isrc=seed_row.isrc,
+            match_method=match_method,
+            match_confidence=match_confidence,
+            last_synced_at=datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        )
+
+        if match is None:
+            return merged
+
+        raw = match.raw if isinstance(match.raw, dict) else {}
+        normalized = normalize_beatport_track(raw)
+        release = raw.get("release")
+        if not isinstance(release, dict):
+            release = {}
+
+        merged.beatport_track_id = _stringify_vendor_value(
+            normalized.service_track_id or match.service_track_id
+        )
+        merged.beatport_release_id = _stringify_vendor_value(
+            normalized.release_id or release.get("id") or match.album_id
+        )
+        merged.beatport_url = _normalize_vendor_text(match.url or raw.get("url"))
+        merged.beatport_bpm = _stringify_vendor_value(normalized.bpm if normalized.bpm is not None else match.bpm)
+        merged.beatport_key = _normalize_vendor_text(normalized.key or match.key)
+        merged.beatport_genre = _normalize_vendor_text(normalized.genre or match.genre)
+        merged.beatport_subgenre = _normalize_vendor_text(normalized.subgenre or match.sub_genre)
+        merged.beatport_label = _normalize_vendor_text(normalized.label_name or match.label)
+        merged.beatport_catalog_number = _normalize_vendor_text(
+            normalized.catalog_number or match.catalog_number
+        )
+        merged.beatport_upc = _normalize_vendor_text(
+            release.get("upc") or raw.get("upc") or release.get("barcode") or raw.get("barcode")
+        )
+        merged.beatport_release_date = _normalize_vendor_text(
+            normalized.publish_date
+            or release.get("new_release_date")
+            or release.get("publish_date")
+            or match.release_date
+        )
+        return merged
+
+    def enrich_tidal_seed_row(self, seed_row: TidalSeedRow) -> TidalBeatportMergedRow:
+        """
+        Enrich a TIDAL seed row using Beatport-only lookup.
+
+        Lookup order is deterministic:
+        1. ISRC
+        2. title/artist fallback
+        """
+        if seed_row.isrc:
+            isrc_matches = self.search_by_isrc(seed_row.isrc)
+            if isrc_matches:
+                return self._merged_row_from_match(seed_row, isrc_matches[0], "isrc", 1.0)
+
+        fallback_match = self._select_best_title_artist_match(seed_row)
+        if fallback_match is not None:
+            return self._merged_row_from_match(
+                seed_row,
+                fallback_match,
+                "title_artist_fallback",
+                0.6,
+            )
+
+        return self._merged_row_from_match(seed_row, None, "no_match", 0.0)
 
     def fetch_by_id(self, track_id: str) -> Optional[ProviderTrack]:
         """

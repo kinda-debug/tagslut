@@ -7,12 +7,17 @@ Authentication is via Bearer token.
 
 import logging
 import os
+import re
 from typing import Optional, List, Dict, Any
 
+from tagslut.metadata.models import TidalSeedRow
 from tagslut.metadata.models.types import ProviderTrack, MatchConfidence
 from tagslut.metadata.providers.base import AbstractProvider, RateLimitConfig
 
 logger = logging.getLogger("tagslut.metadata.providers.tidal")
+PLAYLIST_ID_PATTERN = re.compile(
+    r"^(?:https?://[^/]+/(?:browse/)?playlist/)?(?P<playlist_id>[A-Za-z0-9-]+)(?:[/?#].*)?$"
+)
 
 
 class TidalProvider(AbstractProvider):
@@ -38,6 +43,18 @@ class TidalProvider(AbstractProvider):
     # Country code for Tidal API requests - configurable via environment variable
     # Default: "US". Override with TIDAL_COUNTRY_CODE env var.
     COUNTRY_CODE = os.environ.get("TIDAL_COUNTRY_CODE", "US")
+
+    @staticmethod
+    def _parse_playlist_id(playlist_url_or_id: str) -> Optional[str]:
+        """Extract a playlist identifier from a raw ID or TIDAL playlist URL."""
+        candidate = (playlist_url_or_id or "").strip()
+        if not candidate:
+            return None
+        match = PLAYLIST_ID_PATTERN.search(candidate)
+        if not match:
+            return None
+        playlist_id = (match.group("playlist_id") or "").strip()
+        return playlist_id or None
 
     def _get_default_headers(self) -> Dict[str, str]:
         """Get headers with Bearer token."""
@@ -122,6 +139,164 @@ class TidalProvider(AbstractProvider):
         except Exception as e:
             logger.error("Failed to parse Tidal search response: %s", e)
             return []
+
+    @staticmethod
+    def _extract_playlist_items(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Extract playlist items from the response payload."""
+        items = payload.get("items")
+        if isinstance(items, list):
+            return [item for item in items if isinstance(item, dict)]
+
+        data = payload.get("data")
+        if isinstance(data, list):
+            return [item for item in data if isinstance(item, dict)]
+
+        tracks = payload.get("tracks")
+        if isinstance(tracks, dict):
+            track_items = tracks.get("items") or tracks.get("data")
+            if isinstance(track_items, list):
+                return [item for item in track_items if isinstance(item, dict)]
+
+        return []
+
+    @staticmethod
+    def _extract_next_playlist_url(payload: Dict[str, Any]) -> Optional[str]:
+        """Extract the next-page URL from a playlist payload if present."""
+        links = payload.get("links")
+        if isinstance(links, dict):
+            next_link = links.get("next")
+            if isinstance(next_link, str) and next_link.strip():
+                return next_link.strip()
+            if isinstance(next_link, dict):
+                href = next_link.get("href")
+                if isinstance(href, str) and href.strip():
+                    return href.strip()
+
+        next_url = payload.get("next")
+        if isinstance(next_url, str) and next_url.strip():
+            return next_url.strip()
+        return None
+
+    @staticmethod
+    def _unwrap_playlist_item(item: Dict[str, Any]) -> Dict[str, Any]:
+        """Unwrap a playlist item wrapper down to the track payload if needed."""
+        candidate = item
+        for key in ("item", "track"):
+            nested = candidate.get(key)
+            if isinstance(nested, dict):
+                candidate = nested
+                break
+
+        resource = candidate.get("resource")
+        if isinstance(resource, dict):
+            attributes = resource.get("attributes")
+            if isinstance(attributes, dict):
+                flattened = dict(attributes)
+                resource_id = resource.get("id")
+                if flattened.get("id") is None and resource_id is not None:
+                    flattened["id"] = resource_id
+                return flattened
+
+        return candidate
+
+    def _seed_row_from_playlist_item(
+        self,
+        playlist_id: str,
+        item: Dict[str, Any],
+    ) -> Optional[TidalSeedRow]:
+        """Convert a playlist item payload into a stable TIDAL seed row."""
+        track_payload = self._unwrap_playlist_item(item)
+        track = self._normalize_track(track_payload)
+        if track is None:
+            logger.debug("Skipping unusable TIDAL playlist item: missing normalized track")
+            return None
+        if not track.service_track_id or not track.title or not track.artist or not track.url:
+            logger.debug(
+                "Skipping TIDAL playlist item with missing required seed fields: id=%s title=%s artist=%s url=%s",
+                track.service_track_id,
+                track.title,
+                track.artist,
+                track.url,
+            )
+            return None
+
+        return TidalSeedRow(
+            tidal_playlist_id=playlist_id,
+            tidal_track_id=track.service_track_id,
+            tidal_url=track.url,
+            title=track.title,
+            artist=track.artist,
+            isrc=track.isrc,
+        )
+
+    def export_playlist_seed_rows(self, playlist_url_or_id: str) -> List[TidalSeedRow]:
+        """
+        Export stable seed rows for a TIDAL playlist.
+
+        This is intentionally narrow and additive: it reuses the existing request
+        path and track normalization logic rather than introducing a separate
+        playlist client.
+        """
+        playlist_id = self._parse_playlist_id(playlist_url_or_id)
+        if not playlist_id:
+            logger.warning("Unable to parse TIDAL playlist identifier from: %s", playlist_url_or_id)
+            return []
+
+        seed_rows: List[TidalSeedRow] = []
+        next_url = f"{self.BASE_URL}/playlists/{playlist_id}/items"
+        fallback_url = f"{self.BASE_URL}/playlists/{playlist_id}/tracks"
+        params: Optional[Dict[str, Any]] = {"limit": 100, "offset": 0}
+        visited_next_urls: set[str] = set()
+        attempted_fallback = False
+
+        while next_url:
+            request_params = None if next_url in visited_next_urls else params
+            response = self._make_request("GET", next_url, params=request_params)
+            if response is None or response.status_code != 200:
+                if not attempted_fallback and next_url.endswith("/items"):
+                    attempted_fallback = True
+                    next_url = fallback_url
+                    params = {"limit": 100, "offset": 0}
+                    continue
+                logger.warning("Failed to fetch TIDAL playlist %s", playlist_id)
+                break
+
+            try:
+                payload = response.json()
+            except Exception as e:
+                logger.error("Failed to parse TIDAL playlist response: %s", e)
+                break
+
+            items = self._extract_playlist_items(payload)
+            if not items:
+                break
+
+            for item in items:
+                seed_row = self._seed_row_from_playlist_item(playlist_id, item)
+                if seed_row is not None:
+                    seed_rows.append(seed_row)
+
+            next_candidate = self._extract_next_playlist_url(payload)
+            if next_candidate:
+                if next_candidate in visited_next_urls:
+                    break
+                visited_next_urls.add(next_url)
+                next_url = next_candidate
+                if next_url.startswith("/"):
+                    next_url = f"https://api.tidal.com{next_url}"
+                params = None
+                continue
+
+            if params is None:
+                break
+
+            offset = int(params.get("offset", 0))
+            limit = int(params.get("limit", 100))
+            if len(items) < limit:
+                break
+            params = {"limit": limit, "offset": offset + len(items)}
+
+        return seed_rows
 
     @staticmethod
     def _cover_to_url(cover_id: Optional[str], size: int = 640) -> Optional[str]:

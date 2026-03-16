@@ -302,14 +302,10 @@ def register_intake_group(cli: click.Group) -> None:
 
         # Print summary
         click.echo(result.summary())
-        if result.artifact_path:
-            click.echo(
-                f"Artifact: {result.artifact_path if debug_raw else result.artifact_path.name}"
-            )
-        if result.precheck_csv:
-            click.echo(
-                f"Precheck CSV: {result.precheck_csv if debug_raw else result.precheck_csv.name}"
-            )
+        if debug_raw and result.artifact_path:
+            click.echo(f"Artifact: {result.artifact_path}")
+        if debug_raw and result.precheck_csv:
+            click.echo(f"Precheck CSV: {result.precheck_csv}")
 
         # Exit with mapped code
         _EXIT = {"completed": 0, "blocked": 2, "failed": 1}

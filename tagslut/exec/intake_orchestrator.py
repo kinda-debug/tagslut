@@ -429,12 +429,16 @@ class _GetIntakeHumanSummarizer:
             selected_txt = f"{selected} selected; " if selected is not None else ""
             self._emit(f"Download: {selected_txt}{downloaded} downloaded, {existed} already present, {failed} failed.")
             if self._download_errors:
-                self._emit(f"Errors: {_short_list(self._download_errors, limit=3)}")
+                self._emit(
+                    f"Errors: {_short_list(self._download_errors, limit=(9999 if self.verbose else 3))}"
+                )
             if self._downloaded_titles:
                 if self.verbose and self._downloaded_qualities:
-                    self._emit(f"Downloaded: {_short_list(self._downloaded_qualities, limit=12)}")
+                    self._emit(f"Downloaded: {_short_list(self._downloaded_qualities, limit=50)}")
                 else:
-                    self._emit(f"Downloaded: {_short_list(self._downloaded_titles, limit=12)}")
+                    self._emit(
+                        f"Downloaded: {_short_list(self._downloaded_titles, limit=(50 if self.verbose else 12))}"
+                    )
         elif "quick duplicate check" in label:
             if self._index_total is not None:
                 dups = self._index_duplicates or 0
@@ -459,7 +463,9 @@ class _GetIntakeHumanSummarizer:
                 except Exception:
                     self._tag_keys = []
             if self._tag_keys:
-                self._emit(f"Tag keys: {len(self._tag_keys)} ({_short_list(self._tag_keys, limit=18)}).")
+                self._emit(
+                    f"Tag keys: {len(self._tag_keys)} ({_short_list(self._tag_keys, limit=(60 if self.verbose else 18))})."
+                )
             if self._normalize_updated is not None:
                 scanned = self._normalize_scanned if self._normalize_scanned is not None else "?"
                 self._emit(f"Genre normalization: scanned {scanned}; updated {self._normalize_updated}; tagged {self._genres_tagged or 0}.")

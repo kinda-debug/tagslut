@@ -50,6 +50,12 @@ Source module: `tagslut/dj/reconcile/lexicon_backfill.py`.
 Ownership:
 - Canonical identity facts only.
 
+Identity-hardening status:
+
+- Active-only uniqueness is enforced for exactly seven provider ids (`beatport_id`, `tidal_id`, `qobuz_id`, `spotify_id`, `apple_music_id`, `deezer_id`, `traxsource_id`); see `docs/architecture/V3_IDENTITY_HARDENING.md`.
+- `itunes_id` and `musicbrainz_id` are helper-level identifiers only (lookup/identity key derivation, not schema-enforced uniqueness); see `docs/architecture/V3_IDENTITY_HARDENING.md`.
+- Routine proof surface: `make check-v3-identity-integrity` (tests + schema-equivalence proof); see `docs/testing/V3_IDENTITY_HARDENING.md`.
+
 ### `asset_link`
 Mapping between physical asset and canonical identity.
 

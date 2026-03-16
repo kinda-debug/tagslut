@@ -15,6 +15,17 @@ Versioning: [Semantic Versioning](https://semver.org/)
   invocation writes a structured JSON artifact under `artifacts/intake/` with
   precheck summary, per-stage status, and final disposition.
 
+## [Unreleased] - 2026-03-16
+
+### Added
+- `make check-v3-identity-integrity`: minimal routine v3 identity integrity proof surface (migration runner, schema equivalence, transaction boundaries, and provider-uniqueness migrations).
+
+### Changed
+- V3 identity hardening docs tightened to match literal migration audit behavior; helper-level identifier policy and runtime `merged_into_id` cycle handling are now explicit.
+
+### Fixed
+- `poetry run pytest ...` no longer fails on transitive `pylama` pytest plugin autoload (plugin disabled via pytest `addopts` in `pyproject.toml`).
+
 ## [Unreleased] - 2026-03-14
 
 ### Added — Explicit 4-Stage DJ Pipeline

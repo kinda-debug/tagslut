@@ -69,7 +69,7 @@
    The audit and proof work should stop being one-off exercises. Duplicate audits, schema-equivalence checks, and migration-runner expectations should become routine pre-release or pre-migration checks.
 
 16. The next environment slice is test-runner hygiene.
-   This is secondary to v3 itself, but still real. The unrelated pytest plugin autoload issue should eventually be cleaned up. For now, `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` is a valid isolation mechanism for proof tests in this environment.
+   This is secondary to v3 itself, but still real. The unrelated pytest plugin autoload issue should eventually be cleaned up. For now, the repo disables the transitive `pylama` pytest plugin via `pyproject.toml` pytest `addopts`, and `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` remains a valid isolation mechanism when needed.
 
 17. Closure criteria for this phase.
    This phase is fully closed when all of the following are true:

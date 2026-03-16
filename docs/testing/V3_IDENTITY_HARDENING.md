@@ -188,6 +188,18 @@ Targeted verification command for the v3 identity hardening surface:
 pytest tests/storage/v3 -q
 ```
 
+## Routine Proof Surface (Minimal)
+
+Use the repository target that runs the smallest repeatable proof set for v3 identity integrity:
+
+```bash
+make check-v3-identity-integrity
+```
+
+Pytest tooling note:
+
+- `pyproject.toml` disables the transitive `pylama` pytest plugin (`addopts = "-p no:pylama"`) so `poetry run pytest ...` is not blocked by pylama importing `pkg_resources`.
+
 Use narrower commands only when iterating on one behavior:
 
 ```bash

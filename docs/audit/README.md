@@ -10,3 +10,5 @@ Dated forensic and proof-oriented repository state reports.
 ## Notes
 
 These files are snapshots of verified repo state at a specific commit. They are not the canonical architecture docs. Stable intent and invariant definitions live under `docs/architecture`, `docs/operations`, and `docs/testing`.
+
+Some findings in a dated audit may be intentionally resolved later; treat the audit date as the source of truth for what the report claims.

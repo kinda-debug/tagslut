@@ -1,9 +1,9 @@
 """Intake orchestrator for `tagslut intake url` command.
 
 Orchestrates:
-1. Precheck (via tools/review/pre_download_check.py subprocess)
-2. Download (via tools/get --no-precheck subprocess)
-3. MP3 transcode (via build_mp3_from_identity if --mp3 passed)
+1. Precheck (binding by default for non-dry-run; owned by tools/get-intake)
+2. Download + local tag prep + promote (via tools/get-intake, called via tools/get)
+3. MP3 transcode (scoped to this intake's promoted cohort if --mp3 passed)
 
 Emits structured JSON artifact on every invocation.
 """
@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -133,6 +134,41 @@ def _find_latest_precheck_csv(artifacts_dir: Path, url: str) -> Path | None:
         return decision_files[0]
 
     return None
+
+
+def _find_latest_promoted_flacs_txt(artifacts_dir: Path) -> Path | None:
+    """Find most recent promoted_flacs_*.txt in artifacts/compare."""
+    compare_dir = artifacts_dir / "compare"
+    if not compare_dir.exists():
+        return None
+    files = sorted(
+        compare_dir.glob("promoted_flacs_*.txt"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    return files[0] if files else None
+
+
+def _load_promoted_flac_paths(path: Path) -> list[str]:
+    return [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def _resolve_identity_ids_for_paths(conn: sqlite3.Connection, paths: list[str]) -> list[int]:
+    if not paths:
+        return []
+    placeholders = ", ".join("?" * len(paths))
+    rows = conn.execute(
+        f"""
+        SELECT DISTINCT al.identity_id
+        FROM asset_file af
+        JOIN asset_link al ON al.asset_id = af.id
+        WHERE af.path IN ({placeholders})
+          AND (al.active IS NULL OR al.active = 1)
+          AND al.identity_id IS NOT NULL
+        """,
+        paths,
+    ).fetchall()
+    return sorted({int(r[0]) for r in rows if r and r[0] is not None})
 
 
 def run_intake(

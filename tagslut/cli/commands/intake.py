@@ -156,6 +156,12 @@ def register_intake_group(cli: click.Group) -> None:
         type=click.Path(),
         help="Directory for JSON artifact output (default: artifacts/intake)",
     )
+    @click.option(
+        "--verbose",
+        is_flag=True,
+        default=False,
+        help="Show internal paths and stage output.",
+    )
     def intake_url(
         url: str,
         db_path: str | None,
@@ -163,6 +169,7 @@ def register_intake_group(cli: click.Group) -> None:
         dj_root: str | None,
         dry_run: bool,
         artifact_dir: str | None,
+        verbose: bool,
     ):  # type: ignore  # TODO: mypy-strict
         """Precheck → download → promote → [mp3] for a single provider URL."""
         # Guard: --mp3 requires --dj-root
@@ -192,6 +199,7 @@ def register_intake_group(cli: click.Group) -> None:
             dry_run=dry_run,
             dj_root=dj_root_path,
             artifact_dir=artifact_dir_path,
+            verbose=verbose,
         )
 
         # Print summary

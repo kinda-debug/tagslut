@@ -190,6 +190,10 @@ Identifiers not enforced as unique in SQLite storage:
 - `itunes_id`
 - `musicbrainz_id`
 
+Policy decision (current repo behavior):
+
+- `itunes_id` and `musicbrainz_id` are helper-level identifiers only: `identity_service.py` uses them for lookup and identity-key derivation, but no migration or schema index enforces active-row uniqueness for them.
+
 ## Provider Repair Policy (Intentional Asymmetry)
 
 This repository intentionally enforces provider uniqueness more broadly than it provides automated duplicate repair tooling.

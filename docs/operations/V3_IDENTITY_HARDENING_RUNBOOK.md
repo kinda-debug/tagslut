@@ -42,6 +42,10 @@ No active-only unique partial index exists for:
 
 Treat these as operator-review identifiers, not storage-enforced uniqueness keys.
 
+Policy note (current repo behavior):
+
+- `itunes_id` and `musicbrainz_id` participate in helper-level identity resolution (`identity_service.py`) but are not audited or uniqueness-enforced by `0010`/`0011` or the fresh schema.
+
 ## Upgrade Procedure
 
 Run the project migration path from the repository root:

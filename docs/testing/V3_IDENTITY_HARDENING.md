@@ -167,8 +167,8 @@ Storage-enforced identifiers with migration coverage:
 Policy-only identifiers with behavioral coverage:
 
 - `isrc`: `test_identity_service.py`, `test_plan_backfill_identity_conflicts_v3.py`
-- `itunes_id`: helper-level lookup participation only; no schema uniqueness enforcement and no direct uniqueness/merge tests
-- `musicbrainz_id`: helper-level lookup participation only; no schema uniqueness enforcement and no direct uniqueness/merge tests
+- `itunes_id`: helper-level lookup participation only; no schema uniqueness enforcement and no direct tests proving reuse/duplicate handling
+- `musicbrainz_id`: helper-level lookup participation only; no schema uniqueness enforcement and no direct tests proving reuse/duplicate handling
 
 Transaction-boundary coverage:
 

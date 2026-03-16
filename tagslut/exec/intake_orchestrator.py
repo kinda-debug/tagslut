@@ -143,6 +143,7 @@ def run_intake(
     dry_run: bool = False,
     dj_root: Path | None = None,
     artifact_dir: Path | None = None,
+    verbose: bool = False,
 ) -> IntakeResult:
     """Run intake orchestration: precheck → download → promote → [mp3].
 
@@ -186,14 +187,15 @@ def run_intake(
             str(db_path),
             "--out-dir",
             str(precheck_out_dir),
-            "--quiet",
         ]
+        if not verbose:
+            precheck_cmd.append("--quiet")
 
         result = subprocess.run(
             precheck_cmd,
             check=True,
-            capture_output=True,
-            text=True,
+            capture_output=not verbose,
+            text=True if not verbose else None,
         )
 
         # Find the generated precheck_decisions_*.csv
@@ -249,12 +251,14 @@ def run_intake(
                     url,
                     "--no-precheck",
                 ]
+                if verbose:
+                    download_cmd.append("--verbose")
 
                 result = subprocess.run(
                     download_cmd,
                     check=True,
-                    capture_output=True,
-                    text=True,
+                    capture_output=not verbose,
+                    text=True if not verbose else None,
                     cwd=str(repo_root),
                 )
 

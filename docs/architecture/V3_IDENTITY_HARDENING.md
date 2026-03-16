@@ -97,9 +97,10 @@ Columns covered:
 
 Behavior:
 
-- trims leading/trailing spaces with `TRIM(column)`
-- converts blank-after-trim values to `NULL`
-- audits duplicate values only across active rows with `merged_into_id IS NULL`
+- trims leading/trailing *spaces* with SQLite `TRIM(column)` (default trim set)
+- converts values where `TRIM(column) = ''` to `NULL` (space-only becomes `NULL`; other whitespace characters are not treated as blank by default `TRIM()`)
+- audits duplicates only across active rows with `merged_into_id IS NULL`
+- groups duplicates by the stored column value (after the trimming/blank-to-`NULL` updates), with row inclusion gated by `TRIM(column) != ''`
 - fails before index creation if duplicates remain
 - creates active-only unique partial indexes:
   - `uq_track_identity_active_beatport_id`
@@ -126,8 +127,9 @@ Columns covered:
 Behavior:
 
 - trims leading/trailing spaces, tabs, carriage returns, and newlines with `TRIM(column, ' \t\n\r')`
-- converts whitespace-only values for those characters to `NULL`
-- audits duplicate values only across active rows with `merged_into_id IS NULL`
+- converts values where `TRIM(column, ' \t\n\r') = ''` to `NULL` (only this explicit set is treated as blank)
+- audits duplicates only across active rows with `merged_into_id IS NULL`
+- groups duplicates by the stored column value (after the trimming/blank-to-`NULL` updates), with row inclusion gated by `TRIM(column, ' \t\n\r') != ''`
 - fails before index creation if duplicates remain
 - creates active-only unique partial indexes:
   - `uq_track_identity_active_apple_music_id`
@@ -178,7 +180,9 @@ Enforcement mode:
 
 - unique only for active canonical rows
 - not unique for merged loser rows
-- blank or whitespace-only values are allowed because they normalize to `NULL` and `NULL` does not participate in the partial unique index predicate
+- blank values are allowed because the migrations normalize some blank forms to `NULL` and `NULL` does not participate in the partial unique index predicate:
+  - `0010` providers: only space-only values normalize to `NULL` (SQLite `TRIM(x)` default)
+  - `0011` providers: only values made blank by trimming the explicit set `' \t\n\r'` normalize to `NULL`
 
 Identifiers not enforced as unique in SQLite storage:
 

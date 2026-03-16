@@ -27,7 +27,9 @@ Active-only unique partial indexes exist for:
 The uniqueness scope is:
 
 - include row only when provider value is non-null
-- exclude row when provider value normalizes to blank
+- exclude row when the unique-index predicate treats it as blank:
+  - `beatport_id`, `tidal_id`, `qobuz_id`, `spotify_id`: `TRIM(column) != ''` (SQLite default trim set; space-only is excluded, but tab/newline-only is not)
+  - `apple_music_id`, `deezer_id`, `traxsource_id`: `TRIM(column, ' \t\n\r') != ''`
 - include row only when `merged_into_id IS NULL`
 
 ## Current Non-Enforced Identifier Fields
@@ -59,42 +61,52 @@ Expected result:
 
 ## Preflight Duplicate Audit SQL
 
-Run these queries before applying `0010` and `0011` when operating on existing databases.
+Run these queries before applying `0010` and `0011` when operating on existing databases. They mirror what the migrations do: first apply the in-place trimming/blank-to-`NULL` updates, then group duplicates by the stored column value.
 
 ### `0010` provider set
 
 ```sql
+-- Mirror 0010 normalization (SQLite TRIM default: spaces only).
+UPDATE track_identity SET beatport_id = NULL WHERE beatport_id IS NOT NULL AND TRIM(beatport_id) = '';
+UPDATE track_identity SET beatport_id = TRIM(beatport_id) WHERE beatport_id IS NOT NULL AND beatport_id != TRIM(beatport_id);
+UPDATE track_identity SET tidal_id = NULL WHERE tidal_id IS NOT NULL AND TRIM(tidal_id) = '';
+UPDATE track_identity SET tidal_id = TRIM(tidal_id) WHERE tidal_id IS NOT NULL AND tidal_id != TRIM(tidal_id);
+UPDATE track_identity SET qobuz_id = NULL WHERE qobuz_id IS NOT NULL AND TRIM(qobuz_id) = '';
+UPDATE track_identity SET qobuz_id = TRIM(qobuz_id) WHERE qobuz_id IS NOT NULL AND qobuz_id != TRIM(qobuz_id);
+UPDATE track_identity SET spotify_id = NULL WHERE spotify_id IS NOT NULL AND TRIM(spotify_id) = '';
+UPDATE track_identity SET spotify_id = TRIM(spotify_id) WHERE spotify_id IS NOT NULL AND spotify_id != TRIM(spotify_id);
+
 WITH duplicate_groups AS (
-    SELECT 'beatport_id' AS provider_column, TRIM(beatport_id) AS provider_id, COUNT(*) AS row_count
+    SELECT 'beatport_id' AS provider_column, beatport_id AS provider_id, COUNT(*) AS row_count
     FROM track_identity
     WHERE beatport_id IS NOT NULL
       AND TRIM(beatport_id) != ''
       AND merged_into_id IS NULL
-    GROUP BY TRIM(beatport_id)
+    GROUP BY beatport_id
     HAVING COUNT(*) > 1
     UNION ALL
-    SELECT 'tidal_id', TRIM(tidal_id), COUNT(*)
+    SELECT 'tidal_id', tidal_id, COUNT(*)
     FROM track_identity
     WHERE tidal_id IS NOT NULL
       AND TRIM(tidal_id) != ''
       AND merged_into_id IS NULL
-    GROUP BY TRIM(tidal_id)
+    GROUP BY tidal_id
     HAVING COUNT(*) > 1
     UNION ALL
-    SELECT 'qobuz_id', TRIM(qobuz_id), COUNT(*)
+    SELECT 'qobuz_id', qobuz_id, COUNT(*)
     FROM track_identity
     WHERE qobuz_id IS NOT NULL
       AND TRIM(qobuz_id) != ''
       AND merged_into_id IS NULL
-    GROUP BY TRIM(qobuz_id)
+    GROUP BY qobuz_id
     HAVING COUNT(*) > 1
     UNION ALL
-    SELECT 'spotify_id', TRIM(spotify_id), COUNT(*)
+    SELECT 'spotify_id', spotify_id, COUNT(*)
     FROM track_identity
     WHERE spotify_id IS NOT NULL
       AND TRIM(spotify_id) != ''
       AND merged_into_id IS NULL
-    GROUP BY TRIM(spotify_id)
+    GROUP BY spotify_id
     HAVING COUNT(*) > 1
 )
 SELECT provider_column, provider_id, row_count
@@ -105,29 +117,37 @@ ORDER BY provider_column, provider_id;
 ### `0011` provider set
 
 ```sql
+-- Mirror 0011 normalization (explicit trim set: space/tab/newline/CR).
+UPDATE track_identity SET apple_music_id = NULL WHERE apple_music_id IS NOT NULL AND TRIM(apple_music_id, ' \t\n\r') = '';
+UPDATE track_identity SET apple_music_id = TRIM(apple_music_id, ' \t\n\r') WHERE apple_music_id IS NOT NULL AND apple_music_id != TRIM(apple_music_id, ' \t\n\r');
+UPDATE track_identity SET deezer_id = NULL WHERE deezer_id IS NOT NULL AND TRIM(deezer_id, ' \t\n\r') = '';
+UPDATE track_identity SET deezer_id = TRIM(deezer_id, ' \t\n\r') WHERE deezer_id IS NOT NULL AND deezer_id != TRIM(deezer_id, ' \t\n\r');
+UPDATE track_identity SET traxsource_id = NULL WHERE traxsource_id IS NOT NULL AND TRIM(traxsource_id, ' \t\n\r') = '';
+UPDATE track_identity SET traxsource_id = TRIM(traxsource_id, ' \t\n\r') WHERE traxsource_id IS NOT NULL AND traxsource_id != TRIM(traxsource_id, ' \t\n\r');
+
 WITH duplicate_groups AS (
-    SELECT 'apple_music_id' AS provider_column, TRIM(apple_music_id, ' ' || char(9) || char(10) || char(13)) AS provider_id, COUNT(*) AS row_count
+    SELECT 'apple_music_id' AS provider_column, apple_music_id AS provider_id, COUNT(*) AS row_count
     FROM track_identity
     WHERE apple_music_id IS NOT NULL
-      AND TRIM(apple_music_id, ' ' || char(9) || char(10) || char(13)) != ''
+      AND TRIM(apple_music_id, ' \t\n\r') != ''
       AND merged_into_id IS NULL
-    GROUP BY TRIM(apple_music_id, ' ' || char(9) || char(10) || char(13))
+    GROUP BY apple_music_id
     HAVING COUNT(*) > 1
     UNION ALL
-    SELECT 'deezer_id', TRIM(deezer_id, ' ' || char(9) || char(10) || char(13)), COUNT(*)
+    SELECT 'deezer_id', deezer_id, COUNT(*)
     FROM track_identity
     WHERE deezer_id IS NOT NULL
-      AND TRIM(deezer_id, ' ' || char(9) || char(10) || char(13)) != ''
+      AND TRIM(deezer_id, ' \t\n\r') != ''
       AND merged_into_id IS NULL
-    GROUP BY TRIM(deezer_id, ' ' || char(9) || char(10) || char(13))
+    GROUP BY deezer_id
     HAVING COUNT(*) > 1
     UNION ALL
-    SELECT 'traxsource_id', TRIM(traxsource_id, ' ' || char(9) || char(10) || char(13)), COUNT(*)
+    SELECT 'traxsource_id', traxsource_id, COUNT(*)
     FROM track_identity
     WHERE traxsource_id IS NOT NULL
-      AND TRIM(traxsource_id, ' ' || char(9) || char(10) || char(13)) != ''
+      AND TRIM(traxsource_id, ' \t\n\r') != ''
       AND merged_into_id IS NULL
-    GROUP BY TRIM(traxsource_id, ' ' || char(9) || char(10) || char(13))
+    GROUP BY traxsource_id
     HAVING COUNT(*) > 1
 )
 SELECT provider_column, provider_id, row_count
@@ -139,7 +159,7 @@ ORDER BY provider_column, provider_id;
 
 If `0010` or `0011` fails with `duplicate active provider ids block migration ...`:
 
-1. identify the duplicate provider field and normalized value
+1. identify the duplicate provider field and provider value (as stored after the migration’s trim/blank-to-`NULL` updates)
 2. inspect all rows with that value and `merged_into_id IS NULL`
 3. resolve the duplicate set using the provider-specific guidance below
 4. leave only one canonical winner active
@@ -161,7 +181,7 @@ Non-Beatport enforced-provider duplicate blockers (`tidal_id`, `qobuz_id`, `spot
 
 - no repository-provided provider-generic duplicate merge automation exists today
 - operator-driven repair steps:
-  - inspect the duplicate rows (`merged_into_id IS NULL`) for the normalized provider value
+  - inspect the duplicate rows (`merged_into_id IS NULL`) for the provider value (as stored after trimming)
   - choose the canonical winner identity id
   - repair the other rows manually so only one canonical winner remains active for that provider value
   - rerun the migration
@@ -181,17 +201,17 @@ SELECT id, identity_key, merged_into_id, beatport_id, tidal_id, qobuz_id, spotif
 FROM track_identity
 WHERE merged_into_id IS NULL
   AND deezer_id IS NOT NULL
-  AND TRIM(deezer_id, ' ' || char(9) || char(10) || char(13)) = 'dz-1'
+  AND TRIM(deezer_id, ' \t\n\r') = 'dz-1'
 ORDER BY id;
 ```
 
-Inspect merged losers for the same normalized value:
+Inspect merged losers for the same provider value (after trimming):
 
 ```sql
 SELECT id, identity_key, merged_into_id, deezer_id
 FROM track_identity
 WHERE deezer_id IS NOT NULL
-  AND TRIM(deezer_id, ' ' || char(9) || char(10) || char(13)) = 'dz-1'
+  AND TRIM(deezer_id, ' \t\n\r') = 'dz-1'
 ORDER BY merged_into_id IS NULL DESC, id;
 ```
 

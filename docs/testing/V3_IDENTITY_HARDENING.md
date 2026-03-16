@@ -39,7 +39,7 @@ Covers:
 
 - duplicate active values fail `0011` after normalization
 - merged loser rows do not block canonical winners for second-pass providers
-- `NULL`, blank, tab-only, and whitespace-only values normalize to `NULL` and remain allowed
+- `NULL`, blank, and values made blank by trimming the explicit set `' \t\n\r'` (space/tab/newline/CR) normalize to `NULL` and remain allowed
 - the migration runner applies `0011` cleanly and records the schema version
 
 Provider fields covered:

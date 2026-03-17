@@ -92,6 +92,12 @@ Every invocation writes a structured JSON artifact to `artifacts/intake/intake_u
 
 Legacy compatibility wrapper. For new work, use `tagslut intake <URL>` above.
 
+Beatport-origin source-selection policy (download vs metadata):
+- Beatport remains the metadata origin for Beatport URLs, but downloads may switch to TIDAL **only** when a strict, verified cross-match exists and TIDAL is ranked higher (HiRes lossless > lossless > Beatport).
+- Verified match gates: exact ISRC (preferred) OR exact title + primary artist + mix/version with duration corroboration (±2s). Missing duration or ambiguous ties block switching.
+- Unverified/ambiguous TIDAL hits never replace Beatport downloads; the precheck decisions CSV records the winner and reason for each keep decision.
+- `tools/get --enrich <url>` exits early when precheck keep=0 after refreshing provider snapshots into the track hub (no download, no resume pipeline).
+
 ```bash
 # Default: precheck + download + local tag prep + promote + merged M3U
 tools/get "https://www.beatport.com/release/.../..."

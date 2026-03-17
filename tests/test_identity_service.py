@@ -154,6 +154,76 @@ def test_resolve_or_create_identity_matches_by_provider_id(tmp_path) -> None:
     assert identity_id == 11
 
 
+def test_resolve_or_create_identity_reuses_existing_identity_for_same_provider_id(tmp_path) -> None:
+    conn = _open_fixture_db(tmp_path)
+    try:
+        _asset_row(conn, 201, "/music/a.flac", duration_s=300.0)
+        _asset_row(conn, 202, "/music/b.flac", duration_s=300.0)
+        conn.execute(
+            """
+            INSERT INTO track_identity (id, identity_key, beatport_id, canonical_artist, canonical_title)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (30, "beatport:BP-123", "BP-123", "Artist A", "Track A"),
+        )
+        row_a = conn.execute("SELECT * FROM asset_file WHERE id = ?", (201,)).fetchone()
+        row_b = conn.execute("SELECT * FROM asset_file WHERE id = ?", (202,)).fetchone()
+        assert row_a is not None and row_b is not None
+
+        first_id = resolve_or_create_identity(
+            conn,
+            row_a,
+            {"beatport_id": "BP-123", "artist": "Artist A", "title": "Track A"},
+            {"source": "beatport"},
+        )
+        second_id = resolve_or_create_identity(
+            conn,
+            row_b,
+            {"beatport_id": "BP-123", "artist": "Artist A", "title": "Track A"},
+            {"source": "beatport"},
+        )
+        count = conn.execute("SELECT COUNT(*) FROM track_identity").fetchone()
+    finally:
+        conn.close()
+
+    assert first_id == 30
+    assert second_id == 30
+    assert count is not None
+    assert int(count[0]) == 1
+
+
+def test_resolve_or_create_identity_merges_provider_ids_for_same_isrc(tmp_path) -> None:
+    conn = _open_fixture_db(tmp_path)
+    try:
+        asset_row = _asset_row(conn, 203, "/music/isrc-merge.flac", duration_s=300.0)
+        conn.execute(
+            """
+            INSERT INTO track_identity (id, identity_key, isrc, beatport_id, canonical_artist, canonical_title)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (31, "isrc:merge-1", "ISRC-MERGE-1", "BP-999", "Artist A", "Track A"),
+        )
+
+        identity_id = resolve_or_create_identity(
+            conn,
+            asset_row,
+            {"isrc": "ISRC-MERGE-1", "tidal_id": "TD-777", "artist": "Artist A", "title": "Track A"},
+            {"source": "tidal"},
+        )
+        row = conn.execute("SELECT isrc, beatport_id, tidal_id FROM track_identity WHERE id = ?", (31,)).fetchone()
+        count = conn.execute("SELECT COUNT(*) FROM track_identity").fetchone()
+    finally:
+        conn.close()
+
+    assert identity_id == 31
+    assert row is not None
+    assert str(row["isrc"]) == "ISRC-MERGE-1"
+    assert str(row["beatport_id"]) == "BP-999"
+    assert str(row["tidal_id"]) == "TD-777"
+    assert count is not None
+    assert int(count[0]) == 1
+
+
 def test_resolve_or_create_identity_matches_fuzzy_and_preserves_exact_fields(tmp_path) -> None:
     conn = _open_fixture_db(tmp_path)
     try:

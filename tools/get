@@ -51,6 +51,7 @@ usage() {
     echo "                       See docs/DJ_WORKFLOW.md"
     echo "                       Example: tagslut mp3 reconcile -> tagslut dj backfill -> tagslut dj validate -> tagslut dj xml emit"
     echo "  --no-precheck        skip duplicate-quality precheck"
+    echo "  -f, --force          re-download even if already exists (provider-specific)"
     echo "  --force-download     keep matched tracks anyway"
     echo "  --providers LIST     metadata providers for enrich step"
     echo "  --verbose            show internal paths, logs, and batch snapshots"
@@ -93,8 +94,29 @@ if [[ "$1" == "-h" || "$1" == "--help" ]]; then
     usage
 fi
 
-URL="$1"
-shift
+URL=""
+PRE_URL_ARGS=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        http://*|https://*|*tidal.com*|*beatport.com*|*deezer.com*|*dzr.page.link*)
+            URL="$1"
+            shift
+            break
+            ;;
+        *)
+            PRE_URL_ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
+
+if [[ -z "$URL" ]]; then
+    usage
+fi
+
+if [[ ${#PRE_URL_ARGS[@]} -gt 0 ]]; then
+    set -- "${PRE_URL_ARGS[@]}" "$@"
+fi
 
 INTAKE_CMD=()
 
@@ -116,19 +138,18 @@ build_intake_cmd() {
                 precheck_enabled=0
                 shift
                 ;;
+            --force|-f)
+                intake_args+=(--force-download)
+                shift
+                ;;
             --enrich|--hoard)
                 shift
                 ;;
             --dj)
-                echo "ERROR: tools/get --dj is deprecated and will be removed in v3.1." >&2
-                echo "Use the 4-stage DJ pipeline instead:" >&2
-                echo "1. tagslut mp3 reconcile --db <DB> --mp3-root <DJ_ROOT>" >&2
-                echo "2. tagslut dj backfill --db <DB>" >&2
-                echo "3. tagslut dj validate --db <DB>" >&2
-                echo "4. tagslut dj xml emit --db <DB> --output rekordbox.xml" >&2
-                echo "" >&2
-                echo "See docs/DJ_WORKFLOW.md for details." >&2
-                exit 1
+                echo "WARNING: tools/get --dj is deprecated legacy behavior." >&2
+                echo "See docs/DJ_WORKFLOW.md for the canonical 4-stage DJ pipeline." >&2
+                intake_args+=(--dj)
+                shift
                 ;;
             *)
                 intake_args+=("$arg")
@@ -138,6 +159,9 @@ build_intake_cmd() {
     done
 
     INTAKE_CMD=("$GET_INTAKE" --source "$source" --missing-policy download --execute --m3u)
+    if [[ "$MODE" == "enrich" ]]; then
+        INTAKE_CMD+=(--enrich)
+    fi
     if [[ "$precheck_enabled" -eq 0 ]]; then
         INTAKE_CMD+=(--no-precheck)
     fi
@@ -155,7 +179,22 @@ if [[ "$URL" == *"tidal.com"* ]]; then
     fi
     cd "$REPO_ROOT"
     if [[ "$MODE" != "sync" && "$MODE" != "enrich" ]]; then
-        exec "$TIDDL_WRAPPER" "$URL" "$@"
+        FORCE_NO_SKIP=0
+        FORWARD_ARGS=()
+        for arg in "$@"; do
+            case "$arg" in
+                --force-download|--force|-f)
+                    FORCE_NO_SKIP=1
+                    ;;
+                *)
+                    FORWARD_ARGS+=("$arg")
+                    ;;
+            esac
+        done
+        if [[ "$FORCE_NO_SKIP" -eq 1 ]]; then
+            FORWARD_ARGS+=(--no-skip)
+        fi
+        exec "$TIDDL_WRAPPER" "$URL" "${FORWARD_ARGS[@]}"
     fi
     build_intake_cmd "tidal" "$URL" "$@"
     exec "${INTAKE_CMD[@]}"

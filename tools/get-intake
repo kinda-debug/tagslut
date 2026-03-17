@@ -19,6 +19,28 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 ENV_LOADER="$SCRIPT_DIR/_load_env.sh"
 
+USE_COLOR=0
+if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
+  USE_COLOR=1
+fi
+CLR_RESET=$'\033[0m'
+CLR_BOLD=$'\033[1m'
+CLR_DIM=$'\033[2m'
+CLR_RED=$'\033[31m'
+CLR_GREEN=$'\033[32m'
+CLR_YELLOW=$'\033[33m'
+CLR_CYAN=$'\033[36m'
+
+clr() {
+  local code="$1"
+  shift
+  if [[ "$USE_COLOR" -eq 1 ]]; then
+    printf '%s%s%s' "$code" "$*" "$CLR_RESET"
+  else
+    printf '%s' "$*"
+  fi
+}
+
 if [[ -f "$ENV_LOADER" ]]; then
   # shellcheck disable=SC1090
   source "$ENV_LOADER"
@@ -115,12 +137,27 @@ step() {
   local total="$2"
   local label="$3"
   echo
-  echo "[$idx/$total] $label"
+  printf '%s %s\n' "$(clr "$CLR_CYAN" "[$idx/$total]")" "$(clr "$CLR_BOLD" "$label")"
 }
 
 run_cmd() {
-  printf '→ '
-  printf '%q ' "$@"
+  local max_args="${GET_INTAKE_MAX_PRINT_ARGS:-12}"
+  printf '%s ' "$(clr "$CLR_DIM" "→")"
+  if [[ "${VERBOSE:-0}" -eq 1 ]]; then
+    printf '%q ' "$@"
+  else
+    local shown=0
+    for arg in "$@"; do
+      if [[ "$shown" -ge "$max_args" ]]; then
+        break
+      fi
+      printf '%q ' "$arg"
+      shown=$((shown + 1))
+    done
+    if [[ "$#" -gt "$max_args" ]]; then
+      printf '%s' "$(clr "$CLR_DIM" "…(+$(( $# - max_args )) args)")"
+    fi
+  fi
   printf '\n'
   "$@"
 }
@@ -128,8 +165,23 @@ run_cmd() {
 run_cmd_in_dir() {
   local workdir="$1"
   shift
-  printf '→ '
-  printf '%q ' "$@"
+  local max_args="${GET_INTAKE_MAX_PRINT_ARGS:-12}"
+  printf '%s ' "$(clr "$CLR_DIM" "→")"
+  if [[ "${VERBOSE:-0}" -eq 1 ]]; then
+    printf '%q ' "$@"
+  else
+    local shown=0
+    for arg in "$@"; do
+      if [[ "$shown" -ge "$max_args" ]]; then
+        break
+      fi
+      printf '%q ' "$arg"
+      shown=$((shown + 1))
+    done
+    if [[ "$#" -gt "$max_args" ]]; then
+      printf '%s' "$(clr "$CLR_DIM" "…(+$(( $# - max_args )) args)")"
+    fi
+  fi
   printf '\n'
   env -C "$workdir" "$@"
 }
@@ -254,8 +306,18 @@ run_tiddl_download() {
   shift || true
 
   local cmd=("$TIDDL_WRAPPER")
+  local has_no_skip=0
   if [[ $# -gt 0 ]]; then
+    for arg in "$@"; do
+      if [[ "$arg" == "--no-skip" || "$arg" == "-ns" ]]; then
+        has_no_skip=1
+        break
+      fi
+    done
     cmd+=("$@")
+  fi
+  if [[ "${FORCE_DOWNLOAD:-0}" -eq 1 && "$has_no_skip" -eq 0 ]]; then
+    cmd+=(--no-skip)
   fi
   cmd+=(--path "$BATCH_ROOT" --scan-path "$BATCH_ROOT" --skip-errors "$tidal_url")
 
@@ -858,6 +920,7 @@ M3U_MODE=0
 M3U_ONLY=0
 DJ_MODE=0
 TAGGING_MODE=1
+ENRICH_MODE=0
 VERBOSE=0
 
 URL=""
@@ -1032,6 +1095,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     --enrich|--hoard)
       TAGGING_MODE=1
+      ENRICH_MODE=1
       shift
       ;;
     --no-tagging)
@@ -1043,6 +1107,10 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     --force-download)
+      FORCE_DOWNLOAD=1
+      shift
+      ;;
+    --force|-f)
       FORCE_DOWNLOAD=1
       shift
       ;;
@@ -1179,50 +1247,39 @@ OUT_DIR="${OUT_DIR:-$(default_out_dir || true)}"
 mkdir -p "$OUT_DIR"
 OUT_DIR="$(resolve_path "$OUT_DIR")"
 
-echo "Batch root:   $BATCH_ROOT"
-echo "Source:       $SOURCE"
-if [[ "$VERBOSE" -eq 1 && -n "$URL" ]]; then
-  echo "URL:          $URL"
+kv() { printf '  %s  %s\n' "$(clr "$CLR_DIM" "$(printf '%-12s' "$1")")" "$2"; }
+echo
+echo "$(clr "$CLR_BOLD" "Intake Config")"
+kv "Batch root" "$BATCH_ROOT"
+kv "Source" "$SOURCE"
+if [[ -n "$URL" ]]; then
+  kv "URL" "$URL"
 fi
 if [[ "$VERBOSE" -eq 1 ]]; then
-  echo "DB:           $DB_PATH"
+  kv "DB" "$DB_PATH"
 fi
-echo "Library root: $LIBRARY_ROOT"
-echo "Fix root:     $FIX_ROOT"
-echo "Quarantine:   $QUARANTINE_ROOT"
-echo "Discard root: $DISCARD_ROOT"
-if [[ "$VERBOSE" -eq 1 ]]; then
-  echo "Output dir:   $OUT_DIR"
-fi
-echo "Execute:      $EXECUTE"
-echo "Precheck:     $((1 - SKIP_PRECHECK))"
-if [[ "$VERBOSE" -eq 1 ]]; then
-  echo "Providers:    $ENRICH_PROVIDERS"
-fi
-if [[ "$VERBOSE" -eq 1 && ${#DOWNLOADER_ARGS[@]} -gt 0 ]]; then
-  printf 'Dl args:      '
-  printf '%q ' "${DOWNLOADER_ARGS[@]}"
-  printf '\n'
-fi
+kv "Library root" "$LIBRARY_ROOT"
+kv "Fix root" "$FIX_ROOT"
+kv "Quarantine" "$QUARANTINE_ROOT"
+kv "Discard" "$DISCARD_ROOT"
+kv "Execute" "$EXECUTE"
+kv "Precheck" "$((1 - SKIP_PRECHECK))"
 if [[ "$FORCE_DOWNLOAD" -eq 1 ]]; then
-  echo "Force dl:     1"
+  kv "Force" "$(clr "$CLR_YELLOW" "1")"
 fi
-if [[ "$M3U_MODE" -eq 1 ]]; then
-  echo "Roon M3U:     1 (dir=$M3U_DIR, paths=relative, prefix=$ROON_PLAYLIST_PREFIX)"
-else
-  echo "Roon M3U:     0"
-fi
-if [[ "$DJ_MODE" -eq 1 ]]; then
-  echo "DJ MP3:       1 (dir=$DJ_ROOT)"
-  echo "DJ M3U:       1 (dir=$DJ_M3U_DIR, paths=absolute, prefix=$DJ_PLAYLIST_PREFIX)"
-else
-  echo "DJ MP3:       0"
-  echo "DJ M3U:       0"
-fi
-echo "Tagging:      $TAGGING_MODE"
+kv "Roon M3U" "$M3U_MODE"
+kv "DJ" "$DJ_MODE"
+kv "Tagging" "$TAGGING_MODE"
 if [[ "$M3U_ONLY" -eq 1 ]]; then
-  echo "M3U only:     1"
-  echo "Missing mode: $MISSING_POLICY"
+  kv "M3U only" "1"
+  kv "Missing" "$MISSING_POLICY"
+fi
+if [[ "$VERBOSE" -eq 1 ]]; then
+  kv "Output dir" "$OUT_DIR"
+  kv "Providers" "$ENRICH_PROVIDERS"
+  if [[ ${#DOWNLOADER_ARGS[@]} -gt 0 ]]; then
+    kv "Dl args" "$(printf '%q ' "${DOWNLOADER_ARGS[@]}")"
+  fi
 fi
 if [[ "$VERBOSE" -eq 1 && "$DOWNLOAD" -eq 1 ]]; then
   case "$SOURCE" in
@@ -1790,13 +1847,19 @@ emit("KEEP_URLS_TXT", keep_file)
 PY
 )"
 
-    echo "Precheck summary: keep=$PREFILTER_KEEP skip=$PREFILTER_SKIP total=$PREFILTER_TOTAL"
+    echo "$(clr "$CLR_BOLD" "Precheck")"
+    kv "Total" "$PREFILTER_TOTAL"
+    kv "Keep" "$(clr "$CLR_GREEN" "$PREFILTER_KEEP")"
+    if [[ "$PREFILTER_SKIP" -eq 0 ]]; then
+      kv "Skip" "$(clr "$CLR_GREEN" "$PREFILTER_SKIP")"
+    else
+      kv "Skip" "$(clr "$CLR_YELLOW" "$PREFILTER_SKIP")"
+    fi
     if [[ "$VERBOSE" -eq 1 ]]; then
-      echo "Precheck files:"
-      echo "  decisions: $PRECHECK_DECISIONS_CSV"
-      echo "  keep urls: $KEEP_URLS_TXT"
+      kv "Decisions" "$PRECHECK_DECISIONS_CSV"
+      kv "Keep URLs" "$KEEP_URLS_TXT"
       if [[ -f "$KEEP_URLS_TXT" ]]; then
-        echo "  keep preview:"
+        echo "  $(clr "$CLR_DIM" "keep preview:")"
         preview_file_lines "$KEEP_URLS_TXT" 5
       fi
     fi
@@ -1811,12 +1874,24 @@ PY
     echo "Download context:"
     echo "  batch before: $BATCH_AUDIO_BEFORE_DOWNLOAD audio files under $BATCH_ROOT"
   fi
-	  if [[ "$USE_DOWNLOAD_PRECHECK" -eq 1 ]]; then
-	    if [[ "${PREFILTER_KEEP:-0}" -eq 0 ]]; then
-	      echo "All candidates already have same-or-better inventory matches; skipping download."
-	      if [[ "$DJ_MODE" -eq 1 ]]; then
-	        echo "CONTRACT NOTE: All tracks are precheck-hit inventory. DJ output will be produced via" >&2
-	        echo "  the precheck-inventory fallback path (link_precheck_inventory_to_dj), NOT the" >&2
+		  if [[ "$USE_DOWNLOAD_PRECHECK" -eq 1 ]]; then
+		    if [[ "${PREFILTER_KEEP:-0}" -eq 0 ]]; then
+		      echo "All candidates already have same-or-better inventory matches; skipping download."
+		      if [[ "$ENRICH_MODE" -eq 1 && "$DJ_MODE" -eq 0 ]]; then
+		        if [[ -n "${PRECHECK_TRACKS_CSV:-}" && -f "$PRECHECK_TRACKS_CSV" ]]; then
+		          step "$((STEP + 1))" "$TOTAL_STEPS" "Refresh provider metadata (no-download)"
+		          run_cmd python -m tagslut.exec.url_metadata_refresh \
+		            --db "$DB_PATH" \
+		            --tracks-csv "$PRECHECK_TRACKS_CSV" \
+		            --source-url "$URL" \
+		            --out-dir "$OUT_DIR"
+		        fi
+		        echo "No new candidates to download; intake pipeline finished (enrich metadata refresh mode)."
+		        exit 0
+		      fi
+		      if [[ "$DJ_MODE" -eq 1 ]]; then
+		        echo "CONTRACT NOTE: All tracks are precheck-hit inventory. DJ output will be produced via" >&2
+		        echo "  the precheck-inventory fallback path (link_precheck_inventory_to_dj), NOT the" >&2
 	        echo "  promotion-driven build_pool_v3 path. Results may differ from a first-time intake run." >&2
 	        echo "  For a deterministic DJ build from canonical state, use: tagslut dj pool-wizard" >&2
 	        step "$((STEP + 1))" "$TOTAL_STEPS" "Link existing inventory to DJ"
@@ -1947,20 +2022,65 @@ PY
             rm -f "$TIDDL_FAILED_URLS_FILE"
           fi
         fi
-      else
-        BPDL_LOG="$OUT_DIR/bpdl_prefilter_download_$(date +%Y%m%d_%H%M%S).log"
-        if [[ "$VERBOSE" -eq 1 ]]; then
-          echo "  Beatport keep list: $KEEP_URLS_TXT"
-          echo "  Beatport log:       $BPDL_LOG"
-        fi
-        if [[ ${#DOWNLOADER_ARGS[@]} -gt 0 ]]; then
-          run_bpdl_batch "$KEEP_URLS_TXT" "$BPDL_LOG" "${DOWNLOADER_ARGS[@]}"
-        else
-          run_bpdl_batch "$KEEP_URLS_TXT" "$BPDL_LOG"
-        fi
-      fi
-    fi
-  else
+	      else
+	        BPDL_LOG="$OUT_DIR/bpdl_prefilter_download_$(date +%Y%m%d_%H%M%S).log"
+	        # Beatport-origin runs may choose verified TIDAL URLs as the actual download
+	        # source (while keeping Beatport as metadata origin). The precheck keep-list
+	        # can therefore contain mixed providers.
+	        TIDAL_KEEP_URLS_TXT="$OUT_DIR/precheck_keep_tidal_urls_$(date +%Y%m%d_%H%M%S).txt"
+	        BPDL_KEEP_URLS_TXT="$OUT_DIR/precheck_keep_bpdl_urls_$(date +%Y%m%d_%H%M%S).txt"
+	        : > "$TIDAL_KEEP_URLS_TXT"
+	        : > "$BPDL_KEEP_URLS_TXT"
+	        grep 'tidal.com' "$KEEP_URLS_TXT" > "$TIDAL_KEEP_URLS_TXT" || true
+	        grep 'beatport.com' "$KEEP_URLS_TXT" > "$BPDL_KEEP_URLS_TXT" || true
+	        TIDAL_KEEP_COUNT="$(awk 'NF{c++} END{print c+0}' "$TIDAL_KEEP_URLS_TXT")"
+	        BPDL_KEEP_COUNT="$(awk 'NF{c++} END{print c+0}' "$BPDL_KEEP_URLS_TXT")"
+	        if [[ "$VERBOSE" -eq 1 ]]; then
+	          echo "  Beatport keep list: $KEEP_URLS_TXT"
+	          echo "  Beatport keep bpdl: $BPDL_KEEP_URLS_TXT ($BPDL_KEEP_COUNT)"
+	          echo "  Beatport keep tidal:$TIDAL_KEEP_URLS_TXT ($TIDAL_KEEP_COUNT)"
+	          echo "  Beatport log:       $BPDL_LOG"
+	        fi
+	        if [[ "$TIDAL_KEEP_COUNT" -gt 0 ]]; then
+	          echo "Cross-source download: $TIDAL_KEEP_COUNT verified match(es) will download from TIDAL."
+	          DONE=0
+	          TIDDL_FAILED_COUNT=0
+	          TIDDL_FAILED_URLS_FILE="$OUT_DIR/tiddl_failed_cross_source_urls_$(date +%Y%m%d_%H%M%S).txt"
+	          : > "$TIDDL_FAILED_URLS_FILE"
+	          while IFS= read -r keep_url; do
+	            [[ -n "$keep_url" ]] || continue
+	            DONE=$((DONE + 1))
+	            echo "[tidal $DONE/$TIDAL_KEEP_COUNT] $keep_url"
+	            # Do NOT forward Beatport downloader args into TIDAL downloads.
+	            if run_tiddl_download "$keep_url"; then
+	              :
+	            else
+	              TIDDL_FAILED_COUNT=$((TIDDL_FAILED_COUNT + 1))
+	              printf '%s\n' "$keep_url" >> "$TIDDL_FAILED_URLS_FILE"
+	              echo "WARNING: Tidal download failed for $keep_url; continuing."
+	            fi
+	          done < "$TIDAL_KEEP_URLS_TXT"
+	          if [[ "$TIDDL_FAILED_COUNT" -gt 0 ]]; then
+	            echo "Tidal cross-source download failures: $TIDDL_FAILED_COUNT (saved: $TIDDL_FAILED_URLS_FILE)"
+	            if [[ "$TIDDL_FAILED_COUNT" -eq "$TIDAL_KEEP_COUNT" ]]; then
+	              err "All $TIDAL_KEEP_COUNT cross-source Tidal downloads failed; aborting pipeline."
+	            fi
+	          else
+	            rm -f "$TIDDL_FAILED_URLS_FILE"
+	          fi
+	        fi
+	        if [[ "$BPDL_KEEP_COUNT" -gt 0 ]]; then
+	          if [[ ${#DOWNLOADER_ARGS[@]} -gt 0 ]]; then
+	            run_bpdl_batch "$BPDL_KEEP_URLS_TXT" "$BPDL_LOG" "${DOWNLOADER_ARGS[@]}"
+	          else
+	            run_bpdl_batch "$BPDL_KEEP_URLS_TXT" "$BPDL_LOG"
+	          fi
+	        else
+	          echo "No Beatport URLs selected for download."
+	        fi
+	      fi
+	    fi
+	  else
     if [[ "$SOURCE" == "tidal" && "$URL" == *"tidal.com"* ]]; then
       if [[ "$VERBOSE" -eq 1 ]]; then
         echo "  Tidal download target: $BATCH_ROOT"
@@ -2109,16 +2229,23 @@ run_cmd "${AUDIT_CMD[@]}"
 STEP=$((STEP + 1))
 
 step "$STEP" "$TOTAL_STEPS" "Plan promote/fix/quarantine/discard"
-run_cmd python "$PLAN_SCRIPT" \
-  --db "$DB_PATH" \
-  --source-root "$BATCH_ROOT" \
-  --final-root "$LIBRARY_ROOT" \
-  --dest-root "$LIBRARY_ROOT" \
-  --prefer-root "$BATCH_ROOT" \
-  --stash-folder-name "../FIX" \
-  --quarantine-root "$QUARANTINE_ROOT" \
-  --quarantine-missing-fp \
+PLAN_ARGS=(
+  python "$PLAN_SCRIPT"
+  --db "$DB_PATH"
+  --source-root "$BATCH_ROOT"
+  --final-root "$LIBRARY_ROOT"
+  --dest-root "$LIBRARY_ROOT"
+  --prefer-root "$BATCH_ROOT"
+  --stash-folder-name "../FIX"
+  --quarantine-root "$QUARANTINE_ROOT"
+  --quarantine-missing-fp
   --out-dir "$OUT_DIR"
+)
+if [[ "$FORCE_DOWNLOAD" -eq 1 ]]; then
+  # Force mode: allow compilation-style duplication into the final library when layout differs.
+  PLAN_ARGS+=(--allow-duplicate-audio)
+fi
+run_cmd "${PLAN_ARGS[@]}"
 STEP=$((STEP + 1))
 
 SUMMARY_JSON="$(ls -1t "$OUT_DIR"/plan_fpcalc_unique_final_summary_*.json 2>/dev/null | head -n1 || true)"
@@ -2456,18 +2583,28 @@ if [[ "$DJ_MODE" -eq 1 ]]; then
   STEP=$((STEP + 1))
   step "$STEP" "$TOTAL_STEPS" "Build DJ MP3 copies"
 
-  DJ_INPUT_COUNT="$(wc -l < "$PROMOTED_FLACS_FILE" | tr -d ' ')"
+  DJ_SOURCE_PATHS_FILE="$PROMOTED_FLACS_FILE"
+  DJ_INPUT_COUNT="$(wc -l < "$DJ_SOURCE_PATHS_FILE" | tr -d ' ')"
   if [[ "$DJ_INPUT_COUNT" -eq 0 ]]; then
-    echo "WARNING: --dj was requested but PROMOTED_FLACS_FILE is empty — no FLAC files were promoted in this run." >&2
+    if [[ -n "${ROON_M3U_INPUT_FILE:-}" && -f "$ROON_M3U_INPUT_FILE" ]]; then
+      DJ_SOURCE_PATHS_FILE="$ROON_M3U_INPUT_FILE"
+      DJ_INPUT_COUNT="$(wc -l < "$DJ_SOURCE_PATHS_FILE" | tr -d ' ')"
+      if [[ "$DJ_INPUT_COUNT" -gt 0 ]]; then
+        echo "DJ mode: using inventory + promoted inputs (no promoted files in this run)."
+      fi
+    fi
+  fi
+
+  if [[ "$DJ_INPUT_COUNT" -eq 0 ]]; then
+    echo "WARNING: --dj was requested but no promoted files or inventory matches were available for DJ export." >&2
     echo "WARNING: No DJ MP3 copies were created." >&2
-    echo "WARNING: To build DJ copies for already-promoted masters, run: tagslut dj pool-wizard" >&2
     DJ_EXPORT_COUNT=0
   else
     DJ_IDENTITY_IDS_FILE="$OUT_DIR/dj_identity_ids_$(date +%Y%m%d_%H%M%S).txt"
     DJ_MANIFEST_FILE="$OUT_DIR/dj_manifest_$(date +%Y%m%d_%H%M%S).csv"
     DJ_RECEIPTS_FILE="$OUT_DIR/dj_receipts_$(date +%Y%m%d_%H%M%S).jsonl"
     DJ_M3U_INPUTS_FILE="$OUT_DIR/dj_playlist_inputs_$(date +%Y%m%d_%H%M%S).txt"
-    run_cmd poetry run python - "$DB_PATH" "$PROMOTED_FLACS_FILE" "$DJ_IDENTITY_IDS_FILE" <<'PY'
+    run_cmd poetry run python - "$DB_PATH" "$DJ_SOURCE_PATHS_FILE" "$DJ_IDENTITY_IDS_FILE" <<'PY'
 import sqlite3
 import sys
 from pathlib import Path
@@ -2605,32 +2742,38 @@ if [[ "$EXECUTE" -eq 1 ]]; then
     BATCH_AUDIO_END="$(count_audio_files "$BATCH_ROOT")"
   fi
   echo
-  echo "Run summary"
-  echo "  source:       $SOURCE"
+  echo "$(clr "$CLR_BOLD" "Run Summary")"
+  kv "Source" "$SOURCE"
   if [[ -n "$URL" ]]; then
-    echo "  url:          $URL"
+    kv "URL" "$URL"
   fi
-  echo "  batch root:   $BATCH_ROOT"
-  echo "  batch files:  start=$BATCH_AUDIO_START end=$BATCH_AUDIO_END"
+  kv "Batch root" "$BATCH_ROOT"
+  kv "Batch files" "start=$BATCH_AUDIO_START end=$BATCH_AUDIO_END"
   if [[ "$USE_DOWNLOAD_PRECHECK" -eq 1 ]]; then
-    echo "  precheck:     keep=$PREFILTER_KEEP skip=$PREFILTER_SKIP total=$PREFILTER_TOTAL"
+    kv "Precheck" "keep=$PREFILTER_KEEP skip=$PREFILTER_SKIP total=$PREFILTER_TOTAL"
   fi
-  echo "  promoted:     $PROMOTE_MOVE"
-  echo "  stashed:      $STASH_MOVE"
-  echo "  quarantined:  $QUARANTINE_MOVE"
-  echo "  fix skips:    $FIX_SKIP_MOVE"
-  echo "  discarded:    $DISCARD_MOVE"
-  echo "  promoted txt: $PROMOTED_FLACS_FILE ($PROMOTED_FLACS_COUNT files)"
+  kv "Promoted" "$(clr "$CLR_GREEN" "$PROMOTE_MOVE")"
+  kv "Stashed" "$STASH_MOVE"
+  kv "Quarantine" "$QUARANTINE_MOVE"
+  kv "Fix skips" "$FIX_SKIP_MOVE"
+  kv "Discard" "$DISCARD_MOVE"
+  kv "Promoted txt" "$PROMOTED_FLACS_FILE ($PROMOTED_FLACS_COUNT files)"
   if [[ -n "$ROON_M3U_OUTPUT" ]]; then
-    echo "  roon m3u:     $ROON_M3U_OUTPUT"
+    kv "Roon M3U" "$ROON_M3U_OUTPUT"
   fi
   if [[ "$DJ_MODE" -eq 1 ]]; then
-    echo "  dj exports:   $DJ_EXPORT_COUNT"
+    kv "DJ exports" "$DJ_EXPORT_COUNT"
     if [[ -n "$DJ_M3U_OUTPUT" ]]; then
-      echo "  dj m3u:       $DJ_M3U_OUTPUT"
+      kv "DJ M3U" "$DJ_M3U_OUTPUT"
     fi
   fi
   if [[ -n "$POST_MOVE_PID" ]]; then
-    echo "  enrich/art:   pid=$POST_MOVE_PID log=$POST_MOVE_LOG"
+    kv "Enrich/art" "pid=$POST_MOVE_PID log=$POST_MOVE_LOG"
+  fi
+
+  if command -v poetry >/dev/null 2>&1; then
+    run_cmd poetry run python -m tagslut.exec.intake_pretty_summary --out-dir "$OUT_DIR" || true
+  else
+    run_cmd python -m tagslut.exec.intake_pretty_summary --out-dir "$OUT_DIR" || true
   fi
 fi

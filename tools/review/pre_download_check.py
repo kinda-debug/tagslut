@@ -51,6 +51,14 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from tagslut.core.quality import compute_quality_rank, is_upgrade
+from tagslut.metadata.auth import TokenManager
+from tagslut.metadata.models.types import ProviderTrack
+from tagslut.metadata.providers.tidal import TidalProvider
+from tagslut.metadata.source_selection import (
+    SourceSelectionDecision,
+    select_download_source_for_beatport_track,
+    tidal_audio_quality_rank as _tidal_audio_quality_rank,
+)
 from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
 
 # Confidence levels for match methods
@@ -483,6 +491,29 @@ Match Methods (in priority order):
 
     link_stats: dict[str, dict[str, int]] = defaultdict(lambda: {"keep": 0, "skip": 0})
     keep_urls: list[str] = []
+    selection_stats = {
+        "attempted": 0,
+        "selected_tidal": 0,
+        "retained_beatport": 0,
+        "ambiguous": 0,
+        "unverified": 0,
+        "not_better": 0,
+        "unavailable": 0,
+    }
+
+    token_manager: TokenManager | None = None
+    tidal_provider: TidalProvider | None = None
+
+    def _parse_int(value: str | None) -> int | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        if not text:
+            return None
+        try:
+            return int(text)
+        except Exception:
+            return None
 
     with tracks_csv.open("r", encoding="utf-8", newline="") as fin, decision_csv.open("w", encoding="utf-8", newline="") as fout:
         reader = csv.DictReader(fin)
@@ -495,6 +526,14 @@ Match Methods (in priority order):
             "db_download_source",
             "existing_quality_rank",
             "candidate_quality_rank",
+            "source_selection_attempted",
+            "source_selection_winner",
+            "source_selection_reason",
+            "tidal_match_method",
+            "tidal_track_id",
+            "tidal_audio_quality",
+            "tidal_audio_quality_rank",
+            "duration_diff_ms",
         ]
         writer = csv.DictWriter(fout, fieldnames=fields)
         writer.writeheader()
@@ -507,6 +546,15 @@ Match Methods (in priority order):
             title = (row.get("title") or "").strip()
             artist = (row.get("artist") or "").strip()
             album = (row.get("album") or "").strip()
+
+            source_selection_attempted = ""
+            source_selection_winner = ""
+            source_selection_reason = ""
+            tidal_match_method = ""
+            tidal_track_id = ""
+            tidal_audio_quality = ""
+            tidal_audio_quality_rank_str = ""
+            duration_diff_ms = ""
 
             decision: str
             reason: str
@@ -593,6 +641,70 @@ Match Methods (in priority order):
 
             if decision == "keep":
                 keep_url = build_keep_track_url(domain, track_id)
+
+                # Beatport-origin upgrade: attempt strict TIDAL verification and
+                # switch download source only for verified better-quality matches.
+                if domain == "beatport" and track_id:
+                    selection_stats["attempted"] += 1
+                    source_selection_attempted = "1"
+
+                    beatport_duration_ms = _parse_int(row.get("duration_ms"))
+                    tidal_candidates: list[ProviderTrack] = []
+
+                    try:
+                        if token_manager is None:
+                            token_manager = TokenManager()
+                        if tidal_provider is None:
+                            tidal_provider = TidalProvider(token_manager)
+
+                        if isrc:
+                            tidal_candidates = tidal_provider.search_by_isrc(isrc, limit=5)
+                        else:
+                            tidal_candidates = tidal_provider.search(f"{artist} {title}", limit=10)
+
+                        decision_obj: SourceSelectionDecision = select_download_source_for_beatport_track(
+                            beatport_track_id=track_id,
+                            beatport_isrc=isrc or None,
+                            beatport_title=title,
+                            beatport_artist=artist,
+                            beatport_album=album or None,
+                            beatport_duration_ms=beatport_duration_ms,
+                            tidal_candidates=tidal_candidates,
+                        )
+
+                        source_selection_winner = decision_obj.winner
+                        source_selection_reason = decision_obj.winner_reason
+                        if decision_obj.ambiguous:
+                            selection_stats["ambiguous"] += 1
+                        if decision_obj.winner == "tidal":
+                            selection_stats["selected_tidal"] += 1
+                        else:
+                            selection_stats["retained_beatport"] += 1
+
+                        if decision_obj.winner_reason in (
+                            "tidal_unverified",
+                            "no_tidal_candidates",
+                        ):
+                            selection_stats["unverified"] += 1
+                        if decision_obj.winner_reason == "tidal_not_better_quality":
+                            selection_stats["not_better"] += 1
+
+                        if decision_obj.tidal_match is not None:
+                            tidal_match_method = decision_obj.tidal_match.match_method
+                            tidal_track_id = decision_obj.tidal_match.tidal_track.service_track_id
+                            tidal_audio_quality = decision_obj.tidal_match.tidal_track.audio_quality or ""
+                            tidal_audio_quality_rank_str = str(_tidal_audio_quality_rank(tidal_audio_quality))
+                            if decision_obj.tidal_match.duration_diff_ms is not None:
+                                duration_diff_ms = str(int(decision_obj.tidal_match.duration_diff_ms))
+
+                        keep_url = decision_obj.selected_download_url(beatport_track_id=track_id)
+
+                    except Exception as exc:
+                        selection_stats["unavailable"] += 1
+                        source_selection_winner = "beatport"
+                        source_selection_reason = f"tidal_match_unavailable:{type(exc).__name__}"
+                        keep_url = build_keep_track_url("beatport", track_id)
+
                 if keep_url:
                     keep_urls.append(keep_url)
 
@@ -606,6 +718,14 @@ Match Methods (in priority order):
                     "db_download_source": db_source,
                     "existing_quality_rank": existing_quality_rank,
                     "candidate_quality_rank": int(args.candidate_quality_rank),
+                    "source_selection_attempted": source_selection_attempted,
+                    "source_selection_winner": source_selection_winner,
+                    "source_selection_reason": source_selection_reason,
+                    "tidal_match_method": tidal_match_method,
+                    "tidal_track_id": tidal_track_id,
+                    "tidal_audio_quality": tidal_audio_quality,
+                    "tidal_audio_quality_rank": tidal_audio_quality_rank_str,
+                    "duration_diff_ms": duration_diff_ms,
                 }
             )
             writer.writerow(row)
@@ -660,6 +780,17 @@ Match Methods (in priority order):
         print(f"  keep_urls:     {keep_urls_txt}")
         print(f"  report:        {report_txt}")
         print(f"  keep={total_keep} skip={total_skip}")
+        if selection_stats["attempted"] > 0:
+            print(
+                "  source_selection:"
+                f" attempted={selection_stats['attempted']}"
+                f" selected_tidal={selection_stats['selected_tidal']}"
+                f" retained_beatport={selection_stats['retained_beatport']}"
+                f" ambiguous={selection_stats['ambiguous']}"
+                f" unverified={selection_stats['unverified']}"
+                f" not_better={selection_stats['not_better']}"
+                f" unavailable={selection_stats['unavailable']}"
+            )
     return 0
 
 

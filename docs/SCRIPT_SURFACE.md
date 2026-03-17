@@ -76,6 +76,7 @@ pipeline. For new work, prefer `poetry run tagslut intake <url>`
 so you get structured artifacts and explicit precheck/download/MP3
 stages.
 - default behavior: precheck + download + tagging/enrich/art + promote + merged M3U
+- Beatport URLs may download from TIDAL when a strict verified cross-match exists and TIDAL ranks higher by quality; Beatport remains the metadata origin for that URL.
 - default output is concise; `--verbose` enables internal paths, artifact files, and batch snapshots
 - high-level workflow flags: `--dj`, `--hoard`, `--no-hoard`, `--no-precheck`, `--force-download`, `--providers`, `--verbose`
 - `--dj` is deprecated legacy behavior. See `docs/DJ_WORKFLOW.md` for the canonical 4-stage DJ pipeline.

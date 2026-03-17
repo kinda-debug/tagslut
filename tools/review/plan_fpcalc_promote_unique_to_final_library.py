@@ -191,6 +191,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Emit MOVE rows for missing-fingerprint files into --quarantine-root (default: do nothing)",
     )
+    ap.add_argument(
+        "--allow-duplicate-audio",
+        action="store_true",
+        help="Allow promoting audio even if an exact-audio match already exists under --final-root (default: stash dupes)",
+    )
     ap.add_argument("--out-dir", type=Path, default=Path("artifacts/compare"), help="Output directory")
     ap.add_argument("--stamp", default=None, help="Optional timestamp stamp override (default: now UTC)")
     ap.add_argument("--limit-fps", type=int, help="Limit number of fingerprint groups (for testing)")
@@ -371,7 +376,7 @@ def main() -> int:
 
         fp_sha1 = _sha1_text(fp)
 
-        if fp in final_audio_ids:
+        if fp in final_audio_ids and not bool(args.allow_duplicate_audio):
             # Audio already present in FINAL_LIBRARY -> stash all healthy source copies.
             for m in healthy:
                 src_path = Path(m.path)

@@ -229,6 +229,88 @@ def register_misc_commands(cli: click.Group) -> None:
         click.echo(f"Ambiguous fallback rows: {stats.ambiguous_fallback_rows}")
         click.echo(f"Equal-rank fallback ties: {stats.fallback_equal_rank_ties}")
 
+    @cli.command("beatport-seed")
+    @click.option(
+        "--out",
+        "output_csv",
+        type=click.Path(path_type=Path, dir_okay=False),  # type: ignore  # TODO: mypy-strict
+        default=Path("beatport_seed.csv"),
+        show_default=True,
+        help="Output CSV path for Beatport seed rows.",
+    )
+    @click.option("--tokens-path", type=click.Path(path_type=Path), help="Path to tokens.json")
+    def beatport_seed(output_csv, tokens_path):  # type: ignore  # TODO: mypy-strict
+        """Export one Beatport library snapshot as seed CSV rows."""
+        from tagslut.metadata.auth import DEFAULT_TOKENS_PATH, TokenManager
+        from tagslut.metadata.enricher import Enricher
+
+        resolved_tokens_path = tokens_path or DEFAULT_TOKENS_PATH
+        token_manager = TokenManager(Path(resolved_tokens_path))
+
+        with Enricher(
+            db_path=Path("__vendor_only__"),
+            token_manager=token_manager,
+            providers=["beatport"],
+            dry_run=True,
+            mode="hoarding",
+        ) as enricher:
+            stats = enricher.export_beatport_seed_csv(output_csv)
+
+        click.echo(f"Wrote Beatport seed CSV: {output_csv}")
+        click.echo(f"Tracks exported: {stats.exported_rows}")
+        click.echo(f"Rows missing ISRC: {stats.missing_isrc_rows}")
+        click.echo(f"Rows missing required fields skipped: {stats.rows_missing_required_fields}")
+        click.echo(f"Duplicate rows skipped: {stats.duplicate_rows}")
+        click.echo(f"Pages fetched: {stats.pages_fetched}")
+        click.echo(f"Pagination stop - non-200: {stats.pagination_stop_non_200}")
+        click.echo(f"Pagination stop - empty page: {stats.pagination_stop_empty_page}")
+        click.echo(f"Pagination stop - short page with no next: {stats.pagination_stop_short_page_no_next}")
+
+    @cli.command("tidal-enrich")
+    @click.option(
+        "--in",
+        "input_csv",
+        required=True,
+        type=click.Path(exists=True, path_type=Path, dir_okay=False),  # type: ignore  # TODO: mypy-strict
+        help="Input Beatport seed CSV path.",
+    )
+    @click.option(
+        "--out",
+        "output_csv",
+        type=click.Path(path_type=Path, dir_okay=False),  # type: ignore  # TODO: mypy-strict
+        default=Path("beatport_tidal_enriched.csv"),
+        show_default=True,
+        help="Output CSV path for merged Beatport+TIDAL rows.",
+    )
+    @click.option("--tokens-path", type=click.Path(path_type=Path), help="Path to tokens.json")
+    def tidal_enrich(input_csv, output_csv, tokens_path):  # type: ignore  # TODO: mypy-strict
+        """Enrich a Beatport seed CSV with TIDAL metadata."""
+        from tagslut.metadata.auth import DEFAULT_TOKENS_PATH, TokenManager
+        from tagslut.metadata.enricher import Enricher
+
+        resolved_tokens_path = tokens_path or DEFAULT_TOKENS_PATH
+        token_manager = TokenManager(Path(resolved_tokens_path))
+
+        with Enricher(
+            db_path=Path("__vendor_only__"),
+            token_manager=token_manager,
+            providers=["tidal"],
+            dry_run=True,
+            mode="hoarding",
+        ) as enricher:
+            stats = enricher.enrich_beatport_seed_csv(input_csv, output_csv)
+
+        click.echo(f"Wrote TIDAL-enriched CSV: {output_csv}")
+        click.echo(f"Input rows: {stats.input_rows}")
+        click.echo(f"Discarded input rows: {stats.discarded_seed_rows}")
+        click.echo(f"Rows written: {stats.output_rows}")
+        click.echo(f"Matched by ISRC: {stats.isrc_matches}")
+        click.echo(f"Matched by title/artist fallback: {stats.title_artist_fallback_matches}")
+        click.echo(f"Unmatched: {stats.no_match_rows}")
+        click.echo(f"Ambiguous ISRC rows: {stats.ambiguous_isrc_rows}")
+        click.echo(f"Ambiguous fallback rows: {stats.ambiguous_fallback_rows}")
+        click.echo(f"Equal-rank fallback ties: {stats.fallback_equal_rank_ties}")
+
     @cli.command("canonize", hidden=True)
     @click.argument("path", type=click.Path(exists=True))
     @click.option("--canon/--no-canon", default=True, help="Enable canonical tag rules")

@@ -84,8 +84,8 @@ Options:
                        Missing handling for --m3u-only: ask|report|skip|download (default: report)
   --no-download        Skip downloader step; process existing batch root
   --skip-mgmt-check    Skip quick duplicate check stage (legacy flag name)
-  --hoard              Alias for tagging/enrich/art pipeline (default)
-  --no-hoard           Alias for --no-tagging
+  --enrich             Explicit alias for tagging/enrich/art pipeline (default)
+  --hoard              Deprecated alias for --enrich
   --no-tagging         Skip tagging / metadata enrich / cover-art steps
   --no-precheck        Skip pre-download DB check for Tidal/Beatport URLs
   --force-download     Keep matched tracks instead of skipping same/better inventory matches
@@ -1030,11 +1030,11 @@ while [[ $# -gt 0 ]]; do
       SKIP_MGMT_CHECK=1
       shift
       ;;
-    --hoard)
+    --enrich|--hoard)
       TAGGING_MODE=1
       shift
       ;;
-    --no-hoard|--no-tagging)
+    --no-tagging)
       TAGGING_MODE=0
       shift
       ;;

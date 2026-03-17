@@ -288,6 +288,95 @@ TIDAL_BEATPORT_MERGED_COLUMNS = (
 
 
 @dataclass(slots=True)
+class BeatportSeedRow:
+    """Stable Beatport-only intake row for vendor enrichment flows."""
+
+    beatport_track_id: str
+    beatport_release_id: Optional[str]
+    beatport_url: str
+    title: str
+    artist: str
+    isrc: Optional[str] = None
+    beatport_bpm: Optional[str] = None
+    beatport_key: Optional[str] = None
+    beatport_genre: Optional[str] = None
+    beatport_subgenre: Optional[str] = None
+    beatport_label: Optional[str] = None
+    beatport_catalog_number: Optional[str] = None
+    beatport_upc: Optional[str] = None
+    beatport_release_date: Optional[str] = None
+
+
+@dataclass(slots=True)
+class BeatportTidalMergedRow:
+    """Merged vendor row with Beatport intake fields and TIDAL enrichment fields."""
+
+    beatport_track_id: str
+    beatport_release_id: Optional[str]
+    beatport_url: str
+    title: str
+    artist: str
+    isrc: Optional[str] = None
+    beatport_bpm: Optional[str] = None
+    beatport_key: Optional[str] = None
+    beatport_genre: Optional[str] = None
+    beatport_subgenre: Optional[str] = None
+    beatport_label: Optional[str] = None
+    beatport_catalog_number: Optional[str] = None
+    beatport_upc: Optional[str] = None
+    beatport_release_date: Optional[str] = None
+    tidal_track_id: Optional[str] = None
+    tidal_url: Optional[str] = None
+    tidal_title: Optional[str] = None
+    tidal_artist: Optional[str] = None
+    match_method: str = "no_match"
+    match_confidence: float = 0.0
+    last_synced_at: Optional[str] = None
+
+
+BEATPORT_SEED_COLUMNS = (
+    "beatport_track_id",
+    "beatport_release_id",
+    "beatport_url",
+    "title",
+    "artist",
+    "isrc",
+    "beatport_bpm",
+    "beatport_key",
+    "beatport_genre",
+    "beatport_subgenre",
+    "beatport_label",
+    "beatport_catalog_number",
+    "beatport_upc",
+    "beatport_release_date",
+)
+
+BEATPORT_TIDAL_MERGED_COLUMNS = (
+    "beatport_track_id",
+    "beatport_release_id",
+    "beatport_url",
+    "title",
+    "artist",
+    "isrc",
+    "beatport_bpm",
+    "beatport_key",
+    "beatport_genre",
+    "beatport_subgenre",
+    "beatport_label",
+    "beatport_catalog_number",
+    "beatport_upc",
+    "beatport_release_date",
+    "tidal_track_id",
+    "tidal_url",
+    "tidal_title",
+    "tidal_artist",
+    "match_method",
+    "match_confidence",
+    "last_synced_at",
+)
+
+
+@dataclass(slots=True)
 class TidalSeedExportStats:
     """Telemetry for TIDAL playlist seed export."""
 
@@ -306,8 +395,37 @@ class TidalSeedExportStats:
 
 
 @dataclass(slots=True)
+class BeatportSeedExportStats:
+    """Telemetry for Beatport library seed export."""
+
+    exported_rows: int = 0
+    missing_isrc_rows: int = 0
+    rows_missing_required_fields: int = 0
+    duplicate_rows: int = 0
+    pages_fetched: int = 0
+    pagination_stop_non_200: int = 0
+    pagination_stop_empty_page: int = 0
+    pagination_stop_short_page_no_next: int = 0
+
+
+@dataclass(slots=True)
 class TidalBeatportEnrichmentStats:
     """Telemetry for Beatport enrichment of a TIDAL seed CSV."""
+
+    input_rows: int = 0
+    discarded_seed_rows: int = 0
+    output_rows: int = 0
+    isrc_matches: int = 0
+    title_artist_fallback_matches: int = 0
+    no_match_rows: int = 0
+    ambiguous_isrc_rows: int = 0
+    ambiguous_fallback_rows: int = 0
+    fallback_equal_rank_ties: int = 0
+
+
+@dataclass(slots=True)
+class BeatportTidalEnrichmentStats:
+    """Telemetry for TIDAL enrichment of a Beatport seed CSV."""
 
     input_rows: int = 0
     discarded_seed_rows: int = 0

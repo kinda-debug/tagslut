@@ -1,0 +1,40 @@
+{
+  "id": 999,
+  "url": "https://www.beatport.com/release/warehouse-ep/999",
+  "artists": [
+    {
+      "id": 100,
+      "name": "Artist A",
+      "slug": "artist-a",
+      "url": "https://www.beatport.com/artist/artist-a/100"
+    }
+  ],
+  "label": {
+    "id": 77,
+    "name": "Toolroom",
+    "slug": "toolroom"
+  },
+  "catalog_number": "TOOL001",
+  "is_available_for_streaming": true,
+  "name": "Warehouse EP",
+  "new_release_date": "2025-02-01",
+  "publish_date": "2025-02-01",
+  "upc": "123456789012",
+  "track_count": 2,
+  "tracks": [],
+  "type": "release",
+  "change_date": "2025-01-31T00:00:00Z",
+  "created": "2025-01-31T00:00:00Z",
+  "created_date": "2025-01-31T00:00:00Z",
+  "exclusive": false,
+  "image": {
+    "uri": "https://images.example.com/releases/999.jpg"
+  },
+  "is_dj_edit": false,
+  "is_ugc_remix": false,
+  "pre_order": false,
+  "price": "3.99",
+  "remixers": [],
+  "updated": "2025-02-01T00:00:00Z",
+  "updated_date": "2025-02-01T00:00:00Z"
+}

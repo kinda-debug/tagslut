@@ -7,7 +7,7 @@
 #   - deezer.com   → tools/deemix (Deezer wrapper + auto-register)
 #
 # Usage:
-#   tools/get [--sync|--synch|--simple] <url> [extra-args...]
+#   tools/get [--sync|--synch|--simple|--enrich] <url> [extra-args...]
 #
 # Examples:
 #   tools/get https://tidal.com/browse/playlist/12345
@@ -38,18 +38,18 @@ fi
 
 usage() {
     echo "Primary workflow:"
-    echo "  tools/get <provider-url>         precheck + download + local tag prep + promote + m3u"
+    echo "  tools/get <provider-url>         provider-native download behavior"
+    echo "  tools/get --enrich <provider-url>  precheck + download + local tag prep + promote + m3u"
     echo ""
-    echo "General usage: tools/get [--sync|--synch|--simple] <url> [extra-args...]"
-    echo "  --sync/--synch: provider sync workflow"
+    echo "General usage: tools/get [--sync|--synch|--simple|--enrich] <url> [extra-args...]"
+    echo "  --sync/--synch: intake workflow"
     echo "  --simple: downloader-only behavior"
+    echo "  --enrich: intake + hoarding/enrich/art workflow"
     echo ""
     echo "Common high-level options:"
     echo "  --dj                 [DEPRECATED LEGACY] use the 4-stage pipeline instead"
     echo "                       See docs/DJ_WORKFLOW.md"
     echo "                       Example: tagslut mp3 reconcile -> tagslut dj backfill -> tagslut dj validate -> tagslut dj xml emit"
-    echo "  --hoard              local tag prep before promote; enrich/art continue in background after promote (default)"
-    echo "  --no-hoard           skip local tag prep and background enrich/art"
     echo "  --no-precheck        skip duplicate-quality precheck"
     echo "  --force-download     keep matched tracks anyway"
     echo "  --providers LIST     metadata providers for enrich step"
@@ -79,6 +79,9 @@ elif [[ "$1" == "--sync" || "$1" == "--synch" ]]; then
     shift
 elif [[ "$1" == "--simple" ]]; then
     MODE="simple"
+    shift
+elif [[ "$1" == "--enrich" ]]; then
+    MODE="enrich"
     shift
 fi
 
@@ -113,12 +116,7 @@ build_intake_cmd() {
                 precheck_enabled=0
                 shift
                 ;;
-            --hoard)
-                # Tagging/enrich/art pipeline is already the default intake behavior.
-                shift
-                ;;
-            --no-hoard)
-                intake_args+=(--no-tagging)
+            --enrich|--hoard)
                 shift
                 ;;
             --dj)
@@ -156,7 +154,7 @@ if [[ "$URL" == *"tidal.com"* ]]; then
         exit 1
     fi
     cd "$REPO_ROOT"
-    if [[ "$MODE" == "simple" ]]; then
+    if [[ "$MODE" != "sync" && "$MODE" != "enrich" ]]; then
         exec "$TIDDL_WRAPPER" "$URL" "$@"
     fi
     build_intake_cmd "tidal" "$URL" "$@"
@@ -168,7 +166,47 @@ elif [[ "$URL" == *"beatport.com"* ]]; then
         exit 1
     fi
     cd "$REPO_ROOT"
-    if [[ "$MODE" == "simple" ]]; then
+    if [[ "$MODE" != "sync" && "$MODE" != "enrich" ]]; then
+        if [[ ! -x "$BPDL_BIN" ]]; then
+            echo "Error: BeatportDL binary not found or not executable at: $BPDL_BIN" >&2
+            exit 1
+        fi
+        exec "$BPDL_BIN" "$URL" "$@"
+    fi
+
+    if [[ "$MODE" == "sync" || "$MODE" == "enrich" ]]; then
+        if [[ $# -eq 0 ]]; then
+            exec "$GET_INTAKE" --source bpdl --missing-policy download --execute --m3u "$URL"
+        fi
+    else
+        if [[ $# -eq 0 ]]; then
+            if [[ ! -x "$BPDL_BIN" ]]; then
+                echo "Error: BeatportDL binary not found or not executable at: $BPDL_BIN" >&2
+                exit 1
+            fi
+            exec "$BPDL_BIN" "$URL"
+        fi
+    fi
+
+    if [[ "$MODE" != "sync" && "$MODE" != "enrich" && "$1" == "--report" ]]; then
+        shift
+        if [[ ! -x "$GET_REPORT" ]]; then
+            echo "Error: get-report not found or not executable at: $GET_REPORT" >&2
+            exit 1
+        fi
+        exec "$GET_REPORT" "$URL" "$@"
+    fi
+
+    if [[ "$MODE" != "sync" && "$MODE" != "enrich" && "$1" == "--raw-bpdl" ]]; then
+        shift
+        if [[ ! -x "$BPDL_BIN" ]]; then
+            echo "Error: BeatportDL binary not found or not executable at: $BPDL_BIN" >&2
+            exit 1
+        fi
+        exec "$BPDL_BIN" "$URL" "$@"
+    fi
+
+    if [[ "$MODE" != "sync" && "$MODE" != "enrich" ]]; then
         if [[ ! -x "$BPDL_BIN" ]]; then
             echo "Error: BeatportDL binary not found or not executable at: $BPDL_BIN" >&2
             exit 1
@@ -178,24 +216,6 @@ elif [[ "$URL" == *"beatport.com"* ]]; then
 
     if [[ $# -eq 0 ]]; then
         exec "$GET_INTAKE" --source bpdl --missing-policy download --execute --m3u "$URL"
-    fi
-
-    if [[ "$1" == "--report" ]]; then
-        shift
-        if [[ ! -x "$GET_REPORT" ]]; then
-            echo "Error: get-report not found or not executable at: $GET_REPORT" >&2
-            exit 1
-        fi
-        exec "$GET_REPORT" "$URL" "$@"
-    fi
-
-    if [[ "$1" == "--raw-bpdl" ]]; then
-        shift
-        if [[ ! -x "$BPDL_BIN" ]]; then
-            echo "Error: BeatportDL binary not found or not executable at: $BPDL_BIN" >&2
-            exit 1
-        fi
-        exec "$BPDL_BIN" "$URL" "$@"
     fi
 
     build_intake_cmd "bpdl" "$URL" "$@"

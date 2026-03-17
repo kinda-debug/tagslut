@@ -1,0 +1,78 @@
+{
+  "data": [
+    {
+      "track_id": 12345,
+      "track_name": "Warehouse Cut",
+      "artists": [
+        {
+          "artist_id": 100,
+          "artist_name": "Artist A"
+        }
+      ],
+      "bpm": 128,
+      "catalog_number": "TOOL001",
+      "genre": {
+        "id": 10,
+        "name": "Tech House"
+      },
+      "sub_genre": {
+        "id": 11,
+        "name": "Deep Tech"
+      },
+      "isrc": "GBEXH2400001",
+      "key_name": "A Minor",
+      "label": {
+        "id": 77,
+        "name": "Toolroom"
+      },
+      "length": "06:30",
+      "mix_name": "Original Mix",
+      "publish_date": "2025-02-01",
+      "release": {
+        "release_id": 999,
+        "release_name": "Warehouse EP"
+      },
+      "release_date": "2025-02-01",
+      "score": 91.0,
+      "track_number": 4,
+      "is_available_for_streaming": 1
+    },
+    {
+      "track_id": 54321,
+      "track_name": "Warehouse Cut",
+      "artists": [
+        {
+          "artist_id": 200,
+          "artist_name": "Different Artist"
+        }
+      ],
+      "bpm": 128,
+      "catalog_number": "ALT001",
+      "genre": {
+        "id": 10,
+        "name": "Tech House"
+      },
+      "sub_genre": {
+        "id": 11,
+        "name": "Deep Tech"
+      },
+      "isrc": "GBEXH2409999",
+      "key_name": "A Minor",
+      "label": {
+        "id": 88,
+        "name": "Alternate Label"
+      },
+      "length": "06:32",
+      "mix_name": "Original Mix",
+      "publish_date": "2025-02-03",
+      "release": {
+        "release_id": 1999,
+        "release_name": "Warehouse Cut"
+      },
+      "release_date": "2025-02-03",
+      "score": 99.9,
+      "track_number": 1,
+      "is_available_for_streaming": 1
+    }
+  ]
+}

@@ -134,6 +134,11 @@ class RunArtifacts:
     genre_normalization_rows_csv: Path | None = None
     tag_hoard_summary_json: Path | None = None
     tag_hoard_values_csv: Path | None = None
+    dj_identity_ids_txt: Path | None = None
+    dj_manifest_csv: Path | None = None
+    dj_receipts_jsonl: Path | None = None
+    dj_playlist_inputs_txt: Path | None = None
+    roon_m3u_inputs_txt: Path | None = None
 
 
 @dataclass
@@ -179,10 +184,13 @@ class RunReport:
 
     apply_planned: int | None = None
     apply_moved: int | None = None
+    apply_skipped_missing: int | None = None
+    apply_skipped_exists: int | None = None
     apply_failed: int | None = None
 
     m3u_count: int | None = None
     m3u_paths: list[str] = field(default_factory=list)
+    dj_m3u_paths: list[str] = field(default_factory=list)
 
     hoard_scanned_files: int | None = None
     normalize_genres_scanned: int | None = None
@@ -252,6 +260,11 @@ def _discover_artifacts(*, started: float, raw_log: Path) -> RunArtifacts:
     hoard_values = (Path("tag_hoard_out") / "tags_values.csv").resolve()
     if hoard_values.exists() and hoard_values.stat().st_mtime >= started - 1.0:
         out.tag_hoard_values_csv = hoard_values
+    out.dj_identity_ids_txt = _latest_after(compare_dir, "dj_identity_ids_*.txt", started=started)
+    out.dj_manifest_csv = _latest_after(compare_dir, "dj_manifest_*.csv", started=started)
+    out.dj_receipts_jsonl = _latest_after(compare_dir, "dj_receipts_*.jsonl", started=started)
+    out.dj_playlist_inputs_txt = _latest_after(compare_dir, "dj_playlist_inputs_*.txt", started=started)
+    out.roon_m3u_inputs_txt = _latest_after(compare_dir, "roon_m3u_inputs_*.txt", started=started)
     return out
 
 
@@ -583,6 +596,7 @@ class GetIntakeLogParser:
     def __init__(self) -> None:
         self.report = RunReport()
         self._current_stage: Stage | None = None
+        self._run_total_steps: int | None = None
         self._in_config = False
         self._in_run_summary = False
         self._current_download_track_key: tuple[str, str] | None = None
@@ -607,12 +621,18 @@ class GetIntakeLogParser:
             total = int(m.group(2))
             label = m.group(3).strip()
             if not _URL_RE.match(label):
-                if self._current_stage and self._current_stage.status == "running":
-                    self._current_stage.status = "ok"
-                st = Stage(idx=idx, total=total, name=label, status="running")
-                self.report.stages.append(st)
-                self._current_stage = st
-                self._subctx = None
+                if self._run_total_steps is None:
+                    self._run_total_steps = total
+                if total == self._run_total_steps:
+                    if self._current_stage and self._current_stage.status == "running":
+                        self._current_stage.status = "ok"
+                    st = Stage(idx=idx, total=total, name=label, status="running")
+                    self.report.stages.append(st)
+                    self._current_stage = st
+                    self._subctx = None
+                    return
+                if self._current_stage:
+                    self._current_stage.details.append(stripped)
                 return
 
         if stripped == "Intake Config":
@@ -643,12 +663,10 @@ class GetIntakeLogParser:
             self._in_run_summary = True
             return
         if self._in_run_summary:
-            if ":" not in stripped:
-                self._in_run_summary = False
-            else:
-                key, value = stripped.split(":", 1)
-                k = key.strip().lower()
-                v = value.strip()
+            kv = _CONFIG_KV_RE.match(line)
+            if kv:
+                k = kv.group(1).strip().lower()
+                v = kv.group(2).strip()
                 if k == "precheck":
                     m2 = re.search(r"keep=(\d+)\s+skip=(\d+)\s+total=(\d+)", v)
                     if m2:
@@ -665,7 +683,7 @@ class GetIntakeLogParser:
                         self.report.run_stashed = int(v)
                     except Exception:
                         self.report.run_stashed = None
-                elif k == "quarantined":
+                elif k == "quarantine":
                     try:
                         self.report.run_quarantined = int(v)
                     except Exception:
@@ -675,7 +693,7 @@ class GetIntakeLogParser:
                         self.report.run_fix_skips = int(v)
                     except Exception:
                         self.report.run_fix_skips = None
-                elif k == "discarded":
+                elif k == "discard":
                     try:
                         self.report.run_discarded = int(v)
                     except Exception:
@@ -685,12 +703,16 @@ class GetIntakeLogParser:
                         self.report.run_dj_exports = int(v)
                     except Exception:
                         self.report.run_dj_exports = None
+                elif k == "dj m3u" and v:
+                    if v not in self.report.dj_m3u_paths:
+                        self.report.dj_m3u_paths.append(v)
                 elif k == "roon m3u" and v:
                     if v not in self.report.m3u_paths:
                         self.report.m3u_paths.append(v)
                     if self.report.m3u_count is None:
                         self.report.m3u_count = 1
                 return
+            self._in_run_summary = False
 
         if stripped.startswith("→") or stripped.startswith("$ "):
             if self._current_stage:
@@ -746,9 +768,13 @@ class GetIntakeLogParser:
             if m2:
                 planned = int(m2.group(1))
                 moved = int(m2.group(2))
+                skipped_missing = int(m2.group(3))
+                skipped_exists = int(m2.group(4))
                 failed = int(m2.group(5))
                 self.report.apply_planned = (self.report.apply_planned or 0) + planned
                 self.report.apply_moved = (self.report.apply_moved or 0) + moved
+                self.report.apply_skipped_missing = (self.report.apply_skipped_missing or 0) + skipped_missing
+                self.report.apply_skipped_exists = (self.report.apply_skipped_exists or 0) + skipped_exists
                 self.report.apply_failed = (self.report.apply_failed or 0) + failed
             return
 
@@ -1032,6 +1058,10 @@ def _render_rich(
         elif "apply plans" in lowered:
             if report.apply_moved is not None:
                 body.add_row("moved", str(report.apply_moved))
+            if report.apply_skipped_missing:
+                body.add_row("skipped_missing", Text(str(report.apply_skipped_missing), style="yellow"))
+            if report.apply_skipped_exists:
+                body.add_row("skipped_exists", Text(str(report.apply_skipped_exists), style="yellow"))
             if report.apply_failed is not None and report.apply_failed:
                 body.add_row("failed", Text(str(report.apply_failed), style="red"))
         elif "roon m3u" in lowered:
@@ -1087,14 +1117,9 @@ def _render_rich(
 
     table = Table(title="Per-track outcomes", show_lines=False)
     table.add_column("#", style="dim", width=4, no_wrap=True)
-    table.add_column("Src", style="dim", no_wrap=True)
-    table.add_column("Artist", overflow="fold")
-    table.add_column("Title", overflow="fold")
+    table.add_column("Track", overflow="fold")
     table.add_column("Outcome", no_wrap=True)
-    table.add_column("Reason", overflow="fold")
-    table.add_column("Dest", overflow="fold")
-    table.add_column("Quality", no_wrap=True)
-    table.add_column("Evidence", no_wrap=True, style="dim")
+    table.add_column("Details", overflow="fold")
 
     rows = [report.tracks[k] for k in report.track_order if k in report.tracks]
     failures_or_skips = [r for r in rows if r.outcome in {"failed", "skipped"}]
@@ -1114,17 +1139,31 @@ def _render_rich(
         quality = r.quality
         if not quality and r.source_selection_winner == "tidal" and r.tidal_audio_quality:
             quality = r.tidal_audio_quality
-        evidence = "log" if r.inferred_from_log else "csv"
+
+        track_text = Text()
+        if r.artist:
+            track_text.append(r.artist)
+        else:
+            track_text.append("?")
+        track_text.append("\n")
+        track_text.append(r.title or "?")
+        if src:
+            track_text.append("\n")
+            track_text.append(src, style="dim")
+
+        dest = _abbrev_path(r.dest, roots=roots) if r.dest else ""
+        evidence_line = "log (inferred-from-log)" if r.inferred_from_log else "csv"
+        details_lines: list[str] = [
+            f"reason: {reason or '-'}",
+            f"dest: {dest or '-'}",
+            f"quality: {quality or '-'}",
+            f"evidence: {evidence_line}",
+        ]
         table.add_row(
             str(r.index or ""),
-            src,
-            r.artist,
-            r.title,
+            track_text,
             Text(r.outcome, style=outcome_style),
-            reason,
-            _abbrev_path(r.dest, roots=roots),
-            quality,
-            evidence,
+            "\n".join(details_lines),
         )
 
     footer = ""
@@ -1213,9 +1252,17 @@ def _render_rich(
             plan_bits.append(f"discard={report.discard_planned_move}")
         final.add_row("Plan", " ".join(plan_bits) if plan_bits else "?")
     if report.apply_moved is not None:
+        moves_bits = [
+            f"moved={report.apply_moved}",
+        ]
+        if report.apply_skipped_missing is not None:
+            moves_bits.append(f"skipped_missing={report.apply_skipped_missing}")
+        if report.apply_skipped_exists is not None:
+            moves_bits.append(f"skipped_exists={report.apply_skipped_exists}")
+        moves_bits.append(f"failed={report.apply_failed if report.apply_failed is not None else '?'}")
         final.add_row(
             "Moves",
-            f"moved={report.apply_moved} failed={report.apply_failed if report.apply_failed is not None else '?'}",
+            " ".join(moves_bits),
         )
     if (
         report.run_promoted is not None
@@ -1288,6 +1335,16 @@ def _render_rich(
         arts.add_row("tag_hoard", str(artifacts.tag_hoard_summary_json))
     if artifacts.tag_hoard_values_csv:
         arts.add_row("tag_hoard_values", str(artifacts.tag_hoard_values_csv))
+    if artifacts.dj_identity_ids_txt:
+        arts.add_row("dj_identity_ids", str(artifacts.dj_identity_ids_txt))
+    if artifacts.dj_manifest_csv:
+        arts.add_row("dj_manifest", str(artifacts.dj_manifest_csv))
+    if artifacts.dj_receipts_jsonl:
+        arts.add_row("dj_receipts", str(artifacts.dj_receipts_jsonl))
+    if artifacts.dj_playlist_inputs_txt:
+        arts.add_row("dj_playlist_inputs", str(artifacts.dj_playlist_inputs_txt))
+    if artifacts.roon_m3u_inputs_txt:
+        arts.add_row("roon_m3u_inputs", str(artifacts.roon_m3u_inputs_txt))
     console.print(Panel(arts, title="Key Artifacts", border_style="cyan"))
 
     attention: list[str] = []
@@ -1295,6 +1352,10 @@ def _render_rich(
         attention.append(f"download failed: {report.download_failed}")
     if unknown_keep:
         attention.append(f"unaccounted keep tracks: {unknown_keep} (check outcomes/raw log)")
+    if report.apply_skipped_exists:
+        attention.append(f"moves skipped_exists: {report.apply_skipped_exists}")
+    if report.apply_skipped_missing:
+        attention.append(f"moves skipped_missing: {report.apply_skipped_missing}")
     if report.scan_failed:
         attention.append(f"scan failed: {report.scan_failed}")
     if report.scan_failure_breakdown.get("InputSkipped"):
@@ -1347,7 +1408,13 @@ def _render_plain(report: RunReport, artifacts: RunArtifacts, *, out: Any, succe
     if report.plan_promote_move is not None:
         w(f"  plan:        promote={report.plan_promote_move} stash={report.plan_stash_move} quar={report.plan_quarantine_move} fix={report.fix_planned_move} discard={report.discard_planned_move}\n")
     if report.apply_moved is not None:
-        w(f"  moves:       moved={report.apply_moved} failed={report.apply_failed}\n")
+        moves_bits = [f"moved={report.apply_moved}"]
+        if report.apply_skipped_missing is not None:
+            moves_bits.append(f"skipped_missing={report.apply_skipped_missing}")
+        if report.apply_skipped_exists is not None:
+            moves_bits.append(f"skipped_exists={report.apply_skipped_exists}")
+        moves_bits.append(f"failed={report.apply_failed if report.apply_failed is not None else '?'}")
+        w(f"  moves:       {' '.join(moves_bits)}\n")
     if (
         report.run_promoted is not None
         or report.run_stashed is not None
@@ -1395,7 +1462,7 @@ def _render_plain(report: RunReport, artifacts: RunArtifacts, *, out: Any, succe
         if not quality and r.source_selection_winner == "tidal" and r.tidal_audio_quality:
             quality = r.tidal_audio_quality
         dest = _abbrev_path(r.dest, roots=roots)
-        evidence = "log" if r.inferred_from_log else "csv"
+        evidence = "log(inferred-from-log)" if r.inferred_from_log else "csv"
         w(
             f"    - [{src}] {r.artist} - {r.title} | {r.outcome} | {reason} | dest={dest} | quality={quality} | evidence={evidence}\n"
         )
@@ -1445,6 +1512,16 @@ def _render_plain(report: RunReport, artifacts: RunArtifacts, *, out: Any, succe
         w(f"  tag_hoard:           {artifacts.tag_hoard_summary_json}\n")
     if artifacts.tag_hoard_values_csv:
         w(f"  tag_hoard_values:    {artifacts.tag_hoard_values_csv}\n")
+    if artifacts.dj_identity_ids_txt:
+        w(f"  dj_identity_ids:     {artifacts.dj_identity_ids_txt}\n")
+    if artifacts.dj_manifest_csv:
+        w(f"  dj_manifest:         {artifacts.dj_manifest_csv}\n")
+    if artifacts.dj_receipts_jsonl:
+        w(f"  dj_receipts:         {artifacts.dj_receipts_jsonl}\n")
+    if artifacts.dj_playlist_inputs_txt:
+        w(f"  dj_playlist_inputs:  {artifacts.dj_playlist_inputs_txt}\n")
+    if artifacts.roon_m3u_inputs_txt:
+        w(f"  roon_m3u_inputs:     {artifacts.roon_m3u_inputs_txt}\n")
 
 
 def main(argv: list[str] | None = None) -> int:

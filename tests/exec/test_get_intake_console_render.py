@@ -164,3 +164,74 @@ def test_rich_report_renders_key_sections(tmp_path: Path) -> None:
     assert "Download Accountability" in out
     assert "Metadata / Tagging" in out
     assert "Key Artifacts" in out
+
+
+def test_stage_header_gating_ignores_non_run_totals() -> None:
+    from tagslut.exec import get_intake_console as mod
+
+    parser = mod.GetIntakeLogParser()
+    for line in [
+        "Intake Config\n",
+        "  Source        bpdl\n",
+        "  URL           https://beatport.com/chart/x\n",
+        "  Batch root    /Volumes/MUSIC/mdl/bpdl\n",
+        "  DB            /tmp/music.db\n",
+        "  Library root  /Volumes/MUSIC/MASTER_LIBRARY\n",
+        "[1/10] Pre-download check\n",
+        "[5/10] Local identify + tag prep\n",
+        "[1/1] 07. Riva Starr - Vicino O' Mare (Reprise) (Extended Mix).flac\n",
+        "Tagged:  1\n",
+    ]:
+        parser.feed_line(line)
+    report = parser.finalize()
+
+    assert len(report.stages) == 2
+    assert report.stages[0].total == 10
+    assert all("Riva Starr" not in st.name for st in report.stages)
+
+
+def test_run_summary_kv_block_is_parsed() -> None:
+    from tagslut.exec import get_intake_console as mod
+
+    parser = mod.GetIntakeLogParser()
+    for line in [
+        "Run Summary\n",
+        "  Precheck      keep=2 skip=33 total=35\n",
+        "  Promoted      2\n",
+        "  Stashed       0\n",
+        "  Quarantine    1\n",
+        "  Fix skips     3\n",
+        "  Discard       4\n",
+        "  Roon M3U      /Volumes/MUSIC/MASTER_LIBRARY/playlists/roon-bpdl-test.m3u\n",
+        "  DJ exports    0\n",
+        "  DJ M3U        /Volumes/MUSIC/DJ_LIBRARY/playlists/dj-bpdl-test.m3u\n",
+        "→ poetry run python -m tagslut.exec.intake_pretty_summary --out-dir /tmp\n",
+    ]:
+        parser.feed_line(line)
+    report = parser.finalize()
+
+    assert report.precheck_keep == 2
+    assert report.precheck_skip == 33
+    assert report.precheck_total == 35
+    assert report.run_promoted == 2
+    assert report.run_stashed == 0
+    assert report.run_quarantined == 1
+    assert report.run_fix_skips == 3
+    assert report.run_discarded == 4
+    assert report.m3u_paths == ["/Volumes/MUSIC/MASTER_LIBRARY/playlists/roon-bpdl-test.m3u"]
+    assert report.run_dj_exports == 0
+    assert report.dj_m3u_paths == ["/Volumes/MUSIC/DJ_LIBRARY/playlists/dj-bpdl-test.m3u"]
+
+
+def test_apply_plans_execute_counts_capture_skips() -> None:
+    from tagslut.exec import get_intake_console as mod
+
+    parser = mod.GetIntakeLogParser()
+    parser.feed_line("EXECUTE: planned=2 moved=1 skipped_missing=3 skipped_exists=4 failed=0\n")
+    report = parser.finalize()
+
+    assert report.apply_planned == 2
+    assert report.apply_moved == 1
+    assert report.apply_skipped_missing == 3
+    assert report.apply_skipped_exists == 4
+    assert report.apply_failed == 0

@@ -2604,7 +2604,9 @@ if [[ "$DJ_MODE" -eq 1 ]]; then
     DJ_MANIFEST_FILE="$OUT_DIR/dj_manifest_$(date +%Y%m%d_%H%M%S).csv"
     DJ_RECEIPTS_FILE="$OUT_DIR/dj_receipts_$(date +%Y%m%d_%H%M%S).jsonl"
     DJ_M3U_INPUTS_FILE="$OUT_DIR/dj_playlist_inputs_$(date +%Y%m%d_%H%M%S).txt"
-    run_cmd poetry run python - "$DB_PATH" "$DJ_SOURCE_PATHS_FILE" "$DJ_IDENTITY_IDS_FILE" <<'PY'
+    MOVES_LOG_LATEST="$(ls -1t "$(dirname "$OUT_DIR")"/moves_*.jsonl 2>/dev/null | head -n1 || true)"
+    run_cmd poetry run python - "$DB_PATH" "$DJ_SOURCE_PATHS_FILE" "$DJ_IDENTITY_IDS_FILE" "$MOVES_LOG_LATEST" <<'PY'
+import json
 import sqlite3
 import sys
 from pathlib import Path
@@ -2612,6 +2614,22 @@ from pathlib import Path
 db_path = Path(sys.argv[1]).expanduser().resolve()
 inputs_file = Path(sys.argv[2]).expanduser().resolve()
 out_file = Path(sys.argv[3]).expanduser().resolve()
+moves_log = Path(sys.argv[4]).expanduser().resolve() if len(sys.argv) > 4 and sys.argv[4].strip() else None
+
+dest_to_src = {}
+if moves_log is not None and moves_log.exists():
+    for raw in moves_log.read_text(encoding="utf-8", errors="replace").splitlines():
+        text = raw.strip()
+        if not text:
+            continue
+        try:
+            obj = json.loads(text)
+        except Exception:
+            continue
+        src = (obj.get("src") or obj.get("source") or obj.get("from") or "").strip()
+        dst = (obj.get("dst") or obj.get("dest") or obj.get("to") or "").strip()
+        if src and dst and dst not in dest_to_src:
+            dest_to_src[dst] = src
 
 conn = sqlite3.connect(str(db_path))
 try:
@@ -2623,18 +2641,25 @@ try:
         text = raw_line.strip()
         if not text:
             continue
-        row = conn.execute(
-            f"""
-            SELECT al.identity_id
-            FROM asset_file af
-            JOIN asset_link al ON al.asset_id = af.id
-            WHERE af.path = ?
-            {active_where}
-            ORDER BY al.id ASC
-            LIMIT 1
-            """,
-            (text,),
-        ).fetchone()
+        def _resolve(path: str):
+            return conn.execute(
+                f"""
+                SELECT al.identity_id
+                FROM asset_file af
+                JOIN asset_link al ON al.asset_id = af.id
+                WHERE af.path = ?
+                {active_where}
+                ORDER BY al.id ASC
+                LIMIT 1
+                """,
+                (path,),
+            ).fetchone()
+
+        row = _resolve(text)
+        if row is None:
+            prior = dest_to_src.get(text)
+            if prior:
+                row = _resolve(prior)
         if row is None:
             continue
         identity_id = int(row[0])

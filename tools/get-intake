@@ -110,6 +110,7 @@ Options:
   --hoard              Deprecated alias for --enrich
   --no-tagging         Skip tagging / metadata enrich / cover-art steps
   --no-precheck        Skip pre-download DB check for Tidal/Beatport URLs
+  --resume             Resume: treat existing batch-root files as already acquired (ISRC-only)
   --force-download     Keep matched tracks instead of skipping same/better inventory matches
   --skip-beatport-prefilter
                        Deprecated alias for --no-precheck
@@ -916,6 +917,7 @@ EXECUTE=0
 SKIP_MGMT_CHECK=0
 SKIP_PRECHECK=0
 FORCE_DOWNLOAD=0
+RESUME_MODE=0
 M3U_MODE=0
 M3U_ONLY=0
 DJ_MODE=0
@@ -1114,6 +1116,10 @@ while [[ $# -gt 0 ]]; do
       FORCE_DOWNLOAD=1
       shift
       ;;
+    --resume)
+      RESUME_MODE=1
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -1264,6 +1270,9 @@ kv "Quarantine" "$QUARANTINE_ROOT"
 kv "Discard" "$DISCARD_ROOT"
 kv "Execute" "$EXECUTE"
 kv "Precheck" "$((1 - SKIP_PRECHECK))"
+if [[ "$RESUME_MODE" -eq 1 ]]; then
+  kv "Resume" "$(clr "$CLR_YELLOW" "1")"
+fi
 if [[ "$FORCE_DOWNLOAD" -eq 1 ]]; then
   kv "Force" "$(clr "$CLR_YELLOW" "1")"
 fi
@@ -1797,6 +1806,9 @@ if [[ "$DOWNLOAD" -eq 1 ]]; then
     fi
     if [[ "$FORCE_DOWNLOAD" -eq 1 ]]; then
       PRECHECK_ARGS+=(--force-keep-matched)
+    fi
+    if [[ "$RESUME_MODE" -eq 1 ]]; then
+      PRECHECK_ARGS+=(--existing-root "$BATCH_ROOT")
     fi
     run_cmd python "${PRECHECK_ARGS[@]}"
 

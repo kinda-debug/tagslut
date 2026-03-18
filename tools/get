@@ -54,6 +54,7 @@ usage() {
     echo "  -f, --force          re-download even if already exists (provider-specific)"
     echo "  --force-download     keep matched tracks anyway"
     echo "  --providers LIST     metadata providers for enrich step"
+    echo "  --resume             resume: avoid re-downloading if already staged"
     echo "  --verbose            show internal paths, logs, and batch snapshots"
     echo ""
     echo "Routing roots:"
@@ -127,6 +128,7 @@ build_intake_cmd() {
 
     local precheck_enabled=1
     local intake_args=()
+    local wrapper_verbose=0
     local arg=""
     while [[ $# -gt 0 ]]; do
         arg="$1"
@@ -151,6 +153,15 @@ build_intake_cmd() {
                 intake_args+=(--dj)
                 shift
                 ;;
+            --resume)
+                intake_args+=(--resume)
+                shift
+                ;;
+            --verbose)
+                wrapper_verbose=1
+                intake_args+=(--verbose)
+                shift
+                ;;
             *)
                 intake_args+=("$arg")
                 shift
@@ -168,6 +179,24 @@ build_intake_cmd() {
     INTAKE_CMD+=("$url")
     if [[ ${#intake_args[@]} -gt 0 ]]; then
         INTAKE_CMD+=("${intake_args[@]}")
+    fi
+
+    # Prefer rendering via the Python Rich wrapper in sync/enrich modes.
+    # Raw backend output remains captured to an artifacts log; --verbose enables structured extra details.
+    if [[ -x "$REPO_ROOT/.venv/bin/python" ]]; then
+        WRAPPED_INTAKE_CMD=("$REPO_ROOT/.venv/bin/python" -m tagslut.exec.get_intake_console)
+        if [[ "$wrapper_verbose" -eq 1 ]]; then
+            WRAPPED_INTAKE_CMD+=(--verbose)
+        fi
+        WRAPPED_INTAKE_CMD+=(-- "${INTAKE_CMD[@]}")
+        INTAKE_CMD=("${WRAPPED_INTAKE_CMD[@]}")
+    elif command -v python3 >/dev/null 2>&1; then
+        WRAPPED_INTAKE_CMD=(python3 -m tagslut.exec.get_intake_console)
+        if [[ "$wrapper_verbose" -eq 1 ]]; then
+            WRAPPED_INTAKE_CMD+=(--verbose)
+        fi
+        WRAPPED_INTAKE_CMD+=(-- "${INTAKE_CMD[@]}")
+        INTAKE_CMD=("${WRAPPED_INTAKE_CMD[@]}")
     fi
 }
 
@@ -205,29 +234,12 @@ elif [[ "$URL" == *"beatport.com"* ]]; then
         exit 1
     fi
     cd "$REPO_ROOT"
-    if [[ "$MODE" != "sync" && "$MODE" != "enrich" ]]; then
-        if [[ ! -x "$BPDL_BIN" ]]; then
-            echo "Error: BeatportDL binary not found or not executable at: $BPDL_BIN" >&2
-            exit 1
-        fi
-        exec "$BPDL_BIN" "$URL" "$@"
-    fi
-
     if [[ "$MODE" == "sync" || "$MODE" == "enrich" ]]; then
-        if [[ $# -eq 0 ]]; then
-            exec "$GET_INTAKE" --source bpdl --missing-policy download --execute --m3u "$URL"
-        fi
-    else
-        if [[ $# -eq 0 ]]; then
-            if [[ ! -x "$BPDL_BIN" ]]; then
-                echo "Error: BeatportDL binary not found or not executable at: $BPDL_BIN" >&2
-                exit 1
-            fi
-            exec "$BPDL_BIN" "$URL"
-        fi
+        build_intake_cmd "bpdl" "$URL" "$@"
+        exec "${INTAKE_CMD[@]}"
     fi
 
-    if [[ "$MODE" != "sync" && "$MODE" != "enrich" && "$1" == "--report" ]]; then
+    if [[ "$MODE" != "sync" && "$MODE" != "enrich" && $# -gt 0 && "$1" == "--report" ]]; then
         shift
         if [[ ! -x "$GET_REPORT" ]]; then
             echo "Error: get-report not found or not executable at: $GET_REPORT" >&2
@@ -236,7 +248,7 @@ elif [[ "$URL" == *"beatport.com"* ]]; then
         exec "$GET_REPORT" "$URL" "$@"
     fi
 
-    if [[ "$MODE" != "sync" && "$MODE" != "enrich" && "$1" == "--raw-bpdl" ]]; then
+    if [[ "$MODE" != "sync" && "$MODE" != "enrich" && $# -gt 0 && "$1" == "--raw-bpdl" ]]; then
         shift
         if [[ ! -x "$BPDL_BIN" ]]; then
             echo "Error: BeatportDL binary not found or not executable at: $BPDL_BIN" >&2
@@ -252,13 +264,6 @@ elif [[ "$URL" == *"beatport.com"* ]]; then
         fi
         exec "$BPDL_BIN" "$URL" "$@"
     fi
-
-    if [[ $# -eq 0 ]]; then
-        exec "$GET_INTAKE" --source bpdl --missing-policy download --execute --m3u "$URL"
-    fi
-
-    build_intake_cmd "bpdl" "$URL" "$@"
-    exec "${INTAKE_CMD[@]}"
 
 elif [[ "$URL" == *"deezer.com"* || "$URL" == *"dzr.page.link"* ]]; then
     if [[ ! -x "$DEEMIX_WRAPPER" ]]; then

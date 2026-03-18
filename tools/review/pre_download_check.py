@@ -71,6 +71,60 @@ CONFIDENCE_LEVELS = {
 }
 
 
+def _scan_existing_root_isrc(existing_root: Path) -> dict[str, str]:
+    """Best-effort scan of an existing staging root for ISRCs.
+
+    Used for resume workflows when the DB may not yet contain partially-downloaded
+    files (interrupted runs). Conservative: only ISRC-based presence is used.
+    """
+    try:
+        import mutagen  # type: ignore
+    except Exception:
+        return {}
+
+    def _extract_isrc(tags: Any) -> str:
+        if tags is None:
+            return ""
+        try:
+            items = tags.items()  # type: ignore[attr-defined]
+        except Exception:
+            try:
+                items = ((k, tags[k]) for k in tags.keys())  # type: ignore
+            except Exception:
+                return ""
+
+        for k, v in items:
+            key = str(k).strip().lower()
+            if key in {"isrc", "tsrc"} or key.endswith(":isrc") or key.endswith("/isrc"):
+                if isinstance(v, (list, tuple)) and v:
+                    val = str(v[0]).strip()
+                else:
+                    val = str(v).strip()
+                if val:
+                    return val
+        return ""
+
+    out: dict[str, str] = {}
+    if not existing_root.exists() or not existing_root.is_dir():
+        return out
+
+    exts = {".flac", ".wav", ".aif", ".aiff", ".mp3", ".m4a", ".mp4"}
+    for path in existing_root.rglob("*"):
+        if not path.is_file():
+            continue
+        if path.suffix.lower() not in exts:
+            continue
+        try:
+            audio = mutagen.File(str(path), easy=False)
+        except Exception:
+            continue
+        tags = getattr(audio, "tags", None) if audio is not None else None
+        isrc = _extract_isrc(tags).strip()
+        if isrc and isrc not in out:
+            out[isrc] = str(path)
+    return out
+
+
 @dataclass
 class DbRow:
     path: str
@@ -407,6 +461,10 @@ Match Methods (in priority order):
     ap.add_argument("--out-dir", default="output/precheck", help="Output directory (default: output/precheck)")
     ap.add_argument("--quiet", action="store_true", help="Suppress progress/output details; emit files only")
     ap.add_argument(
+        "--existing-root",
+        help="Resume hint: scan an existing staging root for ISRCs to avoid re-downownloading partial runs",
+    )
+    ap.add_argument(
         "--extract-script",
         default=str(default_extract_script),
         help="Path to extract_tracklists_from_links.py (auto-detected from repo root)",
@@ -433,6 +491,7 @@ Match Methods (in priority order):
         print(f"Resolved DB path: {db_path}")
     out_dir = Path(args.out_dir).expanduser().resolve()
     extract_script = Path(args.extract_script).expanduser().resolve()
+    existing_root = Path(args.existing_root).expanduser().resolve() if args.existing_root else None
 
     if not input_path.exists():
         raise SystemExit(f"Input not found: {input_path}")
@@ -484,6 +543,10 @@ Match Methods (in priority order):
 
     # ── Phase 2: load files-table rows for quality-rank comparison ───────────
     by_isrc, by_beatport, by_tidal, by_exact3, by_exact2 = load_db_rows(db_path)
+
+    existing_isrc_to_path: dict[str, str] = {}
+    if existing_root is not None and not args.force_keep_matched:
+        existing_isrc_to_path = _scan_existing_root_isrc(existing_root)
 
     decision_csv = out_dir / f"precheck_decisions_{ts}.csv"
     decision_summary_csv = out_dir / f"precheck_summary_{ts}.csv"
@@ -578,6 +641,9 @@ Match Methods (in priority order):
             phase1_match_kind: str | None = None
 
             if not args.force_keep_matched:
+                if isrc and isrc in existing_isrc_to_path:
+                    phase1_asset_path = existing_isrc_to_path[isrc]
+                    phase1_match_kind = "existing_root_isrc"
                 if domain == "beatport" and track_id and track_id in ti_by_beatport:
                     phase1_asset_path = ti_by_beatport[track_id]
                     phase1_match_kind = "beatport_id"
@@ -590,11 +656,17 @@ Match Methods (in priority order):
 
             if phase1_match_kind is not None:
                 decision = "skip"
-                reason = f"already_downloaded_source_match:{phase1_match_kind}"
-                confidence = "high"
-                method = phase1_match_kind
+                if phase1_match_kind == "existing_root_isrc":
+                    reason = "resume_root_isrc_match"
+                    confidence = "high"
+                    method = "isrc"
+                    db_source = "existing_root"
+                else:
+                    reason = f"already_downloaded_source_match:{phase1_match_kind}"
+                    confidence = "high"
+                    method = phase1_match_kind
+                    db_source = "asset_file"
                 db_path_val = phase1_asset_path or ""
-                db_source = "asset_file"
                 existing_quality_rank = ""
 
             else:

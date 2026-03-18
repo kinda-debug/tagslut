@@ -2337,14 +2337,19 @@ run_cmd python "$PLAN_SKIPPED_SCRIPT" \
   --out-dir "$OUT_DIR" \
   --stamp "$PLAN_STAMP"
 
-run_cmd python "$PLAN_SKIPPED_SCRIPT" \
-  "$PROMOTE_PLAN" \
-  --target-root "$DISCARD_ROOT" \
-  --source-root "$BATCH_ROOT" \
-  --include-buckets "dest_exists" \
-  --output-prefix "plan_move_skipped_to_discard" \
-  --out-dir "$OUT_DIR" \
-  --stamp "$PLAN_STAMP"
+if [[ "$RESUME_MODE" -eq 0 ]]; then
+  run_cmd python "$PLAN_SKIPPED_SCRIPT" \
+    "$PROMOTE_PLAN" \
+    --target-root "$DISCARD_ROOT" \
+    --source-root "$BATCH_ROOT" \
+    --include-buckets "dest_exists" \
+    --output-prefix "plan_move_skipped_to_discard" \
+    --out-dir "$OUT_DIR" \
+    --stamp "$PLAN_STAMP"
+else
+  echo "Resume mode: suppressing dest_exists discard plan (dest_exists is expected in resume runs)."
+  printf '{"selected_rows": 0, "plan_csv": ""}\n' > "$DISCARD_SUMMARY"
+fi
 
 eval "$(python - "$FIX_SKIP_SUMMARY" "$DISCARD_SUMMARY" <<'PY'
 import json

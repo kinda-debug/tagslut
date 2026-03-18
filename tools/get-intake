@@ -1261,9 +1261,7 @@ kv "Source" "$SOURCE"
 if [[ -n "$URL" ]]; then
   kv "URL" "$URL"
 fi
-if [[ "$VERBOSE" -eq 1 ]]; then
-  kv "DB" "$DB_PATH"
-fi
+kv "DB" "$DB_PATH"
 kv "Library root" "$LIBRARY_ROOT"
 kv "Fix root" "$FIX_ROOT"
 kv "Quarantine" "$QUARANTINE_ROOT"
@@ -1889,7 +1887,7 @@ PY
 		  if [[ "$USE_DOWNLOAD_PRECHECK" -eq 1 ]]; then
 		    if [[ "${PREFILTER_KEEP:-0}" -eq 0 ]]; then
 		      echo "All candidates already have same-or-better inventory matches; skipping download."
-		      if [[ "$ENRICH_MODE" -eq 1 && "$DJ_MODE" -eq 0 ]]; then
+		      if [[ "$ENRICH_MODE" -eq 1 && "$DJ_MODE" -eq 0 && ! ( "$RESUME_MODE" -eq 1 && "$BATCH_AUDIO_BEFORE_DOWNLOAD" -gt 0 ) ]]; then
 		        if [[ -n "${PRECHECK_TRACKS_CSV:-}" && -f "$PRECHECK_TRACKS_CSV" ]]; then
 		          step "$((STEP + 1))" "$TOTAL_STEPS" "Refresh provider metadata (no-download)"
 		          run_cmd python -m tagslut.exec.url_metadata_refresh \
@@ -1901,7 +1899,7 @@ PY
 		        echo "No new candidates to download; intake pipeline finished (enrich metadata refresh mode)."
 		        exit 0
 		      fi
-		      if [[ "$DJ_MODE" -eq 1 ]]; then
+		      if [[ "$DJ_MODE" -eq 1 && ! ( "$RESUME_MODE" -eq 1 && "$BATCH_AUDIO_BEFORE_DOWNLOAD" -gt 0 ) ]]; then
 		        echo "CONTRACT NOTE: All tracks are precheck-hit inventory. DJ output will be produced via" >&2
 		        echo "  the precheck-inventory fallback path (link_precheck_inventory_to_dj), NOT the" >&2
 	        echo "  promotion-driven build_pool_v3 path. Results may differ from a first-time intake run." >&2

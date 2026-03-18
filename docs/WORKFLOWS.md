@@ -96,7 +96,15 @@ Beatport-origin source-selection policy (download vs metadata):
 - Beatport remains the metadata origin for Beatport URLs, but downloads may switch to TIDAL **only** when a strict, verified cross-match exists and TIDAL is ranked higher (HiRes lossless > lossless > Beatport).
 - Verified match gates: exact ISRC (preferred) OR exact title + primary artist + mix/version with duration corroboration (±2s). Missing duration or ambiguous ties block switching.
 - Unverified/ambiguous TIDAL hits never replace Beatport downloads; the precheck decisions CSV records the winner and reason for each keep decision.
-- `tools/get --enrich <url>` exits early when precheck keep=0 after refreshing provider snapshots into the track hub (no download, no resume pipeline).
+- `tools/get --enrich <url>` exits early when precheck keep=0 after refreshing provider snapshots into the track hub (no download).
+- `tools/get --enrich --resume <url>` continues the pipeline when the batch root already contains audio files (treats batch-root ISRCs as already acquired to avoid re-downloading).
+
+Console output:
+- `tools/get` renders an audit-grade run report:
+  - TTY: Rich panels/tables
+  - non-TTY: stable plain text (no ANSI)
+  - full raw backend log is always captured under `artifacts/intake/logs/get_intake_*.log` and referenced in the report header
+  - `--verbose` includes structured per-stage command details (raw output is still in the log artifact)
 
 ```bash
 # Default: precheck + download + local tag prep + promote + merged M3U

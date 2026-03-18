@@ -2613,6 +2613,49 @@ if [[ "$DJ_MODE" -eq 1 ]]; then
 
   DJ_SOURCE_PATHS_FILE="$PROMOTED_FLACS_FILE"
   DJ_INPUT_COUNT="$(wc -l < "$DJ_SOURCE_PATHS_FILE" | tr -d ' ')"
+
+  # Resume mode: staging-root paths are not in asset_file; resolve identities via precheck
+  # inventory library paths instead (same db_path/skip logic as Roon M3U step).
+  if [[ "$RESUME_MODE" -eq 1 && -n "${PRECHECK_DECISIONS_CSV:-}" && -f "${PRECHECK_DECISIONS_CSV:-}" ]]; then
+    DJ_RESUME_PATHS_FILE="$OUT_DIR/dj_resume_paths_$(date +%Y%m%d_%H%M%S).txt"
+    python - "$PRECHECK_DECISIONS_CSV" "$DJ_RESUME_PATHS_FILE" <<'PY'
+import csv
+import sys
+from pathlib import Path
+
+decisions_csv = Path(sys.argv[1])
+out_file = Path(sys.argv[2])
+seen = set()
+selected = []
+with decisions_csv.open(newline="", encoding="utf-8", errors="replace") as handle:
+    reader = csv.DictReader(handle)
+    for row in reader:
+        decision = (row.get("decision") or row.get("action") or "").strip().lower()
+        if decision != "skip":
+            continue
+        db_path = (row.get("db_path") or "").strip()
+        if not db_path:
+            continue
+        p = Path(db_path)
+        if not p.exists() or not p.is_file() or p.suffix.lower() != ".flac":
+            continue
+        resolved = str(p.resolve())
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        selected.append(resolved)
+out_file.parent.mkdir(parents=True, exist_ok=True)
+out_file.write_text("\n".join(selected) + ("\n" if selected else ""), encoding="utf-8")
+print(f"Resume DJ paths: {len(selected)} library FLAC(s) from precheck inventory")
+PY
+    DJ_RESUME_COUNT="$(wc -l < "$DJ_RESUME_PATHS_FILE" | tr -d ' ')"
+    if [[ "$DJ_RESUME_COUNT" -gt 0 ]]; then
+      echo "Resume mode: using $DJ_RESUME_COUNT library path(s) from precheck inventory for DJ export."
+      DJ_SOURCE_PATHS_FILE="$DJ_RESUME_PATHS_FILE"
+      DJ_INPUT_COUNT="$DJ_RESUME_COUNT"
+    fi
+  fi
+
   if [[ "$DJ_INPUT_COUNT" -eq 0 ]]; then
     if [[ -n "${ROON_M3U_INPUT_FILE:-}" && -f "$ROON_M3U_INPUT_FILE" ]]; then
       DJ_SOURCE_PATHS_FILE="$ROON_M3U_INPUT_FILE"
@@ -2707,7 +2750,15 @@ PY
 
     DJ_IDENTITY_COUNT="$(wc -l < "$DJ_IDENTITY_IDS_FILE" | tr -d ' ')"
     if [[ "$DJ_IDENTITY_COUNT" -eq 0 ]]; then
-      echo "No promoted identities resolved for DJ export; skipping."
+      if [[ "$RESUME_MODE" -eq 1 && -n "${PRECHECK_DECISIONS_CSV:-}" && -f "${PRECHECK_DECISIONS_CSV:-}" ]]; then
+        echo "Resume mode: identity resolution via asset_file returned 0; falling back to precheck inventory DJ export."
+        link_precheck_inventory_to_dj "${PRECHECK_DECISIONS_CSV:-}" "${PRECHECK_PLAYLIST_TITLE:-}"
+        if [[ -n "${DJ_M3U_OUTPUT:-}" && -f "$DJ_M3U_OUTPUT" ]]; then
+          DJ_EXPORT_COUNT="$(grep -vc '^#' "$DJ_M3U_OUTPUT" 2>/dev/null || echo 0)"
+        fi
+      else
+        echo "No promoted identities resolved for DJ export; skipping."
+      fi
     else
       run_cmd poetry run python "$BUILD_POOL_V3_SCRIPT" \
         --db "$DB_PATH" \

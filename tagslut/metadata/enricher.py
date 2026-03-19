@@ -84,39 +84,15 @@ class Enricher:
     def _get_provider(self, name: str) -> Optional[BaseProvider]:
         """Get or create a provider instance."""
         if name not in self._providers:
-            if name == "spotify":
-                logger.warning("Spotify provider is disabled by policy (API changes).")
-                return None
-            elif name == "beatport":
+            if name == "beatport":
                 from tagslut.metadata.providers.beatport import BeatportProvider
                 self._providers[name] = cast(
                     BaseProvider,
                     cast(Any, BeatportProvider)(self.token_manager),
                 )
-            elif name == "qobuz":
-                logger.warning("Qobuz provider is disabled by policy.")
-                return None
-            elif name == "deezer":
-                from tagslut.metadata.providers.deezer import DeezerProvider
-                self._providers[name] = cast(
-                    BaseProvider,
-                    cast(Any, DeezerProvider)(),
-                )
             elif name == "tidal":
                 from tagslut.metadata.providers.tidal import TidalProvider
                 self._providers[name] = TidalProvider(self.token_manager)
-            elif name == "itunes":
-                logger.warning("iTunes provider is disabled by policy (use Apple Music via MusicBrainz).")
-                return None
-            elif name == "apple_music":
-                from tagslut.metadata.providers.apple_music import AppleMusicProvider
-                self._providers[name] = AppleMusicProvider(self.token_manager)
-            elif name == "musicbrainz":
-                from tagslut.metadata.providers.musicbrainz import MusicBrainzProvider
-                self._providers[name] = MusicBrainzProvider()
-            elif name == "traxsource":
-                from tagslut.metadata.providers.traxsource import TraxsourceProvider
-                self._providers[name] = TraxsourceProvider()
             else:
                 logger.warning("Unknown provider: %s", name)
                 return None

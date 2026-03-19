@@ -88,15 +88,8 @@ def _derive_library_track_key(result: EnrichmentResult) -> str:
         return f"isrc:{best.isrc.strip().upper()}"
 
     for prefix, value in (
-        ("spotify", result.spotify_id),
         ("beatport", result.beatport_id),
         ("tidal", result.tidal_id),
-        ("qobuz", result.qobuz_id),
-        # Legacy only: retained for historical identity linkage.
-        ("itunes", result.itunes_id),
-        ("deezer", result.deezer_id),
-        ("traxsource", result.traxsource_id),
-        ("musicbrainz", result.musicbrainz_id),
     ):
         if value:
             return f"{prefix}:{str(value).strip()}"
@@ -340,14 +333,8 @@ def update_database(  # type: ignore  # TODO: mypy-strict
 
         # Always write provider IDs (identity linkage, not hoarding-only metadata)
         provider_id_fields: list[tuple[str, str | None]] = [
-            ("spotify_id", result.spotify_id),
             ("beatport_id", result.beatport_id),
             ("tidal_id", result.tidal_id),
-            ("qobuz_id", result.qobuz_id),
-            ("itunes_id", result.itunes_id),
-            ("deezer_id", result.deezer_id),
-            ("traxsource_id", result.traxsource_id),
-            ("musicbrainz_id", result.musicbrainz_id),
         ]
         for column, provider_id in provider_id_fields:
             if provider_id is not None:
@@ -389,24 +376,8 @@ def update_database(  # type: ignore  # TODO: mypy-strict
                 "canonical_year = ?",
                 "canonical_release_date = ?",
                 "canonical_explicit = ?",
-                # Spotify audio features
-                "canonical_energy = ?",
-                "canonical_danceability = ?",
-                "canonical_valence = ?",
-                "canonical_acousticness = ?",
-                "canonical_instrumentalness = ?",
-                "canonical_loudness = ?",
                 # Artwork
                 "canonical_album_art_url = ?",
-                # Provider IDs
-                "spotify_id = ?",
-                "beatport_id = ?",
-                "tidal_id = ?",
-                "qobuz_id = ?",
-                "itunes_id = ?",
-                "deezer_id = ?",
-                "traxsource_id = ?",
-                "musicbrainz_id = ?",
             ])
             values.extend([
                 # Core identity
@@ -430,24 +401,8 @@ def update_database(  # type: ignore  # TODO: mypy-strict
                     if result.canonical_explicit
                     else (0 if result.canonical_explicit is False else None)
                 ),
-                # Spotify audio features
-                result.canonical_energy,
-                result.canonical_danceability,
-                result.canonical_valence,
-                result.canonical_acousticness,
-                result.canonical_instrumentalness,
-                result.canonical_loudness,
                 # Artwork
                 result.canonical_album_art_url,
-                # Provider IDs
-                result.spotify_id,
-                result.beatport_id,
-                result.tidal_id,
-                result.qobuz_id,
-                result.itunes_id,
-                result.deezer_id,
-                result.traxsource_id,
-                result.musicbrainz_id,
             ])
 
         # Add path for WHERE clause

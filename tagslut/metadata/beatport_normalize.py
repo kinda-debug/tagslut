@@ -104,11 +104,11 @@ def normalize_beatport_track(bp_json: Dict[str, Any]) -> BeatportTrack:
     artists_raw = bp_json.get("artists", [])
     artists = []
     if isinstance(artists_raw, list):
-        for a in artists_raw:
-            if isinstance(a, dict) and a.get("name"):
-                artists.append(a["name"])
-            elif isinstance(a, str):
-                artists.append(a)
+        for artist_entry in artists_raw:
+            if isinstance(artist_entry, dict) and artist_entry.get("name"):
+                artists.append(artist_entry["name"])
+            elif isinstance(artist_entry, str):
+                artists.append(artist_entry)
 
     # Primary artist string
     artist = ", ".join(artists) if artists else None
@@ -117,11 +117,11 @@ def normalize_beatport_track(bp_json: Dict[str, Any]) -> BeatportTrack:
     remixers_raw = bp_json.get("remixers", [])
     remixers = []
     if isinstance(remixers_raw, list):
-        for r in remixers_raw:
-            if isinstance(r, dict) and r.get("name"):
-                remixers.append(r["name"])
-            elif isinstance(r, str):
-                remixers.append(r)
+        for remixer_entry in remixers_raw:
+            if isinstance(remixer_entry, dict) and remixer_entry.get("name"):
+                remixers.append(remixer_entry["name"])
+            elif isinstance(remixer_entry, str):
+                remixers.append(remixer_entry)
 
     # Release info (album equivalent)
     release = bp_json.get("release", {})

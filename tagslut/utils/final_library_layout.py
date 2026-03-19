@@ -42,18 +42,18 @@ def _as_str_list(value: Any) -> list[str]:
 
 def normalize_tags(tags: Mapping[str, Any]) -> dict[str, list[str]]:
     out: dict[str, list[str]] = {}
-    for k, v in tags.items():
-        out[str(k).lower()] = _as_str_list(v)
+    for tag_key, tag_value in tags.items():
+        out[str(tag_key).lower()] = _as_str_list(tag_value)
     return out
 
 
 def first_tag(tags: Mapping[str, list[str]], keys: Sequence[str]) -> str:
-    for k in keys:
-        vals = tags.get(k.lower()) or []
+    for tag_key in keys:
+        vals = tags.get(tag_key.lower()) or []
         if vals:
-            v = str(vals[0]).strip()
-            if v:
-                return v
+            tag_value = str(vals[0]).strip()
+            if tag_value:
+                return tag_value
     return ""
 
 
@@ -61,11 +61,11 @@ def _parse_int(value: str) -> int | None:
     if not value:
         return None
     head = value.split("/", 1)[0].strip()
-    m = _INT_RE.search(head)
-    if not m:
+    int_match = _INT_RE.search(head)
+    if not int_match:
         return None
     try:
-        return int(m.group(1))
+        return int(int_match.group(1))
     except ValueError:
         return None
 
@@ -73,25 +73,25 @@ def _parse_int(value: str) -> int | None:
 def _extract_year_from_text(value: str) -> str | None:
     if not value:
         return None
-    m = _YEAR_RE.match(value.strip())
-    return m.group(1) if m else None
+    year_match = _YEAR_RE.match(value.strip())
+    return year_match.group(1) if year_match else None
 
 
 def sanitize_component(value: str) -> str:
-    s = unicodedata.normalize("NFC", (value or "").strip())
-    s = _CTRL_CHARS_RE.sub(" ", s)
-    s = re.sub(r"[\\/]+", " - ", s)
-    s = re.sub(r"[:*?\"<>|]", "", s)
-    s = re.sub(r"\s+", " ", s).strip()
+    sanitized = unicodedata.normalize("NFC", (value or "").strip())
+    sanitized = _CTRL_CHARS_RE.sub(" ", sanitized)
+    sanitized = re.sub(r"[\\/]+", " - ", sanitized)
+    sanitized = re.sub(r"[:*?\"<>|]", "", sanitized)
+    sanitized = re.sub(r"\s+", " ", sanitized).strip()
     # Avoid trailing spaces/periods (Windows + FAT safety).
-    s = s.rstrip(" .")
-    return s
+    sanitized = sanitized.rstrip(" .")
+    return sanitized
 
 
 def strip_square_brackets(value: str) -> str:
     # Deterministic and conservative: remove bracket chars but keep content.
-    s = value.replace("[", "").replace("]", "").replace("{", "").replace("}", "")
-    return re.sub(r"\s+", " ", s).strip()
+    stripped = value.replace("[", "").replace("]", "").replace("{", "").replace("}", "")
+    return re.sub(r"\s+", " ", stripped).strip()
 
 
 def strip_audio_extension(value: str) -> str:
@@ -158,9 +158,9 @@ def build_final_library_destination(
         if year:
             break
 
-    track_i = _parse_int(first_tag(tags, ["tracknumber", "track"]))
-    disc_i = _parse_int(first_tag(tags, ["discnumber", "disc"]))
-    totaldiscs_i = _parse_int(first_tag(tags, ["totaldiscs", "disctotal"]))
+    track_number = _parse_int(first_tag(tags, ["tracknumber", "track"]))
+    disc_number = _parse_int(first_tag(tags, ["discnumber", "disc"]))
+    total_disc_count = _parse_int(first_tag(tags, ["totaldiscs", "disctotal"]))
 
     if not album:
         raise FinalLibraryLayoutError("missing required tag: album")
@@ -168,7 +168,7 @@ def build_final_library_destination(
         raise FinalLibraryLayoutError("missing required tag: title")
     if not year:
         raise FinalLibraryLayoutError("missing required tag: date/originaldate/year")
-    if track_i is None:
+    if track_number is None:
         raise FinalLibraryLayoutError("missing/invalid required tag: tracknumber")
 
     if various:
@@ -182,38 +182,38 @@ def build_final_library_destination(
         if not albumartist:
             raise FinalLibraryLayoutError("missing required tag: albumartist")
 
-    disc = disc_i if disc_i is not None else 1
-    if totaldiscs_i is not None and totaldiscs_i > 1 and disc_i is None:
+    disc = disc_number if disc_number is not None else 1
+    if total_disc_count is not None and total_disc_count > 1 and disc_number is None:
         raise FinalLibraryLayoutError("missing required tag: discnumber (multi-disc)")
 
-    multi_disc = (totaldiscs_i is not None and totaldiscs_i > 1) or disc > 1
-    disc_track = f"{disc}{track_i:02d}" if multi_disc else f"{track_i:02d}"
+    multi_disc = (total_disc_count is not None and total_disc_count > 1) or disc > 1
+    disc_track = f"{disc}{track_number:02d}" if multi_disc else f"{track_number:02d}"
 
     folder_artist = sanitize_component(folder_artist_raw)
-    album_s = sanitize_component(album)
-    title_s = sanitize_component(title)
+    sanitized_album = sanitize_component(album)
+    sanitized_title = sanitize_component(title)
     filename_artist = sanitize_component(filename_artist_raw)
 
-    title_s = strip_audio_extension(title_s)
+    sanitized_title = strip_audio_extension(sanitized_title)
     filename_artist = strip_audio_extension(filename_artist)
 
     if strip_brackets:
         folder_artist = strip_square_brackets(folder_artist)
-        album_s = strip_square_brackets(album_s)
-        title_s = strip_square_brackets(title_s)
+        sanitized_album = strip_square_brackets(sanitized_album)
+        sanitized_title = strip_square_brackets(sanitized_title)
         filename_artist = strip_square_brackets(filename_artist)
 
     if not folder_artist:
         raise FinalLibraryLayoutError("albumartist sanitizes to empty")
-    if not album_s:
+    if not sanitized_album:
         raise FinalLibraryLayoutError("album sanitizes to empty")
-    if not title_s:
+    if not sanitized_title:
         raise FinalLibraryLayoutError("title sanitizes to empty")
     if not filename_artist:
         raise FinalLibraryLayoutError("artist sanitizes to empty")
 
-    album_folder = f"({year}) {album_s}"
-    filename = f"{filename_artist} {EN_DASH} ({year}) {album_s} {EN_DASH} {disc_track} {title_s}.flac"
+    album_folder = f"({year}) {sanitized_album}"
+    filename = f"{filename_artist} {EN_DASH} ({year}) {sanitized_album} {EN_DASH} {disc_track} {sanitized_title}.flac"
 
     def _byte_len(component: str) -> int:
         return len(component.encode("utf-8", errors="replace"))

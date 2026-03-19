@@ -41,11 +41,11 @@ def _norm(text: str | None) -> str:
     """Lowercase, strip accents, collapse whitespace, strip non-word chars."""
     if not text:
         return ""
-    t = unicodedata.normalize("NFD", str(text))
-    t = "".join(c for c in t if unicodedata.category(c) != "Mn")
-    t = t.lower()
-    t = re.sub(r"[^\w\s]", " ", t)
-    return re.sub(r"\s+", " ", t).strip()
+    normalized = unicodedata.normalize("NFD", str(text))
+    normalized = "".join(c for c in normalized if unicodedata.category(c) != "Mn")
+    normalized = normalized.lower()
+    normalized = re.sub(r"[^\w\s]", " ", normalized)
+    return re.sub(r"\s+", " ", normalized).strip()
 
 
 # ---------------------------------------------------------------------------
@@ -119,8 +119,8 @@ def _load_tempomarkers(
         lex_ids,
     ).fetchall()
     result: dict[int, list[tuple[float, float]]] = {}
-    for r in rows:
-        result.setdefault(r[0], []).append((float(r[1]), float(r[2])))
+    for row in rows:
+        result.setdefault(row[0], []).append((float(row[1]), float(row[2])))
     return result
 
 
@@ -135,18 +135,18 @@ def _build_indexes(
     spotify:  dict[str, LexTrack] = {}
     text:     dict[str, LexTrack] = {}
 
-    for t in tracks:
-        svc = (t.streaming_service or "").lower().strip()
-        sid = str(t.streaming_id or "").strip()
+    for lex_track in tracks:
+        svc = (lex_track.streaming_service or "").lower().strip()
+        sid = str(lex_track.streaming_id or "").strip()
         if sid:
             if svc == "beatport":
-                beatport[sid] = t
+                beatport[sid] = lex_track
             elif svc == "spotify":
-                spotify[sid] = t
+                spotify[sid] = lex_track
 
-        key = f"{_norm(t.artist)}|{_norm(t.title)}"
+        key = f"{_norm(lex_track.artist)}|{_norm(lex_track.title)}"
         if key and key not in text:   # first occurrence wins on duplicates
-            text[key] = t
+            text[key] = lex_track
 
     return beatport, spotify, text
 
@@ -254,15 +254,15 @@ def run_backfill(
 
     for row in identity_rows:
         stats["identities_scanned"] += 1
-        m = _match(row, beatport_idx, spotify_idx, text_idx)
+        match_result = _match(row, beatport_idx, spotify_idx, text_idx)
 
-        if m is None:
+        if match_result is None:
             stats["unmatched"] += 1
             continue
 
-        lt = m.lex_track
-        if   m.method == "beatport_id": stats["matched_beatport"] += 1
-        elif m.method == "spotify_id":  stats["matched_spotify"]  += 1
+        lt = match_result.lex_track
+        if   match_result.method == "beatport_id": stats["matched_beatport"] += 1
+        elif match_result.method == "spotify_id":  stats["matched_spotify"]  += 1
         else:                           stats["matched_text"]     += 1
 
         matched_lex_ids.append(lt.lex_id)
@@ -281,10 +281,10 @@ def run_backfill(
 
         log_batch.append((
             run_id, now, "lexicondj", "backfill_metadata",
-            m.confidence, None,           # mp3_path
-            m.identity_id, lt.lex_id,
+            match_result.confidence, None,           # mp3_path
+            match_result.identity_id, lt.lex_id,
             json.dumps({
-                "method": m.method, "lex_id": lt.lex_id,
+                "method": match_result.method, "lex_id": lt.lex_id,
                 "lex_artist": lt.artist, "lex_title": lt.title,
                 "payload_keys_set": list(payload_updates.keys()),
             }, ensure_ascii=False),
@@ -292,7 +292,7 @@ def run_backfill(
         stats["log_rows_written"] += 1
 
         if payload_updates:
-            update_batch.append((new_payload, lt.lex_id, m.identity_id))
+            update_batch.append((new_payload, lt.lex_id, match_result.identity_id))
             stats["payload_updated"] += 1
 
     # Tempomarkers for matched tracks
@@ -388,12 +388,12 @@ def _cli() -> None:
         format="%(asctime)s %(levelname)-7s %(name)s — %(message)s",
         datefmt="%H:%M:%S",
     )
-    p = argparse.ArgumentParser(description="Backfill Lexicon DJ metadata into music_v3.db")
-    p.add_argument("--db",      default="/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-03-04/music_v3.db")
-    p.add_argument("--lex",     default="/Volumes/MUSIC/lexicondj.db")
-    p.add_argument("--dry-run", action="store_true")
-    p.add_argument("--run-id",  default=None)
-    args = p.parse_args()
+    parser = argparse.ArgumentParser(description="Backfill Lexicon DJ metadata into music_v3.db")
+    parser.add_argument("--db",      default="/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-03-04/music_v3.db")
+    parser.add_argument("--lex",     default="/Volumes/MUSIC/lexicondj.db")
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--run-id",  default=None)
+    args = parser.parse_args()
     run_backfill(db_path=args.db, lex_path=args.lex,
                  run_id=args.run_id, dry_run=args.dry_run)
 

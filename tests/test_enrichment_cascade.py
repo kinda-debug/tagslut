@@ -253,31 +253,31 @@ class TestApplyCascade:
         assert result.canonical_key == "F# minor"
         assert result.canonical_genre == "Techno"
 
-    def test_bpm_fallback_from_traxsource(self):
-        """If Beatport has no BPM, Traxsource should fill in."""
+    def test_bpm_fallback_from_tidal(self):
+        """If Beatport has no BPM, Tidal should fill in."""
         bp_track = _make_track("beatport", bpm=None, genre="Deep House")
-        trax_track = _make_track(
-            "traxsource", bpm=122.0, genre="Deep House",
+        tidal_track = _make_track(
+            "tidal", bpm=122.0, genre="Deep House",
             confidence=MatchConfidence.STRONG,
         )
 
         file_info = _make_file_info()
         result = EnrichmentResult(path=file_info.path)
-        result.matches = [bp_track, trax_track]
+        result.matches = [bp_track, tidal_track]
 
         result = apply_cascade(result, file_info, mode="hoarding")
         assert result.canonical_bpm == 122.0
 
-    def test_key_fallback_from_traxsource(self):
-        """Traxsource key should fill when Beatport and Tidal lack it."""
-        trax_track = _make_track(
-            "traxsource", bpm=123.0, key="Bb minor", genre="House",
+    def test_key_fallback_from_tidal(self):
+        """Tidal key should fill when Beatport lacks it."""
+        tidal_track = _make_track(
+            "tidal", bpm=123.0, key="Bb minor", genre="House",
             confidence=MatchConfidence.EXACT,
         )
 
         file_info = _make_file_info()
         result = EnrichmentResult(path=file_info.path)
-        result.matches = [trax_track]
+        result.matches = [tidal_track]
 
         result = apply_cascade(result, file_info, mode="hoarding")
         assert result.canonical_key == "Bb minor"
@@ -290,57 +290,46 @@ class TestApplyCascade:
 
 class TestProviderIds:
 
-    def test_deezer_id_stored(self):
-        track = _make_track("deezer", track_id="DZ999")
+    def test_beatport_id_stored(self):
+        track = _make_track("beatport", track_id="BP999")
         file_info = _make_file_info()
         result = EnrichmentResult(path=file_info.path)
         result.matches = [track]
 
         result = apply_cascade(result, file_info, mode="hoarding")
-        assert result.deezer_id == "DZ999"
+        assert result.beatport_id == "BP999"
 
-    def test_traxsource_id_stored(self):
-        track = _make_track("traxsource", track_id="TX888")
+    def test_tidal_id_stored(self):
+        track = _make_track("tidal", track_id="TI888")
         file_info = _make_file_info()
         result = EnrichmentResult(path=file_info.path)
         result.matches = [track]
 
         result = apply_cascade(result, file_info, mode="hoarding")
-        assert result.traxsource_id == "TX888"
-
-    def test_musicbrainz_id_stored(self):
-        track = _make_track("musicbrainz", track_id="mb-uuid-123")
-        file_info = _make_file_info()
-        result = EnrichmentResult(path=file_info.path)
-        result.matches = [track]
-
-        result = apply_cascade(result, file_info, mode="hoarding")
-        assert result.musicbrainz_id == "mb-uuid-123"
+        assert result.tidal_id == "TI888"
 
     def test_all_provider_ids_from_multi_match(self):
         """Multiple matches should populate all provider IDs."""
         bp = _make_track("beatport", track_id="BP1")
         tidal = _make_track("tidal", track_id="TI2", confidence=MatchConfidence.STRONG)
-        deezer = _make_track("deezer", track_id="DZ3", confidence=MatchConfidence.STRONG)
 
         file_info = _make_file_info()
         result = EnrichmentResult(path=file_info.path)
-        result.matches = [bp, tidal, deezer]
+        result.matches = [bp, tidal]
 
         result = apply_cascade(result, file_info, mode="hoarding")
         assert result.beatport_id == "BP1"
         assert result.tidal_id == "TI2"
-        assert result.deezer_id == "DZ3"
 
     def test_empty_track_id_not_stored(self):
         """Provider ID should not be stored if service_track_id is empty."""
-        track = _make_track("deezer", track_id="")
+        track = _make_track("beatport", track_id="")
         file_info = _make_file_info()
         result = EnrichmentResult(path=file_info.path)
         result.matches = [track]
 
         result = apply_cascade(result, file_info, mode="hoarding")
-        assert result.deezer_id is None
+        assert result.beatport_id is None
 
 
 # ===========================================================================
@@ -349,23 +338,21 @@ class TestProviderIds:
 
 class TestPrecedenceLists:
 
-    def test_key_precedence_includes_tidal_traxsource(self):
+    def test_key_precedence_includes_tidal(self):
         from tagslut.metadata.models.precedence import KEY_PRECEDENCE
         assert "tidal" in KEY_PRECEDENCE
-        assert "traxsource" in KEY_PRECEDENCE
+        assert "beatport" in KEY_PRECEDENCE
 
-    def test_bpm_precedence_includes_fallbacks(self):
+    def test_bpm_precedence_beatport_first(self):
         from tagslut.metadata.models.precedence import BPM_PRECEDENCE
         assert "beatport" == BPM_PRECEDENCE[0]
-        assert "traxsource" in BPM_PRECEDENCE
         assert "tidal" in BPM_PRECEDENCE
-        assert "deezer" in BPM_PRECEDENCE
 
-    def test_genre_precedence_includes_traxsource(self):
+    def test_genre_precedence_includes_tidal(self):
         from tagslut.metadata.models.precedence import GENRE_PRECEDENCE
-        assert "traxsource" in GENRE_PRECEDENCE
+        assert "tidal" in GENRE_PRECEDENCE
 
-    def test_isrc_precedence_includes_new_providers(self):
+    def test_isrc_precedence_includes_providers(self):
         from tagslut.metadata.models.precedence import ISRC_PRECEDENCE
-        assert "traxsource" in ISRC_PRECEDENCE
-        assert "musicbrainz" in ISRC_PRECEDENCE
+        assert "beatport" in ISRC_PRECEDENCE
+        assert "tidal" in ISRC_PRECEDENCE

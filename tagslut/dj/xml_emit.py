@@ -21,9 +21,9 @@ def _now_iso() -> str:
 
 def _path_to_location(path: str) -> str:
     """Convert a filesystem path to a Rekordbox Location URI."""
-    p = Path(path).resolve()
+    resolved_path = Path(path).resolve()
     # Rekordbox on macOS expects file://localhost/absolute/path
-    encoded = quote(str(p), safe="/:")
+    encoded = quote(str(resolved_path), safe="/:")
     return f"file://localhost{encoded}"
 
 

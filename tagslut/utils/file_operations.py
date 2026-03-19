@@ -12,11 +12,11 @@ from tagslut.utils.audit_log import append_jsonl, now_iso, resolve_log_path
 
 def get_sha256(file_path: Path) -> str:
     """Calculates the SHA256 checksum of a file."""
-    h = hashlib.sha256()
+    hasher = hashlib.sha256()
     with file_path.open("rb") as f:
         while chunk := f.read(8192):
-            h.update(chunk)
-    return h.hexdigest()
+            hasher.update(chunk)
+    return hasher.hexdigest()
 
 
 class FileOperations:

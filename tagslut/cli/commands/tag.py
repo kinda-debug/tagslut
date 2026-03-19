@@ -43,7 +43,6 @@ from tagslut.storage.queries import get_files_for_library_track
 from tagslut.storage.schema import init_db
 from tagslut.tag.providers import get_provider
 from tagslut.tag.providers.base import FieldCandidate, ProviderConfigError, RawResult
-from tagslut.tag.providers.spotify import SpotifyProvider
 from tagslut.tag.rekordbox_compat import REKORDBOX_TESTED_FIELDS, REKORDBOX_XML_FIELD_MAP
 from tagslut.utils.config import get_config
 
@@ -73,7 +72,6 @@ _SYNC_FIELD_COLUMN_MAP = {
     "canonical_year": ("canonical_year",),
     "canonical_release_date": ("canonical_release_date",),
     "canonical_explicit": ("canonical_explicit",),
-    "spotify_id": ("spotify_id",),
 }
 
 
@@ -153,7 +151,6 @@ def _build_track_query(item: _BatchWorkItem) -> TrackQuery:
         return TrackQuery(
             title="",
             artist="",
-            spotify_id=item.provenance.payload_ref or None,
         )
 
     track = item.track
@@ -180,7 +177,6 @@ def _build_track_query(item: _BatchWorkItem) -> TrackQuery:
             if track_file is not None and track_file.acoustic_fingerprint
             else (track_file.file_hash_sha256 if track_file is not None else None)
         ),
-        spotify_id=aliases_by_type.get("spotify_id"),
     )
 
 
@@ -200,7 +196,6 @@ def _match_query_for_raw(
     artist = _first_field_value(field_candidates, "canonical_artist_credit")
     isrc = _first_field_value(field_candidates, "isrc")
     file_path = _first_field_value(field_candidates, "file_path")
-    spotify_id = _first_field_value(field_candidates, "spotify_id")
     fingerprint = (
         _first_field_value(field_candidates, "fingerprint")
         or _first_field_value(field_candidates, "acoustic_fingerprint")
@@ -216,7 +211,6 @@ def _match_query_for_raw(
         file_path=str(file_path) if isinstance(file_path, str) else source_query.file_path,
         isrc=str(isrc) if isinstance(isrc, str) else source_query.isrc,
         fingerprint=str(fingerprint) if isinstance(fingerprint, str) else source_query.fingerprint,
-        spotify_id=str(spotify_id) if isinstance(spotify_id, str) else source_query.spotify_id,
     )
 
 
@@ -542,37 +536,7 @@ def run_tag_batch_create(
     *,
     db_url: str | None = None,
 ) -> int:
-    if source != "spotify-playlist":
-        raise click.ClickException(f"Unsupported batch source: {source}")
-
-    provider = SpotifyProvider()
-    try:
-        playlist_tracks = provider.fetch_playlist_tracks(playlist_id)
-    except ProviderConfigError as exc:
-        raise click.ClickException(str(exc)) from exc
-
-    session_factory = _session_factory(db_url)
-    queued = 0
-    with session_factory() as session:
-        for track_payload in playlist_tracks:
-            spotify_track_id = track_payload.get("id")
-            if not isinstance(spotify_track_id, str) or not spotify_track_id.strip():
-                continue
-            track = get_track_by_alias(
-                session,
-                alias_type="spotify_id",
-                value=spotify_track_id.strip(),
-                provider="spotify",
-            )
-            _upsert_batch_source_provenance(
-                session,
-                batch_id=batch_id,
-                track_id=track.id if track is not None else None,
-                payload_ref=spotify_track_id.strip(),
-            )
-            queued += 1
-        session.commit()
-    return queued
+    raise click.ClickException(f"Unsupported batch source: {source}")
 
 
 def _review_grouped_candidates(
@@ -698,23 +662,6 @@ def _choose_candidate_for_apply(candidates: list[MetadataCandidate]) -> Metadata
 def _apply_metadata_candidate(session: Session, winner: MetadataCandidate) -> tuple[bool, str]:
     if winner.track_id is None:
         return False, "skipped_unlinked"
-
-    if winner.field_name == "spotify_id":
-        value = winner.normalized_value_json
-        if not isinstance(value, str) or not value.strip():
-            return False, "skipped_invalid_alias"
-        upsert_track_alias(
-            session,
-            TrackAlias(
-                track_id=winner.track_id,
-                alias_type="spotify_id",
-                value=value.strip(),
-                provider="spotify",
-                source="tag_fetch",
-                confidence=winner.confidence,
-            ),
-        )
-        return True, "alias_upserted"
 
     existing = session.scalar(
         select(ApprovedMetadata).where(
@@ -1493,10 +1440,9 @@ def register_tag_group(cli: click.Group) -> None:
     @click.option(
         "--source",
         required=True,
-        type=click.Choice(["spotify-playlist"], case_sensitive=False),
         help="Batch source type",
     )
-    @click.option("--playlist-id", required=True, help="Spotify playlist identifier")
+    @click.option("--playlist-id", required=True, help="Playlist identifier")
     @click.option("--batch", "batch_id", required=True, help="Batch identifier")
     def tag_batch_create_command(source: str, playlist_id: str, batch_id: str) -> None:  # type: ignore[misc]
         queued = run_tag_batch_create(source, playlist_id, batch_id)

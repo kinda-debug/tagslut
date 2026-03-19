@@ -88,7 +88,6 @@ def _record_to_intent(record: dict[str, Any]) -> TrackIntent:
         isrc=record.get("isrc"),
         beatport_id=(str(record["beatport_id"]) if record.get("beatport_id") is not None else None),
         tidal_id=(str(record["tidal_id"]) if record.get("tidal_id") is not None else None),
-        qobuz_id=(str(record["qobuz_id"]) if record.get("qobuz_id") is not None else None),
         bit_depth=int(record["bit_depth"]) if record.get("bit_depth") is not None else None,
         sample_rate=int(record["sample_rate"]) if record.get("sample_rate") is not None else None,
         bitrate=int(record["bitrate"]) if record.get("bitrate") is not None else None,
@@ -124,7 +123,7 @@ def _build_and_write_manifest(
 
 
 def _intent_reference(intent_dict: dict[str, Any]) -> str:
-    for key in ["isrc", "beatport_id", "tidal_id", "qobuz_id"]:
+    for key in ["isrc", "beatport_id", "tidal_id"]:
         value = intent_dict.get(key)
         if value:
             return f"{key}:{value}"
@@ -388,7 +387,7 @@ def register_intake_group(cli: click.Group) -> None:
         help="Root folder to process",
     )
     @click.option("--library", type=click.Path(), help="Library destination")
-    @click.option("--providers", default="beatport,deezer,apple_music,itunes")
+    @click.option("--providers", default="beatport,tidal")
     @click.option("--force", is_flag=True, help="Force re-enrichment")
     @click.option("--no-art", is_flag=True, help="Skip cover art embedding")
     @click.option("--art-force", is_flag=True, help="Force replace embedded art")

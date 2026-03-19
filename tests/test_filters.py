@@ -26,7 +26,6 @@ def _insert_file(
     canonical_isrc: str | None = None,
     beatport_id: str | None = None,
     tidal_id: str | None = None,
-    qobuz_id: str | None = None,
     canonical_artist: str | None = None,
     canonical_title: str | None = None,
     duration: float | None = None,
@@ -35,9 +34,9 @@ def _insert_file(
         """
         INSERT INTO files (
             path, checksum, metadata_json, quality_rank,
-            canonical_isrc, beatport_id, tidal_id, qobuz_id,
+            canonical_isrc, beatport_id, tidal_id,
             canonical_artist, canonical_title, duration
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             path,
@@ -47,7 +46,6 @@ def _insert_file(
             canonical_isrc,
             beatport_id,
             tidal_id,
-            qobuz_id,
             canonical_artist,
             canonical_title,
             duration,
@@ -129,20 +127,17 @@ def test_identity_resolver_isrc_match_skip(mem_db):
     assert result.action == "skip"
 
 
-def test_identity_resolver_priority_beatport_tidal_qobuz(mem_db):
+def test_identity_resolver_priority_beatport_tidal(mem_db):
     _insert_file(mem_db, path="/m/bp.flac", checksum="bp", quality_rank=4, beatport_id="BP1")
     _insert_file(mem_db, path="/m/ti.flac", checksum="ti", quality_rank=4, tidal_id="TI1")
-    _insert_file(mem_db, path="/m/qb.flac", checksum="qb", quality_rank=4, qobuz_id="QB1")
 
     resolver = IdentityResolver(mem_db)
 
     bp = resolver.resolve(TrackIntent(beatport_id="BP1"), candidate_rank=4)
     ti = resolver.resolve(TrackIntent(tidal_id="TI1"), candidate_rank=4)
-    qb = resolver.resolve(TrackIntent(qobuz_id="QB1"), candidate_rank=4)
 
     assert bp.match_method == "beatport_id"
     assert ti.match_method == "tidal_id"
-    assert qb.match_method == "qobuz_id"
 
 
 def test_identity_resolver_fuzzy_match_with_duration_gate(mem_db):

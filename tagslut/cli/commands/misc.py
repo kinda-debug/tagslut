@@ -12,7 +12,6 @@ import click
 
 from tagslut.cli.commands._auth_helpers import (
     _tidal_device_login,
-    _qobuz_login,
     _beatport_token_input,
 )
 from tagslut.cli.commands._enrich_helpers import (
@@ -443,7 +442,7 @@ def register_misc_commands(cli: click.Group) -> None:
         required=True,
         help="Exact file path in DB (or on disk in --standalone mode)",
     )
-    @click.option("--providers", default="beatport,tidal,deezer,itunes", help="Comma-separated providers")
+    @click.option("--providers", default="beatport,tidal", help="Comma-separated providers")
     @click.option("--force", is_flag=True, help="Re-process even if already enriched")
     @click.option("--retry-no-match", is_flag=True, help="Retry files previously with no match")
     @click.option("--execute", is_flag=True, help="Write updates to DB (default: dry-run)")
@@ -478,10 +477,6 @@ def register_misc_commands(cli: click.Group) -> None:
             mode = "hoarding"
 
         provider_list = [p.strip() for p in providers.split(",") if p.strip()]
-        if "qobuz" in provider_list:
-            raise click.ClickException("Qobuz is disabled. Remove it from --providers.")
-        if "spotify" in provider_list:
-            raise click.ClickException("Spotify is disabled. Remove it from --providers.")
         token_manager = TokenManager()
 
         if standalone:
@@ -789,32 +784,12 @@ def register_misc_commands(cli: click.Group) -> None:
                 click.echo(f"✓ Created tokens template: {DEFAULT_TOKENS_PATH}")
 
             click.echo("Available providers:")
-            click.echo("  • Spotify    - Client credentials (get from developer.spotify.com)")
             click.echo("  • Beatport   - Manual token extraction (requires DJ account)")
             click.echo("  • Tidal      - Device authorization (requires subscription)")
-            click.echo("  • Qobuz      - Email/password login (requires account)")
-            click.echo("  • iTunes     - No authentication needed (public API)")
             click.echo("")
-
-            if click.confirm("Set up Spotify?", default=False):
-                click.echo("Get credentials from: https://developer.spotify.com/dashboard")
-                client_id = click.prompt("  Spotify Client ID", type=str)
-                client_secret = click.prompt("  Spotify Client Secret", type=str, hide_input=True)
-                # Update Spotify credentials in tokens
-                if "spotify" not in token_manager._tokens:
-                    token_manager._tokens["spotify"] = {}
-                token_manager._tokens["spotify"]["client_id"] = client_id
-                token_manager._tokens["spotify"]["client_secret"] = client_secret
-                token_manager._save_tokens()
-                click.echo("  ✓ Spotify configured")
-                click.echo("")
 
             if click.confirm("Set up Tidal?", default=False):
                 _tidal_device_login(token_manager)
-                click.echo("")
-
-            if click.confirm("Set up Qobuz?", default=False):
-                _qobuz_login(token_manager)
                 click.echo("")
 
             if click.confirm("Set up Beatport?", default=False):

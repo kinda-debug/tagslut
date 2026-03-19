@@ -21,13 +21,6 @@ __all__ = [
 PROVIDER_COLUMNS: tuple[str, ...] = (
     "beatport_id",
     "tidal_id",
-    "qobuz_id",
-    "spotify_id",
-    "apple_music_id",
-    "deezer_id",
-    "traxsource_id",
-    "itunes_id",
-    "musicbrainz_id",
 )
 FUZZY_DURATION_TOLERANCE_S = 2.0
 FUZZY_SCORE_THRESHOLD = 0.92
@@ -145,13 +138,6 @@ def _identity_value_map(
     provider_values = {
         "beatport_id": _lookup_value(metadata, "beatport_id"),
         "tidal_id": _lookup_value(metadata, "tidal_id"),
-        "qobuz_id": _lookup_value(metadata, "qobuz_id"),
-        "spotify_id": _lookup_value(metadata, "spotify_id"),
-        "apple_music_id": _lookup_value(metadata, "apple_music_id", "apple_music_track_id"),
-        "deezer_id": _lookup_value(metadata, "deezer_id"),
-        "traxsource_id": _lookup_value(metadata, "traxsource_id"),
-        "itunes_id": _lookup_value(metadata, "itunes_id"),
-        "musicbrainz_id": _lookup_value(metadata, "musicbrainz_id", "musicbrainz_recording_id"),
     }
     artist = _lookup_value(metadata, "artist", "canonical_artist")
     title = _lookup_value(metadata, "title", "canonical_title")

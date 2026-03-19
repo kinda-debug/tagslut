@@ -16,7 +16,6 @@ import logging
 import os
 import time
 import base64
-import hashlib
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple
 from dataclasses import dataclass
@@ -392,125 +391,18 @@ class TokenManager:
         logger.debug("No Beatport token configured; falling back to public endpoints.")
         return None
 
-    def refresh_spotify_token(self) -> Optional[TokenInfo]:
-        """Refresh Spotify access token using stored client credentials."""
-        creds = self.get_credentials("spotify")
-        client_id = creds.get("client_id", "")
-        client_secret = creds.get("client_secret", "")
-        if not client_id or not client_secret:
-            logger.error("Spotify not configured. Add client_id/client_secret to tokens.json.")
-            return None
-
-        try:
-            response = httpx.post(
-                "https://accounts.spotify.com/api/token",
-                data={"grant_type": "client_credentials"},
-                auth=(client_id, client_secret),
-                timeout=30.0,
-            )
-            response.raise_for_status()
-
-            data = response.json()
-            expires_at = time.time() + data.get("expires_in", 3600)
-            self.set_token(
-                "spotify",
-                access_token=data["access_token"],
-                expires_at=expires_at,
-                token_type=data.get("token_type", "Bearer"),
-                client_id=client_id,
-                client_secret=client_secret,
-            )
-            logger.info("Refreshed Spotify token (expires in %ds)", data.get("expires_in", 3600))
-            return self.get_token("spotify")
-
-        except httpx.HTTPError as e:
-            logger.error("Failed to refresh Spotify token: %s", e)
-            return None
-
-    def login_qobuz(self, email: str, password: str, app_id: Optional[str] = None) -> Optional[TokenInfo]:
-        """
-        Login to Qobuz with email/password to get user_auth_token.
-
-        Qobuz doesn't use OAuth2 - it uses a simple login endpoint.
-
-        Args:
-            email: Qobuz account email
-            password: Qobuz account password
-            app_id: Optional app_id (uses default if not provided)
-        """
-        if "qobuz" not in self._tokens:
-            self._tokens["qobuz"] = {}
-
-        # Use provided app_id, or stored one, or default
-        # Default app_id from qobuz-dl (well-known, works for API access)
-        default_app_id = "950096963"
-        app_id = app_id or self._tokens["qobuz"].get("app_id") or default_app_id
-
-        try:
-            # Qobuz uses MD5 hash of password
-            password_hash = hashlib.md5(password.encode()).hexdigest()
-
-            response = httpx.post(
-                "https://www.qobuz.com/api.json/0.2/user/login",
-                params={"app_id": app_id},
-                data={
-                    "email": email,
-                    "password": password_hash,
-                },
-                headers={
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                },
-                timeout=30.0,
-            )
-
-            if response.status_code == 401:
-                logger.error("Qobuz login failed: invalid credentials")
-                return None
-
-            response.raise_for_status()
-
-            data = response.json()
-            user_auth_token = data.get("user_auth_token")
-
-            if not user_auth_token:
-                logger.error("Qobuz login response missing user_auth_token")
-                return None
-
-            # Store app_id and token
-            self._tokens["qobuz"]["app_id"] = app_id
-            self._tokens["qobuz"]["user_auth_token"] = user_auth_token
-            self._tokens["qobuz"]["access_token"] = user_auth_token
-            self._save_tokens()
-
-            logger.info("Logged into Qobuz successfully")
-            return TokenInfo(access_token=user_auth_token)
-
-        except httpx.HTTPError as e:
-            logger.error("Failed to login to Qobuz: %s", e)
-            return None
-
     def ensure_valid_token(self, provider: str) -> Optional[TokenInfo]:
         """
         Ensure we have a valid token for a provider.
 
         Refreshes if expired or missing. Supports auto-refresh for:
-        - spotify (client credentials) - needs client_id + client_secret
         - tidal (refresh token) - needs initial device auth, then auto-refreshes
         - beatport (client credentials) - needs client_id + client_secret
-
-        Manual login required for:
-        - qobuz (email/password) - run 'tagslut auth login qobuz'
-        - tidal (first time) - run 'tagslut auth login tidal'
-
-        No auth needed for:
-        - itunes (public API)
         """
         token = self.get_token(provider)
 
         if token is None or token.is_expired:
-            if provider == "spotify":
-                return self.refresh_spotify_token()
-            elif provider == "tidal":
+            if provider == "tidal":
                 # Tidal needs refresh_token from device auth
                 if self._tokens.get("tidal", {}).get("refresh_token"):
                     return self.refresh_tidal_token()
@@ -519,18 +411,6 @@ class TokenManager:
                     return None
             elif provider == "beatport":
                 return self.refresh_beatport_token()
-            elif provider == "qobuz":
-                # Qobuz tokens are long-lived, just check if we have one
-                if self._tokens.get("qobuz", {}).get("user_auth_token"):
-                    return TokenInfo(access_token=self._tokens["qobuz"]["user_auth_token"])
-                logger.warning("Qobuz not authenticated. Run 'tagslut auth login qobuz'")
-                return None
-            elif provider == "itunes":
-                # iTunes doesn't need auth
-                return TokenInfo(access_token="")
-            elif provider == "apple_music":
-                # Apple Music extracts token dynamically in the provider
-                return TokenInfo(access_token="")
             else:
                 logger.debug("No refresh logic for provider: %s", provider)
                 return token
@@ -539,33 +419,12 @@ class TokenManager:
 
     def status(self) -> Dict[str, Dict[str, Any]]:
         """Get status of all configured providers."""
-        all_providers = ["spotify", "beatport", "tidal", "qobuz", "itunes", "apple_music"]
+        all_providers = ["beatport", "tidal"]
         result = {}
 
         for provider in all_providers:
             configured = self.is_configured(provider)
             token = self.get_token(provider)
-
-            # Special cases for providers that don't need auth
-            if provider == "itunes":
-                result[provider] = {
-                    "configured": True,
-                    "has_token": True,
-                    "expired": False,
-                    "expires_at": None,
-                    "auth_type": "none (public API)",
-                }
-                continue
-
-            if provider == "apple_music":
-                result[provider] = {
-                    "configured": True,
-                    "has_token": True,
-                    "expired": False,
-                    "expires_at": None,
-                    "auth_type": "dynamic bearer (extracted from web)",
-                }
-                continue
 
             if provider == "beatport":
                 # Beatport can work via web scraping OR authenticated API
@@ -587,15 +446,8 @@ class TokenManager:
                 "expires_at": token.expires_at if token else None,  # type: ignore  # TODO: mypy-strict
             }
 
-            # Add auth type info
-            if provider == "beatport":
-                result[provider]["auth_type"] = "client_credentials"
-            elif provider == "spotify":
-                result[provider]["auth_type"] = "client_credentials"
-            elif provider == "tidal":
+            if provider == "tidal":
                 result[provider]["auth_type"] = "device_auth"
-            elif provider == "qobuz":
-                result[provider]["auth_type"] = "email/password"
 
         return result
 
@@ -614,18 +466,10 @@ class TokenManager:
         - Or manually copy refresh_token from another authenticated session
         """
         template = {
-            "spotify": {
-                "_comment": "Add client_id/client_secret from https://developer.spotify.com/dashboard",
-                "client_id": "",
-                "client_secret": "",
-            },
             "beatport": {
                 "_comment": "Get credentials from https://api.beatport.com (if you have access)",
                 "client_id": "",
                 "client_secret": "",
-            },
-            "qobuz": {
-                "_comment": "Run 'tagslut auth login qobuz' with your email/password",
             },
             "tidal": {
                 "_comment": "Run 'tagslut auth login tidal' to authenticate via browser. "
@@ -634,13 +478,6 @@ class TokenManager:
                 "refresh_token": "",
                 "user_id": "",
                 "country_code": "US",
-            },
-            "itunes": {
-                "_comment": "No authentication required - iTunes Search API is public",
-            },
-            "apple_music": {
-                "_comment": "No configuration required - bearer token is extracted"
-                            " dynamically from Apple Music web app",
             },
         }
 
@@ -654,20 +491,8 @@ class TokenManager:
 
     def is_configured(self, provider: str) -> bool:
         """Check if a provider is properly configured for use."""
-        if provider == "spotify":
-            if provider not in self._tokens:
-                return False
-            data = self._tokens[provider]
-            return bool(data.get("client_id")) and bool(data.get("client_secret"))
-
-        if provider == "itunes":
-            return True  # Always configured (public API)
-
-        if provider == "apple_music":
-            return True  # Always configured (token extracted dynamically from web)
-
         if provider == "beatport":
-            # Beatport now works via web scraping without authentication
+            # Beatport works via web scraping without authentication
             return True
 
         if provider not in self._tokens:
@@ -677,7 +502,5 @@ class TokenManager:
 
         if provider == "tidal":
             return bool(data.get("refresh_token"))
-        elif provider == "qobuz":
-            return bool(data.get("user_auth_token"))
         else:
             return False

@@ -5,8 +5,7 @@ Resolution priority:
   1. ISRC              (isrc column; canonical_isrc fallback for legacy rows)
   2. Beatport ID       (beatport_id column)
   3. Tidal ID          (tidal_id column)
-  4. Qobuz ID          (qobuz_id column)
-  5. Fuzzy match       (artist + title + duration ±2s via rapidfuzz)
+  4. Fuzzy match       (artist + title + duration ±2s via rapidfuzz)
 """
 import sqlite3
 from dataclasses import dataclass
@@ -30,7 +29,6 @@ class TrackIntent:
     isrc: Optional[str] = None
     beatport_id: Optional[str] = None
     tidal_id: Optional[str] = None
-    qobuz_id: Optional[str] = None
     # Quality of the candidate (from provider API)
     bit_depth: Optional[int] = None
     sample_rate: Optional[int] = None
@@ -138,16 +136,7 @@ class IdentityResolver:
             if row and row[1] is not None:
                 return (row[0], row[1], "tidal_id", 100.0)
 
-        # 4. Qobuz ID
-        if intent.qobuz_id:
-            row = self._conn.execute(
-                "SELECT path, quality_rank FROM files WHERE qobuz_id = ? LIMIT 1",
-                (intent.qobuz_id,),
-            ).fetchone()
-            if row and row[1] is not None:
-                return (row[0], row[1], "qobuz_id", 100.0)
-
-        # 5. Fuzzy: artist + title + duration
+        # 4. Fuzzy: artist + title + duration
         if intent.artist and intent.title:
             return self._fuzzy_match(intent)
 

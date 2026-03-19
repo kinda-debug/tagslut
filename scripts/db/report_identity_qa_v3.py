@@ -31,8 +31,8 @@ REQUIRED_SCHEMA: dict[str, tuple[str, ...]] = {
         "isrc",
         "beatport_id",
         "tidal_id",
-        "qobuz_id",
-        "spotify_id",
+        # "qobuz_id",  # purged
+        # "spotify_id",  # purged
         "canonical_artist",
         "canonical_title",
         "enriched_at",
@@ -101,7 +101,7 @@ def _load_identity_rows(conn: sqlite3.Connection) -> list[dict[str, object]]:
             ti.isrc AS isrc,
             ti.beatport_id AS beatport_id,
             ti.tidal_id AS tidal_id,
-            ti.qobuz_id AS qobuz_id,
+            # ti.qobuz_id AS qobuz_id,  # purged
             ti.spotify_id AS spotify_id,
             ti.canonical_artist AS canonical_artist,
             ti.canonical_title AS canonical_title,

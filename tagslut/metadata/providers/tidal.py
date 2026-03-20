@@ -28,6 +28,7 @@ import httpx
 from tagslut.metadata.models.types import (
     BeatportSeedRow,
     BeatportTidalMergedRow,
+    CONFIDENCE_NUMERIC,
     MatchConfidence,
     ProviderTrack,
     TidalSeedExportStats,
@@ -44,14 +45,6 @@ PLAYLIST_ID_PATTERN = re.compile(
 _ISO_8601_DURATION_PATTERN = re.compile(
     r"^P(?:(?P<days>\d+)D)?(?:T(?:(?P<hours>\d+)H)?(?:(?P<minutes>\d+)M)?(?:(?P<seconds>\d+(?:\.\d+)?)S)?)?$"
 )
-
-_FALLBACK_CONFIDENCE_NUMERIC = {
-    MatchConfidence.EXACT: 0.95,
-    MatchConfidence.STRONG: 0.85,
-    MatchConfidence.MEDIUM: 0.70,
-    MatchConfidence.WEAK: 0.55,
-    MatchConfidence.NONE: 0.0,
-}
 
 
 class TidalProvider(AbstractProvider):
@@ -338,6 +331,7 @@ class TidalProvider(AbstractProvider):
     def fetch_by_id(self, track_id: str) -> Optional[ProviderTrack]:
         return self._fetch_track_provider_track(track_id, confidence=MatchConfidence.EXACT)
 
+    # Transport: v2 JSON:API — uses filter[isrc] on GET /tracks. ISRC-capable.
     def search_by_isrc(self, isrc: str, limit: int = 5) -> List[ProviderTrack]:
         url = f"{self.BASE_URL}/tracks"
         params = {
@@ -359,6 +353,7 @@ class TidalProvider(AbstractProvider):
                 results.append(track)
         return results[:limit]
 
+    # Transport: v2 JSON:API — text search via searchResults endpoint. No ISRC filter.
     def search(self, query: str, limit: int = 10) -> List[ProviderTrack]:
         encoded_query = quote((query or "").strip(), safe="")
         if not encoded_query:
@@ -467,7 +462,7 @@ class TidalProvider(AbstractProvider):
         seed_row: BeatportSeedRow,
         match: Optional[ProviderTrack],
         match_method: str,
-        match_confidence: float,
+        match_confidence: MatchConfidence,
     ) -> BeatportTidalMergedRow:
         merged = BeatportTidalMergedRow(
             beatport_track_id=seed_row.beatport_track_id,
@@ -516,7 +511,7 @@ class TidalProvider(AbstractProvider):
                     len(isrc_matches),
                 )
             if isrc_matches:
-                return self._merged_row_from_beatport_seed(seed_row, isrc_matches[0], "isrc", 1.0), telemetry
+                return self._merged_row_from_beatport_seed(seed_row, isrc_matches[0], "isrc", MatchConfidence.EXACT), telemetry
 
         fallback_match, fallback_confidence, fallback_telemetry = self._select_best_title_artist_match(seed_row)
         telemetry.update(fallback_telemetry)
@@ -526,17 +521,18 @@ class TidalProvider(AbstractProvider):
                     seed_row,
                     fallback_match,
                     "title_artist_fallback",
-                    _FALLBACK_CONFIDENCE_NUMERIC.get(fallback_confidence, 0.0),
+                    fallback_confidence,
                 ),
                 telemetry,
             )
 
-        return self._merged_row_from_beatport_seed(seed_row, None, "no_match", 0.0), telemetry
+        return self._merged_row_from_beatport_seed(seed_row, None, "no_match", MatchConfidence.NONE), telemetry
 
     # ---------------------------------------------------------------------
     # TIDAL playlist seed export (used by `tidal-seed`)
     # ---------------------------------------------------------------------
 
+    # Transport: v1 legacy — used only for playlist export. No ISRC capability.
     def _tidal_v1_get(self, endpoint: str, *, params: Dict[str, Any]) -> httpx.Response:
         token = self._get_token()
         if token is None or not token.access_token:
@@ -564,6 +560,7 @@ class TidalProvider(AbstractProvider):
                 names.append(item)
         return ", ".join(names)
 
+    # v1 transport: legacy playlist export path. No ISRC. No migration without parity validation.
     def export_playlist_seed_rows(
         self,
         playlist_url_or_id: str,

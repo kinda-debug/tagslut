@@ -1,0 +1,20 @@
+$kind: http-request
+name: Beatport - ISRC Store Lookup
+method: GET
+url: 'https://api.beatport.com/v4/catalog/tracks/store/{{beatport_test_isrc}}/'
+order: 4000
+description: |-
+  Tests the dedicated path-based ISRC lookup endpoint discovered in the Beatport v4 OAS.
+
+  This endpoint is distinct from the query-parameter approach (`/v4/catalog/tracks/?isrc=`).
+  If it returns a direct track record without pagination, prefer it over the query-parameter approach.
+
+  Auth: Requires catalog auth (session cookie or basic auth).
+  Set `beatport_test_isrc` variable to a known ISRC (e.g. from your library) before running.
+
+  Compare response shape to `/v4/catalog/tracks/?isrc={{beatport_test_isrc}}` to determine which to prefer.
+headers:
+  - key: Accept
+    value: application/json
+  - key: Cookie
+    value: 'sessionid={{beatport_sessionid}}'

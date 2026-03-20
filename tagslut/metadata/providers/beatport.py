@@ -29,6 +29,7 @@ from tagslut.metadata.genre_normalization import GenreNormalizer
 from tagslut.metadata.models.types import (
     BeatportSeedExportStats,
     BeatportSeedRow,
+    CONFIDENCE_NUMERIC,
     MatchConfidence,
     ProviderTrack,
     TidalBeatportMergedRow,
@@ -41,14 +42,6 @@ from tagslut.metadata.providers.base import (
 )
 
 logger = logging.getLogger("tagslut.metadata.providers.beatport")
-
-_FALLBACK_CONFIDENCE_NUMERIC = {
-    MatchConfidence.EXACT: 0.95,
-    MatchConfidence.STRONG: 0.85,
-    MatchConfidence.MEDIUM: 0.70,
-    MatchConfidence.WEAK: 0.55,
-    MatchConfidence.NONE: 0.0,
-}
 
 _CATALOG_TRACK_FILTER_PARAMS = {
     "artist_id",
@@ -985,7 +978,7 @@ class BeatportProvider(AbstractProvider):
         seed_row: TidalSeedRow,
         match: Optional[ProviderTrack],
         match_method: str,
-        match_confidence: float,
+        match_confidence: MatchConfidence,
     ) -> TidalBeatportMergedRow:
         """Build the final merged CSV row while preserving TIDAL source fields."""
         merged = TidalBeatportMergedRow(
@@ -1061,7 +1054,7 @@ class BeatportProvider(AbstractProvider):
                     len(isrc_matches),
                 )
             if isrc_matches:
-                return self._merged_row_from_match(seed_row, isrc_matches[0], "isrc", 1.0), telemetry
+                return self._merged_row_from_match(seed_row, isrc_matches[0], "isrc", MatchConfidence.EXACT), telemetry
 
         fallback_match, fallback_confidence, fallback_telemetry = self._select_best_title_artist_match(seed_row)
         telemetry.update(fallback_telemetry)
@@ -1071,12 +1064,12 @@ class BeatportProvider(AbstractProvider):
                     seed_row,
                     fallback_match,
                     "title_artist_fallback",
-                    _FALLBACK_CONFIDENCE_NUMERIC.get(fallback_confidence, 0.0),
+                    fallback_confidence,
                 ),
                 telemetry,
             )
 
-        return self._merged_row_from_match(seed_row, None, "no_match", 0.0), telemetry
+        return self._merged_row_from_match(seed_row, None, "no_match", MatchConfidence.NONE), telemetry
 
     def _fetch_release_for_track(self, track_payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         release = track_payload.get("release")
@@ -1257,7 +1250,7 @@ class BeatportProvider(AbstractProvider):
         try:
             payload = self._api_client.catalog_list_tracks({"isrc": isrc, "per_page": 10})
         except BeatportAuthError as exc:
-            logger.debug("Beatport catalog auth unavailable for ISRC search: %s", exc)
+            logger.warning("Beatport catalog auth unavailable for ISRC search: %s", exc)
             return []
         except BeatportClientError as exc:
             logger.warning("Beatport ISRC search failed for %s: %s", isrc, exc)
@@ -1317,7 +1310,7 @@ class BeatportProvider(AbstractProvider):
         try:
             payload = self._api_client.search_tracks(params)
         except BeatportAuthError as exc:
-            logger.debug("Beatport search auth unavailable for text search: %s", exc)
+            logger.warning("Beatport search auth unavailable for text search: %s", exc)
             return self._legacy_text_search(
                 title=title,
                 artist=artist,

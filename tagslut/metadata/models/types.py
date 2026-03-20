@@ -16,6 +16,15 @@ class MatchConfidence(str, Enum):
     NONE = "none"          # No usable match
 
 
+CONFIDENCE_NUMERIC: dict[MatchConfidence, float] = {
+    MatchConfidence.EXACT: 1.0,
+    MatchConfidence.STRONG: 0.85,
+    MatchConfidence.MEDIUM: 0.70,
+    MatchConfidence.WEAK: 0.55,
+    MatchConfidence.NONE: 0.0,
+}
+
+
 class MetadataHealth(str, Enum):
     """File health status based on duration comparison."""
     OK = "ok"
@@ -221,7 +230,7 @@ class TidalBeatportMergedRow:
     beatport_upc: Optional[str] = None
     beatport_release_date: Optional[str] = None
     match_method: str = "no_match"
-    match_confidence: float = 0.0
+    match_confidence: MatchConfidence = MatchConfidence.NONE
     last_synced_at: Optional[str] = None
 
 
@@ -301,7 +310,7 @@ class BeatportTidalMergedRow:
     tidal_title: Optional[str] = None
     tidal_artist: Optional[str] = None
     match_method: str = "no_match"
-    match_confidence: float = 0.0
+    match_confidence: MatchConfidence = MatchConfidence.NONE
     last_synced_at: Optional[str] = None
 
 

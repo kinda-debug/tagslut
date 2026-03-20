@@ -24,6 +24,8 @@ from tagslut.metadata.models.types import (
     BeatportSeedRow,
     BeatportTidalEnrichmentStats,
     BeatportTidalMergedRow,
+    CONFIDENCE_NUMERIC,
+    MatchConfidence,
     TIDAL_BEATPORT_MERGED_COLUMNS,
     TIDAL_SEED_COLUMNS,
     TidalBeatportEnrichmentStats,
@@ -196,6 +198,10 @@ class Enricher:
             writer = csv.DictWriter(handle, fieldnames=list(fieldnames))
             writer.writeheader()
             for row in rows:
+                # Serialize match_confidence enum to float for CSV output
+                if "match_confidence" in row and isinstance(row["match_confidence"], MatchConfidence):
+                    row = dict(row)
+                    row["match_confidence"] = CONFIDENCE_NUMERIC[row["match_confidence"]]
                 writer.writerow(row)
 
     def get_eligible_files(

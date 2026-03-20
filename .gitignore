@@ -261,3 +261,241 @@ cff5a0f2f4c9b1545d5d.md
 postman/environments/G.environment.yaml
 here
 .postman/resources.yaml
+tagslut-metadata-implementation-plan.md
+.postman/resources.yaml
+postman/collections/My Collection/Beatport - ISRC Store Lookup.request.yaml
+postman/collections/My Collection/Get Access Token.request.yaml
+postman/collections/My Collection/Get data.request.yaml
+postman/collections/My Collection/Post data.request.yaml
+postman/collections/My Collection/api-global.squareup.com/https-api-global.squareup.com-1.0-features-get-flags.request.yaml
+postman/collections/My Collection/api-global.squareup.com/.resources/definition.yaml
+postman/collections/My Collection/api.tidal.com/https-api.tidal.com-v2-feed-activities 1.request.yaml
+postman/collections/My Collection/api.tidal.com/https-api.tidal.com-v2-feed-activities.request.yaml
+postman/collections/My Collection/api.tidal.com/https-api.tidal.com-v2-widevine 1.request.yaml
+postman/collections/My Collection/api.tidal.com/https-api.tidal.com-v2-widevine.request.yaml
+postman/collections/My Collection/api.tidal.com/.resources/definition.yaml
+postman/collections/My Collection/api.tidal.com/.resources/https-api.tidal.com-v2-feed-activities 1.resources/examples/https-api.tidal.com-v2-feed-activities-userId=207315700&limit=9&countryCode=FR&locale=en_US&deviceType=DESKTOP.example.yaml
+postman/collections/My Collection/api.tidal.com/.resources/https-api.tidal.com-v2-feed-activities.resources/examples/https-api.tidal.com-v2-feed-activities-userId=207315700&limit=9&countryCode=FR&locale=en_US&deviceType=DESKTOP.example.yaml
+postman/collections/My Collection/api.tidal.com/.resources/https-api.tidal.com-v2-widevine 1.resources/examples/https-api.tidal.com-v2-widevine 1.example.yaml
+postman/collections/My Collection/api.tidal.com/.resources/https-api.tidal.com-v2-widevine 1.resources/examples/https-api.tidal.com-v2-widevine.example.yaml
+postman/collections/My Collection/api.tidal.com/.resources/https-api.tidal.com-v2-widevine.resources/examples/https-api.tidal.com-v2-widevine 1.example.yaml
+postman/collections/My Collection/api.tidal.com/.resources/https-api.tidal.com-v2-widevine.resources/examples/https-api.tidal.com-v2-widevine.example.yaml
+postman/collections/My Collection/api.tidal.com 1/https-api.tidal.com-v1-ping.request.yaml
+postman/collections/My Collection/api.tidal.com 1/.resources/definition.yaml
+postman/collections/My Collection/auth.tidal.com/https-auth.tidal.com-v1-oauth2-token.request.yaml
+postman/collections/My Collection/auth.tidal.com/.resources/definition.yaml
+postman/collections/My Collection/capture.trackjs.com/https-capture.trackjs.com-capture.request.yaml
+postman/collections/My Collection/capture.trackjs.com/.resources/definition.yaml
+postman/collections/My Collection/cdn.cookielaw.org/https-cdn.cookielaw.org-consent-{{param1}}-0e85e00b-5092-4389-bafc-7a50cb1352ca.json.request.yaml
+postman/collections/My Collection/cdn.cookielaw.org/https-cdn.cookielaw.org-consent-{{param1}}-01926c51-7190-7812-a295-6b24b0dbabe9-en.json.request.yaml
+postman/collections/My Collection/cdn.cookielaw.org/https-cdn.cookielaw.org-logos-static-ot_guard_logo.svg.request.yaml
+postman/collections/My Collection/cdn.cookielaw.org/https-cdn.cookielaw.org-scripttemplates-202510.2.0-assets-otCommonStyles.css.request.yaml
+postman/collections/My Collection/cdn.cookielaw.org/https-cdn.cookielaw.org-scripttemplates-202510.2.0-assets-otFloatingRounded.json.request.yaml
+postman/collections/My Collection/cdn.cookielaw.org/https-cdn.cookielaw.org-scripttemplates-202510.2.0-assets-v2-otPcPanel.json.request.yaml
+postman/collections/My Collection/cdn.cookielaw.org/.resources/definition.yaml
+postman/collections/My Collection/dd.tidal.com/https-dd.tidal.com-js-.request.yaml
+postman/collections/My Collection/dd.tidal.com/.resources/definition.yaml
+postman/collections/My Collection/developer.tidal.com/https-developer.tidal.com-.request.yaml
+postman/collections/My Collection/developer.tidal.com/https-developer.tidal.com-api-developer-applications-{{param1}}-apiUsageStatistics.request.yaml
+postman/collections/My Collection/developer.tidal.com/https-developer.tidal.com-api-developer-applications-{{param1}}-availableScopes.request.yaml
+postman/collections/My Collection/developer.tidal.com/https-developer.tidal.com-api-developer-applications-{{param1}}-reviews.request.yaml
+postman/collections/My Collection/developer.tidal.com/https-developer.tidal.com-api-developer-applications-{{param1}}-secret.request.yaml
+postman/collections/My Collection/developer.tidal.com/https-developer.tidal.com-api-developer-applications-{{param1}}.request.yaml
+postman/collections/My Collection/developer.tidal.com/https-developer.tidal.com-api-developer-applications.request.yaml
+postman/collections/My Collection/developer.tidal.com/https-developer.tidal.com-api-developer-tcAcceptances.request.yaml
+postman/collections/My Collection/developer.tidal.com/https-developer.tidal.com-auth-session-user-access-token.request.yaml
+postman/collections/My Collection/developer.tidal.com/.resources/definition.yaml
+postman/collections/My Collection/events-am.gw.postman.com/https-events-am.gw.postman.com-.request.yaml
+postman/collections/My Collection/events-am.gw.postman.com/https-events-am.gw.postman.com-segment.request.yaml
+postman/collections/My Collection/events-am.gw.postman.com/.resources/definition.yaml
+postman/collections/My Collection/events.getpostman.com/https-events.getpostman.com-events.request.yaml
+postman/collections/My Collection/events.getpostman.com/.resources/definition.yaml
+postman/collections/My Collection/events.launchdarkly.com/https-events.launchdarkly.com-events-bulk-60645109ece3b60c64ac5e02.request.yaml
+postman/collections/My Collection/events.launchdarkly.com/.resources/definition.yaml
+postman/collections/My Collection/fp.fa.tidal.com/https-fp.fa.tidal.com-certificate.request.yaml
+postman/collections/My Collection/fp.fa.tidal.com/https-fp.fa.tidal.com-license.request.yaml
+postman/collections/My Collection/fp.fa.tidal.com/.resources/definition.yaml
+postman/collections/My Collection/login.tidal.com/https-login.tidal.com-api-email-user-existing.request.yaml
+postman/collections/My Collection/login.tidal.com/https-login.tidal.com-api-email.request.yaml
+postman/collections/My Collection/login.tidal.com/https-login.tidal.com-api-google-state-id.request.yaml
+postman/collections/My Collection/login.tidal.com/https-login.tidal.com-authorize.request.yaml
+postman/collections/My Collection/login.tidal.com/https-login.tidal.com-oauth2-me.request.yaml
+postman/collections/My Collection/login.tidal.com/https-login.tidal.com-success.request.yaml
+postman/collections/My Collection/login.tidal.com/.resources/definition.yaml
+postman/collections/My Collection/o1224273.ingest.sentry.io/https-o1224273.ingest.sentry.io-api-{{param1}}-envelope-.request.yaml
+postman/collections/My Collection/o1224273.ingest.sentry.io/.resources/definition.yaml
+postman/collections/My Collection/o160250.ingest.sentry.io/https-o160250.ingest.sentry.io-api-{{param1}}-envelope-.request.yaml
+postman/collections/My Collection/o160250.ingest.sentry.io/.resources/definition.yaml
+postman/collections/My Collection/openapi.tidal.com/https-openapi.tidal.com-v2-trackManifests-{{param1}} 1.request.yaml
+postman/collections/My Collection/openapi.tidal.com/https-openapi.tidal.com-v2-trackManifests-{{param1}}.request.yaml
+postman/collections/My Collection/openapi.tidal.com/https-openapi.tidal.com-v2-tracks-{{param1}} 1.request.yaml
+postman/collections/My Collection/openapi.tidal.com/https-openapi.tidal.com-v2-tracks-{{param1}}.request.yaml
+postman/collections/My Collection/openapi.tidal.com/.resources/definition.yaml
+postman/collections/My Collection/openapi.tidal.com/.resources/https-openapi.tidal.com-v2-trackManifests-{{param1}} 1.resources/examples/https-openapi.tidal.com-v2-trackManifests-184854575-adaptive=true&formats=HEAACV1&formats=AACLC&formats=FLAC&formats=FLAC_HIRES&manifestType=MPEG_DASH&uriScheme=DATA&usage=PLAYBACK.example.yaml
+postman/collections/My Collection/openapi.tidal.com/.resources/https-openapi.tidal.com-v2-trackManifests-{{param1}} 1.resources/examples/https-openapi.tidal.com-v2-trackManifests-199543643-adaptive=true&formats=HEAACV1&formats=AACLC&formats=FLAC&formats=FLAC_HIRES&manifestType=MPEG_DASH&uriScheme=DATA&usage=PLAYBACK.example.yaml
+postman/collections/My Collection/openapi.tidal.com/.resources/https-openapi.tidal.com-v2-trackManifests-{{param1}}.resources/examples/https-openapi.tidal.com-v2-trackManifests-184854575-adaptive=true&formats=HEAACV1&formats=AACLC&formats=FLAC&formats=FLAC_HIRES&manifestType=MPEG_DASH&uriScheme=DATA&usage=PLAYBACK.example.yaml
+postman/collections/My Collection/openapi.tidal.com/.resources/https-openapi.tidal.com-v2-trackManifests-{{param1}}.resources/examples/https-openapi.tidal.com-v2-trackManifests-199543643-adaptive=true&formats=HEAACV1&formats=AACLC&formats=FLAC&formats=FLAC_HIRES&manifestType=MPEG_DASH&uriScheme=DATA&usage=PLAYBACK.example.yaml
+postman/collections/My Collection/openapi.tidal.com/.resources/https-openapi.tidal.com-v2-tracks-{{param1}} 1.resources/examples/https-openapi.tidal.com-v2-tracks-184854575-countryCode=FR&include=lyrics.example.yaml
+postman/collections/My Collection/openapi.tidal.com/.resources/https-openapi.tidal.com-v2-tracks-{{param1}} 1.resources/examples/https-openapi.tidal.com-v2-tracks-199543643-countryCode=FR&include=lyrics.example.yaml
+postman/collections/My Collection/openapi.tidal.com/.resources/https-openapi.tidal.com-v2-tracks-{{param1}}.resources/examples/https-openapi.tidal.com-v2-tracks-184854575-countryCode=FR&include=lyrics.example.yaml
+postman/collections/My Collection/openapi.tidal.com/.resources/https-openapi.tidal.com-v2-tracks-{{param1}}.resources/examples/https-openapi.tidal.com-v2-tracks-199543643-countryCode=FR&include=lyrics.example.yaml
+postman/collections/My Collection/openapi.tidal.com 1/https-openapi.tidal.com-v2-artists-{{param1}}.request.yaml
+postman/collections/My Collection/openapi.tidal.com 1/https-openapi.tidal.com-v2-playlists-{{param1}}.request.yaml
+postman/collections/My Collection/openapi.tidal.com 1/https-openapi.tidal.com-v2-stripeConnections.request.yaml
+postman/collections/My Collection/openapi.tidal.com 1/https-openapi.tidal.com-v2-trackManifests-{{param1}}.request.yaml
+postman/collections/My Collection/openapi.tidal.com 1/https-openapi.tidal.com-v2-tracks-{{param1}}.request.yaml
+postman/collections/My Collection/openapi.tidal.com 1/https-openapi.tidal.com-v2-userCollectionPlaylists-me-relationships-items.request.yaml
+postman/collections/My Collection/openapi.tidal.com 1/.resources/definition.yaml
+postman/collections/My Collection/stream.lab.amplitude.com/https-stream.lab.amplitude.com-sdk-stream-v1-vardata.request.yaml
+postman/collections/My Collection/stream.lab.amplitude.com/.resources/definition.yaml
+postman/collections/My Collection/tidal-privacy.my.onetrust.com/https-tidal-privacy.my.onetrust.com-request-v1-consentreceipts-anonymous.request.yaml
+postman/collections/My Collection/tidal-privacy.my.onetrust.com/.resources/definition.yaml
+postman/collections/My Collection/tidal.com/https-tidal.com-api-event-batch.request.yaml
+postman/collections/My Collection/tidal.com/https-tidal.com-v1-albums-{{param1}}.request.yaml
+postman/collections/My Collection/tidal.com/https-tidal.com-v1-artists-{{param1}}-bio.request.yaml
+postman/collections/My Collection/tidal.com/https-tidal.com-v1-artists-{{param1}}.request.yaml
+postman/collections/My Collection/tidal.com/https-tidal.com-v1-rt-connect.request.yaml
+postman/collections/My Collection/tidal.com/https-tidal.com-v1-tracks-{{param1}}-credits.request.yaml
+postman/collections/My Collection/tidal.com/https-tidal.com-v1-tracks-{{param1}}-recommendations.request.yaml
+postman/collections/My Collection/tidal.com/https-tidal.com-v2-feed-activities.request.yaml
+postman/collections/My Collection/tidal.com/.resources/definition.yaml
+postman/collections/My Collection/tidal.com/.resources/https-tidal.com-api-event-batch.resources/examples/https-tidal.com-api-event-batch 1.example.yaml
+postman/collections/My Collection/tidal.com/.resources/https-tidal.com-api-event-batch.resources/examples/https-tidal.com-api-event-batch 2.example.yaml
+postman/collections/My Collection/tidal.com/.resources/https-tidal.com-api-event-batch.resources/examples/https-tidal.com-api-event-batch 3.example.yaml
+postman/collections/My Collection/tidal.com/.resources/https-tidal.com-api-event-batch.resources/examples/https-tidal.com-api-event-batch 4.example.yaml
+postman/collections/My Collection/tidal.com/.resources/https-tidal.com-api-event-batch.resources/examples/https-tidal.com-api-event-batch.example.yaml
+postman/collections/My Collection/tidal.com/.resources/https-tidal.com-v1-albums-{{param1}}.resources/examples/https-tidal.com-v1-albums-184854573-countryCode=FR&locale=en_US&deviceType=BROWSER.example.yaml
+postman/collections/My Collection/tidal.com/.resources/https-tidal.com-v1-albums-{{param1}}.resources/examples/https-tidal.com-v1-albums-199543641-countryCode=FR&locale=en_US&deviceType=BROWSER.example.yaml
+postman/collections/My Collection/tidal.com/.resources/https-tidal.com-v1-artists-{{param1}}-bio.resources/examples/https-tidal.com-v1-artists-24673045-bio-includeImageLinks=true&countryCode=FR&locale=en_US&deviceType=BROWSER.example.yaml
+postman/collections/My Collection/tidal.com/.resources/https-tidal.com-v1-artists-{{param1}}.resources/examples/https-tidal.com-v1-artists-3944648-countryCode=FR&locale=en_US&deviceType=BROWSER.example.yaml
+postman/collections/My Collection/tidal.com/.resources/https-tidal.com-v1-artists-{{param1}}.resources/examples/https-tidal.com-v1-artists-24673045-countryCode=FR&locale=en_US&deviceType=BROWSER.example.yaml
+postman/collections/My Collection/tidal.com/.resources/https-tidal.com-v1-rt-connect.resources/examples/https-tidal.com-v1-rt-connect.example.yaml
+postman/collections/My Collection/tidal.com/.resources/https-tidal.com-v1-tracks-{{param1}}-credits.resources/examples/https-tidal.com-v1-tracks-184854575-credits-limit=100&includeContributors=true&countryCode=FR&locale=en_US&deviceType=BROWSER.example.yaml
+postman/collections/My Collection/tidal.com/.resources/https-tidal.com-v1-tracks-{{param1}}-credits.resources/examples/https-tidal.com-v1-tracks-199543643-credits-limit=100&includeContributors=true&countryCode=FR&locale=en_US&deviceType=BROWSER.example.yaml
+postman/collections/My Collection/tidal.com/.resources/https-tidal.com-v1-tracks-{{param1}}-recommendations.resources/examples/https-tidal.com-v1-tracks-184854575-recommendations-limit=20&countryCode=FR&locale=en_US&deviceType=BROWSER.example.yaml
+postman/collections/My Collection/tidal.com/.resources/https-tidal.com-v1-tracks-{{param1}}-recommendations.resources/examples/https-tidal.com-v1-tracks-199543643-recommendations-limit=20&countryCode=FR&locale=en_US&deviceType=BROWSER 1.example.yaml
+postman/collections/My Collection/tidal.com/.resources/https-tidal.com-v1-tracks-{{param1}}-recommendations.resources/examples/https-tidal.com-v1-tracks-199543643-recommendations-limit=20&countryCode=FR&locale=en_US&deviceType=BROWSER.example.yaml
+postman/collections/My Collection/tidal.com/.resources/https-tidal.com-v2-feed-activities.resources/examples/https-tidal.com-v2-feed-activities-userId=207315700&limit=9&countryCode=FR&locale=en_US&deviceType=BROWSER 1.example.yaml
+postman/collections/My Collection/tidal.com/.resources/https-tidal.com-v2-feed-activities.resources/examples/https-tidal.com-v2-feed-activities-userId=207315700&limit=9&countryCode=FR&locale=en_US&deviceType=BROWSER 2.example.yaml
+postman/collections/My Collection/tidal.com/.resources/https-tidal.com-v2-feed-activities.resources/examples/https-tidal.com-v2-feed-activities-userId=207315700&limit=9&countryCode=FR&locale=en_US&deviceType=BROWSER.example.yaml
+postman/collections/My Collection/tidal.com 1/https-tidal.com-api-event-batch.request.yaml
+postman/collections/My Collection/tidal.com 1/https-tidal.com-api-public-event-batch.request.yaml
+postman/collections/My Collection/tidal.com 1/https-tidal.com-update-config.json.request.yaml
+postman/collections/My Collection/tidal.com 1/https-tidal.com-v1-albums-{{param1}}-items-credits.request.yaml
+postman/collections/My Collection/tidal.com 1/https-tidal.com-v1-albums-{{param1}}.request.yaml
+postman/collections/My Collection/tidal.com 1/https-tidal.com-v1-artists-{{param1}}-bio.request.yaml
+postman/collections/My Collection/tidal.com 1/https-tidal.com-v1-artists-{{param1}}-mix.request.yaml
+postman/collections/My Collection/tidal.com 1/https-tidal.com-v1-artists-{{param1}}.request.yaml
+postman/collections/My Collection/tidal.com 1/https-tidal.com-v1-country-context.request.yaml
+postman/collections/My Collection/tidal.com 1/https-tidal.com-v1-pages-album.request.yaml
+postman/collections/My Collection/tidal.com 1/https-tidal.com-v1-pages-explore.request.yaml
+postman/collections/My Collection/tidal.com 1/https-tidal.com-v1-pages-m_1970s.request.yaml
+postman/collections/My Collection/tidal.com 1/https-tidal.com-v1-ping.request.yaml
+postman/collections/My Collection/tidal.com 1/https-tidal.com-v1-playlists-{{param1}}-items.request.yaml
+postman/collections/My Collection/tidal.com 1/https-tidal.com-v1-playlists-{{param1}}.request.yaml
+postman/collections/My Collection/tidal.com 1/https-tidal.com-v1-rt-connect.request.yaml
+postman/collections/My Collection/tidal.com 1/https-tidal.com-v1-tracks-{{param1}}-credits.request.yaml
+postman/collections/My Collection/tidal.com 1/https-tidal.com-v1-tracks-{{param1}}-mix.request.yaml
+postman/collections/My Collection/tidal.com 1/https-tidal.com-v1-tracks-{{param1}}-recommendations.request.yaml
+postman/collections/My Collection/tidal.com 1/https-tidal.com-v1-tracks-{{param1}}.request.yaml
+postman/collections/My Collection/tidal.com 1/https-tidal.com-v1-users-{{param1}}-blocks-artists.request.yaml
+postman/collections/My Collection/tidal.com 1/https-tidal.com-v1-users-{{param1}}-clients.request.yaml
+postman/collections/My Collection/tidal.com 1/https-tidal.com-v1-users-{{param1}}-favorites-ids.request.yaml
+postman/collections/My Collection/tidal.com 1/https-tidal.com-v1-users-{{param1}}-onboarding.request.yaml
+postman/collections/My Collection/tidal.com 1/https-tidal.com-v1-users-{{param1}}-playlists.request.yaml
+postman/collections/My Collection/tidal.com 1/https-tidal.com-v1-users-{{param1}}-subscription.request.yaml
+postman/collections/My Collection/tidal.com 1/https-tidal.com-v1-users-{{param1}}.request.yaml
+postman/collections/My Collection/tidal.com 1/https-tidal.com-v2-artist-{{param1}}.request.yaml
+postman/collections/My Collection/tidal.com 1/https-tidal.com-v2-favorites-mixes-ids.request.yaml
+postman/collections/My Collection/tidal.com 1/https-tidal.com-v2-feed-activities.request.yaml
+postman/collections/My Collection/tidal.com 1/https-tidal.com-v2-home-feed-static.request.yaml
+postman/collections/My Collection/tidal.com 1/https-tidal.com-v2-marketplace-spotlight-v1-user.request.yaml
+postman/collections/My Collection/tidal.com 1/https-tidal.com-v2-marketplace-v1-user-purchases.request.yaml
+postman/collections/My Collection/tidal.com 1/https-tidal.com-v2-my-collection-playlists-folders-flattened.request.yaml
+postman/collections/My Collection/tidal.com 1/https-tidal.com-v2-search-.request.yaml
+postman/collections/My Collection/tidal.com 1/https-tidal.com-v2-suggestions-.request.yaml
+postman/collections/My Collection/tidal.com 1/.resources/definition.yaml
+postman/collections/New Collection/.resources/definition.yaml
+postman/collections/Tidal/.resources/definition.yaml
+postman/collections/Tidal/api.tidal.com/https-api.tidal.com-v2-feed-activities 1.request.yaml
+postman/collections/Tidal/api.tidal.com/https-api.tidal.com-v2-feed-activities.request.yaml
+postman/collections/Tidal/api.tidal.com/https-api.tidal.com-v2-widevine 1.request.yaml
+postman/collections/Tidal/api.tidal.com/https-api.tidal.com-v2-widevine.request.yaml
+postman/collections/Tidal/api.tidal.com/.resources/definition.yaml
+postman/collections/Tidal/api.tidal.com/.resources/https-api.tidal.com-v2-feed-activities 1.resources/examples/https-api.tidal.com-v2-feed-activities-userId=207315700&limit=9&countryCode=FR&locale=en_US&deviceType=DESKTOP.example.yaml
+postman/collections/Tidal/api.tidal.com/.resources/https-api.tidal.com-v2-feed-activities.resources/examples/https-api.tidal.com-v2-feed-activities-userId=207315700&limit=9&countryCode=FR&locale=en_US&deviceType=DESKTOP.example.yaml
+postman/collections/Tidal/api.tidal.com/.resources/https-api.tidal.com-v2-widevine 1.resources/examples/https-api.tidal.com-v2-widevine 1.example.yaml
+postman/collections/Tidal/api.tidal.com/.resources/https-api.tidal.com-v2-widevine 1.resources/examples/https-api.tidal.com-v2-widevine.example.yaml
+postman/collections/Tidal/api.tidal.com/.resources/https-api.tidal.com-v2-widevine.resources/examples/https-api.tidal.com-v2-widevine 1.example.yaml
+postman/collections/Tidal/api.tidal.com/.resources/https-api.tidal.com-v2-widevine.resources/examples/https-api.tidal.com-v2-widevine.example.yaml
+postman/collections/Tidal/api.tidal.com 1/https-api.tidal.com-v1-ping.request.yaml
+postman/collections/Tidal/api.tidal.com 1/.resources/definition.yaml
+postman/collections/Tidal/login.tidal.com/https-login.tidal.com-api-email-user-existing.request.yaml
+postman/collections/Tidal/login.tidal.com/https-login.tidal.com-api-email.request.yaml
+postman/collections/Tidal/login.tidal.com/https-login.tidal.com-api-google-state-id.request.yaml
+postman/collections/Tidal/login.tidal.com/.resources/definition.yaml
+postman/collections/Tidal/openapi.tidal.com/https-openapi.tidal.com-v2-trackManifests-{{param1}} 1.request.yaml
+postman/collections/Tidal/openapi.tidal.com/https-openapi.tidal.com-v2-trackManifests-{{param1}}.request.yaml
+postman/collections/Tidal/openapi.tidal.com/https-openapi.tidal.com-v2-tracks-{{param1}} 1.request.yaml
+postman/collections/Tidal/openapi.tidal.com/https-openapi.tidal.com-v2-tracks-{{param1}}.request.yaml
+postman/collections/Tidal/openapi.tidal.com/.resources/definition.yaml
+postman/collections/Tidal/openapi.tidal.com/.resources/https-openapi.tidal.com-v2-trackManifests-{{param1}} 1.resources/examples/https-openapi.tidal.com-v2-trackManifests-184854575-adaptive=true&formats=HEAACV1&formats=AACLC&formats=FLAC&formats=FLAC_HIRES&manifestType=MPEG_DASH&uriScheme=DATA&usage=PLAYBACK.example.yaml
+postman/collections/Tidal/openapi.tidal.com/.resources/https-openapi.tidal.com-v2-trackManifests-{{param1}} 1.resources/examples/https-openapi.tidal.com-v2-trackManifests-199543643-adaptive=true&formats=HEAACV1&formats=AACLC&formats=FLAC&formats=FLAC_HIRES&manifestType=MPEG_DASH&uriScheme=DATA&usage=PLAYBACK.example.yaml
+postman/collections/Tidal/openapi.tidal.com/.resources/https-openapi.tidal.com-v2-trackManifests-{{param1}}.resources/examples/https-openapi.tidal.com-v2-trackManifests-184854575-adaptive=true&formats=HEAACV1&formats=AACLC&formats=FLAC&formats=FLAC_HIRES&manifestType=MPEG_DASH&uriScheme=DATA&usage=PLAYBACK.example.yaml
+postman/collections/Tidal/openapi.tidal.com/.resources/https-openapi.tidal.com-v2-trackManifests-{{param1}}.resources/examples/https-openapi.tidal.com-v2-trackManifests-199543643-adaptive=true&formats=HEAACV1&formats=AACLC&formats=FLAC&formats=FLAC_HIRES&manifestType=MPEG_DASH&uriScheme=DATA&usage=PLAYBACK.example.yaml
+postman/collections/Tidal/openapi.tidal.com/.resources/https-openapi.tidal.com-v2-tracks-{{param1}} 1.resources/examples/https-openapi.tidal.com-v2-tracks-184854575-countryCode=FR&include=lyrics.example.yaml
+postman/collections/Tidal/openapi.tidal.com/.resources/https-openapi.tidal.com-v2-tracks-{{param1}} 1.resources/examples/https-openapi.tidal.com-v2-tracks-199543643-countryCode=FR&include=lyrics.example.yaml
+postman/collections/Tidal/openapi.tidal.com/.resources/https-openapi.tidal.com-v2-tracks-{{param1}}.resources/examples/https-openapi.tidal.com-v2-tracks-184854575-countryCode=FR&include=lyrics.example.yaml
+postman/collections/Tidal/openapi.tidal.com/.resources/https-openapi.tidal.com-v2-tracks-{{param1}}.resources/examples/https-openapi.tidal.com-v2-tracks-199543643-countryCode=FR&include=lyrics.example.yaml
+postman/collections/Tidal/openapi.tidal.com 1/https-openapi.tidal.com-v2-artists-{{param1}}.request.yaml
+postman/collections/Tidal/openapi.tidal.com 1/https-openapi.tidal.com-v2-playlists-{{param1}}.request.yaml
+postman/collections/Tidal/openapi.tidal.com 1/https-openapi.tidal.com-v2-stripeConnections.request.yaml
+postman/collections/Tidal/openapi.tidal.com 1/https-openapi.tidal.com-v2-trackManifests-{{param1}}.request.yaml
+postman/collections/Tidal/openapi.tidal.com 1/https-openapi.tidal.com-v2-tracks-{{param1}}.request.yaml
+postman/collections/Tidal/openapi.tidal.com 1/https-openapi.tidal.com-v2-userCollectionPlaylists-me-relationships-items.request.yaml
+postman/collections/Tidal/openapi.tidal.com 1/.resources/definition.yaml
+postman/collections/Tidal/tidal.com/https-tidal.com-api-event-batch.request.yaml
+postman/collections/Tidal/tidal.com/https-tidal.com-v1-albums-{{param1}}.request.yaml
+postman/collections/Tidal/tidal.com/https-tidal.com-v1-artists-{{param1}}-bio.request.yaml
+postman/collections/Tidal/tidal.com/https-tidal.com-v1-artists-{{param1}}.request.yaml
+postman/collections/Tidal/tidal.com/https-tidal.com-v1-rt-connect.request.yaml
+postman/collections/Tidal/tidal.com/https-tidal.com-v1-tracks-{{param1}}-credits.request.yaml
+postman/collections/Tidal/tidal.com/https-tidal.com-v1-tracks-{{param1}}-recommendations.request.yaml
+postman/collections/Tidal/tidal.com/https-tidal.com-v2-feed-activities.request.yaml
+postman/collections/Tidal/tidal.com/.resources/definition.yaml
+postman/collections/Tidal/tidal.com/.resources/https-tidal.com-api-event-batch.resources/examples/https-tidal.com-api-event-batch 1.example.yaml
+postman/collections/Tidal/tidal.com/.resources/https-tidal.com-api-event-batch.resources/examples/https-tidal.com-api-event-batch 2.example.yaml
+postman/collections/Tidal/tidal.com/.resources/https-tidal.com-api-event-batch.resources/examples/https-tidal.com-api-event-batch 3.example.yaml
+postman/collections/Tidal/tidal.com/.resources/https-tidal.com-api-event-batch.resources/examples/https-tidal.com-api-event-batch 4.example.yaml
+postman/collections/Tidal/tidal.com/.resources/https-tidal.com-api-event-batch.resources/examples/https-tidal.com-api-event-batch.example.yaml
+postman/collections/Tidal/tidal.com/.resources/https-tidal.com-v1-albums-{{param1}}.resources/examples/https-tidal.com-v1-albums-184854573-countryCode=FR&locale=en_US&deviceType=BROWSER.example.yaml
+postman/collections/Tidal/tidal.com/.resources/https-tidal.com-v1-albums-{{param1}}.resources/examples/https-tidal.com-v1-albums-199543641-countryCode=FR&locale=en_US&deviceType=BROWSER.example.yaml
+postman/collections/Tidal/tidal.com/.resources/https-tidal.com-v1-artists-{{param1}}-bio.resources/examples/https-tidal.com-v1-artists-24673045-bio-includeImageLinks=true&countryCode=FR&locale=en_US&deviceType=BROWSER.example.yaml
+postman/collections/Tidal/tidal.com/.resources/https-tidal.com-v1-artists-{{param1}}.resources/examples/https-tidal.com-v1-artists-3944648-countryCode=FR&locale=en_US&deviceType=BROWSER.example.yaml
+postman/collections/Tidal/tidal.com/.resources/https-tidal.com-v1-artists-{{param1}}.resources/examples/https-tidal.com-v1-artists-24673045-countryCode=FR&locale=en_US&deviceType=BROWSER.example.yaml
+postman/collections/Tidal/tidal.com/.resources/https-tidal.com-v1-rt-connect.resources/examples/https-tidal.com-v1-rt-connect.example.yaml
+postman/collections/Tidal/tidal.com/.resources/https-tidal.com-v1-tracks-{{param1}}-credits.resources/examples/https-tidal.com-v1-tracks-184854575-credits-limit=100&includeContributors=true&countryCode=FR&locale=en_US&deviceType=BROWSER.example.yaml
+postman/collections/Tidal/tidal.com/.resources/https-tidal.com-v1-tracks-{{param1}}-credits.resources/examples/https-tidal.com-v1-tracks-199543643-credits-limit=100&includeContributors=true&countryCode=FR&locale=en_US&deviceType=BROWSER.example.yaml
+postman/collections/Tidal/tidal.com/.resources/https-tidal.com-v1-tracks-{{param1}}-recommendations.resources/examples/https-tidal.com-v1-tracks-184854575-recommendations-limit=20&countryCode=FR&locale=en_US&deviceType=BROWSER.example.yaml
+postman/collections/Tidal/tidal.com/.resources/https-tidal.com-v1-tracks-{{param1}}-recommendations.resources/examples/https-tidal.com-v1-tracks-199543643-recommendations-limit=20&countryCode=FR&locale=en_US&deviceType=BROWSER 1.example.yaml
+postman/collections/Tidal/tidal.com/.resources/https-tidal.com-v1-tracks-{{param1}}-recommendations.resources/examples/https-tidal.com-v1-tracks-199543643-recommendations-limit=20&countryCode=FR&locale=en_US&deviceType=BROWSER.example.yaml
+postman/collections/Tidal/tidal.com/.resources/https-tidal.com-v2-feed-activities.resources/examples/https-tidal.com-v2-feed-activities-userId=207315700&limit=9&countryCode=FR&locale=en_US&deviceType=BROWSER 1.example.yaml
+postman/collections/Tidal/tidal.com/.resources/https-tidal.com-v2-feed-activities.resources/examples/https-tidal.com-v2-feed-activities-userId=207315700&limit=9&countryCode=FR&locale=en_US&deviceType=BROWSER 2.example.yaml
+postman/collections/Tidal/tidal.com/.resources/https-tidal.com-v2-feed-activities.resources/examples/https-tidal.com-v2-feed-activities-userId=207315700&limit=9&countryCode=FR&locale=en_US&deviceType=BROWSER.example.yaml
+postman/collections/Tidal/tidal.com 1/https-tidal.com-api-event-batch.request.yaml
+postman/collections/Tidal/tidal.com 1/https-tidal.com-api-public-event-batch.request.yaml
+postman/collections/Tidal/tidal.com 1/.resources/definition.yaml
+postman/collections/Tidal dev/.resources/definition.yaml
+postman/collections/Tidal dev/developer.tidal.com/https-developer.tidal.com-.request.yaml
+postman/collections/Tidal dev/developer.tidal.com/https-developer.tidal.com-api-developer-applications-{{param1}}-apiUsageStatistics.request.yaml
+postman/collections/Tidal dev/developer.tidal.com/https-developer.tidal.com-api-developer-applications-{{param1}}-availableScopes.request.yaml
+postman/collections/Tidal dev/developer.tidal.com/https-developer.tidal.com-api-developer-applications-{{param1}}-reviews.request.yaml
+postman/collections/Tidal dev/developer.tidal.com/https-developer.tidal.com-api-developer-applications-{{param1}}-secret.request.yaml
+postman/collections/Tidal dev/developer.tidal.com/https-developer.tidal.com-api-developer-applications-{{param1}}.request.yaml
+postman/collections/Tidal dev/developer.tidal.com/https-developer.tidal.com-api-developer-applications.request.yaml
+postman/collections/Tidal dev/developer.tidal.com/https-developer.tidal.com-api-developer-tcAcceptances.request.yaml
+postman/collections/Tidal dev/developer.tidal.com/https-developer.tidal.com-auth-session-user-access-token.request.yaml
+postman/collections/Tidal dev/developer.tidal.com/.resources/definition.yaml
+postman/environments/G.environment.yaml
+.postman/resources.yaml
+tagslut-metadata-implementation-plan.md

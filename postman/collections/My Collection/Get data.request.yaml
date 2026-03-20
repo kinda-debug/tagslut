@@ -16,4 +16,4 @@ scripts:
           pm.response.to.have.status(200);
       });
     language: text/javascript
-order: 1000
+order: 22000

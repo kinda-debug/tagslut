@@ -5,9 +5,12 @@ workspace:
 # Each entry here maps a local resource to one or more corresponding objects in Postman Cloud
 cloudResources:
   collections:
+    ../postman/collections/Tidal dev: 53324156-7c2e203e-45fa-4a92-9dab-4d9f2952e066
+    ../postman/collections/New Collection: 53324156-be0f87e2-396f-474f-945d-4ad128c06cc4
     ../postman/collections/My Collection: 53324156-cb227529-ff5c-4959-9cc8-8bcb5fbc61d5
+    ../postman/collections/Tidal: 53324156-cd617030-cd6a-43f7-9003-47c6e6a6b843
   environments:
-    ../postman/environments/G.environment.yaml: 0468f1da-ff33-47e4-9767-8b8f105ab5ce
+    ../postman/environments/G.environment.yaml: 53324156-0468f1da-ff33-47e4-9767-8b8f105ab5ce
 
 # All resources in the `postman/` folder are automatically registered in Local View.
 # Point to additional files outside the `postman/` folder to register them individually. Example:

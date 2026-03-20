@@ -243,4 +243,20 @@ data/
 dist/
 build/
 node_modules/
+# -- Security: sensitive reference files (never commit) -----------
+*.har
+auth.txt
+tidalhar.txt
+tidalhar.md
+tidal_tokens.json
+tidal_tokens.txt
+tidaltokens.md
+tidal-api-oas.json
+tidal-api-oas.md
+beatport-v3.json
+beatport-search.json
 cff5a0f2f4c9b1545d5d.js
+cff5a0f2f4c9b1545d5d.md
+.gitignore
+postman/environments/G.environment.yaml
+here

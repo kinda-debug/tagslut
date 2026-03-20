@@ -20,7 +20,7 @@ import requests
 CLIENT_ID = os.environ.get("TIDAL_CLIENT_ID", "").strip()
 CLIENT_SECRET = os.environ.get("TIDAL_CLIENT_SECRET", "").strip()
 
-REDIRECT_HOST = "127.0.0.1"
+REDIRECT_HOST = "localhost"
 REDIRECT_PORT = 8888
 REDIRECT_PATH = "/callback"
 REDIRECT_URI = f"http://localhost:{REDIRECT_PORT}{REDIRECT_PATH}"
@@ -145,7 +145,6 @@ def build_authorization_url(
 
 def exchange_code_for_tokens(
     client_id: str,
-    client_secret: str,
     code: str,
     redirect_uri: str,
     code_verifier: str | None = None,
@@ -156,9 +155,6 @@ def exchange_code_for_tokens(
         "code": code,
         "redirect_uri": redirect_uri,
     }
-
-    if client_secret:
-        data["client_secret"] = client_secret
 
     if code_verifier:
         data["code_verifier"] = code_verifier
@@ -272,7 +268,6 @@ def run_oauth_flow() -> dict[str, Any]:
 
     return exchange_code_for_tokens(
         client_id=CLIENT_ID,
-        client_secret=CLIENT_SECRET,
         code=code,
         redirect_uri=REDIRECT_URI,
         code_verifier=code_verifier,

@@ -260,3 +260,4 @@ cff5a0f2f4c9b1545d5d.md
 .gitignore
 postman/environments/G.environment.yaml
 here
+.postman/resources.yaml

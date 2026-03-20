@@ -9,3 +9,13 @@ values:
   - key: access_token
     value: ''
     enabled: true
+values:
+  - key: client_id
+    value: REDACTED_CLIENT_ID
+    enabled: true
+  - key: client_secret
+    value: REDACTED_CLIENT_SECRET
+    enabled: true
+  - key: access_token
+    value: ''
+    enabled: true

@@ -1,4 +1,5 @@
 name: G
+<<<<<<< HEAD
 values:
   - key: client_id
     value: B4mmBLyG0VC2kBEo
@@ -19,3 +20,6 @@ values:
   - key: access_token
     value: ''
     enabled: true
+=======
+values: []
+>>>>>>> c897a74f (feat: Implement TIDAL OAuth flow and add Postman resources (#208))

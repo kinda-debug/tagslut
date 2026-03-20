@@ -1,11 +1,2 @@
 name: G
-values:
-  - key: client_id
-    value: B4mmBLyG0VC2kBEo
-    enabled: true
-  - key: client_secret
-    value: woCDikSzrk3HJubLyDyOfvCwjtV2qblsmLc8dnhEcx0=
-    enabled: true
-  - key: access_token
-    value: ''
-    enabled: true
+values: []

@@ -1,8 +1,74 @@
-<!-- Status: Active document. Synced 2026-03-21 after resume-refresh fix verification. Historical or superseded material belongs in docs/archive/. -->
+<!-- Status: Active document. Synced 2026-03-21 after ingestion provenance memo correction. Historical or superseded material belongs in docs/archive/. -->
 
 # Progress Report
 
 Report date: March 21, 2026
+
+## Session: 2026-03-21 (pass 2) — Ingestion Provenance Memo Correction
+
+**Task**: Revise the ingestion provenance execution memo to align with `PROJECT_DIRECTIVES.md`.
+
+**Status**: Completed — memo corrected. No code changes made. Analysis/spec pass.
+
+**What was verified**:
+
+1. Prior memo incorrectly concluded `ingestion_source` should remain nullable. `PROJECT_DIRECTIVES.md` line 48 is unambiguous: "These are NOT NULL. Any migration or insert that omits them is wrong." The weaker interpretation from `INGESTION_PROVENANCE.md` line 173 (which only named two fields in enforcement prose) is overridden.
+
+2. All four fields must be NOT NULL and enforced in both fresh-DB DDL (`schema.py`) and migration path (trigger in `0012`).
+
+3. Concrete fallback values specified for every insert surface — no operator judgment required. L1/L2 derive source from available provider context; L3 uses download_source; L4/M1/M2 use `'migration'`/`'legacy'` with descriptive source strings.
+
+4. Both prior "blocking ambiguities" resolve as implementation decisions. No operator input needed on either.
+
+5. Implementation ordering corrected: code updates and test fixture updates must precede schema enforcement (NOT NULL + trigger). The prior memo had schema first — that breaks all test fixtures before callers are fixed.
+
+6. Test fixture scope acknowledged: ~25 test files INSERT into track_identity without provenance. These require updates as part of this migration. A `conftest.py` helper reduces churn.
+
+7. `schema.py` must have NOT NULL with no DEFAULT on all four columns. A DEFAULT sentinel silently accepts incomplete inserts.
+
+8. The enforcement trigger must live in both `schema.py` and `0012_ingestion_provenance.py` to prevent fresh-DB vs migration-path drift.
+
+**Files changed**: `docs/PROGRESS_REPORT.md` (this update only).
+
+**Tests run**: None (no code changes).
+
+**Next steps**:
+
+- Revised memo is ready for Codex. 11-step implementation sequence.
+- No operator decisions remain open.
+- Run target after implementation: `poetry run pytest tests/storage/v3/test_migration_0012.py tests/storage/v3/test_ingestion_provenance_inserts.py -v`
+- After implementation: update `docs/ROADMAP.md` §14 to reference both migration file paths.
+
+---
+
+## Session: 2026-03-21 — Ingestion Provenance Migration — Spec / Execution Memo
+
+**Task**: Produce an implementation-grade execution memo for the ingestion provenance migration (`ingested_at`, `ingestion_method`, `ingestion_source`, `ingestion_confidence` on `track_identity`).
+
+**Status**: Completed — Analysis and spec pass. No code changes made. Memo is ready for Codex.
+
+**What was verified**:
+1. All four provenance fields are absent from every schema surface and every production insert path — confirmed by grep across full Python source and both schema files (`schema.py`, `supabase/migrations/20260315154756_tagslut_schema.sql`).
+2. Five insert surfaces identified (3 live, 2 legacy bridge):
+   - L1/L2: `identity_service.py:_create_identity()` via `_identity_value_map()` — primary creation path
+   - L3: `dual_write.py:upsert_track_identity()` — registration path (no provenance params)
+   - L4: `backfill_identity.py:_resolve_identity_via_service()` — live backfill caller with hardcoded partial provenance dict
+   - M1/M2: `scripts/db/migrate_v2_to_v3.py` — two INSERT blocks, legacy one-time bridge
+3. Two migration paths required: `tagslut/storage/v3/migrations/0012_ingestion_provenance.py` (SQLite) + `supabase/migrations/20260322000000_add_ingestion_provenance.sql` (Postgres). ROADMAP §14 incorrectly names only `supabase/migrations/` — this mismatch is called out in the memo.
+4. Six doc/schema inconsistencies documented: nullable-vs-NOT NULL conflict in INGESTION_PROVENANCE.md, missing ROADMAP migration dir, `ingestion_source` NOT NULL overstated in PROJECT_DIRECTIVES.md, DB_V3_SCHEMA.md missing all 4 columns, `_merge_identity_fields_if_empty()` provenance-overwrite risk, `dual_write.py` ON CONFLICT semantics for `ingested_at`.
+5. Two blocking operator decisions identified: default `ingestion_method` for empty provenance dict, and whether `create_schema_v3()` should co-locate the enforcement trigger.
+
+**Files changed**: None (analysis/spec pass only).
+
+**Tests run**: None (no code changes).
+
+**Next steps**:
+- Operator must resolve two blocking ambiguities (see memo §9) before handing to Codex.
+- Codex implementation sequence: 9 commits, schema first (steps 1–3), then service layer (4–7), then docs+tests (8–9).
+- Targeted test run after implementation: `poetry run pytest tests/storage/v3/test_migration_0012.py tests/storage/v3/test_ingestion_provenance_inserts.py -v`
+- After migration lands: update ROADMAP §14 to reference both migration file paths.
+
+---
 
 ## Session: 2026-03-21 — Resume-Refresh Fix Implementation Verification
 

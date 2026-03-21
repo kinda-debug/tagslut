@@ -1,113 +1,78 @@
-You are the Postman AI agent working on the tagslut Beatport + TIDAL API collection.
+# Postman API Optimization — tagslut Beatport Collection
 
-Goal:
-Audit and optimize all API-related requests, scripts, and environment
-configuration so the collection reliably supports the tagslut intake
-pipeline's provider lookup and identity verification workflows.
+<!-- Status: Active. Update as tasks complete. -->
+<!-- Last updated: 2026-03-21 -->
+<!-- Commit: 37619ae — 4 files changed, 290 insertions, 0 deletions -->
 
-Files to read first (all in postman/):
-  environments/tagslut.environment.yaml
-  globals/workspace.globals.yaml
-  collections/tagslut - Beatport API/.resources/definition.yaml
-  collections/tagslut - Beatport API/Auth/Get Token (Client Credentials).request.yaml
-  collections/tagslut - Beatport API/Auth/Introspect Token.request.yaml
-  collections/tagslut - Beatport API/Catalog/Track by ID.request.yaml
-  collections/tagslut - Beatport API/Catalog/Tracks by ISRC (query param).request.yaml
-  collections/tagslut - Beatport API/Catalog/ISRC Store Lookup (path-based) [Phase 3d].request.yaml
-  collections/tagslut - Beatport API/Catalog/Release by ID.request.yaml
-  collections/tagslut - Beatport API/Catalog/Release Tracks.request.yaml
-  collections/tagslut - Beatport API/My Library/My Beatport Tracks.request.yaml
-  collections/tagslut - Beatport API/My Library/My Account.request.yaml
-  collections/tagslut - Beatport API/Search/Search Tracks by Text.request.yaml
+Collection: `postman/collections/tagslut - Beatport API/`
+Environment: `postman/environments/tagslut.environment.yaml`
+Globals: `postman/globals/workspace.globals.yaml`
+OpenAPI spec: `openapi.json` (Beatport v4)
 
-Also read for pipeline context:
-  openapi.json  (Beatport v4 OAS — authoritative spec for all endpoints)
+---
 
+## Completed
 
-Pipeline context:
-  The tagslut intake pipeline uses the Beatport API as a primary identity
-  anchor. When `tools/get --enrich <url>` runs:
-    1. pre_download_check.py resolves track IDs from the Beatport URL
-    2. Each track is looked up by Beatport ID to get ISRC, artist, title,
-       BPM, key, genre, label, catalog number
-    3. The ISRC is used to cross-verify against TIDAL
-    4. When both providers confirm the same ISRC, the identity is written
-       with ingestion_method='provider_api', ingestion_confidence='verified'
+- [x] Deleted stale browser-dump collections (`My Collection`, `Beatport`, `BP`)
+- [x] Added `base_url = https://api.beatport.com` to environment
+- [x] Added `beatport_token_expires_at` to environment
+- [x] Token fetch writes expiry timestamp; beforeRequest warns if within 60s
+- [x] ISRC Store Lookup: confirmed Basic auth, response shape detection, field logging
+- [x] Tracks by ISRC noted as preferred for pipeline ISRC cross-verification
+- [x] Track by ID: validates 9 canonical fields, logs 5 bonus fields
+- [x] Track by ID: sets `beatport_last_track_id` + `beatport_last_isrc` in env
+- [x] Identity Verification folder: `5a` Beatport ISRC lookup + `5b` TIDAL cross-check
+- [x] `5b` logs `CORROBORATED` or `CONFLICT: beatport_isrc=X tidal_isrc=Y`
+- [x] `5c` Spotify ISRC cross-check — logs `SPOTIFY CORROBORATED`, `CONFLICT`, or `NOT FOUND`
+- [x] `spotify_access_token` + `spotify_verified_id` added to environment
+- [x] Validation Run folder: `6a` TIDAL album → ISRC seed, `6b` Beatport Track by ID
+      with pre-chain ISRC pre-check, `6c` run notes with pass criteria + failure table
 
-  The canonical field mapping from Beatport API response to tagslut DB:
-    beatport_id       → track.id
-    isrc              → track.isrc
-    canonical_title   → track.name
-    canonical_artist  → track.artists[].name (all names joined)
-    canonical_bpm     → track.bpm
-    canonical_key     → track.key.name
-    canonical_genre   → track.genre.name
-    canonical_label   → track.release.label.name
-    canonical_mix_name → track.mix_name
+---
 
+## Pending operator steps (before Validation Run can execute)
 
-Tasks — complete all of these:
+These require manual environment setup — not delegatable to an agent:
 
-1. ENVIRONMENT: Fix missing and stale variables
-   Add to tagslut.environment.yaml:
-     base_url              https://api.beatport.com
-     beatport_token_expires_at  (empty string, for expiry tracking)
-   Confirm every request uses {{base_url}} not a hardcoded URL.
-   Add STAGING_ROOT deprecation note: VOLUME_STAGING is deprecated,
-   use STAGING_ROOT instead (do not change the env file for this —
-   just document it in the collection description).
+1. Add four variables to the `tagslut` environment in Postman desktop
+   (patch note at `postman/environments/tagslut.environment.yaml.patch.md`):
+   - `spotify_access_token` — obtain via Spotify Client Credentials flow
+   - `tidal_seed_track_id`, `tidal_seed_isrc`, `spotify_verified_id` — set at runtime
 
-2. AUTH: Token lifecycle management
-   In Get Token (Client Credentials).request.yaml:
-     - The afterResponse script sets beatport_access_token — confirm it works
-     - Add expiry tracking: after setting the token, also set
-       beatport_token_expires_at to (Date.now() + json.expires_in * 1000)
-     - Add a pre-request script that checks if the token is within 60
-       seconds of expiry and re-fetches automatically if so
-   In Introspect Token.request.yaml:
-     - Confirm the introspect endpoint exists in the OAS spec
-     - If it does not exist in the spec, mark the request as DEPRECATED
-       in its description
+2. Find the Beatport track ID for the TIDAL seed track:
+   - Run `6a` to get the ISRC from the TIDAL album
+   - Run `Catalog / Tracks by ISRC` with that ISRC to get `beatport_test_track_id`
+   - Set `beatport_test_track_id` in the environment
 
-3. ISRC LOOKUP: Resolve the open auth question
-   The Phase 3d ISRC Store Lookup has an unresolved question:
-   does it require Bearer, cookie, or basic auth?
-   - Read the OAS spec (openapi.json) for /v4/catalog/tracks/store/{isrc}/
-   - Update the request description with the confirmed auth method
-   - Update the afterResponse script to validate the response shape:
-     * Is it a direct record (has 'id', 'isrc' at top level)?
-     * Or a paginated wrapper (has 'results', 'count')?
-   - Compare with Tracks by ISRC (query param) — document which returns
-     richer metadata and which should be preferred by the pipeline
+3. Run the Validation Run folder in Collection Runner in order:
+   `6a → 6b → 5a → 5b → 5c`
+   Pass criteria: no WARNING on canonical fields, both `5b` and `5c` log `CORROBORATED`
 
-4. TRACK BY ID: Validate canonical field coverage
-   Add an afterResponse test script that:
-     - Checks all nine canonical fields are present in the response
-       (id, isrc, name, artists, bpm, key, genre, release.label, mix_name)
-     - Logs a WARNING for each field that is null or missing
-     - Sets pm.environment.set('beatport_last_track_id', json.id) for
-       chaining into release lookups
+---
 
-5. MY BEATPORT TRACKS: Pagination and token scope
-   - Add pre-request script: set page=1, page_size=100 as query params
-   - Add afterResponse script: log pm.response.json().count (total tracks)
-     and whether next/previous pages exist
-   - Document in the request description whether this endpoint requires
-     a user-scoped token (PKCE flow) vs client credentials
-   - If client credentials are insufficient, add a note on how to obtain
-     a user token via the TIDAL PKCE flow already configured in .env
+## Remaining task
 
-6. COLLECTION DOCUMENTATION
-   Add a root-level description to the collection covering:
-     a. Auth order: run Get Token first, then any Catalog/My Library request
-     b. Which endpoints need client credentials vs user token
-     c. The canonical field mapping table (from Pipeline context above)
-     d. How to test a full identity lookup:
-        Get Token → Track by ID (set beatport_test_track_id) →
-        ISRC lookup → cross-verify with TIDAL
+### Task 8 — Collection-level token expiry guard
 
-7. COMMIT
-   After all changes:
-     git add postman/
-     git commit -m "chore(postman): optimize Beatport API collection — auth lifecycle, ISRC resolution, field validation"
-     git push
+Add a Collection-level pre-request script that warns if the Beatport token
+is within 60 seconds of expiry, so every Bearer-authenticated request
+self-checks without requiring per-request scripts.
+
+Script logic:
+  const expiresAt = pm.environment.get('beatport_token_expires_at');
+  if (expiresAt && Date.now() > (parseInt(expiresAt) - 60000)) {
+      console.warn('Beatport token expired or expiring. Re-run Get Token.');
+  }
+
+Note: full auto-refresh is not possible at collection level — Postman
+pre-request scripts cannot make synchronous fetch calls. The warning
+is the correct approach. Document this limitation in the collection
+root description.
+
+Commit: `chore(postman): add collection-level token expiry guard`
+
+---
+
+## Commit convention
+
+Each task gets its own commit: `chore(postman): <description>`

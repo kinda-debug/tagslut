@@ -1,0 +1,57 @@
+$kind: http-request
+name: '5a - Beatport ISRC Lookup'
+description: |-
+  **Step 1 of the Identity Verification chain.**
+
+  Uses `{{beatport_last_isrc}}` set by Task 4 (Track by ID) to query the
+  Beatport catalog ISRC endpoint. On a 200 response the script stores:
+
+  - `beatport_verified_id` — numeric Beatport track ID from the first result
+  - `beatport_verified_isrc` — ISRC echoed back by Beatport (used by 5b for
+    the TIDAL comparison)
+
+  If the results array is empty the script logs a warning and does **not**
+  overwrite the environment variables, so a failed lookup never silently
+  corrupts a previous good value.
+url: '{{base_url}}/v4/catalog/tracks/?isrc={{beatport_last_isrc}}'
+method: GET
+auth:
+  type: bearer
+  credentials:
+    token: '{{beatport_access_token}}'
+queryParams:
+  - key: isrc
+    value: '{{beatport_last_isrc}}'
+scripts:
+  - type: afterResponse
+    code: |-
+      var code = pm.response.code;
+      console.log('[5a] Status: ' + code);
+
+      if (code !== 200) {
+          console.log('[5a] FAILED — body: ' + pm.response.text().substring(0, 300));
+          return;
+      }
+
+      var json = pm.response.json();
+      var results = json.results || (Array.isArray(json) ? json : []);
+
+      if (!results.length) {
+          console.log('[5a] WARNING: Beatport returned 0 results for ISRC ' +
+              pm.environment.get('beatport_last_isrc'));
+          return;
+      }
+
+      var track = results[0];
+      var bpId   = track.id;
+      var bpIsrc = track.isrc;
+
+      pm.environment.set('beatport_verified_id',   bpId);
+      pm.environment.set('beatport_verified_isrc', bpIsrc);
+
+      console.log('[5a] beatport_verified_id   = ' + bpId);
+      console.log('[5a] beatport_verified_isrc = ' + bpIsrc);
+      console.log('[5a] Results in page: ' + results.length +
+          (json.count !== undefined ? ' / total: ' + json.count : ''));
+    language: text/javascript
+order: 1000

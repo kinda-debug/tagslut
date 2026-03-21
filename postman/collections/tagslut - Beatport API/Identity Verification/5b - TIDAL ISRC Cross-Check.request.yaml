@@ -1,0 +1,82 @@
+$kind: http-request
+name: '5b - TIDAL ISRC Cross-Check'
+description: |-
+  **Step 2 of the Identity Verification chain.**
+
+  Uses `{{beatport_verified_isrc}}` written by 5a to query the TIDAL tracks
+  endpoint. The afterResponse script compares the ISRC returned by TIDAL
+  against the Beatport value and emits one of two verdicts:
+
+  | Verdict | Meaning |
+  |---------|---------|
+  | `CORROBORATED` | Both providers agree on the ISRC → safe to ingest with `ingestion_confidence = 'verified'` |
+  | `CONFLICT` | ISRCs differ → flag for manual review before ingestion |
+
+  ### Auth
+  Bearer token via `{{tidal_access_token}}`. Ensure the TIDAL token is valid
+  before running this request. `countryCode=US` is required by the TIDAL v1
+  endpoint; change it to match your target market if needed.
+
+  ### Chaining
+  Run this folder via **Collection Runner** after Task 4 so that
+  `{{beatport_last_isrc}}` → `{{beatport_verified_isrc}}` is populated before
+  this request fires.
+url: 'https://api.tidal.com/v1/tracks'
+method: GET
+auth:
+  type: bearer
+  credentials:
+    token: '{{tidal_access_token}}'
+queryParams:
+  - key: isrc
+    value: '{{beatport_verified_isrc}}'
+  - key: countryCode
+    value: US
+scripts:
+  - type: afterResponse
+    code: |-
+      var code = pm.response.code;
+      console.log('[5b] Status: ' + code);
+
+      if (code !== 200) {
+          console.log('[5b] TIDAL request FAILED — body: ' +
+              pm.response.text().substring(0, 300));
+          return;
+      }
+
+      var json  = pm.response.json();
+      var items = json.items || (Array.isArray(json) ? json : []);
+
+      if (!items.length) {
+          console.log('[5b] WARNING: TIDAL returned 0 results for ISRC ' +
+              pm.environment.get('beatport_verified_isrc'));
+          return;
+      }
+
+      var tidalIsrc    = items[0].isrc;
+      var beatportIsrc = pm.environment.get('beatport_verified_isrc');
+
+      console.log('[5b] beatport_isrc = ' + beatportIsrc);
+      console.log('[5b] tidal_isrc    = ' + tidalIsrc);
+
+      if (tidalIsrc && beatportIsrc && tidalIsrc === beatportIsrc) {
+          console.log('[5b] CORROBORATED — both providers agree: ' + beatportIsrc);
+      } else {
+          console.log('[5b] CONFLICT: beatport_isrc=' + beatportIsrc +
+              ' tidal_isrc=' + tidalIsrc);
+      }
+
+      // Log extra TIDAL fields useful for provenance enrichment
+      var t = items[0];
+      var extras = ['id', 'title', 'duration', 'explicit', 'audioQuality', 'version'];
+      var found = [];
+      extras.forEach(function(f) {
+          if (t[f] !== null && t[f] !== undefined) {
+              found.push(f + '=' + JSON.stringify(t[f]).substring(0, 40));
+          }
+      });
+      if (found.length) {
+          console.log('[5b] TIDAL enrichment fields: ' + found.join(', '));
+      }
+    language: text/javascript
+order: 2000

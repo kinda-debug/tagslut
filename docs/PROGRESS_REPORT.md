@@ -1,45 +1,51 @@
-<!-- Status: Active document. Synced 2026-03-21 after Postman track complete. Historical or superseded material belongs in docs/archive/. -->
+<!-- Status: Active document. Synced 2026-03-21 after tidal_oauth.py refactor. Historical or superseded material belongs in docs/archive/. -->
 
 # Progress Report
 
 Report date: March 21, 2026
 
+## Session: 2026-03-21 (pass 8) — TIDAL OAuth Refactor
+
+**Task**: Refactor `tidal_oauth.py` — remove global mutable state, fix timeout clock.
+
+**Status**: Completed — commit `3a3595c`, 1 file, net −59 lines (159 in, 218 out).
+
+**What changed**:
+- `auth_result` global dict removed → scoped to `_CallbackHandler.result`
+- `time.time()` → `time.monotonic()` (NTP/DST-safe timeout loop)
+- All internal helpers `_prefixed` — public surface is now unambiguous:
+  `run_login()`, `run_refresh()`, `main()`
+- Module docstring restored
+- No behaviour changes — same PKCE flow, same token file format, same CLI
+
+**Tests run**: None (no logic changes).
+
+---
+
 ## Session: 2026-03-21 (pass 7) — Postman Collection-Level Token Guard
 
 **Task**: Task 8 — collection-level token expiry guard.
 
-**Status**: Completed — commit `14c9e29`, 1 file created, 42 insertions.
-**Postman agent track is now fully complete.**
+**Status**: Completed — commit `14c9e29`, 1 file, 42 insertions.
+Postman agent track fully complete.
 
-**What was done**: Token guard added to
-`postman/collections/tagslut - Beatport API/.resources/definition.yaml`.
-Runs before every request. Silent on healthy tokens. Skips auth endpoints
-to prevent refresh loops. Logs exact expiry state when token is stale or expiring.
+Token guard at `tagslut - Beatport API/.resources/definition.yaml`. Silent on healthy
+tokens, skips auth endpoints, logs exact expiry state when stale or expiring.
 
-| Condition | Output |
-|---|---|
-| Auth endpoint (`/token/`, `/introspect/`) | Silent skip |
-| Token not set | Warn: run Get Token first |
-| Token expired | Log seconds since expiry |
-| Token < 60s from expiry | Warn: consider refreshing |
-| Token healthy | Silent |
-
-**Remaining operator task**: Run Validation Run folder in Collection Runner
-(`6a → 6b → 5a → 5b → 5c`). Requires live TIDAL token + `beatport_test_track_id`
-resolved from `6a` ISRC. Pass: `5b` + `5c` both log `CORROBORATED`. Then open PR.
+**Remaining operator task**: Validation Run in Collection Runner (`6a → 6b → 5a → 5b → 5c`).
+Requires live TIDAL token + `beatport_test_track_id` from `6a`. Pass: `5b` + `5c` both
+log `CORROBORATED`. Then open PR `dev → main`.
 
 ---
 
 ## Session: 2026-03-21 (pass 6) — Postman Validation Run + Spotify Chain
 
-**Task**: Build Validation Run folder and Spotify ISRC cross-check (tasks 6 + 7).
-
 **Status**: Completed — commit `37619ae`, 4 new files, 290 insertions.
 
-**What was done**: `5c` Spotify cross-check (three-way corroboration → `ingestion_confidence = 'corroborated'`).
-Validation Run folder: `6a` TIDAL seed, `6b` Beatport pre-check, `6c` run notes with
-pass criteria and failure table. Environment additions: `spotify_access_token`,
-`tidal_seed_track_id`, `tidal_seed_isrc`, `spotify_verified_id`.
+`5c` Spotify ISRC cross-check (three-way → `ingestion_confidence = 'corroborated'`).
+Validation Run folder: `6a` TIDAL seed, `6b` Beatport pre-check, `6c` run notes.
+Environment additions: `spotify_access_token`, `tidal_seed_track_id`, `tidal_seed_isrc`,
+`spotify_verified_id`.
 
 ---
 
@@ -49,8 +55,7 @@ pass criteria and failure table. Environment additions: `spotify_access_token`,
 
 Collection cleanup, `base_url` + token expiry, ISRC auth confirmed (Basic), Track by ID
 field validation, Identity Verification `5a` + `5b`. Multi-provider ID policy
-(`MULTI_PROVIDER_ID_POLICY.md`), five-tier confidence model, tiddl config documented
-(`TIDDL_CONFIG.md`, `tiddl_config.reference.toml`).
+(`MULTI_PROVIDER_ID_POLICY.md`), five-tier confidence model, tiddl config documented.
 
 ---
 

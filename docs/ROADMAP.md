@@ -461,3 +461,14 @@ Commit: `feat(schema): add ingestion provenance columns to track_identity`
 
 Prompts for Phase 1 PRs 12–15 and Phase 2 seam: not yet written.
 Author in Claude.ai before delegating to Codex.
+
+
+---
+
+## 15 — TIDAL OAuth refactor: COMPLETE (2026-03-21)
+
+Commit: `3a3595c`
+
+`tidal_oauth.py` refactored — global mutable state removed, monotonic clock,
+private naming convention, docstring restored. No behaviour changes.
+No further work needed on this file unless the PKCE flow itself changes.

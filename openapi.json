@@ -1,0 +1,2829 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Search Service",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/search/health-check": {
+      "get": {
+        "tags": [
+          "Service endpoints"
+        ],
+        "summary": "Health-Check",
+        "description": "Endpoint used for health checking the service and the ES connectivity status.",
+        "operationId": "health_check_search_health_check_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthCheckResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/search/v1/tracks": {
+      "get": {
+        "tags": [
+          "Search endpoints"
+        ],
+        "summary": "Tracks-Search",
+        "description": "Returns a set of track results",
+        "operationId": "tracks_search_search_v1_tracks_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Search query text",
+              "title": "Q"
+            },
+            "description": "Search query text"
+          },
+          {
+            "name": "count",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "description": "The number of results returned in the response",
+              "default": 20,
+              "title": "Count"
+            },
+            "description": "The number of results returned in the response"
+          },
+          {
+            "name": "preorder",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "\nWhen FALSE, the response will not include tracks in a pre-order status.\n\nWhen TRUE, the response will include tracks that are in a pre-order status\n",
+              "default": false,
+              "title": "Preorder"
+            },
+            "description": "\nWhen FALSE, the response will not include tracks in a pre-order status.\n\nWhen TRUE, the response will include tracks that are in a pre-order status\n"
+          },
+          {
+            "name": "from_publish_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "\nThe date a track was published on Beatport.com or Beatsource.com.\n\nFormat: YYYY-MM-DD\n",
+              "title": "From Publish Date"
+            },
+            "description": "\nThe date a track was published on Beatport.com or Beatsource.com.\n\nFormat: YYYY-MM-DD\n"
+          },
+          {
+            "name": "to_publish_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "\nThe date a track was published on Beatport.com or Beatsource.com.\n\nFormat: YYYY-MM-DD\n",
+              "title": "To Publish Date"
+            },
+            "description": "\nThe date a track was published on Beatport.com or Beatsource.com.\n\nFormat: YYYY-MM-DD\n"
+          },
+          {
+            "name": "from_release_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "\nThe date a track was released to the public.\n\nFormat: YYYY-MM-DD\n",
+              "title": "From Release Date"
+            },
+            "description": "\nThe date a track was released to the public.\n\nFormat: YYYY-MM-DD\n"
+          },
+          {
+            "name": "to_release_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "\nThe date a track was released to the public.\n\nFormat: YYYY-MM-DD\n",
+              "title": "To Release Date"
+            },
+            "description": "\nThe date a track was released to the public.\n\nFormat: YYYY-MM-DD\n"
+          },
+          {
+            "name": "genre_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "\nReturns tracks that have the genre of the ID inputed. Multiple genre IDs can be added\nby separating them with a comma, ex: (89, 6, 14).\n\nFor a list of available genres and their IDs, make a GET call to our API route /catalog/genres/\n",
+              "title": "Genre Id"
+            },
+            "description": "\nReturns tracks that have the genre of the ID inputed. Multiple genre IDs can be added\nby separating them with a comma, ex: (89, 6, 14).\n\nFor a list of available genres and their IDs, make a GET call to our API route /catalog/genres/\n"
+          },
+          {
+            "name": "genre_name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "\nReturns tracks that have a genre which partially matches the value inputed.\n\nFor ex: “Techno” would return tracks with a genre of “Hard Techno”, “Techno (Peak Time / Driving)”, etc.\n\nFor a list of genres and their names, make a GET call to our API route /catalog/genres/\n",
+              "title": "Genre Name"
+            },
+            "description": "\nReturns tracks that have a genre which partially matches the value inputed.\n\nFor ex: “Techno” would return tracks with a genre of “Hard Techno”, “Techno (Peak Time / Driving)”, etc.\n\nFor a list of genres and their names, make a GET call to our API route /catalog/genres/\n"
+          },
+          {
+            "name": "mix_name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Search for a specific mix name, ex: original",
+              "title": "Mix Name"
+            },
+            "description": "Search for a specific mix name, ex: original"
+          },
+          {
+            "name": "from_bpm",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From Bpm"
+            }
+          },
+          {
+            "name": "to_bpm",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To Bpm"
+            }
+          },
+          {
+            "name": "key_name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "\nSearch for a specific key in the following format:\n\nA Major, A Minor, A# Major, A# Minor, Ab Major, Ab Minor\n",
+              "title": "Key Name"
+            },
+            "description": "\nSearch for a specific key in the following format:\n\nA Major, A Minor, A# Major, A# Minor, Ab Major, Ab Minor\n"
+          },
+          {
+            "name": "mix_name_weight",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 10,
+              "minimum": 0,
+              "description": "\nThis parameter determines how much weight to put on mix_name using the search query text from q.\n\nThe higher the value the more weight is put on matching q to mix_name\n",
+              "default": 1,
+              "title": "Mix Name Weight"
+            },
+            "description": "\nThis parameter determines how much weight to put on mix_name using the search query text from q.\n\nThe higher the value the more weight is put on matching q to mix_name\n"
+          },
+          {
+            "name": "label_name_weight",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 10,
+              "minimum": 0,
+              "description": "\nThis parameter determines how much weight to put on label_name using the search query text from q.\n\nThe higher the value the more weight is put on matching q to label_name\n",
+              "default": 1,
+              "title": "Label Name Weight"
+            },
+            "description": "\nThis parameter determines how much weight to put on label_name using the search query text from q.\n\nThe higher the value the more weight is put on matching q to label_name\n"
+          },
+          {
+            "name": "dj_edits",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "\nWhen FALSE, the response will exclude DJ Edit tracks.\n\nWhen TRUE, the response will return only DJ Edit tracks.\n",
+              "title": "Dj Edits"
+            },
+            "description": "\nWhen FALSE, the response will exclude DJ Edit tracks.\n\nWhen TRUE, the response will return only DJ Edit tracks.\n"
+          },
+          {
+            "name": "ugc_remixes",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "\nWhen FALSE, the response will exclude UGC Remix tracks.\n\nWhen TRUE, the response will return only UGC Remix tracks.\n",
+              "title": "Ugc Remixes"
+            },
+            "description": "\nWhen FALSE, the response will exclude UGC Remix tracks.\n\nWhen TRUE, the response will return only UGC Remix tracks.\n"
+          },
+          {
+            "name": "dj_edits_and_ugc_remixes",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "\nWhen FALSE, the response will exclude DJ Edits and UGC Remix tracks.\n\nWhen TRUE, the response will return only DJ Edits or UGC Remix tracks.\n\nWhen parameter is not included, the response will include DJ edits and UGC remixes amongst other tracks.\n",
+              "title": "Dj Edits And Ugc Remixes"
+            },
+            "description": "\nWhen FALSE, the response will exclude DJ Edits and UGC Remix tracks.\n\nWhen TRUE, the response will return only DJ Edits or UGC Remix tracks.\n\nWhen parameter is not included, the response will include DJ edits and UGC remixes amongst other tracks.\n"
+          },
+          {
+            "name": "is_available_for_streaming",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "\nBy default the response will return both streamable and non-streamable tracks.\n\n**Note**: This is dependent on your app scope, if your scope inherently does not allow\nnon-streamable tracks then only streamable tracks will be returned always.\n\nWhen FALSE, the response will return only tracks that are not available for streaming.\n\nWhen TRUE, the response will return only tracks that are available for streaming.\n",
+              "title": "Is Available For Streaming"
+            },
+            "description": "\nBy default the response will return both streamable and non-streamable tracks.\n\n**Note**: This is dependent on your app scope, if your scope inherently does not allow\nnon-streamable tracks then only streamable tracks will be returned always.\n\nWhen FALSE, the response will return only tracks that are not available for streaming.\n\nWhen TRUE, the response will return only tracks that are available for streaming.\n"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TracksResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/search/v1/releases": {
+      "get": {
+        "tags": [
+          "Search endpoints"
+        ],
+        "summary": "Releases-Search",
+        "description": "Returns a set of release results",
+        "operationId": "releases_search_search_v1_releases_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Search query text",
+              "title": "Q"
+            },
+            "description": "Search query text"
+          },
+          {
+            "name": "count",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "description": "The number of results returned in the response",
+              "default": 20,
+              "title": "Count"
+            },
+            "description": "The number of results returned in the response"
+          },
+          {
+            "name": "preorder",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "\nWhen FALSE, the response will not include tracks in a pre-order status.\n\nWhen TRUE, the response will include tracks that are in a pre-order status\n",
+              "default": false,
+              "title": "Preorder"
+            },
+            "description": "\nWhen FALSE, the response will not include tracks in a pre-order status.\n\nWhen TRUE, the response will include tracks that are in a pre-order status\n"
+          },
+          {
+            "name": "from_publish_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "\nThe date a track was published on Beatport.com or Beatsource.com.\n\nFormat: YYYY-MM-DD\n",
+              "title": "From Publish Date"
+            },
+            "description": "\nThe date a track was published on Beatport.com or Beatsource.com.\n\nFormat: YYYY-MM-DD\n"
+          },
+          {
+            "name": "to_publish_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "\nThe date a track was published on Beatport.com or Beatsource.com.\n\nFormat: YYYY-MM-DD\n",
+              "title": "To Publish Date"
+            },
+            "description": "\nThe date a track was published on Beatport.com or Beatsource.com.\n\nFormat: YYYY-MM-DD\n"
+          },
+          {
+            "name": "from_release_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "\nThe date a track was released to the public.\n\nFormat: YYYY-MM-DD\n",
+              "title": "From Release Date"
+            },
+            "description": "\nThe date a track was released to the public.\n\nFormat: YYYY-MM-DD\n"
+          },
+          {
+            "name": "to_release_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "\nThe date a track was released to the public.\n\nFormat: YYYY-MM-DD\n",
+              "title": "To Release Date"
+            },
+            "description": "\nThe date a track was released to the public.\n\nFormat: YYYY-MM-DD\n"
+          },
+          {
+            "name": "genre_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "\nReturns tracks that have the genre of the ID inputed. Multiple genre IDs can be added\nby separating them with a comma, ex: (89, 6, 14).\n\nFor a list of available genres and their IDs, make a GET call to our API route /catalog/genres/\n",
+              "title": "Genre Id"
+            },
+            "description": "\nReturns tracks that have the genre of the ID inputed. Multiple genre IDs can be added\nby separating them with a comma, ex: (89, 6, 14).\n\nFor a list of available genres and their IDs, make a GET call to our API route /catalog/genres/\n"
+          },
+          {
+            "name": "genre_name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "\nReturns tracks that have a genre which partially matches the value inputed.\n\nFor ex: “Techno” would return tracks with a genre of “Hard Techno”, “Techno (Peak Time / Driving)”, etc.\n\nFor a list of genres and their names, make a GET call to our API route /catalog/genres/\n",
+              "title": "Genre Name"
+            },
+            "description": "\nReturns tracks that have a genre which partially matches the value inputed.\n\nFor ex: “Techno” would return tracks with a genre of “Hard Techno”, “Techno (Peak Time / Driving)”, etc.\n\nFor a list of genres and their names, make a GET call to our API route /catalog/genres/\n"
+          },
+          {
+            "name": "release_name_weight",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 10,
+              "minimum": 0,
+              "default": 1,
+              "title": "Release Name Weight"
+            }
+          },
+          {
+            "name": "label_name_weight",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 10,
+              "minimum": 0,
+              "description": "\nThis parameter determines how much weight to put on label_name using the search query text from q.\n\nThe higher the value the more weight is put on matching q to label_name\n",
+              "default": 1,
+              "title": "Label Name Weight"
+            },
+            "description": "\nThis parameter determines how much weight to put on label_name using the search query text from q.\n\nThe higher the value the more weight is put on matching q to label_name\n"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleasesResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/search/v1/artists": {
+      "get": {
+        "tags": [
+          "Search endpoints"
+        ],
+        "summary": "Artists-Search",
+        "description": "Returns a set of artist results",
+        "operationId": "artists_search_search_v1_artists_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Search query text",
+              "title": "Q"
+            },
+            "description": "Search query text"
+          },
+          {
+            "name": "count",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "description": "The number of results returned in the response",
+              "default": 20,
+              "title": "Count"
+            },
+            "description": "The number of results returned in the response"
+          },
+          {
+            "name": "genre_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "\nReturns tracks that have the genre of the ID inputed. Multiple genre IDs can be added\nby separating them with a comma, ex: (89, 6, 14).\n\nFor a list of available genres and their IDs, make a GET call to our API route /catalog/genres/\n",
+              "title": "Genre Id"
+            },
+            "description": "\nReturns tracks that have the genre of the ID inputed. Multiple genre IDs can be added\nby separating them with a comma, ex: (89, 6, 14).\n\nFor a list of available genres and their IDs, make a GET call to our API route /catalog/genres/\n"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtistsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/search/v1/labels": {
+      "get": {
+        "tags": [
+          "Search endpoints"
+        ],
+        "summary": "Labels-Search",
+        "description": "Returns a set of label results",
+        "operationId": "labels_search_search_v1_labels_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Search query text",
+              "title": "Q"
+            },
+            "description": "Search query text"
+          },
+          {
+            "name": "count",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "description": "The number of results returned in the response",
+              "default": 20,
+              "title": "Count"
+            },
+            "description": "The number of results returned in the response"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabelsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/search/v1/charts": {
+      "get": {
+        "tags": [
+          "Search endpoints"
+        ],
+        "summary": "Charts-Search",
+        "description": "Returns a set of chart results",
+        "operationId": "charts_search_search_v1_charts_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Search query text",
+              "title": "Q"
+            },
+            "description": "Search query text"
+          },
+          {
+            "name": "count",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "description": "The number of results returned in the response",
+              "default": 20,
+              "title": "Count"
+            },
+            "description": "The number of results returned in the response"
+          },
+          {
+            "name": "genre_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "\nReturns tracks that have the genre of the ID inputed. Multiple genre IDs can be added\nby separating them with a comma, ex: (89, 6, 14).\n\nFor a list of available genres and their IDs, make a GET call to our API route /catalog/genres/\n",
+              "title": "Genre Id"
+            },
+            "description": "\nReturns tracks that have the genre of the ID inputed. Multiple genre IDs can be added\nby separating them with a comma, ex: (89, 6, 14).\n\nFor a list of available genres and their IDs, make a GET call to our API route /catalog/genres/\n"
+          },
+          {
+            "name": "genre_name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "\nReturns tracks that have a genre which partially matches the value inputed.\n\nFor ex: “Techno” would return tracks with a genre of “Hard Techno”, “Techno (Peak Time / Driving)”, etc.\n\nFor a list of genres and their names, make a GET call to our API route /catalog/genres/\n",
+              "title": "Genre Name"
+            },
+            "description": "\nReturns tracks that have a genre which partially matches the value inputed.\n\nFor ex: “Techno” would return tracks with a genre of “Hard Techno”, “Techno (Peak Time / Driving)”, etc.\n\nFor a list of genres and their names, make a GET call to our API route /catalog/genres/\n"
+          },
+          {
+            "name": "is_approved",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "\nWhen TRUE, the response will only include charts that have been approved.\n\nWhen FALSE, the response will include all charts.\n\nIt is recommended to leave this set to TRUE\n",
+              "title": "Is Approved"
+            },
+            "description": "\nWhen TRUE, the response will only include charts that have been approved.\n\nWhen FALSE, the response will include all charts.\n\nIt is recommended to leave this set to TRUE\n"
+          },
+          {
+            "name": "from_publish_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "\nThe date a chart was published on Beatport.com or Beatsource.com.\n\nFormat: YYYY-MM-DD\n",
+              "title": "From Publish Date"
+            },
+            "description": "\nThe date a chart was published on Beatport.com or Beatsource.com.\n\nFormat: YYYY-MM-DD\n"
+          },
+          {
+            "name": "to_publish_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "\nThe date a chart was published on Beatport.com or Beatsource.com.\n\nFormat: YYYY-MM-DD\n",
+              "title": "To Publish Date"
+            },
+            "description": "\nThe date a chart was published on Beatport.com or Beatsource.com.\n\nFormat: YYYY-MM-DD\n"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChartsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/search/v1/all": {
+      "get": {
+        "tags": [
+          "Search endpoints"
+        ],
+        "summary": "All-Search",
+        "description": "Returns a set of results for all search types",
+        "operationId": "all_search_search_v1_all_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Search query text",
+              "title": "Q"
+            },
+            "description": "Search query text"
+          },
+          {
+            "name": "count",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "description": "The number of results returned in the response",
+              "default": 20,
+              "title": "Count"
+            },
+            "description": "The number of results returned in the response"
+          },
+          {
+            "name": "preorder",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "\nWhen FALSE, the response will not include tracks or releases in a pre-order status.\n\nWhen TRUE, the response will include tracks and releases that are in a pre-order status\n",
+              "default": false,
+              "title": "Preorder"
+            },
+            "description": "\nWhen FALSE, the response will not include tracks or releases in a pre-order status.\n\nWhen TRUE, the response will include tracks and releases that are in a pre-order status\n"
+          },
+          {
+            "name": "tracks_from_release_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "\nThe date a track was released to the public.\n\nFormat: YYYY-MM-DD\n",
+              "title": "Tracks From Release Date"
+            },
+            "description": "\nThe date a track was released to the public.\n\nFormat: YYYY-MM-DD\n"
+          },
+          {
+            "name": "tracks_to_release_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "\nThe date a track was released to the public.\n\nFormat: YYYY-MM-DD\n",
+              "title": "Tracks To Release Date"
+            },
+            "description": "\nThe date a track was released to the public.\n\nFormat: YYYY-MM-DD\n"
+          },
+          {
+            "name": "releases_from_release_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "\nThe date a release was released to the public.\n\nFormat: YYYY-MM-DD\n",
+              "title": "Releases From Release Date"
+            },
+            "description": "\nThe date a release was released to the public.\n\nFormat: YYYY-MM-DD\n"
+          },
+          {
+            "name": "releases_to_release_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "\nThe date a release was released to the public.\n\nFormat: YYYY-MM-DD\n",
+              "title": "Releases To Release Date"
+            },
+            "description": "\nThe date a release was released to the public.\n\nFormat: YYYY-MM-DD\n"
+          },
+          {
+            "name": "is_approved",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "\nWhen TRUE, the response will only include charts that have been approved.\n\nWhen FALSE, the response will include all charts.\n\nIt is recommended to leave this set to TRUE\n",
+              "title": "Is Approved"
+            },
+            "description": "\nWhen TRUE, the response will only include charts that have been approved.\n\nWhen FALSE, the response will include all charts.\n\nIt is recommended to leave this set to TRUE\n"
+          },
+          {
+            "name": "is_available_for_streaming",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "\nBy default the response will return both streamable and non-streamable tracks.\n\n**Note**: This is dependent on your app scope, if your scope inherently does not allow\nnon-streamable tracks then only streamable tracks will be returned always.\n\nWhen FALSE, the response will return only tracks that are not available for streaming.\n\nWhen TRUE, the response will return only tracks that are available for streaming.\n",
+              "title": "Is Available For Streaming"
+            },
+            "description": "\nBy default the response will return both streamable and non-streamable tracks.\n\n**Note**: This is dependent on your app scope, if your scope inherently does not allow\nnon-streamable tracks then only streamable tracks will be returned always.\n\nWhen FALSE, the response will return only tracks that are not available for streaming.\n\nWhen TRUE, the response will return only tracks that are available for streaming.\n"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MultisearchResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ArtistsDefaultModel": {
+        "properties": {
+          "score": {
+            "type": "number",
+            "title": "Score"
+          },
+          "enabled": {
+            "type": "integer",
+            "title": "Enabled"
+          },
+          "update_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Update Date"
+          },
+          "latest_publish_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Publish Date"
+          },
+          "available_worldwide": {
+            "type": "integer",
+            "title": "Available Worldwide"
+          },
+          "downloads": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Downloads"
+          },
+          "artist_id": {
+            "type": "integer",
+            "title": "Artist Id"
+          },
+          "artist_name": {
+            "type": "string",
+            "title": "Artist Name"
+          },
+          "genre": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/GenreModel"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Genre"
+          },
+          "artist_image_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artist Image Uri"
+          },
+          "artist_image_dynamic_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artist Image Dynamic Uri"
+          }
+        },
+        "type": "object",
+        "required": [
+          "score",
+          "enabled",
+          "available_worldwide",
+          "artist_id",
+          "artist_name"
+        ],
+        "title": "ArtistsDefaultModel"
+      },
+      "ArtistsResponse": {
+        "properties": {
+          "debug": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Debug"
+          },
+          "explain": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Explain"
+          },
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ArtistsDefaultModel"
+            },
+            "type": "array",
+            "title": "Root list",
+            "description": "List of artist models."
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "ArtistsResponse"
+      },
+      "ChartsDefaultModel": {
+        "properties": {
+          "score": {
+            "type": "number",
+            "title": "Score"
+          },
+          "chart_id": {
+            "type": "integer",
+            "title": "Chart Id"
+          },
+          "chart_name": {
+            "type": "string",
+            "title": "Chart Name"
+          },
+          "artist_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artist Id"
+          },
+          "artist_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artist Name"
+          },
+          "create_date": {
+            "type": "string",
+            "title": "Create Date"
+          },
+          "is_approved": {
+            "type": "integer",
+            "title": "Is Approved"
+          },
+          "update_date": {
+            "type": "string",
+            "title": "Update Date"
+          },
+          "enabled": {
+            "type": "integer",
+            "title": "Enabled"
+          },
+          "is_indexed": {
+            "type": "integer",
+            "title": "Is Indexed"
+          },
+          "person_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Person Id"
+          },
+          "publish_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publish Date"
+          },
+          "item_type_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Type Id"
+          },
+          "person_username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Person Username"
+          },
+          "is_published": {
+            "type": "integer",
+            "title": "Is Published"
+          },
+          "track_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Track Count"
+          },
+          "chart_image_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chart Image Uri"
+          },
+          "chart_image_dynamic_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chart Image Dynamic Uri"
+          },
+          "genres": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/GenreModel"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Genres"
+          }
+        },
+        "type": "object",
+        "required": [
+          "score",
+          "chart_id",
+          "chart_name",
+          "create_date",
+          "is_approved",
+          "update_date",
+          "enabled",
+          "is_indexed",
+          "is_published"
+        ],
+        "title": "ChartsDefaultModel"
+      },
+      "ChartsResponse": {
+        "properties": {
+          "debug": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Debug"
+          },
+          "explain": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Explain"
+          },
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ChartsDefaultModel"
+            },
+            "type": "array",
+            "title": "Root list",
+            "description": "List of chart models."
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "ChartsResponse"
+      },
+      "CurrentStatusModel": {
+        "properties": {
+          "current_status_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Status Id"
+          },
+          "current_status_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Status Name"
+          }
+        },
+        "type": "object",
+        "title": "CurrentStatusModel"
+      },
+      "GenreModel": {
+        "properties": {
+          "genre_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Genre Id"
+          },
+          "genre_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Genre Name"
+          }
+        },
+        "type": "object",
+        "title": "GenreModel"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HealthCheckResponse": {
+        "properties": {
+          "remote_addr": {
+            "type": "string",
+            "title": "Remote address",
+            "description": "The origin of the request.",
+            "examples": [
+              "127.0.0.1"
+            ]
+          },
+          "commit_hash": {
+            "type": "string",
+            "title": "Commit hash",
+            "description": "The current docker image used by the service.",
+            "examples": [
+              "2722bbe"
+            ]
+          },
+          "service_es_connected": {
+            "type": "boolean",
+            "title": "ES connectivity status",
+            "description": "Bool that indicates if the service is connected to elasticsearch or not.",
+            "examples": [true]
+          }
+        },
+        "type": "object",
+        "required": [
+          "remote_addr",
+          "commit_hash",
+          "service_es_connected"
+        ],
+        "title": "HealthCheckResponse",
+        "description": "Response model for the `health-check` endpoint."
+      },
+      "LabelsDefaultModel": {
+        "properties": {
+          "score": {
+            "type": "number",
+            "title": "Score"
+          },
+          "label_id": {
+            "type": "integer",
+            "title": "Label Id"
+          },
+          "label_name": {
+            "type": "string",
+            "title": "Label Name"
+          },
+          "update_date": {
+            "type": "string",
+            "title": "Update Date"
+          },
+          "create_date": {
+            "type": "string",
+            "title": "Create Date"
+          },
+          "is_included_in_rightsflow": {
+            "type": "integer",
+            "title": "Is Included In Rightsflow"
+          },
+          "enabled": {
+            "type": "integer",
+            "title": "Enabled"
+          },
+          "is_available_for_hype": {
+            "type": "integer",
+            "title": "Is Available For Hype"
+          },
+          "is_available_for_streaming": {
+            "type": "integer",
+            "title": "Is Available For Streaming"
+          },
+          "plays": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plays"
+          },
+          "downloads": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Downloads"
+          },
+          "label_image_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label Image Uri"
+          },
+          "label_image_dynamic_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label Image Dynamic Uri"
+          }
+        },
+        "type": "object",
+        "required": [
+          "score",
+          "label_id",
+          "label_name",
+          "update_date",
+          "create_date",
+          "is_included_in_rightsflow",
+          "enabled",
+          "is_available_for_hype",
+          "is_available_for_streaming"
+        ],
+        "title": "LabelsDefaultModel"
+      },
+      "LabelsResponse": {
+        "properties": {
+          "debug": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Debug"
+          },
+          "explain": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Explain"
+          },
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/LabelsDefaultModel"
+            },
+            "type": "array",
+            "title": "Root list",
+            "description": "List of label models."
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "LabelsResponse"
+      },
+      "MultisearchResponse": {
+        "properties": {
+          "tracks": {
+            "$ref": "#/components/schemas/TracksResponse"
+          },
+          "artists": {
+            "$ref": "#/components/schemas/ArtistsResponse"
+          },
+          "charts": {
+            "$ref": "#/components/schemas/ChartsResponse"
+          },
+          "labels": {
+            "$ref": "#/components/schemas/LabelsResponse"
+          },
+          "releases": {
+            "$ref": "#/components/schemas/ReleasesResponse"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tracks",
+          "artists",
+          "charts",
+          "labels",
+          "releases"
+        ],
+        "title": "MultisearchResponse",
+        "description": "Response model for the `all-search` endpoint."
+      },
+      "PriceModel": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "symbol": {
+            "type": "string",
+            "title": "Symbol"
+          },
+          "value": {
+            "type": "number",
+            "title": "Value"
+          },
+          "display": {
+            "type": "string",
+            "title": "Display"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "symbol",
+          "value",
+          "display"
+        ],
+        "title": "PriceModel"
+      },
+      "ReleaseAggregatorModel": {
+        "properties": {
+          "aggregator_id": {
+            "type": "integer",
+            "title": "Aggregator Id"
+          },
+          "aggregator_name": {
+            "type": "string",
+            "title": "Aggregator Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "aggregator_id",
+          "aggregator_name"
+        ],
+        "title": "ReleaseAggregatorModel"
+      },
+      "ReleaseKeyModel": {
+        "properties": {
+          "key_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key Id"
+          },
+          "key_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key Name"
+          }
+        },
+        "type": "object",
+        "title": "ReleaseKeyModel"
+      },
+      "ReleaseTrackModel": {
+        "properties": {
+          "track_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Track Id"
+          },
+          "track_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Track Name"
+          }
+        },
+        "type": "object",
+        "title": "ReleaseTrackModel"
+      },
+      "ReleasesDefaultModel": {
+        "properties": {
+          "score": {
+            "type": "number",
+            "title": "Score"
+          },
+          "current_status": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/CurrentStatusModel"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Status"
+          },
+          "genre": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/GenreModel"
+                },
+                "type": "array"
+              },
+              {
+                "$ref": "#/components/schemas/GenreModel"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Genre"
+          },
+          "label": {
+            "$ref": "#/components/schemas/TrackOrReleaseLabelModel"
+          },
+          "tracks": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ReleaseTrackModel"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tracks"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ReleaseKeyModel"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key"
+          },
+          "artists": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/TrackOrReleaseArtistModel"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artists"
+          },
+          "aggregator": {
+            "$ref": "#/components/schemas/ReleaseAggregatorModel"
+          },
+          "available_worldwide": {
+            "type": "integer",
+            "title": "Available Worldwide"
+          },
+          "catalog_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Catalog Number"
+          },
+          "create_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Create Date"
+          },
+          "encoded_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Encoded Date"
+          },
+          "exclusive": {
+            "type": "integer",
+            "title": "Exclusive"
+          },
+          "exclusive_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exclusive Date"
+          },
+          "streaming_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Streaming Date"
+          },
+          "preorder_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preorder Date"
+          },
+          "label_manager": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label Manager"
+          },
+          "pre_order_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pre Order Date"
+          },
+          "publish_date": {
+            "type": "string",
+            "title": "Publish Date"
+          },
+          "release_date": {
+            "type": "string",
+            "title": "Release Date"
+          },
+          "release_id": {
+            "type": "integer",
+            "title": "Release Id"
+          },
+          "release_name": {
+            "type": "string",
+            "title": "Release Name"
+          },
+          "release_type": {
+            "type": "string",
+            "title": "Release Type"
+          },
+          "status": {
+            "type": "integer",
+            "title": "Status"
+          },
+          "upc": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Upc"
+          },
+          "update_date": {
+            "type": "string",
+            "title": "Update Date"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PriceModel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "is_explicit": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Explicit"
+          },
+          "track_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Track Count"
+          },
+          "release_image_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Image Uri"
+          },
+          "release_image_dynamic_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Image Dynamic Uri"
+          },
+          "downloads": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Downloads"
+          },
+          "is_hype": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Hype"
+          },
+          "is_pre_order": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Pre Order"
+          },
+          "plays": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plays"
+          }
+        },
+        "type": "object",
+        "required": [
+          "score",
+          "label",
+          "aggregator",
+          "available_worldwide",
+          "exclusive",
+          "publish_date",
+          "release_date",
+          "release_id",
+          "release_name",
+          "release_type",
+          "status",
+          "update_date"
+        ],
+        "title": "ReleasesDefaultModel"
+      },
+      "ReleasesResponse": {
+        "properties": {
+          "debug": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Debug"
+          },
+          "explain": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Explain"
+          },
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ReleasesDefaultModel"
+            },
+            "type": "array",
+            "title": "Root list",
+            "description": "List of release models."
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "ReleasesResponse",
+        "description": "Response model for the `releases` endpoint."
+      },
+      "SubGenreModel": {
+        "properties": {
+          "sub_genre_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sub Genre Id"
+          },
+          "sub_genre_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sub Genre Name"
+          }
+        },
+        "type": "object",
+        "title": "SubGenreModel"
+      },
+      "TrackOrReleaseArtistModel": {
+        "properties": {
+          "artist_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artist Id"
+          },
+          "artist_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artist Name"
+          },
+          "artist_type_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artist Type Name"
+          }
+        },
+        "type": "object",
+        "title": "TrackOrReleaseArtistModel"
+      },
+      "TrackOrReleaseLabelModel": {
+        "properties": {
+          "enabled": {
+            "type": "integer",
+            "title": "Enabled"
+          },
+          "label_id": {
+            "type": "integer",
+            "title": "Label Id"
+          },
+          "label_name": {
+            "type": "string",
+            "title": "Label Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled",
+          "label_id",
+          "label_name"
+        ],
+        "title": "TrackOrReleaseLabelModel"
+      },
+      "TrackReleaseModel": {
+        "properties": {
+          "release_id": {
+            "type": "integer",
+            "title": "Release Id"
+          },
+          "release_name": {
+            "type": "string",
+            "title": "Release Name"
+          },
+          "release_image_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Image Uri"
+          },
+          "release_image_dynamic_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Image Dynamic Uri"
+          }
+        },
+        "type": "object",
+        "required": [
+          "release_id",
+          "release_name"
+        ],
+        "title": "TrackReleaseModel"
+      },
+      "TrackSuggestModel": {
+        "properties": {
+          "input": {
+            "type": "string",
+            "title": "Input"
+          },
+          "weight": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weight"
+          }
+        },
+        "type": "object",
+        "required": [
+          "input"
+        ],
+        "title": "TrackSuggestModel"
+      },
+      "TracksDefaultModel": {
+        "properties": {
+          "score": {
+            "type": "number",
+            "title": "Score"
+          },
+          "add_date": {
+            "type": "string",
+            "title": "Add Date"
+          },
+          "artists": {
+            "items": {
+              "$ref": "#/components/schemas/TrackOrReleaseArtistModel"
+            },
+            "type": "array",
+            "title": "Artists"
+          },
+          "available_worldwide": {
+            "type": "integer",
+            "title": "Available Worldwide"
+          },
+          "bpm": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bpm"
+          },
+          "catalog_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Catalog Number"
+          },
+          "change_date": {
+            "type": "string",
+            "title": "Change Date"
+          },
+          "chord_type_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chord Type Id"
+          },
+          "current_status": {
+            "$ref": "#/components/schemas/CurrentStatusModel"
+          },
+          "enabled": {
+            "type": "integer",
+            "title": "Enabled"
+          },
+          "encode_status": {
+            "type": "string",
+            "title": "Encode Status"
+          },
+          "exclusive_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exclusive Date"
+          },
+          "exclusive_period": {
+            "type": "integer",
+            "title": "Exclusive Period"
+          },
+          "free_download_end_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Free Download End Date"
+          },
+          "free_download_start_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Free Download Start Date"
+          },
+          "genre_enabled": {
+            "type": "integer",
+            "title": "Genre Enabled"
+          },
+          "guid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guid"
+          },
+          "is_available_for_streaming": {
+            "type": "integer",
+            "title": "Is Available For Streaming"
+          },
+          "is_classic": {
+            "type": "integer",
+            "title": "Is Classic"
+          },
+          "isrc": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Isrc"
+          },
+          "key_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key Id"
+          },
+          "key_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key Name"
+          },
+          "label": {
+            "$ref": "#/components/schemas/TrackOrReleaseLabelModel"
+          },
+          "label_manager": {
+            "type": "string",
+            "title": "Label Manager"
+          },
+          "length": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Length"
+          },
+          "mix_name": {
+            "type": "string",
+            "title": "Mix Name"
+          },
+          "pre_order_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pre Order Date"
+          },
+          "publish_date": {
+            "type": "string",
+            "title": "Publish Date"
+          },
+          "publish_status": {
+            "type": "string",
+            "title": "Publish Status"
+          },
+          "release": {
+            "$ref": "#/components/schemas/TrackReleaseModel"
+          },
+          "release_date": {
+            "type": "string",
+            "title": "Release Date"
+          },
+          "sale_type": {
+            "type": "string",
+            "title": "Sale Type"
+          },
+          "streaming_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Streaming Date"
+          },
+          "suggest": {
+            "$ref": "#/components/schemas/TrackSuggestModel"
+          },
+          "supplier_id": {
+            "type": "integer",
+            "title": "Supplier Id"
+          },
+          "track_id": {
+            "type": "integer",
+            "title": "Track Id"
+          },
+          "track_name": {
+            "type": "string",
+            "title": "Track Name"
+          },
+          "track_number": {
+            "type": "integer",
+            "title": "Track Number"
+          },
+          "update_date": {
+            "type": "string",
+            "title": "Update Date"
+          },
+          "was_ever_exclusive": {
+            "type": "integer",
+            "title": "Was Ever Exclusive"
+          },
+          "downloads": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Downloads"
+          },
+          "plays": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plays"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PriceModel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "is_explicit": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Explicit"
+          },
+          "is_available_for_alacarte": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Available For Alacarte"
+          },
+          "is_dj_edit": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Dj Edit"
+          },
+          "is_ugc_remix": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Ugc Remix"
+          },
+          "is_pre_order": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Pre Order"
+          },
+          "track_image_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Track Image Uri"
+          },
+          "track_image_dynamic_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Track Image Dynamic Uri"
+          },
+          "genre": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/GenreModel"
+                },
+                "type": "array"
+              },
+              {
+                "$ref": "#/components/schemas/GenreModel"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Genre"
+          },
+          "sub_genre": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SubGenreModel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "score",
+          "add_date",
+          "artists",
+          "available_worldwide",
+          "change_date",
+          "current_status",
+          "enabled",
+          "encode_status",
+          "exclusive_period",
+          "genre_enabled",
+          "is_available_for_streaming",
+          "is_classic",
+          "label",
+          "label_manager",
+          "mix_name",
+          "publish_date",
+          "publish_status",
+          "release",
+          "release_date",
+          "sale_type",
+          "suggest",
+          "supplier_id",
+          "track_id",
+          "track_name",
+          "track_number",
+          "update_date",
+          "was_ever_exclusive"
+        ],
+        "title": "TracksDefaultModel"
+      },
+      "TracksResponse": {
+        "properties": {
+          "debug": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Debug"
+          },
+          "explain": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Explain"
+          },
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/TracksDefaultModel"
+            },
+            "type": "array",
+            "title": "Root list",
+            "description": "List of track models."
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "TracksResponse",
+        "description": "Response model for the `tracks` endpoint."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  }
+}

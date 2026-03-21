@@ -1,0 +1,68 @@
+# tiddl config.toml — tagslut workspace
+# Ref: https://github.com/oskvr37/tiddl/blob/main/docs/templating.md
+# Install: cp ~/Desktop/tiddl_config.toml ~/.tiddl/config.toml
+
+enable_cache = true
+debug = false
+
+
+[templates]
+# ISRC is in every filename — permanent identity anchor for tagslut.
+# tagslut reads ISRC from FLAC tags at scan time for cross-provider
+# verification. Having it in the filename makes the file self-describing
+# outside the DB and survives any path reorganization.
+#
+# item.artists = sorted main artists (matches tagslut canonical_artist logic)
+# item.isrc    = ISRC code, same value tiddl writes to the ISRC FLAC tag
+# item.quality = HIGH or MAX — useful for intake quality ranking
+# album.master:[MAX] = renders "[MAX]" only when HIRES_LOSSLESS + quality==MAX
+
+default = "{album.artist}/{album.title}/{item.number:02d}. {item.artists} - {item.title} [{item.isrc}]"
+track   = "{item.artists} - {item.title} [{item.isrc}]"
+album   = "{album.artist}/{album.title}/{item.number:02d}. {item.artists} - {item.title} [{item.isrc}]"
+playlist = "{playlist.title}/{playlist.index:04d}. {item.artists} - {item.title} [{item.isrc}]"
+mix     = "{item.artists} - {item.title} [{item.isrc}]"
+
+
+[download]
+# max = up to 24 bit 192 kHz FLAC — required for MASTER_LIBRARY quality standard
+track_quality = "max"
+video_quality = "fhd"
+
+skip_existing = true
+threads_count = 4
+
+# Paths are managed by tools/tiddl wrapper via sync_tiddl_config_paths()
+# Do not hardcode here — the wrapper writes download_path and scan_path at runtime.
+# download_path = ""
+# scan_path = ""
+
+singles_filter = "include"
+videos_filter = "none"
+update_mtime = true
+rewrite_metadata = false
+
+
+[metadata]
+enable = true
+lyrics = false
+cover = true
+album_review = false
+
+
+[cover]
+save = false
+size = 1280
+allowed = []
+
+[cover.templates]
+# album = "albums/{album.artist} - {album.title}"
+
+
+[m3u]
+save = false
+allowed = ["album", "playlist"]
+
+[m3u.templates]
+album    = "m3u/album/{album.artist} - {album.title}"
+playlist = "m3u/playlist/{playlist.title}"

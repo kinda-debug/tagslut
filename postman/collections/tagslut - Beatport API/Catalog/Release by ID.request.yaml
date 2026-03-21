@@ -1,0 +1,4 @@
+$kind: http-request
+url: "{{base_url}}/v4/catalog/releases/{{beatport_test_release_id}}/"
+method: GET
+order: 4000

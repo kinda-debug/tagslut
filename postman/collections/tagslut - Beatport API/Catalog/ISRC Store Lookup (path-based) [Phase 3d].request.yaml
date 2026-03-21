@@ -1,0 +1,29 @@
+$kind: http-request
+description: |-
+  Phase 3d test: dedicated path-based ISRC lookup.
+  Per OAS spec, requires cookieAuth or basicAuth (NOT Bearer).
+  Test with Bearer first to see if it works anyway.
+  If 401/403, try with basic auth or session cookie.
+  Key question: does this return a single record or a paginated results wrapper?
+url: "{{base_url}}/v4/catalog/tracks/store/{{beatport_test_isrc}}/"
+method: GET
+scripts:
+  - type: afterResponse
+    code: |-
+      console.log('Status: ' + pm.response.code);
+      if (pm.response.code === 200) {
+          var json = pm.response.json();
+          console.log('Type: ' + typeof json);
+          console.log('Is array at top: ' + Array.isArray(json));
+          console.log('Has results key: ' + ('results' in json));
+          console.log('Has id key: ' + ('id' in json));
+          console.log('Has name key: ' + ('name' in json));
+          console.log('Top-level keys: ' + Object.keys(json).join(', '));
+          // If direct record, it will have 'id', 'name', 'isrc' at top level
+          // If paginated, it will have 'results', 'count', 'next'
+      } else {
+          console.log('FAILED - may need cookie/basic auth instead of Bearer');
+          console.log('Body: ' + pm.response.text().substring(0, 200));
+      }
+    language: text/javascript
+order: 3000

@@ -186,3 +186,30 @@ the provider APIs to upgrade rows from `legacy` to `high` or `verified`
 where a match is confirmed — and those upgrades are also logged in
 `provenance_event` with a timestamp.
 
+
+
+---
+
+## Revision: five-tier confidence model (supersedes four-tier above)
+
+The four-tier model defined above is extended by `docs/MULTI_PROVIDER_ID_POLICY.md`
+which adds a fifth tier and defines the legacy file processing track.
+
+Full five-tier model:
+
+  verified      Two or more providers confirmed the same ISRC at ingest time.
+  corroborated  Multiple stored provider IDs present, all agree on ISRC.
+                No active cross-check, but convergence is meaningful evidence.
+  high          Single provider API match, confirmed provider ID.
+  uncertain     Fuzzy match, fingerprint below 0.90, text-only, or any conflict.
+  legacy        Picard tag, unknown origin, or unverified migration.
+
+CHECK constraint for ingestion_confidence:
+  CHECK (ingestion_confidence IN ('verified','corroborated','high','uncertain','legacy'))
+
+ingestion_method controlled vocabulary additions:
+  'multi_provider_reconcile'  — Track B legacy processing (see MULTI_PROVIDER_ID_POLICY.md)
+
+Required reading for any identity resolution work:
+  docs/INGESTION_PROVENANCE.md  (this file — per-row fields and base vocabulary)
+  docs/MULTI_PROVIDER_ID_POLICY.md  (multi-provider reconciliation and conflict handling)

@@ -1,6 +1,34 @@
-<!-- Status: Active document. Synced 2026-03-14 after DJ pipeline migration + Lexicon backfill. Historical or superseded material belongs in docs/archive/. -->
+<!-- Status: Active document. Synced 2026-03-21 after resume-refresh fix verification. Historical or superseded material belongs in docs/archive/. -->
 
 # Progress Report
+
+Report date: March 21, 2026
+
+## Session: 2026-03-21 — Resume-Refresh Fix Implementation Verification
+
+**Task**: Verify implementation of `resume-refresh-fix` spec to fix `--resume` mode for enrichment, DJ export, and clean run summaries.
+
+**Status**: Completed — All three root causes verified as already implemented and passing all tests.
+
+**What was verified**:
+1. **Root Cause 1**: PROMOTED_FLACS_FILE supplemented from batch root in resume mode (lines 2513-2523 of tools/get-intake) ✅
+2. **Root Cause 2**: DJ export fallback wired to precheck inventory in resume mode (lines 2619-2657) ✅
+3. **Root Cause 3**: Spurious dest_exists discard plan suppressed in resume mode (lines 2340-2352) ✅
+
+**Tests run**: `poetry run pytest tests/exec/test_resume_refresh.py -v` — **7/7 PASSED**
+
+**Related commits**:
+- 730d2b1 (Mar 18): fix(intake): suppress dest_exists discard plan in resume mode
+- 2fb2a50 (Mar 18): fix(intake): supplement promoted file lists from batch root in resume mode
+- 3f3f37d (Mar 18): fix(intake): wire DJ export fallback to inventory in resume mode
+- bf3df38 (Mar 18): test(intake): add resume mode unit tests for supplement, enrichment, discard suppression
+- 0a98453 (Mar 21): chore: fix gitignore, add copilot instructions and resume-refresh prompt (specification added)
+
+**Outcome**: No code changes needed — implementation complete, tested, and verified. Created PROGRESS_REPORT.md documentation of verification findings (committed as 79cd387).
+
+---
+
+## Previous Report
 
 Report date: March 14, 2026
 

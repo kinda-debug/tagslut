@@ -327,3 +327,129 @@ TAGSLUT_DB=/Users/georgeskhawam/Projects/tagslut_db/FRESH_2026/music_v3.db \
 ```
 
 Do not run any intake or backfill until step 3 passes clean.
+
+---
+
+## 12 — DB and backup audit (overdue)
+
+### Current state: EPOCH_2026-03-04
+
+```
+music_v3.db                    837 MB   ← live DB
+music_v3.bak.20260304_162925   376 MB   ← backup 1 (same day)
+music_v3.bak.20260304_162940   376 MB   ← backup 2 (15 min later)
+music_v3.bak.20260304_162657   376 MB   ← backup 3 (same day)
+music_v3.bak.20260304_162428   376 MB   ← backup 4 (same day)
+~250 .tagslut_write_test_*       4 B    ← process lock markers, never cleaned
+```
+
+Total: ~2.28 GB. About 1.1 GB of that is four near-identical backups
+taken within 30 minutes of each other on March 4.
+
+### Problems
+
+**No recent backup.** The DB has grown from ~375 MB to 837 MB since March 4
+— more than doubled — with no backup taken since. Whatever was written in
+that period (Lexicon backfill, reconcile_log, MP3 pipeline tables) is
+unprotected.
+
+**Wrong path in `.vscode/settings.json`.** The SQLite connection was
+pointing at `EPOCH_2026-02-10_RELINK/music.db` which does not exist.
+The actual epoch is `EPOCH_2026-03-04`. This has been broken silently.
+
+**250 write-test markers.** `EPOCH_*/.tagslut_write_test_*` files are
+process lock markers left by the intake pipeline. They are junk.
+The `.gitignore` already excludes them. They can be deleted safely.
+
+**Four same-day backups are one backup.** Keep the most recent
+(`20260304_162940`). Delete the other three. They are identical within
+minutes and add no recovery value.
+
+### Immediate cleanup → **you** (manual, before any Codex work)
+
+```bash
+# 1. Delete the three redundant backups (keep _162940 as the reference)
+rm /Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-03-04/music_v3.bak.20260304_162925.db
+rm /Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-03-04/music_v3.bak.20260304_162657.db
+rm /Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-03-04/music_v3.bak.20260304_162428.db
+
+# 2. Delete the write-test markers
+rm /Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-03-04/.tagslut_write_test_*
+
+# 3. Take a current backup before touching anything else
+cp /Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-03-04/music_v3.db \
+   /Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-03-04/music_v3.bak.20260321.db
+```
+
+### What to do with the current DB
+
+Do not delete it. Do not migrate from it. Keep it as read-only archaeology
+per the policy in §11. The current DB is the Picard-contaminated epoch —
+useful for cross-reference lookups, not for the clean-slate build.
+
+Rename the epoch directory to make its status explicit:
+
+```bash
+mv /Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-03-04 \
+   /Users/georgeskhawam/Projects/tagslut_db/LEGACY_2026-03-04_PICARD
+```
+
+Then the new clean DB lives at:
+
+```
+/Users/georgeskhawam/Projects/tagslut_db/FRESH_2026/music_v3.db
+```
+
+### Fix .vscode/settings.json → **you**
+
+Update the SQLite connection path before doing anything else in VS Code:
+
+```json
+{
+  "sqltools.connections": [
+    {
+      "previewLimit": 50,
+      "driver": "SQLite",
+      "name": "music (legacy - read only)",
+      "database": "/Users/georgeskhawam/Projects/tagslut_db/LEGACY_2026-03-04_PICARD/music_v3.db"
+    },
+    {
+      "previewLimit": 50,
+      "driver": "SQLite",
+      "name": "music (fresh)",
+      "database": "/Users/georgeskhawam/Projects/tagslut_db/FRESH_2026/music_v3.db"
+    }
+  ]
+}
+```
+
+Commit this after the fresh DB is initialized.
+
+### Backup policy going forward
+
+One backup per significant session. Naming: `music_v3.bak.YYYYMMDD.db`.
+Delete backups older than the last two. No automated backup tool needed —
+a manual `cp` before any migration or bulk operation is sufficient.
+
+### DB size growth audit (open question for Codex)
+
+The DB grew from ~375 MB (March 4) to ~837 MB — a 462 MB increase.
+Before treating the current DB as the legacy reference, understand what
+drove that growth. Likely candidates: Lexicon backfill (29,442 reconcile_log
+rows), MP3 pipeline table migration, and accumulated intake runs.
+
+Codex task: query the live DB and produce a table of row counts and
+estimated size per table. Compare against the March 4 schema snapshot
+at `data/checkpoints/reconcile_schema_0010.json`.
+
+```bash
+TAGSLUT_DB=/Users/georgeskhawam/Projects/tagslut_db/LEGACY_2026-03-04_PICARD/music_v3.db \
+  poetry run python -c "
+import sqlite3, sys
+conn = sqlite3.connect(sys.argv[1] if len(sys.argv) > 1 else ':memory:')
+rows = conn.execute(\"SELECT name FROM sqlite_master WHERE type='table' ORDER BY name\").fetchall()
+for (t,) in rows:
+    n = conn.execute(f'SELECT COUNT(*) FROM \"{t}\"').fetchone()[0]
+    print(f'{t}: {n}')
+" 2>/dev/null || echo 'run manually with correct db path'
+```

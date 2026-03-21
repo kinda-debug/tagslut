@@ -60,3 +60,12 @@ resolution without explicit operator review.
 **Rule 7:** `ingested_at` is the indelible timestamp of origin.
 It must never be updated, even on merge. Merges are recorded in
 `provenance_event` with their own timestamp.
+
+**Rule 8:** All provider IDs are preserved if they do not conflict with the ISRC.
+Agreement across multiple provider IDs = positive confirmation (`corroborated`).
+Conflict between a provider ID and the ISRC = provenance failure — flag it, do not
+silently drop or overwrite. Full policy: `docs/MULTI_PROVIDER_ID_POLICY.md`.
+
+**Rule 9:** There are two ingestion tracks. Track A (clean-slate, provider API)
+and Track B (legacy, multi-provider reconcile). They are processed differently.
+Do not apply Track A logic to Track B files or vice versa.

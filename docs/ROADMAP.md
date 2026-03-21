@@ -1,7 +1,7 @@
 # tagslut — Agent Roadmap
 
 <!-- Status: Active. Update as tasks complete or delegate assignments change. -->
-<!-- Last updated: 2026-03-21 — revised after external review -->
+<!-- Last updated: 2026-03-21 — end of session -->
 
 This document maps all open work to the agent that should execute it.
 Update it when tasks complete or priorities shift.
@@ -11,15 +11,16 @@ Update it when tasks complete or priorities shift.
 ## ⚠ Global execution order — do not skip ahead
 
 ```
-1. Resume/refresh fix (§1)         ← unblocks daily intake NOW
-2. Ingestion provenance migration (§14)  ← prerequisite for fresh DB
-3. Fresh DB initialization (§10)   ← prerequisite for clean-slate ingestion
-4. Repo cleanup (§13)              ← parallel, no dependencies
-5. Phase 1 PR chain (§2)          ← BLOCKED until items 1–3 complete
-6. DJ pipeline hardening (§3)     ← after Phase 1
+1. Resume/refresh fix (§1)              ← COMPLETE
+2. Ingestion provenance migration (§14) ← prerequisite for fresh DB
+3. Migration 0013 — five-tier CHECK (§16) ← prerequisite for Track B processing
+4. Fresh DB initialization (§10)        ← prerequisite for clean-slate ingestion
+5. Repo cleanup (§13)                   ← parallel, no dependencies
+6. Phase 1 PR chain (§2)               ← BLOCKED until items 1–4 complete
+7. DJ pipeline hardening (§3)          ← after Phase 1
 ```
 
-Items 5 and 6 must not be started until items 1–3 are confirmed complete.
+Items 6 and 7 must not be started until items 1–4 are confirmed complete.
 
 ---
 
@@ -34,192 +35,52 @@ Items 5 and 6 must not be started until items 1–3 are confirmed complete.
 
 ## Delegation protocol — who does what, and when
 
-For every delegated task, determine ownership in this order.
-
-### 0. Required task header for every delegated item
-
-Every task handed to any agent must start with:
-
+Every delegated task must start with:
 - **Read first:** the single file that must be read before anything else
-- **Verify before editing:** the exact command, failing test, or behavior to confirm first
-- **Allowed verification:** targeted pytest only, unless the task explicitly states the full-suite exception
+- **Verify before editing:** the exact command, failing test, or behavior to confirm
+- **Allowed verification:** targeted pytest only, unless full-suite exception is stated
 - **Stop and escalate if:** the condition that makes the task no longer implementation-only
 - **Done when:** the observable completion condition
 
-No agent should start coding before these are stated.
-
 ### 1. Codex = default executor
+Use when a prompt exists, spec is written, behavior and acceptance criteria are clear.
+Responsibilities: smallest reversible patch, targeted verification, conventional commits.
 
-Use Codex when:
-- a prompt already exists in `.github/prompts/`
-- the spec is already written
-- the work is implementation-heavy but behavior and acceptance criteria are already clear
-- the task spans multiple files but does not require new design
+### 2. Claude Code = ambiguity resolver, prompt author, reviewer
+Use when the problem is unclear, change is architecture-sensitive, or identity/schema
+invariants may be affected. Should not become the default implementer.
 
-Codex responsibilities:
-- implement the smallest reversible patch
-- run only targeted verification during implementation
-- update CLI help text/docs when behavior changes
-- keep scope narrow
-- commit one logical change at a time using conventional commit format
-
-Do not use Codex to invent the design for an unclear task.
-
-### 2. Claude Code = ambiguity resolver, prompt author, and reviewer
-
-Use Claude Code when:
-- the problem itself is unclear
-- the change is architecture-sensitive or cross-cutting
-- identity-model or schema invariants may be affected
-- docs, prompts, and implementation appear inconsistent
-- a new Codex prompt must be authored
-- Codex output needs review before merge
-
-Claude Code responsibilities:
-- reduce unclear problems to a narrow executable spec
-- identify all affected surfaces before implementation
-- author or tighten prompts for Codex
-- review diffs touching storage, migrations, provenance, or identity logic
-
-Claude Code should not become the default implementer for routine prompt-ready tasks.
-
-### 3. Copilot+ = editor-only local assistant
-
-Use Copilot+ only for:
-- inline completions
-- explanation of an already open file
-- tiny mechanical edits within one file
-- pattern-following edits after the approach has already been decided elsewhere
-
-Do not use Copilot+ for:
-- multi-file changes
-- schema or migration work
-- tasks requiring command execution to verify
-- architecture decisions
-- repo-wide exploration
+### 3. Copilot+ = editor-only
+Inline completions, explanation of open files, tiny mechanical edits. Nothing else.
 
 ### 4. Operator-only lane
-
-Never delegate these to any agent:
-- `git push --force`
-- `git filter-repo`
-- direct modification of DB files
-- writes to mounted library volumes
-- any destructive maintenance step marked operator-only in project directives
+Never delegate: `git push --force`, `git filter-repo`, direct DB file modification,
+writes to mounted library volumes, any step marked operator-only.
 
 ### 5. Escalation rules
-
-Escalate from Copilot+ -> Codex when:
-- the change expands beyond one file
-- verification requires running commands or tests
-- the file-local change affects broader behavior
-
-Escalate from Codex -> Claude Code when:
-- the prompt/spec is underspecified
-- the observed root cause differs from the expected one
-- the patch touches identity/storage invariants
-- docs and implementation disagree
-- the task starts to require design rather than execution
-
-Escalate from any agent -> operator when:
-- the task requires force-push or history rewrite
-- a required volume is unmounted
-- the only viable path would touch a real DB file or managed library path
-
-## Current orchestration queue
-
-### A. Resume/refresh fix (`tools/get-intake`)
-Primary executor: **Codex**
-Support: **Copilot+** only for local single-file bash assistance
-Escalate to **Claude Code** if:
-- runtime behavior does not match the three confirmed root causes
-- the fix expands into orchestrator/wrapper contract questions
-
-Required task header:
-- **Read first:** `.github/prompts/resume-refresh-fix.prompt.md`
-- **Verify before editing:** reproduce the failing `--resume` behavior and run only the targeted intake tests named in the prompt
-
-### B. Ingestion provenance migration
-Primary flow: **Claude Code -> Codex -> Claude Code review**
-
-Why:
-- this is schema + invariant + insert-surface work and needs a frozen execution plan before implementation
-
-Execution split:
-- **Claude Code:** identify all `track_identity` insert surfaces and lock the implementation checklist
-- **Codex:** implement migration, schema updates, insert-path wiring, and targeted tests
-- **Claude Code:** review the resulting diff before merge
-
-Required task header:
-- **Read first:** `docs/INGESTION_PROVENANCE.md`
-- **Verify before editing:** enumerate every `track_identity` insert path and confirm migration-first sequencing
-
-### C. Fresh DB initialization
-Primary flow: **operator + Codex**
-
-Execution split:
-- **Operator:** `.env`, mount/path confirmation, `supabase db reset`
-- **Codex:** initialize from migrations and run storage-targeted verification
-- **Claude Code:** only if migration/test behavior is unclear
-
-Required task header:
-- **Read first:** `docs/PROJECT_DIRECTIVES.md`
-- **Verify before editing:** confirm `FRESH_2026/music_v3.db` is the target and `LEGACY_*` remains read-only
-
-### D. Repo cleanup
-Primary executor: **Codex**
-Review support: **Claude Code** for borderline archive/delete decisions
-Operator-only carve-out: history rewrite remains manual only
-
-Required task header:
-- **Read first:** `.github/prompts/repo-cleanup.prompt.md`
-- **Verify before editing:** confirm the target is not operator-only, not a DB file, and not a mounted library path
-
-### E. Phase 1 PR chain (9-11)
-Status: **Blocked until A-C complete**
-
-Primary executor once unblocked: **Codex**, one PR at a time
-Support: **Claude Code** for prompt authoring for PRs 12-15 and review of scope boundaries
-
-Required task header:
-- **Read first:** `docs/PHASE1_STATUS.md`
-- **Verify before editing:** confirm upstream blockers are complete before starting the next PR
-
-### F. DJ pipeline hardening / workflow audit / Lexicon reconcile
-Primary executor: **Codex**
-Use **Claude Code** only when invariants or workflow semantics are unclear
-Use **Copilot+** only for already-decided file-local assistance
-
-Required task header:
-- **Read first:** the relevant prompt file
-- **Verify before editing:** confirm the task is no longer blocked by earlier gates
+Copilot+ → Codex: change expands beyond one file, verification requires commands.
+Codex → Claude Code: spec underspecified, root cause differs, identity/storage affected.
+Any agent → operator: force-push, unmounted volume, real DB or library path required.
 
 ---
 
 ## Testing policy
 
-Default: targeted pytest only.
-  `poetry run pytest tests/<specific_module> -v`
-
-Exception: a full suite run (`poetry run pytest tests/ -x -q`) is permitted
-only as a final gate immediately before merging a PR. Not during implementation.
-Any agent that runs the full suite during implementation is violating this policy.
+Default: `poetry run pytest tests/<specific_module> -v`
+Exception: full suite (`poetry run pytest tests/ -x -q`) only as final gate before
+merging a PR. Never during implementation.
 
 ---
 
-## 1 — Immediate → **Codex**
+## 1 — Resume/refresh fix: COMPLETE (2026-03-21)
 
-### 1.1 Resume/refresh fix
-Prompt: `.github/prompts/resume-refresh-fix.prompt.md`
-Three confirmed root causes in `tools/get-intake`. Fully specified.
-Status: prompt ready, not started.
+All three root causes verified implemented and passing.
+`poetry run pytest tests/exec/test_resume_refresh.py -v` — 7/7 PASSED
+Commits: 730d2b1, 2fb2a50, 3f3f37d, bf3df38
 
 ---
 
-## 2 — Phase 1 PR chain → **Codex** ⛔ BLOCKED until §1 + §14 + §10 complete
-
-Work through the PR stack in order. Each has a narrow scope.
-Use `tools/review/sync_phase1_prs.sh` to push without collapsing scope.
+## 2 — Phase 1 PR chain → **Codex** ⛔ BLOCKED until §14 + §16 + §10 complete
 
 | PR | Task | Branch | Status |
 |---|---|---|---|
@@ -235,7 +96,7 @@ PRs 12–15 need prompts authored in Claude.ai before Codex can execute them.
 
 ---
 
-## 3 — DJ pipeline → **Codex** (prompts ready) ⛔ BLOCKED until Phase 1 lands
+## 3 — DJ pipeline → **Codex** ⛔ BLOCKED until Phase 1 lands
 
 ### 3.1 DJ pipeline hardening
 Prompt: `.github/prompts/dj-pipeline-hardening.prompt.md`
@@ -244,9 +105,7 @@ Prompt: `.github/prompts/dj-pipeline-hardening.prompt.md`
 Prompt: `.github/prompts/dj-workflow-audit.prompt.md`
 
 ### 3.3 DJ admission backfill
-⚠ No-op against an empty DB. Run only after first successful ingestion into fresh DB.
-Command: `tagslut dj backfill --db "$TAGSLUT_DB"`
-This is a post-ingestion sanity check, not part of fresh DB initialization.
+⚠ No-op against empty DB. Run only after first successful ingestion into fresh DB.
 
 ---
 
@@ -254,197 +113,165 @@ This is a post-ingestion sanity check, not part of fresh DB initialization.
 
 ### 4.1 Lexicon reconcile
 Prompt: `.github/prompts/lexicon-reconcile.prompt.md`
-Status: prompt ready. If bundle/Drive contents disagree, verify against the current source before delegating.
-36% of identities (11,679) unmatched due to absence of streaming IDs in Lexicon DB.
+36% of identities (11,679) unmatched — no streaming-ID fallback in Lexicon DB.
 
-### 4.2 Incremental Lexicon backfill after DB updates
-`python -m tagslut.dj.reconcile.lexicon_backfill --dry-run`
-Run after any Lexicon DB update; commit the diff.
+### 4.2 Incremental backfill
+`python -m tagslut.dj.reconcile.lexicon_backfill --dry-run` after any Lexicon DB update.
 
 ---
 
-## 5 — Intake pipeline hardening → **Codex** (after §1 merges)
+## 5 — Intake pipeline hardening → **Codex** (after §1 merged)
 
 - `precheck_inventory_dj` fallback for `--dj`-only runs without `--m3u`
 - `intake_pretty_summary` counter accuracy
-- Enrich scope regression test after resume fix lands
-- Log redirect: `POST_MOVE_LOG` default path should write to epoch dir, not `artifacts/`
+- Log redirect: `POST_MOVE_LOG` default path → epoch dir, not `artifacts/`
 
 ---
 
 ## 6 — Open streams post → **Codex**
-
 Prompt: `.github/prompts/open-streams-post-0010.prompt.md`
-Pure writing task with a defined source-reading list. No judgment calls.
 
 ---
 
-## 7 — Repo housekeeping → **Codex**
+## 7 — Repo housekeeping
 
-### 7.1 Git history cleanup ⚠ OPERATOR-ONLY — do not delegate to any agent
-
-NOT a standard Codex task. This is an exceptional maintenance procedure
-that requires a force-push and must be executed manually by the operator.
-Full runbook: `docs/OPS_RUNBOOK.md` (to be written).
-
-Summary of what it involves:
-- `git filter-repo --strip-blobs-bigger-than 10M` to remove large historical objects
-- `git push --force origin dev`
-- Verify Copilot reindexes after cleanup
-
-Do not put this in a Codex prompt. Do not ask any agent to run it.
+### 7.1 Git history cleanup ⚠ OPERATOR-ONLY
+`git filter-repo --strip-blobs-bigger-than 10M` + `git push --force origin dev`
+Never delegate. Full runbook: `docs/OPS_RUNBOOK.md` (to be written).
 
 ### 7.2 Script and docs cleanup → **Codex**
 Prompt: `.github/prompts/repo-cleanup.prompt.md`
-Status: prompt ready, not started.
-
-Manual cleanup already completed (2026-03-21):
-- Deleted: redundant March 4 DB backups (~750 MB recovered)
-- Deleted: ~450+ write-test markers across epochs
-- Moved: `artifacts/*.log` → `LEGACY_2026-03-04_PICARD/`
-- Deleted: sensitive untracked files (auth, tokens, HAR, API dumps, MCP test files)
-- Deleted: empty placeholder files
-- Renamed: EPOCH_2026-03-04 → LEGACY_2026-03-04_PICARD
-- Backed up: `music_v3.bak.20260321.db`
-- Checkpointed: `lexicondj_update.db` WAL on /Volumes/MUSIC
-
-Remaining for Codex: scripts/, docs/, tools/ triage — read-then-decide, not mass delete.
+Manual phase complete (2026-03-21). Codex phase pending.
 
 ---
 
 ## 8 — Copilot+ scope (editor only)
-
-Copilot is for: inline completions, quick chat about open files in VS Code.
-Not for: multi-file tasks, architecture decisions, test-verified changes.
+Inline completions, quick chat about open files in VS Code. Not for agentic tasks.
 
 ---
 
 ## 9 — Reserved for Claude Code (rate-limit budget)
-
-Use only for: authoring prompts for PRs 12–15, reviewing Codex output on
-identity model changes, debugging where the problem itself is unclear.
-Everything else goes to Codex.
+Prompts for PRs 12–15, reviewing Codex output on identity model changes,
+debugging where the problem itself is unclear.
 
 ---
 
 ## 10 — Clean slate: new DB, new config → **you + Codex**
-⛔ Prerequisite: §14 (provenance migration) must be written and committed first.
+⛔ Prerequisites: §14 (provenance migration) and §16 (migration 0013) must land first.
 
-### What "clean slate" means
-- New SQLite DB initialized from migrations (do not copy `music_v3.db`)
-- New Supabase local stack (`supabase db reset`) — no data carried over
-- New `.env` from `.env.example`
-- New `beatportdl-config.yml`
-- No references to legacy epoch paths
+DB paths:
+  LEGACY: `/Users/georgeskhawam/Projects/tagslut_db/LEGACY_2026-03-04_PICARD/music_v3.db`
+  FRESH:  `/Users/georgeskhawam/Projects/tagslut_db/FRESH_2026/music_v3.db` (not yet created)
 
-### DB paths (current machine)
-```
-LEGACY (read-only):
-  /Users/georgeskhawam/Projects/tagslut_db/LEGACY_2026-03-04_PICARD/music_v3.db
+Steps:
+- You: copy `.env.example` → `.env`, confirm volume paths, `supabase db reset`
+- Codex: run migrations, verify schema, `poetry run pytest tests/storage/ -v`
+- Gate: no intake or DJ admission backfill until storage tests pass clean
 
-FRESH (target):
-  /Users/georgeskhawam/Projects/tagslut_db/FRESH_2026/music_v3.db
-  (does not exist yet — initialize from migrations)
-```
-
-### Steps
-You: copy `.env.example` → `.env`, set volume paths, run `supabase db reset`
-Codex: run migrations, verify schema, run `poetry run pytest tests/storage/ -v`
-
-Gate: do not run any intake or DJ admission backfill until storage tests pass clean.
-
-### .vscode/settings.json
-Currently hardcoded to legacy path. Update to:
-- `music (legacy)` → `LEGACY_2026-03-04_PICARD/music_v3.db` (read-only label)
-- `music (fresh)` → `FRESH_2026/music_v3.db`
-Commit after fresh DB is initialized.
+`.vscode/settings.json` needs updating after fresh DB is initialized:
+  `music (legacy)` → LEGACY path (read-only label)
+  `music (fresh)`  → FRESH path
 
 ---
 
 ## 11 — Why the legacy DB cannot be trusted
 
-Root cause: the existing `music_v3.db` was built by ingesting file tags
-written by MusicBrainz Picard. Picard writes directly to files and matches
-aggressively — including wrong matches it treats as confident. The identity
-model is built on top of whatever Picard decided.
-
-This is a provenance problem, not a data hygiene problem. The data cannot
-be trusted because its origin cannot be verified.
+Root cause: identity model built on MusicBrainz Picard-written tags. Picard matches
+aggressively and the origin of every identity is unverifiable.
 
 Rules:
 - Do not migrate identity rows from legacy DB to fresh DB
-- Do not use legacy DB query results to pre-populate the fresh DB
-- Picard must never touch files that tagslut manages going forward
-- The legacy DB is read-only archaeology — useful for cross-reference, not import
-
-Coexistence: all tools accept `--db`. Point `$TAGSLUT_DB` at the fresh DB.
-For legacy lookups: `--db /path/to/LEGACY_2026-03-04_PICARD/music_v3.db` explicitly.
+- Picard must never touch files tagslut manages going forward
+- Legacy DB is read-only archaeology only — use `--db LEGACY_PATH` explicitly
 
 ---
 
 ## 12 — DB and backup audit: COMPLETE (2026-03-21)
 
-All cleanup actions from this section have been executed. Summary:
+Epoch renamed EPOCH_2026-03-04 → LEGACY_2026-03-04_PICARD. Redundant backups deleted.
+Write-test markers deleted (~450+). Backup taken: `music_v3.bak.20260321.db`.
+Artifacts swept to `/Volumes/SAD/tagslut_artifacts_archive/` (182 MB).
+`lexicondj_update.db` WAL checkpointed.
 
-SAD volume epochs (all legacy, read-only):
-  EPOCH_2026-02-08   — music.db (v1) + classify-v2 snapshot
-  EPOCH_2026-02-10_RELINK — music.db + music_v2.db (WAL was dirty, now clean)
-  EPOCH_2026-02-28   — music.db + music_v2.db
-
-Active epoch renamed:
-  EPOCH_2026-03-04 → LEGACY_2026-03-04_PICARD
-
-Backup taken:
-  LEGACY_2026-03-04_PICARD/music_v3.bak.20260321.db
-
-Deleted (LEGACY_2026-03-04_PICARD):
-  music_v3.bak.20260304_162925.db
-  music_v3.bak.20260304_162657.db
-  music_v3.bak.20260304_162428.db
-  ~250 .tagslut_write_test_* markers
-
-Deleted (SAD epochs):
-  ~200 .dedupe_write_test_* and .tagslut_write_test_* markers
-
-lexicondj_update.db WAL checkpointed and truncated.
-
-Backup policy going forward: one backup per significant session,
-named `music_v3.bak.YYYYMMDD.db`. Keep last two. Delete older ones manually.
+Backup policy: one backup per significant session, named `music_v3.bak.YYYYMMDD.db`.
+Keep last two. Delete older manually.
 
 ---
 
 ## 13 — Script, docs, log cleanup: PARTIAL (2026-03-21)
 
-Manual phase complete (see §7.2 above for what was done).
-Codex phase pending: `.github/prompts/repo-cleanup.prompt.md`
+Manual phase complete. Codex phase pending: `.github/prompts/repo-cleanup.prompt.md`
 
-Log management policy going forward:
-- Logs write to epoch directory, not into repo `artifacts/`
-- Requires one-line patch to `tools/get-intake` (`POST_MOVE_LOG` default path)
-- Add to §5 (intake pipeline hardening) once resume fix lands
+Log policy: logs write to epoch directory, not `artifacts/`. Requires one-line patch
+to `tools/get-intake` (`POST_MOVE_LOG` default path) — add to §5 after resume fix lands.
 
 ---
 
 ## 14 — Ingestion provenance migration → **Codex** ⛔ PREREQUISITE for §10
 
-Spec: `docs/INGESTION_PROVENANCE.md`
-Must be the first migration applied to the fresh DB.
-Must land before any clean-slate ingestion runs.
+Spec: `docs/INGESTION_PROVENANCE.md` + `docs/MULTI_PROVIDER_ID_POLICY.md`
 
-Four columns added to `track_identity`:
-  `ingested_at`           ISO 8601 UTC, set once, never updated
-  `ingestion_method`      controlled vocabulary
-  `ingestion_source`      specific evidence string
-  `ingestion_confidence`  verified | high | uncertain | legacy
+Four columns on `track_identity`: `ingested_at`, `ingestion_method`,
+`ingestion_source`, `ingestion_confidence` — all NOT NULL, no DEFAULT.
+
+Confidence vocabulary (five-tier — see §16 for CHECK constraint):
+  `verified` | `corroborated` | `high` | `uncertain` | `legacy`
+
+Method vocabulary includes: `provider_api`, `isrc_lookup`, `fingerprint_match`,
+`fuzzy_text_match`, `picard_tag`, `manual`, `migration`, `multi_provider_reconcile`
 
 Codex task:
-1. Write migration file in `supabase/migrations/` (SQL in `INGESTION_PROVENANCE.md`)
-2. Add NOT NULL constraints to `tagslut/storage/v3/schema.py`
-3. Update `tools/get-intake` to write all four fields on every insert
-4. Add test: insert without `ingestion_method` must raise integrity error
-5. Update `docs/DB_V3_SCHEMA.md`
+1. Write `tagslut/storage/v3/migrations/0012_ingestion_provenance.py`
+2. Write `supabase/migrations/20260322000000_add_ingestion_provenance.sql`
+3. Add NOT NULL to `tagslut/storage/v3/schema.py`
+4. Update all five `track_identity` insert surfaces
+5. Add enforcement trigger in both schema.py and migration 0012
+6. Update ~25 test fixtures (use conftest.py helper to reduce churn)
+7. Update `docs/DB_V3_SCHEMA.md`
 
 Commit: `feat(schema): add ingestion provenance columns to track_identity`
+
+---
+
+## 15 — TIDAL OAuth refactor: COMPLETE (2026-03-21)
+
+Commit: `3a3595c`. Global mutable state removed, monotonic clock, private naming,
+docstring restored. No behaviour changes. No further work needed.
+
+---
+
+## 16 — Migration 0013: five-tier confidence CHECK → **Codex** ⛔ PREREQUISITE for §10
+
+Spec: `docs/MULTI_PROVIDER_ID_POLICY.md` §schema-implication
+
+Update `ingestion_confidence` CHECK constraint to allow five values:
+  `verified` | `corroborated` | `high` | `uncertain` | `legacy`
+
+Add `'multi_provider_reconcile'` to `ingestion_method` controlled vocabulary.
+
+Must land after migration 0012 (§14) and before fresh DB initialization (§10).
+
+Codex task:
+1. Write `tagslut/storage/v3/migrations/0013_confidence_tier_update.py`
+2. Update CHECK constraint in `tagslut/storage/v3/schema.py`
+3. Update `supabase/migrations/` with corresponding Postgres migration
+4. Update `docs/DB_V3_SCHEMA.md` — confidence and method vocabulary tables
+
+Commit: `feat(schema): five-tier ingestion_confidence CHECK + multi_provider_reconcile method`
+
+---
+
+## 17 — Postman API collection: COMPLETE (2026-03-21)
+
+All agent tasks done. Final commit: `14c9e29`.
+
+Completed: collection cleanup, `base_url` + token expiry, ISRC auth resolution,
+Track by ID field validation, Identity Verification chain (5a Beatport → 5b TIDAL
+→ 5c Spotify), Validation Run folder (6a → 6b → 5a → 5b → 5c), token guard.
+
+Remaining operator task: run Validation Run in Collection Runner with live TIDAL token.
+Pass: `5b` + `5c` both log `CORROBORATED`. Then open PR `dev → main`.
+Prompt: `.github/prompts/postman-api-optimize.prompt.md` (status: COMPLETE)
 
 ---
 
@@ -452,23 +279,13 @@ Commit: `feat(schema): add ingestion provenance columns to track_identity`
 
 | File | Task | Agent | Status |
 |---|---|---|---|
-| `resume-refresh-fix.prompt.md` | Fix `--resume` in `tools/get-intake` | Codex | Ready |
+| `resume-refresh-fix.prompt.md` | Fix `--resume` in `tools/get-intake` | Codex | COMPLETE |
 | `repo-cleanup.prompt.md` | Archive dead scripts and stale docs | Codex | Ready |
-| `dj-pipeline-hardening.prompt.md` | Enforce DJ pipeline discipline | Codex | Blocked (Phase 1) |
+| `dj-pipeline-hardening.prompt.md` | DJ pipeline discipline | Codex | Blocked (Phase 1) |
 | `dj-workflow-audit.prompt.md` | DJ workflow audit | Codex | Blocked (Phase 1) |
 | `lexicon-reconcile.prompt.md` | Lexicon reconcile strategy | Codex | Ready |
 | `open-streams-post-0010.prompt.md` | Write DJ pipeline post | Codex | Ready |
+| `postman-api-optimize.prompt.md` | Beatport API collection | Postman | COMPLETE |
 
 Prompts for Phase 1 PRs 12–15 and Phase 2 seam: not yet written.
 Author in Claude.ai before delegating to Codex.
-
-
----
-
-## 15 — TIDAL OAuth refactor: COMPLETE (2026-03-21)
-
-Commit: `3a3595c`
-
-`tidal_oauth.py` refactored — global mutable state removed, monotonic clock,
-private naming convention, docstring restored. No behaviour changes.
-No further work needed on this file unless the PKCE flow itself changes.

@@ -348,3 +348,60 @@ Note: `files.dj_set_role` on the flat `files` table is a separate downstream exp
 2. Path truth stored outside `asset_file` + move receipt/event trail.
 3. Direct DB path rewrites without corresponding successful `move_execution`.
 4. Requiring DJ state to validate core library integrity.
+
+---
+
+## Ingestion Provenance Columns (migration 0012 — pending)
+
+Four NOT NULL columns added to `track_identity`:
+
+| Column | Type | Notes |
+|---|---|---|
+| `ingested_at` | TEXT (ISO 8601 UTC) | Set once at insert, never updated |
+| `ingestion_method` | TEXT | Controlled vocabulary (see below) |
+| `ingestion_source` | TEXT | Specific evidence e.g. `beatport_api:track_id=12345678` |
+| `ingestion_confidence` | TEXT | Five-tier vocabulary (see below) |
+
+`ingestion_confidence` CHECK constraint:
+  `('verified', 'corroborated', 'high', 'uncertain', 'legacy')`
+
+`ingestion_method` vocabulary:
+  `provider_api`, `isrc_lookup`, `fingerprint_match`, `fuzzy_text_match`,
+  `picard_tag`, `manual`, `migration`, `multi_provider_reconcile`
+
+Full spec: `docs/INGESTION_PROVENANCE.md`, `docs/MULTI_PROVIDER_ID_POLICY.md`
+
+---
+
+## Provider ID Conflict JSON (canonical_payload_json keys)
+
+When Track B (multi-provider reconcile) detects a provider ID that resolves
+to a different ISRC than the canonical ISRC, the conflict is recorded in
+`canonical_payload_json` under these keys:
+
+```json
+{
+  "provider_id_conflicts": [
+    {
+      "provider": "spotify_id",
+      "stored_value": "4abc123",
+      "resolved_isrc": "GBUM71505512",
+      "canonical_isrc": "USQX91501234",
+      "detected_at": "2026-03-21T14:00:00Z"
+    }
+  ],
+  "provider_id_conflicts_resolved": [
+    {
+      "provider": "spotify_id",
+      "stored_value": "4abc123",
+      "resolution": "confirmed canonical ISRC correct — spotify pointed to different track",
+      "resolved_at": "2026-03-22T10:00:00Z"
+    }
+  ]
+}
+```
+
+Any row with a non-empty `provider_id_conflicts` array must have
+`ingestion_confidence = 'uncertain'` regardless of other corroboration.
+Resolution requires operator review. After resolution, entry moves to
+`provider_id_conflicts_resolved` with timestamp and note.

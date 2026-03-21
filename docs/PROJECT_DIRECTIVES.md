@@ -153,3 +153,33 @@ say "run the full suite as a final gate", targeted only applies.
 procedures. They must never appear in a Codex prompt or be executed by
 any agent. The git history cleanup task lives in `docs/OPS_RUNBOOK.md`
 and is executed manually by the operator only.
+
+## Confidence tier update (2026-03-21)
+
+The four-tier model defined above is superseded. The correct five-tier model is:
+
+  verified        Two+ providers confirmed same ISRC at ingest time (active check)
+  corroborated    Multiple stored provider IDs present, all agree on ISRC
+  high            Single provider API match, confirmed provider ID
+  uncertain       Fuzzy match, fingerprint below 0.90, text-only, or any conflict
+  legacy          Picard tag, unknown origin, or unverified migration
+
+Full multi-provider policy: `docs/MULTI_PROVIDER_ID_POLICY.md`
+
+## Two ingestion tracks
+
+Track A (clean-slate): files from Beatport/TIDAL via `tools/get --enrich`
+  ingestion_method = 'provider_api'
+  ingestion_confidence = 'verified' (both providers agree) or 'high' (one provider)
+
+Track B (legacy): older files with accumulated cross-provider IDs
+  ingestion_method = 'multi_provider_reconcile'
+  ingestion_confidence = 'corroborated' (all IDs agree on ISRC), 'uncertain' (conflict)
+  Conflicts preserved in canonical_payload_json.provider_id_conflicts — never dropped
+
+## Provider ID policy
+
+All provider IDs preserved if they do not conflict with the ISRC.
+Agreement across providers = positive confirmation.
+Conflict = provenance failure — flagged not silently resolved.
+Full policy: `docs/MULTI_PROVIDER_ID_POLICY.md`

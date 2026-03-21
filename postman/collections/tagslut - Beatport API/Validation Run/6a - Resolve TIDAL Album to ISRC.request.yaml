@@ -1,0 +1,72 @@
+$kind: http-request
+name: '6a - Resolve TIDAL Album to ISRC'
+description: |-
+  **Validation Run — Step 1 of 3**
+
+  Seeds the chain with a known-clean track from TIDAL album `507881809`.
+
+  Calls `GET /v1/albums/{albumId}/tracks` with `countryCode=US` and picks the
+  first track. On success it writes:
+
+  - `beatport_test_isrc` — ISRC of the first track (used by 6b → Track by ID)
+  - `tidal_seed_track_id` — TIDAL track ID (used by 5b for cross-check)
+  - `tidal_seed_isrc` — same ISRC, kept as the ground-truth reference
+
+  ### Why this album?
+  Album `507881809` was nominated as a known-clean validation seed. The ISRC
+  resolved here is the ground truth against which Beatport and Spotify are
+  checked in 5a → 5b → 5c.
+
+  ### Auth
+  Bearer token via `{{tidal_access_token}}`. Ensure the TIDAL token is valid
+  before running this folder.
+url: 'https://api.tidal.com/v1/albums/507881809/tracks'
+method: GET
+auth:
+  type: bearer
+  credentials:
+    token: '{{tidal_access_token}}'
+queryParams:
+  - key: countryCode
+    value: US
+scripts:
+  - type: afterResponse
+    code: |-
+      var code = pm.response.code;
+      console.log('[6a] Status: ' + code);
+
+      if (code !== 200) {
+          console.log('[6a] FAILED — body: ' + pm.response.text().substring(0, 400));
+          return;
+      }
+
+      var json  = pm.response.json();
+      var items = json.items || (Array.isArray(json) ? json : []);
+
+      if (!items.length) {
+          console.log('[6a] WARNING: album 507881809 returned 0 tracks.');
+          return;
+      }
+
+      var track = items[0];
+      var isrc  = track.isrc;
+      var tid   = track.id;
+
+      if (!isrc) {
+          console.log('[6a] WARNING: first track has no ISRC field. Keys: ' +
+              Object.keys(track).join(', '));
+          return;
+      }
+
+      pm.environment.set('beatport_test_isrc',   isrc);
+      pm.environment.set('tidal_seed_track_id',  String(tid));
+      pm.environment.set('tidal_seed_isrc',      isrc);
+
+      console.log('[6a] Seed track: "' + (track.title || track.name || '?') +
+          '" by ' + (track.artist && track.artist.name ? track.artist.name : '?'));
+      console.log('[6a] tidal_track_id        = ' + tid);
+      console.log('[6a] beatport_test_isrc    = ' + isrc);
+      console.log('[6a] tidal_seed_isrc       = ' + isrc);
+      console.log('[6a] Total tracks in album : ' + items.length);
+    language: text/javascript
+order: 1000

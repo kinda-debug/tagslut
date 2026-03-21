@@ -32,6 +32,92 @@ Items 5 and 6 must not be started until items 1–3 are confirmed complete.
 | **Copilot+** | Editor inline completions and single-file chat only. Not for agentic tasks. |
 | **Claude.ai** | Strategic planning, prompt generation, review of agent output. |
 
+## Delegation protocol — who does what, and when
+
+For every task, decide ownership in this order:
+
+### 0. Task header required on every delegated item
+Every task handed to any agent must start with:
+
+- Read first: `<single first file>`
+- Verify before editing: `<command, failing test, or concrete behavior to confirm>`
+- Allowed verification: targeted pytest only unless the task explicitly says "full suite as a final gate"
+- Stop and escalate if: `<clear ambiguity trigger>`
+- Done when: `<observable completion condition>`
+
+This is mandatory. No agent starts coding before these are stated.
+
+### 1. Codex = default executor
+Use Codex when:
+- the task already has a prompt in `.github/prompts/`, or
+- the spec is already written and the change is implementation-only, or
+- the work is multi-file but the behavior and acceptance criteria are already clear.
+
+Codex responsibilities:
+- implement the smallest reversible patch
+- run only targeted verification
+- update affected help text/docs when command behavior changes
+- commit one logical change at a time with conventional commit messages
+
+Do not use Codex to design the solution from scratch.
+
+### 2. Claude Code = ambiguity resolver, reviewer, and prompt author
+Use Claude Code before or around Codex when:
+- the problem itself is unclear
+- the change is architecture-sensitive or cross-cutting
+- the task touches identity-model invariants, migrations, or ingestion provenance
+- docs, workflows, and code may disagree
+- a new Codex prompt needs to be authored
+- Codex output needs audit/review before merge
+
+Claude Code responsibilities:
+- identify the exact surfaces that must change
+- write or tighten the execution spec/prompt
+- review Codex diffs for invariant violations
+- resolve unclear failures that are not yet reducible to a narrow patch
+
+Claude Code should not become the default implementer for routine prompt-ready work.
+
+### 3. Copilot+ = editor-side assistant only
+Use Copilot+ only for:
+- inline completions
+- quick explanation of an already open file
+- tiny mechanical edits inside one file
+- pattern-following edits after the approach is already decided elsewhere
+
+Do not use Copilot+ for:
+- multi-file work
+- schema/migration changes
+- anything requiring command execution to verify
+- architecture decisions
+- agentic repo-wide exploration
+
+### 4. Human/operator-only lane
+Never delegate these to any agent:
+- `git push --force`
+- `git filter-repo`
+- direct writes to DB files
+- writes to mounted library volumes
+- any destructive maintenance procedure called out as operator-only
+
+### 5. Escalation rules
+Escalate from Copilot+ -> Codex when:
+- the task grows beyond one file
+- verification requires running commands/tests
+- the file change affects behavior outside the open file
+
+Escalate from Codex -> Claude Code when:
+- the prompt/spec is underspecified
+- root cause differs from the expected one
+- the change touches identity/storage invariants
+- docs and implementation conflict
+- the patch wants to widen scope beyond the original task
+
+Escalate from any agent -> operator when:
+- the task requires force-push/history rewrite
+- a volume is not mounted
+- the only viable path would touch real DB files or managed library paths
+
 ---
 
 ## Testing policy

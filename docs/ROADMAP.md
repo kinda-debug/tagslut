@@ -34,89 +34,165 @@ Items 5 and 6 must not be started until items 1–3 are confirmed complete.
 
 ## Delegation protocol — who does what, and when
 
-For every task, decide ownership in this order:
+For every delegated task, determine ownership in this order.
 
-### 0. Task header required on every delegated item
+### 0. Required task header for every delegated item
+
 Every task handed to any agent must start with:
 
-- Read first: `<single first file>`
-- Verify before editing: `<command, failing test, or concrete behavior to confirm>`
-- Allowed verification: targeted pytest only unless the task explicitly says "full suite as a final gate"
-- Stop and escalate if: `<clear ambiguity trigger>`
-- Done when: `<observable completion condition>`
+- **Read first:** the single file that must be read before anything else
+- **Verify before editing:** the exact command, failing test, or behavior to confirm first
+- **Allowed verification:** targeted pytest only, unless the task explicitly states the full-suite exception
+- **Stop and escalate if:** the condition that makes the task no longer implementation-only
+- **Done when:** the observable completion condition
 
-This is mandatory. No agent starts coding before these are stated.
+No agent should start coding before these are stated.
 
 ### 1. Codex = default executor
+
 Use Codex when:
-- the task already has a prompt in `.github/prompts/`, or
-- the spec is already written and the change is implementation-only, or
-- the work is multi-file but the behavior and acceptance criteria are already clear.
+- a prompt already exists in `.github/prompts/`
+- the spec is already written
+- the work is implementation-heavy but behavior and acceptance criteria are already clear
+- the task spans multiple files but does not require new design
 
 Codex responsibilities:
 - implement the smallest reversible patch
-- run only targeted verification
-- update affected help text/docs when command behavior changes
-- commit one logical change at a time with conventional commit messages
+- run only targeted verification during implementation
+- update CLI help text/docs when behavior changes
+- keep scope narrow
+- commit one logical change at a time using conventional commit format
 
-Do not use Codex to design the solution from scratch.
+Do not use Codex to invent the design for an unclear task.
 
-### 2. Claude Code = ambiguity resolver, reviewer, and prompt author
-Use Claude Code before or around Codex when:
+### 2. Claude Code = ambiguity resolver, prompt author, and reviewer
+
+Use Claude Code when:
 - the problem itself is unclear
 - the change is architecture-sensitive or cross-cutting
-- the task touches identity-model invariants, migrations, or ingestion provenance
-- docs, workflows, and code may disagree
-- a new Codex prompt needs to be authored
-- Codex output needs audit/review before merge
+- identity-model or schema invariants may be affected
+- docs, prompts, and implementation appear inconsistent
+- a new Codex prompt must be authored
+- Codex output needs review before merge
 
 Claude Code responsibilities:
-- identify the exact surfaces that must change
-- write or tighten the execution spec/prompt
-- review Codex diffs for invariant violations
-- resolve unclear failures that are not yet reducible to a narrow patch
+- reduce unclear problems to a narrow executable spec
+- identify all affected surfaces before implementation
+- author or tighten prompts for Codex
+- review diffs touching storage, migrations, provenance, or identity logic
 
-Claude Code should not become the default implementer for routine prompt-ready work.
+Claude Code should not become the default implementer for routine prompt-ready tasks.
 
-### 3. Copilot+ = editor-side assistant only
+### 3. Copilot+ = editor-only local assistant
+
 Use Copilot+ only for:
 - inline completions
-- quick explanation of an already open file
-- tiny mechanical edits inside one file
-- pattern-following edits after the approach is already decided elsewhere
+- explanation of an already open file
+- tiny mechanical edits within one file
+- pattern-following edits after the approach has already been decided elsewhere
 
 Do not use Copilot+ for:
-- multi-file work
-- schema/migration changes
-- anything requiring command execution to verify
+- multi-file changes
+- schema or migration work
+- tasks requiring command execution to verify
 - architecture decisions
-- agentic repo-wide exploration
+- repo-wide exploration
 
-### 4. Human/operator-only lane
+### 4. Operator-only lane
+
 Never delegate these to any agent:
 - `git push --force`
 - `git filter-repo`
-- direct writes to DB files
+- direct modification of DB files
 - writes to mounted library volumes
-- any destructive maintenance procedure called out as operator-only
+- any destructive maintenance step marked operator-only in project directives
 
 ### 5. Escalation rules
+
 Escalate from Copilot+ -> Codex when:
-- the task grows beyond one file
-- verification requires running commands/tests
-- the file change affects behavior outside the open file
+- the change expands beyond one file
+- verification requires running commands or tests
+- the file-local change affects broader behavior
 
 Escalate from Codex -> Claude Code when:
 - the prompt/spec is underspecified
-- root cause differs from the expected one
-- the change touches identity/storage invariants
-- docs and implementation conflict
-- the patch wants to widen scope beyond the original task
+- the observed root cause differs from the expected one
+- the patch touches identity/storage invariants
+- docs and implementation disagree
+- the task starts to require design rather than execution
 
 Escalate from any agent -> operator when:
-- the task requires force-push/history rewrite
-- a volume is not mounted
-- the only viable path would touch real DB files or managed library paths
+- the task requires force-push or history rewrite
+- a required volume is unmounted
+- the only viable path would touch a real DB file or managed library path
+
+## Current orchestration queue
+
+### A. Resume/refresh fix (`tools/get-intake`)
+Primary executor: **Codex**
+Support: **Copilot+** only for local single-file bash assistance
+Escalate to **Claude Code** if:
+- runtime behavior does not match the three confirmed root causes
+- the fix expands into orchestrator/wrapper contract questions
+
+Required task header:
+- **Read first:** `.github/prompts/resume-refresh-fix.prompt.md`
+- **Verify before editing:** reproduce the failing `--resume` behavior and run only the targeted intake tests named in the prompt
+
+### B. Ingestion provenance migration
+Primary flow: **Claude Code -> Codex -> Claude Code review**
+
+Why:
+- this is schema + invariant + insert-surface work and needs a frozen execution plan before implementation
+
+Execution split:
+- **Claude Code:** identify all `track_identity` insert surfaces and lock the implementation checklist
+- **Codex:** implement migration, schema updates, insert-path wiring, and targeted tests
+- **Claude Code:** review the resulting diff before merge
+
+Required task header:
+- **Read first:** `docs/INGESTION_PROVENANCE.md`
+- **Verify before editing:** enumerate every `track_identity` insert path and confirm migration-first sequencing
+
+### C. Fresh DB initialization
+Primary flow: **operator + Codex**
+
+Execution split:
+- **Operator:** `.env`, mount/path confirmation, `supabase db reset`
+- **Codex:** initialize from migrations and run storage-targeted verification
+- **Claude Code:** only if migration/test behavior is unclear
+
+Required task header:
+- **Read first:** `docs/PROJECT_DIRECTIVES.md`
+- **Verify before editing:** confirm `FRESH_2026/music_v3.db` is the target and `LEGACY_*` remains read-only
+
+### D. Repo cleanup
+Primary executor: **Codex**
+Review support: **Claude Code** for borderline archive/delete decisions
+Operator-only carve-out: history rewrite remains manual only
+
+Required task header:
+- **Read first:** `.github/prompts/repo-cleanup.prompt.md`
+- **Verify before editing:** confirm the target is not operator-only, not a DB file, and not a mounted library path
+
+### E. Phase 1 PR chain (9-11)
+Status: **Blocked until A-C complete**
+
+Primary executor once unblocked: **Codex**, one PR at a time
+Support: **Claude Code** for prompt authoring for PRs 12-15 and review of scope boundaries
+
+Required task header:
+- **Read first:** `docs/PHASE1_STATUS.md`
+- **Verify before editing:** confirm upstream blockers are complete before starting the next PR
+
+### F. DJ pipeline hardening / workflow audit / Lexicon reconcile
+Primary executor: **Codex**
+Use **Claude Code** only when invariants or workflow semantics are unclear
+Use **Copilot+** only for already-decided file-local assistance
+
+Required task header:
+- **Read first:** the relevant prompt file
+- **Verify before editing:** confirm the task is no longer blocked by earlier gates
 
 ---
 
@@ -178,7 +254,7 @@ This is a post-ingestion sanity check, not part of fresh DB initialization.
 
 ### 4.1 Lexicon reconcile
 Prompt: `.github/prompts/lexicon-reconcile.prompt.md`
-Status: prompt exists in repo, not yet in bundle — add to next bundle refresh.
+Status: prompt ready. If bundle/Drive contents disagree, verify against the current source before delegating.
 36% of identities (11,679) unmatched due to absence of streaming IDs in Lexicon DB.
 
 ### 4.2 Incremental Lexicon backfill after DB updates
@@ -380,7 +456,7 @@ Commit: `feat(schema): add ingestion provenance columns to track_identity`
 | `repo-cleanup.prompt.md` | Archive dead scripts and stale docs | Codex | Ready |
 | `dj-pipeline-hardening.prompt.md` | Enforce DJ pipeline discipline | Codex | Blocked (Phase 1) |
 | `dj-workflow-audit.prompt.md` | DJ workflow audit | Codex | Blocked (Phase 1) |
-| `lexicon-reconcile.prompt.md` | Lexicon reconcile strategy | Codex | Ready — add to bundle |
+| `lexicon-reconcile.prompt.md` | Lexicon reconcile strategy | Codex | Ready |
 | `open-streams-post-0010.prompt.md` | Write DJ pipeline post | Codex | Ready |
 
 Prompts for Phase 1 PRs 12–15 and Phase 2 seam: not yet written.

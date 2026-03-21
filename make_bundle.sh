@@ -4,6 +4,7 @@ set -euo pipefail
 
 REPO=/Users/georgeskhawam/Projects/tagslut
 BUNDLE=~/Desktop/tagslut_context_bundle
+ZIP_OUT=/Users/georgeskhawam/Library/CloudStorage/Dropbox/tagslut_context_bundle.zip
 
 mkdir -p "$BUNDLE"
 
@@ -85,6 +86,5 @@ echo "Bundle: $BUNDLE"
 echo "Files:  $(ls "$BUNDLE" | wc -l | tr -d ' ')"
 echo "Size:   $(du -sh "$BUNDLE" | cut -f1)"
 echo ""
-cd ~/Desktop
-zip -r tagslut_context_bundle.zip tagslut_context_bundle/
-echo "Zip:    ~/Desktop/tagslut_context_bundle.zip ($(du -sh tagslut_context_bundle.zip | cut -f1))"
+zip -r "$ZIP_OUT" "$BUNDLE"
+echo "Zip:    $ZIP_OUT ($(du -sh "$ZIP_OUT" | cut -f1))"

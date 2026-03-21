@@ -1,0 +1,42 @@
+$kind: collection
+name: tagslut - Beatport API
+scripts:
+  - type: http:beforeRequest
+    language: text/javascript
+    code: |-
+      // Collection-level token guard (Task 8)
+      // Runs before every Bearer-authenticated request in the collection.
+      // Skips the token endpoint itself to avoid infinite loops.
+
+      var url = request.url || '';
+
+      // Don't guard the token fetch or the introspect endpoint
+      if (url.indexOf('/v4/auth/o/token/') !== -1 ||
+          url.indexOf('/v4/auth/o/introspect/') !== -1) {
+          return;
+      }
+
+      var expiresAt = pm.environment.get('beatport_token_expires_at');
+      var token     = pm.environment.get('beatport_access_token');
+
+      // No token at all
+      if (!token) {
+          console.warn('[token-guard] beatport_access_token is not set. Run Auth / Get Token first.');
+          return;
+      }
+
+      // No expiry recorded yet (token was set outside this collection)
+      if (!expiresAt) {
+          return;
+      }
+
+      var secondsLeft = (parseInt(expiresAt, 10) - Date.now()) / 1000;
+
+      if (secondsLeft <= 0) {
+          console.warn('[token-guard] beatport_access_token has EXPIRED (' +
+              Math.abs(secondsLeft).toFixed(0) + 's ago). Run Auth / Get Token.');
+      } else if (secondsLeft < 60) {
+          console.warn('[token-guard] beatport_access_token expires in ' +
+              secondsLeft.toFixed(0) + 's — consider refreshing before this run.');
+      }
+      // else: token is healthy, no noise

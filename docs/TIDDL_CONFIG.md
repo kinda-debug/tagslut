@@ -230,3 +230,55 @@ From `tiddl/core/track.py` (`add_track_metadata` → `add_flac_metadata`):
 
 These tags are written before tagslut's scan. tagslut reads them at scan time
 and uses ISRC as the primary identity anchor for `ingestion_method='provider_api'`.
+
+---
+
+## Cover art configuration (updated 2026-03-21)
+
+### Embedded cover (metadata)
+`[metadata] cover = true` — tiddl embeds cover art in every FLAC file. Always on.
+
+### Separate cover file
+The correct configuration places the cover file INSIDE the album folder,
+not at the staging root level:
+
+```toml
+[cover]
+save = true
+size = 1280
+allowed = ["album"]
+
+[cover.templates]
+album = "{album.artist}/{album.title}/cover"
+```
+
+This produces:
+```
+Various Artists/20 Years of Lazy Days/
+  01. Artist - Title [ISRC].flac
+  02. Artist - Title [ISRC].flac
+  cover.jpg                          ← inside the folder
+```
+
+Without the template, tiddl writes `cover.jpg` to the staging root (outside
+the album folder), which breaks album-level organization.
+
+---
+
+## What tiddl does and does not write
+
+### Written by tiddl at download time (from TIDAL API)
+TITLE, ARTIST, ALBUMARTIST, ALBUM, TRACKNUMBER, DISCNUMBER, DATE, YEAR,
+COPYRIGHT, ISRC, COMMENT, BPM (if non-null in API response), cover art (embedded)
+
+### NOT written by tiddl — requires tagslut enrichment pass
+- **Genre** — not in TIDAL v1 API track response
+- **Key** — not in TIDAL v1 API track response
+- **BPM** — TIDAL returns null for many tracks; Beatport is the reliable source
+- **Label** — available via album API but not written to tags by tiddl
+- **Catalog number** — same
+
+These fields are populated by tagslut's enrichment pass via the Beatport API
+(`tools/get --enrich <url>`). A freshly downloaded FLAC before enrichment
+will be missing genre, key, and often BPM. This is expected and correct.
+The enrichment pass fills them in.

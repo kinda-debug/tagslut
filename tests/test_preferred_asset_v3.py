@@ -35,8 +35,10 @@ def _create_fixture_db(tmp_path: Path) -> Path:
 
         conn.executemany(
             """
-            INSERT INTO track_identity (id, identity_key, merged_into_id)
-            VALUES (?, ?, ?)
+            INSERT INTO track_identity (id, identity_key, merged_into_id,
+                ingested_at, ingestion_method, ingestion_source, ingestion_confidence)
+            VALUES (?, ?, ?,
+                '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')
             """,
             [
                 (1, "id:one", None),

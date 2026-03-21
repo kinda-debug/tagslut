@@ -20,11 +20,11 @@ def _create_db(tmp_path: Path) -> Path:
     try:
         create_schema_v3(conn)
         conn.executemany(
-            "INSERT INTO track_identity (id, identity_key, merged_into_id) VALUES (?, ?, ?)",
+            "INSERT INTO track_identity (id, identity_key, merged_into_id, ingested_at, ingestion_method, ingestion_source, ingestion_confidence) VALUES (?, ?, ?, ?, ?, ?, ?)",
             [
-                (1, "id:one", None),
-                (2, "id:two", None),
-                (3, "id:merged", 1),
+                (1, "id:one", None, '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy'),
+                (2, "id:two", None, '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy'),
+                (3, "id:merged", 1, '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy'),
             ],
         )
         conn.execute(

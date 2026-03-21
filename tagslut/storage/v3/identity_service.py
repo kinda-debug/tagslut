@@ -7,6 +7,7 @@ import logging
 import sqlite3
 import re
 from collections.abc import Mapping
+from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from typing import Any
 
@@ -175,6 +176,23 @@ def _identity_value_map(
         "duration_ref_ms": _duration_ref_ms(duration_s),
         "ref_source": _lookup_value(
             provenance, "ref_source", "source", "provider", "download_source"
+        ),
+        "ingested_at": (
+            _lookup_value(provenance, "ingested_at")
+            or datetime.now(timezone.utc).isoformat()
+        ),
+        "ingestion_method": (
+            _lookup_value(provenance, "ingestion_method")
+            or "provider_api"
+        ),
+        "ingestion_source": (
+            _lookup_value(provenance, "ingestion_source")
+            or _lookup_value(provenance, "source", "provider", "download_source")
+            or ""
+        ),
+        "ingestion_confidence": (
+            _lookup_value(provenance, "ingestion_confidence")
+            or "high"
         ),
     }
     return values

@@ -78,8 +78,13 @@ def _create_fixture_db(tmp_path: Path) -> Path:
                 beatport_id,
                 tidal_id,
                 qobuz_id,
-                merged_into_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                merged_into_id,
+                ingested_at,
+                ingestion_method,
+                ingestion_source,
+                ingestion_confidence
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')
             """,
             [
                 (
@@ -451,7 +456,7 @@ def test_export_connection_is_query_only(tmp_path: Path) -> None:
     try:
         with pytest.raises(sqlite3.OperationalError):
             conn.execute(
-                "INSERT INTO track_identity (identity_key) VALUES ('identity:new')"
+                "INSERT INTO track_identity (identity_key, ingested_at, ingestion_method, ingestion_source, ingestion_confidence) VALUES ('identity:new', '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')"
             )
     finally:
         conn.close()

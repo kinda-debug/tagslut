@@ -10,6 +10,7 @@ import json
 import os
 import re
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -259,6 +260,10 @@ def upsert_track_identity(
     key: str | None = None,
     duration_ref_ms: int | None = None,
     ref_source: str | None = None,
+    ingested_at: str | None = None,
+    ingestion_method: str | None = None,
+    ingestion_source: str | None = None,
+    ingestion_confidence: str | None = None,
 ) -> int | None:
     isrc_norm = _norm_text(isrc)
     beatport_norm = _norm_text(beatport_id)
@@ -300,6 +305,10 @@ def upsert_track_identity(
         "canonical_key": key_norm,
         "duration_ref_ms": duration_ref_ms,
         "ref_source": _norm_text(ref_source),
+        "ingested_at": _norm_text(ingested_at) or datetime.now(timezone.utc).isoformat(),
+        "ingestion_method": _norm_text(ingestion_method) or "provider_api",
+        "ingestion_source": _norm_text(ingestion_source) or "",
+        "ingestion_confidence": _norm_text(ingestion_confidence) or "high",
     }
     for column, value in optional_values.items():
         if _column_exists(conn, V3_TRACK_IDENTITY_TABLE, column):
@@ -312,8 +321,9 @@ def upsert_track_identity(
         "artist_norm = COALESCE(excluded.artist_norm, artist_norm)",
         "title_norm = COALESCE(excluded.title_norm, title_norm)",
     ]
+    _PROVENANCE_COLS = {"ingested_at", "ingestion_method", "ingestion_source", "ingestion_confidence"}
     for column in optional_values:
-        if column in columns:
+        if column in columns and column not in _PROVENANCE_COLS:
             update_assignments.append(
                 f"{column} = COALESCE(excluded.{column}, {column})"
             )
@@ -593,6 +603,9 @@ def dual_write_registered_file(
             key=identity_hints["key"],
             duration_ref_ms=duration_ref_ms,
             ref_source=duration_ref_source or download_source,
+            ingestion_method="provider_api",
+            ingestion_source=download_source or "",
+            ingestion_confidence="high" if identity_hints["isrc"] else "uncertain",
         )
         if identity_id is not None:
             upsert_asset_link(

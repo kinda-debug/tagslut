@@ -47,8 +47,13 @@ def test_resolve_active_identity_follows_two_hop_merge_chain(tmp_path) -> None:
                 identity_key,
                 canonical_artist,
                 canonical_title,
-                merged_into_id
-            ) VALUES (?, ?, ?, ?, ?)
+                merged_into_id,
+                ingested_at,
+                ingestion_method,
+                ingestion_source,
+                ingestion_confidence
+            ) VALUES (?, ?, ?, ?, ?,
+                '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')
             """,
             [
                 (1, "id:source", "Artist Source", "Track Source", None),
@@ -80,8 +85,13 @@ def test_resolve_or_create_identity_uses_existing_active_asset_link(tmp_path) ->
                 identity_key,
                 canonical_artist,
                 canonical_title,
-                merged_into_id
-            ) VALUES (?, ?, ?, ?, ?)
+                merged_into_id,
+                ingested_at,
+                ingestion_method,
+                ingestion_source,
+                ingestion_confidence
+            ) VALUES (?, ?, ?, ?, ?,
+                '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')
             """,
             [
                 (1, "id:linked-old", "Artist Old", "Track Old", None),
@@ -112,8 +122,10 @@ def test_resolve_or_create_identity_matches_by_isrc(tmp_path) -> None:
         asset_row = _asset_row(conn, 102, "/music/isrc.flac")
         conn.execute(
             """
-            INSERT INTO track_identity (id, identity_key, isrc, canonical_artist, canonical_title)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO track_identity (id, identity_key, isrc, canonical_artist, canonical_title,
+                ingested_at, ingestion_method, ingestion_source, ingestion_confidence)
+            VALUES (?, ?, ?, ?, ?,
+                '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')
             """,
             (10, "id:isrc", "ISRC-123", "Artist A", "Track A"),
         )
@@ -136,8 +148,10 @@ def test_resolve_or_create_identity_matches_by_provider_id(tmp_path) -> None:
         asset_row = _asset_row(conn, 103, "/music/provider.flac")
         conn.execute(
             """
-            INSERT INTO track_identity (id, identity_key, beatport_id, canonical_artist, canonical_title)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO track_identity (id, identity_key, beatport_id, canonical_artist, canonical_title,
+                ingested_at, ingestion_method, ingestion_source, ingestion_confidence)
+            VALUES (?, ?, ?, ?, ?,
+                '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')
             """,
             (11, "beatport:BP-1", "BP-1", "Artist B", "Track B"),
         )
@@ -161,8 +175,10 @@ def test_resolve_or_create_identity_reuses_existing_identity_for_same_provider_i
         _asset_row(conn, 202, "/music/b.flac", duration_s=300.0)
         conn.execute(
             """
-            INSERT INTO track_identity (id, identity_key, beatport_id, canonical_artist, canonical_title)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO track_identity (id, identity_key, beatport_id, canonical_artist, canonical_title,
+                ingested_at, ingestion_method, ingestion_source, ingestion_confidence)
+            VALUES (?, ?, ?, ?, ?,
+                '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')
             """,
             (30, "beatport:BP-123", "BP-123", "Artist A", "Track A"),
         )
@@ -198,8 +214,10 @@ def test_resolve_or_create_identity_merges_provider_ids_for_same_isrc(tmp_path) 
         asset_row = _asset_row(conn, 203, "/music/isrc-merge.flac", duration_s=300.0)
         conn.execute(
             """
-            INSERT INTO track_identity (id, identity_key, isrc, beatport_id, canonical_artist, canonical_title)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO track_identity (id, identity_key, isrc, beatport_id, canonical_artist, canonical_title,
+                ingested_at, ingestion_method, ingestion_source, ingestion_confidence)
+            VALUES (?, ?, ?, ?, ?, ?,
+                '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')
             """,
             (31, "isrc:merge-1", "ISRC-MERGE-1", "BP-999", "Artist A", "Track A"),
         )
@@ -239,8 +257,13 @@ def test_resolve_or_create_identity_matches_fuzzy_and_preserves_exact_fields(tmp
                 title_norm,
                 canonical_artist,
                 canonical_title,
-                canonical_duration
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                canonical_duration,
+                ingested_at,
+                ingestion_method,
+                ingestion_source,
+                ingestion_confidence
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,
+                '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')
             """,
             (
                 12,
@@ -293,8 +316,13 @@ def test_resolve_or_create_identity_matches_fuzzy_with_short_artist_prefix(tmp_p
                 title_norm,
                 canonical_artist,
                 canonical_title,
-                canonical_duration
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                canonical_duration,
+                ingested_at,
+                ingestion_method,
+                ingestion_source,
+                ingestion_confidence
+            ) VALUES (?, ?, ?, ?, ?, ?, ?,
+                '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')
             """,
             (
                 13,
@@ -412,8 +440,13 @@ def test_mirror_identity_to_legacy_keeps_files_and_library_tracks_in_parity(tmp_
                 canonical_release_date,
                 canonical_bpm,
                 canonical_key,
-                ref_source
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ref_source,
+                ingested_at,
+                ingestion_method,
+                ingestion_source,
+                ingestion_confidence
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')
             """,
             (
                 20,
@@ -560,8 +593,13 @@ def test_mirror_identity_to_legacy_warns_when_files_has_no_canonical_columns(
                 id,
                 identity_key,
                 canonical_title,
-                canonical_artist
-            ) VALUES (?, ?, ?, ?)
+                canonical_artist,
+                ingested_at,
+                ingestion_method,
+                ingestion_source,
+                ingestion_confidence
+            ) VALUES (?, ?, ?, ?,
+                '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')
             """,
             (21, "warning:test", "Warning Title", "Warning Artist"),
         )
@@ -581,8 +619,10 @@ def test_link_asset_to_identity_upserts_single_active_row_per_asset(tmp_path) ->
         _asset_row(conn, 107, "/music/link-upsert.flac")
         conn.executemany(
             """
-            INSERT INTO track_identity (id, identity_key)
-            VALUES (?, ?)
+            INSERT INTO track_identity (id, identity_key,
+                ingested_at, ingestion_method, ingestion_source, ingestion_confidence)
+            VALUES (?, ?,
+                '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')
             """,
             [
                 (30, "id:first"),
@@ -624,8 +664,10 @@ def test_link_asset_to_identity_resolves_merged_identity_to_active_row(tmp_path)
         _asset_row(conn, 111, "/music/link-merged.flac")
         conn.executemany(
             """
-            INSERT INTO track_identity (id, identity_key, merged_into_id)
-            VALUES (?, ?, ?)
+            INSERT INTO track_identity (id, identity_key, merged_into_id,
+                ingested_at, ingestion_method, ingestion_source, ingestion_confidence)
+            VALUES (?, ?, ?,
+                '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')
             """,
             [
                 (40, "id:active", None),

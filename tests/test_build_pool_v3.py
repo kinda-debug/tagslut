@@ -45,12 +45,13 @@ def _create_db_and_sources(tmp_path: Path, *, second_source_is_dir: bool = False
         conn.executemany(
             (
                 "INSERT INTO track_identity "
-                "(id, identity_key, canonical_artist, canonical_title, canonical_genre, merged_into_id) "
-                "VALUES (?, ?, ?, ?, ?, ?)"
+                "(id, identity_key, canonical_artist, canonical_title, canonical_genre, merged_into_id, "
+                "ingested_at, ingestion_method, ingestion_source, ingestion_confidence) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             ),
             [
-                (1, "id:a", "Alpha", "Tune", "House", None),
-                (2, "id:b", "Beta", "Peak", "Techno", None),
+                (1, "id:a", "Alpha", "Tune", "House", None, '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy'),
+                (2, "id:b", "Beta", "Peak", "Techno", None, '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy'),
             ],
         )
         conn.executemany(

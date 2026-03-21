@@ -160,8 +160,10 @@ def insert_track(
             INSERT OR IGNORE INTO track_identity
             (id, identity_key, canonical_artist, canonical_title,
              canonical_genre, canonical_label, canonical_bpm,
-             canonical_key, canonical_year)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+             canonical_key, canonical_year,
+             ingested_at, ingestion_method, ingestion_source, ingestion_confidence)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,
+                '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')
             """,
             (
                 identity_id,

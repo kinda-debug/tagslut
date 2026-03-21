@@ -99,11 +99,15 @@ def _make_upgrade_db(path: Path, migrations_dir: Path) -> None:
         conn.execute(
             """
             DELETE FROM schema_migrations
-            WHERE schema_name = 'v3' AND version IN (10, 11)
+            WHERE schema_name = 'v3' AND version IN (10, 11, 12)
             """
         )
         for index_name in PROVIDER_UNIQUE_INDEXES:
             conn.execute(f"DROP INDEX IF EXISTS {index_name}")
+        conn.execute("DROP INDEX IF EXISTS idx_track_identity_ingested_at")
+        conn.execute("DROP INDEX IF EXISTS idx_track_identity_ingestion_method")
+        conn.execute("DROP INDEX IF EXISTS idx_track_identity_ingestion_confidence")
+        conn.execute("DROP TRIGGER IF EXISTS trg_track_identity_provenance_required")
         conn.commit()
     finally:
         conn.close()
@@ -112,6 +116,7 @@ def _make_upgrade_db(path: Path, migrations_dir: Path) -> None:
     assert applied == [
         "0010_track_identity_provider_uniqueness.py",
         "0011_track_identity_provider_uniqueness_hardening.py",
+        "0012_ingestion_provenance.py",
     ]
 
 
@@ -124,6 +129,7 @@ def test_fresh_create_schema_v3_matches_v11_upgrade_path_for_effective_schema(
     for filename in (
         "0010_track_identity_provider_uniqueness.py",
         "0011_track_identity_provider_uniqueness_hardening.py",
+        "0012_ingestion_provenance.py",
     ):
         shutil.copy2(source_dir / filename, migrations_dir / filename)
 

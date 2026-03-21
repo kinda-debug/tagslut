@@ -52,8 +52,13 @@ def _create_case1_db(tmp_path: Path) -> Path:
                 isrc,
                 canonical_artist,
                 canonical_title,
-                enriched_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                enriched_at,
+                ingested_at,
+                ingestion_method,
+                ingestion_source,
+                ingestion_confidence
+            ) VALUES (?, ?, ?, ?, ?, ?, ?,
+                '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')
             """,
             [
                 (1, "isrc:AA1", "BP-1", "AA1", "Artist A", "Track A", None),
@@ -91,8 +96,13 @@ def _create_tie_db(tmp_path: Path) -> Path:
             INSERT INTO track_identity (
                 id,
                 identity_key,
-                beatport_id
-            ) VALUES (?, ?, ?)
+                beatport_id,
+                ingested_at,
+                ingestion_method,
+                ingestion_source,
+                ingestion_confidence
+            ) VALUES (?, ?, ?,
+                '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')
             """,
             [
                 (10, "beatport:BP-TIE-A", "BP-TIE"),

@@ -24,7 +24,7 @@ def test_exact_reuse_by_isrc() -> None:
     conn = _setup_db()
     try:
         conn.execute(
-            "INSERT INTO track_identity (id, identity_key, isrc) VALUES (1, 'isrc:abc123', 'ABC123')"
+            "INSERT INTO track_identity (id, identity_key, isrc, ingested_at, ingestion_method, ingestion_source, ingestion_confidence) VALUES (1, 'isrc:abc123', 'ABC123', '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')"
         )
         identity_id = resolve_or_create_identity(
             conn,
@@ -42,8 +42,8 @@ def test_exact_reuse_by_provider_id() -> None:
     try:
         conn.execute(
             """
-            INSERT INTO track_identity (id, identity_key, beatport_id, canonical_artist, canonical_title)
-            VALUES (2, 'beatport_id:12345', '12345', 'Artist', 'Track')
+            INSERT INTO track_identity (id, identity_key, beatport_id, canonical_artist, canonical_title, ingested_at, ingestion_method, ingestion_source, ingestion_confidence)
+            VALUES (2, 'beatport_id:12345', '12345', 'Artist', 'Track', '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')
             """
         )
         identity_id = resolve_or_create_identity(
@@ -63,8 +63,10 @@ def test_fuzzy_reuse_then_create_when_no_match() -> None:
         conn.execute(
             """
             INSERT INTO track_identity (
-                id, identity_key, artist_norm, title_norm, canonical_artist, canonical_title, duration_ref_ms
-            ) VALUES (3, 'text:artist|track', 'artist', 'track', 'Artist', 'Track', 300000)
+                id, identity_key, artist_norm, title_norm, canonical_artist, canonical_title, duration_ref_ms,
+                ingested_at, ingestion_method, ingestion_source, ingestion_confidence
+            ) VALUES (3, 'text:artist|track', 'artist', 'track', 'Artist', 'Track', 300000,
+                '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')
             """
         )
         reused = resolve_or_create_identity(
@@ -93,10 +95,10 @@ def test_resolve_active_identity_follows_single_merge_hop() -> None:
     conn = _setup_db()
     try:
         conn.executemany(
-            "INSERT INTO track_identity (id, identity_key, merged_into_id) VALUES (?, ?, ?)",
+            "INSERT INTO track_identity (id, identity_key, merged_into_id, ingested_at, ingestion_method, ingestion_source, ingestion_confidence) VALUES (?, ?, ?, ?, ?, ?, ?)",
             [
-                (10, "id:active", None),
-                (11, "id:merged", 10),
+                (10, "id:active", None, "2026-01-01T00:00:00+00:00", "migration", "test_fixture", "legacy"),
+                (11, "id:merged", 10, "2026-01-01T00:00:00+00:00", "migration", "test_fixture", "legacy"),
             ],
         )
         row = resolve_active_identity(conn, 11)
@@ -118,10 +120,12 @@ def test_legacy_mirror_updates_files_and_library_tracks() -> None:
             INSERT INTO track_identity (
                 id, identity_key, isrc, beatport_id, canonical_artist, canonical_title,
                 canonical_album, canonical_genre, canonical_bpm, canonical_key,
-                canonical_label, canonical_release_date, duration_ref_ms
+                canonical_label, canonical_release_date, duration_ref_ms,
+                ingested_at, ingestion_method, ingestion_source, ingestion_confidence
             ) VALUES (
                 7, 'isrc:abc123', 'ABC123', '999', 'Artist', 'Track',
-                'Album', 'House', 124.0, 'Am', 'Label', '2024-01-01', 301000
+                'Album', 'House', 124.0, 'Am', 'Label', '2024-01-01', 301000,
+                '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy'
             )
             """
         )

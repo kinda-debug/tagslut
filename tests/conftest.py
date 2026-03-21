@@ -25,6 +25,20 @@ if str(ROOT) not in sys.path:
 
 FIXTURE_DIR = ROOT / "tests" / "data"
 
+# ---------------------------------------------------------------------------
+# Provenance test defaults — shared constants for fixture INSERTs into
+# track_identity.  All four fields are NOT NULL; tests that INSERT raw SQL
+# must include them.
+# ---------------------------------------------------------------------------
+PROV_DEFAULTS = {
+    "ingested_at": "2026-01-01T00:00:00+00:00",
+    "ingestion_method": "migration",
+    "ingestion_source": "test_fixture",
+    "ingestion_confidence": "legacy",
+}
+PROV_COLS = ", ingested_at, ingestion_method, ingestion_source, ingestion_confidence"
+PROV_VALS = ", '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy'"
+
 # Archived suites are preserved for history but excluded from active CI runs.
 collect_ignore = [
     "archive",

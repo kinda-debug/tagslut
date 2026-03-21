@@ -40,7 +40,11 @@ def temp_db(tmp_path: Path) -> Path:
             beatport_id TEXT,
             tidal_id TEXT,
             title_norm TEXT,
-            artist_norm TEXT
+            artist_norm TEXT,
+            ingested_at TEXT NOT NULL,
+            ingestion_method TEXT NOT NULL,
+            ingestion_source TEXT NOT NULL,
+            ingestion_confidence TEXT NOT NULL
         )
         """
     )
@@ -407,8 +411,8 @@ def test_mp3_flag_calls_build_mp3_from_identity(
 
     conn = sqlite3.connect(str(temp_db))
     cur = conn.execute(
-        "INSERT INTO track_identity (isrc, beatport_id, title_norm, artist_norm) VALUES (?, ?, ?, ?)",
-        ("USTEST001", "456", "test track", "test artist"),
+        "INSERT INTO track_identity (isrc, beatport_id, title_norm, artist_norm, ingested_at, ingestion_method, ingestion_source, ingestion_confidence) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        ("USTEST001", "456", "test track", "test artist", '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy'),
     )
     identity_id = int(cur.lastrowid)
     cur = conn.execute(
@@ -559,8 +563,8 @@ def test_mp3_placeholder_falls_back_to_precheck_skip_db_paths_when_no_promoted_f
 
     conn = sqlite3.connect(str(temp_db))
     cur = conn.execute(
-        "INSERT INTO track_identity (isrc, beatport_id, title_norm, artist_norm) VALUES (?, ?, ?, ?)",
-        ("USTEST001", "456", "test track", "test artist"),
+        "INSERT INTO track_identity (isrc, beatport_id, title_norm, artist_norm, ingested_at, ingestion_method, ingestion_source, ingestion_confidence) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        ("USTEST001", "456", "test track", "test artist", '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy'),
     )
     identity_id = int(cur.lastrowid)
     cur = conn.execute(
@@ -627,8 +631,8 @@ def test_dj_build_registers_separate_profile_and_path(
 
     conn = sqlite3.connect(str(temp_db))
     cur = conn.execute(
-        "INSERT INTO track_identity (isrc, beatport_id, title_norm, artist_norm) VALUES (?, ?, ?, ?)",
-        ("USTEST001", "456", "test track", "test artist"),
+        "INSERT INTO track_identity (isrc, beatport_id, title_norm, artist_norm, ingested_at, ingestion_method, ingestion_source, ingestion_confidence) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        ("USTEST001", "456", "test track", "test artist", '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy'),
     )
     identity_id = int(cur.lastrowid)
     cur = conn.execute(
@@ -719,8 +723,8 @@ def test_backfill_prefers_dj_copy_profile_when_both_exist(temp_db: Path, tmp_pat
 
     conn = sqlite3.connect(str(temp_db))
     cur = conn.execute(
-        "INSERT INTO track_identity (isrc, beatport_id, title_norm, artist_norm) VALUES (?, ?, ?, ?)",
-        ("USTEST001", "456", "test track", "test artist"),
+        "INSERT INTO track_identity (isrc, beatport_id, title_norm, artist_norm, ingested_at, ingestion_method, ingestion_source, ingestion_confidence) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        ("USTEST001", "456", "test track", "test artist", '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy'),
     )
     identity_id = int(cur.lastrowid)
     cur = conn.execute(

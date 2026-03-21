@@ -8,6 +8,7 @@ import json
 import sqlite3
 import sys
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -299,6 +300,10 @@ def _upsert_track_identity(
         "enriched_at": _norm_text(row.get("enriched_at")),
         "duration_ref_ms": _duration_measured_ms(row),
         "ref_source": "v2_migration",
+        "ingested_at": _norm_text(row.get("created_at")) or datetime.now(timezone.utc).isoformat(),
+        "ingestion_method": "migration",
+        "ingestion_source": "v2_migration",
+        "ingestion_confidence": "legacy",
     }
 
     insert_cols = ["identity_key", *[c for c, v in payload.items() if v is not None]]
@@ -473,6 +478,10 @@ def _ensure_identity_exists(
         payload["beatport_id"] = identity_key.split(":", 1)[1]
 
     payload["ref_source"] = "v2_migration_source_snapshot"
+    payload["ingested_at"] = datetime.now(timezone.utc).isoformat()
+    payload["ingestion_method"] = "migration"
+    payload["ingestion_source"] = "v2_migration_source_snapshot"
+    payload["ingestion_confidence"] = "legacy"
     if provider and provider_track_id:
         payload["canonical_payload_json"] = _json_dump(
             {"source_provider": provider, "source_track_id": provider_track_id}

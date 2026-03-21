@@ -9,7 +9,7 @@ from __future__ import annotations
 import sqlite3
 
 V3_SCHEMA_NAME = "v3"
-V3_SCHEMA_VERSION = 11
+V3_SCHEMA_VERSION = 12
 V3_SCHEMA_VERSION_INITIAL = 1
 V3_SCHEMA_VERSION_IDENTITY_MERGE = 2
 V3_SCHEMA_VERSION_PREFERRED_ASSET = 3
@@ -21,6 +21,7 @@ V3_SCHEMA_VERSION_ASSET_ANALYSIS = 8
 V3_SCHEMA_VERSION_CHROMAPRINT = 9
 V3_SCHEMA_VERSION_PROVIDER_UNIQUENESS = 10
 V3_SCHEMA_VERSION_PROVIDER_UNIQUENESS_HARDENING = 11
+V3_SCHEMA_VERSION_INGESTION_PROVENANCE = 12
 
 
 def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
@@ -98,6 +99,10 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
             enriched_at TEXT,
             duration_ref_ms INTEGER,
             ref_source TEXT,
+            ingested_at TEXT NOT NULL,
+            ingestion_method TEXT NOT NULL,
+            ingestion_source TEXT NOT NULL,
+            ingestion_confidence TEXT NOT NULL,
             merged_into_id INTEGER REFERENCES track_identity(id),
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
@@ -301,6 +306,9 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_track_identity_traxsource ON track_identity(traxsource_id);
         CREATE INDEX IF NOT EXISTS idx_track_identity_itunes ON track_identity(itunes_id);
         CREATE INDEX IF NOT EXISTS idx_track_identity_musicbrainz ON track_identity(musicbrainz_id);
+        CREATE INDEX IF NOT EXISTS idx_track_identity_ingested_at ON track_identity(ingested_at);
+        CREATE INDEX IF NOT EXISTS idx_track_identity_ingestion_method ON track_identity(ingestion_method);
+        CREATE INDEX IF NOT EXISTS idx_track_identity_ingestion_confidence ON track_identity(ingestion_confidence);
         CREATE UNIQUE INDEX IF NOT EXISTS uq_track_identity_active_beatport_id
             ON track_identity(beatport_id)
             WHERE beatport_id IS NOT NULL
@@ -606,6 +614,35 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
             V3_SCHEMA_NAME,
             V3_SCHEMA_VERSION_PROVIDER_UNIQUENESS_HARDENING,
             "0011_track_identity_provider_uniqueness_hardening.py",
+        ),
+    )
+    conn.execute(
+        """
+        CREATE TRIGGER IF NOT EXISTS trg_track_identity_provenance_required
+        BEFORE INSERT ON track_identity
+        BEGIN
+            SELECT CASE
+                WHEN NEW.ingested_at IS NULL OR TRIM(NEW.ingested_at) = '' THEN
+                    RAISE(ABORT, 'track_identity.ingested_at is required')
+                WHEN NEW.ingestion_method IS NULL OR TRIM(NEW.ingestion_method) = '' THEN
+                    RAISE(ABORT, 'track_identity.ingestion_method is required')
+                WHEN NEW.ingestion_source IS NULL THEN
+                    RAISE(ABORT, 'track_identity.ingestion_source is required')
+                WHEN NEW.ingestion_confidence IS NULL OR TRIM(NEW.ingestion_confidence) = '' THEN
+                    RAISE(ABORT, 'track_identity.ingestion_confidence is required')
+            END;
+        END
+        """
+    )
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO schema_migrations (schema_name, version, note)
+        VALUES (?, ?, ?)
+        """,
+        (
+            V3_SCHEMA_NAME,
+            V3_SCHEMA_VERSION_INGESTION_PROVENANCE,
+            "0012_ingestion_provenance.py",
         ),
     )
     conn.commit()

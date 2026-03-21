@@ -19,10 +19,10 @@ def _create_fixture_db(tmp_path: Path) -> Path:
     try:
         create_schema_v3(conn)
         conn.executemany(
-            "INSERT INTO track_identity (id, identity_key) VALUES (?, ?)",
+            "INSERT INTO track_identity (id, identity_key, ingested_at, ingestion_method, ingestion_source, ingestion_confidence) VALUES (?, ?, ?, ?, ?, ?)",
             [
-                (1, "id:one"),
-                (2, "id:two"),
+                (1, "id:one", '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy'),
+                (2, "id:two", '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy'),
             ],
         )
         conn.executemany(

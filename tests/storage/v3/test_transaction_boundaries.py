@@ -206,8 +206,8 @@ def test_resolve_or_create_identity_does_not_manage_outer_transaction_on_failure
 
     def _create_then_boom(_conn: sqlite3.Connection, _asset_row: sqlite3.Row, _fields):
         _conn.execute(
-            "INSERT INTO track_identity (identity_key, isrc) VALUES (?, ?)",
-            ("isrc:abc123", "ABC123"),
+            "INSERT INTO track_identity (identity_key, isrc, ingested_at, ingestion_method, ingestion_source, ingestion_confidence) VALUES (?, ?, ?, ?, ?, ?)",
+            ("isrc:abc123", "ABC123", "2026-01-01T00:00:00+00:00", "migration", "test_fixture", "legacy"),
         )
         raise RuntimeError("boom-after-insert")
 
@@ -250,12 +250,16 @@ def _seed_merge_fixture(conn: sqlite3.Connection) -> None:
                 beatport_id,
                 canonical_artist,
                 canonical_title,
-                enriched_at
-            ) VALUES (?, ?, ?, ?, ?, ?)
+                enriched_at,
+                ingested_at,
+                ingestion_method,
+                ingestion_source,
+                ingestion_confidence
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
         [
-            (1, "beatport:BP-1-a", "BP-1", "Artist A", "Track A", None),
-            (2, "beatport:BP-1-b", "BP-2", None, None, "2026-03-04T00:00:00Z"),
+            (1, "beatport:BP-1-a", "BP-1", "Artist A", "Track A", None, "2026-01-01T00:00:00+00:00", "migration", "test_fixture", "legacy"),
+            (2, "beatport:BP-1-b", "BP-2", None, None, "2026-03-04T00:00:00Z", "2026-01-01T00:00:00+00:00", "migration", "test_fixture", "legacy"),
         ],
     )
     conn.executemany(
@@ -368,12 +372,16 @@ def test_merge_group_by_repointing_assets_rolls_back_without_outer_transaction(
                 beatport_id,
                 canonical_artist,
                 canonical_title,
-                enriched_at
-            ) VALUES (?, ?, ?, ?, ?, ?)
+                enriched_at,
+                ingested_at,
+                ingestion_method,
+                ingestion_source,
+                ingestion_confidence
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
-                (1, "beatport:BP-1-a", "BP-1", "Artist A", "Track A", None),
-                (2, "beatport:BP-1-b", "BP-2", None, None, "2026-03-04T00:00:00Z"),
+                (1, "beatport:BP-1-a", "BP-1", "Artist A", "Track A", None, "2026-01-01T00:00:00+00:00", "migration", "test_fixture", "legacy"),
+                (2, "beatport:BP-1-b", "BP-2", None, None, "2026-03-04T00:00:00Z", "2026-01-01T00:00:00+00:00", "migration", "test_fixture", "legacy"),
             ],
         )
     conn.executemany(

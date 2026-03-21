@@ -652,7 +652,10 @@ def _resolve_identity_via_service(
             conn,
             asset_row,
             payload,
-            {"source": "backfill_v3", "ref_source": payload.get("ref_source")},
+            {"source": "backfill_v3", "ref_source": payload.get("ref_source"),
+             "ingestion_method": "migration",
+             "ingestion_source": "backfill_v3",
+             "ingestion_confidence": "legacy"},
         )
     )
 

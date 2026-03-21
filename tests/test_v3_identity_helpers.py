@@ -184,7 +184,7 @@ def test_upsert_asset_link_canonicalizes_merged_identity(tmp_path) -> None:
 
     asset_id = upsert_asset_file(conn, path="/music/test.flac", content_sha256="abc123")
     conn.executemany(
-        "INSERT INTO track_identity (id, identity_key, merged_into_id) VALUES (?, ?, ?)",
+        "INSERT INTO track_identity (id, identity_key, merged_into_id, ingested_at, ingestion_method, ingestion_source, ingestion_confidence) VALUES (?, ?, ?, '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')",
         [
             (10, "id:active", None),
             (11, "id:merged", 10),

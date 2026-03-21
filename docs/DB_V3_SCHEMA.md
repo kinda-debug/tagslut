@@ -1,4 +1,4 @@
-<!-- Status: Active document. Synced 2026-03-14 after migration 0010 applied + Lexicon metadata backfill. Historical or superseded material belongs in docs/archive/. -->
+<!-- Status: Active document. Synced 2026-03-22 after migration 0012 (ingestion provenance). Historical or superseded material belongs in docs/archive/. -->
 
 # DB V3 Schema (Core)
 
@@ -37,6 +37,7 @@ Key columns:
 - Normalized search fields: `artist_norm`, `title_norm`, `album_norm`
 - Canonical metadata fields: `canonical_title`, `canonical_artist`, `canonical_album`, `canonical_genre`, `canonical_sub_genre`, `canonical_label`, `canonical_catalog_number`, `canonical_mix_name`, `canonical_duration`, `canonical_year`, `canonical_release_date`, `canonical_bpm`, `canonical_key`, `canonical_payload_json`
 - Enrichment / timing: `enriched_at`, `duration_ref_ms`, `ref_source`
+- Ingestion provenance (NOT NULL, migration 0012): `ingested_at`, `ingestion_method`, `ingestion_source`, `ingestion_confidence`
 - Merge / lifecycle: `merged_into_id`, `created_at`, `updated_at`
 
 `canonical_payload_json` extended keys (Lexicon backfill, 2026-03-14):

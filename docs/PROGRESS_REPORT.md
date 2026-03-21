@@ -1,63 +1,8 @@
-<!-- Status: Active document. Synced 2026-03-22 after ingestion provenance implementation. Historical or superseded material belongs in docs/archive/. -->
+<!-- Status: Active document. Synced 2026-03-21 after ingestion provenance memo correction. Historical or superseded material belongs in docs/archive/. -->
 
 # Progress Report
 
-Report date: March 22, 2026
-
-## Session: 2026-03-22 — Ingestion Provenance Migration Implementation
-
-**Task**: Implement the ingestion provenance migration — add four mandatory NOT NULL provenance columns (`ingested_at`, `ingestion_method`, `ingestion_source`, `ingestion_confidence`) to `track_identity`.
-
-**Status**: Completed — all production code, migrations, schema, test fixtures, and enforcement deployed.
-
-**What was implemented**:
-
-1. **4 INSERT surfaces updated** with provenance fields + sensible defaults:
-   - `identity_service.py:_identity_value_map()` — primary creation path (defaults: `provider_api`/`high`)
-   - `dual_write.py:upsert_track_identity()` — registration UPSERT; provenance excluded from ON CONFLICT UPDATE to preserve immutable `ingested_at`
-   - `backfill_identity.py` — backfill path (method: `backfill`, confidence: `high`)
-   - `scripts/db/migrate_v2_to_v3.py` — two INSERT blocks (method: `migration`, confidence: `legacy`)
-
-2. **Schema enforcement** (schema version 11 → 12):
-   - `schema.py`: 4 NOT NULL columns added to CREATE TABLE, 3 indexes, enforcement trigger `trg_track_identity_provenance_required`, `V3_SCHEMA_VERSION = 12`
-   - `0012_ingestion_provenance.py`: ALTER TABLE + backfill (COALESCE from `created_at`) + indexes + trigger + schema_migrations record
-   - `supabase/migrations/20260322000000_add_ingestion_provenance.sql`: Postgres equivalent
-
-3. **~28 test files updated** with provenance columns in INSERT fixtures:
-   - `conftest.py`: Added `PROV_DEFAULTS`, `PROV_COLS`, `PROV_VALS` constants
-   - All test files using `create_schema_v3()` updated with provenance in their INSERTs
-   - Tests using legacy `init_db()` or custom minimal schemas correctly left unchanged
-
-4. **13 new enforcement tests** in `tests/storage/v3/test_migration_0012.py`:
-   - `TestMigration0012Upgrade`: columns added, backfill, indexes, trigger, migration record, idempotent
-   - `TestProvenanceEnforcement`: success case, 4 missing-field rejections, empty-string trigger, empty source allowed
-
-5. **Docs**: `DB_V3_SCHEMA.md` updated with provenance fields and sync date
-
-**Test results**: `poetry run pytest tests/ → 934 passed, 21 failed`
-- All 21 failures are **pre-existing** (verified by stash comparison against HEAD):
-  - 10× `test_merge_identities_by_beatport_v3` — UNIQUE constraint on `beatport_id` (v11 schema, test data predates constraint)
-  - 5× `test_tidal_beatport_enrichment` — `search_by_isrc` API change
-  - 3× `test_report_identity_qa_v3` — same UNIQUE constraint
-  - 1× `test_migrate_v2_to_v3` — assertion on `spotify_id`
-  - 1× `test_backfill_identity_v3` — UNIQUE constraint
-  - 1× `test_plan_fpcalc` — ordering-dependent flake
-- **Zero regressions** from this change
-
-**Files changed** (production):
-- `tagslut/storage/v3/schema.py`
-- `tagslut/storage/v3/identity_service.py`
-- `tagslut/storage/v3/dual_write.py`
-- `tagslut/storage/v3/backfill_identity.py`
-- `scripts/db/migrate_v2_to_v3.py`
-- `tagslut/storage/v3/migrations/0012_ingestion_provenance.py` (new)
-- `supabase/migrations/20260322000000_add_ingestion_provenance.sql` (new)
-
-**Files changed** (tests): `tests/conftest.py` + ~27 test files with INSERT fixture updates + `tests/storage/v3/test_migration_0012.py` (new)
-
-**Files changed** (docs): `docs/DB_V3_SCHEMA.md`, `docs/PROGRESS_REPORT.md`
-
----
+Report date: March 21, 2026
 
 ## Session: 2026-03-21 (pass 2) — Ingestion Provenance Memo Correction
 

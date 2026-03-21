@@ -10,7 +10,7 @@ Last updated: 2026-03-21
 
 ## Identity and origin
 
-Repository: https://github.com/kinda-debug/tagslut
+Repository: <https://github.com/kinda-debug/tagslut>
 Active branch: dev
 Owner account: kinda-debug (GitHub), georgeskhawam (personal)
 Prior org: tagslut (GitHub) — treat all references to tagslut/tagslut as
@@ -136,3 +136,20 @@ Examples:
 
 One logical change per commit. Do not bundle unrelated changes.
 Commit after each completed step, not at end of session.
+
+## Testing policy (clarification)
+
+Default: targeted pytest only.
+  `poetry run pytest tests/<specific_module> -v`
+
+Full suite (`poetry run pytest tests/ -x -q`) is permitted ONLY as a final
+gate immediately before merging a PR. Never during implementation.
+This exception must be stated explicitly in the task — if a prompt does not
+say "run the full suite as a final gate", targeted only applies.
+
+## Force-push prohibition
+
+`git push --force` and `git filter-repo` are operator-only maintenance
+procedures. They must never appear in a Codex prompt or be executed by
+any agent. The git history cleanup task lives in `docs/OPS_RUNBOOK.md`
+and is executed manually by the operator only.

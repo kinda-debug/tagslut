@@ -223,3 +223,107 @@ Currently hardcoded to:
 
 Update this to the new DB path once the clean-slate DB is initialized.
 This file is tracked in the repo — commit the updated path.
+
+
+---
+
+## 11 — Why the current DB cannot be trusted and what to do about it
+
+### Root cause
+
+The existing `music_v3.db` was built by ingesting file tags written by MusicBrainz
+Picard. Picard writes directly to files and matches aggressively — including wrong
+matches it treats as confident. When tagslut scanned those files, it took the tags
+as ground truth and built the identity model on top of them.
+
+The result: `track_identity` rows with Picard-authored ISRCs, artist names, and
+album relationships that may be wrong, inconsistent, or duplicated. There is no
+reliable way to audit which rows are trustworthy without re-deriving them from
+scratch against a controlled source.
+
+This is not a data hygiene problem. It is a provenance problem. The data cannot
+be trusted because its origin cannot be verified.
+
+### What this means in practice
+
+- Do not migrate any identity rows from the old DB to the new one.
+- Do not use old DB query results to pre-populate the new DB.
+- Treat the old DB as read-only archaeology — useful for reference, not for import.
+- Picard must never touch files that tagslut manages going forward. File tags
+  are written by tagslut only, sourced from provider APIs (Beatport, TIDAL, MusicBrainz
+  API — not Picard's local matching).
+
+### The coexistence model: old tools, new DB
+
+The code is fine. The data is not. This distinction makes coexistence straightforward:
+
+- Keep running `tools/get-intake`, `tools/get`, all CLI commands — they all accept
+  `--db` or read from `$TAGSLUT_DB`.
+- Point `$TAGSLUT_DB` at the new empty DB instead of the old epoch.
+- The old DB stays on disk at its current path, untouched, as a reference.
+- Any lookup you want to do against old data: set `--db` explicitly to the old path.
+  Never set it as the default.
+
+Concretely in `.env`:
+
+```
+# New DB (active)
+TAGSLUT_DB=/Users/georgeskhawam/Projects/tagslut_db/FRESH_2026/music_v3.db
+
+# Old DB (reference only — never set as default)
+# TAGSLUT_DB_LEGACY=/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-02-10_RELINK/music.db
+```
+
+### How to build a DB you can trust
+
+The only source of truth is a controlled re-ingestion of your files through
+the tagslut intake pipeline, with provider APIs as the metadata source.
+
+**Rule: a track enters the DB exactly once, through `tools/get-intake`, with
+a provider URL as the authoritative identity anchor. Never via Picard tags.**
+
+Ingestion order that produces a trustworthy DB:
+
+1. **Beatport purchases** — you have receipts, you have URLs. These are the
+   highest-confidence identity anchors. Ingest via `tools/get --enrich <beatport-url>`.
+   The ISRC and track ID come from the Beatport API, not from file tags.
+
+2. **TIDAL verified matches** — cross-source confirmation. Where Beatport and
+   TIDAL agree on ISRC, the identity is solid.
+
+3. **MusicBrainz API** (not Picard) — for tracks not on Beatport. Query via
+   the tagslut MusicBrainz provider, which fetches from the API with controlled
+   matching logic. Not Picard's fuzzy local matching.
+
+4. **Unresolved remainder** — tracks that cannot be anchored to any provider.
+   These go into a separate bucket, clearly marked as unresolved, and are not
+   promoted to `track_identity` until verified.
+
+### What Picard is allowed to do going forward
+
+Nothing inside the managed library. Picard can be used for:
+- Pre-ingestion organization of completely untagged files before they enter
+  the tagslut pipeline (as a one-time prep step, not ongoing)
+- Files you explicitly want to keep outside tagslut management
+
+Once a file is in `$MASTER_LIBRARY`, tagslut owns it. Picard does not touch it.
+
+### Steps to initialize the new DB → **Codex**
+
+```bash
+# 1. Create the new DB directory
+mkdir -p /Users/georgeskhawam/Projects/tagslut_db/FRESH_2026
+
+# 2. Initialize schema from migrations
+TAGSLUT_DB=/Users/georgeskhawam/Projects/tagslut_db/FRESH_2026/music_v3.db \
+  poetry run tagslut db migrate
+
+# 3. Verify schema
+TAGSLUT_DB=/Users/georgeskhawam/Projects/tagslut_db/FRESH_2026/music_v3.db \
+  poetry run pytest tests/storage/ -v
+
+# 4. Update .env to point at new DB
+# 5. Update .vscode/settings.json SQLite path
+```
+
+Do not run any intake or backfill until step 3 passes clean.

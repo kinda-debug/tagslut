@@ -453,3 +453,78 @@ for (t,) in rows:
     print(f'{t}: {n}')
 " 2>/dev/null || echo 'run manually with correct db path'
 ```
+
+
+---
+
+## 13 — Script, docs, and log cleanup → **Codex**
+
+Prompt: `.github/prompts/repo-cleanup.prompt.md`
+
+Manual cleanup already completed (2026-03-21):
+- Deleted: redundant March 4 DB backups (3 × 376 MB recovered)
+- Deleted: ~250 write-test markers from EPOCH_2026-03-04
+- Deleted: ~200+ write-test markers from SAD epochs
+- Moved: all `artifacts/*.log` → `LEGACY_2026-03-04_PICARD/`
+- Deleted: sensitive untracked files from repo root
+  (auth.txt, tidal tokens, HAR files, Beatport JSON dumps, MCP test files)
+- Deleted: empty placeholder files (0010/0011 migration stubs, track_identity.csv)
+- Renamed: EPOCH_2026-03-04 → LEGACY_2026-03-04_PICARD
+- Took: current backup as music_v3.bak.20260321.db
+- Checkpointed: lexicondj_update.db WAL on /Volumes/MUSIC
+
+Remaining for Codex (read-then-decide, not mass delete):
+- scripts/: ~10 files to evaluate and potentially archive
+- docs/: ~8 files to evaluate and potentially archive
+- tools/: ~10 files to evaluate and potentially archive
+- Root-level docs and scratch files: REPORT.md, metadata.md, CLI_HELP_PARITY_WORK_ITEM.md
+
+Log management policy going forward:
+- Logs write to epoch directory, not into repo artifacts/
+- This requires a one-line patch to tools/get-intake (POST_MOVE_LOG default path)
+- Add to §5 (Intake pipeline hardening) once resume-refresh fix lands
+
+Prompt files index update:
+  `repo-cleanup.prompt.md` → Script/docs/log cleanup → **Codex**
+
+
+---
+
+## 14 — Ingestion provenance standard → **Codex** (before clean-slate DB init)
+
+Spec: `docs/INGESTION_PROVENANCE.md`
+
+This is a hard prerequisite for the clean-slate build. No ingestion
+runs against the fresh DB until this migration is in place.
+
+### What it is
+
+Four new columns on `track_identity`:
+- `ingested_at` — ISO 8601 UTC, set once at insert, never updated
+- `ingestion_method` — controlled vocabulary (provider_api, isrc_lookup,
+  fingerprint_match, fuzzy_text_match, picard_tag, manual, migration)
+- `ingestion_source` — specific evidence string (e.g. "beatport_api:track_id=12345678")
+- `ingestion_confidence` — four-tier (verified, high, uncertain, legacy)
+
+### Why it cannot be added later
+
+Without it, every row in the clean-slate DB has the same provenance
+ambiguity as the Picard-contaminated legacy DB. The whole point of
+starting fresh is that every row's origin is known and queryable.
+
+### Codex task
+
+1. Write migration file in `supabase/migrations/` using the SQL in
+   `docs/INGESTION_PROVENANCE.md`.
+2. Add NOT NULL constraints with defaults to `tagslut/storage/v3/schema.py`
+   so that any insert without these fields fails at the schema level.
+3. Update `tools/get-intake` to write all four fields on every
+   `track_identity` insert, using the correct method and confidence
+   tier for the ingestion path being executed.
+4. Add a test: inserting a `track_identity` row without `ingestion_method`
+   must raise an integrity error.
+5. Update `docs/DB_V3_SCHEMA.md` to document the new columns.
+
+Commit: `feat(schema): add ingestion provenance columns to track_identity`
+
+This must land before the clean-slate DB init in §10.

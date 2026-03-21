@@ -37,3 +37,26 @@ If facts conflict:
 - physical facts come from `asset_file` + successful move receipts/events
 - identity facts come from `track_identity`
 - mapping truth comes from the active `asset_link`
+
+## Ingestion Provenance (added 2026-03-21)
+
+Every `track_identity` row has four mandatory provenance fields:
+
+| Field | Type | Purpose |
+|---|---|---|
+| `ingested_at` | TEXT (ISO 8601 UTC) | When the row first entered the system. Set once, never updated. |
+| `ingestion_method` | TEXT | How the identity was established. Controlled vocabulary. |
+| `ingestion_source` | TEXT | Specific evidence (e.g. `beatport_api:track_id=12345678`). |
+| `ingestion_confidence` | TEXT | Trust tier: `verified`, `high`, `uncertain`, `legacy`. |
+
+These are NOT NULL. Any insert without them fails at the schema level.
+
+Full specification: `docs/INGESTION_PROVENANCE.md`.
+
+**Rule 6:** Do not treat `uncertain` or `legacy` tracks as verified
+identities for DJ export, canonical tag writeback, or cross-provider
+resolution without explicit operator review.
+
+**Rule 7:** `ingested_at` is the indelible timestamp of origin.
+It must never be updated, even on merge. Merges are recorded in
+`provenance_event` with their own timestamp.

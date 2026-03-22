@@ -118,8 +118,13 @@ poetry run tagslut dj backfill --db "$TAGSLUT_DB"
 # Stage 3: validate DJ library state (missing files, empty metadata)
 poetry run tagslut dj validate --db "$TAGSLUT_DB"
 
+# Stage 4 requires a passing validation record for the current DB state.
+# If admissions or playlists change after validation, rerun dj validate first.
+
 # Stage 4: emit deterministic Rekordbox XML (stable TrackIDs across re-emits)
 poetry run tagslut dj xml emit --db "$TAGSLUT_DB" --out rekordbox.xml
+
+# Emergency only: --skip-validation bypasses the gate and prints a warning to stderr.
 
 # After library changes: re-emit preserving Rekordbox cue points
 poetry run tagslut dj xml patch --db "$TAGSLUT_DB" --out rekordbox_v2.xml

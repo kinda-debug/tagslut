@@ -101,6 +101,8 @@ poetry run tagslut dj backfill --db "$TAGSLUT_DB"
 # Stage 3: validate DJ library state
 poetry run tagslut dj validate --db "$TAGSLUT_DB"
 
+# If DJ admissions/playlists changed after validation, rerun this before Stage 4.
+
 # Stage 4: emit deterministic Rekordbox XML
 poetry run tagslut dj xml emit --db "$TAGSLUT_DB" --out rekordbox.xml
 
@@ -109,6 +111,10 @@ poetry run tagslut dj xml patch --db "$TAGSLUT_DB" --out rekordbox_v2.xml
 ```
 
 See `docs/DJ_PIPELINE.md` for the concise pipeline reference and `docs/DJ_WORKFLOW.md` for full per-stage documentation.
+
+`dj xml emit` now checks for a passing `dj validate` record for the current DJ DB
+state before it writes XML. `--skip-validation` remains available only as an
+emergency bypass and prints a warning to stderr.
 
 ## V3 Staged-Root Processing
 

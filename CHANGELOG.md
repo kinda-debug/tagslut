@@ -67,6 +67,7 @@ Versioning: [Semantic Versioning](https://semver.org/)
 - E2E proofs for an executing Stage 2 MP3 build, stable playlist ordering with ordinal collisions, and a determinism-regression guard when XML output changes without a DJ DB state change.
 - FFmpeg post-transcode MP3 validation in `tagslut/exec/transcoder.py`: successful ffmpeg exit is no longer accepted on its own. Stage 2/DJ-pool transcodes now fail fast if the output file is missing, suspiciously small, unreadable by mutagen, or shorter than 1 second.
 - Focused transcode failure coverage in `tests/exec/test_mp3_build_ffmpeg_errors.py`, including missing ffmpeg, non-zero ffmpeg exit, corrupt output detection, and DJ pool wizard failure surfacing.
+- `dj_validation_state` audit tracking plus `tests/exec/test_dj_xml_preflight_validation.py`: `dj validate` now records pass/fail state for the current DJ DB `state_hash`, and `dj xml emit` requires a matching passing validation before writing XML.
 
 ### Changed - DJ Pipeline Hardening
 
@@ -75,6 +76,7 @@ Versioning: [Semantic Versioning](https://semver.org/)
 - `tools/get-intake --dj` help text now marks the wrapper-driven DJ path as legacy-only output.
 - `tagslut mp3 --help` and `tagslut dj --help` now align their stage numbering with the canonical 4-stage pipeline.
 - `tagslut/dj/xml_emit.py` now enforces deterministic playlist/member ordering and stores a DJ DB state hash in `dj_export_state.scope_json`, failing loudly if XML changes without a DB-state change.
+- Stage 4 XML emit now requires a prior passing `dj validate` run for the current `state_hash`; `--skip-validation` remains only as a warning-emitting emergency bypass.
 
 ## [Unreleased] - 2026-03-12
 ### Added

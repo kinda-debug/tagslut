@@ -1,7 +1,7 @@
 # tagslut — Agent Roadmap
 
 <!-- Status: Active. Update as tasks complete or delegate assignments change. -->
-<!-- Last updated: 2026-03-22 — DJ ffmpeg validation landed, docs updated, stop point recorded -->
+<!-- Last updated: 2026-03-22 — §3.4 XML validation gate review complete, §3.3/3.4 both closed -->
 
 This document maps all open work to the agent that should execute it.
 Update it when tasks complete or priorities shift.

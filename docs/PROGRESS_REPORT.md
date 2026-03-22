@@ -1,8 +1,32 @@
-<!-- Status: Active document. Synced 2026-03-22 after DJ ffmpeg validation stop-point update. -->
+<!-- Status: Active document. Synced 2026-03-22 after §3.4 XML validation gate doc audit. -->
 
 # Progress Report
 
 Report date: March 22, 2026
+
+## Session: 2026-03-22 (pass 6) — §3.4 XML validation gate doc audit + roadmap close
+
+**Status**: Completed — no new code commits; roadmap updated.
+
+**What was done**:
+
+1. **Documentation completeness audit for §3.4** (XML validation gate). Verified all five active
+   operator docs contain the gate behavior:
+   - `docs/DJ_PIPELINE.md` — "Pre-emit gate:" bullet block and `dj_validation_state` in Outputs
+   - `docs/DJ_WORKFLOW.md` — `state_hash` paragraph, gate refusal bullets, `--skip-validation` warning
+   - `README.md` — Stage 4 comments (emergency `--skip-validation` note)
+   - `docs/OPERATIONS.md` — rerun note + prose gate explanation
+   - `CHANGELOG.md` — `dj_validation_state` entry and Changed entry
+
+2. **Secondary docs deferred intentionally.** `docs/SCRIPT_SURFACE.md` and `docs/ARCHITECTURE.md`
+   contain references to `dj validate` but are secondary references, not operator workflow docs.
+   No change needed to unblock further work.
+
+3. **Roadmap §3.4 closed.** Marked COMPLETE. Both §3.3 (FFmpeg validation) and §3.4 (XML
+   validation gate) are fully resolved. DJ pipeline hardening (§3) is complete pending §3.5
+   (DJ admission backfill, which is a no-op against an empty DB).
+
+---
 
 ## Session: 2026-03-22 (pass 5) — DJ FFmpeg validation + stop-point capture
 

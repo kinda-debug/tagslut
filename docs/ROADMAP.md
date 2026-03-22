@@ -14,9 +14,9 @@ Update it when tasks complete or priorities shift.
 1. Resume/refresh fix (§1)              ← COMPLETE
 2. Ingestion provenance migration (§14) ← COMPLETE (commit bef5931)
 3. Migration 0013 — five-tier CHECK (§16) ← COMPLETE (included in 0012)
-4. Fresh DB initialization (§10)        ← NEXT — prerequisites met
-5. Repo cleanup (§13)                   ← parallel, no dependencies
-6. Phase 1 PR chain (§2)               ← BLOCKED until items 1–4 complete
+4. Fresh DB initialization (§10)        ← COMPLETE (db + env + settings + storage tests)
+5. Repo cleanup (§13)                   ← COMPLETE
+6. Phase 1 PR chain (§2)               ← NEXT (unblocked)
 7. DJ pipeline hardening (§3)          ← after Phase 1
 ```
 
@@ -80,7 +80,7 @@ Commits: 730d2b1, 2fb2a50, 3f3f37d, bf3df38
 
 ---
 
-## 2 — Phase 1 PR chain → **Codex** ⛔ BLOCKED until §14 + §16 + §10 complete
+## 2 — Phase 1 PR chain → **Codex** ▶ IN PROGRESS (current top priority)
 
 | PR | Task | Branch | Status |
 |---|---|---|---|
@@ -158,20 +158,22 @@ debugging where the problem itself is unclear.
 ---
 
 ## 10 — Clean slate: new DB, new config → **you + Codex**
-⛔ Prerequisites: §14 (provenance migration) and §16 (migration 0013) must land first.
+✅ COMPLETE (2026-03-22)
+
+Prerequisites §14 and §16 are landed.
 
 DB paths:
   LEGACY: `/Users/georgeskhawam/Projects/tagslut_db/LEGACY_2026-03-04_PICARD/music_v3.db`
-  FRESH:  `/Users/georgeskhawam/Projects/tagslut_db/FRESH_2026/music_v3.db` (not yet created)
+  FRESH:  `/Users/georgeskhawam/Projects/tagslut_db/FRESH_2026/music_v3.db`
 
-Steps:
-- You: copy `.env.example` → `.env`, confirm volume paths, `supabase db reset`
-- Codex: run migrations, verify schema, `poetry run pytest tests/storage/ -v`
-- Gate: no intake or DJ admission backfill until storage tests pass clean
+Completion evidence:
 
-`.vscode/settings.json` needs updating after fresh DB is initialized:
-  `music (legacy)` → LEGACY path (read-only label)
-  `music (fresh)`  → FRESH path
+- `.env` created from `.env.example`
+- fresh DB created at FRESH path
+- `.vscode/settings.json` updated with `music (fresh)` and `music (legacy — read-only)`
+- `poetry run pytest tests/storage/ -v` passed (`139 passed`)
+
+Gate status: satisfied. Phase 1 PR chain may proceed.
 
 ---
 

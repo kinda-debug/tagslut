@@ -5,6 +5,7 @@ set -euo pipefail
 REPO=/Users/georgeskhawam/Projects/tagslut
 BUNDLE=~/Desktop/tagslut_context_bundle
 ZIP_OUT=/Users/georgeskhawam/Library/CloudStorage/Dropbox/tagslut_context_bundle.zip
+GDRIVE_OUT="/Users/georgeskhawam/Library/CloudStorage/GoogleDrive-khawam.georges@gmail.com/My Drive/tagslut_context_bundle.zip"
 
 mkdir -p "$BUNDLE"
 
@@ -90,3 +91,5 @@ rm -f "$ZIP_OUT"
 cd "$(dirname "$BUNDLE")"
 zip -r "$ZIP_OUT" "$(basename "$BUNDLE")"
 echo "Zip:    $ZIP_OUT ($(du -sh "$ZIP_OUT" | cut -f1))"
+cp "$ZIP_OUT" "$GDRIVE_OUT"
+echo "Zip:    $GDRIVE_OUT ($(du -sh "$GDRIVE_OUT" | cut -f1))"

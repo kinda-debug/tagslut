@@ -43,11 +43,11 @@ Versioning: [Semantic Versioning](https://semver.org/)
 - **Pipeline E2E tests** (`tests/dj/test_dj_pipeline_e2e.py`, `tests/e2e/test_dj_pipeline.py`): 28 tests covering all 5 E2E scenarios including byte-identical XML determinism, manifest hash integrity, stable TrackIDs across patch cycles, and loud failure on tampered XML.
 
 ### Changed
-- **`tools/get --dj`** is now a hard deprecation: the flag fails immediately with a terminal error that points operators to the canonical 4-stage DJ pipeline in `docs/DJ_WORKFLOW.md`. The legacy forwarding path to `tools/get-intake` has been removed.
-- **`docs/DJ_WORKFLOW.md`**: "Explicit 4-Stage Pipeline" section added at the top as the canonical workflow. `tools/get --dj` section clearly marked as legacy.
+- **`tools/get --dj`** remains a legacy wrapper path. It now emits an explicit runtime deprecation warning that points operators to the canonical 4-stage DJ pipeline in `docs/DJ_PIPELINE.md`, while the legacy forwarding path to `tools/get-intake` remains available for compatibility.
+- **`docs/DJ_PIPELINE.md`**: added as the concise canonical workflow reference. **`docs/DJ_WORKFLOW.md`** remains the extended operator guide and legacy-wrapper rationale.
 - **`docs/DB_V3_SCHEMA.md`**: new "DJ Pipeline Tables (migration 0010)" section documenting `mp3_asset`, `dj_admission`, `dj_track_id_map`, `dj_playlist`, `dj_playlist_track`, `dj_export_state`, `reconcile_log` with ownership rules and invariants.
 - **`AGENT.md`**: `tagslut mp3` added to canonical surface; new "DJ Pipeline (Canonical 4-Stage Workflow)" section replaces the former `tools/get --dj` shortcut.
-- **`README.md`**, **`docs/OPERATIONS.md`**, **`docs/WORKFLOWS.md`**, **`docs/SCRIPT_SURFACE.md`**: `tools/get --dj` marked as legacy, 4-stage pipeline added as the primary DJ workflow reference.
+- **`README.md`**, **`docs/OPERATIONS.md`**, **`docs/WORKFLOWS.md`**, **`docs/SCRIPT_SURFACE.md`**, **`docs/ARCHITECTURE.md`**, and **`docs/DJ_POOL.md`**: `tools/get --dj` marked as legacy, stage numbering aligned around intake -> mp3 -> dj -> xml, and `docs/DJ_PIPELINE.md` made the primary DJ workflow reference.
 
 ### Invariants enforced
 - One `dj_track_id_map` row per `dj_admission`; `rekordbox_track_id` is never reassigned.
@@ -56,7 +56,23 @@ Versioning: [Semantic Versioning](https://semver.org/)
 - `dj validate` is required before `dj xml emit` unless `--skip-validation` is passed explicitly.
 
 ### Removed
-- `tools/get --dj` legacy execution path; operators must run the explicit 4-stage DJ pipeline instead.
+- misleading documentation that treated wrapper-driven `tools/get --dj` behavior as the canonical curated-library workflow.
+
+## [Unreleased] - 2026-03-22
+
+### Added - DJ Pipeline Hardening
+
+- `docs/DJ_PIPELINE.md`: concise canonical 4-stage DJ pipeline reference covering intake masters, MP3 build/reconcile, DJ admission/validation, and Rekordbox XML emit/patch.
+- `docs/audit/DJ_PIPELINE_DOC_TRIAGE.md`: active-doc DJ pipeline triage table for essential versus archived surfaces.
+- E2E proofs for an executing Stage 2 MP3 build, stable playlist ordering with ordinal collisions, and a determinism-regression guard when XML output changes without a DJ DB state change.
+
+### Changed - DJ Pipeline Hardening
+
+- README, AGENT, CLAUDE, `.claude/CLAUDE.md`, and active DJ docs now present the same canonical operator flow: `tagslut intake` -> `tagslut mp3 build|reconcile` -> `tagslut dj admit|backfill` -> `tagslut dj validate` -> `tagslut dj xml emit|patch`.
+- `tools/get --dj` help and runtime stderr now use an explicit `[LEGACY]` warning and point operators to `docs/DJ_PIPELINE.md` or `tagslut dj --help`.
+- `tools/get-intake --dj` help text now marks the wrapper-driven DJ path as legacy-only output.
+- `tagslut mp3 --help` and `tagslut dj --help` now align their stage numbering with the canonical 4-stage pipeline.
+- `tagslut/dj/xml_emit.py` now enforces deterministic playlist/member ordering and stores a DJ DB state hash in `dj_export_state.scope_json`, failing loudly if XML changes without a DB-state change.
 
 ## [Unreleased] - 2026-03-12
 ### Added

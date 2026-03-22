@@ -92,19 +92,23 @@ Notes:
 `tools/get --dj` is deprecated. Use the 4-stage DJ pipeline instead.
 
 For a curated DJ library, the only supported workflow is:
-`tagslut mp3 reconcile` or `tagslut mp3 build` -> `tagslut dj admit` or
-`tagslut dj backfill` -> `tagslut dj validate` -> `tagslut dj xml emit` or
-`tagslut dj xml patch`. See `docs/DJ_WORKFLOW.md` for the canonical reference.
+`tagslut intake` -> `tagslut mp3 reconcile` or `tagslut mp3 build` ->
+`tagslut dj admit` or `tagslut dj backfill` -> `tagslut dj validate` ->
+`tagslut dj xml emit` or `tagslut dj xml patch`. See `docs/DJ_PIPELINE.md`
+for the canonical reference.
 
 Building a curated DJ library follows a deterministic 4-stage pipeline.
 Each stage is safe to re-run and leaves explicit DB state as output.
 
 ```bash
-# Stage 1: register existing MP3s against canonical identities (no re-transcode)
+# Stage 1: intake or refresh canonical masters
+poetry run tagslut intake <provider-url>
+
+# Stage 2: register existing MP3s against canonical identities (no re-transcode)
 poetry run tagslut mp3 reconcile \
   --db "$TAGSLUT_DB" --mp3-root "$DJ_LIBRARY" --execute
 
-# Stage 2: admit registered MP3s into the curated DJ library
+# Stage 3: admit registered MP3s into the curated DJ library
 poetry run tagslut dj backfill --db "$TAGSLUT_DB"
 
 # Stage 3: validate DJ library state (missing files, empty metadata)
@@ -117,9 +121,11 @@ poetry run tagslut dj xml emit --db "$TAGSLUT_DB" --out rekordbox.xml
 poetry run tagslut dj xml patch --db "$TAGSLUT_DB" --out rekordbox_v2.xml
 ```
 
-See `docs/DJ_WORKFLOW.md` for the full reference and per-stage details.
+See `docs/DJ_PIPELINE.md` for the concise reference and `docs/DJ_WORKFLOW.md`
+for the extended operator guide.
 
 ## Move Plan Execution
+
 Use the canonical executor for reviewed plan CSVs:
 
 ```bash
@@ -132,6 +138,7 @@ python -m tagslut execute move-plan \
 Execution writes receipts into the v3 move/provenance tables and also carries common per-track sidecars with the audio move.
 
 ## Maintainer PR Sync (Phase 1 stack)
+
 Phase 1 status has advanced: PRs 9, 10, and 11 are already merged into `dev`.
 The active gate is now PR 12 (identity merge).
 

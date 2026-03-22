@@ -35,12 +35,12 @@ Role: M3U and operational reports (duration, plan summaries).
 Role: Provider authentication and token lifecycle flows.
 
 8. `poetry run tagslut mp3 ...`
-Role: MP3 derivative asset management (Stage 2 of the 4-stage DJ pipeline).
+Role: MP3 derivative asset management (Stage 2 of the 4-stage DJ pipeline; prerequisite: Stage 1 intake).
 - `mp3 build` — transcode preferred FLAC master(s) to MP3 and register in `mp3_asset`
 - `mp3 reconcile` — scan an existing MP3 root and register files in `mp3_asset` without re-transcoding
 
 9. `poetry run tagslut dj ...`
-Role: DJ library curation, admission, validation, and Rekordbox XML export.
+Role: DJ library admission, validation, and Rekordbox XML export (Stages 3 and 4).
 - `dj admit` — admit a single identity into the DJ library (`dj_admission` row)
 - `dj backfill` — admit all `mp3_asset` rows not yet in `dj_admission`
 - `dj validate` — validate DJ library state (missing files, empty metadata)
@@ -79,7 +79,7 @@ stages.
 - Beatport URLs may download from TIDAL when a strict verified cross-match exists and TIDAL ranks higher by quality; Beatport remains the metadata origin for that URL.
 - default output is concise; `--verbose` enables internal paths, artifact files, and batch snapshots
 - high-level workflow flags: `--dj`, `--hoard`, `--no-hoard`, `--no-precheck`, `--force-download`, `--providers`, `--verbose`
-- `--dj` is deprecated legacy behavior. See `docs/DJ_WORKFLOW.md` for the canonical 4-stage DJ pipeline.
+- `--dj` is deprecated legacy behavior. See `docs/DJ_PIPELINE.md` for the canonical 4-stage DJ pipeline.
 - work roots are split by intent: `FIX_ROOT`, `QUARANTINE_ROOT`, `DISCARD_ROOT`
 - `--simple` keeps downloader-only behavior
 

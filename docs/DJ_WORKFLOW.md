@@ -2,6 +2,8 @@
 
 # DJ Workflow
 
+Canonical summary: `docs/DJ_PIPELINE.md`.
+
 DJ pool contract: see `docs/DJ_POOL.md` for the downstream-only boundary and defaults.
 
 ## Deprecation Notice
@@ -9,9 +11,9 @@ DJ pool contract: see `docs/DJ_POOL.md` for the downstream-only boundary and def
 `tools/get --dj` is deprecated. Use the 4-stage DJ pipeline instead.
 
 For a curated DJ library, the only supported workflow is:
-`tagslut mp3 reconcile` or `tagslut mp3 build` -> `tagslut dj admit` or
-`tagslut dj backfill` -> `tagslut dj validate` -> `tagslut dj xml emit` or
-`tagslut dj xml patch`.
+`tagslut intake` -> `tagslut mp3 reconcile` or `tagslut mp3 build` ->
+`tagslut dj admit` or `tagslut dj backfill` -> `tagslut dj validate` ->
+`tagslut dj xml emit` or `tagslut dj xml patch`.
 
 Why this exists: `tools/get --dj` still follows legacy wrapper logic with two
 divergent runtime paths. For diagnosis and evidence, see
@@ -29,7 +31,19 @@ needing to read any other DJ doc first.
 The canonical DJ workflow is a linear, auditable pipeline. Each stage is safe to re-run
 and has explicit DB state as output. Run stages in order:
 
-### Stage 1 — MP3 Registration (`mp3 reconcile` or `mp3 build`)
+### Stage 1 — Intake Masters (`tagslut intake` current equivalent)
+
+Use the canonical CLI intake surface to ingest or refresh master FLAC state:
+
+```bash
+poetry run tagslut intake <provider-url>
+```
+
+This stage establishes canonical `track_identity`, `asset_file`, and provenance
+state. Legacy wrappers such as `tools/get --enrich` can still feed the same
+master library, but `tools/get --dj` is not the curated DJ workflow.
+
+### Stage 2 — MP3 Registration (`mp3 reconcile` or `mp3 build`)
 
 If you already have DJ MP3s on disk and want to register them against canonical
 identities without re-transcoding:
@@ -58,7 +72,7 @@ poetry run tagslut mp3 build \
 Use `mp3 reconcile` when MP3 files already exist. Use `mp3 build` when the DJ MP3
 layer still needs to be created from canonical masters.
 
-### Stage 2 — DJ Admission (`dj backfill` or `dj admit`)
+### Stage 3 — DJ Admission (`dj backfill` or `dj admit`)
 
 Promote all registered `mp3_asset` rows (`status=verified`) into the curated DJ admission table:
 
@@ -180,7 +194,7 @@ promote, and DJ MP3 export in a single flow. It has two divergent code paths dep
 whether tracks were newly promoted or already existed in inventory (precheck-hit).
 
 **Deprecated:** this path is not supported for building a final curated DJ library.
-See `docs/DJ_WORKFLOW.md` for the canonical 4-stage pipeline. Use `tools/get --dj`
+See `docs/DJ_PIPELINE.md` for the canonical 4-stage pipeline. Use `tools/get --dj`
 only for legacy ad-hoc intake where non-deterministic wrapper behavior is acceptable.
 
 To build DJ copies for already-promoted masters outside of a download flow, run:

@@ -13,6 +13,7 @@ from tagslut.dj.admission import (
     validate_dj_library,
 )
 from tagslut.storage.schema import init_db
+from tests.conftest import PROV_COLS, PROV_VALS
 
 
 # ---------------------------------------------------------------------------
@@ -30,7 +31,8 @@ def _make_db(tmp_path: Path) -> sqlite3.Connection:
 
 def _insert_identity(conn: sqlite3.Connection, *, title: str, artist: str, isrc: str) -> int:
     cur = conn.execute(
-        "INSERT INTO track_identity (title_norm, artist_norm, isrc, identity_key) VALUES (?, ?, ?, ?)",
+        f"INSERT INTO track_identity (title_norm, artist_norm, isrc, identity_key{PROV_COLS})"
+        f" VALUES (?, ?, ?, ?{PROV_VALS})",
         (title, artist, isrc, isrc),
     )
     conn.commit()
@@ -200,7 +202,8 @@ def test_validate_detects_missing_metadata(tmp_path: Path) -> None:
     conn = _make_db(tmp_path)
     # Insert identity with empty title
     cur = conn.execute(
-        "INSERT INTO track_identity (title_norm, artist_norm, isrc, identity_key) VALUES (?, ?, ?, ?)",
+        f"INSERT INTO track_identity (title_norm, artist_norm, isrc, identity_key{PROV_COLS})"
+        f" VALUES (?, ?, ?, ?{PROV_VALS})",
         ("", "Artist N", "ISRC-N", "ISRC-N"),
     )
     identity_id = cur.lastrowid

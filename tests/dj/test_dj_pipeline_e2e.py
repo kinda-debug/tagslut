@@ -26,6 +26,7 @@ from tagslut.dj.admission import admit_track, backfill_admissions
 from tagslut.dj.xml_emit import emit_rekordbox_xml, patch_rekordbox_xml
 from tagslut.exec.mp3_build import reconcile_mp3_library
 from tagslut.storage.schema import init_db
+from tests.conftest import PROV_COLS, PROV_VALS
 
 
 # ---------------------------------------------------------------------------
@@ -49,8 +50,8 @@ def _insert_identity(
     isrc: str,
 ) -> int:
     cur = conn.execute(
-        "INSERT INTO track_identity (title_norm, artist_norm, isrc, identity_key)"
-        " VALUES (?, ?, ?, ?)",
+        f"INSERT INTO track_identity (title_norm, artist_norm, isrc, identity_key{PROV_COLS})"
+        f" VALUES (?, ?, ?, ?{PROV_VALS})",
         (title, artist, isrc, isrc),
     )
     conn.commit()

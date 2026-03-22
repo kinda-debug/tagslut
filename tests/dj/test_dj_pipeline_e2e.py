@@ -16,6 +16,7 @@ Also covers invariants:
 from __future__ import annotations
 
 import hashlib
+import json
 import sqlite3
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -278,6 +279,68 @@ def test_emit_stores_manifest_hash(tmp_path: Path) -> None:
     assert row[0] == returned_hash
     # Hash matches the actual file content
     assert returned_hash == hashlib.sha256(out_xml.read_bytes()).hexdigest()
+
+
+def test_emit_stores_state_hash_and_updates_it_on_dj_state_change(tmp_path: Path) -> None:
+    """scope_json stores a stable state_hash that changes only when DJ DB state changes."""
+    conn = _make_db(tmp_path)
+    first_admission_id = _setup_one_admitted_track(tmp_path, conn, n=11)
+    conn.commit()
+
+    first_xml = tmp_path / "state_hash_v1.xml"
+    emit_rekordbox_xml(conn, output_path=first_xml, skip_validation=True)
+
+    first_scope_json = conn.execute(
+        "SELECT scope_json FROM dj_export_state WHERE kind = 'rekordbox_xml' ORDER BY id DESC LIMIT 1"
+    ).fetchone()[0]
+    first_scope = json.loads(first_scope_json)
+    assert first_scope["state_hash"]
+    assert first_scope["track_count"] == 1
+    assert first_scope["playlist_count"] == 0
+    assert first_scope["scope"]["admissions"][0]["dj_admission_id"] == first_admission_id
+
+    second_xml = tmp_path / "state_hash_v2.xml"
+    emit_rekordbox_xml(conn, output_path=second_xml, skip_validation=True)
+
+    second_scope_json = conn.execute(
+        "SELECT scope_json FROM dj_export_state WHERE kind = 'rekordbox_xml' ORDER BY id DESC LIMIT 1"
+    ).fetchone()[0]
+    second_scope = json.loads(second_scope_json)
+    assert second_scope["state_hash"] == first_scope["state_hash"]
+
+    second_admission_id = _setup_one_admitted_track(tmp_path, conn, n=12)
+    conn.execute(
+        "INSERT INTO dj_playlist (name, sort_key) VALUES (?, ?)",
+        ("State Hash Playlist", "010"),
+    )
+    playlist_id = conn.execute(
+        "SELECT id FROM dj_playlist WHERE name = ?",
+        ("State Hash Playlist",),
+    ).fetchone()[0]
+    conn.execute(
+        "INSERT INTO dj_playlist_track (playlist_id, dj_admission_id, ordinal) VALUES (?, ?, ?)",
+        (playlist_id, first_admission_id, 0),
+    )
+    conn.execute(
+        "INSERT INTO dj_playlist_track (playlist_id, dj_admission_id, ordinal) VALUES (?, ?, ?)",
+        (playlist_id, second_admission_id, 1),
+    )
+    conn.commit()
+
+    third_xml = tmp_path / "state_hash_v3.xml"
+    emit_rekordbox_xml(conn, output_path=third_xml, skip_validation=True)
+
+    third_scope_json = conn.execute(
+        "SELECT scope_json FROM dj_export_state WHERE kind = 'rekordbox_xml' ORDER BY id DESC LIMIT 1"
+    ).fetchone()[0]
+    third_scope = json.loads(third_scope_json)
+    assert third_scope["state_hash"] != first_scope["state_hash"]
+    assert third_scope["track_count"] == 2
+    assert third_scope["playlist_count"] == 1
+    assert third_scope["scope"]["playlists"][0]["tracks"] == [
+        {"dj_admission_id": first_admission_id, "ordinal": 0},
+        {"dj_admission_id": second_admission_id, "ordinal": 1},
+    ]
 
 
 def test_emit_assigns_track_id_in_map(tmp_path: Path) -> None:

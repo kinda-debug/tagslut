@@ -1,7 +1,7 @@
 # tagslut — Agent Roadmap
 
 <!-- Status: Active. Update as tasks complete or delegate assignments change. -->
-<!-- Last updated: 2026-03-21 — end of session -->
+<!-- Last updated: 2026-03-22 — migration 0012 complete -->
 
 This document maps all open work to the agent that should execute it.
 Update it when tasks complete or priorities shift.
@@ -12,9 +12,9 @@ Update it when tasks complete or priorities shift.
 
 ```
 1. Resume/refresh fix (§1)              ← COMPLETE
-2. Ingestion provenance migration (§14) ← prerequisite for fresh DB
-3. Migration 0013 — five-tier CHECK (§16) ← prerequisite for Track B processing
-4. Fresh DB initialization (§10)        ← prerequisite for clean-slate ingestion
+2. Ingestion provenance migration (§14) ← COMPLETE (commit bef5931)
+3. Migration 0013 — five-tier CHECK (§16) ← COMPLETE (included in 0012)
+4. Fresh DB initialization (§10)        ← NEXT — prerequisites met
 5. Repo cleanup (§13)                   ← parallel, no dependencies
 6. Phase 1 PR chain (§2)               ← BLOCKED until items 1–4 complete
 7. DJ pipeline hardening (§3)          ← after Phase 1

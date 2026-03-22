@@ -1,7 +1,7 @@
 # tagslut — Agent Roadmap
 
 <!-- Status: Active. Update as tasks complete or delegate assignments change. -->
-<!-- Last updated: 2026-03-22 — migration 0012 complete -->
+<!-- Last updated: 2026-03-22 — cleanup follow-up synced -->
 
 This document maps all open work to the agent that should execute it.
 Update it when tasks complete or priorities shift.
@@ -142,6 +142,7 @@ Never delegate. Full runbook: `docs/OPS_RUNBOOK.md` (to be written).
 ### 7.2 Script and docs cleanup: COMPLETE (2026-03-22)
 Prompt: `.github/prompts/repo-cleanup.prompt.md`
 Cleanup manifest: `docs/CLEANUP_MANIFEST.md`
+Follow-up: residual `artifacts/*.log` files were relocated to the LEGACY epoch directory.
 
 ---
 

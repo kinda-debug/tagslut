@@ -243,3 +243,15 @@ Commit the roadmap update separately:
   git add docs/ROADMAP.md docs/CLEANUP_MANIFEST.md
   git commit -m "docs: update roadmap after cleanup pass"
   git push
+
+## ⚠ KNOWN ACTIVE SCRIPT DEPENDENCIES
+
+Before archiving any script under scripts/, verify it is NOT referenced by:
+
+  tools/review/pre_download_check.py   — references scripts/extract_tracklists_from_links.py
+  tools/get-intake                     — references scripts/ paths via POST_MOVE_LOG
+  Makefile                             — check all targets
+  .github/workflows/                   — check all workflow files
+
+scripts/extract_tracklists_from_links.py is ACTIVE — do not archive.
+It is the default extract script for pre_download_check.py.

@@ -38,39 +38,30 @@ response:
       {
         "data": [
           {
-            "score": 8210.098908190359,
-            "enabled": 9423,
-            "available_worldwide": 7991,
-            "artist_id": 1067,
+            "score": 1431.9400184057852,
+            "enabled": 2726,
+            "available_worldwide": 4741,
+            "artist_id": 4643,
             "artist_name": "string",
-            "update_date": null,
-            "latest_publish_date": null,
-            "downloads": 1865,
-            "genre": [
-              {
-                "genre_id": 8566,
-                "genre_name": null
-              },
-              {
-                "genre_id": 2383,
-                "genre_name": null
-              }
-            ],
-            "artist_image_uri": "string",
-            "artist_image_dynamic_uri": "string"
+            "update_date": "string",
+            "latest_publish_date": "string",
+            "downloads": 2918,
+            "genre": null,
+            "artist_image_uri": null,
+            "artist_image_dynamic_uri": null
           },
           {
-            "score": 8698.891588772272,
-            "enabled": 7971,
-            "available_worldwide": 6855,
-            "artist_id": 5822,
+            "score": 299.91551793844826,
+            "enabled": 6142,
+            "available_worldwide": 3902,
+            "artist_id": 689,
             "artist_name": "string",
             "update_date": "string",
             "latest_publish_date": null,
-            "downloads": null,
+            "downloads": 3218,
             "genre": [
               {
-                "genre_id": 7293,
+                "genre_id": 4585,
                 "genre_name": "string"
               },
               {
@@ -78,11 +69,11 @@ response:
                 "genre_name": "string"
               }
             ],
-            "artist_image_uri": null,
+            "artist_image_uri": "string",
             "artist_image_dynamic_uri": null
           }
         ],
-        "debug": {},
-        "explain": null
+        "debug": null,
+        "explain": {}
       }
 order: 1000

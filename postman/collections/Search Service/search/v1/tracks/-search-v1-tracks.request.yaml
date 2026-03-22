@@ -2,11 +2,11 @@ $kind: http-request
 name: /search/v1/tracks
 description: Returns a set of track results
 url: "{{baseUrl}}/search/v1/tracks?q=string&count=20&preorder=false&from_publis\
-  h_date=1958-10-05&to_publish_date=1958-10-05&from_release_date=1958-10-05&to_\
-  release_date=1958-10-05&genre_id=string&genre_name=string&mix_name=string&fro\
-  m_bpm=1915&to_bpm=1915&key_name=string&mix_name_weight=1&label_name_weight=1&\
-  dj_edits=true&ugc_remixes=true&dj_edits_and_ugc_remixes=true&is_available_for\
-  _streaming=true"
+  h_date=1965-12-27&to_publish_date=1965-12-27&from_release_date=1965-12-27&to_\
+  release_date=1965-12-27&genre_id=string&genre_name=string&mix_name=string&fro\
+  m_bpm=2757&to_bpm=2757&key_name=string&mix_name_weight=1&label_name_weight=1&\
+  dj_edits=false&ugc_remixes=false&dj_edits_and_ugc_remixes=true&is_available_f\
+  or_streaming=true"
 method: GET
 headers:
   Accept: application/json
@@ -25,28 +25,28 @@ queryParams:
 
       When TRUE, the response will include tracks that are in a pre-order status
   - key: from_publish_date
-    value: 1958-10-05
+    value: 1965-12-27
     description: |
       
       The date a track was published on Beatport.com or Beatsource.com.
 
       Format: YYYY-MM-DD
   - key: to_publish_date
-    value: 1958-10-05
+    value: 1965-12-27
     description: |
       
       The date a track was published on Beatport.com or Beatsource.com.
 
       Format: YYYY-MM-DD
   - key: from_release_date
-    value: 1958-10-05
+    value: 1965-12-27
     description: |
       
       The date a track was released to the public.
 
       Format: YYYY-MM-DD
   - key: to_release_date
-    value: 1958-10-05
+    value: 1965-12-27
     description: |
       
       The date a track was released to the public.
@@ -82,9 +82,9 @@ queryParams:
     value: string
     description: "Search for a specific mix name, ex: original"
   - key: from_bpm
-    value: "1915"
+    value: "2757"
   - key: to_bpm
-    value: "1915"
+    value: "2757"
   - key: key_name
     value: string
     description: |
@@ -111,14 +111,14 @@ queryParams:
 
       The higher the value the more weight is put on matching q to label_name
   - key: dj_edits
-    value: "true"
+    value: "false"
     description: |
       
       When FALSE, the response will exclude DJ Edit tracks.
 
       When TRUE, the response will return only DJ Edit tracks.
   - key: ugc_remixes
-    value: "true"
+    value: "false"
     description: |
       
       When FALSE, the response will exclude UGC Remix tracks.

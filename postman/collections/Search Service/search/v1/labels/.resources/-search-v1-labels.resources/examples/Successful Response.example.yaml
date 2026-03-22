@@ -26,30 +26,30 @@ response:
       {
         "data": [
           {
-            "score": 476.6971276255472,
-            "label_id": 5371,
+            "score": 8528.488215166308,
+            "label_id": 2475,
             "label_name": "string",
             "update_date": "string",
             "create_date": "string",
-            "is_included_in_rightsflow": 5864,
-            "enabled": 3171,
-            "is_available_for_hype": 9750,
-            "is_available_for_streaming": 1851,
-            "plays": null,
+            "is_included_in_rightsflow": 7678,
+            "enabled": 7061,
+            "is_available_for_hype": 7543,
+            "is_available_for_streaming": 1527,
+            "plays": 2886,
             "downloads": null,
             "label_image_uri": "string",
-            "label_image_dynamic_uri": null
+            "label_image_dynamic_uri": "string"
           },
           {
-            "score": 6677.631427627828,
-            "label_id": 7532,
+            "score": 1348.1811364135754,
+            "label_id": 9924,
             "label_name": "string",
             "update_date": "string",
             "create_date": "string",
-            "is_included_in_rightsflow": 9364,
-            "enabled": 1181,
-            "is_available_for_hype": 3219,
-            "is_available_for_streaming": 1233,
+            "is_included_in_rightsflow": 1575,
+            "enabled": 4886,
+            "is_available_for_hype": 3455,
+            "is_available_for_streaming": 5761,
             "plays": null,
             "downloads": null,
             "label_image_uri": null,
@@ -57,6 +57,6 @@ response:
           }
         ],
         "debug": {},
-        "explain": {}
+        "explain": null
       }
 order: 1000

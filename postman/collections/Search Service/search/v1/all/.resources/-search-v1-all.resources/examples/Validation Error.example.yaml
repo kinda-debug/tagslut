@@ -1,8 +1,8 @@
 $kind: http-example
 request:
   url: "{{baseUrl}}/search/v1/all?q=string&count=20&preorder=false&tracks_from_re\
-    lease_date=1958-10-05&tracks_to_release_date=1958-10-05&releases_from_relea\
-    se_date=1958-10-05&releases_to_release_date=1958-10-05&is_approved=true&is_\
+    lease_date=1965-12-27&tracks_to_release_date=1965-12-27&releases_from_relea\
+    se_date=1965-12-27&releases_to_release_date=1965-12-27&is_approved=true&is_\
     available_for_streaming=true"
   method: GET
   headers:
@@ -29,28 +29,28 @@ request:
         When TRUE, the response will include tracks and releases that are in a
         pre-order status
     - key: tracks_from_release_date
-      value: 1958-10-05
+      value: 1965-12-27
       description: |
         
         The date a track was released to the public.
 
         Format: YYYY-MM-DD
     - key: tracks_to_release_date
-      value: 1958-10-05
+      value: 1965-12-27
       description: |
         
         The date a track was released to the public.
 
         Format: YYYY-MM-DD
     - key: releases_from_release_date
-      value: 1958-10-05
+      value: 1965-12-27
       description: |
         
         The date a release was released to the public.
 
         Format: YYYY-MM-DD
     - key: releases_to_release_date
-      value: 1958-10-05
+      value: 1965-12-27
       description: |
         
         The date a release was released to the public.
@@ -101,8 +101,8 @@ response:
         "detail": [
           {
             "loc": [
-              "string",
-              "string"
+              303,
+              7782
             ],
             "msg": "string",
             "type": "string"
@@ -110,7 +110,7 @@ response:
           {
             "loc": [
               "string",
-              4904
+              2215
             ],
             "msg": "string",
             "type": "string"

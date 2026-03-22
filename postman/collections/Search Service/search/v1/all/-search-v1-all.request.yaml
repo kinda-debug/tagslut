@@ -2,8 +2,8 @@ $kind: http-request
 name: /search/v1/all
 description: Returns a set of results for all search types
 url: "{{baseUrl}}/search/v1/all?q=string&count=20&preorder=false&tracks_from_re\
-  lease_date=1958-10-05&tracks_to_release_date=1958-10-05&releases_from_release\
-  _date=1958-10-05&releases_to_release_date=1958-10-05&is_approved=true&is_avai\
+  lease_date=1965-12-27&tracks_to_release_date=1965-12-27&releases_from_release\
+  _date=1965-12-27&releases_to_release_date=1965-12-27&is_approved=true&is_avai\
   lable_for_streaming=true"
 method: GET
 headers:
@@ -26,28 +26,28 @@ queryParams:
       When TRUE, the response will include tracks and releases that are in a
       pre-order status
   - key: tracks_from_release_date
-    value: 1958-10-05
+    value: 1965-12-27
     description: |
       
       The date a track was released to the public.
 
       Format: YYYY-MM-DD
   - key: tracks_to_release_date
-    value: 1958-10-05
+    value: 1965-12-27
     description: |
       
       The date a track was released to the public.
 
       Format: YYYY-MM-DD
   - key: releases_from_release_date
-    value: 1958-10-05
+    value: 1965-12-27
     description: |
       
       The date a release was released to the public.
 
       Format: YYYY-MM-DD
   - key: releases_to_release_date
-    value: 1958-10-05
+    value: 1965-12-27
     description: |
       
       The date a release was released to the public.

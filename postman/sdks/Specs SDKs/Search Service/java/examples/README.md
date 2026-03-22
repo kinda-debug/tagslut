@@ -1,0 +1,14 @@
+# searchservicesdk
+
+A basic example of how to use the searchservicesdk package.
+
+## Build and Run
+
+Example folder contains `run.sh` file which has the commands to build and run the example.
+To run the example, run the following command in the examples folder:
+
+```sh
+bash ./run.sh
+```
+
+This will clean the project, build it, install the artifact in your local maven repository and run the example.

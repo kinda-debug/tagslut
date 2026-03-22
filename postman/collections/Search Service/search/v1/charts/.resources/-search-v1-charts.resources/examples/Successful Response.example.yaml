@@ -1,8 +1,8 @@
 $kind: http-example
 request:
   url: "{{baseUrl}}/search/v1/charts?q=string&count=20&genre_id=string&genre_name\
-    =string&is_approved=true&from_publish_date=1958-10-05&to_publish_date=1958-\
-    10-05"
+    =string&is_approved=true&from_publish_date=1965-12-27&to_publish_date=1965-\
+    12-27"
   method: GET
   headers:
     - key: Accept
@@ -56,14 +56,14 @@ request:
 
         It is recommended to leave this set to TRUE
     - key: from_publish_date
-      value: 1958-10-05
+      value: 1965-12-27
       description: |
         
         The date a chart was published on Beatport.com or Beatsource.com.
 
         Format: YYYY-MM-DD
     - key: to_publish_date
-      value: 1958-10-05
+      value: 1965-12-27
       description: |
         
         The date a chart was published on Beatport.com or Beatsource.com.
@@ -80,58 +80,67 @@ response:
       {
         "data": [
           {
-            "score": 8449.797052479717,
-            "chart_id": 3064,
+            "score": 3034.344208043219,
+            "chart_id": 2789,
             "chart_name": "string",
             "create_date": "string",
-            "is_approved": 9367,
+            "is_approved": 3169,
             "update_date": "string",
-            "enabled": 9113,
-            "is_indexed": 4949,
-            "is_published": 1673,
-            "artist_id": 6710,
-            "artist_name": null,
-            "person_id": 993,
-            "publish_date": "string",
-            "item_type_id": 722,
-            "person_username": null,
-            "track_count": 5566,
-            "chart_image_uri": "string",
-            "chart_image_dynamic_uri": null,
-            "genres": [
-              {
-                "genre_id": null,
-                "genre_name": null
-              },
-              {
-                "genre_id": 6587,
-                "genre_name": "string"
-              }
-            ]
-          },
-          {
-            "score": 4203.623818054494,
-            "chart_id": 4034,
-            "chart_name": "string",
-            "create_date": "string",
-            "is_approved": 3989,
-            "update_date": "string",
-            "enabled": 4474,
-            "is_indexed": 8129,
-            "is_published": 3371,
-            "artist_id": null,
+            "enabled": 8108,
+            "is_indexed": 2609,
+            "is_published": 3083,
+            "artist_id": 3772,
             "artist_name": null,
             "person_id": null,
             "publish_date": null,
             "item_type_id": null,
-            "person_username": null,
-            "track_count": 3231,
-            "chart_image_uri": null,
+            "person_username": "string",
+            "track_count": null,
+            "chart_image_uri": "string",
             "chart_image_dynamic_uri": null,
-            "genres": null
+            "genres": [
+              {
+                "genre_id": 8746,
+                "genre_name": "string"
+              },
+              {
+                "genre_id": null,
+                "genre_name": null
+              }
+            ]
+          },
+          {
+            "score": 819.8504251769157,
+            "chart_id": 4170,
+            "chart_name": "string",
+            "create_date": "string",
+            "is_approved": 9193,
+            "update_date": "string",
+            "enabled": 783,
+            "is_indexed": 9325,
+            "is_published": 3526,
+            "artist_id": 8229,
+            "artist_name": null,
+            "person_id": null,
+            "publish_date": null,
+            "item_type_id": null,
+            "person_username": "string",
+            "track_count": 7095,
+            "chart_image_uri": "string",
+            "chart_image_dynamic_uri": "string",
+            "genres": [
+              {
+                "genre_id": 4949,
+                "genre_name": null
+              },
+              {
+                "genre_id": null,
+                "genre_name": "string"
+              }
+            ]
           }
         ],
-        "debug": null,
+        "debug": {},
         "explain": null
       }
 order: 1000

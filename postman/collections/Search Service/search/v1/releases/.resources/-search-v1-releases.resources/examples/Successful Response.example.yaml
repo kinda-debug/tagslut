@@ -1,8 +1,8 @@
 $kind: http-example
 request:
   url: "{{baseUrl}}/search/v1/releases?q=string&count=20&preorder=false&from_publ\
-    ish_date=1958-10-05&to_publish_date=1958-10-05&from_release_date=1958-10-05\
-    &to_release_date=1958-10-05&genre_id=string&genre_name=string&release_name_\
+    ish_date=1965-12-27&to_publish_date=1965-12-27&from_release_date=1965-12-27\
+    &to_release_date=1965-12-27&genre_id=string&genre_name=string&release_name_\
     weight=1&label_name_weight=1"
   method: GET
   headers:
@@ -28,28 +28,28 @@ request:
         When TRUE, the response will include tracks that are in a pre-order
         status
     - key: from_publish_date
-      value: 1958-10-05
+      value: 1965-12-27
       description: |
         
         The date a track was published on Beatport.com or Beatsource.com.
 
         Format: YYYY-MM-DD
     - key: to_publish_date
-      value: 1958-10-05
+      value: 1965-12-27
       description: |
         
         The date a track was published on Beatport.com or Beatsource.com.
 
         Format: YYYY-MM-DD
     - key: from_release_date
-      value: 1958-10-05
+      value: 1965-12-27
       description: |
         
         The date a track was released to the public.
 
         Format: YYYY-MM-DD
     - key: to_release_date
-      value: 1958-10-05
+      value: 1965-12-27
       description: |
         
         The date a track was released to the public.
@@ -103,114 +103,113 @@ response:
       {
         "data": [
           {
-            "score": 8291.94219002211,
+            "score": 2660.115994856487,
             "label": {
-              "enabled": 264,
-              "label_id": 9762,
+              "enabled": 6572,
+              "label_id": 2134,
               "label_name": "string"
             },
             "aggregator": {
-              "aggregator_id": 5721,
+              "aggregator_id": 1630,
               "aggregator_name": "string"
             },
-            "available_worldwide": 5304,
-            "exclusive": 6920,
+            "available_worldwide": 8435,
+            "exclusive": 6849,
             "publish_date": "string",
             "release_date": "string",
-            "release_id": 3948,
+            "release_id": 8820,
             "release_name": "string",
             "release_type": "string",
-            "status": 6193,
+            "status": 3570,
             "update_date": "string",
             "current_status": null,
-            "genre": [
+            "genre": null,
+            "tracks": null,
+            "key": [
               {
-                "genre_id": null,
-                "genre_name": null
+                "key_id": 221,
+                "key_name": null
               },
               {
-                "genre_id": 8246,
-                "genre_name": "string"
+                "key_id": null,
+                "key_name": "string"
               }
             ],
-            "tracks": null,
+            "artists": null,
+            "catalog_number": null,
+            "create_date": null,
+            "encoded_date": "string",
+            "exclusive_date": "string",
+            "streaming_date": "string",
+            "preorder_date": null,
+            "label_manager": "string",
+            "pre_order_date": null,
+            "upc": null,
+            "price": null,
+            "is_explicit": null,
+            "track_count": 225,
+            "release_image_uri": null,
+            "release_image_dynamic_uri": null,
+            "downloads": null,
+            "is_hype": null,
+            "is_pre_order": null,
+            "plays": null
+          },
+          {
+            "score": 3263.7406998715956,
+            "label": {
+              "enabled": 1103,
+              "label_id": 9585,
+              "label_name": "string"
+            },
+            "aggregator": {
+              "aggregator_id": 9413,
+              "aggregator_name": "string"
+            },
+            "available_worldwide": 5833,
+            "exclusive": 8976,
+            "publish_date": "string",
+            "release_date": "string",
+            "release_id": 6180,
+            "release_name": "string",
+            "release_type": "string",
+            "status": 6831,
+            "update_date": "string",
+            "current_status": [
+              {
+                "current_status_id": 4613,
+                "current_status_name": null
+              },
+              {
+                "current_status_id": 1354,
+                "current_status_name": null
+              }
+            ],
+            "genre": null,
+            "tracks": [
+              {
+                "track_id": null,
+                "track_name": "string"
+              },
+              {
+                "track_id": 7006,
+                "track_name": "string"
+              }
+            ],
             "key": [
               {
                 "key_id": null,
                 "key_name": "string"
               },
               {
-                "key_id": null,
-                "key_name": null
+                "key_id": 5019,
+                "key_name": "string"
               }
             ],
-            "artists": [
-              {
-                "artist_id": 9331,
-                "artist_name": "string",
-                "artist_type_name": "string"
-              },
-              {
-                "artist_id": null,
-                "artist_name": "string",
-                "artist_type_name": null
-              }
-            ],
-            "catalog_number": null,
-            "create_date": "string",
-            "encoded_date": "string",
-            "exclusive_date": "string",
-            "streaming_date": null,
-            "preorder_date": "string",
-            "label_manager": null,
-            "pre_order_date": "string",
-            "upc": "string",
-            "price": {
-              "code": "string",
-              "symbol": "string",
-              "value": 2327.4950128314886,
-              "display": "string"
-            },
-            "is_explicit": false,
-            "track_count": 2047,
-            "release_image_uri": null,
-            "release_image_dynamic_uri": "string",
-            "downloads": 3520,
-            "is_hype": false,
-            "is_pre_order": true,
-            "plays": null
-          },
-          {
-            "score": 758.7018730546769,
-            "label": {
-              "enabled": 2318,
-              "label_id": 6382,
-              "label_name": "string"
-            },
-            "aggregator": {
-              "aggregator_id": 4517,
-              "aggregator_name": "string"
-            },
-            "available_worldwide": 1851,
-            "exclusive": 14,
-            "publish_date": "string",
-            "release_date": "string",
-            "release_id": 1515,
-            "release_name": "string",
-            "release_type": "string",
-            "status": 4094,
-            "update_date": "string",
-            "current_status": null,
-            "genre": {
-              "genre_id": null,
-              "genre_name": null
-            },
-            "tracks": null,
-            "key": null,
             "artists": null,
             "catalog_number": null,
-            "create_date": "string",
-            "encoded_date": null,
+            "create_date": null,
+            "encoded_date": "string",
             "exclusive_date": "string",
             "streaming_date": null,
             "preorder_date": null,
@@ -220,20 +219,20 @@ response:
             "price": {
               "code": "string",
               "symbol": "string",
-              "value": 7816.865729572389,
+              "value": 8956.190769372324,
               "display": "string"
             },
-            "is_explicit": false,
-            "track_count": 4199,
-            "release_image_uri": null,
+            "is_explicit": null,
+            "track_count": null,
+            "release_image_uri": "string",
             "release_image_dynamic_uri": "string",
             "downloads": null,
-            "is_hype": null,
-            "is_pre_order": null,
-            "plays": 3888
+            "is_hype": false,
+            "is_pre_order": true,
+            "plays": 5566
           }
         ],
-        "debug": null,
+        "debug": {},
         "explain": null
       }
 order: 1000

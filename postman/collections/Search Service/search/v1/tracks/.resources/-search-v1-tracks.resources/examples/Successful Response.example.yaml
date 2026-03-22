@@ -1,11 +1,11 @@
 $kind: http-example
 request:
   url: "{{baseUrl}}/search/v1/tracks?q=string&count=20&preorder=false&from_publis\
-    h_date=1958-10-05&to_publish_date=1958-10-05&from_release_date=1958-10-05&t\
-    o_release_date=1958-10-05&genre_id=string&genre_name=string&mix_name=string\
-    &from_bpm=1915&to_bpm=1915&key_name=string&mix_name_weight=1&label_name_wei\
-    ght=1&dj_edits=true&ugc_remixes=true&dj_edits_and_ugc_remixes=true&is_avail\
-    able_for_streaming=true"
+    h_date=1965-12-27&to_publish_date=1965-12-27&from_release_date=1965-12-27&t\
+    o_release_date=1965-12-27&genre_id=string&genre_name=string&mix_name=string\
+    &from_bpm=2757&to_bpm=2757&key_name=string&mix_name_weight=1&label_name_wei\
+    ght=1&dj_edits=false&ugc_remixes=false&dj_edits_and_ugc_remixes=true&is_ava\
+    ilable_for_streaming=true"
   method: GET
   headers:
     - key: Accept
@@ -30,28 +30,28 @@ request:
         When TRUE, the response will include tracks that are in a pre-order
         status
     - key: from_publish_date
-      value: 1958-10-05
+      value: 1965-12-27
       description: |
         
         The date a track was published on Beatport.com or Beatsource.com.
 
         Format: YYYY-MM-DD
     - key: to_publish_date
-      value: 1958-10-05
+      value: 1965-12-27
       description: |
         
         The date a track was published on Beatport.com or Beatsource.com.
 
         Format: YYYY-MM-DD
     - key: from_release_date
-      value: 1958-10-05
+      value: 1965-12-27
       description: |
         
         The date a track was released to the public.
 
         Format: YYYY-MM-DD
     - key: to_release_date
-      value: 1958-10-05
+      value: 1965-12-27
       description: |
         
         The date a track was released to the public.
@@ -87,9 +87,9 @@ request:
       value: string
       description: "Search for a specific mix name, ex: original"
     - key: from_bpm
-      value: "1915"
+      value: "2757"
     - key: to_bpm
-      value: "1915"
+      value: "2757"
     - key: key_name
       value: string
       description: |
@@ -116,14 +116,14 @@ request:
 
         The higher the value the more weight is put on matching q to label_name
     - key: dj_edits
-      value: "true"
+      value: "false"
       description: |
         
         When FALSE, the response will exclude DJ Edit tracks.
 
         When TRUE, the response will return only DJ Edit tracks.
     - key: ugc_remixes
-      value: "true"
+      value: "false"
       description: |
         
         When FALSE, the response will exclude UGC Remix tracks.
@@ -173,35 +173,35 @@ response:
       {
         "data": [
           {
-            "score": 501.5568908565426,
+            "score": 9268.37116090929,
             "add_date": "string",
             "artists": [
               {
-                "artist_id": 323,
-                "artist_name": "string",
+                "artist_id": 3360,
+                "artist_name": null,
                 "artist_type_name": "string"
               },
               {
-                "artist_id": 8995,
+                "artist_id": null,
                 "artist_name": "string",
                 "artist_type_name": null
               }
             ],
-            "available_worldwide": 3034,
+            "available_worldwide": 8366,
             "change_date": "string",
             "current_status": {
               "current_status_id": null,
-              "current_status_name": null
+              "current_status_name": "string"
             },
-            "enabled": 7504,
+            "enabled": 2713,
             "encode_status": "string",
-            "exclusive_period": 1159,
-            "genre_enabled": 7981,
-            "is_available_for_streaming": 840,
-            "is_classic": 155,
+            "exclusive_period": 6064,
+            "genre_enabled": 8197,
+            "is_available_for_streaming": 1389,
+            "is_classic": 3128,
             "label": {
-              "enabled": 3136,
-              "label_id": 4743,
+              "enabled": 8395,
+              "label_id": 1638,
               "label_name": "string"
             },
             "label_manager": "string",
@@ -209,7 +209,7 @@ response:
             "publish_date": "string",
             "publish_status": "string",
             "release": {
-              "release_id": 5172,
+              "release_id": 7272,
               "release_name": "string",
               "release_image_uri": null,
               "release_image_dynamic_uri": null
@@ -218,33 +218,33 @@ response:
             "sale_type": "string",
             "suggest": {
               "input": "string",
-              "weight": 5499
+              "weight": 1587
             },
-            "supplier_id": 8895,
-            "track_id": 4055,
+            "supplier_id": 3632,
+            "track_id": 8341,
             "track_name": "string",
-            "track_number": 8772,
+            "track_number": 1271,
             "update_date": "string",
-            "was_ever_exclusive": 5685,
+            "was_ever_exclusive": 5260,
             "bpm": null,
-            "catalog_number": null,
-            "chord_type_id": 5885,
+            "catalog_number": "string",
+            "chord_type_id": null,
             "exclusive_date": null,
             "free_download_end_date": "string",
-            "free_download_start_date": null,
-            "guid": null,
-            "isrc": "string",
+            "free_download_start_date": "string",
+            "guid": "string",
+            "isrc": null,
             "key_id": null,
-            "key_name": null,
+            "key_name": "string",
             "length": null,
             "pre_order_date": null,
-            "streaming_date": null,
+            "streaming_date": "string",
             "downloads": null,
             "plays": null,
             "price": null,
-            "is_explicit": null,
-            "is_available_for_alacarte": true,
-            "is_dj_edit": true,
+            "is_explicit": true,
+            "is_available_for_alacarte": null,
+            "is_dj_edit": false,
             "is_ugc_remix": null,
             "is_pre_order": null,
             "track_image_uri": null,
@@ -253,35 +253,35 @@ response:
             "sub_genre": null
           },
           {
-            "score": 7168.357010211935,
+            "score": 1798.3656561309758,
             "add_date": "string",
             "artists": [
               {
-                "artist_id": null,
+                "artist_id": 3826,
                 "artist_name": null,
                 "artist_type_name": "string"
               },
               {
-                "artist_id": 4185,
-                "artist_name": "string",
+                "artist_id": 3155,
+                "artist_name": null,
                 "artist_type_name": null
               }
             ],
-            "available_worldwide": 8608,
+            "available_worldwide": 3613,
             "change_date": "string",
             "current_status": {
               "current_status_id": null,
               "current_status_name": "string"
             },
-            "enabled": 3505,
+            "enabled": 1959,
             "encode_status": "string",
-            "exclusive_period": 1311,
-            "genre_enabled": 4774,
-            "is_available_for_streaming": 7453,
-            "is_classic": 3013,
+            "exclusive_period": 8547,
+            "genre_enabled": 8006,
+            "is_available_for_streaming": 2128,
+            "is_classic": 2697,
             "label": {
-              "enabled": 4540,
-              "label_id": 788,
+              "enabled": 5253,
+              "label_id": 4792,
               "label_name": "string"
             },
             "label_manager": "string",
@@ -289,7 +289,7 @@ response:
             "publish_date": "string",
             "publish_status": "string",
             "release": {
-              "release_id": 4259,
+              "release_id": 8649,
               "release_name": "string",
               "release_image_uri": "string",
               "release_image_dynamic_uri": "string"
@@ -298,38 +298,38 @@ response:
             "sale_type": "string",
             "suggest": {
               "input": "string",
-              "weight": null
+              "weight": 7481
             },
-            "supplier_id": 2989,
-            "track_id": 5973,
+            "supplier_id": 412,
+            "track_id": 878,
             "track_name": "string",
-            "track_number": 3181,
+            "track_number": 6099,
             "update_date": "string",
-            "was_ever_exclusive": 3270,
-            "bpm": null,
-            "catalog_number": "string",
-            "chord_type_id": null,
+            "was_ever_exclusive": 8616,
+            "bpm": 8358,
+            "catalog_number": null,
+            "chord_type_id": 5957,
             "exclusive_date": null,
             "free_download_end_date": null,
-            "free_download_start_date": null,
+            "free_download_start_date": "string",
             "guid": "string",
             "isrc": null,
             "key_id": null,
-            "key_name": null,
-            "length": 17,
-            "pre_order_date": "string",
+            "key_name": "string",
+            "length": 409,
+            "pre_order_date": null,
             "streaming_date": "string",
-            "downloads": 1904,
+            "downloads": null,
             "plays": null,
             "price": {
               "code": "string",
               "symbol": "string",
-              "value": 3599.2626680879434,
+              "value": 9390.997180094722,
               "display": "string"
             },
-            "is_explicit": false,
-            "is_available_for_alacarte": true,
-            "is_dj_edit": null,
+            "is_explicit": null,
+            "is_available_for_alacarte": null,
+            "is_dj_edit": true,
             "is_ugc_remix": null,
             "is_pre_order": null,
             "track_image_uri": null,
@@ -338,7 +338,7 @@ response:
             "sub_genre": null
           }
         ],
-        "debug": {},
-        "explain": null
+        "debug": null,
+        "explain": {}
       }
 order: 1000

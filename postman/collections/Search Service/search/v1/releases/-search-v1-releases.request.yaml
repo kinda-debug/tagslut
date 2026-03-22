@@ -2,8 +2,8 @@ $kind: http-request
 name: /search/v1/releases
 description: Returns a set of release results
 url: "{{baseUrl}}/search/v1/releases?q=string&count=20&preorder=false&from_publ\
-  ish_date=1958-10-05&to_publish_date=1958-10-05&from_release_date=1958-10-05&t\
-  o_release_date=1958-10-05&genre_id=string&genre_name=string&release_name_weig\
+  ish_date=1965-12-27&to_publish_date=1965-12-27&from_release_date=1965-12-27&t\
+  o_release_date=1965-12-27&genre_id=string&genre_name=string&release_name_weig\
   ht=1&label_name_weight=1"
 method: GET
 headers:
@@ -23,28 +23,28 @@ queryParams:
 
       When TRUE, the response will include tracks that are in a pre-order status
   - key: from_publish_date
-    value: 1958-10-05
+    value: 1965-12-27
     description: |
       
       The date a track was published on Beatport.com or Beatsource.com.
 
       Format: YYYY-MM-DD
   - key: to_publish_date
-    value: 1958-10-05
+    value: 1965-12-27
     description: |
       
       The date a track was published on Beatport.com or Beatsource.com.
 
       Format: YYYY-MM-DD
   - key: from_release_date
-    value: 1958-10-05
+    value: 1965-12-27
     description: |
       
       The date a track was released to the public.
 
       Format: YYYY-MM-DD
   - key: to_release_date
-    value: 1958-10-05
+    value: 1965-12-27
     description: |
       
       The date a track was released to the public.

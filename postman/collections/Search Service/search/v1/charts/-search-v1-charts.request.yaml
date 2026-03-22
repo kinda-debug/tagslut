@@ -2,8 +2,8 @@ $kind: http-request
 name: /search/v1/charts
 description: Returns a set of chart results
 url: "{{baseUrl}}/search/v1/charts?q=string&count=20&genre_id=string&genre_name\
-  =string&is_approved=true&from_publish_date=1958-10-05&to_publish_date=1958-10\
-  -05"
+  =string&is_approved=true&from_publish_date=1965-12-27&to_publish_date=1965-12\
+  -27"
 method: GET
 headers:
   Accept: application/json
@@ -50,14 +50,14 @@ queryParams:
 
       It is recommended to leave this set to TRUE
   - key: from_publish_date
-    value: 1958-10-05
+    value: 1965-12-27
     description: |
       
       The date a chart was published on Beatport.com or Beatsource.com.
 
       Format: YYYY-MM-DD
   - key: to_publish_date
-    value: 1958-10-05
+    value: 1965-12-27
     description: |
       
       The date a chart was published on Beatport.com or Beatsource.com.

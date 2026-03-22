@@ -1,8 +1,8 @@
 $kind: http-example
 request:
   url: "{{baseUrl}}/search/v1/all?q=string&count=20&preorder=false&tracks_from_re\
-    lease_date=1958-10-05&tracks_to_release_date=1958-10-05&releases_from_relea\
-    se_date=1958-10-05&releases_to_release_date=1958-10-05&is_approved=true&is_\
+    lease_date=1965-12-27&tracks_to_release_date=1965-12-27&releases_from_relea\
+    se_date=1965-12-27&releases_to_release_date=1965-12-27&is_approved=true&is_\
     available_for_streaming=true"
   method: GET
   headers:
@@ -29,28 +29,28 @@ request:
         When TRUE, the response will include tracks and releases that are in a
         pre-order status
     - key: tracks_from_release_date
-      value: 1958-10-05
+      value: 1965-12-27
       description: |
         
         The date a track was released to the public.
 
         Format: YYYY-MM-DD
     - key: tracks_to_release_date
-      value: 1958-10-05
+      value: 1965-12-27
       description: |
         
         The date a track was released to the public.
 
         Format: YYYY-MM-DD
     - key: releases_from_release_date
-      value: 1958-10-05
+      value: 1965-12-27
       description: |
         
         The date a release was released to the public.
 
         Format: YYYY-MM-DD
     - key: releases_to_release_date
-      value: 1958-10-05
+      value: 1965-12-27
       description: |
         
         The date a release was released to the public.
@@ -101,35 +101,35 @@ response:
         "tracks": {
           "data": [
             {
-              "score": 4370.935545199175,
+              "score": 4345.744956735933,
               "add_date": "string",
               "artists": [
                 {
-                  "artist_id": 686,
-                  "artist_name": null,
-                  "artist_type_name": null
+                  "artist_id": 3935,
+                  "artist_name": "string",
+                  "artist_type_name": "string"
                 },
                 {
                   "artist_id": null,
                   "artist_name": "string",
-                  "artist_type_name": "string"
+                  "artist_type_name": null
                 }
               ],
-              "available_worldwide": 2434,
+              "available_worldwide": 1781,
               "change_date": "string",
               "current_status": {
-                "current_status_id": 6702,
+                "current_status_id": null,
                 "current_status_name": null
               },
-              "enabled": 5704,
+              "enabled": 6367,
               "encode_status": "string",
-              "exclusive_period": 6920,
-              "genre_enabled": 2952,
-              "is_available_for_streaming": 4267,
-              "is_classic": 4165,
+              "exclusive_period": 7605,
+              "genre_enabled": 179,
+              "is_available_for_streaming": 4279,
+              "is_classic": 2811,
               "label": {
-                "enabled": 6033,
-                "label_id": 3161,
+                "enabled": 8641,
+                "label_id": 6668,
                 "label_name": "string"
               },
               "label_manager": "string",
@@ -137,10 +137,98 @@ response:
               "publish_date": "string",
               "publish_status": "string",
               "release": {
-                "release_id": 8336,
+                "release_id": 2399,
+                "release_name": "string",
+                "release_image_uri": "string",
+                "release_image_dynamic_uri": null
+              },
+              "release_date": "string",
+              "sale_type": "string",
+              "suggest": {
+                "input": "string",
+                "weight": 674
+              },
+              "supplier_id": 7155,
+              "track_id": 8826,
+              "track_name": "string",
+              "track_number": 7743,
+              "update_date": "string",
+              "was_ever_exclusive": 1126,
+              "bpm": 7791,
+              "catalog_number": null,
+              "chord_type_id": 9713,
+              "exclusive_date": null,
+              "free_download_end_date": null,
+              "free_download_start_date": "string",
+              "guid": "string",
+              "isrc": "string",
+              "key_id": 6566,
+              "key_name": null,
+              "length": null,
+              "pre_order_date": "string",
+              "streaming_date": null,
+              "downloads": null,
+              "plays": 9519,
+              "price": {
+                "code": "string",
+                "symbol": "string",
+                "value": 2739.4916813313885,
+                "display": "string"
+              },
+              "is_explicit": false,
+              "is_available_for_alacarte": null,
+              "is_dj_edit": true,
+              "is_ugc_remix": null,
+              "is_pre_order": null,
+              "track_image_uri": null,
+              "track_image_dynamic_uri": null,
+              "genre": {
+                "genre_id": null,
+                "genre_name": null
+              },
+              "sub_genre": null
+            },
+            {
+              "score": 9210.585585411429,
+              "add_date": "string",
+              "artists": [
+                {
+                  "artist_id": 6869,
+                  "artist_name": "string",
+                  "artist_type_name": null
+                },
+                {
+                  "artist_id": null,
+                  "artist_name": "string",
+                  "artist_type_name": null
+                }
+              ],
+              "available_worldwide": 6296,
+              "change_date": "string",
+              "current_status": {
+                "current_status_id": 98,
+                "current_status_name": null
+              },
+              "enabled": 6429,
+              "encode_status": "string",
+              "exclusive_period": 2030,
+              "genre_enabled": 8169,
+              "is_available_for_streaming": 1123,
+              "is_classic": 9027,
+              "label": {
+                "enabled": 14,
+                "label_id": 683,
+                "label_name": "string"
+              },
+              "label_manager": "string",
+              "mix_name": "string",
+              "publish_date": "string",
+              "publish_status": "string",
+              "release": {
+                "release_id": 9983,
                 "release_name": "string",
                 "release_image_uri": null,
-                "release_image_dynamic_uri": "string"
+                "release_image_dynamic_uri": null
               },
               "release_date": "string",
               "sale_type": "string",
@@ -148,394 +236,239 @@ response:
                 "input": "string",
                 "weight": null
               },
-              "supplier_id": 4826,
-              "track_id": 6048,
+              "supplier_id": 5998,
+              "track_id": 1573,
               "track_name": "string",
-              "track_number": 8802,
+              "track_number": 2948,
               "update_date": "string",
-              "was_ever_exclusive": 6054,
+              "was_ever_exclusive": 781,
               "bpm": null,
-              "catalog_number": "string",
+              "catalog_number": null,
               "chord_type_id": null,
               "exclusive_date": null,
               "free_download_end_date": "string",
-              "free_download_start_date": "string",
+              "free_download_start_date": null,
               "guid": "string",
               "isrc": "string",
               "key_id": null,
               "key_name": "string",
-              "length": 8337,
-              "pre_order_date": "string",
+              "length": null,
+              "pre_order_date": null,
               "streaming_date": null,
               "downloads": null,
-              "plays": 5056,
+              "plays": null,
               "price": {
                 "code": "string",
                 "symbol": "string",
-                "value": 7901.817658779589,
+                "value": 3665.7006615624246,
                 "display": "string"
               },
-              "is_explicit": null,
-              "is_available_for_alacarte": true,
-              "is_dj_edit": true,
-              "is_ugc_remix": true,
-              "is_pre_order": null,
-              "track_image_uri": "string",
-              "track_image_dynamic_uri": null,
+              "is_explicit": false,
+              "is_available_for_alacarte": null,
+              "is_dj_edit": false,
+              "is_ugc_remix": false,
+              "is_pre_order": false,
+              "track_image_uri": null,
+              "track_image_dynamic_uri": "string",
               "genre": {
                 "genre_id": null,
                 "genre_name": "string"
               },
               "sub_genre": {
-                "sub_genre_id": 681,
+                "sub_genre_id": null,
                 "sub_genre_name": "string"
               }
-            },
+            }
+          ],
+          "debug": {},
+          "explain": {}
+        },
+        "artists": {
+          "data": [
             {
-              "score": 2122.9862653190644,
-              "add_date": "string",
-              "artists": [
+              "score": 827.5934150968611,
+              "enabled": 7725,
+              "available_worldwide": 3419,
+              "artist_id": 9757,
+              "artist_name": "string",
+              "update_date": null,
+              "latest_publish_date": null,
+              "downloads": null,
+              "genre": [
                 {
-                  "artist_id": 1602,
-                  "artist_name": "string",
-                  "artist_type_name": "string"
+                  "genre_id": null,
+                  "genre_name": null
                 },
                 {
-                  "artist_id": 3063,
-                  "artist_name": "string",
-                  "artist_type_name": null
+                  "genre_id": 5298,
+                  "genre_name": null
                 }
               ],
-              "available_worldwide": 7485,
-              "change_date": "string",
-              "current_status": {
-                "current_status_id": null,
-                "current_status_name": "string"
-              },
-              "enabled": 6765,
-              "encode_status": "string",
-              "exclusive_period": 1397,
-              "genre_enabled": 776,
-              "is_available_for_streaming": 1800,
-              "is_classic": 8836,
-              "label": {
-                "enabled": 5734,
-                "label_id": 4969,
-                "label_name": "string"
-              },
-              "label_manager": "string",
-              "mix_name": "string",
-              "publish_date": "string",
-              "publish_status": "string",
-              "release": {
-                "release_id": 8972,
-                "release_name": "string",
-                "release_image_uri": "string",
-                "release_image_dynamic_uri": "string"
-              },
-              "release_date": "string",
-              "sale_type": "string",
-              "suggest": {
-                "input": "string",
-                "weight": 1669
-              },
-              "supplier_id": 3568,
-              "track_id": 755,
-              "track_name": "string",
-              "track_number": 1395,
+              "artist_image_uri": "string",
+              "artist_image_dynamic_uri": "string"
+            },
+            {
+              "score": 9086.869670916698,
+              "enabled": 2486,
+              "available_worldwide": 8327,
+              "artist_id": 6320,
+              "artist_name": "string",
+              "update_date": null,
+              "latest_publish_date": "string",
+              "downloads": 194,
+              "genre": null,
+              "artist_image_uri": "string",
+              "artist_image_dynamic_uri": null
+            }
+          ],
+          "debug": {},
+          "explain": null
+        },
+        "charts": {
+          "data": [
+            {
+              "score": 2461.519662143673,
+              "chart_id": 7043,
+              "chart_name": "string",
+              "create_date": "string",
+              "is_approved": 2156,
               "update_date": "string",
-              "was_ever_exclusive": 6707,
-              "bpm": 2018,
-              "catalog_number": null,
-              "chord_type_id": null,
-              "exclusive_date": "string",
-              "free_download_end_date": "string",
-              "free_download_start_date": "string",
-              "guid": null,
-              "isrc": null,
-              "key_id": null,
-              "key_name": "string",
-              "length": null,
-              "pre_order_date": "string",
-              "streaming_date": "string",
-              "downloads": 300,
-              "plays": 2277,
-              "price": {
-                "code": "string",
-                "symbol": "string",
-                "value": 4760.811350192862,
-                "display": "string"
-              },
-              "is_explicit": false,
-              "is_available_for_alacarte": null,
-              "is_dj_edit": null,
-              "is_ugc_remix": true,
-              "is_pre_order": false,
-              "track_image_uri": "string",
-              "track_image_dynamic_uri": "string",
-              "genre": {
-                "genre_id": 7153,
-                "genre_name": null
-              },
-              "sub_genre": null
+              "enabled": 3350,
+              "is_indexed": 4994,
+              "is_published": 3137,
+              "artist_id": null,
+              "artist_name": null,
+              "person_id": 2583,
+              "publish_date": "string",
+              "item_type_id": null,
+              "person_username": null,
+              "track_count": 6054,
+              "chart_image_uri": "string",
+              "chart_image_dynamic_uri": null,
+              "genres": null
+            },
+            {
+              "score": 4989.071423660314,
+              "chart_id": 7718,
+              "chart_name": "string",
+              "create_date": "string",
+              "is_approved": 558,
+              "update_date": "string",
+              "enabled": 6991,
+              "is_indexed": 22,
+              "is_published": 4914,
+              "artist_id": null,
+              "artist_name": "string",
+              "person_id": 9759,
+              "publish_date": "string",
+              "item_type_id": 2026,
+              "person_username": null,
+              "track_count": null,
+              "chart_image_uri": "string",
+              "chart_image_dynamic_uri": "string",
+              "genres": null
             }
           ],
           "debug": null,
           "explain": null
         },
-        "artists": {
+        "labels": {
           "data": [
             {
-              "score": 2523.6091719631213,
-              "enabled": 1734,
-              "available_worldwide": 5447,
-              "artist_id": 7369,
-              "artist_name": "string",
+              "score": 1131.1708892473705,
+              "label_id": 6325,
+              "label_name": "string",
               "update_date": "string",
-              "latest_publish_date": null,
+              "create_date": "string",
+              "is_included_in_rightsflow": 2665,
+              "enabled": 3602,
+              "is_available_for_hype": 2420,
+              "is_available_for_streaming": 2511,
+              "plays": null,
               "downloads": null,
-              "genre": null,
-              "artist_image_uri": null,
-              "artist_image_dynamic_uri": null
+              "label_image_uri": "string",
+              "label_image_dynamic_uri": "string"
             },
             {
-              "score": 8440.315688103057,
-              "enabled": 9402,
-              "available_worldwide": 5677,
-              "artist_id": 1847,
-              "artist_name": "string",
+              "score": 3021.6646927103266,
+              "label_id": 9452,
+              "label_name": "string",
               "update_date": "string",
-              "latest_publish_date": null,
-              "downloads": 3160,
-              "genre": null,
-              "artist_image_uri": null,
-              "artist_image_dynamic_uri": "string"
-            }
-          ],
-          "debug": {},
-          "explain": {}
-        },
-        "charts": {
-          "data": [
-            {
-              "score": 4076.2488636938897,
-              "chart_id": 4387,
-              "chart_name": "string",
               "create_date": "string",
-              "is_approved": 5177,
-              "update_date": "string",
-              "enabled": 8113,
-              "is_indexed": 5079,
-              "is_published": 330,
-              "artist_id": 5862,
-              "artist_name": "string",
-              "person_id": 1468,
-              "publish_date": null,
-              "item_type_id": 6877,
-              "person_username": null,
-              "track_count": null,
-              "chart_image_uri": null,
-              "chart_image_dynamic_uri": null,
-              "genres": null
-            },
-            {
-              "score": 1450.1336700800982,
-              "chart_id": 7784,
-              "chart_name": "string",
-              "create_date": "string",
-              "is_approved": 1909,
-              "update_date": "string",
-              "enabled": 6318,
-              "is_indexed": 2780,
-              "is_published": 762,
-              "artist_id": 6542,
-              "artist_name": "string",
-              "person_id": 9856,
-              "publish_date": null,
-              "item_type_id": 8169,
-              "person_username": "string",
-              "track_count": null,
-              "chart_image_uri": null,
-              "chart_image_dynamic_uri": "string",
-              "genres": [
-                {
-                  "genre_id": 9110,
-                  "genre_name": "string"
-                },
-                {
-                  "genre_id": null,
-                  "genre_name": null
-                }
-              ]
+              "is_included_in_rightsflow": 3828,
+              "enabled": 6557,
+              "is_available_for_hype": 387,
+              "is_available_for_streaming": 1496,
+              "plays": null,
+              "downloads": null,
+              "label_image_uri": null,
+              "label_image_dynamic_uri": null
             }
           ],
           "debug": null,
           "explain": {}
         },
-        "labels": {
-          "data": [
-            {
-              "score": 7958.665221425387,
-              "label_id": 5047,
-              "label_name": "string",
-              "update_date": "string",
-              "create_date": "string",
-              "is_included_in_rightsflow": 7048,
-              "enabled": 7863,
-              "is_available_for_hype": 2727,
-              "is_available_for_streaming": 2169,
-              "plays": 7896,
-              "downloads": null,
-              "label_image_uri": null,
-              "label_image_dynamic_uri": "string"
-            },
-            {
-              "score": 6339.928882713055,
-              "label_id": 34,
-              "label_name": "string",
-              "update_date": "string",
-              "create_date": "string",
-              "is_included_in_rightsflow": 6411,
-              "enabled": 8874,
-              "is_available_for_hype": 3895,
-              "is_available_for_streaming": 7583,
-              "plays": null,
-              "downloads": null,
-              "label_image_uri": "string",
-              "label_image_dynamic_uri": "string"
-            }
-          ],
-          "debug": {},
-          "explain": {}
-        },
         "releases": {
           "data": [
             {
-              "score": 5923.507156392058,
+              "score": 7480.482096005908,
               "label": {
-                "enabled": 1261,
-                "label_id": 4773,
+                "enabled": 4238,
+                "label_id": 6869,
                 "label_name": "string"
               },
               "aggregator": {
-                "aggregator_id": 9512,
+                "aggregator_id": 5954,
                 "aggregator_name": "string"
               },
-              "available_worldwide": 4788,
-              "exclusive": 2699,
+              "available_worldwide": 8223,
+              "exclusive": 3944,
               "publish_date": "string",
               "release_date": "string",
-              "release_id": 1851,
+              "release_id": 5065,
               "release_name": "string",
               "release_type": "string",
-              "status": 8655,
+              "status": 9667,
               "update_date": "string",
               "current_status": [
                 {
-                  "current_status_id": 7753,
-                  "current_status_name": null
+                  "current_status_id": 342,
+                  "current_status_name": "string"
                 },
                 {
-                  "current_status_id": 8063,
-                  "current_status_name": "string"
+                  "current_status_id": 5547,
+                  "current_status_name": null
                 }
               ],
-              "genre": {
-                "genre_id": 1173,
-                "genre_name": "string"
-              },
-              "tracks": null,
+              "genre": null,
+              "tracks": [
+                {
+                  "track_id": 547,
+                  "track_name": "string"
+                },
+                {
+                  "track_id": null,
+                  "track_name": null
+                }
+              ],
               "key": null,
               "artists": [
                 {
-                  "artist_id": 4335,
-                  "artist_name": null,
-                  "artist_type_name": null
-                },
-                {
                   "artist_id": null,
                   "artist_name": "string",
                   "artist_type_name": null
+                },
+                {
+                  "artist_id": 4425,
+                  "artist_name": "string",
+                  "artist_type_name": "string"
                 }
               ],
               "catalog_number": null,
-              "create_date": null,
-              "encoded_date": null,
-              "exclusive_date": null,
-              "streaming_date": null,
-              "preorder_date": "string",
-              "label_manager": "string",
-              "pre_order_date": "string",
-              "upc": "string",
-              "price": null,
-              "is_explicit": false,
-              "track_count": 6649,
-              "release_image_uri": "string",
-              "release_image_dynamic_uri": null,
-              "downloads": 3892,
-              "is_hype": null,
-              "is_pre_order": null,
-              "plays": 6745
-            },
-            {
-              "score": 7622.063701356347,
-              "label": {
-                "enabled": 1246,
-                "label_id": 1289,
-                "label_name": "string"
-              },
-              "aggregator": {
-                "aggregator_id": 1288,
-                "aggregator_name": "string"
-              },
-              "available_worldwide": 930,
-              "exclusive": 3291,
-              "publish_date": "string",
-              "release_date": "string",
-              "release_id": 6915,
-              "release_name": "string",
-              "release_type": "string",
-              "status": 8278,
-              "update_date": "string",
-              "current_status": null,
-              "genre": [
-                {
-                  "genre_id": 4490,
-                  "genre_name": null
-                },
-                {
-                  "genre_id": null,
-                  "genre_name": null
-                }
-              ],
-              "tracks": null,
-              "key": [
-                {
-                  "key_id": null,
-                  "key_name": "string"
-                },
-                {
-                  "key_id": null,
-                  "key_name": null
-                }
-              ],
-              "artists": [
-                {
-                  "artist_id": null,
-                  "artist_name": "string",
-                  "artist_type_name": "string"
-                },
-                {
-                  "artist_id": 2350,
-                  "artist_name": null,
-                  "artist_type_name": "string"
-                }
-              ],
-              "catalog_number": "string",
-              "create_date": null,
+              "create_date": "string",
               "encoded_date": "string",
-              "exclusive_date": "string",
-              "streaming_date": null,
+              "exclusive_date": null,
+              "streaming_date": "string",
               "preorder_date": null,
               "label_manager": null,
               "pre_order_date": "string",
@@ -543,20 +476,107 @@ response:
               "price": {
                 "code": "string",
                 "symbol": "string",
-                "value": 3445.6259262023027,
+                "value": 3293.7688068960956,
                 "display": "string"
               },
               "is_explicit": null,
               "track_count": null,
+              "release_image_uri": null,
+              "release_image_dynamic_uri": "string",
+              "downloads": 5221,
+              "is_hype": null,
+              "is_pre_order": null,
+              "plays": null
+            },
+            {
+              "score": 3081.2318082184165,
+              "label": {
+                "enabled": 2021,
+                "label_id": 5025,
+                "label_name": "string"
+              },
+              "aggregator": {
+                "aggregator_id": 7928,
+                "aggregator_name": "string"
+              },
+              "available_worldwide": 568,
+              "exclusive": 4880,
+              "publish_date": "string",
+              "release_date": "string",
+              "release_id": 3763,
+              "release_name": "string",
+              "release_type": "string",
+              "status": 1271,
+              "update_date": "string",
+              "current_status": [
+                {
+                  "current_status_id": 1980,
+                  "current_status_name": "string"
+                },
+                {
+                  "current_status_id": 5772,
+                  "current_status_name": "string"
+                }
+              ],
+              "genre": [
+                {
+                  "genre_id": 5789,
+                  "genre_name": null
+                },
+                {
+                  "genre_id": 5007,
+                  "genre_name": "string"
+                }
+              ],
+              "tracks": [
+                {
+                  "track_id": 9796,
+                  "track_name": null
+                },
+                {
+                  "track_id": null,
+                  "track_name": null
+                }
+              ],
+              "key": null,
+              "artists": [
+                {
+                  "artist_id": 3234,
+                  "artist_name": "string",
+                  "artist_type_name": "string"
+                },
+                {
+                  "artist_id": null,
+                  "artist_name": "string",
+                  "artist_type_name": null
+                }
+              ],
+              "catalog_number": null,
+              "create_date": null,
+              "encoded_date": "string",
+              "exclusive_date": "string",
+              "streaming_date": "string",
+              "preorder_date": null,
+              "label_manager": "string",
+              "pre_order_date": "string",
+              "upc": null,
+              "price": {
+                "code": "string",
+                "symbol": "string",
+                "value": 6025.2809660261155,
+                "display": "string"
+              },
+              "is_explicit": null,
+              "track_count": 2573,
               "release_image_uri": "string",
               "release_image_dynamic_uri": "string",
-              "downloads": 7535,
-              "is_hype": false,
-              "is_pre_order": true,
+              "downloads": null,
+              "is_hype": true,
+              "is_pre_order": false,
               "plays": null
             }
           ],
-          "debug": {},
+          "debug": null,
           "explain": {}
         }
       }

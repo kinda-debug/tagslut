@@ -14,7 +14,9 @@ from tagslut.storage.v3 import (
     record_provenance_event,
     upsert_asset_file,
     upsert_asset_link,
+    upsert_track_identity,
 )
+from tagslut.storage.v3.schema import create_schema_v3
 
 
 def _table_names(conn: sqlite3.Connection) -> set[str]:
@@ -172,6 +174,65 @@ def test_upsert_asset_link_relinks_existing_asset_to_new_identity(tmp_path) -> N
     assert str(row[3]) == "relink"
     assert int(row[4]) == 1
     assert link_count == 1
+
+
+def test_upsert_asset_link_canonicalizes_merged_identity(tmp_path) -> None:
+    db_path = tmp_path / "phase1.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    create_schema_v3(conn)
+
+    asset_id = upsert_asset_file(conn, path="/music/test.flac", content_sha256="abc123")
+    conn.executemany(
+        "INSERT INTO track_identity (id, identity_key, merged_into_id, ingested_at, ingestion_method, ingestion_source, ingestion_confidence) VALUES (?, ?, ?, '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')",
+        [
+            (10, "id:active", None),
+            (11, "id:merged", 10),
+        ],
+    )
+
+    upsert_asset_link(
+        conn,
+        asset_id=asset_id,
+        identity_id=11,
+        confidence=0.9,
+        link_source="merged",
+    )
+    conn.commit()
+
+    row = conn.execute(
+        "SELECT identity_id FROM asset_link WHERE asset_id = ?",
+        (asset_id,),
+    ).fetchone()
+    conn.close()
+
+    assert row is not None
+    assert int(row[0]) == 10
+
+
+def test_upsert_track_identity_uses_shared_provider_identity_key_builder(tmp_path) -> None:
+    db_path = tmp_path / "phase1.db"
+    conn = sqlite3.connect(str(db_path))
+    init_db(conn)
+
+    identity_id = upsert_track_identity(
+        conn,
+        isrc=None,
+        beatport_id=None,
+        artist="Artist",
+        title="Title",
+        ref_source="spotify",
+    )
+    conn.commit()
+
+    row = conn.execute(
+        "SELECT identity_key FROM track_identity WHERE id = ?",
+        (identity_id,),
+    ).fetchone()
+    conn.close()
+
+    assert row is not None
+    assert str(row[0]) == "text:artist|title"
 
 
 def test_move_helpers_create_move_execution_and_provenance(tmp_path) -> None:

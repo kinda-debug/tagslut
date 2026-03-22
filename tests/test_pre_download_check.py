@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import importlib.util
+import sqlite3
 import sys
 from pathlib import Path
+
+from tagslut.storage.schema import init_db
 
 
 def _load_pre_download_check_module():
@@ -22,6 +25,7 @@ def test_decide_match_action_skips_equal_or_better_existing() -> None:
         path="/library/existing.flac",
         isrc="AAA",
         beatport_id="123",
+        tidal_id="",
         title="Track",
         artist="Artist",
         album="Album",
@@ -46,6 +50,7 @@ def test_decide_match_action_keeps_upgrade_or_unknown_quality() -> None:
         path="/library/existing.flac",
         isrc="AAA",
         beatport_id="123",
+        tidal_id="",
         title="Track",
         artist="Artist",
         album="Album",
@@ -56,6 +61,7 @@ def test_decide_match_action_keeps_upgrade_or_unknown_quality() -> None:
         path="/library/existing-unknown.flac",
         isrc="BBB",
         beatport_id="456",
+        tidal_id="",
         title="Track",
         artist="Artist",
         album="Album",
@@ -80,3 +86,70 @@ def test_decide_match_action_keeps_upgrade_or_unknown_quality() -> None:
     assert "improves existing rank 6" in upgrade_reason
     assert unknown_decision == "keep"
     assert "quality rank missing" in unknown_reason
+
+
+def test_infer_quality_rank_uses_file_format_when_column_missing() -> None:
+    module = _load_pre_download_check_module()
+
+    flac_rank = module.infer_quality_rank(
+        path="/library/existing.flac",
+        quality_rank=None,
+        bit_depth=16,
+        sample_rate=44100,
+        bitrate=943752,
+    )
+    mp3_rank = module.infer_quality_rank(
+        path="/library/existing.mp3",
+        quality_rank=None,
+        bit_depth=None,
+        sample_rate=None,
+        bitrate=320000,
+    )
+
+    assert flac_rank == 4
+    assert mp3_rank == 6
+
+
+def test_load_db_rows_indexes_tidal_id_and_derives_quality_rank(tmp_path: Path) -> None:
+    module = _load_pre_download_check_module()
+    db_path = tmp_path / "music.db"
+
+    conn = sqlite3.connect(db_path)
+    init_db(conn)
+    conn.execute(
+        """
+        INSERT INTO files (
+            path,
+            metadata_json,
+            canonical_isrc,
+            tidal_id,
+            canonical_title,
+            canonical_artist,
+            canonical_album,
+            bit_depth,
+            sample_rate,
+            bitrate,
+            quality_rank
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "/library/example.flac",
+            "{}",
+            "USABC1234567",
+            "TI1",
+            "Track",
+            "Artist",
+            "Album",
+            16,
+            44100,
+            943752,
+            None,
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    _, _, by_tidal, _, _ = module.load_db_rows(db_path)
+
+    assert "TI1" in by_tidal
+    assert by_tidal["TI1"][0].quality_rank == 4

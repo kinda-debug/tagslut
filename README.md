@@ -64,9 +64,6 @@ For day-to-day downloads, use the umbrella wrapper instead of stitching phases t
 # Default: precheck + download + local tag prep + promote + merged M3U
 tools/get <provider-url>
 
-# Also build DJ MP3 copies
-tools/get <provider-url> --dj
-
 # Skip tagging/enrich/art when intentionally doing a lighter run
 tools/get <provider-url> --no-hoard
 
@@ -79,7 +76,7 @@ Notes:
 - default output is concise; use `--verbose` for internal paths, artifact files, and batch snapshots
 - local identify/tag prep runs before promote; external enrich + cover art now launch in the background after promote
 - `tools/get --m3u` writes Roon-style playlists inside `PLAYLIST_ROOT` using relative paths.
-- `tools/get --dj` writes DJ playlists inside `DJ_PLAYLIST_ROOT` using absolute paths for Rekordbox/Lexicon.
+- if a run reports precheck/download zeros (`keep=0 skip=0 total=0`, `selected=0`), verify link extraction status before assuming duplicate suppression: check `artifacts/compare/precheck_links_extracted_*.csv` and `artifacts/compare/precheck_extracted_report_*.md` for notes such as `tidal_token_missing`
 - work output is split by intent:
   - `FIX_ROOT` for salvageable metadata/tag issues (default: `/Volumes/MUSIC/_work/fix`)
   - `QUARANTINE_ROOT` / `$VOLUME_QUARANTINE` for risky files only (default: `/Volumes/MUSIC/_work/quarantine`)
@@ -88,6 +85,39 @@ Notes:
 - `--force-download` bypasses the pre-download skip so matched URLs are still fetched, but equal-or-better library files still win at promote time unless you run an explicit replacement workflow
 - `tools/get-intake` is the advanced/backend command for existing batch roots, `--m3u-only`, and direct pipeline control.
 - `tools/get-sync` is a deprecated Beatport compatibility alias.
+- `tools/get --dj` is **legacy** — emits a deprecation warning and may produce non-deterministic results. Use the DJ pipeline below.
+
+## 4-Stage DJ Pipeline
+
+`tools/get --dj` is deprecated. Use the 4-stage DJ pipeline instead.
+
+For a curated DJ library, the only supported workflow is:
+`tagslut mp3 reconcile` or `tagslut mp3 build` -> `tagslut dj admit` or
+`tagslut dj backfill` -> `tagslut dj validate` -> `tagslut dj xml emit` or
+`tagslut dj xml patch`. See `docs/DJ_WORKFLOW.md` for the canonical reference.
+
+Building a curated DJ library follows a deterministic 4-stage pipeline.
+Each stage is safe to re-run and leaves explicit DB state as output.
+
+```bash
+# Stage 1: register existing MP3s against canonical identities (no re-transcode)
+poetry run tagslut mp3 reconcile \
+  --db "$TAGSLUT_DB" --mp3-root "$DJ_LIBRARY" --execute
+
+# Stage 2: admit registered MP3s into the curated DJ library
+poetry run tagslut dj backfill --db "$TAGSLUT_DB"
+
+# Stage 3: validate DJ library state (missing files, empty metadata)
+poetry run tagslut dj validate --db "$TAGSLUT_DB"
+
+# Stage 4: emit deterministic Rekordbox XML (stable TrackIDs across re-emits)
+poetry run tagslut dj xml emit --db "$TAGSLUT_DB" --out rekordbox.xml
+
+# After library changes: re-emit preserving Rekordbox cue points
+poetry run tagslut dj xml patch --db "$TAGSLUT_DB" --out rekordbox_v2.xml
+```
+
+See `docs/DJ_WORKFLOW.md` for the full reference and per-stage details.
 
 ## Move Plan Execution
 Use the canonical executor for reviewed plan CSVs:

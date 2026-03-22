@@ -1,0 +1,65 @@
+{
+  "count": 1,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": 12345,
+      "name": "Warehouse Cut",
+      "mix_name": "Original Mix",
+      "artists": [
+        {
+          "id": 100,
+          "name": "Artist A",
+          "slug": "artist-a",
+          "url": "https://www.beatport.com/artist/artist-a/100"
+        }
+      ],
+      "bpm": 128,
+      "genre": {
+        "id": 10,
+        "name": "Tech House",
+        "slug": "tech-house",
+        "url": "https://www.beatport.com/genre/tech-house/10"
+      },
+      "sub_genre": {
+        "id": 11,
+        "name": "Deep Tech",
+        "slug": "deep-tech",
+        "url": "https://www.beatport.com/genre/deep-tech/11"
+      },
+      "isrc": "GBEXH2400001",
+      "key": {
+        "id": 6,
+        "name": "A Minor",
+        "url": "https://www.beatport.com/key/a-minor/6",
+        "camelot_number": 8,
+        "camelot_letter": "A",
+        "letter": "A",
+        "chord_type": "minor",
+        "is_flat": false,
+        "is_sharp": false
+      },
+      "sample_url": "https://audio.example.com/sample/12345.mp3",
+      "length": "6:30",
+      "length_ms": 390000,
+      "catalog_number": "TOOL001",
+      "publish_date": "2025-02-01",
+      "new_release_date": "2025-02-01",
+      "release": {
+        "id": 999,
+        "name": "Warehouse EP",
+        "catalog_number": "TOOL001",
+        "label": {
+          "id": 77,
+          "name": "Toolroom",
+          "slug": "toolroom"
+        },
+        "url": "https://www.beatport.com/release/warehouse-ep/999"
+      },
+      "slug": "warehouse-cut",
+      "url": "https://www.beatport.com/track/warehouse-cut/12345",
+      "is_available_for_streaming": true
+    }
+  ]
+}

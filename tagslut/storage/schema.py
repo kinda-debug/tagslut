@@ -229,6 +229,8 @@ def init_db(
             "dj_flag": "INTEGER DEFAULT 0",
             "bpm": "REAL",
             "key_camelot": "TEXT",
+            "dj_set_role": "TEXT",
+            "dj_subrole": "TEXT",
             "energy": "INTEGER",
             "genre": "TEXT",
             "isrc": "TEXT",
@@ -273,6 +275,8 @@ def init_db(
         connection.execute("CREATE INDEX IF NOT EXISTS idx_dj_pool_path ON files(dj_pool_path);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_last_exported_usb ON files(last_exported_usb);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_dj_flag ON files(dj_flag);")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_dj_set_role ON files(dj_set_role);")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_dj_subrole ON files(dj_subrole);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_bpm ON files(bpm);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_key_camelot ON files(key_camelot);")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_isrc ON files(isrc);")
@@ -464,6 +468,7 @@ def init_db(
         _ensure_v3_schema(connection)
         _ensure_gig_tables(connection)
         _ensure_scan_tables(connection)
+        _ensure_mp3_dj_tables(connection)
         _record_schema_version(connection, schema_name="integrity",
                                version=INTEGRITY_SCHEMA_VERSION)
         _record_schema_version(connection, schema_name="v3", version=V3_SCHEMA_VERSION)
@@ -908,6 +913,24 @@ def _ensure_scan_tables(conn: sqlite3.Connection) -> None:
 def _ensure_gig_tables(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
+        CREATE TABLE IF NOT EXISTS gigs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            venue TEXT,
+            bpm_min INTEGER,
+            bpm_max INTEGER,
+            roles_filter TEXT,
+            track_count INTEGER,
+            output_path TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_gigs_date ON gigs(date);")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_gigs_created_at ON gigs(created_at);")
+
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS gig_sets (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
@@ -940,6 +963,20 @@ def _ensure_gig_tables(conn: sqlite3.Connection) -> None:
     )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_gig_set_tracks_set ON gig_set_tracks(gig_set_id);")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_gig_set_tracks_file ON gig_set_tracks(file_path);")
+    _add_missing_columns(
+        conn,
+        "gigs",
+        {
+            "date": "TEXT",
+            "venue": "TEXT",
+            "bpm_min": "INTEGER",
+            "bpm_max": "INTEGER",
+            "roles_filter": "TEXT",
+            "track_count": "INTEGER",
+            "output_path": "TEXT",
+            "created_at": "TEXT DEFAULT CURRENT_TIMESTAMP",
+        },
+    )
     _add_missing_columns(
         conn,
         "gig_sets",
@@ -1135,6 +1172,10 @@ def _ensure_v3_schema(conn: sqlite3.Connection) -> None:
             "title_norm": "TEXT",
             "duration_ref_ms": "INTEGER",
             "ref_source": "TEXT",
+            "ingested_at": "TEXT",
+            "ingestion_method": "TEXT",
+            "ingestion_source": "TEXT",
+            "ingestion_confidence": "TEXT",
             "created_at": "TEXT DEFAULT CURRENT_TIMESTAMP",
             "updated_at": "TEXT DEFAULT CURRENT_TIMESTAMP",
         },
@@ -1146,6 +1187,36 @@ def _ensure_v3_schema(conn: sqlite3.Connection) -> None:
     conn.execute(
         f"CREATE INDEX IF NOT EXISTS idx_{V3_TRACK_IDENTITY_TABLE}_beatport "
         f"ON {V3_TRACK_IDENTITY_TABLE}(beatport_id)"
+    )
+    conn.execute(
+        f"CREATE INDEX IF NOT EXISTS idx_{V3_TRACK_IDENTITY_TABLE}_ingested_at "
+        f"ON {V3_TRACK_IDENTITY_TABLE}(ingested_at)"
+    )
+    conn.execute(
+        f"CREATE INDEX IF NOT EXISTS idx_{V3_TRACK_IDENTITY_TABLE}_ingestion_method "
+        f"ON {V3_TRACK_IDENTITY_TABLE}(ingestion_method)"
+    )
+    conn.execute(
+        f"CREATE INDEX IF NOT EXISTS idx_{V3_TRACK_IDENTITY_TABLE}_ingestion_confidence "
+        f"ON {V3_TRACK_IDENTITY_TABLE}(ingestion_confidence)"
+    )
+    conn.execute(
+        """
+        CREATE TRIGGER IF NOT EXISTS trg_track_identity_provenance_required
+        BEFORE INSERT ON track_identity
+        BEGIN
+            SELECT CASE
+                WHEN NEW.ingested_at IS NULL OR TRIM(NEW.ingested_at) = '' THEN
+                    RAISE(ABORT, 'track_identity.ingested_at is required')
+                WHEN NEW.ingestion_method IS NULL OR TRIM(NEW.ingestion_method) = '' THEN
+                    RAISE(ABORT, 'track_identity.ingestion_method is required')
+                WHEN NEW.ingestion_source IS NULL THEN
+                    RAISE(ABORT, 'track_identity.ingestion_source is required')
+                WHEN NEW.ingestion_confidence IS NULL OR TRIM(NEW.ingestion_confidence) = '' THEN
+                    RAISE(ABORT, 'track_identity.ingestion_confidence is required')
+            END;
+        END
+        """
     )
 
     conn.execute(
@@ -1337,3 +1408,124 @@ def _record_schema_version(
         """,
         (schema_name, version, f"init_{schema_name}_schema"),
     )
+
+
+def _ensure_mp3_dj_tables(conn: sqlite3.Connection) -> None:
+    """Create mp3_asset and dj_* tables using the authoritative 0010 layout."""
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS mp3_asset (
+          id               INTEGER PRIMARY KEY AUTOINCREMENT,
+          identity_id      INTEGER REFERENCES track_identity(id),
+          asset_id         INTEGER REFERENCES asset_file(id),
+          path             TEXT    NOT NULL UNIQUE,
+          content_sha256   TEXT,
+          size_bytes       INTEGER,
+          bitrate          INTEGER,
+          sample_rate      INTEGER,
+          duration_s       REAL,
+          profile          TEXT    NOT NULL DEFAULT 'standard',
+          status           TEXT    NOT NULL DEFAULT 'unverified'
+                             CHECK(status IN ('unverified','verified','missing','superseded')),
+          source           TEXT    NOT NULL DEFAULT 'unknown',
+          zone             TEXT,
+          transcoded_at    TEXT,
+          reconciled_at    TEXT,
+          lexicon_track_id INTEGER,
+          created_at       TEXT    DEFAULT CURRENT_TIMESTAMP,
+          updated_at       TEXT    DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_mp3_asset_identity ON mp3_asset(identity_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_mp3_asset_zone     ON mp3_asset(zone)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_mp3_asset_lexicon  ON mp3_asset(lexicon_track_id)")
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS dj_admission (
+          id           INTEGER PRIMARY KEY AUTOINCREMENT,
+          identity_id  INTEGER UNIQUE REFERENCES track_identity(id),
+          mp3_asset_id INTEGER REFERENCES mp3_asset(id),
+          status       TEXT    NOT NULL DEFAULT 'pending'
+                         CHECK(status IN ('pending','admitted','rejected','needs_review')),
+          source       TEXT    NOT NULL DEFAULT 'unknown',
+          notes        TEXT,
+          admitted_at  TEXT,
+          created_at   TEXT    DEFAULT CURRENT_TIMESTAMP,
+          updated_at   TEXT    DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_dj_admission_identity ON dj_admission(identity_id)")
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS dj_track_id_map (
+          id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+          dj_admission_id    INTEGER UNIQUE REFERENCES dj_admission(id),
+          rekordbox_track_id INTEGER NOT NULL UNIQUE,
+          assigned_at        TEXT    DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS dj_playlist (
+          id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+          name                TEXT    NOT NULL,
+          parent_id           INTEGER REFERENCES dj_playlist(id),
+          lexicon_playlist_id INTEGER,
+          sort_key            TEXT,
+          playlist_type       TEXT    DEFAULT 'standard',
+          created_at          TEXT    DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(name, parent_id)
+        )
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS dj_playlist_track (
+          playlist_id     INTEGER NOT NULL,
+          dj_admission_id INTEGER NOT NULL,
+          ordinal         INTEGER NOT NULL,
+          PRIMARY KEY (playlist_id, dj_admission_id),
+          FOREIGN KEY(playlist_id)     REFERENCES dj_playlist(id),
+          FOREIGN KEY(dj_admission_id) REFERENCES dj_admission(id)
+        )
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS dj_export_state (
+          id            INTEGER PRIMARY KEY AUTOINCREMENT,
+          kind          TEXT    NOT NULL,
+          output_path   TEXT    NOT NULL,
+          manifest_hash TEXT,
+          scope_json    TEXT,
+          emitted_at    TEXT    DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS reconcile_log (
+          id               INTEGER PRIMARY KEY AUTOINCREMENT,
+          run_id           TEXT    NOT NULL,
+          event_time       TEXT    DEFAULT CURRENT_TIMESTAMP,
+          source           TEXT    NOT NULL,
+          action           TEXT    NOT NULL,
+          confidence       TEXT,
+          mp3_path         TEXT,
+          identity_id      INTEGER,
+          lexicon_track_id INTEGER,
+          details_json     TEXT
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_reconcile_log_run      ON reconcile_log(run_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_reconcile_log_identity ON reconcile_log(identity_id)")

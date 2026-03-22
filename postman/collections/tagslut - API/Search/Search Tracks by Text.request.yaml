@@ -1,0 +1,7 @@
+$kind: http-request
+url: "{{base_url}}/search/v1/tracks?q={{beatport_search_query}}&count=10"
+method: GET
+queryParams:
+  q: "{{beatport_search_query}}"
+  count: "10"
+order: 1000

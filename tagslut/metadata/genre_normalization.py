@@ -146,8 +146,8 @@ class GenreNormalizer:
     def _is_protected(cls, value: str) -> bool:
         if not value:
             return False
-        v = cls._normalize_spacing(value).lower()
-        return v in cls.PROTECTED_COMPOUND
+        normalized = cls._normalize_spacing(value).lower()
+        return normalized in cls.PROTECTED_COMPOUND
 
     @staticmethod
     def _split_compound(value: str) -> List[str]:
@@ -158,39 +158,39 @@ class GenreNormalizer:
         if GenreNormalizer._is_protected(value):
             return [GenreNormalizer._normalize_spacing(value)]
         parts: List[str] = []
-        buf: List[str] = []
+        char_buffer: List[str] = []
         depth = 0
-        i = 0
-        while i < len(value):
-            ch = value[i]
+        char_index = 0
+        while char_index < len(value):
+            ch = value[char_index]
             if ch == "(":
                 depth += 1
             elif ch == ")" and depth > 0:
                 depth -= 1
 
             if depth == 0:
-                if value[i: i + 3] == " / ":
-                    part = "".join(buf).strip()
+                if value[char_index: char_index + 3] == " / ":
+                    part = "".join(char_buffer).strip()
                     if part:
                         parts.append(part)
-                    buf = []
-                    i += 3
+                    char_buffer = []
+                    char_index += 3
                     continue
                 if ch in [",", ";", "|", "/"]:
-                    part = "".join(buf).strip()
+                    part = "".join(char_buffer).strip()
                     if part:
                         parts.append(part)
-                    buf = []
-                    i += 1
-                    while i < len(value) and value[i] == " ":
-                        i += 1
+                    char_buffer = []
+                    char_index += 1
+                    while char_index < len(value) and value[char_index] == " ":
+                        char_index += 1
                     continue
 
-            buf.append(ch)
-            i += 1
+            char_buffer.append(ch)
+            char_index += 1
 
-        if buf:
-            part = "".join(buf).strip()
+        if char_buffer:
+            part = "".join(char_buffer).strip()
             if part:
                 parts.append(part)
         return parts

@@ -30,6 +30,7 @@ from tagslut.exec.dj_library_normalize import (
     pick_best_master_match,
     read_audio_metadata,
 )
+from tagslut.storage.v3 import resolve_dj_tag_snapshot_for_path
 from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
 
 DEFAULT_JOBS = min(16, max(1, os.cpu_count() or 4))
@@ -195,6 +196,52 @@ def _apply_selected_tags_from_flac(
             id3["TSRC"] = TSRC(encoding=3, text=isrc)
 
 
+def _apply_selected_tags_from_snapshot(
+    id3: ID3,
+    snapshot: object,
+    *,
+    copy_core_tags: bool,
+    copy_dj_tags: bool,
+) -> None:
+    if copy_core_tags:
+        title = str(getattr(snapshot, "title", "") or "").strip()
+        artist = str(getattr(snapshot, "artist", "") or "").strip()
+        album = str(getattr(snapshot, "album", "") or "").strip()
+        year = getattr(snapshot, "year", None)
+
+        if title:
+            _set_if_missing(id3, "TIT2", TIT2(encoding=3, text=title))
+        if artist:
+            _set_if_missing(id3, "TPE1", TPE1(encoding=3, text=artist))
+            _set_if_missing(id3, "TPE2", TPE2(encoding=3, text=artist))
+        if album:
+            _set_if_missing(id3, "TALB", TALB(encoding=3, text=album))
+        if year is not None:
+            _set_if_missing(id3, "TDRC", TDRC(encoding=3, text=str(year)))
+
+    if copy_dj_tags:
+        genre = str(getattr(snapshot, "genre", "") or "").strip()
+        bpm = str(getattr(snapshot, "bpm", "") or "").strip()
+        key = str(getattr(snapshot, "musical_key", "") or "").strip()
+        label = str(getattr(snapshot, "label", "") or "").strip()
+        isrc = str(getattr(snapshot, "isrc", "") or "").strip()
+        energy = getattr(snapshot, "energy_1_10", None)
+
+        if genre:
+            id3["TCON"] = TCON(encoding=3, text=genre)
+        if bpm:
+            id3["TBPM"] = TBPM(encoding=3, text=bpm)
+        if key:
+            id3["TKEY"] = TKEY(encoding=3, text=key)
+            id3["TXXX:INITIALKEY"] = TXXX(encoding=3, desc="INITIALKEY", text=key)
+        if label:
+            id3["TXXX:LABEL"] = TXXX(encoding=3, desc="LABEL", text=label)
+        if isrc:
+            id3["TSRC"] = TSRC(encoding=3, text=isrc)
+        if energy is not None:
+            id3["TXXX:ENERGY"] = TXXX(encoding=3, desc="ENERGY", text=str(energy))
+
+
 def main() -> int:
     default_mp3_root = Path(os.environ.get("DJ_LIBRARY") or os.environ.get("DJ_MP3_ROOT", ".")).expanduser()
     default_flac_root = Path(
@@ -241,6 +288,13 @@ def main() -> int:
         default=True,
         help="Copy DJ tags (BPM/key/genre/label/energy/ISRC)",
     )
+    ap.add_argument(
+        "--dj-snapshot",
+        dest="dj_snapshot",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Overlay DJ snapshot metadata from the DB when a FLAC match exists",
+    )
     ap.add_argument("--tol", type=float, default=2.0, help="Duration tolerance in seconds")
     ap.add_argument("--jobs", type=int, default=DEFAULT_JOBS, help="Reserved compatibility flag")
     ap.add_argument("--out", type=Path, default=Path("artifacts/mp3_sync_from_flac_report.csv"))
@@ -261,18 +315,28 @@ def main() -> int:
         return 0
 
     db_lookup = {}
+    db_resolution = None
     if args.match_source in {"auto", "db_dj_pool_path"}:
         try:
-            resolution = resolve_cli_env_db_path(
+            db_resolution = resolve_cli_env_db_path(
                 Path(args.db) if args.db else None,
                 purpose="read",
                 source_label="--db",
             )
         except DbResolutionError:
-            resolution = None
-        if resolution is not None:
-            with sqlite3.connect(str(resolution.path)) as conn:
+            db_resolution = None
+        if db_resolution is not None:
+            with sqlite3.connect(str(db_resolution.path)) as conn:
                 db_lookup = load_db_dj_pool_lookup(conn, mp3_root)
+    elif args.dj_snapshot:
+        try:
+            db_resolution = resolve_cli_env_db_path(
+                Path(args.db) if args.db else None,
+                purpose="read",
+                source_label="--db",
+            )
+        except DbResolutionError:
+            db_resolution = None
 
     mp3_meta_by_path = {}
     wanted_master_keys: set[tuple[str, str]] = set()
@@ -296,96 +360,120 @@ def main() -> int:
     applied = 0
     no_match = 0
     missing_mp3 = 0
+    snapshot_conn = sqlite3.connect(str(db_resolution.path)) if db_resolution is not None and args.dj_snapshot else None
 
-    with args.out.open("w", newline="", encoding="utf-8") as fr, args.backup.open("w", encoding="utf-8") as fb:
-        writer = csv.DictWriter(
-            fr,
-            fieldnames=["path", "status", "reason", "flac_path", "match_source"],
-        )
-        writer.writeheader()
+    try:
+        with args.out.open("w", newline="", encoding="utf-8") as fr, args.backup.open("w", encoding="utf-8") as fb:
+            writer = csv.DictWriter(
+                fr,
+                fieldnames=["path", "status", "reason", "flac_path", "match_source"],
+            )
+            writer.writeheader()
 
-        for item in work_items:
-            if not item.path.exists():
-                missing_mp3 += 1
-                writer.writerow({"path": str(item.path), "status": "skip", "reason": "missing_mp3"})
-                continue
+            for item in work_items:
+                if not item.path.exists():
+                    missing_mp3 += 1
+                    writer.writerow({"path": str(item.path), "status": "skip", "reason": "missing_mp3"})
+                    continue
 
-            metadata = mp3_meta_by_path.get(item.path)
-            if metadata is None:
-                writer.writerow({"path": str(item.path), "status": "skip", "reason": "tag_read_error"})
-                continue
+                metadata = mp3_meta_by_path.get(item.path)
+                if metadata is None:
+                    writer.writerow({"path": str(item.path), "status": "skip", "reason": "tag_read_error"})
+                    continue
 
-            chosen_flac: Path | None = item.manifest_flac_path if item.manifest_flac_path is not None else None
-            match_source = "manifest_flac_path" if chosen_flac is not None else ""
+                chosen_flac: Path | None = item.manifest_flac_path if item.manifest_flac_path is not None else None
+                match_source = "manifest_flac_path" if chosen_flac is not None else ""
 
-            if chosen_flac is None and args.match_source in {"auto", "db_dj_pool_path"}:
-                lookup = db_lookup.get(item.path)
-                if lookup is not None:
-                    chosen_flac = lookup.source_path
-                    match_source = "db_dj_pool_path"
+                if chosen_flac is None and args.match_source in {"auto", "db_dj_pool_path"}:
+                    lookup = db_lookup.get(item.path)
+                    if lookup is not None:
+                        chosen_flac = lookup.source_path
+                        match_source = "db_dj_pool_path"
 
-            if chosen_flac is None and args.match_source in {"auto", "master"}:
-                matches = master_index.get((_norm(metadata.title), _norm(metadata.artist)), [])
-                best = pick_best_master_match(metadata, matches, duration_tol=float(args.tol))
-                if best is not None:
-                    chosen_flac = best.path
-                    match_source = "master"
+                if chosen_flac is None and args.match_source in {"auto", "master"}:
+                    matches = master_index.get((_norm(metadata.title), _norm(metadata.artist)), [])
+                    best = pick_best_master_match(metadata, matches, duration_tol=float(args.tol))
+                    if best is not None:
+                        chosen_flac = best.path
+                        match_source = "master"
 
-            if chosen_flac is None or not chosen_flac.exists():
-                no_match += 1
+                if chosen_flac is None or not chosen_flac.exists():
+                    no_match += 1
+                    writer.writerow(
+                        {
+                            "path": str(item.path),
+                            "status": "skip",
+                            "reason": "no_flac_match",
+                            "flac_path": str(chosen_flac) if chosen_flac is not None else "",
+                            "match_source": match_source,
+                        }
+                    )
+                    continue
+
+                tags = _get_id3(item.path)
+                if tags is None:
+                    writer.writerow({"path": str(item.path), "status": "skip", "reason": "tag_read_error"})
+                    continue
+
+                try:
+                    flac = FLAC(chosen_flac)
+                except Exception:
+                    writer.writerow(
+                        {
+                            "path": str(item.path),
+                            "status": "skip",
+                            "reason": "flac_read_error",
+                            "flac_path": str(chosen_flac),
+                            "match_source": match_source,
+                        }
+                    )
+                    continue
+
+                snapshot = None
+                if snapshot_conn is not None:
+                    try:
+                        snapshot = resolve_dj_tag_snapshot_for_path(
+                            snapshot_conn,
+                            chosen_flac,
+                            run_essentia=False,
+                            dry_run=True,
+                        )
+                    except Exception:
+                        snapshot = None
+
+                backup = {"path": str(item.path), "tags": _backup_frames(tags)}
+                fb.write(json.dumps(backup, ensure_ascii=False) + "\n")
+
+                if args.execute:
+                    flac_tags = {str(key).lower(): list(value) for key, value in (flac.tags or {}).items()}
+                    _apply_selected_tags_from_flac(
+                        tags,
+                        flac_tags,
+                        copy_core_tags=bool(args.copy_core_tags),
+                        copy_dj_tags=bool(args.copy_dj_tags),
+                    )
+                    if snapshot is not None:
+                        _apply_selected_tags_from_snapshot(
+                            tags,
+                            snapshot,
+                            copy_core_tags=bool(args.copy_core_tags),
+                            copy_dj_tags=bool(args.copy_dj_tags),
+                        )
+                    tags.save(item.path, v2_version=3)
+
+                applied += 1
                 writer.writerow(
                     {
                         "path": str(item.path),
-                        "status": "skip",
-                        "reason": "no_flac_match",
-                        "flac_path": str(chosen_flac) if chosen_flac is not None else "",
-                        "match_source": match_source,
-                    }
-                )
-                continue
-
-            tags = _get_id3(item.path)
-            if tags is None:
-                writer.writerow({"path": str(item.path), "status": "skip", "reason": "tag_read_error"})
-                continue
-
-            try:
-                flac = FLAC(chosen_flac)
-            except Exception:
-                writer.writerow(
-                    {
-                        "path": str(item.path),
-                        "status": "skip",
-                        "reason": "flac_read_error",
+                        "status": "applied",
+                        "reason": "",
                         "flac_path": str(chosen_flac),
                         "match_source": match_source,
                     }
                 )
-                continue
-
-            backup = {"path": str(item.path), "tags": _backup_frames(tags)}
-            fb.write(json.dumps(backup, ensure_ascii=False) + "\n")
-
-            if args.execute:
-                flac_tags = {str(key).lower(): list(value) for key, value in (flac.tags or {}).items()}
-                _apply_selected_tags_from_flac(
-                    tags,
-                    flac_tags,
-                    copy_core_tags=bool(args.copy_core_tags),
-                    copy_dj_tags=bool(args.copy_dj_tags),
-                )
-                tags.save(item.path, v2_version=3)
-
-            applied += 1
-            writer.writerow(
-                {
-                    "path": str(item.path),
-                    "status": "applied",
-                    "reason": "",
-                    "flac_path": str(chosen_flac),
-                    "match_source": match_source,
-                }
-            )
+    finally:
+        if snapshot_conn is not None:
+            snapshot_conn.close()
 
     print(f"applied={applied} no_match={no_match} missing_mp3={missing_mp3}")
     print(f"report={args.out}")

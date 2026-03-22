@@ -1,0 +1,80 @@
+{
+  "id": 12345,
+  "name": "Warehouse Cut",
+  "mix_name": "Original Mix",
+  "artists": [
+    {
+      "id": 100,
+      "name": "Artist A",
+      "slug": "artist-a",
+      "url": "https://www.beatport.com/artist/artist-a/100"
+    }
+  ],
+  "audio_format": "lossless",
+  "available_worldwide": true,
+  "bpm": 128,
+  "catalog_number": "TOOL001",
+  "current_status": "published",
+  "desc": "",
+  "enabled": true,
+  "encode_status": "encoded",
+  "encoded_date": "2025-01-31T00:00:00Z",
+  "exclusive": false,
+  "exclusive_period": 0,
+  "free_download_end_date": null,
+  "free_download_start_date": null,
+  "free_downloads": false,
+  "genre": {
+    "id": 10,
+    "name": "Tech House",
+    "slug": "tech-house",
+    "url": "https://www.beatport.com/genre/tech-house/10"
+  },
+  "hidden": false,
+  "image": {
+    "uri": "https://images.example.com/tracks/12345.jpg"
+  },
+  "is_available_for_streaming": true,
+  "is_classic": false,
+  "is_dj_edit": false,
+  "is_hype": false,
+  "is_ugc_remix": false,
+  "isrc": "GBEXH2400001",
+  "key": {
+    "id": 6,
+    "name": "A Minor",
+    "url": "https://www.beatport.com/key/a-minor/6",
+    "camelot_number": 8,
+    "camelot_letter": "A",
+    "letter": "A",
+    "chord_type": "minor",
+    "is_flat": false,
+    "is_sharp": false
+  },
+  "label_track_identifier": "",
+  "length": "6:30",
+  "length_ms": 390000,
+  "mix_name": "Original Mix",
+  "new_release_date": "2025-02-01",
+  "number": 4,
+  "pre_order": false,
+  "pre_order_date": null,
+  "price": "1.99",
+  "publish_date": "2025-02-01",
+  "publish_status": "published",
+  "release": "999",
+  "remixers": [],
+  "sale_type": "purchase",
+  "sample_end_ms": 60000,
+  "sample_start_ms": 0,
+  "sample_url": "https://audio.example.com/sample/12345.mp3",
+  "slug": "warehouse-cut",
+  "sub_genre": {
+    "id": 11,
+    "name": "Deep Tech",
+    "slug": "deep-tech",
+    "url": "https://www.beatport.com/genre/deep-tech/11"
+  },
+  "territories": [],
+  "was_ever_exclusive": false
+}

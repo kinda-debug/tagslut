@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -10,10 +11,25 @@ import httpx
 
 from tagslut.cli.runtime import run_python_script, WRAPPER_CONTEXT
 from tagslut.core.download_manifest import DownloadManifest, build_manifest
+from tagslut.exec.intake_orchestrator import run_intake
 from tagslut.filters.identity_resolver import TrackIntent
 from tagslut.storage.schema import get_connection
 from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
 from tagslut.utils.env_paths import get_artifacts_dir
+
+
+def _looks_like_url(value: str) -> bool:
+    lowered = (value or "").strip().lower()
+    return lowered.startswith("http://") or lowered.startswith("https://")
+
+
+class _IntakeGroup(click.Group):
+    """Click group that defaults `tagslut intake <URL>` to `tagslut intake url <URL>`."""
+
+    def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
+        if args and _looks_like_url(args[0]):
+            args.insert(0, "url")
+        return super().parse_args(ctx, args)
 
 
 def _load_jsonl_lines(path: Path) -> list[dict[str, Any]]:
@@ -72,7 +88,6 @@ def _record_to_intent(record: dict[str, Any]) -> TrackIntent:
         isrc=record.get("isrc"),
         beatport_id=(str(record["beatport_id"]) if record.get("beatport_id") is not None else None),
         tidal_id=(str(record["tidal_id"]) if record.get("tidal_id") is not None else None),
-        qobuz_id=(str(record["qobuz_id"]) if record.get("qobuz_id") is not None else None),
         bit_depth=int(record["bit_depth"]) if record.get("bit_depth") is not None else None,
         sample_rate=int(record["sample_rate"]) if record.get("sample_rate") is not None else None,
         bitrate=int(record["bitrate"]) if record.get("bitrate") is not None else None,
@@ -108,7 +123,7 @@ def _build_and_write_manifest(
 
 
 def _intent_reference(intent_dict: dict[str, Any]) -> str:
-    for key in ["isrc", "beatport_id", "tidal_id", "qobuz_id"]:
+    for key in ["isrc", "beatport_id", "tidal_id"]:
         value = intent_dict.get(key)
         if value:
             return f"{key}:{value}"
@@ -123,9 +138,177 @@ def _intent_reference(intent_dict: dict[str, Any]) -> str:
 
 
 def register_intake_group(cli: click.Group) -> None:
-    @cli.group()
+    @cli.group(cls=_IntakeGroup)
     def intake():  # type: ignore  # TODO: mypy-strict
-        """Canonical intake commands."""
+        """Canonical intake commands.
+
+        Shortcut: `tagslut intake <URL>` is an alias for `tagslut intake url <URL>`.
+        """
+
+    @intake.command("url")
+    @click.argument("url")
+    @click.option("--db", "db_path", default=None, help="Path to tagslut DB (or set TAGSLUT_DB)")
+    @click.option(
+        "--mp3",
+        is_flag=True,
+        default=False,
+        help="Also build MP3 assets after promote (requires --mp3-root).",
+    )
+    @click.option(
+        "--dj",
+        is_flag=True,
+        default=False,
+        help=(
+            "Also build DJ copies after MP3 assets (implies --mp3; requires --mp3-root and --dj-root)."
+        ),
+    )
+    @click.option(
+        "--mp3-root",
+        default=None,
+        type=click.Path(file_okay=False, writable=True),
+        help="MP3 asset output root (required with --mp3).",
+    )
+    @click.option(
+        "--dj-root",
+        default=None,
+        type=click.Path(file_okay=False, writable=True),
+        help=(
+            "DJ output root (required with --dj). "
+            "Deprecated alias for --mp3-root in MP3-only mode when --mp3-root is omitted."
+        ),
+    )
+    @click.option(
+        "--dry-run",
+        is_flag=True,
+        default=False,
+        help="Precheck only — no download, no writes.",
+    )
+    @click.option(
+        "--no-precheck",
+        is_flag=True,
+        default=False,
+        help="Explicitly waive precheck gating (downloads may proceed even if duplicates exist).",
+    )
+    @click.option(
+        "--force-download",
+        is_flag=True,
+        default=False,
+        help="Keep matched tracks anyway during precheck (cohort expansion).",
+    )
+    @click.option(
+        "--artifact-dir",
+        default=None,
+        type=click.Path(),
+        help="Directory for JSON artifact output (default: artifacts/intake)",
+    )
+    @click.option(
+        "--verbose",
+        is_flag=True,
+        default=False,
+        help="Show a more detailed per-step summary (still path-free).",
+    )
+    @click.option(
+        "--debug-raw",
+        is_flag=True,
+        default=False,
+        help="Stream raw internal stage output (very noisy; includes paths).",
+    )
+    def intake_url(
+        url: str,
+        db_path: str | None,
+        mp3: bool,
+        dj: bool,
+        mp3_root: str | None,
+        dj_root: str | None,
+        dry_run: bool,
+        no_precheck: bool,
+        force_download: bool,
+        artifact_dir: str | None,
+        verbose: bool,
+        debug_raw: bool,
+    ):  # type: ignore  # TODO: mypy-strict
+        """Precheck → download → promote → [mp3] → [dj] for a single provider URL."""
+        if dj:
+            mp3 = True
+
+        # Resolve DB path
+        try:
+            db_resolution = resolve_cli_env_db_path(db_path, purpose="write", source_label="--db")
+        except DbResolutionError as exc:
+            raise click.ClickException(str(exc)) from exc
+
+        resolved_db_path = db_resolution.path
+
+        # Convert roots + enforce contract
+        mp3_root_path = Path(mp3_root).expanduser().resolve() if mp3_root else None
+        dj_root_path = Path(dj_root).expanduser().resolve() if dj_root else None
+
+        if mp3 and not dj:
+            if mp3_root_path is None and dj_root_path is not None:
+                click.echo(
+                    "DEPRECATION: In MP3-only mode (--mp3 without --dj), --dj-root is deprecated as an alias "
+                    "for --mp3-root. Use --mp3-root. (--dj-root is DJ-output-only when --dj is active.)",
+                    err=True,
+                )
+                mp3_root_path = dj_root_path
+                dj_root_path = None
+
+            if mp3_root_path is None:
+                raise click.ClickException(
+                    "--mp3 requires --mp3-root.\n"
+                    "Example: tagslut intake <URL> --mp3 --mp3-root /path/to/mp3_assets"
+                )
+
+            if dj_root_path is not None:
+                raise click.ClickException(
+                    "--dj-root is DJ-output-only; do not pass it without --dj.\n"
+                    "Use --mp3-root for MP3 assets, or pass --dj to enable DJ output."
+                )
+
+        if dj:
+            if mp3_root_path is None:
+                raise click.ClickException(
+                    "--dj implies --mp3 and requires --mp3-root.\n"
+                    "Example: tagslut intake <URL> --dj --mp3-root /path/to/mp3_assets --dj-root /path/to/dj_library"
+                )
+            if dj_root_path is None:
+                raise click.ClickException(
+                    "--dj requires --dj-root.\n"
+                    "Example: tagslut intake <URL> --dj --mp3-root /path/to/mp3_assets --dj-root /path/to/dj_library"
+                )
+            if mp3_root_path == dj_root_path:
+                raise click.ClickException(
+                    "--mp3-root and --dj-root must be different when --dj is active."
+                )
+
+        artifact_dir_path = Path(artifact_dir).expanduser().resolve() if artifact_dir else None
+
+        # Run orchestration
+        result = run_intake(
+            url=url,
+            db_path=resolved_db_path,
+            mp3=mp3,
+            dj=dj,
+            dry_run=dry_run,
+            mp3_root=mp3_root_path,
+            dj_root=dj_root_path,
+            artifact_dir=artifact_dir_path,
+            verbose=verbose,
+            debug_raw=debug_raw,
+            no_precheck=no_precheck,
+            force_download=force_download,
+        )
+
+        # Print summary
+        click.echo(result.summary())
+        if debug_raw and result.artifact_path:
+            click.echo(f"Artifact: {result.artifact_path}")
+        if debug_raw and result.precheck_csv:
+            click.echo(f"Precheck CSV: {result.precheck_csv}")
+
+        # Exit with mapped code
+        _EXIT = {"completed": 0, "blocked": 2, "failed": 1}
+        sys.exit(_EXIT[result.disposition])
 
     @intake.command("resolve")
     @click.option("--db", "db_path", required=True, type=click.Path(), help="Path to tagslut DB")
@@ -204,7 +387,7 @@ def register_intake_group(cli: click.Group) -> None:
         help="Root folder to process",
     )
     @click.option("--library", type=click.Path(), help="Library destination")
-    @click.option("--providers", default="beatport,deezer,apple_music,itunes")
+    @click.option("--providers", default="beatport,tidal")
     @click.option("--force", is_flag=True, help="Force re-enrichment")
     @click.option("--no-art", is_flag=True, help="Skip cover art embedding")
     @click.option("--art-force", is_flag=True, help="Force replace embedded art")

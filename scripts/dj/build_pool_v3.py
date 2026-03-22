@@ -26,13 +26,49 @@ SAFE_MAX_NAME = 160
 @dataclass
 class ExportRow:
     identity_id: int
-    preferred_asset_id: int
+    selected_asset_id: int
     source_path: str
     dest_path: str
     action: str
     reason: str
     sha256: str
     mtime: str
+
+
+def _row_get(row: sqlite3.Row | dict[str, object], *keys: str) -> object | None:
+    for key in keys:
+        if not key:
+            continue
+        try:
+            value = row[key]
+        except (IndexError, KeyError, TypeError):
+            continue
+        if value is not None:
+            return value
+    return None
+
+
+def _row_text(row: sqlite3.Row | dict[str, object], *keys: str) -> str:
+    value = _row_get(row, *keys)
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def _row_int(row: sqlite3.Row | dict[str, object], *keys: str) -> int | None:
+    value = _row_get(row, *keys)
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return int(float(str(value)))
+
+
+def _row_source_path(row: sqlite3.Row | dict[str, object]) -> str:
+    return _row_text(row, "selected_asset_path", "preferred_path", "source_path")
 
 
 def _connect_db(path: Path) -> sqlite3.Connection:
@@ -154,17 +190,30 @@ def _select_rows(
     query = f"""
         SELECT
             identity_id,
+            preferred_asset_id AS selected_asset_id,
             preferred_asset_id,
+            asset_path AS selected_asset_path,
             asset_path AS source_path,
             sha256 AS source_sha256,
             asset_mtime AS source_mtime,
+            artist AS canonical_artist,
             artist,
+            title AS canonical_title,
             title,
+            album AS canonical_album,
+            bpm AS canonical_bpm,
+            musical_key AS canonical_key,
+            genre AS canonical_genre,
+            sub_genre AS canonical_sub_genre,
             genre,
+            identity_status AS canonical_status,
             dj_set_role AS set_role
         FROM {view_name}
         {where_prefix}
-        ORDER BY LOWER(COALESCE(artist,'')), LOWER(COALESCE(title,'')), identity_id ASC
+        ORDER BY
+            LOWER(COALESCE(canonical_artist, artist, '')),
+            LOWER(COALESCE(canonical_title, title, '')),
+            identity_id ASC
         {limit_sql}
     """
     return conn.execute(query, tuple(params)).fetchall()
@@ -180,17 +229,26 @@ def _dest_path(
     title_override: str | None = None,
     genre_override: str | None = None,
 ) -> Path:
-    artist_raw = (artist_override or str(row["artist"] or "")).strip()
-    title_raw = (title_override or str(row["title"] or "")).strip()
+    artist_raw = (
+        artist_override
+        or _row_text(row, "canonical_artist", "artist")
+    ).strip()
+    title_raw = (
+        title_override
+        or _row_text(row, "canonical_title", "title")
+    ).strip()
     if not artist_raw or not title_raw:
         raise ValueError(f"missing artist/title for identity_id={int(row['identity_id'])}")
     artist = _sanitize_component(artist_raw, "")
     title = _sanitize_component(title_raw, "")
-    role = _sanitize_component(str(row["set_role"] or ""), "unassigned")
-    genre = _sanitize_component(genre_override or str(row["genre"] or ""), "Unknown")
+    role = _sanitize_component(_row_text(row, "set_role", "dj_set_role"), "unassigned")
+    genre = _sanitize_component(
+        genre_override or _row_text(row, "canonical_genre", "genre"),
+        "Unknown",
+    )
     identity_id = int(row["identity_id"])
 
-    source_ext = Path(str(row["source_path"])).suffix.lower() or ".flac"
+    source_ext = Path(_row_source_path(row)).suffix.lower() or ".flac"
     ext = ".mp3" if fmt == "mp3" else source_ext
     name = _sanitize_component(f"{artist} - {title} [{identity_id}]", f"track-{identity_id}") + ext
 
@@ -209,7 +267,7 @@ def _write_manifest(path: Path, rows: list[ExportRow]) -> Path:
             handle,
             fieldnames=[
                 "identity_id",
-                "preferred_asset_id",
+                "selected_asset_id",
                 "source_path",
                 "dest_path",
                 "action",
@@ -273,6 +331,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--format", choices=["copy", "mp3"], default="copy")
     parser.add_argument("--mp3-bitrate", default="320k")
     parser.add_argument("--ffmpeg-path")
+    parser.add_argument(
+        "--no-essentia",
+        action="store_true",
+        help="Skip Essentia-based DJ analysis refresh and use existing DB metadata only.",
+    )
     parser.add_argument("--strict", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("-v", "--verbose", action="store_true", help="Print per-file actions")
     return parser.parse_args(argv)
@@ -371,13 +434,13 @@ def main(argv: list[str] | None = None) -> int:
         existing_files = 0
 
         for row in rows:
-            source = Path(str(row["source_path"])).expanduser().resolve()
+            source = Path(_row_source_path(row)).expanduser().resolve()
             snapshot = None
             if args.format == "mp3":
                 snapshot = resolve_dj_tag_snapshot(
                     conn,
                     int(row["identity_id"]),
-                    run_essentia=bool(args.execute),
+                    run_essentia=bool(args.execute and not args.no_essentia),
                     dry_run=not args.execute,
                 )
                 snapshots_by_identity[int(row["identity_id"])] = snapshot
@@ -392,13 +455,13 @@ def main(argv: list[str] | None = None) -> int:
                     genre_override=getattr(snapshot, "genre", None),
                 )
             except ValueError as exc:
-                source = Path(str(row["source_path"])).expanduser().resolve()
+                source = Path(_row_source_path(row)).expanduser().resolve()
                 source_sha = str(row["source_sha256"] or "")
                 source_mtime = str(row["source_mtime"] or "")
                 manifest_rows.append(
                     ExportRow(
                         identity_id=int(row["identity_id"]),
-                        preferred_asset_id=int(row["preferred_asset_id"]),
+                        selected_asset_id=int(_row_int(row, "selected_asset_id", "preferred_asset_id") or 0),
                         source_path=str(source),
                         dest_path="",
                         action="skip",
@@ -447,7 +510,7 @@ def main(argv: list[str] | None = None) -> int:
             manifest_rows.append(
                 ExportRow(
                     identity_id=int(row["identity_id"]),
-                    preferred_asset_id=int(row["preferred_asset_id"]),
+                    selected_asset_id=int(_row_int(row, "selected_asset_id", "preferred_asset_id") or 0),
                     source_path=str(source),
                     dest_path=str(dest),
                     action=action,

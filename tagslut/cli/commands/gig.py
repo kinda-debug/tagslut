@@ -172,3 +172,81 @@ def gig_status(usb: Path, db_path: str, verbose: bool) -> None:
 
     if missing:
         raise click.exceptions.Exit(1)
+
+
+@gig_group.command("apply-rekordbox-overlay")
+@click.option(
+    "--input-xml",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Input Rekordbox XML export",
+)
+@click.option(
+    "--output-xml",
+    required=True,
+    type=click.Path(dir_okay=False, path_type=Path),
+    help="Output Rekordbox XML with track-level overlay fields applied",
+)
+@click.option(
+    "--overlay-config",
+    default=Path("config/gig_overlay_rules.yaml"),
+    show_default=True,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="YAML overlay rules file",
+)
+@click.option(
+    "--audit-csv",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help="Optional audit CSV path. Defaults to <output>.overlay_audit.csv",
+)
+@click.option(
+    "--audit-json",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help="Optional audit JSON path",
+)
+@click.option("--no-backup", is_flag=True, help="Do not back up an existing output XML")
+@click.option("--dry-run", is_flag=True, help="Compute overlay decisions without writing XML")
+def apply_rekordbox_overlay_command(
+    input_xml: Path,
+    output_xml: Path,
+    overlay_config: Path,
+    audit_csv: Path | None,
+    audit_json: Path | None,
+    no_backup: bool,
+    dry_run: bool,
+) -> None:
+    """Apply gig-use Rating and Colour overlays to a Rekordbox XML export."""
+    from tagslut.adapters.rekordbox.overlay import apply_rekordbox_overlay
+
+    resolved_audit_csv = audit_csv
+    if resolved_audit_csv is None:
+        resolved_audit_csv = output_xml.with_suffix(".overlay_audit.csv")
+
+    result = apply_rekordbox_overlay(
+        input_xml=input_xml,
+        output_xml=output_xml,
+        config_path=overlay_config,
+        audit_csv_path=resolved_audit_csv,
+        audit_json_path=audit_json,
+        backup_existing=not no_backup,
+        dry_run=dry_run,
+    )
+
+    click.echo(f"Tracks scanned:            {result.tracks_scanned}")
+    click.echo(f"Tracks changed:           {result.tracks_changed}")
+    click.echo(f"Rating changes:           {result.rating_changed}")
+    click.echo(f"Colour changes:           {result.colour_changed}")
+    click.echo(f"Manual overrides applied: {result.manual_overrides_applied}")
+    click.echo(f"Preserved existing:       {result.preserved_existing}")
+    if dry_run:
+        click.echo(f"Dry run output target:    {output_xml}")
+    else:
+        click.echo(f"Output XML:               {output_xml}")
+        if result.backup_path:
+            click.echo(f"Backup XML:               {result.backup_path}")
+    if result.audit_csv_path:
+        click.echo(f"Audit CSV:                {result.audit_csv_path}")
+    if result.audit_json_path:
+        click.echo(f"Audit JSON:               {result.audit_json_path}")

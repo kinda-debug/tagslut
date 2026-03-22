@@ -11,6 +11,7 @@ from typing import Iterable
 
 import click
 
+from tagslut.cli.dj_role import role_group
 from tagslut.dj.curation import load_dj_curation_config, resolve_track_override
 from tagslut.dj.export import get_audio_duration, plan_export, run_export
 from tagslut.dj.lexicon import (
@@ -233,9 +234,45 @@ def _lexicon_tracks(output_root: Path) -> list[dict]:  # type: ignore  # TODO: m
     return output
 
 
-@click.group("dj")
+@click.group(
+    "dj",
+    help="""
+\b
+DJ library operations (Stages 2–4 of the 4-stage pipeline).
+
+Stages:
+  Stage 2: admit     → Select tracks for DJ library
+           backfill  → Auto-admit verified MP3s
+  Stage 3: validate  → Verify DJ library state
+  Stage 4: xml emit  → Generate Rekordbox XML
+           xml patch → Update prior XML after changes
+
+Common subcommands:
+  admit, backfill, validate, xml emit, xml patch
+
+Prerequisite: Stage 1 (tagslut mp3 reconcile or tagslut mp3 build)
+
+See: docs/DJ_WORKFLOW.md
+""",
+    epilog="""
+\b
+Example workflow:
+  1. tagslut mp3 reconcile --db <path> --mp3-root <path>
+  2. tagslut dj backfill --db <path>
+  3. tagslut dj validate --db <path>
+  4. tagslut dj xml emit --db <path> --out rekordbox.xml
+
+Quick example:
+  tagslut dj backfill --db <path>
+
+Docs: docs/DJ_WORKFLOW.md
+""",
+)
 def dj_group() -> None:
     """DJ library curation and USB export commands."""
+
+
+dj_group.add_command(role_group, name="role")
 
 
 @dj_group.command("curate")
@@ -687,6 +724,82 @@ def review_app(
     run_python_script("tools/dj_review_app.py", tuple(args))
 
 
+@dj_group.command("gig-prep")
+@click.option(
+    "--date",
+    "gig_date",
+    required=True,
+    type=click.DateTime(formats=["%Y-%m-%d"]),
+    help="Gig date in YYYY-MM-DD format",
+)
+@click.option("--venue", default=None, help="Optional venue name")
+@click.option("--bpm-min", type=int, default=98, show_default=True, help="Minimum BPM filter")
+@click.option("--bpm-max", type=int, default=130, show_default=True, help="Maximum BPM filter")
+@click.option("--roles", default=None, help="Comma-separated DJ set roles to include")
+@click.option(
+    "--output",
+    "output_path",
+    type=click.Path(dir_okay=False, path_type=Path),  # type: ignore  # TODO: mypy-strict
+    default=None,
+    help="Optional output file path",
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["csv", "json", "text"], case_sensitive=False),
+    default="text",
+    show_default=True,
+    help="Output format",
+)
+@click.option("--db", "db_path", type=click.Path(), default=None, help="SQLite DB path (or TAGSLUT_DB env)")
+def gig_prep(
+    gig_date,
+    venue: str | None,
+    bpm_min: int,
+    bpm_max: int,
+    roles: str | None,
+    output_path: Path | None,
+    output_format: str,
+    db_path: str | None,
+) -> None:
+    """Build a gig-ready set plan from DJ-tagged inventory."""
+    import sqlite3
+
+    from tagslut.dj.gig_prep import parse_roles_filter, run_gig_prep
+    from tagslut.storage.schema import init_db
+    from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
+
+    if bpm_min > bpm_max:
+        raise click.ClickException("--bpm-min cannot be greater than --bpm-max")
+
+    try:
+        resolved_db = resolve_cli_env_db_path(db_path, purpose="write", source_label="--db").path
+        roles_filter = parse_roles_filter(roles)
+    except (DbResolutionError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    output_format = output_format.lower()
+    normalized_date = gig_date.date()
+
+    with sqlite3.connect(str(resolved_db)) as conn:
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
+        with conn:
+            rendered = run_gig_prep(
+                conn,
+                gig_date=normalized_date,
+                venue=venue,
+                bpm_min=bpm_min,
+                bpm_max=bpm_max,
+                roles_filter=roles_filter,
+                output_format=output_format,
+                output_path=output_path,
+            )
+
+    if output_path is None:
+        click.echo(rendered, nl=False)
+
+
 @dj_group.group("crates")
 def crates_group() -> None:
     """Manage DJ crate assignments."""
@@ -1022,3 +1135,364 @@ def pool_wizard(
             overwrite_run=overwrite_run,
         )
     )
+
+
+# ---------------------------------------------------------------------------
+# dj admit
+# ---------------------------------------------------------------------------
+
+
+@dj_group.command(
+    "admit",
+    help="Admit one track into the DJ library. Stage 2a of the 4-stage pipeline.",
+)
+@click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
+@click.option(
+    "--identity-id",
+    required=True,
+    type=int,
+    help="track_identity.id to admit into the DJ library.",
+)
+@click.option(
+    "--mp3-asset-id",
+    required=True,
+    type=int,
+    help="mp3_asset.id to use as the preferred MP3 for this admission.",
+)
+@click.option("--notes", default=None, help="Optional free-text note (stored as JSON).")
+def dj_admit(
+    db_path: str | None,
+    identity_id: int,
+    mp3_asset_id: int,
+    notes: str | None,
+) -> None:
+    """Admit a single track identity into the DJ library.
+
+    Creates a dj_admission row linking the canonical identity to its
+    preferred mp3_asset. Raises an error if the identity is already
+    actively admitted.
+    """
+    import sqlite3
+
+    from tagslut.dj.admission import DjAdmissionError, admit_track
+    from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
+
+    try:
+        resolved_db = resolve_cli_env_db_path(
+            db_path, purpose="write", source_label="--db"
+        ).path
+    except DbResolutionError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    notes_dict = {"note": notes} if notes else None
+    conn = sqlite3.connect(str(resolved_db))
+    try:
+        admission_id = admit_track(
+            conn,
+            identity_id=identity_id,
+            mp3_asset_id=mp3_asset_id,
+            notes=notes_dict,
+        )
+        conn.commit()
+    except DjAdmissionError as exc:
+        conn.close()
+        raise click.ClickException(str(exc)) from exc
+    finally:
+        conn.close()
+
+    click.echo(
+        f"Admitted: identity_id={identity_id} mp3_asset_id={mp3_asset_id} "
+        f"-> dj_admission.id={admission_id}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# dj backfill
+# ---------------------------------------------------------------------------
+
+
+@dj_group.command(
+    "backfill",
+    help="Auto-admit all verified MP3s to the DJ library. Stage 2b of the 4-stage pipeline.",
+)
+@click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
+@click.option(
+    "--dry-run/--execute",
+    default=True,
+    show_default=True,
+    help="Dry-run reports what would be admitted without writing.",
+)
+def dj_backfill(
+    db_path: str | None,
+    dry_run: bool,
+) -> None:
+    """Auto-admit all mp3_asset rows with status='verified' that have no dj_admission yet.
+
+    Useful for bringing an existing MP3 library under the new DJ admission model
+    after running 'tagslut mp3 reconcile'.
+    """
+    import sqlite3
+
+    from tagslut.dj.admission import backfill_admissions
+    from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
+
+    try:
+        resolved_db = resolve_cli_env_db_path(
+            db_path, purpose="write", source_label="--db"
+        ).path
+    except DbResolutionError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    conn = sqlite3.connect(str(resolved_db))
+    try:
+        if dry_run:
+            # Count without writing
+            count = conn.execute(
+                """
+                SELECT COUNT(*) FROM mp3_asset ma
+                WHERE ma.status = 'verified'
+                  AND NOT EXISTS (
+                    SELECT 1 FROM dj_admission da
+                    WHERE da.identity_id = ma.identity_id AND da.status = 'admitted'
+                  )
+                """
+            ).fetchone()[0]
+            conn.close()
+            click.echo(f"Dry-run: {count} mp3_asset row(s) would be admitted.")
+            if count > 0:
+                click.secho("Pass --execute to admit them.", fg="yellow")
+            return
+
+        admitted, skipped = backfill_admissions(conn)
+        conn.commit()
+    finally:
+        conn.close()
+
+    click.echo(f"Backfill complete: admitted={admitted} skipped_already_active={skipped}")
+
+
+# ---------------------------------------------------------------------------
+# dj validate
+# ---------------------------------------------------------------------------
+
+
+@dj_group.command(
+    "validate",
+    help="Validate DJ library state. Stage 3 of the 4-stage pipeline.",
+)
+@click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
+@click.option("--verbose", "-v", is_flag=True, default=False)
+def dj_validate(
+    db_path: str | None,
+    verbose: bool,
+) -> None:
+    """Validate DJ library consistency.
+
+    Checks performed:
+    - Every admitted admission's MP3 file exists on disk with status='verified'.
+    - All dj_playlist_track entries reference admitted admissions.
+    - Every admitted identity has non-empty title and artist metadata.
+
+    Exits non-zero when issues are found.
+    """
+    import sqlite3
+    import sys
+
+    from tagslut.dj.admission import validate_dj_library
+    from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
+
+    try:
+        resolved_db = resolve_cli_env_db_path(
+            db_path, purpose="read", source_label="--db"
+        ).path
+    except DbResolutionError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    conn = sqlite3.connect(str(resolved_db))
+    try:
+        report = validate_dj_library(conn)
+    finally:
+        conn.close()
+
+    if report.ok:
+        click.secho(report.summary(), fg="green")
+        sys.exit(0)
+
+    click.secho(report.summary(), fg="red", err=True)
+    if not verbose:
+        click.echo(
+            f"  ({len(report.issues)} issue(s) — use --verbose for details)",
+            err=True,
+        )
+    sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
+# dj xml group
+# ---------------------------------------------------------------------------
+
+
+@dj_group.group(
+    "xml",
+    help="Stage 4 Rekordbox XML commands: emit and patch. Requires dj backfill + dj validate.",
+)
+def dj_xml_group() -> None:
+    """Rekordbox XML emit and patch commands."""
+
+
+@dj_xml_group.command(
+    "emit",
+    help="Emit Rekordbox XML from admitted tracks. Stage 4a of the 4-stage pipeline.",
+)
+@click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
+@click.option(
+    "--out",
+    "output_path",
+    required=True,
+    help="Output path for the Rekordbox XML file.",
+    type=click.Path(dir_okay=False, writable=True),
+)
+@click.option(
+    "--playlist-ids",
+    default=None,
+    help="Comma-separated dj_playlist IDs to include (default: all).",
+)
+@click.option(
+    "--skip-validation",
+    is_flag=True,
+    default=False,
+    help="Skip pre-emit validation (not recommended).",
+)
+def dj_xml_emit(
+    db_path: str | None,
+    output_path: str,
+    playlist_ids: str | None,
+    skip_validation: bool,
+) -> None:
+    """Emit a full Rekordbox-compatible XML from current dj_* DB state.
+
+    Runs pre-emit validation to ensure all admitted tracks have valid MP3
+    files and metadata. Persists stable TrackIDs in dj_track_id_map so
+    Rekordbox cue points survive future re-emits.
+
+    Records export manifest in dj_export_state for patch integrity checking.
+    """
+    import sqlite3
+    from pathlib import Path
+
+    from tagslut.dj.xml_emit import emit_rekordbox_xml
+    from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
+
+    try:
+        resolved_db = resolve_cli_env_db_path(
+            db_path, purpose="write", source_label="--db"
+        ).path
+    except DbResolutionError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    scope: list[int] | None = None
+    if playlist_ids:
+        try:
+            scope = [int(x.strip()) for x in playlist_ids.split(",") if x.strip()]
+        except ValueError as exc:
+            raise click.ClickException(f"Invalid --playlist-ids: {exc}") from exc
+
+    conn = sqlite3.connect(str(resolved_db))
+    try:
+        manifest_hash = emit_rekordbox_xml(
+            conn,
+            output_path=Path(output_path),
+            playlist_scope=scope,
+            skip_validation=skip_validation,
+        )
+    except ValueError as exc:
+        conn.close()
+        raise click.ClickException(str(exc)) from exc
+    finally:
+        conn.close()
+
+    click.echo(f"Emitted: {output_path}")
+    click.echo(f"  manifest_hash: {manifest_hash}")
+
+
+@dj_xml_group.command(
+    "patch",
+    help="Patch a prior Rekordbox XML export while preserving TrackIDs. Stage 4b of the 4-stage pipeline.",
+)
+@click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
+@click.option(
+    "--out",
+    "output_path",
+    required=True,
+    help="Output path for the patched Rekordbox XML file.",
+    type=click.Path(dir_okay=False, writable=True),
+)
+@click.option(
+    "--prior-export-id",
+    default=None,
+    type=int,
+    help="dj_export_state.id of the prior emit to patch against (default: latest).",
+)
+@click.option(
+    "--playlist-ids",
+    default=None,
+    help="Comma-separated dj_playlist IDs to include (default: all).",
+)
+@click.option(
+    "--skip-validation",
+    is_flag=True,
+    default=False,
+    help="Skip pre-emit validation (not recommended).",
+)
+def dj_xml_patch(
+    db_path: str | None,
+    output_path: str,
+    prior_export_id: int | None,
+    playlist_ids: str | None,
+    skip_validation: bool,
+) -> None:
+    """Patch a previously emitted Rekordbox XML with current dj_* DB state.
+
+    Verifies the prior export manifest before writing. All existing TrackIDs
+    are preserved from dj_track_id_map, so Rekordbox retains cue points and
+    hot cues from previous imports.
+
+    Use 'tagslut dj xml emit' for a clean initial emit.
+    """
+    import sqlite3
+    from pathlib import Path
+
+    from tagslut.dj.xml_emit import patch_rekordbox_xml
+    from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
+
+    try:
+        resolved_db = resolve_cli_env_db_path(
+            db_path, purpose="write", source_label="--db"
+        ).path
+    except DbResolutionError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    scope: list[int] | None = None
+    if playlist_ids:
+        try:
+            scope = [int(x.strip()) for x in playlist_ids.split(",") if x.strip()]
+        except ValueError as exc:
+            raise click.ClickException(f"Invalid --playlist-ids: {exc}") from exc
+
+    conn = sqlite3.connect(str(resolved_db))
+    try:
+        manifest_hash = patch_rekordbox_xml(
+            conn,
+            output_path=Path(output_path),
+            prior_export_id=prior_export_id,
+            playlist_scope=scope,
+            skip_validation=skip_validation,
+        )
+    except ValueError as exc:
+        conn.close()
+        raise click.ClickException(str(exc)) from exc
+    finally:
+        conn.close()
+
+    click.echo(f"Patched: {output_path}")
+    click.echo(f"  manifest_hash: {manifest_hash}")

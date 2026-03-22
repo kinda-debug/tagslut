@@ -1,0 +1,63 @@
+# tiddl config.toml — tagslut workspace
+# Ref: https://github.com/oskvr37/tiddl/blob/main/docs/templating.md
+# Install: cp docs/tiddl_config.reference.toml ~/.tiddl/config.toml
+# Last updated: 2026-03-21
+
+enable_cache = true
+debug = false
+
+
+[templates]
+# ISRC in every filename — permanent identity anchor for tagslut.
+# item.artists = sorted MAIN artists (matches canonical_artist logic + FLAC ARTIST tag)
+# item.isrc    = same value tiddl writes to the ISRC FLAC tag
+# item.quality = HIGH or MAX
+# album.master:[MAX] = renders "[MAX]" only when HIRES_LOSSLESS + quality==MAX
+
+default  = "{album.artist}/{album.title}/{item.number:02d}. {item.artists} - {item.title} [{item.isrc}]"
+track    = "{item.artists} - {item.title} [{item.isrc}]"
+album    = "{album.artist}/{album.title}/{item.number:02d}. {item.artists} - {item.title} [{item.isrc}]"
+playlist = "{playlist.title}/{playlist.index:04d}. {item.artists} - {item.title} [{item.isrc}]"
+mix      = "{item.artists} - {item.title} [{item.isrc}]"
+
+
+[download]
+track_quality = "max"       # up to 24 bit 192 kHz FLAC
+video_quality = "fhd"
+skip_existing = true
+threads_count = 4
+singles_filter = "include"
+videos_filter = "none"
+update_mtime = true
+rewrite_metadata = false
+# download_path and scan_path managed at runtime by tools/tiddl wrapper
+# do not hardcode here
+
+
+[metadata]
+enable = true
+lyrics = false              # BPM/key/genre come from Beatport enrichment, not TIDAL
+cover = true                # always embed cover in FLAC
+album_review = false
+
+
+[cover]
+# Save cover.jpg INSIDE the album folder alongside the tracks.
+# Without the template, tiddl writes cover.jpg to the staging root (wrong).
+save = true
+size = 1280
+allowed = ["album"]         # album-level only, not per-track or per-playlist
+
+[cover.templates]
+# Produces: {album.artist}/{album.title}/cover.jpg
+# i.e. inside the album folder, not outside it
+album = "{album.artist}/{album.title}/cover"
+
+
+[m3u]
+save = false
+allowed = ["album", "playlist"]
+
+[m3u.templates]
+album    = "m3u/album/{album.artist} - {album.title}"
+playlist = "m3u/playlist/{playlist.title}"

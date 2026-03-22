@@ -1,19 +1,193 @@
-<!-- Status: Active document. Synced 2026-03-09 after recent code/doc review. Historical or superseded material belongs in docs/archive/. -->
+<!-- Status: Active document. Synced 2026-03-14 after DJ pipeline explicit-stages refactor + Lexicon metadata backfill. Historical or superseded material belongs in docs/archive/. -->
 
 # DJ Workflow
 
 DJ pool contract: see `docs/DJ_POOL.md` for the downstream-only boundary and defaults.
 
-## Downloader Shortcut
+## Deprecation Notice
 
-For new downloads that should flow all the way into the DJ library, start with:
+`tools/get --dj` is deprecated. Use the 4-stage DJ pipeline instead.
+
+For a curated DJ library, the only supported workflow is:
+`tagslut mp3 reconcile` or `tagslut mp3 build` -> `tagslut dj admit` or
+`tagslut dj backfill` -> `tagslut dj validate` -> `tagslut dj xml emit` or
+`tagslut dj xml patch`.
+
+Why this exists: `tools/get --dj` still follows legacy wrapper logic with two
+divergent runtime paths. For diagnosis and evidence, see
+`docs/audit/DJ_WORKFLOW_AUDIT.md`.
+
+## Overview
+
+The 4-stage DJ pipeline is the only supported workflow for building a curated,
+repeatable DJ library. Each stage writes explicit DB-backed state and is safe
+to re-run. Use this document as the canonical operator reference without
+needing to read any other DJ doc first.
+
+## Explicit 4-Stage Pipeline (Canonical)
+
+The canonical DJ workflow is a linear, auditable pipeline. Each stage is safe to re-run
+and has explicit DB state as output. Run stages in order:
+
+### Stage 1 — MP3 Registration (`mp3 reconcile` or `mp3 build`)
+
+If you already have DJ MP3s on disk and want to register them against canonical
+identities without re-transcoding:
 
 ```bash
-tools/get <provider-url> --dj
+poetry run tagslut mp3 reconcile \
+  --db "$TAGSLUT_DB" \
+  --mp3-root "$DJ_LIBRARY" \
+  --execute
 ```
 
-That runs precheck, download, tagging/enrichment, promote, merged M3U generation, and DJ MP3 export in one flow.
-Use `--verbose` only when you want internal wrapper diagnostics.
+Matches each MP3 to a `track_identity` row via ISRC (preferred) or title+artist.
+Registers the file in `mp3_asset`. Use `--dry-run` (default) to preview matches.
+
+If you need to generate DJ MP3s from canonical FLAC masters instead of reconciling
+an existing MP3 library, use `mp3 build`:
+
+```bash
+poetry run tagslut mp3 build \
+  --db "$TAGSLUT_DB" \
+  --master-root "$MASTER_LIBRARY" \
+  --dj-root "$DJ_LIBRARY" \
+  --execute
+```
+
+Use `mp3 reconcile` when MP3 files already exist. Use `mp3 build` when the DJ MP3
+layer still needs to be created from canonical masters.
+
+### Stage 2 — DJ Admission (`dj backfill` or `dj admit`)
+
+Promote all registered `mp3_asset` rows (`status=verified`) into the curated DJ admission table:
+
+```bash
+poetry run tagslut dj backfill \
+  --db "$TAGSLUT_DB"
+```
+
+Or admit a single track by identity + asset IDs:
+
+```bash
+poetry run tagslut dj admit \
+  --db "$TAGSLUT_DB" \
+  --identity-id <id> \
+  --mp3-asset-id <id>
+```
+
+Writes rows to `dj_admission`. Idempotent: already-admitted tracks are skipped.
+
+### Stage 3 — DJ Validation (`dj validate`)
+
+Before export, validate that admitted tracks still have the expected files and metadata:
+
+```bash
+poetry run tagslut dj validate \
+  --db "$TAGSLUT_DB"
+```
+
+Use this stage after admission and before XML export. Validation is the contract check
+that keeps Stage 4 deterministic.
+
+### Stage 4 — Rekordbox Export (`dj xml emit` and `dj xml patch`)
+
+Use `dj xml emit` for a fresh deterministic export:
+
+Write a deterministic Rekordbox-compatible XML from all admitted `dj_admission` rows:
+
+```bash
+poetry run tagslut dj xml emit \
+  --db "$TAGSLUT_DB" \
+  --output rekordbox.xml
+```
+
+- Assigns stable TrackIDs (persisted in `dj_track_id_map` so cue points survive re-imports)
+- Records a SHA-256 manifest hash in `dj_export_state`
+- Raises if validation finds missing MP3 files or empty metadata (use `--skip-validation` to override)
+
+Use `dj xml patch` when the DJ library has changed and you need a fresh XML
+without resetting Rekordbox cue points:
+
+```bash
+poetry run tagslut dj xml patch \
+  --db "$TAGSLUT_DB" \
+  --output rekordbox_v2.xml
+```
+
+- Verifies the prior XML file's manifest hash before proceeding (fails loudly if tampered)
+- All existing `rekordbox_track_id` values are preserved from `dj_track_id_map`
+- Adds a new row to `dj_export_state` with the updated manifest hash
+
+---
+
+## Why The 4-Stage Model
+
+The explicit pipeline exists because `tools/get --dj` does not provide a stable
+or auditable contract for curated DJ library builds. The audit diagnosis is:
+
+- the wrapper has two hidden runtime paths depending on whether promote or precheck wins
+- there is no durable MP3 registration layer unless you use `mp3_asset`
+- validation and export state become implicit side effects instead of explicit tables
+
+For the full diagnosis, read `docs/audit/DJ_WORKFLOW_AUDIT.md`. For day-to-day
+operator use, stay on the 4-stage pipeline above.
+
+## Lexicon Metadata Backfill
+
+Backfills `energy`, `danceability`, `happiness`, `popularity`, `bpm`, and `key` from a
+Lexicon DJ SQLite export into `track_identity.canonical_payload_json`. Also logs beat-grid
+(tempomarker) coverage to `reconcile_log`. Safe to run repeatedly — overwrites only
+`lexicon_*` prefixed keys, never canonical fields.
+
+```bash
+# Dry run — preview match counts, no DB writes
+python -m tagslut.dj.reconcile.lexicon_backfill --dry-run
+
+# Live run (defaults to EPOCH_2026-03-04/music_v3.db + /Volumes/MUSIC/lexicondj.db)
+python -m tagslut.dj.reconcile.lexicon_backfill
+
+# Custom paths
+python -m tagslut.dj.reconcile.lexicon_backfill \
+  --db  /path/to/music_v3.db \
+  --lex /Volumes/MUSIC/lexicondj_update.db
+```
+
+Match strategy (in priority order):
+1. `beatport_id` — if Lexicon has `streamingService='beatport'`
+2. `spotify_id`  — if Lexicon has `streamingService='spotify'`
+3. Normalized `artist + title` text match
+
+All match decisions are appended to `reconcile_log` with `source='lexicondj'`,
+`run_id`, `confidence` (`high` / `medium` / `low`), and `details_json`.
+
+Verify after run:
+```bash
+sqlite3 "$TAGSLUT_DB" "
+SELECT action, confidence, COUNT(*) n
+FROM reconcile_log
+WHERE source='lexicondj'
+GROUP BY 1,2 ORDER BY 3 DESC;
+"
+```
+
+---
+
+## Legacy Downloader Shortcut
+
+`tools/get --dj` is a legacy shell wrapper that runs precheck, download, tagging/enrichment,
+promote, and DJ MP3 export in a single flow. It has two divergent code paths depending on
+whether tracks were newly promoted or already existed in inventory (precheck-hit).
+
+**Deprecated:** this path is not supported for building a final curated DJ library.
+See `docs/DJ_WORKFLOW.md` for the canonical 4-stage pipeline. Use `tools/get --dj`
+only for legacy ad-hoc intake where non-deterministic wrapper behavior is acceptable.
+
+To build DJ copies for already-promoted masters outside of a download flow, run:
+
+```bash
+poetry run tagslut dj backfill --db "$TAGSLUT_DB"
+```
 
 ## DJ Library Root
 
@@ -34,9 +208,13 @@ export DJ_PLAYLIST_ROOT="${DJ_PLAYLIST_ROOT:-$DJ_LIBRARY}"
 
 ## Pipeline Choice
 
-Preferred v3 pipeline (identity-based, deterministic):
+Canonical curated-library pipeline:
+- Follow the 4-stage workflow in this document for `mp3` → `dj admission` → `dj validate` → `dj xml`.
+
+Preferred v3 pool-builder pipeline for cohort exports:
 - Follow `docs/OPERATIONS.md` for `dj-candidates` → `dj-profile` → `dj-ready` → `dj-pool-plan/run`.
-- Use `scripts/dj/build_pool_v3.py` or the `make dj-pool-*` targets for plan/execute.
+- For operator use, prefer `poetry run tagslut dj pool-wizard` for plan/execute.
+- Use `scripts/dj/build_pool_v3.py` or the `make dj-pool-*` targets only when you explicitly need the lower-level builder.
 
 Legacy v2 pipeline (XLSX/overrides-based):
 - Uses `tagslut dj curate/export` with `config/dj/track_overrides.csv`.
@@ -57,7 +235,7 @@ poetry run tagslut dj pool-wizard \
   --dj-cache-root "$DJ_LIBRARY" \
   --out-root /tmp/dj_pool_runs \
   --non-interactive \
-  --profile config/dj/pool_profile.json
+  --profile "$VOLUME_WORK/gig_runs/gig_2026_03_13/profile.json"
 ```
 
 Interactive TTY wizard:

@@ -48,7 +48,7 @@ Notes:
 - `MASTER_LIBRARY` is the canonical master library stored as FLAC.
 - `PLAYLIST_ROOT` is the Roon-visible playlist folder inside the master library. `tools/get` writes relative-path M3Us there.
 - `DJ_LIBRARY` is the derived DJ library.
-- `DJ_PLAYLIST_ROOT` is the DJ playlist destination. `tools/get --dj` writes absolute-path M3Us there for Rekordbox/Lexicon.
+- `DJ_PLAYLIST_ROOT` is the DJ playlist destination. If you invoke the deprecated legacy path `tools/get --dj`, it writes absolute-path M3Us there for Rekordbox/Lexicon. See `docs/DJ_WORKFLOW.md` for the canonical 4-stage pipeline.
 - work output is split:
   - `FIX_ROOT=/Volumes/MUSIC/_work/fix` for salvageable metadata/tag issues
   - `QUARANTINE_ROOT` / `VOLUME_QUARANTINE=/Volumes/MUSIC/_work/quarantine` for risky files only
@@ -65,9 +65,6 @@ Use `tools/get` for normal provider downloads.
 # Default: precheck + download + local tag prep + promote + merged M3U
 tools/get <provider-url>
 
-# Add DJ MP3 export
-tools/get <provider-url> --dj
-
 # Skip tagging/enrich/art
 tools/get <provider-url> --no-hoard
 
@@ -83,6 +80,32 @@ Notes:
 - expired quarantine can be reviewed or purged with `python tools/review/quarantine_gc.py --root "$QUARANTINE_ROOT" --days "$QUARANTINE_RETENTION_DAYS"`
 - `tools/get-intake` is the advanced/backend command for existing batch roots and `--m3u-only`.
 - `tools/get-sync` is deprecated and kept only as a compatibility alias.
+- `tools/get --dj` is **legacy** (emits a deprecation warning at runtime). Use the 4-stage DJ pipeline instead.
+
+## DJ Pipeline (Canonical Workflow)
+
+The canonical approach to building a curated DJ library is a deterministic 4-stage pipeline.
+Each stage writes explicit DB state and is safe to re-run.
+
+```bash
+# Stage 1: register existing MP3s against canonical identities
+poetry run tagslut mp3 reconcile \
+  --db "$TAGSLUT_DB" --mp3-root "$DJ_LIBRARY" --execute
+
+# Stage 2: admit registered MP3s into the DJ library
+poetry run tagslut dj backfill --db "$TAGSLUT_DB"
+
+# Stage 3: validate DJ library state
+poetry run tagslut dj validate --db "$TAGSLUT_DB"
+
+# Stage 4: emit deterministic Rekordbox XML
+poetry run tagslut dj xml emit --db "$TAGSLUT_DB" --out rekordbox.xml
+
+# Subsequent re-emit preserving existing Rekordbox cue points
+poetry run tagslut dj xml patch --db "$TAGSLUT_DB" --out rekordbox_v2.xml
+```
+
+See `docs/DJ_WORKFLOW.md` for full per-stage documentation.
 
 ## V3 Staged-Root Processing
 

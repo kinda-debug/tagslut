@@ -32,7 +32,7 @@ def register_index_group(cli: click.Group) -> None:
 
     @index.command("register")
     @click.argument('path', type=click.Path(exists=True))
-    @click.option('--source', required=True, help='Download source (bpdl, tidal, qobuz, legacy, etc.)')
+    @click.option('--source', required=True, help='Download source (bpdl, tidal, legacy, etc.)')
     @click.option('--db', type=click.Path(), help='Database path (auto-detect from env if not provided)')
     @click.option('--execute', is_flag=True, help='Actually register files (default: dry-run)')
     @click.option(
@@ -999,7 +999,7 @@ def register_index_group(cli: click.Group) -> None:
     @click.option('--zones', type=str, help='Comma-separated zones to include (e.g. accepted,staging)')
     @click.option(
         '--providers',
-        default='beatport,tidal,deezer,traxsource,musicbrainz',
+        default='beatport,tidal',
         help='Comma-separated list of providers (order = priority)',
     )
     @click.option('--limit', type=int, help='Maximum files to process')

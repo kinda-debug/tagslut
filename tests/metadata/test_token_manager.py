@@ -53,7 +53,7 @@ def test_token_manager_status_contains_provider_keys(tmp_path: Path) -> None:
 
     status = manager.status()
 
-    assert {"beatport", "tidal", "qobuz", "itunes", "apple_music"} <= set(status)
+    assert {"beatport", "tidal"} <= set(status)
 
 
 def test_token_manager_set_and_get_token_round_trip(tmp_path: Path) -> None:

@@ -682,8 +682,8 @@ def upsert_file(conn: sqlite3.Connection, file: AudioFile) -> None:
         path, library, zone, mtime, size, checksum, streaminfo_md5, sha256, duration,
         bit_depth, sample_rate, bitrate, metadata_json, flac_ok, integrity_state,
         integrity_checked_at, streaminfo_checked_at, sha256_checked_at, acoustid, original_path,
-        checksum_type
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        checksum_type, dj_set_role, dj_subrole
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(path) DO UPDATE SET
         library=excluded.library,
         zone=excluded.zone,
@@ -704,7 +704,9 @@ def upsert_file(conn: sqlite3.Connection, file: AudioFile) -> None:
         sha256_checked_at=excluded.sha256_checked_at,
         acoustid=excluded.acoustid,
         original_path=excluded.original_path,
-        checksum_type=excluded.checksum_type;
+        checksum_type=excluded.checksum_type,
+        dj_set_role=excluded.dj_set_role,
+        dj_subrole=excluded.dj_subrole;
     """
 
     normalized_metadata = {
@@ -738,6 +740,8 @@ def upsert_file(conn: sqlite3.Connection, file: AudioFile) -> None:
         acoustid,
         _normalize_text_field(file.original_path, "original_path"),
         _normalize_text_field(file.checksum_type, "checksum_type"),
+        _normalize_text_field(file.dj_set_role, "dj_set_role"),
+        _normalize_text_field(file.dj_subrole, "dj_subrole"),
     )
 
     try:
@@ -757,6 +761,34 @@ def get_file(conn: sqlite3.Connection, path: Path) -> Optional[AudioFile]:
         return None
 
     return _row_to_audiofile(row)
+
+
+def get_files_for_library_track(
+    conn: sqlite3.Connection,
+    library_track_key: str,
+) -> List[sqlite3.Row]:
+    """Return all legacy files rows linked to a library_track_key."""
+    cursor = conn.execute(
+        """
+        SELECT
+            path,
+            canonical_key,
+            key_camelot,
+            canonical_bpm,
+            bpm,
+            canonical_artist,
+            canonical_title,
+            canonical_genre,
+            genre,
+            enriched_at,
+            enrichment_providers
+        FROM files
+        WHERE library_track_key = ?
+        ORDER BY path
+        """,
+        (library_track_key,),
+    )
+    return cast(List[sqlite3.Row], cursor.fetchall())
 
 
 def get_file_by_isrc(conn: sqlite3.Connection, isrc: str | None) -> Optional[sqlite3.Row]:
@@ -783,6 +815,46 @@ def get_all_checksums(conn: sqlite3.Connection) -> List[str]:
     """Retrieve all unique checksums present in the DB."""
     cursor = conn.execute("SELECT DISTINCT checksum FROM files WHERE checksum IS NOT NULL")
     return [row["checksum"] for row in cursor.fetchall()]
+
+
+def query_dj_candidates(
+    conn: sqlite3.Connection,
+    *,
+    unassigned_only: bool = False,
+    bpm_min: float | None = None,
+    bpm_max: float | None = None,
+) -> List[sqlite3.Row]:
+    """Return DJ role candidate rows from the legacy files table."""
+    clauses = ["(is_dj_material = 1 OR dj_flag = 1)"]
+    params: list[object] = []
+
+    if unassigned_only:
+        clauses.append("dj_set_role IS NULL")
+    if bpm_min is not None:
+        clauses.append("bpm >= ?")
+        params.append(float(bpm_min))
+    if bpm_max is not None:
+        clauses.append("bpm <= ?")
+        params.append(float(bpm_max))
+
+    cursor = conn.execute(
+        f"""
+        SELECT
+            path,
+            canonical_artist AS artist,
+            canonical_title AS title,
+            bpm,
+            COALESCE(key_camelot, canonical_key) AS key_camelot,
+            COALESCE(genre, canonical_genre) AS genre,
+            dj_set_role,
+            dj_subrole
+        FROM files
+        WHERE {" AND ".join(clauses)}
+        ORDER BY path
+        """,
+        params,
+    )
+    return cast(List[sqlite3.Row], cursor.fetchall())
 
 
 def _row_to_audiofile(row: sqlite3.Row) -> AudioFile:
@@ -836,4 +908,6 @@ def _row_to_audiofile(row: sqlite3.Row) -> AudioFile:
         streaminfo_checked_at=_get("streaminfo_checked_at"),
         sha256_checked_at=_get("sha256_checked_at"),
         checksum_type=_get("checksum_type"),
+        dj_set_role=_get("dj_set_role"),
+        dj_subrole=_get("dj_subrole"),
     )

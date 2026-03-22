@@ -1,4 +1,4 @@
-<!-- Status: Active document. Synced 2026-03-09 after recent code/doc review. Historical or superseded material belongs in docs/archive/. -->
+<!-- Status: Active document. Synced 2026-03-15 after intake url command addition. Historical or superseded material belongs in docs/archive/. -->
 
 # WORKFLOWS.md
 
@@ -34,17 +34,83 @@ Important current guardrail:
 
 ---
 
-## Primary Downloader (Standard Run)
+## Primary URL Intake (Canonical)
 
-This is the normal day-to-day operator path.
+This is the normal day-to-day operator path for URL-based downloads.
+
+```bash
+# Canonical: `tagslut intake <URL>` (alias: `tagslut intake url <URL>`)
+
+# Default: precheck + download + promote (no derivatives)
+poetry run tagslut intake "https://www.beatport.com/release/.../..."
+poetry run tagslut intake "https://tidal.com/browse/album/..."
+
+# Precheck only (dry run, no download)
+poetry run tagslut intake "https://tidal.com/browse/album/..." --dry-run
+
+# Full-tag MP3 assets
+poetry run tagslut intake "https://www.beatport.com/release/.../..." \
+  --mp3 --mp3-root "/path/to/mp3_assets"
+
+# DJ copies (implies --mp3)
+poetry run tagslut intake "https://www.beatport.com/release/.../..." \
+  --dj --mp3-root "/path/to/mp3_assets" --dj-root "/path/to/dj_library"
+```
+
+**Orchestration stages:**
+1. **Precheck** - Runs `tools/review/pre_download_check.py` to decide what to download
+2. **Download** - Calls `tools/get` for approved tracks only
+3. **Promote** - Observes the promoted cohort for this run (from `tools/get`)
+4. **MP3** (optional) - Full-tag MP3 assets written under `--mp3-root`
+5. **DJ** (optional) - Separate DJ copies written under `--dj-root`
+
+**Roots and invariants:**
+- MP3 asset library (`--mp3-root`) and DJ library (`--dj-root`) are different things.
+- Do not point `--mp3-root` and `--dj-root` at the same directory.
+- In MP3-only mode (`--mp3` without `--dj`), `--dj-root` is accepted only as a deprecated alias for `--mp3-root` when `--mp3-root` is omitted.
+
+**Exit codes:**
+- `0` = completed (all stages succeeded)
+- `2` = blocked (precheck found 0 tracks to download, and there was nothing else to do)
+- `1` = failed (any stage error)
+
+**Artifacts:**
+Every invocation writes a structured JSON artifact to `artifacts/intake/intake_url_<timestamp>.json` with:
+- Precheck summary (new/upgrade/blocked counts)
+- Per-stage status (ok/skipped/blocked/failed)
+- Disposition (completed/blocked/failed)
+- Path to precheck CSV for per-track decisions
+- Requested roots (`mp3_root`, `dj_root`) and mode flags (`mp3`, `dj`)
+- MP3/DJ cohort artifacts (when stages run): `artifacts/intake/intake_<timestamp>_{mp3,dj}_cohort.json`
+
+**Compatibility wrapper:**
+`tools/get` remains available as a compatibility wrapper but internally routes to provider-specific download logic. For new workflows, prefer `tagslut intake <URL>` for artifact-driven structured orchestration.
+
+---
+
+## Legacy: tools/get Wrapper
+
+Legacy compatibility wrapper. For new work, use `tagslut intake <URL>` above.
+
+Beatport-origin source-selection policy (download vs metadata):
+- Beatport remains the metadata origin for Beatport URLs, but downloads may switch to TIDAL **only** when a strict, verified cross-match exists and TIDAL is ranked higher (HiRes lossless > lossless > Beatport).
+- Verified match gates: exact ISRC (preferred) OR exact title + primary artist + mix/version with duration corroboration (±2s). Missing duration or ambiguous ties block switching.
+- Unverified/ambiguous TIDAL hits never replace Beatport downloads; the precheck decisions CSV records the winner and reason for each keep decision.
+- `tools/get --enrich <url>` exits early when precheck keep=0 after refreshing provider snapshots into the track hub (no download).
+- `tools/get --enrich --resume <url>` continues the pipeline when the batch root already contains audio files (treats batch-root ISRCs as already acquired to avoid re-downloading).
+
+Console output:
+- `tools/get` renders an audit-grade run report:
+  - TTY: Rich panels/tables
+  - non-TTY: stable plain text (no ANSI)
+  - full raw backend log is always captured under `artifacts/intake/logs/get_intake_*.log` and referenced in the report header
+  - `--verbose` includes structured per-stage command details (raw output is still in the log artifact)
+  - if provider link extraction fails before track expansion (for example `tidal_token_missing`), precheck can show `keep=0 skip=0 total=0` and download can show `selected=0` even though the URL is valid; confirm with `precheck_links_extracted_*.csv` / `precheck_extracted_report_*.md` notes
 
 ```bash
 # Default: precheck + download + local tag prep + promote + merged M3U
 tools/get "https://www.beatport.com/release/.../..."
 tools/get "https://tidal.com/browse/album/..."
-
-# Also create DJ MP3 copies
-tools/get "https://www.beatport.com/release/.../..." --dj
 
 # Skip duplicate-quality precheck
 tools/get "https://tidal.com/browse/album/..." --no-precheck
@@ -56,11 +122,19 @@ tools/get "https://www.beatport.com/release/.../..." --no-hoard
 tools/get "https://www.beatport.com/release/.../..." --verbose
 ```
 
+Deprecated legacy path:
+
+```bash
+tools/get "https://www.beatport.com/release/.../..." --dj
+```
+
+`tools/get --dj` is deprecated. Use the 4-stage DJ pipeline instead.
+See `docs/DJ_WORKFLOW.md` for the canonical pipeline.
+
 High-level workflow flags:
-- `--dj` builds DJ MP3 copies after promote
 - `--m3u` writes Roon-friendly relative-path playlists into `PLAYLIST_ROOT`
-- `--dj` also writes DJ absolute-path playlists into `DJ_PLAYLIST_ROOT`
 - local identify/tag prep runs before promote; external enrich + cover art are launched in the background after promote
+- `--dj` is **legacy** (emits a deprecation warning). See `docs/DJ_WORKFLOW.md` for the canonical 4-stage DJ pipeline.
 - `--hoard` keeps the tagging/enrich/art pipeline on (default)
 - `--no-hoard` disables tagging/enrich/art
 - `--no-precheck` bypasses same-or-better duplicate filtering
@@ -144,7 +218,7 @@ sqlite3 "$V3_DB" "PRAGMA integrity_check;"
 
 ## Manual Phase Workflow (Advanced)
 
-This is the explicit phase-by-phase loop. Use it when you intentionally want manual control rather than `tools/get`.
+This is the explicit phase-by-phase loop. Use it when you intentionally want manual control rather than `tagslut intake <URL>` (alias: `tagslut intake url <URL>`) or `tools/get`.
 
 ```
 1. precheck    → decide what to download
@@ -178,7 +252,7 @@ tools/get-auto --links-file ~/links.txt
 
 Outputs: `output/precheck/precheck_decisions_*.csv`, `precheck_keep_track_urls_*.txt`
 
-Use `--quiet` for script-level automation, or run through `tools/get` for the normal concise operator flow.
+Use `--quiet` for script-level automation, or run through `tagslut intake <URL>` (alias: `tagslut intake url <URL>`) or `tools/get` for the normal concise operator flow.
 
 ### 2 · Download
 
@@ -566,10 +640,14 @@ ls -lh "$TAGSLUT_DB"
 
 # Command reference
 poetry run tagslut --help
-poetry run tagslut index --help
+poetry run tagslut intake --help
+poetry run tagslut intake url --help
 
 # Latest precheck output
 ls -lt output/precheck | head
+
+# Latest intake artifacts
+ls -lt artifacts/intake | head
 ```
 
 See `docs/TROUBLESHOOTING.md` for failure modes and fixes.

@@ -1,0 +1,7 @@
+$kind: http-request
+url: "{{base_url}}/v4/my/beatport/tracks/?page=1&per_page=25"
+method: GET
+queryParams:
+  page: "1"
+  per_page: "25"
+order: 1000

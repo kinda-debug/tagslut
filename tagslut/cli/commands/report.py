@@ -86,10 +86,10 @@ def register_report_group(cli: click.Group) -> None:
             inactive_exclude=inactive_exclude,
         )
 
-    @report.command("recovery", context_settings=WRAPPER_CONTEXT)
+    @report.command("recovery", hidden=True, context_settings=WRAPPER_CONTEXT)
     @click.argument("args", nargs=-1, type=click.UNPROCESSED)
     def report_recovery(args):  # type: ignore  # TODO: mypy-strict
-        """Run recovery report phase."""
+        """Retired compatibility wrapper for the archived recovery workflow."""
         run_tagslut_wrapper(["_recover", "--phase", "report", *list(args)])
 
     @report.command("plan-summary", context_settings=WRAPPER_CONTEXT)

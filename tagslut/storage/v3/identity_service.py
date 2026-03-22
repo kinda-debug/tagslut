@@ -7,10 +7,12 @@ import logging
 import sqlite3
 import re
 from collections.abc import Mapping
+from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from typing import Any
 
 __all__ = [
+    "derive_identity_key",
     "resolve_active_identity",
     "resolve_or_create_identity",
     "link_asset_to_identity",
@@ -20,13 +22,6 @@ __all__ = [
 PROVIDER_COLUMNS: tuple[str, ...] = (
     "beatport_id",
     "tidal_id",
-    "qobuz_id",
-    "spotify_id",
-    "apple_music_id",
-    "deezer_id",
-    "traxsource_id",
-    "itunes_id",
-    "musicbrainz_id",
 )
 FUZZY_DURATION_TOLERANCE_S = 2.0
 FUZZY_SCORE_THRESHOLD = 0.92
@@ -144,13 +139,6 @@ def _identity_value_map(
     provider_values = {
         "beatport_id": _lookup_value(metadata, "beatport_id"),
         "tidal_id": _lookup_value(metadata, "tidal_id"),
-        "qobuz_id": _lookup_value(metadata, "qobuz_id"),
-        "spotify_id": _lookup_value(metadata, "spotify_id"),
-        "apple_music_id": _lookup_value(metadata, "apple_music_id", "apple_music_track_id"),
-        "deezer_id": _lookup_value(metadata, "deezer_id"),
-        "traxsource_id": _lookup_value(metadata, "traxsource_id"),
-        "itunes_id": _lookup_value(metadata, "itunes_id"),
-        "musicbrainz_id": _lookup_value(metadata, "musicbrainz_id", "musicbrainz_recording_id"),
     }
     artist = _lookup_value(metadata, "artist", "canonical_artist")
     title = _lookup_value(metadata, "title", "canonical_title")
@@ -189,11 +177,28 @@ def _identity_value_map(
         "ref_source": _lookup_value(
             provenance, "ref_source", "source", "provider", "download_source"
         ),
+        "ingested_at": (
+            _lookup_value(provenance, "ingested_at")
+            or datetime.now(timezone.utc).isoformat()
+        ),
+        "ingestion_method": (
+            _lookup_value(provenance, "ingestion_method")
+            or "provider_api"
+        ),
+        "ingestion_source": (
+            _lookup_value(provenance, "ingestion_source")
+            or _lookup_value(provenance, "source", "provider", "download_source")
+            or ""
+        ),
+        "ingestion_confidence": (
+            _lookup_value(provenance, "ingestion_confidence")
+            or "high"
+        ),
     }
     return values
 
 
-def _create_identity_key(fields: Mapping[str, Any], asset_row: sqlite3.Row) -> str:
+def derive_identity_key(fields: Mapping[str, Any], asset_row: sqlite3.Row | Mapping[str, Any]) -> str:
     isrc = _norm_text(fields.get("isrc"))
     if isrc:
         return f"isrc:{isrc.lower()}"
@@ -231,6 +236,8 @@ def _merge_identity_fields_if_empty(
     updates: dict[str, Any] = {}
     for column, value in fields.items():
         if column == "identity_key" or value is None:
+            continue
+        if not _column_exists(conn, "track_identity", column):
             continue
         if _is_blank_db(_row_value(row, column)):
             updates[column] = value
@@ -291,6 +298,16 @@ def _fuzzy_match_identity_id(
     has_merged_into = _column_exists(conn, "track_identity", "merged_into_id")
     where_active = "AND merged_into_id IS NULL" if has_merged_into else ""
     artist_prefix = f"{artist_norm[:4]}%"
+    duration_column = (
+        "canonical_duration"
+        if _column_exists(conn, "track_identity", "canonical_duration")
+        else "NULL"
+    )
+    duration_ref_ms_column = (
+        "duration_ref_ms"
+        if _column_exists(conn, "track_identity", "duration_ref_ms")
+        else "NULL"
+    )
 
     rows = conn.execute(
         f"""
@@ -298,8 +315,8 @@ def _fuzzy_match_identity_id(
             id,
             artist_norm,
             title_norm,
-            canonical_duration,
-            duration_ref_ms
+            {duration_column} AS canonical_duration,
+            {duration_ref_ms_column} AS duration_ref_ms
         FROM track_identity
         WHERE artist_norm LIKE ?
           AND title_norm IS NOT NULL
@@ -337,8 +354,12 @@ def _create_identity(
     fields: Mapping[str, Any],
 ) -> int:
     insert_fields = dict(fields)
-    insert_fields["identity_key"] = _create_identity_key(insert_fields, asset_row)
-    columns = [column for column, value in insert_fields.items() if value is not None]
+    insert_fields["identity_key"] = derive_identity_key(insert_fields, asset_row)
+    columns = [
+        column
+        for column, value in insert_fields.items()
+        if value is not None and _column_exists(conn, "track_identity", column)
+    ]
     params = [insert_fields[column] for column in columns]
     placeholders = ", ".join("?" for _ in columns)
     conn.execute(
@@ -359,9 +380,12 @@ def _create_identity(
 
 def _identity_duration_ms(identity_row: sqlite3.Row) -> int | None:
     duration_s = _to_float(identity_row["canonical_duration"])
-    if duration_s is None:
-        return None
-    return int(round(duration_s * 1000.0))
+    if duration_s is not None:
+        return int(round(duration_s * 1000.0))
+    duration_ref_ms = _to_float(identity_row["duration_ref_ms"])
+    if duration_ref_ms is not None:
+        return int(round(duration_ref_ms))
+    return None
 
 
 def _mirror_file_paths(conn: sqlite3.Connection, identity_id: int, asset_id: int | None) -> list[str]:
@@ -408,6 +432,7 @@ def _mirror_to_files(
 
     file_values: dict[str, Any] = {
         "library_track_key": identity_row["identity_key"],
+        "beatport_id": identity_row["beatport_id"],
         "canonical_title": identity_row["canonical_title"],
         "canonical_artist": identity_row["canonical_artist"],
         "canonical_album": identity_row["canonical_album"],
@@ -496,7 +521,7 @@ def _mirror_to_library_tracks(conn: sqlite3.Connection, identity_row: sqlite3.Ro
     )
 
 
-def resolve_active_identity(conn: sqlite3.Connection, identity_id: int) -> sqlite3.Row:
+def resolve_active_identity(conn: sqlite3.Connection, identity_id: int | str) -> sqlite3.Row:
     """Resolve an identity row to the active canonical row.
 
     The function follows ``merged_into_id`` until it reaches a row whose
@@ -506,7 +531,19 @@ def resolve_active_identity(conn: sqlite3.Connection, identity_id: int) -> sqlit
         raise RuntimeError("track_identity table is missing")
 
     has_merged_into = _column_exists(conn, "track_identity", "merged_into_id")
-    current_id = int(identity_id)
+    if isinstance(identity_id, str):
+        try:
+            current_id = int(identity_id)
+        except ValueError:
+            row = conn.execute(
+                "SELECT id FROM track_identity WHERE identity_key = ?",
+                (identity_id,),
+            ).fetchone()
+            if row is None:
+                raise LookupError(f"identity not found: {identity_id}")
+            current_id = int(row["id"])
+    else:
+        current_id = int(identity_id)
     seen_ids: set[int] = set()
 
     while True:
@@ -627,18 +664,38 @@ def link_asset_to_identity(
     link_source: str,
 ) -> None:
     """Create or update the canonical asset-to-identity link for an asset."""
+    resolved_identity = resolve_active_identity(conn, int(identity_id))
+    existing_rows = conn.execute(
+        "SELECT id FROM asset_link WHERE asset_id = ? ORDER BY id ASC",
+        (int(asset_id),),
+    ).fetchall()
+    if existing_rows:
+        keep_id = int(existing_rows[0]["id"])
+        if len(existing_rows) > 1:
+            conn.execute(
+                "DELETE FROM asset_link WHERE asset_id = ? AND id != ?",
+                (int(asset_id), keep_id),
+            )
+        conn.execute(
+            """
+            UPDATE asset_link
+            SET identity_id = ?,
+                confidence = ?,
+                link_source = ?,
+                active = 1,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (int(resolved_identity["id"]), float(confidence), link_source, keep_id),
+        )
+        return
+
     conn.execute(
         """
         INSERT INTO asset_link (asset_id, identity_id, confidence, link_source, active)
         VALUES (?, ?, ?, ?, 1)
-        ON CONFLICT(asset_id) DO UPDATE SET
-            identity_id = excluded.identity_id,
-            confidence = excluded.confidence,
-            link_source = excluded.link_source,
-            active = 1,
-            updated_at = CURRENT_TIMESTAMP
         """,
-        (int(asset_id), int(identity_id), float(confidence), link_source),
+        (int(asset_id), int(resolved_identity["id"]), float(confidence), link_source),
     )
 
 

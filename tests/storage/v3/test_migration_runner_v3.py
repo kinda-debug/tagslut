@@ -174,6 +174,10 @@ def test_migration_0008_creates_asset_analysis_and_export_view() -> None:
                 canonical_year INTEGER,
                 canonical_bpm REAL,
                 canonical_key TEXT,
+                ingested_at TEXT,
+                ingestion_method TEXT,
+                ingestion_source TEXT,
+                ingestion_confidence TEXT,
                 merged_into_id INTEGER
             );
             CREATE TABLE asset_file (
@@ -208,8 +212,10 @@ def test_migration_0008_creates_asset_analysis_and_export_view() -> None:
         conn.execute(
             """
             INSERT INTO track_identity (
-                id, identity_key, canonical_artist, canonical_title, canonical_label, canonical_bpm, canonical_key
-            ) VALUES (1, 'id:1', 'Artist', 'Title', 'Label', 128, 'Am')
+                id, identity_key, canonical_artist, canonical_title, canonical_label, canonical_bpm, canonical_key,
+                ingested_at, ingestion_method, ingestion_source, ingestion_confidence
+            ) VALUES (1, 'id:1', 'Artist', 'Title', 'Label', 128, 'Am',
+                '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')
             """
         )
         conn.execute("INSERT INTO asset_file (id, path) VALUES (11, '/music/a.flac')")

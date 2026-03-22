@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import logging
+import re
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -11,6 +12,14 @@ from typing import Callable
 logger = logging.getLogger("tagslut")
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
+_ADD_COLUMN_IF_NOT_EXISTS_RE = re.compile(
+    r"""
+    ^\s*(?:--[^\n]*\n\s*)*
+    ALTER\s+TABLE\s+(?P<table>\S+)\s+
+    ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+(?P<column>\S+)\s+(?P<definition>.+?)\s*;?\s*$
+    """,
+    re.IGNORECASE | re.DOTALL | re.VERBOSE,
+)
 
 
 def _ensure_migrations_applied_table(conn: sqlite3.Connection) -> None:
@@ -53,9 +62,57 @@ def _load_python_migration(path: Path) -> ModuleType:
     return module
 
 
+def _table_has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    return any(str(row[1]) == column for row in rows)
+
+
+def _split_sql_statements(sql_text: str) -> list[str]:
+    statements: list[str] = []
+    buffer = ""
+    for line in sql_text.splitlines(keepends=True):
+        buffer += line
+        if sqlite3.complete_statement(buffer):
+            statements.append(buffer)
+            buffer = ""
+    if buffer.strip():
+        statements.append(buffer)
+    return statements
+
+
+def _apply_add_column_if_not_exists(conn: sqlite3.Connection, statement: str) -> bool:
+    match = _ADD_COLUMN_IF_NOT_EXISTS_RE.match(statement.strip())
+    if match is None:
+        return False
+
+    table = match.group("table").strip('"`[]')
+    column = match.group("column").strip('"`[]')
+    if _table_has_column(conn, table, column):
+        return True
+
+    rewritten = re.sub(
+        r"(\bADD\s+COLUMN)\s+IF\s+NOT\s+EXISTS",
+        r"\1",
+        statement.strip(),
+        count=1,
+        flags=re.IGNORECASE,
+    )
+    conn.execute(rewritten)
+    return True
+
+
 def _apply_sql_migration(conn: sqlite3.Connection, path: Path) -> None:
     sql_text = path.read_text(encoding="utf-8")
-    conn.executescript(sql_text)
+    if "ADD COLUMN IF NOT EXISTS" not in sql_text.upper():
+        conn.executescript(sql_text)
+        return
+
+    for statement in _split_sql_statements(sql_text):
+        if not statement.strip():
+            continue
+        if _apply_add_column_if_not_exists(conn, statement):
+            continue
+        conn.execute(statement.strip())
 
 
 def _apply_python_migration(conn: sqlite3.Connection, path: Path) -> None:

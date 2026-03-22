@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import importlib.util
 import json
 import sqlite3
 import subprocess
@@ -13,6 +14,16 @@ from tagslut.storage.v3.dj_profile import ensure_schema
 from tagslut.storage.v3.schema import create_schema_v3
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+BUILD_POOL_SCRIPT = PROJECT_ROOT / "scripts" / "dj" / "build_pool_v3.py"
+
+
+def _load_build_pool_module():
+    spec = importlib.util.spec_from_file_location("build_pool_v3", BUILD_POOL_SCRIPT)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def _create_db_and_sources(tmp_path: Path, *, second_source_is_dir: bool = False) -> tuple[Path, Path, Path]:
@@ -34,12 +45,13 @@ def _create_db_and_sources(tmp_path: Path, *, second_source_is_dir: bool = False
         conn.executemany(
             (
                 "INSERT INTO track_identity "
-                "(id, identity_key, canonical_artist, canonical_title, canonical_genre, merged_into_id) "
-                "VALUES (?, ?, ?, ?, ?, ?)"
+                "(id, identity_key, canonical_artist, canonical_title, canonical_genre, merged_into_id, "
+                "ingested_at, ingestion_method, ingestion_source, ingestion_confidence) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             ),
             [
-                (1, "id:a", "Alpha", "Tune", "House", None),
-                (2, "id:b", "Beta", "Peak", "Techno", None),
+                (1, "id:a", "Alpha", "Tune", "House", None, '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy'),
+                (2, "id:b", "Beta", "Peak", "Techno", None, '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy'),
             ],
         )
         conn.executemany(
@@ -102,6 +114,72 @@ def _run_builder(
 def _read_manifest(path: Path) -> list[dict[str, str]]:
     with path.open("r", encoding="utf-8", newline="") as handle:
         return list(csv.DictReader(handle))
+
+
+def test_select_rows_emits_canonical_aliases(tmp_path: Path) -> None:
+    module = _load_build_pool_module()
+    db, src_a, _src_b = _create_db_and_sources(tmp_path)
+
+    conn = module._connect_db(db)
+    try:
+        rows = module._select_rows(
+            conn,
+            scope="active",
+            min_rating=None,
+            min_energy=None,
+            set_roles=[],
+            only_profiled=False,
+            limit=None,
+            identity_ids=None,
+        )
+    finally:
+        conn.close()
+
+    assert len(rows) == 2
+    row = rows[0]
+    assert row["canonical_artist"] in {"Alpha", "Beta"}
+    assert row["canonical_title"] in {"Tune", "Peak"}
+    assert row["selected_asset_id"] in {11, 21}
+    assert row["selected_asset_path"] in {str(src_a), str(_src_b)}
+
+
+def test_row_source_path_prefers_selected_asset_path_then_legacy_aliases(tmp_path: Path) -> None:
+    module = _load_build_pool_module()
+
+    assert module._row_source_path(
+        {
+            "selected_asset_path": "/music/new.flac",
+            "preferred_path": "/music/old.flac",
+            "source_path": "/music/older.flac",
+        }
+    ) == "/music/new.flac"
+    assert module._row_source_path(
+        {
+            "preferred_path": "/music/old.flac",
+            "source_path": "/music/older.flac",
+        }
+    ) == "/music/old.flac"
+    assert module._row_source_path({"source_path": "/music/older.flac"}) == "/music/older.flac"
+
+
+def test_dest_path_accepts_canonical_export_shape(tmp_path: Path) -> None:
+    module = _load_build_pool_module()
+
+    dest = module._dest_path(
+        tmp_path,
+        {
+            "identity_id": 7,
+            "canonical_artist": "Canonical Artist",
+            "canonical_title": "Canonical Title",
+            "canonical_genre": "Afro House",
+            "selected_asset_path": "/music/source.flac",
+            "set_role": "builder",
+        },
+        "by_genre",
+        "copy",
+    )
+
+    assert dest == tmp_path / "Afro House" / "Canonical Artist - Canonical Title [7].flac"
 
 
 def test_plan_writes_manifest_and_no_files_created(tmp_path: Path) -> None:

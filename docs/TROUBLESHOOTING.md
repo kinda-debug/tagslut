@@ -181,10 +181,8 @@ This is by design - tagslut uses move-only semantics and won't overwrite.
 # Check move receipts
 tagslut verify receipts --db $TAGSLUT_DB
 
-# Review recovery status
-tagslut verify recovery --db $TAGSLUT_DB
-
-# See ARCHITECTURE.md for full recovery procedure
+# Recovery workflow is retired
+# Historical recovery procedure lives under legacy/tagslut_recovery/
 ```
 
 ---
@@ -316,7 +314,7 @@ These commands were retired on Feb 9, 2026:
 | `tagslut quarantine` | `tagslut execute quarantine-plan ...` |
 | `tagslut mgmt` | `tagslut index ... + tagslut report m3u ...` |
 | `tagslut metadata` | `tagslut auth ... + tagslut index enrich ...` |
-| `tagslut recover` | `tagslut verify recovery ... + tagslut report recovery ...` |
+| `tagslut recover` | Retired; see `legacy/tagslut_recovery/` for the archived workflow |
 
 Retention cleanup:
 ```bash

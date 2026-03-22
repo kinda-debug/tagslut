@@ -36,11 +36,14 @@ CONFIG_SCHEMA: dict[str, ConfigKeySpec] = {
     "integrity.parallel_workers": ConfigKeySpec((int, type(None)), None),
     "integrity.write_sanity_check": ConfigKeySpec(bool, True),
     "library.name": ConfigKeySpec(str, "COMMUNE"),
+    "library.db_url": ConfigKeySpec(str, "sqlite:///~/.local/share/djtools/library.db"),
     "mgmt.audit_log_dir": ConfigKeySpec(str, None),
     "mgmt.duration.ok_max_delta_ms": ConfigKeySpec(int, 2000),
     "mgmt.duration.warn_max_delta_ms": ConfigKeySpec(int, 8000),
     "mgmt.m3u_dir": ConfigKeySpec(str, None),
+    "rekordbox.use_canonical_matcher": ConfigKeySpec(bool, False),
     "tagslut.v3.dual_write": ConfigKeySpec(bool, False),
+    "upload.use_canonical_matcher": ConfigKeySpec(bool, False),
     "v3.dual_write": ConfigKeySpec(bool, False),
 }
 

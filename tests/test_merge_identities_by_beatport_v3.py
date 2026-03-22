@@ -52,8 +52,13 @@ def _create_case1_db(tmp_path: Path) -> Path:
                 isrc,
                 canonical_artist,
                 canonical_title,
-                enriched_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                enriched_at,
+                ingested_at,
+                ingestion_method,
+                ingestion_source,
+                ingestion_confidence
+            ) VALUES (?, ?, ?, ?, ?, ?, ?,
+                '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')
             """,
             [
                 (1, "isrc:AA1", "BP-1", "AA1", "Artist A", "Track A", None),
@@ -91,8 +96,13 @@ def _create_tie_db(tmp_path: Path) -> Path:
             INSERT INTO track_identity (
                 id,
                 identity_key,
-                beatport_id
-            ) VALUES (?, ?, ?)
+                beatport_id,
+                ingested_at,
+                ingestion_method,
+                ingestion_source,
+                ingestion_confidence
+            ) VALUES (?, ?, ?,
+                '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')
             """,
             [
                 (10, "beatport:BP-TIE-A", "BP-TIE"),
@@ -352,6 +362,35 @@ def test_merge_syncs_legacy_file_keys(tmp_path: Path) -> None:
         ("/music/a2.flac", "beatport:BP-1"),
         ("/music/a3.flac", "beatport:BP-1"),
     ]
+
+
+def test_merge_removes_stale_loser_preferred_asset_rows(tmp_path: Path) -> None:
+    db = _create_case1_db(tmp_path)
+    conn = sqlite3.connect(str(db))
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys=ON")
+    try:
+        conn.executemany(
+            """
+            INSERT INTO preferred_asset (identity_id, asset_id, score, reason_json, version)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            [
+                (1, 1, 1.0, "{}", 1),
+                (2, 2, 2.0, "{}", 1),
+            ],
+        )
+
+        merge_group_by_repointing_assets(conn, 2, [1], dry_run=False)
+        conn.commit()
+
+        rows = conn.execute(
+            "SELECT identity_id, asset_id FROM preferred_asset ORDER BY identity_id"
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert [tuple(row) for row in rows] == [(2, 2)]
 
 
 def test_plan_connection_is_query_only_and_rejects_writes(tmp_path: Path) -> None:

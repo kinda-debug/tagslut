@@ -1,40 +1,104 @@
-<!-- Status: Active document. Synced 2026-03-09 after recent code/doc review. Historical or superseded material belongs in docs/archive/. -->
+<!-- Status: Active document. Synced 2026-03-22 after credential consolidation phase 1 and tools/get fix. -->
 
 # Progress Report
 
-Report date: March 9, 2026
+Report date: March 22, 2026
 
-## Executive Summary
+## Session: 2026-03-22 (pass 3) — Credential Consolidation Phase 1 + tools/get fix
 
-The v3 core surface is active and the recovery-era implementation has been archived. Recent work focused on reducing operator drift: move-plan execution now carries sidecars, staged-root DJ processing gained a previewable DJ phase, and the active Markdown surface was resynchronized with the codebase.
+**Task**: Fix credential precedence, add token-get CLI, migrate harvest scripts,
+document credential model. Fix tools/get FORWARD_ARGS zsh bug.
 
-## Recent Completed Work
+**Status**: Completed — commits `249ac8d` (credential consolidation) + cherry-pick
+from `fix/get-forward-args-zsh` branch (tools/get fix). 7 files changed total.
 
-- Added `tools/review/sync_phase1_prs.sh` for the active Phase 1 branch stack.
-- Added common sidecar handling to move-plan execution.
-- Added staged-root DJ FLAC tag enrichment and MP3 transcode hooks to `process-root`.
-- Added `process-root --dry-run` support for previewing the DJ phase.
-- Refreshed active root/docs Markdown files so examples match the current v3 guardrails.
+**What was done**:
 
-## Current State
+1. **beatport.py precedence fix** — `_auth_config()` now checks `TokenManager`
+   first, env vars as fallback with `logger.warning`. All three credential fields
+   affected: bearer token, catalog username, catalog password.
 
-- Tests: 579 passed, 2 failed, 1 warning (`poetry run python -m pytest -q` on March 8, 2026).
-- Tag hoard: varies by scan (see `tag_hoard_files` in DB).
-- DJUSB MP3 count: depends on current policy + overrides.
-- Primary downloader flow remains `tools/get <provider-url>`; `tools/get-intake` remains the advanced/backend path.
-- Canonical CLI surface remains `tagslut intake/index/decide/execute/verify/report/auth`.
-- The deterministic v3 DJ pool path remains the preferred builder/export route.
-- `process-root` is useful for already-staged roots, but its v3-safe phase set is `identify,enrich,art,promote,dj`.
+2. **`tagslut auth token-get <provider>`** — new CLI subcommand. Prints only the
+   raw access token to stdout (suitable for shell capture). Exits 1 with error
+   on stderr when token is missing or expired. Supports `beatport` and `tidal`.
 
-## Risks
+3. **Harvest scripts** — both `beatport_harvest_my_tracks.sh` and
+   `beatport_harvest_catalog_track.sh` now use:
+   `BEATPORT_ACCESS_TOKEN=$(tagslut auth token-get beatport 2>/dev/null)`
+   `source env_exports.sh` removed entirely.
 
-- Compatibility wrappers still exist, so stale operator habits can reintroduce drift.
-- Provider metadata coverage is uneven, which keeps fallback/repair workflows important.
-- The Phase 1 stacked branches still need careful scope control while landing.
+4. **`tests/cli/test_auth_token_get.py`** — 4 new tests: happy path, missing
+   token, expired token, unsupported provider. All passing.
 
-## Recommended Next Actions
+5. **`docs/CREDENTIAL_MANAGEMENT.md`** — operator-facing guide documenting
+   tokens.json-first model, per-provider setup, token-get usage, precedence
+   rule, Postman note, token rotation.
 
-1. Keep the Phase 1 stack synchronized with `tools/review/sync_phase1_prs.sh`.
-2. Prefer `tagslut execute move-plan` over compatibility executors for reviewed plans.
-3. Use `tagslut intake process-root --phases dj --dry-run` when validating staged-root DJ enrichment behavior.
-4. Continue running the doc/layout consistency checks after behavior changes.
+6. **tools/get FORWARD_ARGS fix** — empty array expansion in zsh (`${FORWARD_ARGS[@]}`
+   with `set -u`) caused `unbound variable` error. Fixed with safe expansion:
+   `${FORWARD_ARGS[@]+"${FORWARD_ARGS[@]}"}`. Verified working:
+   `tools/get https://tidal.com/album/497862476/u` — 18 tracks downloaded.
+
+**Tests run**: `tests/metadata/ -k beatport` + `tests/cli/ -k token_get` — ALL PASS.
+
+---
+
+## Session: 2026-03-22 (pass 2) — Migration 0012 Complete
+
+**Status**: Completed — commit `bef5931`, 6 files, 16 tests passing.
+
+Legacy init_db path updated, CHECK constraints added, test fixtures fixed,
+`DB_V3_SCHEMA.md` updated with vocabulary tables.
+
+---
+
+## Session: 2026-03-22 (pass 1) — Migration 0012 prompt written
+
+**Status**: Completed. `.github/prompts/migration-0012-provenance.prompt.md` written
+and committed. All blocking decisions resolved in the prompt.
+
+---
+
+## Session: 2026-03-21 (pass 8) — TIDAL OAuth Refactor
+
+**Status**: Completed — commit `3a3595c`. Global mutable state removed, monotonic
+clock, private naming, docstring restored. No behaviour changes.
+
+---
+
+## Session: 2026-03-21 (pass 7) — Postman Collection-Level Token Guard
+
+**Status**: Completed — commit `14c9e29`. Postman agent track fully complete.
+
+---
+
+## Session: 2026-03-21 (pass 6) — Postman Validation Run + Spotify Chain
+
+**Status**: Completed — commit `37619ae`. `5c` Spotify, Validation Run folder.
+
+---
+
+## Session: 2026-03-21 (pass 5) — Postman API Collection + Multi-Provider ID Policy
+
+**Status**: Completed — commit `6ab432b`. Collection cleanup, ISRC auth, Identity
+Verification chain, multi-provider ID policy, five-tier confidence model.
+
+---
+
+## Session: 2026-03-21 (pass 4) — Repo Cleanup, DB Epoch Management, Context Bundle
+
+**Status**: Completed. Epoch renamed, artifacts archived, PROJECT_DIRECTIVES.md,
+ROADMAP revised.
+
+---
+
+## Session: 2026-03-21 — Resume-Refresh Fix Verification
+
+**Status**: Completed. 7/7 PASSED. Commits: 730d2b1, 2fb2a50, 3f3f37d, bf3df38.
+
+---
+
+## Previous Report — 2026-03-14
+
+v3 core surface active. DJ pipeline migration (0010), Lexicon backfill complete.
+20,517 identities enriched, 11,679 unmatched (36%). Tests: 579 passed, 2 failed.

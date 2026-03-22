@@ -1,0 +1,79 @@
+$kind: http-request
+name: '6b - Track by ID (Validation)'
+description: |-
+  **Validation Run — Step 2 of 3**
+
+  Uses `{{beatport_test_track_id}}` (set manually or by a prior run) to fetch
+  the full Beatport catalog record and seed the cross-verification chain.
+
+  On success this request sets:
+  - `beatport_last_track_id` — Beatport numeric track ID
+  - `beatport_last_isrc` — ISRC from Beatport (fed into 5a → 5b → 5c)
+
+  ### Canonical field check
+  Logs WARNING for any of the nine required fields that are null or absent:
+  `id`, `isrc`, `name`, `artists`, `bpm`, `key`, `genre`, `release.label`,
+  `mix_name`.
+
+  ### Note
+  If `beatport_test_track_id` is not yet set, populate it manually in the
+  environment before running this step. The ISRC from 6a can be used to find
+  the Beatport track ID via the `Tracks by ISRC` request in the Catalog folder.
+url: '{{base_url}}/v4/catalog/tracks/{{beatport_test_track_id}}/'
+method: GET
+auth:
+  type: bearer
+  credentials:
+    token: '{{beatport_access_token}}'
+scripts:
+  - type: afterResponse
+    code: |-
+      var code = pm.response.code;
+      console.log('[6b] Status: ' + code);
+
+      if (code !== 200) {
+          console.log('[6b] FAILED — body: ' + pm.response.text().substring(0, 300));
+          return;
+      }
+
+      var json = pm.response.json();
+
+      // Canonical field validation
+      var canonical = ['id', 'isrc', 'name', 'artists', 'bpm', 'key', 'genre', 'mix_name'];
+      canonical.forEach(function(f) {
+          var val = json[f];
+          if (val === null || val === undefined) {
+              console.log('[6b] WARNING: missing field ' + f);
+          } else {
+              console.log('[6b] ' + f + ': ' + JSON.stringify(val).substring(0, 80));
+          }
+      });
+
+      var label = json.release && json.release.label;
+      if (!label) {
+          console.log('[6b] WARNING: missing field release.label');
+      } else {
+          console.log('[6b] release.label: ' + JSON.stringify(label).substring(0, 80));
+      }
+
+      // Chain variables
+      if (json.id) {
+          pm.environment.set('beatport_last_track_id', json.id);
+          console.log('[6b] Set beatport_last_track_id = ' + json.id);
+      }
+      if (json.isrc) {
+          pm.environment.set('beatport_last_isrc', json.isrc);
+          console.log('[6b] Set beatport_last_isrc = ' + json.isrc);
+      }
+
+      // ISRC agreement check against TIDAL seed
+      var tidalSeedIsrc = pm.environment.get('tidal_seed_isrc');
+      if (tidalSeedIsrc && json.isrc) {
+          if (json.isrc === tidalSeedIsrc) {
+              console.log('[6b] ISRC PRE-CHECK PASSED: Beatport ISRC matches TIDAL seed (' + json.isrc + ')');
+          } else {
+              console.log('[6b] ISRC PRE-CHECK FAILED: Beatport=' + json.isrc + ' TIDAL seed=' + tidalSeedIsrc);
+          }
+      }
+    language: text/javascript
+order: 2000

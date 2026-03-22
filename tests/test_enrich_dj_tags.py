@@ -33,8 +33,10 @@ def _seed_asset_and_identity(
 
     conn.execute(
         """
-        INSERT INTO track_identity (identity_key, canonical_bpm, canonical_key)
-        VALUES (?, ?, ?)
+        INSERT INTO track_identity (identity_key, canonical_bpm, canonical_key,
+            ingested_at, ingestion_method, ingestion_source, ingestion_confidence)
+        VALUES (?, ?, ?,
+            '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')
         """,
         (f"asset:{asset_id}", canonical_bpm, canonical_key),
     )

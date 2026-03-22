@@ -1,4 +1,4 @@
-<!-- Status: Active document. Synced 2026-03-09 after recent code/doc review. Historical or superseded material belongs in docs/archive/. -->
+<!-- Status: Active document. Synced 2026-03-16 after v3 identity hardening phase-closure doc updates. Historical or superseded material belongs in docs/archive/. -->
 
 # REPORT.md - Project Strategy and Current State
 
@@ -19,6 +19,8 @@ The current operator surface is stable:
 - `tagslut intake process-root` gained a `dj` phase that can enrich FLAC BPM/key/energy from v3 identity data or Essentia before MP3 transcode.
 - `tagslut intake process-root --dry-run` now previews that DJ phase without writing FLAC tags, MP3s, or `dj_pool_path` updates.
 - Active root and `docs/` Markdown files were refreshed to match the current v3 surface and to remove stale v2-era guidance.
+- V3 identity hardening docs were tightened to match literal migration behavior, and a minimal routine proof target was added: `make check-v3-identity-integrity`.
+- Pytest is no longer blocked by the transitive `pylama` plugin autoload (disabled via `pyproject.toml` pytest `addopts`).
 
 ## System Shape
 

@@ -62,7 +62,41 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=default_artifacts_dir(),
         help="Artifact output directory (default: TAGSLUT_ARTIFACTS or ./artifacts)",
     )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Print one line per processed row showing file_id, outcome, and path",
+    )
     return parser.parse_args(argv)
+
+
+def _verbose_printer(summary: dict, verbose: bool) -> None:
+    """Print per-row outcome lines from the summary samples."""
+    if not verbose:
+        return
+    # Collect all sampled rows and sort by file_id for readable output
+    rows: list[tuple[int, str, str]] = []
+    outcome_order = ("created", "reused", "merged", "skipped", "conflicted", "fuzzy_near_collision", "fingerprint_matched", "errors")
+    for outcome in outcome_order:
+        for sample in summary.get("samples", {}).get(outcome, []):
+            file_id = sample.get("file_id", "?")
+            path = sample.get("path", "?")
+            extra = ""
+            if outcome == "created":
+                extra = f" key={sample.get('identity_key', '?')}"
+            elif outcome == "reused":
+                extra = f" identity_id={sample.get('identity_id', '?')}"
+            elif outcome == "conflicted":
+                extra = f" field={sample.get('field', '?')} value={sample.get('value', '?')}"
+            elif outcome == "fingerprint_matched":
+                extra = f" identity_id={sample.get('identity_id', '?')}"
+            elif outcome == "errors":
+                extra = f" error={sample.get('error', '?')}"
+            rows.append((int(file_id) if str(file_id).isdigit() else 0, outcome, f"  [{outcome.upper():<22}] file_id={file_id} {path}{extra}"))
+    rows.sort(key=lambda r: r[0])
+    for _, _, line in rows:
+        print(line)
+    print()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -92,11 +126,12 @@ def main(argv: list[str] | None = None) -> int:
             db_path=db_path,
             config=config,
         )
+        _verbose_printer(summary, args.verbose)
         print(f"{summary['mode'].upper()}: processed={summary['processed']}")
         print(
             "created={created} reused={reused} merged={merged} skipped={skipped} "
             "conflicted={conflicted} fuzzy_near_collision={fuzzy_near_collision} "
-            "errors={errors}".format(**summary)
+            "fingerprint_matched={fingerprint_matched} errors={errors}".format(**summary)
         )
         print(f"last_file_id={summary['last_file_id']} committed_batches={summary['committed_batches']}")
         print(f"summary_artifact={summary['artifact_paths']['summary']}")

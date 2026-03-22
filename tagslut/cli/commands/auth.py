@@ -7,7 +7,6 @@ import click
 
 from tagslut.cli.commands._auth_helpers import (
     _beatport_token_input,
-    _qobuz_login,
     _tidal_device_login,
 )
 
@@ -38,13 +37,6 @@ def register_auth_group(cli: click.Group) -> None:
 
         # Auto-refresh tokens for providers that support it
         if not no_refresh:
-            # Spotify - client credentials
-            if token_manager.is_configured("spotify"):
-                token = token_manager.get_token("spotify")
-                if token is None or token.is_expired:
-                    click.echo("Refreshing Spotify token...")
-                    token_manager.refresh_spotify_token()  # type: ignore  # TODO: mypy-strict
-
             # Beatport - client credentials
             if token_manager.is_configured("beatport"):
                 token = token_manager.get_token("beatport")
@@ -78,19 +70,14 @@ def register_auth_group(cli: click.Group) -> None:
 
         # Show help for unconfigured providers
         click.echo("")
-        unconfigured = [p for p, info in status.items() if not info.get('configured') and p != 'itunes']
+        unconfigured = [p for p, info in status.items() if not info.get('configured')]
         if unconfigured:
             click.echo("To configure providers:")
-            if 'spotify' in unconfigured:
-                click.echo("  spotify:  Add client_id/client_secret to tokens.json")
-                click.echo("            (get from https://developer.spotify.com/dashboard)")
             if 'beatport' in unconfigured:
                 click.echo("  beatport: Run 'tagslut auth login beatport'")
                 click.echo("            (paste token from dj.beatport.com DevTools)")
             if 'tidal' in unconfigured:
                 click.echo("  tidal:    Run 'tagslut auth login tidal'")
-            if 'qobuz' in unconfigured:
-                click.echo("  qobuz:    Run 'tagslut auth login qobuz'")
 
     @auth.command("init")
     @click.option('--tokens-path', type=click.Path(), help='Path to tokens.json')
@@ -109,10 +96,8 @@ def register_auth_group(cli: click.Group) -> None:
 
         click.echo(f"Created tokens template at: {path}")
         click.echo("\nNext steps:")
-        click.echo("  1. Spotify/Beatport: Edit tokens.json to add client_id and client_secret")
+        click.echo("  1. Beatport: Edit tokens.json to add client_id and client_secret")
         click.echo("  2. Tidal: Run 'tagslut auth login tidal'")
-        click.echo("  3. Qobuz: Run 'tagslut auth login qobuz'")
-        click.echo("  4. iTunes: No setup needed (public API)")
 
     @auth.command("refresh")
     @click.argument('provider')
@@ -122,7 +107,6 @@ def register_auth_group(cli: click.Group) -> None:
         Refresh access token for a provider.
 
         Supports automatic refresh for:
-        - spotify (client credentials)
         - beatport (client credentials)
         - tidal (refresh token, requires prior auth-login)
         """
@@ -131,15 +115,7 @@ def register_auth_group(cli: click.Group) -> None:
         path = Path(tokens_path) if tokens_path else DEFAULT_TOKENS_PATH
         token_manager = TokenManager(path)
 
-        if provider == 'spotify':
-            click.echo("Refreshing Spotify token...")
-            token = token_manager.refresh_spotify_token()  # type: ignore  # TODO: mypy-strict
-            if token:
-                click.echo(f"Success! Token expires at: {time.ctime(token.expires_at)}")
-            else:
-                click.echo("Failed. Check client_id and client_secret in tokens.json")
-
-        elif provider == 'beatport':
+        if provider == 'beatport':
             token = token_manager.refresh_beatport_token()
             if token and not token.is_expired:
                 click.echo(f"Beatport token valid until: {time.ctime(token.expires_at)}")
@@ -155,11 +131,39 @@ def register_auth_group(cli: click.Group) -> None:
             else:
                 click.echo("Failed. Run 'tagslut auth login tidal' first.")
 
-        elif provider == 'qobuz':
-            click.echo("Qobuz tokens don't expire. Run 'tagslut auth login qobuz' to re-authenticate.")
-
         else:
             click.echo(f"Unknown provider: {provider}")
+
+    @auth.command("token-get")
+    @click.argument("provider")
+    @click.option('--tokens-path', type=click.Path(), help='Path to tokens.json')
+    def auth_token_get(provider, tokens_path):  # type: ignore  # TODO: mypy-strict
+        """
+        Print only the access token for a provider.
+
+        Intended for shell capture, for example:
+          BEATPORT_ACCESS_TOKEN=$(tagslut auth token-get beatport)
+        """
+        from tagslut.metadata.auth import DEFAULT_TOKENS_PATH, TokenManager
+
+        if provider not in {"beatport", "tidal"}:
+            click.echo(f"Error: Unsupported provider '{provider}'. Use beatport or tidal.", err=True)
+            raise SystemExit(1)
+
+        path = Path(tokens_path) if tokens_path else DEFAULT_TOKENS_PATH
+        token_manager = TokenManager(path)
+        token = token_manager.ensure_valid_token(provider)
+
+        if token and token.access_token and not token.is_expired:
+            click.echo(token.access_token)
+            return
+
+        provider_name = "Beatport" if provider == "beatport" else "Tidal"
+        click.echo(
+            f"Error: No valid {provider_name} token. Run 'tagslut auth login {provider}'.",
+            err=True,
+        )
+        raise SystemExit(1)
 
     @auth.command("login")
     @click.argument('provider')
@@ -170,7 +174,6 @@ def register_auth_group(cli: click.Group) -> None:
 
         Supported providers:
         - tidal: Device authorization (opens browser)
-        - qobuz: Email/password login
         - beatport: Manual token from browser DevTools
         """
         from tagslut.metadata.auth import DEFAULT_TOKENS_PATH, TokenManager
@@ -181,12 +184,8 @@ def register_auth_group(cli: click.Group) -> None:
         if provider == 'tidal':
             _tidal_device_login(token_manager)
 
-        elif provider == 'qobuz':
-            _qobuz_login(token_manager)
-
         elif provider == 'beatport':
             _beatport_token_input(token_manager)
 
         else:
             click.echo(f"Interactive login not supported for {provider}.")
-            click.echo("For Spotify, add client_id and client_secret to tokens.json")

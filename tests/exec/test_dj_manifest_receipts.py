@@ -29,8 +29,10 @@ def test_apply_dj_export_manifest_normalizes_receipt_paths(monkeypatch, tmp_path
     conn.execute(
         """
         INSERT INTO track_identity (
-            id, identity_key, canonical_artist, canonical_title, canonical_bpm, canonical_key
-        ) VALUES (1, 'identity:1', 'Artist', 'Title', 128, 'Am')
+            id, identity_key, canonical_artist, canonical_title, canonical_bpm, canonical_key,
+            ingested_at, ingestion_method, ingestion_source, ingestion_confidence
+        ) VALUES (1, 'identity:1', 'Artist', 'Title', 128, 'Am',
+            '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')
         """
     )
     conn.execute(

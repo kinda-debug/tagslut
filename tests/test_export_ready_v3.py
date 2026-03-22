@@ -31,8 +31,13 @@ def _create_db(tmp_path: Path) -> Path:
                 canonical_key,
                 canonical_genre,
                 canonical_duration,
-                merged_into_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                merged_into_id,
+                ingested_at,
+                ingestion_method,
+                ingestion_source,
+                ingestion_confidence
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,
+                '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')
             """,
             [
                 (1, "id:a", "Alpha", "Tune", 124.0, "8A", "House", 320.0, None),

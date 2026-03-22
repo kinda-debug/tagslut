@@ -29,6 +29,17 @@ def _load_migration() -> ModuleType:
     return mod
 
 
+def _files_columns(conn: sqlite3.Connection) -> set[str]:
+    return {str(row[1]) for row in conn.execute("PRAGMA table_info(files)")}
+
+
+def _files_indexes(conn: sqlite3.Connection) -> set[str]:
+    return {
+        str(row[1])
+        for row in conn.execute("PRAGMA index_list(files)")
+    }
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -87,48 +98,64 @@ def legacy_db():
 
 
 def test_init_db_creates_dj_flag(bare_db):
-    cols = {row[1] for row in bare_db.execute("PRAGMA table_info(files)")}
+    cols = _files_columns(bare_db)
     assert "dj_flag" in cols
 
 
 def test_init_db_creates_bpm(bare_db):
-    cols = {row[1] for row in bare_db.execute("PRAGMA table_info(files)")}
+    cols = _files_columns(bare_db)
     assert "bpm" in cols
 
 
 def test_init_db_creates_key_camelot(bare_db):
-    cols = {row[1] for row in bare_db.execute("PRAGMA table_info(files)")}
+    cols = _files_columns(bare_db)
     assert "key_camelot" in cols
 
 
 def test_init_db_creates_energy(bare_db):
-    cols = {row[1] for row in bare_db.execute("PRAGMA table_info(files)")}
+    cols = _files_columns(bare_db)
     assert "energy" in cols
 
 
 def test_init_db_creates_genre(bare_db):
-    cols = {row[1] for row in bare_db.execute("PRAGMA table_info(files)")}
+    cols = _files_columns(bare_db)
     assert "genre" in cols
 
 
 def test_init_db_creates_isrc(bare_db):
-    cols = {row[1] for row in bare_db.execute("PRAGMA table_info(files)")}
+    cols = _files_columns(bare_db)
     assert "isrc" in cols
 
 
 def test_init_db_creates_rekordbox_id(bare_db):
-    cols = {row[1] for row in bare_db.execute("PRAGMA table_info(files)")}
+    cols = _files_columns(bare_db)
     assert "rekordbox_id" in cols
 
 
 def test_init_db_creates_last_exported_usb(bare_db):
-    cols = {row[1] for row in bare_db.execute("PRAGMA table_info(files)")}
+    cols = _files_columns(bare_db)
     assert "last_exported_usb" in cols
 
 
 def test_init_db_creates_dj_pool_path(bare_db):
-    cols = {row[1] for row in bare_db.execute("PRAGMA table_info(files)")}
+    cols = _files_columns(bare_db)
     assert "dj_pool_path" in cols
+
+
+def test_init_db_creates_dj_set_role(bare_db):
+    cols = _files_columns(bare_db)
+    assert "dj_set_role" in cols
+
+
+def test_init_db_creates_dj_subrole(bare_db):
+    cols = _files_columns(bare_db)
+    assert "dj_subrole" in cols
+
+
+def test_init_db_creates_dj_role_indexes(bare_db):
+    indexes = _files_indexes(bare_db)
+    assert "idx_dj_set_role" in indexes
+    assert "idx_dj_subrole" in indexes
 
 
 # ---------------------------------------------------------------------------

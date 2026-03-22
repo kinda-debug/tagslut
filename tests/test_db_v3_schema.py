@@ -53,11 +53,11 @@ def test_track_identity_identity_key_is_unique_and_not_null() -> None:
     try:
         create_schema_v3(conn)
         with pytest.raises(sqlite3.IntegrityError):
-            conn.execute("INSERT INTO track_identity (identity_key) VALUES (NULL)")
+            conn.execute("INSERT INTO track_identity (identity_key, ingested_at, ingestion_method, ingestion_source, ingestion_confidence) VALUES (NULL, '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')")
 
-        conn.execute("INSERT INTO track_identity (identity_key, isrc) VALUES (?, ?)", ("isrc:abc", "ABC"))
+        conn.execute("INSERT INTO track_identity (identity_key, isrc, ingested_at, ingestion_method, ingestion_source, ingestion_confidence) VALUES (?, ?, '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')", ("isrc:abc", "ABC"))
         with pytest.raises(sqlite3.IntegrityError):
-            conn.execute("INSERT INTO track_identity (identity_key) VALUES (?)", ("isrc:abc",))
+            conn.execute("INSERT INTO track_identity (identity_key, ingested_at, ingestion_method, ingestion_source, ingestion_confidence) VALUES (?, '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')", ("isrc:abc",))
     finally:
         conn.close()
 
@@ -76,7 +76,7 @@ def test_foreign_keys_enforced_for_asset_link_and_library_track_sources() -> Non
             )
 
         conn.execute("INSERT INTO asset_file (path) VALUES (?)", ("/music/a.flac",))
-        conn.execute("INSERT INTO track_identity (identity_key, isrc) VALUES (?, ?)", ("isrc:a", "A"))
+        conn.execute("INSERT INTO track_identity (identity_key, isrc, ingested_at, ingestion_method, ingestion_source, ingestion_confidence) VALUES (?, ?, '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')", ("isrc:a", "A"))
         asset_id = int(conn.execute("SELECT id FROM asset_file").fetchone()[0])
         identity_id = int(conn.execute("SELECT id FROM track_identity").fetchone()[0])
         conn.execute(
@@ -87,7 +87,7 @@ def test_foreign_keys_enforced_for_asset_link_and_library_track_sources() -> Non
             (asset_id, identity_id),
         )
 
-        conn.execute("INSERT INTO track_identity (identity_key, isrc) VALUES (?, ?)", ("isrc:b", "B"))
+        conn.execute("INSERT INTO track_identity (identity_key, isrc, ingested_at, ingestion_method, ingestion_source, ingestion_confidence) VALUES (?, ?, '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')", ("isrc:b", "B"))
         other_identity_id = int(
             conn.execute("SELECT id FROM track_identity WHERE identity_key = 'isrc:b'").fetchone()[0]
         )

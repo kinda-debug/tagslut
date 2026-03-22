@@ -10,7 +10,11 @@ Policy and deprecation rules are defined in:
 ## Canonical Entry Points
 
 1. `poetry run tagslut intake ...`
-Role: Download/intake orchestration, prefilter operations, and root processing (`tagslut intake process-root`).
+Role: Canonical intake orchestration. Includes URL-based intake
+(`tagslut intake <URL>`; alias: `tagslut intake url <URL>`) and root processing
+(`tagslut intake process-root`).
+Use `tagslut intake <URL>` as the primary entry point for Beatport/Tidal URLs;
+`tools/get` is kept as a compatibility wrapper.
 
 2. `poetry run tagslut index ...`
 Role: Inventory registration, duplicate checks, duration checks, and metadata enrichment for indexed files.
@@ -22,24 +26,35 @@ Role: Policy-profile listing and deterministic plan generation.
 Role: Execute move/quarantine/promote workflows from plans.
 
 5. `poetry run tagslut verify ...`
-Role: Validate duration/recovery/parity and move receipt consistency.
+Role: Validate duration/parity and move receipt consistency.
 
 6. `poetry run tagslut report ...`
-Role: M3U and operational reports (duration, recovery, plan summaries).
+Role: M3U and operational reports (duration, plan summaries).
 
 7. `poetry run tagslut auth ...`
 Role: Provider authentication and token lifecycle flows.
 
-8. `poetry run tagslut dj ...`
-Role: DJ library curation and USB export workflows.
+8. `poetry run tagslut mp3 ...`
+Role: MP3 derivative asset management (Stage 2 of the 4-stage DJ pipeline).
+- `mp3 build` — transcode preferred FLAC master(s) to MP3 and register in `mp3_asset`
+- `mp3 reconcile` — scan an existing MP3 root and register files in `mp3_asset` without re-transcoding
 
-9. `poetry run tagslut gig ...`
+9. `poetry run tagslut dj ...`
+Role: DJ library curation, admission, validation, and Rekordbox XML export.
+- `dj admit` — admit a single identity into the DJ library (`dj_admission` row)
+- `dj backfill` — admit all `mp3_asset` rows not yet in `dj_admission`
+- `dj validate` — validate DJ library state (missing files, empty metadata)
+- `dj xml emit` — emit deterministic Rekordbox XML from `dj_admission` state
+- `dj xml patch` — re-emit XML verifying prior manifest, preserving stable TrackIDs
+- legacy subcommands (`curate`, `export`, `pool-wizard`, `role`) remain available
+
+10. `poetry run tagslut gig ...`
 Role: Build and manage DJ gig sets.
 
-10. `poetry run tagslut export ...`
+11. `poetry run tagslut export ...`
 Role: Export tracks to USB or DJ pools.
 
-11. `poetry run tagslut init ...`
+12. `poetry run tagslut init ...`
 Role: First-run interactive initialization wizard.
 
 ## Rebrand Invocation
@@ -56,10 +71,15 @@ Retired alias:
 These wrappers are active convenience entrypoints around canonical intake/report flows:
 
 1. `tools/get <url>`
-Role: Primary user-facing download workflow.
+Role: Legacy-compatible download wrapper around the canonical intake
+pipeline. For new work, prefer `poetry run tagslut intake <url>`
+so you get structured artifacts and explicit precheck/download/MP3
+stages.
 - default behavior: precheck + download + tagging/enrich/art + promote + merged M3U
+- Beatport URLs may download from TIDAL when a strict verified cross-match exists and TIDAL ranks higher by quality; Beatport remains the metadata origin for that URL.
 - default output is concise; `--verbose` enables internal paths, artifact files, and batch snapshots
 - high-level workflow flags: `--dj`, `--hoard`, `--no-hoard`, `--no-precheck`, `--force-download`, `--providers`, `--verbose`
+- `--dj` is deprecated legacy behavior. See `docs/DJ_WORKFLOW.md` for the canonical 4-stage DJ pipeline.
 - work roots are split by intent: `FIX_ROOT`, `QUARANTINE_ROOT`, `DISCARD_ROOT`
 - `--simple` keeps downloader-only behavior
 
@@ -125,13 +145,18 @@ Hidden top-level commands by policy:
 - `tagslut enrich-file ...`
 - `tagslut explain-keeper ...`
 - `tagslut show-zone ...`
-- `tagslut recovery ...`
 
 Use `tagslut intake/index/decide/execute/verify/report/auth/dj/gig/export/init` for new work.
 
 ## Recovery Command Status
 
-- `tagslut recovery` is a hidden minimal stub logger and does not implement the full move pipeline described in some historical docs.
+- `tagslut.recovery` is decommissioned and intentionally non-importable.
+- Hidden compatibility shims still exist for old invocations:
+  - `tagslut recovery ...`
+  - `tagslut verify recovery ...`
+  - `tagslut report recovery ...`
+  - `tagslut _recover ...`
+- Those shims are not active recovery functionality. They exist only to fail clearly and point to `legacy/tagslut_recovery/`.
 - Canonical operator path for end-to-end root processing:
   - `tagslut intake process-root --root <folder> [--db <db>]`
 - Current v3-safe `process-root` usage is `identify,enrich,art,promote,dj`; legacy scan phases are blocked when `--db` points at a v3 database.

@@ -10,21 +10,28 @@ import sqlite3
 from pathlib import Path
 from urllib.parse import quote
 
+from tagslut.storage.v3.identity_service import resolve_active_identity
+
 CSV_COLUMNS = [
     "identity_id",
     "identity_key",
-    "artist",
-    "title",
-    "album",
+    "canonical_artist",
+    "canonical_title",
+    "canonical_album",
     "isrc",
     "beatport_id",
-    "bpm",
-    "key",
-    "genre",
-    "sub_genre",
+    "tidal_id",
+    "qobuz_id",
+    "canonical_bpm",
+    "canonical_key",
+    "canonical_genre",
+    "canonical_sub_genre",
+    "canonical_year",
     "duration_s",
-    "preferred_asset_id",
-    "preferred_path",
+    "selected_asset_id",
+    "selected_asset_path",
+    "selected_asset_format",
+    "selected_asset_bitrate",
     "sample_rate",
     "bit_depth",
     "integrity_state",
@@ -92,6 +99,22 @@ def _to_float_or_none(value: object) -> float | None:
         return None
 
 
+def _to_int_or_none(value: object) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    raw = str(value).strip()
+    if raw == "":
+        return None
+    try:
+        return int(float(raw))
+    except ValueError:
+        return None
+
+
 def _passes_numeric_bounds(
     *,
     value: float | None,
@@ -110,6 +133,197 @@ def _passes_numeric_bounds(
     return True
 
 
+def _load_identity_rows(
+    conn: sqlite3.Connection,
+    *,
+    scope: str,
+    min_rating: int | None,
+    min_energy: int | None,
+    only_profiled: bool,
+    genres: list[str],
+    keys: list[str],
+) -> list[sqlite3.Row]:
+    where: list[str] = ["ti.merged_into_id IS NULL"]
+    params: list[object] = []
+
+    if scope == "active":
+        where.append("COALESCE(ist.status, 'unknown') = 'active'")
+    elif scope == "active+orphan":
+        where.append("COALESCE(ist.status, 'unknown') IN ('active', 'orphan')")
+
+    if only_profiled:
+        where.append("dj.updated_at IS NOT NULL")
+    if min_rating is not None:
+        where.append("dj.rating >= ?")
+        params.append(int(min_rating))
+    if min_energy is not None:
+        where.append("dj.energy >= ?")
+        params.append(int(min_energy))
+
+    clean_genres = _normalize_list(genres)
+    if clean_genres:
+        placeholders = ",".join("?" for _ in clean_genres)
+        where.append(f"LOWER(COALESCE(ti.canonical_genre, '')) IN ({placeholders})")
+        params.extend(clean_genres)
+
+    clean_keys = _normalize_list(keys)
+    if clean_keys:
+        placeholders = ",".join("?" for _ in clean_keys)
+        where.append(f"LOWER(COALESCE(ti.canonical_key, '')) IN ({placeholders})")
+        params.extend(clean_keys)
+
+    where_sql = "WHERE " + " AND ".join(where)
+    return conn.execute(
+        f"""
+        SELECT
+            ti.id AS identity_id,
+            ti.identity_key AS identity_key,
+            ti.isrc AS isrc,
+            ti.beatport_id AS beatport_id,
+            ti.tidal_id AS tidal_id,
+            ti.qobuz_id AS qobuz_id,
+            ti.canonical_artist AS canonical_artist,
+            ti.canonical_title AS canonical_title,
+            ti.canonical_album AS canonical_album,
+            ti.canonical_bpm AS canonical_bpm,
+            ti.canonical_key AS canonical_key,
+            ti.canonical_genre AS canonical_genre,
+            ti.canonical_sub_genre AS canonical_sub_genre,
+            ti.canonical_year AS canonical_year,
+            ti.canonical_duration AS canonical_duration,
+            ti.enriched_at AS identity_enriched_at,
+            COALESCE(ist.status, 'unknown') AS identity_status
+        FROM track_identity ti
+        LEFT JOIN identity_status ist ON ist.identity_id = ti.id
+        LEFT JOIN dj_track_profile dj ON dj.identity_id = ti.id
+        {where_sql}
+        ORDER BY
+            LOWER(COALESCE(ti.canonical_artist, '')),
+            LOWER(COALESCE(ti.canonical_title, '')),
+            ti.id ASC
+        """,
+        tuple(params),
+    ).fetchall()
+
+
+def _path_format(path_value: object) -> str:
+    path_text = _text(path_value)
+    if path_text == "":
+        return ""
+    return Path(path_text).suffix.lower().lstrip(".")
+
+
+def _select_best_fallback_asset(rows: list[sqlite3.Row]) -> sqlite3.Row | None:
+    if not rows:
+        return None
+
+    def sort_key(row: sqlite3.Row) -> tuple[int, int, int, int, int]:
+        fmt = _path_format(row["path"])
+        bitrate = _to_int_or_none(row["bitrate"]) or 0
+        sample_rate = _to_int_or_none(row["sample_rate"]) or 0
+        bit_depth = _to_int_or_none(row["bit_depth"]) or 0
+        if fmt == "flac":
+            bucket = 0
+        elif fmt == "mp3":
+            bucket = 1
+        else:
+            bucket = 2
+        return (
+            bucket,
+            -bitrate,
+            -sample_rate,
+            -bit_depth,
+            int(row["asset_id"]),
+        )
+
+    return min(rows, key=sort_key)
+
+
+def _load_selected_assets(
+    conn: sqlite3.Connection,
+    candidate_identity_ids: set[int],
+) -> dict[int, sqlite3.Row]:
+    if not candidate_identity_ids:
+        return {}
+
+    resolved_cache: dict[int, int] = {}
+
+    def canonical_identity_id(raw_identity_id: int) -> int:
+        cached = resolved_cache.get(raw_identity_id)
+        if cached is not None:
+            return cached
+        row = resolve_active_identity(conn, raw_identity_id)
+        identity_id = int(row["id"])
+        resolved_cache[raw_identity_id] = identity_id
+        return identity_id
+
+    preferred_by_identity: dict[int, list[sqlite3.Row]] = {}
+    preferred_rows = conn.execute(
+        """
+        SELECT
+            pa.identity_id AS raw_identity_id,
+            af.id AS asset_id,
+            af.path AS path,
+            af.bitrate AS bitrate,
+            af.sample_rate AS sample_rate,
+            af.bit_depth AS bit_depth,
+            af.integrity_state AS integrity_state,
+            af.duration_s AS duration_s
+        FROM preferred_asset pa
+        JOIN asset_file af ON af.id = pa.asset_id
+        ORDER BY pa.identity_id ASC, af.id ASC
+        """
+    ).fetchall()
+    for row in preferred_rows:
+        active_identity_id = canonical_identity_id(int(row["raw_identity_id"]))
+        if active_identity_id not in candidate_identity_ids:
+            continue
+        preferred_by_identity.setdefault(active_identity_id, []).append(row)
+
+    asset_rows_by_identity: dict[int, list[sqlite3.Row]] = {}
+    asset_rows = conn.execute(
+        """
+        SELECT
+            al.identity_id AS raw_identity_id,
+            af.id AS asset_id,
+            af.path AS path,
+            af.bitrate AS bitrate,
+            af.sample_rate AS sample_rate,
+            af.bit_depth AS bit_depth,
+            af.integrity_state AS integrity_state,
+            af.duration_s AS duration_s
+        FROM asset_link al
+        JOIN asset_file af ON af.id = al.asset_id
+        WHERE al.active = 1
+        ORDER BY al.identity_id ASC, af.id ASC
+        """
+    ).fetchall()
+    for row in asset_rows:
+        active_identity_id = canonical_identity_id(int(row["raw_identity_id"]))
+        if active_identity_id not in candidate_identity_ids:
+            continue
+        asset_rows_by_identity.setdefault(active_identity_id, []).append(row)
+
+    selected: dict[int, sqlite3.Row] = {}
+    for identity_id in sorted(candidate_identity_ids):
+        preferred_rows_for_identity = preferred_by_identity.get(identity_id, [])
+        if preferred_rows_for_identity:
+            selected[identity_id] = min(
+                preferred_rows_for_identity,
+                key=lambda row: (
+                    0 if int(row["raw_identity_id"]) == identity_id else 1,
+                    int(row["raw_identity_id"]),
+                    int(row["asset_id"]),
+                ),
+            )
+            continue
+
+        fallback = _select_best_fallback_asset(asset_rows_by_identity.get(identity_id, []))
+        if fallback is not None:
+            selected[identity_id] = fallback
+    return selected
+
+
 def _build_rows(
     conn: sqlite3.Connection,
     *,
@@ -125,66 +339,22 @@ def _build_rows(
     max_duration: float | None,
     strict: bool,
 ) -> tuple[list[dict[str, object]], dict[str, int]]:
-    view_name = SCOPE_TO_VIEW[scope]
-    where: list[str] = []
-    params: list[object] = []
-
-    if only_profiled:
-        where.append("dj_updated_at IS NOT NULL")
-    if min_rating is not None:
-        where.append("dj_rating >= ?")
-        params.append(int(min_rating))
-    if min_energy is not None:
-        where.append("dj_energy >= ?")
-        params.append(int(min_energy))
-
-    clean_genres = _normalize_list(genres)
-    if clean_genres:
-        placeholders = ",".join("?" for _ in clean_genres)
-        where.append(f"LOWER(COALESCE(genre,'')) IN ({placeholders})")
-        params.extend(clean_genres)
-
-    clean_keys = _normalize_list(keys)
-    if clean_keys:
-        placeholders = ",".join("?" for _ in clean_keys)
-        where.append(f"LOWER(COALESCE(musical_key,'')) IN ({placeholders})")
-        params.extend(clean_keys)
-
-    where_sql = ""
-    if where:
-        where_sql = "WHERE " + " AND ".join(where)
-
-    rows = conn.execute(
-        f"""
-        SELECT
-            identity_id,
-            identity_key,
-            artist,
-            title,
-            album,
-            isrc,
-            beatport_id,
-            bpm,
-            musical_key,
-            genre,
-            sub_genre,
-            duration_s,
-            preferred_asset_id,
-            asset_path,
-            sample_rate,
-            bit_depth,
-            integrity_state,
-            identity_enriched_at,
-            identity_status
-        FROM {view_name}
-        {where_sql}
-        ORDER BY LOWER(COALESCE(artist, '')), LOWER(COALESCE(title, '')), identity_id ASC
-        """,
-        tuple(params),
-    ).fetchall()
+    identity_rows = _load_identity_rows(
+        conn,
+        scope=scope,
+        min_rating=min_rating,
+        min_energy=min_energy,
+        only_profiled=only_profiled,
+        genres=genres,
+        keys=keys,
+    )
+    selected_assets = _load_selected_assets(
+        conn,
+        {int(row["identity_id"]) for row in identity_rows},
+    )
 
     stats = {
-        "total_identities_considered": len(rows),
+        "total_identities_considered": len(identity_rows),
         "exported_rows": 0,
         "excluded_no_preferred": 0,
         "excluded_by_filters": 0,
@@ -195,33 +365,53 @@ def _build_rows(
     }
 
     out_rows: list[dict[str, object]] = []
-    for row in rows:
-        preferred_asset_id = row["preferred_asset_id"]
-        bpm_value = _to_float_or_none(row["bpm"])
-        duration_value = _to_float_or_none(row["duration_s"])
-        key_value = _text(row["musical_key"])
-        genre_value = _text(row["genre"])
-        artist = _text(row["artist"])
-        title = _text(row["title"])
+    for row in identity_rows:
+        identity_id = int(row["identity_id"])
+        selected_asset = selected_assets.get(identity_id)
+        if selected_asset is None:
+            stats["excluded_no_preferred"] += 1
+            continue
+
+        bpm_value = _to_float_or_none(row["canonical_bpm"])
+        duration_value = _to_float_or_none(row["canonical_duration"])
+        if duration_value is None:
+            duration_value = _to_float_or_none(selected_asset["duration_s"])
+        key_value = _text(row["canonical_key"])
+        genre_value = _text(row["canonical_genre"])
+        artist = _text(row["canonical_artist"])
+        title = _text(row["canonical_title"])
 
         candidate = {
-            "identity_id": int(row["identity_id"]),
+            "identity_id": identity_id,
             "identity_key": _text(row["identity_key"]),
-            "artist": artist,
-            "title": title,
-            "album": _text(row["album"]),
+            "canonical_artist": artist,
+            "canonical_title": title,
+            "canonical_album": _text(row["canonical_album"]),
             "isrc": _text(row["isrc"]),
             "beatport_id": _text(row["beatport_id"]),
-            "bpm": bpm_value,
-            "key": key_value,
-            "genre": genre_value,
-            "sub_genre": _text(row["sub_genre"]),
+            "tidal_id": _text(row["tidal_id"]),
+            "qobuz_id": _text(row["qobuz_id"]),
+            "canonical_bpm": bpm_value,
+            "canonical_key": key_value,
+            "canonical_genre": genre_value,
+            "canonical_sub_genre": _text(row["canonical_sub_genre"]),
+            "canonical_year": _to_int_or_none(row["canonical_year"]) or "",
             "duration_s": duration_value,
-            "preferred_asset_id": int(preferred_asset_id) if preferred_asset_id is not None else "",
-            "preferred_path": _text(row["asset_path"]),
-            "sample_rate": row["sample_rate"] if row["sample_rate"] is not None else "",
-            "bit_depth": row["bit_depth"] if row["bit_depth"] is not None else "",
-            "integrity_state": _text(row["integrity_state"]),
+            "selected_asset_id": int(selected_asset["asset_id"]),
+            "selected_asset_path": _text(selected_asset["path"]),
+            "selected_asset_format": _path_format(selected_asset["path"]),
+            "selected_asset_bitrate": _to_int_or_none(selected_asset["bitrate"]) or "",
+            "sample_rate": (
+                _to_int_or_none(selected_asset["sample_rate"])
+                if selected_asset["sample_rate"] is not None
+                else ""
+            ),
+            "bit_depth": (
+                _to_int_or_none(selected_asset["bit_depth"])
+                if selected_asset["bit_depth"] is not None
+                else ""
+            ),
+            "integrity_state": _text(selected_asset["integrity_state"]),
             "enriched_at": _text(row["identity_enriched_at"]),
             "status": _text(row["identity_status"]) or "unknown",
         }
@@ -248,7 +438,13 @@ def _build_rows(
         stats["missing_core_fields_count"] += int(flags["missing_core_fields"])
         out_rows.append(candidate)
 
-    out_rows.sort(key=lambda item: (str(item["artist"]).casefold(), str(item["title"]).casefold(), int(item["identity_id"])))
+    out_rows.sort(
+        key=lambda item: (
+            str(item["canonical_artist"]).casefold(),
+            str(item["canonical_title"]).casefold(),
+            int(item["identity_id"]),
+        )
+    )
     stats["exported_rows"] = len(out_rows)
     return out_rows, stats
 
@@ -265,18 +461,23 @@ def _write_csv(path: Path, rows: list[dict[str, object]], limit: int | None) -> 
                 {
                     "identity_id": row["identity_id"],
                     "identity_key": row["identity_key"],
-                    "artist": row["artist"],
-                    "title": row["title"],
-                    "album": row["album"],
+                    "canonical_artist": row["canonical_artist"],
+                    "canonical_title": row["canonical_title"],
+                    "canonical_album": row["canonical_album"],
                     "isrc": row["isrc"],
                     "beatport_id": row["beatport_id"],
-                    "bpm": "" if row["bpm"] is None else row["bpm"],
-                    "key": row["key"],
-                    "genre": row["genre"],
-                    "sub_genre": row["sub_genre"],
+                    "tidal_id": row["tidal_id"],
+                    "qobuz_id": row["qobuz_id"],
+                    "canonical_bpm": "" if row["canonical_bpm"] is None else row["canonical_bpm"],
+                    "canonical_key": row["canonical_key"],
+                    "canonical_genre": row["canonical_genre"],
+                    "canonical_sub_genre": row["canonical_sub_genre"],
+                    "canonical_year": row["canonical_year"],
                     "duration_s": "" if row["duration_s"] is None else row["duration_s"],
-                    "preferred_asset_id": row["preferred_asset_id"],
-                    "preferred_path": row["preferred_path"],
+                    "selected_asset_id": row["selected_asset_id"],
+                    "selected_asset_path": row["selected_asset_path"],
+                    "selected_asset_format": row["selected_asset_format"],
+                    "selected_asset_bitrate": row["selected_asset_bitrate"],
                     "sample_rate": row["sample_rate"],
                     "bit_depth": row["bit_depth"],
                     "integrity_state": row["integrity_state"],

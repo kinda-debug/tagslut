@@ -10,7 +10,7 @@ def _setup_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
     create_schema_v3(conn)
-    conn.execute("INSERT INTO track_identity (id, identity_key) VALUES (1, 'identity:1')")
+    conn.execute("INSERT INTO track_identity (id, identity_key, ingested_at, ingestion_method, ingestion_source, ingestion_confidence) VALUES (1, 'identity:1', '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')")
     conn.commit()
     return conn
 

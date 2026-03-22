@@ -281,31 +281,61 @@ def load_db_rows(
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
-    cur.execute(
-        """
-        SELECT
-            path,
-            canonical_isrc,
-            beatport_id,
-            tidal_id,
-            canonical_title,
-            canonical_artist,
-            canonical_album,
-            bit_depth,
-            sample_rate,
-            bitrate,
-            metadata_json,
-            download_source,
-            quality_rank
-        FROM files
-        """
-    )
 
     by_isrc: dict[str, list[DbRow]] = defaultdict(list)
     by_beatport: dict[str, list[DbRow]] = defaultdict(list)
     by_tidal: dict[str, list[DbRow]] = defaultdict(list)
     by_exact3: dict[str, list[DbRow]] = defaultdict(list)
     by_exact2: dict[str, list[DbRow]] = defaultdict(list)
+
+    try:
+        cur.execute(
+            """
+            SELECT
+                af.path,
+                ti.isrc                 AS canonical_isrc,
+                ti.beatport_id,
+                ti.tidal_id,
+                ti.canonical_title,
+                ti.canonical_artist,
+                ti.canonical_album,
+                af.bit_depth,
+                af.sample_rate,
+                af.bitrate,
+                af.download_source,
+                NULL                    AS metadata_json,
+                NULL                    AS quality_rank
+            FROM asset_file af
+            JOIN asset_link al ON al.asset_id = af.id AND al.active = 1
+            JOIN track_identity ti
+                ON ti.id = al.identity_id
+                AND ti.merged_into_id IS NULL
+            """
+        )
+    except sqlite3.OperationalError:
+        try:
+            cur.execute(
+                """
+                SELECT
+                    path,
+                    canonical_isrc,
+                    beatport_id,
+                    tidal_id,
+                    canonical_title,
+                    canonical_artist,
+                    canonical_album,
+                    bit_depth,
+                    sample_rate,
+                    bitrate,
+                    metadata_json,
+                    download_source,
+                    quality_rank
+                FROM files
+                """
+            )
+        except sqlite3.OperationalError:
+            conn.close()
+            return by_isrc, by_beatport, by_tidal, by_exact3, by_exact2
 
     for r in cur.fetchall():
         meta = parse_json(r["metadata_json"])

@@ -1,45 +1,62 @@
-<!-- Status: Active document. Synced 2026-03-22 after credential consolidation phase 1 and tools/get fix. -->
+<!-- Status: Active document. Synced 2026-03-22 after dual-write fix and intake pipeline hardening. -->
 
 # Progress Report
 
 Report date: March 22, 2026
 
-## Session: 2026-03-22 (pass 3) — Credential Consolidation Phase 1 + tools/get fix
+## Session: 2026-03-22 (pass 4) — Intake pipeline v3 fix + `--backfill` mode
 
-**Task**: Fix credential precedence, add token-get CLI, migrate harvest scripts,
-document credential model. Fix tools/get FORWARD_ARGS zsh bug.
+**Status**: Completed — commits `ed6f47c`, `6acc6db`, `d70ed93`, pending commit.
 
-**Status**: Completed — commits `249ac8d` (credential consolidation) + cherry-pick
-from `fix/get-forward-args-zsh` branch (tools/get fix). 7 files changed total.
+**Root cause identified and fixed**: `dual_write` config flag was `false` by default
+(no `~/.config/tagslut/config.toml` existed). Every intake run wrote to the legacy
+`files` table only. The v3 `asset_file` + `track_identity` tables were never populated,
+making the entire DJ pipeline invisible to new files.
 
 **What was done**:
 
-1. **beatport.py precedence fix** — `_auth_config()` now checks `TokenManager`
-   first, env vars as fallback with `logger.warning`. All three credential fields
-   affected: bearer token, catalog username, catalog password.
+1. **`~/.config/tagslut/config.toml` created** with `dual_write = true`. This is the
+   single fix that unblocks all v3/DJ functionality. Documented in `.env.example`.
 
-2. **`tagslut auth token-get <provider>`** — new CLI subcommand. Prints only the
-   raw access token to stdout (suitable for shell capture). Exits 1 with error
-   on stderr when token is missing or expired. Supports `beatport` and `tidal`.
+2. **`tools/get --backfill` mode added** (`ed6f47c`) — new mode that downloads only
+   missing tracks from a provider URL, then registers + enriches (DJ tags always
+   included) + promotes. Existing files in the batch root are not re-downloaded.
+   Usage: `tools/get --backfill https://tidal.com/album/XXXXX/u`
 
-3. **Harvest scripts** — both `beatport_harvest_my_tracks.sh` and
-   `beatport_harvest_catalog_track.sh` now use:
-   `BEATPORT_ACCESS_TOKEN=$(tagslut auth token-get beatport 2>/dev/null)`
-   `source env_exports.sh` removed entirely.
+3. **`index register` default changed to `--no-prompt`** (`6acc6db`) — was blocking
+   on every similar-file match during batch processing. Now auto-skips silently.
+   Pass `--prompt` explicitly for interactive review.
 
-4. **`tests/cli/test_auth_token_get.py`** — 4 new tests: happy path, missing
-   token, expired token, unsupported provider. All passing.
+4. **`post_move_enrich_art.py` patched** (`d70ed93` + this session):
+   - Added `dual_write_registered_file()` call per promoted FLAC after intake,
+     populating `asset_file` + `track_identity` automatically going forward.
+   - Added `compute_identity_statuses()` + `compute_preferred_assets()` refresh
+     at end of every background enrich run, keeping DJ candidate view current.
 
-5. **`docs/CREDENTIAL_MANAGEMENT.md`** — operator-facing guide documenting
-   tokens.json-first model, per-provider setup, token-get usage, precedence
-   rule, Postman note, token rotation.
+5. **One-time DB backfill**: 174 files already in MASTER_LIBRARY were backfilled
+   into v3 schema manually (Python script). Canonical fields synced from `files`
+   → `track_identity`. `identity_status` and `preferred_asset` populated.
+   Result: `v_dj_pool_candidates_active_v3` = 170 rows, DJ pipeline functional.
 
-6. **tools/get FORWARD_ARGS fix** — empty array expansion in zsh (`${FORWARD_ARGS[@]}`
-   with `set -u`) caused `unbound variable` error. Fixed with safe expansion:
-   `${FORWARD_ARGS[@]+"${FORWARD_ARGS[@]}"}`. Verified working:
-   `tools/get https://tidal.com/album/497862476/u` — 18 tracks downloaded.
+6. **Orphan cleanup**: 24,603 `files` rows written by a premature `index register`
+   run (before dual_write was enabled) were deleted. DB is clean.
 
-**Tests run**: `tests/metadata/ -k beatport` + `tests/cli/ -k token_get` — ALL PASS.
+**DB state after this session**:
+- `files`: 174 rows (legacy, enriched)
+- `asset_file`: 174 rows (v3)
+- `track_identity`: 170 rows (all with ISRC, canonical fields populated)
+- `identity_status`: 170 active
+- `preferred_asset`: 170
+- `v_dj_pool_candidates_active_v3`: 170 ✅
+
+---
+
+## Session: 2026-03-22 (pass 3) — Credential Consolidation Phase 1 + tools/get fix
+
+**Status**: Completed — commits `249ac8d` + cherry-pick from `fix/get-forward-args-zsh`.
+
+**What was done**: beatport.py precedence fix, `tagslut auth token-get` CLI,
+harvest scripts migrated, `CREDENTIAL_MANAGEMENT.md` written, FORWARD_ARGS zsh fix.
 
 ---
 
@@ -47,48 +64,41 @@ from `fix/get-forward-args-zsh` branch (tools/get fix). 7 files changed total.
 
 **Status**: Completed — commit `bef5931`, 6 files, 16 tests passing.
 
-Legacy init_db path updated, CHECK constraints added, test fixtures fixed,
-`DB_V3_SCHEMA.md` updated with vocabulary tables.
-
 ---
 
 ## Session: 2026-03-22 (pass 1) — Migration 0012 prompt written
 
-**Status**: Completed. `.github/prompts/migration-0012-provenance.prompt.md` written
-and committed. All blocking decisions resolved in the prompt.
+**Status**: Completed.
 
 ---
 
 ## Session: 2026-03-21 (pass 8) — TIDAL OAuth Refactor
 
-**Status**: Completed — commit `3a3595c`. Global mutable state removed, monotonic
-clock, private naming, docstring restored. No behaviour changes.
+**Status**: Completed — commit `3a3595c`.
 
 ---
 
 ## Session: 2026-03-21 (pass 7) — Postman Collection-Level Token Guard
 
-**Status**: Completed — commit `14c9e29`. Postman agent track fully complete.
+**Status**: Completed — commit `14c9e29`.
 
 ---
 
 ## Session: 2026-03-21 (pass 6) — Postman Validation Run + Spotify Chain
 
-**Status**: Completed — commit `37619ae`. `5c` Spotify, Validation Run folder.
+**Status**: Completed — commit `37619ae`.
 
 ---
 
 ## Session: 2026-03-21 (pass 5) — Postman API Collection + Multi-Provider ID Policy
 
-**Status**: Completed — commit `6ab432b`. Collection cleanup, ISRC auth, Identity
-Verification chain, multi-provider ID policy, five-tier confidence model.
+**Status**: Completed — commit `6ab432b`.
 
 ---
 
-## Session: 2026-03-21 (pass 4) — Repo Cleanup, DB Epoch Management, Context Bundle
+## Session: 2026-03-21 (pass 4) — Repo Cleanup, DB Epoch Management
 
-**Status**: Completed. Epoch renamed, artifacts archived, PROJECT_DIRECTIVES.md,
-ROADMAP revised.
+**Status**: Completed.
 
 ---
 

@@ -1,7 +1,7 @@
 # tagslut — Agent Roadmap
 
 <!-- Status: Active. Update as tasks complete or delegate assignments change. -->
-<!-- Last updated: 2026-03-22 — cleanup follow-up synced -->
+<!-- Last updated: 2026-03-22 — dual-write fix, --backfill mode, v3 pipeline operational -->
 
 This document maps all open work to the agent that should execute it.
 Update it when tasks complete or priorities shift.
@@ -16,8 +16,8 @@ Update it when tasks complete or priorities shift.
 3. Migration 0013 — five-tier CHECK (§16) ← COMPLETE (included in 0012)
 4. Fresh DB initialization (§10)        ← COMPLETE (db + env + settings + storage tests)
 5. Repo cleanup (§13)                   ← COMPLETE
-6. Phase 1 PR chain (§2)               ← NEXT (unblocked)
-7. DJ pipeline hardening (§3)          ← after Phase 1
+6. Phase 1 PR chain (§2)               ← COMPLETE (PRs 9-13 done, PR 14 in progress)
+7. DJ pipeline hardening (§3)          ← UNBLOCKED (Phase 1 complete)
 ```
 
 Items 6 and 7 must not be started until items 1–4 are confirmed complete.
@@ -103,7 +103,7 @@ PR 12 prompt exists at `.github/prompts/phase1-pr12-identity-merge.prompt.md`.
 
 ---
 
-## 3 — DJ pipeline → **Codex** ⛔ BLOCKED until Phase 1 lands
+## 3 — DJ pipeline → **Codex** ▶ UNBLOCKED (Phase 1 complete)
 
 ### 3.1 DJ pipeline hardening
 
@@ -132,7 +132,7 @@ Prompt: `.github/prompts/lexicon-reconcile.prompt.md`
 
 ---
 
-## 5 — Intake pipeline hardening → **Codex** (after §1 merged)
+## 5 — Intake pipeline hardening → **Codex** ▶ UNBLOCKED
 
 - `precheck_inventory_dj` fallback for `--dj`-only runs without `--m3u`
 - `intake_pretty_summary` counter accuracy

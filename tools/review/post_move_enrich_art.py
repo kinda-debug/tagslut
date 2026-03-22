@@ -154,6 +154,61 @@ def main() -> int:
         else:
             print("Post-move cover-art embedding complete.")
 
+    # Register promoted files into v3 schema (asset_file + track_identity) via dual_write.
+    # Reads embedded FLAC tags (ISRC, artist, title, BPM) and calls dual_write_registered_file()
+    # per file. No-op for files already registered. Safe to run on every intake.
+    try:
+        from tagslut.storage.v3.dual_write import dual_write_enabled, dual_write_registered_file
+        if dual_write_enabled():
+            try:
+                from mutagen.flac import FLAC as MutagenFLAC
+            except ImportError:
+                MutagenFLAC = None
+            if MutagenFLAC is None:
+                print("WARNING: mutagen not available; skipping v3 dual-write register")
+            else:
+                registered = 0
+                with sqlite3.connect(str(db_path)) as dw_conn:
+                    dw_conn.row_factory = sqlite3.Row
+                    dw_conn.execute("PRAGMA foreign_keys=ON")
+                    for path in file_paths:
+                        if not path.exists() or path.suffix.lower() != ".flac":
+                            continue
+                        try:
+                            tags = MutagenFLAC(str(path))
+                            def _tag(k): v=tags.get(k,[]); return v[0].strip() if v else None
+                            stat = path.stat()
+                            dual_write_registered_file(
+                                dw_conn,
+                                path=str(path),
+                                content_sha256=None, streaminfo_md5=None, checksum=None,
+                                size_bytes=stat.st_size, mtime=stat.st_mtime,
+                                duration_s=tags.info.length if tags.info else None,
+                                sample_rate=tags.info.sample_rate if tags.info else None,
+                                bit_depth=tags.info.bits_per_sample if tags.info else None,
+                                bitrate=int(tags.info.bitrate) if tags.info else None,
+                                library="MASTER_LIBRARY", zone="accepted",
+                                download_source="tidal", download_date=None,
+                                mgmt_status="promoted_to_final_library",
+                                metadata={
+                                    "isrc": _tag("isrc"),
+                                    "artist": _tag("artist") or _tag("albumartist"),
+                                    "title": _tag("title"),
+                                    "bpm": _tag("bpm") or _tag("tempo"),
+                                },
+                                duration_ref_ms=int(tags.info.length*1000) if tags.info else None,
+                                duration_ref_source="tidal",
+                            )
+                            registered += 1
+                        except Exception as e:
+                            print(f"WARNING: dual_write failed for {path}: {e}")
+                    dw_conn.commit()
+                print(f"V3 dual-write register: {registered}/{len(file_paths)} file(s)")
+        else:
+            print("V3 dual-write disabled (set dual_write=true in ~/.config/tagslut/config.toml)")
+    except Exception as exc:
+        print(f"WARNING: v3 dual-write register failed: {exc}")
+
     # Refresh v3 identity status and preferred assets so DJ views stay current.
     try:
         from tagslut.storage.v3.identity_status import compute_identity_statuses, upsert_identity_statuses

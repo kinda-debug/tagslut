@@ -93,12 +93,13 @@ Commits: 730d2b1, 2fb2a50, 3f3f37d, bf3df38
 | 9 | Migration 0006 merge | `fix/migration-0006` | COMPLETE (commit 5995983) |
 | 10 | Identity service | `fix/identity-service` | COMPLETE (commit 767df22) |
 | 11 | Backfill command | `fix/backfill-v3` | COMPLETE (commit 1e965b0) |
-| 12 | Identity merge | not started | Needs prompt — current gate |
+| 12 | Identity merge | not started | Prompt ready — current gate |
 | 13 | DJ candidate export | not started | Needs prompt |
 | 14 | docs/AGENT update | not started | After 13 |
 | 15 | Phase 2 seam | not started | Needs design first |
 
-PRs 12–15 need prompts authored in Claude.ai before Codex can execute them.
+PRs 13–15 need prompts authored in Claude.ai before Codex can execute them.
+PR 12 prompt exists at `.github/prompts/phase1-pr12-identity-merge.prompt.md`.
 
 ---
 

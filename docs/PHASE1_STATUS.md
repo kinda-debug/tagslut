@@ -12,8 +12,8 @@
 | 6 | migration scaffold | MERGED | -- | -- |
 | 7 | zone/env rename | MERGED | -- | -- |
 | 8 | baseline snapshot | MERGED | -- | 2-7 |
-| 9 | migration 0006 | IN PROGRESS | fix/migration-0006 | 8 |
-| 10 | identity service | READY | fix/identity-service | 9 |
+| 9 | migration 0006 | MERGED | fix/migration-0006 | 8 |
+| 10 | identity service | IN PROGRESS | fix/identity-service | 9 |
 | 11 | backfill command | READY | fix/backfill-v3 | 10 |
 | 12 | identity merge | NOT STARTED | -- | 10 |
 | 13 | DJ candidate export | NOT STARTED | -- | 11 |
@@ -21,12 +21,15 @@
 | 15 | Phase 2 seam | NOT STARTED | -- | 14 |
 
 ## Current Gate
-Stage 2: migration 0006 is the active blocker.
 
-Status note (2026-03-09):
-- `fix/migration-0006` contains `0007_v3_isrc_partial_unique.py` at commit `d853b0a`; the partial unique ISRC behavior was verified in a detached worktree before merge.
-- The 6-item action list covering `link_asset_to_identity`, race-safe identity creation, mirror visibility warnings, fuzzy prefiltering, and legacy `library_tracks` verification is complete.
-- PR 9 merge remains the gate before PRs 10 (`fix/identity-service`) and 11 (`fix/backfill-v3`) can land.
+Stage 3: identity service is the active blocker.
+
+Status note (2026-03-22):
+
+- PR 9 (migration 0006) merged into dev at commit 5995983.
+- PR 9 validation: 2/2 migration tests, 6/6 migration runner, 9/9 transaction boundary tests all passing.
+- PR 9 work included: merge-lineage assertions enforcement, legacy mirror sync on merge, ISRC copy-on-blank during merge.
+- PR 10 (`fix/identity-service`) is now the active gate. Branch synced clean from dev at commit f091b01.
 - Use `tools/review/sync_phase1_prs.sh` to push the migration, identity, and DJ-enrichment worktrees without collapsing their PR scope boundaries.
 
 Update this as PRs merge. Codex can read it when needed, and you can reference it in prompts with "check docs/PHASE1_STATUS.md for current state."

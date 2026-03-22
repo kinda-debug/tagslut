@@ -311,34 +311,6 @@ def _run_ffmpeg_transcode(
     *,
     bitrate: int,
     ffmpeg_path: str | None,
-) -> None:
-    cmd = [
-        ffmpeg_path or "ffmpeg",
-        "-y",
-        "-i",
-        str(source),
-        "-codec:a",
-        "libmp3lame",
-        "-b:a",
-        f"{bitrate}k",
-        "-id3v2_version",
-        "3",
-        "-map_metadata",
-        "-1",
-        str(dest_path),
-    ]
-    logger.debug("Transcoding: %s", " ".join(cmd))
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        raise TranscodeError(
-            f"ffmpeg failed for {source}:\n{result.stderr[-500:]}"
-        )
-def _run_ffmpeg_transcode(
-    source: Path,
-    dest_path: Path,
-    *,
-    bitrate: int,
-    ffmpeg_path: str | None,
     validate_output: bool = True,
 ) -> None:
     cmd = [

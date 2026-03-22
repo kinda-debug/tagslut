@@ -108,7 +108,6 @@ def test_migration_0006_is_idempotent_and_keeps_merged_into_nullable() -> None:
 
         module.up(conn)
         module.up(conn)
-
         conn.execute(
             """
             INSERT INTO track_identity (

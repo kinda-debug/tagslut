@@ -427,3 +427,125 @@ def test_merge_group_by_repointing_assets_rolls_back_without_outer_transaction(
     assert [tuple(row) for row in links] == [(1, 1), (2, 2)]
     assert [tuple(row) for row in preferred] == [(1, 1)]
     conn.close()
+
+
+def test_merge_group_by_repointing_assets_updates_legacy_mirror_and_lineage() -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    create_schema_v3(conn)
+    init_db(conn)
+    try:
+        conn.executemany(
+            "INSERT INTO asset_file (id, path) VALUES (?, ?)",
+            [
+                (1, "/music/a1.flac"),
+                (2, "/music/a2.flac"),
+            ],
+        )
+        conn.executemany(
+            "INSERT INTO files (path, library_track_key) VALUES (?, ?)",
+            [
+                ("/music/a1.flac", "beatport:BP-1-a"),
+                ("/music/a2.flac", "beatport:BP-2-b"),
+            ],
+        )
+        conn.executemany(
+            """
+            INSERT INTO track_identity (
+                id,
+                identity_key,
+                beatport_id,
+                isrc,
+                canonical_artist,
+                canonical_title,
+                enriched_at,
+                ingested_at,
+                ingestion_method,
+                ingestion_source,
+                ingestion_confidence
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    1,
+                    "beatport:BP-1-a",
+                    "BP-1",
+                    "ABC123",
+                    "Artist A",
+                    "Track A",
+                    None,
+                    "2026-01-01T00:00:00+00:00",
+                    "migration",
+                    "test_fixture",
+                    "legacy",
+                ),
+                (
+                    2,
+                    "beatport:BP-2-b",
+                    "BP-2",
+                    None,
+                    None,
+                    None,
+                    "2026-03-04T00:00:00Z",
+                    "2026-01-01T00:00:00+00:00",
+                    "migration",
+                    "test_fixture",
+                    "legacy",
+                ),
+            ],
+        )
+        conn.executemany(
+            "INSERT INTO asset_link (asset_id, identity_id, active) VALUES (?, ?, 1)",
+            [
+                (1, 1),
+                (2, 2),
+            ],
+        )
+
+        merge_group_by_repointing_assets(conn, 2, [1], dry_run=False)
+
+        loser = conn.execute(
+            "SELECT beatport_id, merged_into_id FROM track_identity WHERE id = 1"
+        ).fetchone()
+        winner = conn.execute(
+            "SELECT canonical_artist, canonical_title, isrc FROM track_identity WHERE id = 2"
+        ).fetchone()
+        links = conn.execute(
+            "SELECT asset_id, identity_id FROM asset_link ORDER BY asset_id"
+        ).fetchall()
+        files_rows = conn.execute(
+            """
+            SELECT path, library_track_key, canonical_artist, canonical_title, canonical_isrc
+            FROM files
+            ORDER BY path
+            """
+        ).fetchall()
+        library_track = conn.execute(
+            """
+            SELECT library_track_key, artist, title, isrc
+            FROM library_tracks
+            WHERE library_track_key = ?
+            """,
+            ("beatport:BP-2-b",),
+        ).fetchone()
+
+        assert loser["beatport_id"] is None
+        assert int(loser["merged_into_id"]) == 2
+
+        assert winner["canonical_artist"] == "Artist A"
+        assert winner["canonical_title"] == "Track A"
+        assert winner["isrc"] == "ABC123"
+
+        assert [tuple(row) for row in links] == [(1, 2), (2, 2)]
+        assert [tuple(row) for row in files_rows] == [
+            ("/music/a1.flac", "beatport:BP-2-b", "Artist A", "Track A", "ABC123"),
+            ("/music/a2.flac", "beatport:BP-2-b", "Artist A", "Track A", "ABC123"),
+        ]
+
+        assert library_track is not None
+        assert library_track["library_track_key"] == "beatport:BP-2-b"
+        assert library_track["artist"] == "Artist A"
+        assert library_track["title"] == "Track A"
+        assert library_track["isrc"] == "ABC123"
+    finally:
+        conn.close()

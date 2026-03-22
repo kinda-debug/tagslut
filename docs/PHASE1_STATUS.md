@@ -17,14 +17,15 @@
 | 9 | migration 0006 | MERGED | fix/migration-0006 | 8 |
 | 10 | identity service | MERGED | fix/identity-service | 9 |
 | 11 | backfill command | MERGED | fix/backfill-v3 | 10 |
-| 12 | identity merge | READY | fix/identity-merge | 10 |
+| 12 | identity merge | MERGED | (delivered in 195efc7, merged via fix/migration-0006) | 10 |
 | 13 | DJ candidate export | NOT STARTED | -- | 11 |
 | 14 | docs/AGENT update | NOT STARTED | -- | 13 |
 | 15 | Phase 2 seam | NOT STARTED | -- | 14 |
 
 ## Current Gate
 
-Stage 5: identity merge is the active blocker.
+Stage 5: identity merge - COMPLETE (195efc7).
+Current gate: PR 13 (DJ candidate export). Prompt not yet written.
 
 Status note (2026-03-22):
 
@@ -33,7 +34,7 @@ Status note (2026-03-22):
 - PR 10 implementation: exact-match ISRC/provider_id resolution, fuzzy fallback (artist/title/duration with 92% threshold ±2s), single-merge-hop active identity resolution, legacy mirror dual-write, transaction isolation.
 - PR 11 (backfill command) merged into dev at commit 1e965b0. Validation: 46 focused backfill/DJ tests passing.
 - PR 11 implementation: preserved chosen exact-match winner during V3 backfill, updated stale provenance fixtures for post-0012 `track_identity` inserts, and kept backfill batch transaction behavior intact.
-- PR 12 (identity merge) is now the active gate. Prompt ready: `.github/prompts/phase1-pr12-identity-merge.prompt.md`.
+- PR 12 (identity merge) is complete: delivered in 195efc7, merged via fix/migration-0006.
 - Use `tools/review/sync_phase1_prs.sh` to push the migration, identity, and DJ-enrichment worktrees without collapsing their PR scope boundaries.
 
 Update this as PRs merge. Codex can read it when needed, and you can reference it in prompts with "check docs/PHASE1_STATUS.md for current state."

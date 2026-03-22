@@ -93,7 +93,7 @@ Commits: 730d2b1, 2fb2a50, 3f3f37d, bf3df38
 | 9 | Migration 0006 merge | `fix/migration-0006` | COMPLETE (commit 5995983) |
 | 10 | Identity service | `fix/identity-service` | COMPLETE (commit 767df22) |
 | 11 | Backfill command | `fix/backfill-v3` | COMPLETE (commit 1e965b0) |
-| 12 | Identity merge | `fix/identity-merge` | Prompt ready — current gate |
+| 12 | Identity merge | `fix/identity-merge` | COMPLETE (195efc7, delivered via fix/migration-0006) |
 | 13 | DJ candidate export | -- | Needs prompt |
 | 14 | docs/AGENT update | -- | After 13 |
 | 15 | Phase 2 seam | -- | Needs design first |

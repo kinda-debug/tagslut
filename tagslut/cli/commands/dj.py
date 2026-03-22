@@ -1301,27 +1301,53 @@ def dj_validate(
     import sqlite3
     import sys
 
-    from tagslut.dj.admission import validate_dj_library
+    from tagslut.dj.admission import record_validation_state, validate_dj_library
+    from tagslut.dj.xml_emit import _build_export_scope
     from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
 
     try:
         resolved_db = resolve_cli_env_db_path(
-            db_path, purpose="read", source_label="--db"
+            db_path, purpose="write", source_label="--db"
         ).path
     except DbResolutionError as exc:
         raise click.ClickException(str(exc)) from exc
 
+    report = None
+    state_hash: str | None = None
+    record_warning: str | None = None
     conn = sqlite3.connect(str(resolved_db))
     try:
         report = validate_dj_library(conn)
+        try:
+            _scope_payload, state_hash = _build_export_scope(conn, playlist_scope=None)
+            record_validation_state(
+                conn,
+                state_hash=state_hash,
+                issue_count=len(report.issues),
+                passed=report.ok,
+                summary=report.summary(),
+            )
+            conn.commit()
+        except sqlite3.OperationalError as exc:
+            record_warning = (
+                "WARNING: dj validation state was not recorded; "
+                f"{exc}"
+            )
     finally:
         conn.close()
 
+    if record_warning:
+        click.echo(record_warning, err=True)
+
     if report.ok:
         click.secho(report.summary(), fg="green")
+        if state_hash:
+            click.echo(f"state_hash: {state_hash}")
         sys.exit(0)
 
     click.secho(report.summary(), fg="red", err=True)
+    if state_hash:
+        click.echo(f"state_hash: {state_hash}", err=True)
     if not verbose:
         click.echo(
             f"  ({len(report.issues)} issue(s) — use --verbose for details)",

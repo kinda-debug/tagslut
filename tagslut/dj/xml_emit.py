@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+import sys
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,6 +26,18 @@ def _path_to_location(path: str) -> str:
     # Rekordbox on macOS expects file://localhost/absolute/path
     encoded = quote(str(resolved_path), safe="/:")
     return f"file://localhost{encoded}"
+
+
+def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (table_name,),
+    ).fetchone()
+    return row is not None
+
+
+def _warn_stderr(message: str) -> None:
+    sys.stderr.write(f"{message}\n")
 
 
 def _build_track_element(
@@ -258,18 +271,49 @@ def _assign_track_ids(
     return assigned
 
 
-def _run_pre_emit_validation(conn: sqlite3.Connection) -> None:
-    """Raise ValueError if any blocking validation issues are found."""
-    from tagslut.dj.admission import validate_dj_library
+def _run_inline_validation(conn: sqlite3.Connection) -> None:
+    from tagslut.dj.admission import DjValidationReport, validate_dj_library
 
     report = validate_dj_library(conn)
     blocking = [i for i in report.issues if i.kind in (
         "MISSING_MP3_FILE", "DUPLICATE_MP3_PATH", "MISSING_METADATA"
     )]
     if blocking:
-        from tagslut.dj.admission import DjValidationReport
         partial = DjValidationReport(issues=blocking)
         raise ValueError(f"Pre-emit validation failed:\n{partial.summary()}")
+
+
+def _run_pre_emit_validation(conn: sqlite3.Connection) -> None:
+    """Enforce a recorded passing validation for the current DB state."""
+    _scope_payload, state_hash = _build_export_scope(conn, playlist_scope=None)
+
+    if not _table_exists(conn, "dj_validation_state"):
+        _warn_stderr(
+            "WARNING: dj_validation_state table not found; "
+            "falling back to inline pre-emit validation. "
+            "Run v3 migrations to enable the validation gate."
+        )
+        _run_inline_validation(conn)
+        return
+
+    row = conn.execute(
+        """
+        SELECT id
+        FROM dj_validation_state
+        WHERE passed = 1 AND state_hash = ?
+        ORDER BY validated_at DESC, id DESC
+        LIMIT 1
+        """,
+        (state_hash,),
+    ).fetchone()
+    if row is None:
+        raise ValueError(
+            "Pre-emit validation gate: no passing 'dj validate' run found for current DB state.\n"
+            "Run 'tagslut dj validate' first, then retry 'tagslut dj xml emit'.\n"
+            f"(Current state_hash: {state_hash})"
+        )
+
+    _run_inline_validation(conn)
 
 
 def emit_rekordbox_xml(
@@ -288,7 +332,11 @@ def emit_rekordbox_xml(
     Returns the SHA-256 manifest hash of the written file.
     Raises ValueError if validation fails or no active admissions exist.
     """
-    if not skip_validation:
+    if skip_validation:
+        _warn_stderr(
+            "WARNING: --skip-validation bypasses DJ library integrity checks. Use only for emergencies."
+        )
+    else:
         _run_pre_emit_validation(conn)
 
     rows = _fetch_active_admissions(conn)

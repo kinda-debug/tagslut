@@ -233,3 +233,29 @@ def validate_dj_library(conn: sqlite3.Connection) -> DjValidationReport:
         )
 
     return report
+
+
+def record_validation_state(
+    conn: sqlite3.Connection,
+    *,
+    state_hash: str,
+    issue_count: int,
+    passed: bool,
+    summary: str | None = None,
+) -> int:
+    """Insert a dj_validation_state row and return its id."""
+    cur = conn.execute(
+        """
+        INSERT INTO dj_validation_state
+          (validated_at, state_hash, issue_count, passed, summary)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            _now_iso(),
+            state_hash,
+            issue_count,
+            1 if passed else 0,
+            summary,
+        ),
+    )
+    return cur.lastrowid  # type: ignore[return-value]

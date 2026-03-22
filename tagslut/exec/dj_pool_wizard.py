@@ -1130,6 +1130,8 @@ def execute_plan(
                     overwrite=(cache_overwrite_policy == "always"),
                     ffmpeg_path=ffmpeg_path,
                     dest_path=cache_dest,
+                            # TranscodeError from _validate_mp3_output() is caught here alongside
+                            # ffmpeg exit-code failures. Both produce "transcode_failed" entries.
                 )
             except Exception as exc:
                 failures.append(_failure(row, "transcode_failed", str(exc)))

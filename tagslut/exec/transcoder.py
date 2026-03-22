@@ -333,12 +333,74 @@ def _run_ffmpeg_transcode(
         raise TranscodeError(
             f"ffmpeg failed for {source}:\n{result.stderr[-500:]}"
         )
+def _run_ffmpeg_transcode(
+    source: Path,
+    dest_path: Path,
+    *,
+    bitrate: int,
+    ffmpeg_path: str | None,
+    validate_output: bool = True,
+) -> None:
+    cmd = [
+        ffmpeg_path or "ffmpeg",
+        "-y",
+        "-i",
+        str(source),
+        "-codec:a",
+        "libmp3lame",
+        "-b:a",
+        f"{bitrate}k",
+        "-id3v2_version",
+        "3",
+        "-map_metadata",
+        "-1",
+        str(dest_path),
+    ]
+    logger.debug("Transcoding: %s", " ".join(cmd))
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise TranscodeError(
+            f"ffmpeg failed for {source}:\n{result.stderr[-500:]}"
+        )
+    if validate_output:
+        _validate_mp3_output(dest_path)
 
 
 def sync_dj_mp3_from_flac(mp3_path: Path, source_flac: Path) -> None:
     """Refresh DJ MP3 tags/artwork from an enriched source FLAC."""
     flac_tags = FLAC(source_flac)
     _apply_id3_tags(mp3_path, flac_tags, prune_existing=False)
+
+
+def _validate_mp3_output(path: Path, *, min_size_bytes: int = 4096) -> None:
+    """Validate that a transcoded MP3 is playable and has readable ID3 tags.
+
+    Raises TranscodeError on any validation failure so callers can treat the
+    file as failed rather than silently accepting a corrupt output.
+
+    Checks:
+    1. File exists and is not empty.
+    2. File size >= min_size_bytes (default 4KB — filters truncated writes).
+    3. mutagen can parse the file as an MP3 (catches codec/container errors).
+    4. Parsed duration > 1.0 seconds (filters silent/near-empty transcodes).
+    """
+    if not path.exists():
+        raise TranscodeError(f"transcode output missing: {path}")
+    size = path.stat().st_size
+    if size < min_size_bytes:
+        raise TranscodeError(
+            f"transcode output suspiciously small ({size} bytes): {path}"
+        )
+    try:
+        from mutagen.mp3 import MP3
+        audio = MP3(str(path))
+        duration = audio.info.length if audio.info else 0.0
+    except Exception as exc:
+        raise TranscodeError(f"transcode output unreadable by mutagen: {path}: {exc}") from exc
+    if duration < 1.0:
+        raise TranscodeError(
+            f"transcode output duration too short ({duration:.2f}s): {path}"
+        )
 
 
 def _empty_id3() -> ID3:

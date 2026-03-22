@@ -154,6 +154,23 @@ def main() -> int:
         else:
             print("Post-move cover-art embedding complete.")
 
+    # Refresh v3 identity status and preferred assets so DJ views stay current.
+    try:
+        from tagslut.storage.v3.identity_status import compute_identity_statuses, upsert_identity_statuses
+        from tagslut.storage.v3.preferred_asset import compute_preferred_assets, upsert_preferred_assets
+        with sqlite3.connect(str(db_path)) as v3_conn:
+            v3_conn.row_factory = sqlite3.Row
+            v3_conn.execute("PRAGMA foreign_keys=ON")
+            statuses = compute_identity_statuses(v3_conn)
+            upsert_identity_statuses(v3_conn, statuses, version=1)
+            preferred = compute_preferred_assets(v3_conn)
+            upsert_preferred_assets(v3_conn, preferred, version=1)
+            active = v3_conn.execute("SELECT COUNT(*) FROM identity_status WHERE status='active'").fetchone()[0]
+            pref = v3_conn.execute("SELECT COUNT(*) FROM preferred_asset").fetchone()[0]
+            print(f"V3 status refresh: {active} active identities, {pref} preferred assets")
+    except Exception as exc:
+        print(f"WARNING: v3 status/preferred refresh failed: {exc}")
+
     return exit_code
 
 

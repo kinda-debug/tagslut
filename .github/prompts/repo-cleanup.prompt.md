@@ -81,7 +81,6 @@ Scripts to evaluate for archiving (do NOT move without reading first):
   scripts/bootstrap_relink_db.py                 ← one-off relink
   scripts/capture_post_release_snapshot.py       ← one-off snapshot
   scripts/classify_tracks_sqlite.py              ← pre-v3 classifier
-  scripts/extract_tracklists_from_links.py       ← one-off extract
   scripts/filter_songshift_existing.py           ← Spotify/Songshift, retired
   scripts/make_phase_v3_playlists.py             ← phase-specific, likely done
   scripts/reconcile_track_overrides.py           ← verify if still needed
@@ -90,6 +89,7 @@ Scripts to evaluate for archiving (do NOT move without reading first):
 Scripts to keep unconditionally (do not touch):
   scripts/audit_repo_layout.py                   ← referenced in CI
   scripts/backfill_v3_identity_links.py          ← active, in roadmap
+  scripts/extract_tracklists_from_links.py       ← ACTIVE dependency of pre_download_check.py (DO NOT ARCHIVE)
   scripts/check_cli_docs_consistency.py          ← referenced in CI
   scripts/check_hardcoded_paths.sh               ← referenced in CI
   scripts/library_export.py                      ← active

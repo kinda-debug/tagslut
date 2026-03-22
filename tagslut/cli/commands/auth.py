@@ -134,6 +134,37 @@ def register_auth_group(cli: click.Group) -> None:
         else:
             click.echo(f"Unknown provider: {provider}")
 
+    @auth.command("token-get")
+    @click.argument("provider")
+    @click.option('--tokens-path', type=click.Path(), help='Path to tokens.json')
+    def auth_token_get(provider, tokens_path):  # type: ignore  # TODO: mypy-strict
+        """
+        Print only the access token for a provider.
+
+        Intended for shell capture, for example:
+          BEATPORT_ACCESS_TOKEN=$(tagslut auth token-get beatport)
+        """
+        from tagslut.metadata.auth import DEFAULT_TOKENS_PATH, TokenManager
+
+        if provider not in {"beatport", "tidal"}:
+            click.echo(f"Error: Unsupported provider '{provider}'. Use beatport or tidal.", err=True)
+            raise SystemExit(1)
+
+        path = Path(tokens_path) if tokens_path else DEFAULT_TOKENS_PATH
+        token_manager = TokenManager(path)
+        token = token_manager.ensure_valid_token(provider)
+
+        if token and token.access_token and not token.is_expired:
+            click.echo(token.access_token)
+            return
+
+        provider_name = "Beatport" if provider == "beatport" else "Tidal"
+        click.echo(
+            f"Error: No valid {provider_name} token. Run 'tagslut auth login {provider}'.",
+            err=True,
+        )
+        raise SystemExit(1)
+
     @auth.command("login")
     @click.argument('provider')
     @click.option('--tokens-path', type=click.Path(), help='Path to tokens.json')

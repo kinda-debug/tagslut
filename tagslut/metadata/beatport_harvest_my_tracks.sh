@@ -5,7 +5,6 @@
 # and writes normalized NDJSON rows to beatport_my_tracks.ndjson.
 #
 # Usage:
-#   source ./env_exports.sh
 #   ./beatport_harvest_my_tracks.sh
 #
 # Output: beatport_my_tracks.ndjson (one JSON object per line)
@@ -20,7 +19,14 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-source "${PROJECT_ROOT}/env_exports.sh"
+
+# Get Beatport token from TokenManager (System B)
+if ! BEATPORT_ACCESS_TOKEN="$(tagslut auth token-get beatport 2>/dev/null)"; then
+    echo "ERROR: No valid Beatport token." >&2
+    echo "Run: tagslut auth login beatport" >&2
+    exit 1
+fi
+export BEATPORT_ACCESS_TOKEN
 
 OUTPUT="${BEATPORT_MY_TRACKS_NDJSON:-beatport_my_tracks.ndjson}"
 LOG_FILE="${BEATPORT_MY_TRACKS_LOG:-beatport_my_tracks.log}"
@@ -49,11 +55,7 @@ log "  RATE_LIMIT_DELAY: $RATE_LIMIT_DELAY"
 log "=========================================="
 
 # Check for required token
-TOKEN="${BEATPORT_ACCESS_TOKEN:-}"
-if [ -z "$TOKEN" ]; then
-    log "ERROR: BEATPORT_ACCESS_TOKEN not set. Source env_exports.sh first."
-    exit 1
-fi
+TOKEN="${BEATPORT_ACCESS_TOKEN}"
 
 touch "$OUTPUT" "$LOG_FILE" "$STATE_FILE"
 

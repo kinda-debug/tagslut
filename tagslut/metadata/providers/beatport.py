@@ -220,18 +220,36 @@ class BeatportApiClient:
             token = self.provider.token_manager.ensure_valid_token("beatport")
 
         creds = self.provider.token_manager.get_credentials("beatport") if self.provider.token_manager else {}
+        _env_token = os.getenv("BEATPORT_ACCESS_TOKEN")
+        if _env_token:
+            logger.warning(
+                "Using BEATPORT_ACCESS_TOKEN from environment variable. "
+                "Consider moving credentials to tokens.json via 'tagslut auth login beatport'."
+            )
+        _mgr_token = token.access_token if token else None
+
+        _env_basic_username = os.getenv("BEATPORT_BASIC_AUTH_USERNAME") or os.getenv("BEATPORT_CLIENT_ID")
+        if _env_basic_username:
+            logger.warning(
+                "Using Beatport catalog username/client_id from environment variable. "
+                "Consider moving credentials to tokens.json via 'tagslut auth init' or "
+                "'tagslut auth login beatport'."
+            )
+        _mgr_basic_username = creds.get("client_id")
+
+        _env_basic_password = os.getenv("BEATPORT_BASIC_AUTH_PASSWORD") or os.getenv("BEATPORT_CLIENT_SECRET")
+        if _env_basic_password:
+            logger.warning(
+                "Using Beatport catalog password/client_secret from environment variable. "
+                "Consider moving credentials to tokens.json via 'tagslut auth init' or "
+                "'tagslut auth login beatport'."
+            )
+        _mgr_basic_password = creds.get("client_secret")
+
         return BeatportAuthConfig(
-            search_bearer_token=os.getenv("BEATPORT_ACCESS_TOKEN") or (token.access_token if token else None),
-            catalog_basic_username=(
-                os.getenv("BEATPORT_BASIC_AUTH_USERNAME")
-                or os.getenv("BEATPORT_CLIENT_ID")
-                or creds.get("client_id")
-            ),
-            catalog_basic_password=(
-                os.getenv("BEATPORT_BASIC_AUTH_PASSWORD")
-                or os.getenv("BEATPORT_CLIENT_SECRET")
-                or creds.get("client_secret")
-            ),
+            search_bearer_token=_mgr_token or _env_token,
+            catalog_basic_username=_mgr_basic_username or _env_basic_username,
+            catalog_basic_password=_mgr_basic_password or _env_basic_password,
             catalog_session_id=(
                 os.getenv("BEATPORT_SESSIONID")
                 or os.getenv("BEATPORT_SESSION_ID")

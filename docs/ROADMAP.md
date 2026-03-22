@@ -1,7 +1,7 @@
 # tagslut — Agent Roadmap
 
 <!-- Status: Active. Update as tasks complete or delegate assignments change. -->
-<!-- Last updated: 2026-03-22 — dual-write fix, --backfill mode, v3 pipeline operational -->
+<!-- Last updated: 2026-03-22 — DJ ffmpeg validation landed, docs updated, stop point recorded -->
 
 This document maps all open work to the agent that should execute it.
 Update it when tasks complete or priorities shift.
@@ -103,7 +103,11 @@ PR 12 prompt exists at `.github/prompts/phase1-pr12-identity-merge.prompt.md`.
 
 ---
 
-## 3 — DJ pipeline → **Codex** ✅ COMPLETE (commits eab34d3, d52fe27)
+## 3 — DJ pipeline → **Codex** ▶ ACTIVE FOLLOW-UP
+
+Base pipeline work is complete (`eab34d3`, `d52fe27`) and the workflow audit is complete (`16ee5ca`).
+The current stop point is a narrower hardening pass around Stage 2 transcode validation and
+Stage 4 validation-gate behavior.
 
 ### 3.1 DJ pipeline hardening
 
@@ -113,7 +117,34 @@ Prompt: `.github/prompts/dj-pipeline-hardening.prompt.md`
 
 Prompt: `.github/prompts/dj-workflow-audit.prompt.md`
 
-### 3.3 DJ admission backfill
+### 3.3 FFmpeg output validation ✅ COMPLETE (commit de59b4f)
+
+Prompt: `.github/prompts/dj-ffmpeg-validation.prompt.md`
+
+Delivered:
+
+- post-transcode MP3 validation in `tagslut/exec/transcoder.py`
+- wizard failure surfacing in `tagslut/exec/dj_pool_wizard.py`
+- focused tests in `tests/exec/test_mp3_build_ffmpeg_errors.py`
+- follow-up cleanup commit `ea266a3` removed a duplicate helper definition
+- doc commits `d234572` and `2d48601` recorded the operator-facing behavior
+
+### 3.4 XML validation gate ⚠ REVIEW NEEDED
+
+A separate DJ validation-state / XML preflight gate feature landed during the same work window.
+It is broader than the FFmpeg-only prompt and should be treated as a separate review item before
+further DJ hardening continues.
+
+Affected files include:
+
+- `tagslut/cli/commands/dj.py`
+- `tagslut/dj/admission.py`
+- `tagslut/dj/xml_emit.py`
+- `tagslut/storage/v3/migrations/0014_dj_validation_state.py`
+- `tagslut/storage/v3/schema.py`
+- `tests/exec/test_dj_xml_preflight_validation.py`
+
+### 3.5 DJ admission backfill
 
 ⚠ No-op against empty DB. Run only after first successful ingestion into fresh DB.
 

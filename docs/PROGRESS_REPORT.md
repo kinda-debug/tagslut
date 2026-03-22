@@ -1,8 +1,39 @@
-<!-- Status: Active document. Synced 2026-03-22 after dual-write fix and intake pipeline hardening. -->
+<!-- Status: Active document. Synced 2026-03-22 after DJ ffmpeg validation stop-point update. -->
 
 # Progress Report
 
 Report date: March 22, 2026
+
+## Session: 2026-03-22 (pass 5) — DJ FFmpeg validation + stop-point capture
+
+**Status**: Completed and paused here — commits `de59b4f`, `d234572`, `2d48601`, `ea266a3`.
+
+**What was done**:
+
+1. **FFmpeg output validation landed** (`de59b4f`) in the DJ transcode path.
+   Successful ffmpeg exit is no longer accepted on its own; the output MP3 is now
+   checked for existence, minimum size, mutagen readability, and duration > 1 second.
+
+2. **Focused test coverage added** for the FFmpeg validation path in
+   `tests/exec/test_mp3_build_ffmpeg_errors.py`, covering missing ffmpeg,
+   non-zero exit, missing output, undersized output, unreadable MP3, valid output,
+   and DJ pool wizard failure surfacing.
+
+3. **Operator docs updated** (`d234572`, `2d48601`) so the Stage 2 transcode safety
+   contract and the Stage 4 XML validation-gate behavior are reflected in active docs.
+
+4. **Follow-up cleanup completed** (`ea266a3`) by removing a duplicate
+   `_run_ffmpeg_transcode()` definition from `tagslut/exec/transcoder.py`.
+   Verification after cleanup:
+   `poetry run pytest tests/exec/test_transcoder.py tests/exec/test_mp3_build_ffmpeg_errors.py -v --tb=short`
+   Result: 14 passed.
+
+**Important stop-point note**:
+A broader `dj_validation_state` / XML preflight validation gate feature was included in
+this same work window. It is beyond the original FFmpeg-only prompt and should be reviewed
+as a separate DJ hardening item before further changes continue.
+
+---
 
 ## Session: 2026-03-22 (pass 4) — Intake pipeline v3 fix + `--backfill` mode
 

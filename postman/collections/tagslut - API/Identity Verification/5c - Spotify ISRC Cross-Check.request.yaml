@@ -1,60 +1,36 @@
 $kind: http-request
-name: '5c - Spotify ISRC Cross-Check'
-description: |-
-  **Step 3 of the Identity Verification chain.**
-
-  Uses `{{beatport_verified_isrc}}` written by 5a to query the Spotify Search
-  API with an ISRC filter. The afterResponse script compares the ISRC returned
-  by Spotify against the Beatport value and emits one of two verdicts:
-
-  | Verdict | Meaning |
-  |---------|---------|
-  | `CORROBORATED` | Beatport + TIDAL + Spotify all agree → `ingestion_confidence = 'verified'` (three-way) |
-  | `CONFLICT` | ISRCs differ → flag for manual review before ingestion |
-
-  ### Endpoint
-  `GET https://api.spotify.com/v1/search?q=isrc:{{beatport_verified_isrc}}&type=track`
-
-  Spotify's search API accepts `isrc:XXXXXXXXXXXX` as a query filter and
-  returns a `tracks.items[]` array. The first item's `external_ids.isrc` field
-  is the authoritative Spotify ISRC.
-
-  ### Auth
-  Bearer token via `{{spotify_access_token}}`. Obtain via Spotify Client
-  Credentials flow and store in the environment before running this request.
-
-  ### Chaining
-  Run after 5a and 5b so that `{{beatport_verified_isrc}}` is populated.
-  Three-way agreement (Beatport + TIDAL + Spotify) raises
-  `ingestion_confidence` to the highest corroboration tier.
-url: 'https://api.spotify.com/v1/search'
+url: https://api.spotify.com/v1/search?q=isrc:{{beatport_verified_isrc}}&type=track
 method: GET
+queryParams:
+  q: isrc:{{beatport_verified_isrc}}
+  type: track
 auth:
   type: bearer
   credentials:
-    token: '{{spotify_access_token}}'
-queryParams:
-  - key: q
-    value: 'isrc:{{beatport_verified_isrc}}'
-  - key: type
-    value: track
+    token: "{{spotify_access_token}}"
 scripts:
   - type: afterResponse
-    code: |-
+    code: >-
       var code = pm.response.code;
+
       console.log('[5c] Status: ' + code);
+
 
       if (code === 401) {
           console.log('[5c] FAILED — 401 Unauthorized. Refresh spotify_access_token.');
           return;
       }
+
       if (code !== 200) {
           console.log('[5c] FAILED — body: ' + pm.response.text().substring(0, 300));
           return;
       }
 
+
       var json  = pm.response.json();
+
       var items = json.tracks && json.tracks.items ? json.tracks.items : [];
+
 
       if (!items.length) {
           console.log('[5c] WARNING: Spotify returned 0 results for ISRC ' +
@@ -62,12 +38,18 @@ scripts:
           return;
       }
 
+
       var track        = items[0];
+
       var spotifyIsrc  = track.external_ids && track.external_ids.isrc;
+
       var beatportIsrc = pm.environment.get('beatport_verified_isrc');
 
+
       console.log('[5c] beatport_isrc = ' + beatportIsrc);
+
       console.log('[5c] spotify_isrc  = ' + spotifyIsrc);
+
 
       if (spotifyIsrc && beatportIsrc && spotifyIsrc === beatportIsrc) {
           console.log('[5c] CORROBORATED — Beatport + TIDAL + Spotify all agree: ' + beatportIsrc);
@@ -76,19 +58,26 @@ scripts:
               ' spotify_isrc=' + spotifyIsrc);
       }
 
+
       // Log Spotify enrichment fields useful for provenance
+
       var extras = ['id', 'name', 'duration_ms', 'explicit', 'popularity'];
+
       var found  = [];
+
       extras.forEach(function(f) {
           if (track[f] !== null && track[f] !== undefined) {
               found.push(f + '=' + JSON.stringify(track[f]).substring(0, 40));
           }
       });
+
       if (found.length) {
           console.log('[5c] Spotify enrichment fields: ' + found.join(', '));
       }
 
+
       // Store spotify_id for provenance
+
       if (track.id) {
           pm.environment.set('spotify_verified_id', track.id);
           console.log('[5c] Set spotify_verified_id = ' + track.id);

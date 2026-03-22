@@ -1,40 +1,32 @@
 $kind: http-request
-description: |-
-  Fetches the full catalog record for a single Beatport track by its numeric ID.
-
-  ## Canonical fields validated
-  `id`, `isrc`, `name`, `artists`, `bpm`, `key`, `genre`, `release.label`,
-  `mix_name` — all nine are required for a complete pipeline record.
-
-  ## Provider-linkable bonus fields
-  `upc`, `copyright`, `version`, `explicit`, `audioQuality` — logged when
-  present; feed the corroborated confidence tier when cross-checked against
-  Tidal / Spotify / Apple Music.
-
-  ## Chained variables set on success
-  - `beatport_last_track_id` — numeric track ID from this response
-  - `beatport_last_isrc` — ISRC from this response, ready for cross-provider lookup
-url: '{{base_url}}/v4/catalog/tracks/{{beatport_test_track_id}}/'
+url: "{{base_url}}/v4/catalog/tracks/{{beatport_test_track_id}}/"
 method: GET
 auth:
   type: bearer
   credentials:
-    token: '{{beatport_access_token}}'
+    token: "{{beatport_access_token}}"
 scripts:
   - type: afterResponse
-    code: |-
+    code: >-
       var code = pm.response.code;
+
       console.log('Status: ' + code);
+
 
       if (code !== 200) {
           console.log('FAILED — body: ' + pm.response.text().substring(0, 300));
           return;
       }
 
+
       var json = pm.response.json();
 
+
       // ── Canonical field validation ────────────────────────────────────────
-      var canonical = ['id', 'isrc', 'name', 'artists', 'bpm', 'key', 'genre', 'mix_name'];
+
+      var canonical = ['id', 'isrc', 'name', 'artists', 'bpm', 'key', 'genre',
+      'mix_name'];
+
       canonical.forEach(function(f) {
           var val = json[f];
           if (val === null || val === undefined) {
@@ -44,33 +36,44 @@ scripts:
           }
       });
 
+
       // release.label is nested — check separately
+
       var label = json.release && json.release.label;
+
       if (!label) {
           console.log('WARNING: missing field release.label');
       } else {
           console.log('release.label: ' + JSON.stringify(label).substring(0, 80));
       }
 
+
       // ── Provider-linkable bonus fields ────────────────────────────────────
+
       var bonus = ['upc', 'copyright', 'version', 'explicit', 'audioQuality'];
+
       var found = [];
+
       bonus.forEach(function(f) {
           if (json[f] !== null && json[f] !== undefined) {
               found.push(f + '=' + JSON.stringify(json[f]).substring(0, 40));
           }
       });
+
       if (found.length > 0) {
           console.log('Provider-linkable fields present: ' + found.join(', '));
       } else {
           console.log('No provider-linkable bonus fields found in this response.');
       }
 
+
       // ── Chain variables ───────────────────────────────────────────────────
+
       if (json.id) {
           pm.environment.set('beatport_last_track_id', json.id);
           console.log('Set beatport_last_track_id = ' + json.id);
       }
+
       if (json.isrc) {
           pm.environment.set('beatport_last_isrc', json.isrc);
           console.log('Set beatport_last_isrc = ' + json.isrc);

@@ -139,9 +139,9 @@ Prompt: `.github/prompts/open-streams-post-0010.prompt.md`
 `git filter-repo --strip-blobs-bigger-than 10M` + `git push --force origin dev`
 Never delegate. Full runbook: `docs/OPS_RUNBOOK.md` (to be written).
 
-### 7.2 Script and docs cleanup → **Codex**
+### 7.2 Script and docs cleanup: COMPLETE (2026-03-22)
 Prompt: `.github/prompts/repo-cleanup.prompt.md`
-Manual phase complete (2026-03-21). Codex phase pending.
+Cleanup manifest: `docs/CLEANUP_MANIFEST.md`
 
 ---
 
@@ -198,9 +198,10 @@ Keep last two. Delete older manually.
 
 ---
 
-## 13 — Script, docs, log cleanup: PARTIAL (2026-03-21)
+## 13 — Script, docs, log cleanup: COMPLETE (2026-03-22)
 
-Manual phase complete. Codex phase pending: `.github/prompts/repo-cleanup.prompt.md`
+Cleanup pass complete. See `docs/CLEANUP_MANIFEST.md` for deleted, archived,
+and intentionally retained files.
 
 Log policy: logs write to epoch directory, not `artifacts/`. Requires one-line patch
 to `tools/get-intake` (`POST_MOVE_LOG` default path) — add to §5 after resume fix lands.
@@ -289,3 +290,77 @@ Prompt: `.github/prompts/postman-api-optimize.prompt.md` (status: COMPLETE)
 
 Prompts for Phase 1 PRs 12–15 and Phase 2 seam: not yet written.
 Author in Claude.ai before delegating to Codex.
+
+
+---
+
+## 18 — Credential management consolidation → **Claude Code + Codex**
+
+Audit: `docs/CREDENTIAL_MANAGEMENT_AUDIT.md` (see full audit report)
+Target doc: `docs/CREDENTIAL_MANAGEMENT.md` (to be written)
+
+### Problem summary
+
+Two credential systems operating in parallel with undocumented precedence:
+
+- **System A** (legacy): `env_exports.sh` shell pattern — archived but still
+  referenced by 3 harvest scripts and 1 Python docstring
+- **System B** (modern): `TokenManager` + `~/.config/tagslut/tokens.json` —
+  correct approach but incompletely adopted
+- **System C** (Postman): environment vars in Postman collection — integration
+  testing only, not a source of truth
+
+Critical issue: `beatport.py` checks `os.getenv("BEATPORT_ACCESS_TOKEN")` FIRST,
+meaning a stale env var silently wins over a fresh token in tokens.json.
+No operator documentation of this precedence exists.
+
+### Not on the critical path
+
+This does not block migrations 0012/0013, fresh DB init, or Phase 1 PRs.
+The intake pipeline is functional with the existing setup.
+Do not start this until the migration chain is complete.
+
+### Phase 1 — Document + fix precedence → **Codex** (after §14 + §16 land)
+
+1. Write `docs/CREDENTIAL_MANAGEMENT.md` — tokens.json as single source of truth,
+   per-provider setup instructions, Postman sync note
+2. Fix precedence in `beatport.py` — tokens.json first, env var fallback with warning log
+3. Update `.env.example` to point at `~/.config/tagslut/tokens.json`
+4. Add `tagslut token-get <provider>` CLI command for shell script use
+
+Commit: `feat(auth): establish tokens.json precedence, add token-get command`
+
+### Phase 2 — Migrate shell scripts → **Codex** (after Phase 1)
+
+Replace env var reads in harvest scripts with:
+```bash
+BEATPORT_ACCESS_TOKEN=$(tagslut token-get beatport)
+```
+
+Scripts to update:
+- `tagslut/metadata/beatport_harvest_catalog_track.sh`
+- `tagslut/metadata/beatport_harvest_my_tracks.sh`
+- `tools/beatport_import_my_tracks.py` (docstring + credential read)
+
+Commit: `fix(auth): migrate harvest scripts to token-get command`
+
+### Phase 3 — Beatport token refresh → **Claude Code design + Codex impl**
+
+Beatport access tokens expire after 1 hour with no documented refresh grant.
+Research required before implementation:
+- Does Beatport OAuth 2.0 support refresh tokens?
+- If not, implement expiry detection + prompt for re-paste in TokenManager
+- Add expiry warning to `tagslut auth status`
+
+### Open questions (operator decisions required before Phase 1)
+
+1. Should `BEATPORT_ACCESS_TOKEN` env var remain supported as a fallback,
+   or be removed entirely? (Postman and CI may depend on it)
+2. Should Postman token sync be automated (`tagslut postman sync`) or remain manual?
+3. Qobuz stores email + password_md5 in tokens.json — acceptable or switch to API key?
+
+### Estimated effort
+
+Phase 1: 2–3 hours (Codex, well-scoped)
+Phase 2: 1–2 hours (Codex, mechanical)
+Phase 3: unknown (depends on Beatport refresh research)

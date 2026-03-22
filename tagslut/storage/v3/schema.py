@@ -9,7 +9,7 @@ from __future__ import annotations
 import sqlite3
 
 V3_SCHEMA_NAME = "v3"
-V3_SCHEMA_VERSION = 8
+V3_SCHEMA_VERSION = 12
 V3_SCHEMA_VERSION_INITIAL = 1
 V3_SCHEMA_VERSION_IDENTITY_MERGE = 2
 V3_SCHEMA_VERSION_PREFERRED_ASSET = 3
@@ -18,6 +18,10 @@ V3_SCHEMA_VERSION_DJ_PROFILE = 5
 V3_SCHEMA_VERSION_TRACK_IDENTITY_PHASE1 = 6
 V3_SCHEMA_VERSION_TRACK_IDENTITY_PHASE1_RENAME = 7
 V3_SCHEMA_VERSION_ASSET_ANALYSIS = 8
+V3_SCHEMA_VERSION_CHROMAPRINT = 9
+V3_SCHEMA_VERSION_PROVIDER_UNIQUENESS = 10
+V3_SCHEMA_VERSION_PROVIDER_UNIQUENESS_HARDENING = 11
+V3_SCHEMA_VERSION_INGESTION_PROVENANCE = 12
 
 
 def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
@@ -56,6 +60,8 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
             integrity_checked_at TEXT,
             sha256_checked_at TEXT,
             streaminfo_checked_at TEXT,
+            chromaprint_fingerprint TEXT,
+            chromaprint_duration_s REAL,
             first_seen_at TEXT DEFAULT CURRENT_TIMESTAMP,
             last_seen_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
@@ -93,6 +99,23 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
             enriched_at TEXT,
             duration_ref_ms INTEGER,
             ref_source TEXT,
+            ingested_at TEXT NOT NULL,
+            ingestion_method TEXT NOT NULL CHECK (
+                ingestion_method IN (
+                    'provider_api',
+                    'isrc_lookup',
+                    'fingerprint_match',
+                    'fuzzy_text_match',
+                    'picard_tag',
+                    'manual',
+                    'migration',
+                    'multi_provider_reconcile'
+                )
+            ),
+            ingestion_source TEXT NOT NULL,
+            ingestion_confidence TEXT NOT NULL CHECK (
+                ingestion_confidence IN ('verified','corroborated','high','uncertain','legacy')
+            ),
             merged_into_id INTEGER REFERENCES track_identity(id),
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
@@ -282,6 +305,8 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_asset_file_streaminfo_md5 ON asset_file(streaminfo_md5);
         CREATE INDEX IF NOT EXISTS idx_asset_file_checksum ON asset_file(checksum);
         CREATE INDEX IF NOT EXISTS idx_asset_file_integrity_state ON asset_file(integrity_state);
+        CREATE INDEX IF NOT EXISTS idx_asset_file_chromaprint ON asset_file(chromaprint_fingerprint);
+        CREATE INDEX IF NOT EXISTS idx_asset_file_chromaprint_duration ON asset_file(chromaprint_duration_s);
 
         CREATE INDEX IF NOT EXISTS idx_track_identity_key ON track_identity(identity_key);
         CREATE INDEX IF NOT EXISTS idx_track_identity_isrc ON track_identity(isrc);
@@ -294,6 +319,44 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_track_identity_traxsource ON track_identity(traxsource_id);
         CREATE INDEX IF NOT EXISTS idx_track_identity_itunes ON track_identity(itunes_id);
         CREATE INDEX IF NOT EXISTS idx_track_identity_musicbrainz ON track_identity(musicbrainz_id);
+        CREATE INDEX IF NOT EXISTS idx_track_identity_ingested_at ON track_identity(ingested_at);
+        CREATE INDEX IF NOT EXISTS idx_track_identity_ingestion_method ON track_identity(ingestion_method);
+        CREATE INDEX IF NOT EXISTS idx_track_identity_ingestion_confidence ON track_identity(ingestion_confidence);
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_track_identity_active_beatport_id
+            ON track_identity(beatport_id)
+            WHERE beatport_id IS NOT NULL
+              AND TRIM(beatport_id) != ''
+              AND merged_into_id IS NULL;
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_track_identity_active_tidal_id
+            ON track_identity(tidal_id)
+            WHERE tidal_id IS NOT NULL
+              AND TRIM(tidal_id) != ''
+              AND merged_into_id IS NULL;
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_track_identity_active_qobuz_id
+            ON track_identity(qobuz_id)
+            WHERE qobuz_id IS NOT NULL
+              AND TRIM(qobuz_id) != ''
+              AND merged_into_id IS NULL;
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_track_identity_active_spotify_id
+            ON track_identity(spotify_id)
+            WHERE spotify_id IS NOT NULL
+              AND TRIM(spotify_id) != ''
+              AND merged_into_id IS NULL;
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_track_identity_active_apple_music_id
+            ON track_identity(apple_music_id)
+            WHERE apple_music_id IS NOT NULL
+              AND TRIM(apple_music_id, ' \t\n\r') != ''
+              AND merged_into_id IS NULL;
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_track_identity_active_deezer_id
+            ON track_identity(deezer_id)
+            WHERE deezer_id IS NOT NULL
+              AND TRIM(deezer_id, ' \t\n\r') != ''
+              AND merged_into_id IS NULL;
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_track_identity_active_traxsource_id
+            ON track_identity(traxsource_id)
+            WHERE traxsource_id IS NOT NULL
+              AND TRIM(traxsource_id, ' \t\n\r') != ''
+              AND merged_into_id IS NULL;
 
         CREATE INDEX IF NOT EXISTS idx_asset_link_identity ON asset_link(identity_id);
         CREATE INDEX IF NOT EXISTS idx_identity_merge_log_key_value ON identity_merge_log(key_value);
@@ -536,5 +599,63 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
         VALUES (?, ?, ?)
         """,
         (V3_SCHEMA_NAME, V3_SCHEMA_VERSION_ASSET_ANALYSIS, "asset analysis and dj export metadata views"),
+    )
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO schema_migrations (schema_name, version, note)
+        VALUES (?, ?, ?)
+        """,
+        (V3_SCHEMA_NAME, V3_SCHEMA_VERSION_CHROMAPRINT, "add chromaprint columns and indexes to asset_file"),
+    )
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO schema_migrations (schema_name, version, note)
+        VALUES (?, ?, ?)
+        """,
+        (
+            V3_SCHEMA_NAME,
+            V3_SCHEMA_VERSION_PROVIDER_UNIQUENESS,
+            "0010_track_identity_provider_uniqueness.py",
+        ),
+    )
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO schema_migrations (schema_name, version, note)
+        VALUES (?, ?, ?)
+        """,
+        (
+            V3_SCHEMA_NAME,
+            V3_SCHEMA_VERSION_PROVIDER_UNIQUENESS_HARDENING,
+            "0011_track_identity_provider_uniqueness_hardening.py",
+        ),
+    )
+    conn.execute(
+        """
+        CREATE TRIGGER IF NOT EXISTS trg_track_identity_provenance_required
+        BEFORE INSERT ON track_identity
+        BEGIN
+            SELECT CASE
+                WHEN NEW.ingested_at IS NULL OR TRIM(NEW.ingested_at) = '' THEN
+                    RAISE(ABORT, 'track_identity.ingested_at is required')
+                WHEN NEW.ingestion_method IS NULL OR TRIM(NEW.ingestion_method) = '' THEN
+                    RAISE(ABORT, 'track_identity.ingestion_method is required')
+                WHEN NEW.ingestion_source IS NULL THEN
+                    RAISE(ABORT, 'track_identity.ingestion_source is required')
+                WHEN NEW.ingestion_confidence IS NULL OR TRIM(NEW.ingestion_confidence) = '' THEN
+                    RAISE(ABORT, 'track_identity.ingestion_confidence is required')
+            END;
+        END
+        """
+    )
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO schema_migrations (schema_name, version, note)
+        VALUES (?, ?, ?)
+        """,
+        (
+            V3_SCHEMA_NAME,
+            V3_SCHEMA_VERSION_INGESTION_PROVENANCE,
+            "0012_ingestion_provenance.py",
+        ),
     )
     conn.commit()

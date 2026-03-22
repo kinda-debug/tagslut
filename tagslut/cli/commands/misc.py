@@ -12,95 +12,28 @@ import click
 
 from tagslut.cli.commands._auth_helpers import (
     _tidal_device_login,
-    _qobuz_login,
     _beatport_token_input,
 )
 from tagslut.cli.commands._enrich_helpers import (
     _local_file_info_from_path,
     _print_enrichment_result,
 )
-from tagslut.cli.runtime import collect_flac_paths as _collect_flac_paths
+from tagslut.cli.runtime import (
+    WRAPPER_CONTEXT,
+    collect_flac_paths as _collect_flac_paths,
+)
 
 logger = logging.getLogger("tagslut")
 
 
+def _raise_recovery_retired() -> None:
+    raise click.ClickException(
+        "tagslut.recovery is archived. Use legacy/tagslut_recovery/ for the old recovery workflow."
+    )
+
+
 def _default_canon_rules_path() -> Path:
     return Path(__file__).parents[3] / "tools" / "rules" / "library_canon.json"
-
-
-def _interactive_init() -> dict[str, object]:
-    """
-    Interactive session initialization.
-
-    Prompts user for all required directories and settings.
-    Returns a dict with configuration values.
-    """
-    click.echo("\n" + "=" * 60)
-    click.echo("FLAC RECOVERY SESSION INITIALIZATION")
-    click.echo("=" * 60)
-    click.echo("\nThis wizard will help you set up a new recovery session.\n")
-
-    config: dict[str, object] = {}
-
-    # Source directory
-    click.echo("1. SOURCE DIRECTORY")
-    click.echo("   The directory containing FLAC files to scan and recover.")
-    while True:
-        source = click.prompt("   Enter source directory path", type=str)
-        source_path = Path(source).expanduser().resolve()
-        if source_path.is_dir():
-            config["source"] = source_path
-            click.echo(f"   -> {source_path}")
-            break
-        click.echo(f"   ERROR: '{source}' is not a valid directory. Try again.")
-
-    # Database path
-    click.echo("\n2. DATABASE")
-    click.echo("   SQLite database to store scan results and recovery state.")
-    default_db = Path.cwd() / "recovery.db"
-    db = click.prompt("   Enter database path", default=str(default_db), type=str)
-    config["db"] = Path(db).expanduser().resolve()
-    click.echo(f"   -> {config['db']}")
-
-    # Backups (external)
-    click.echo("\n3. BACKUPS")
-    click.echo("   Backups are handled externally (Time Machine/NAS).")
-    click.echo("   This tool does not create or retain backups.")
-    config["backup_dir"] = None
-
-    # Output report
-    click.echo("\n4. OUTPUT REPORT")
-    click.echo("   Where to save the final recovery report.")
-    default_output = Path.cwd() / "recovery_report.csv"
-    output = click.prompt("   Enter report output path", default=str(default_output), type=str)
-    config["output"] = Path(output).expanduser().resolve()
-    click.echo(f"   -> {config['output']}")
-
-    # Workers
-    click.echo("\n5. PARALLEL WORKERS")
-    workers = click.prompt(
-        "   Number of parallel scan workers",
-        default="4",
-        type=int,
-    )
-    config["workers"] = workers
-    click.echo(f"   -> {workers} workers")
-
-    # Confirmation
-    click.echo("\n" + "=" * 60)
-    click.echo("CONFIGURATION SUMMARY")
-    click.echo("=" * 60)
-    click.echo(f"  Source:     {config['source']}")
-    click.echo(f"  Database:   {config['db']}")
-    click.echo("  Backups:    external-only (no local backups)")
-    click.echo(f"  Output:     {config['output']}")
-    click.echo(f"  Workers:    {config['workers']}")
-    click.echo("=" * 60)
-
-    if not click.confirm("\nProceed with these settings?", default=True):
-        raise click.Abort()
-
-    return config
 
 
 def _write_env_file(config: dict, path: Path) -> None:  # type: ignore  # TODO: mypy-strict
@@ -204,6 +137,179 @@ def _write_toml_file(config: dict, path: Path) -> None:  # type: ignore  # TODO:
 
 
 def register_misc_commands(cli: click.Group) -> None:
+    @cli.command("tidal-seed")
+    @click.option(
+        "--playlist-url",
+        required=True,
+        help="TIDAL playlist URL or ID to export as a stable seed CSV.",
+    )
+    @click.option(
+        "--out",
+        "output_csv",
+        type=click.Path(path_type=Path, dir_okay=False),  # type: ignore  # TODO: mypy-strict
+        default=Path("tidal_seed.csv"),
+        show_default=True,
+        help="Output CSV path for TIDAL seed rows.",
+    )
+    @click.option("--tokens-path", type=click.Path(path_type=Path), help="Path to tokens.json")
+    def tidal_seed(playlist_url, output_csv, tokens_path):  # type: ignore  # TODO: mypy-strict
+        """Export one TIDAL playlist as seed CSV rows."""
+        from tagslut.metadata.auth import DEFAULT_TOKENS_PATH, TokenManager
+        from tagslut.metadata.enricher import Enricher
+
+        resolved_tokens_path = tokens_path or DEFAULT_TOKENS_PATH
+        token_manager = TokenManager(Path(resolved_tokens_path))
+
+        with Enricher(
+            db_path=Path("__vendor_only__"),
+            token_manager=token_manager,
+            providers=["tidal"],
+            dry_run=True,
+            mode="hoarding",
+        ) as enricher:
+            stats = enricher.export_tidal_seed_csv(playlist_url, output_csv)
+
+        click.echo(f"Wrote TIDAL seed CSV: {output_csv}")
+        click.echo(f"Playlist id: {stats.playlist_id}")
+        click.echo(f"Tracks exported: {stats.exported_rows}")
+        click.echo(f"Rows missing ISRC: {stats.missing_isrc_rows}")
+        click.echo(f"Malformed playlist items skipped: {stats.malformed_playlist_items}")
+        click.echo(f"Rows missing required fields skipped: {stats.rows_missing_required_fields}")
+        click.echo(f"Duplicate rows skipped: {stats.duplicate_rows}")
+        click.echo(f"Pages fetched: {stats.pages_fetched}")
+        click.echo(f"Endpoint fallback usage: {stats.endpoint_fallback_used}")
+        click.echo(f"Pagination stop - non-200: {stats.pagination_stop_non_200}")
+        click.echo(f"Pagination stop - empty page: {stats.pagination_stop_empty_page}")
+        click.echo(f"Pagination stop - repeated next: {stats.pagination_stop_repeated_next}")
+        click.echo(f"Pagination stop - short page with no next: {stats.pagination_stop_short_page_no_next}")
+
+    @cli.command("beatport-enrich")
+    @click.option(
+        "--in",
+        "input_csv",
+        required=True,
+        type=click.Path(exists=True, path_type=Path, dir_okay=False),  # type: ignore  # TODO: mypy-strict
+        help="Input TIDAL seed CSV path.",
+    )
+    @click.option(
+        "--out",
+        "output_csv",
+        type=click.Path(path_type=Path, dir_okay=False),  # type: ignore  # TODO: mypy-strict
+        default=Path("tidal_beatport_enriched.csv"),
+        show_default=True,
+        help="Output CSV path for merged TIDAL+Beatport rows.",
+    )
+    @click.option("--tokens-path", type=click.Path(path_type=Path), help="Path to tokens.json")
+    def beatport_enrich(input_csv, output_csv, tokens_path):  # type: ignore  # TODO: mypy-strict
+        """Enrich a TIDAL seed CSV with Beatport metadata."""
+        from tagslut.metadata.auth import DEFAULT_TOKENS_PATH, TokenManager
+        from tagslut.metadata.enricher import Enricher
+
+        resolved_tokens_path = tokens_path or DEFAULT_TOKENS_PATH
+        token_manager = TokenManager(Path(resolved_tokens_path))
+
+        with Enricher(
+            db_path=Path("__vendor_only__"),
+            token_manager=token_manager,
+            providers=["beatport"],
+            dry_run=True,
+            mode="hoarding",
+        ) as enricher:
+            stats = enricher.enrich_tidal_seed_csv(input_csv, output_csv)
+
+        click.echo(f"Wrote Beatport-enriched CSV: {output_csv}")
+        click.echo(f"Input rows: {stats.input_rows}")
+        click.echo(f"Discarded input rows: {stats.discarded_seed_rows}")
+        click.echo(f"Rows written: {stats.output_rows}")
+        click.echo(f"Matched by ISRC: {stats.isrc_matches}")
+        click.echo(f"Matched by title/artist fallback: {stats.title_artist_fallback_matches}")
+        click.echo(f"Unmatched: {stats.no_match_rows}")
+        click.echo(f"Ambiguous ISRC rows: {stats.ambiguous_isrc_rows}")
+        click.echo(f"Ambiguous fallback rows: {stats.ambiguous_fallback_rows}")
+        click.echo(f"Equal-rank fallback ties: {stats.fallback_equal_rank_ties}")
+
+    @cli.command("beatport-seed")
+    @click.option(
+        "--out",
+        "output_csv",
+        type=click.Path(path_type=Path, dir_okay=False),  # type: ignore  # TODO: mypy-strict
+        default=Path("beatport_seed.csv"),
+        show_default=True,
+        help="Output CSV path for Beatport seed rows.",
+    )
+    @click.option("--tokens-path", type=click.Path(path_type=Path), help="Path to tokens.json")
+    def beatport_seed(output_csv, tokens_path):  # type: ignore  # TODO: mypy-strict
+        """Export one Beatport library snapshot as seed CSV rows."""
+        from tagslut.metadata.auth import DEFAULT_TOKENS_PATH, TokenManager
+        from tagslut.metadata.enricher import Enricher
+
+        resolved_tokens_path = tokens_path or DEFAULT_TOKENS_PATH
+        token_manager = TokenManager(Path(resolved_tokens_path))
+
+        with Enricher(
+            db_path=Path("__vendor_only__"),
+            token_manager=token_manager,
+            providers=["beatport"],
+            dry_run=True,
+            mode="hoarding",
+        ) as enricher:
+            stats = enricher.export_beatport_seed_csv(output_csv)
+
+        click.echo(f"Wrote Beatport seed CSV: {output_csv}")
+        click.echo(f"Tracks exported: {stats.exported_rows}")
+        click.echo(f"Rows missing ISRC: {stats.missing_isrc_rows}")
+        click.echo(f"Rows missing required fields skipped: {stats.rows_missing_required_fields}")
+        click.echo(f"Duplicate rows skipped: {stats.duplicate_rows}")
+        click.echo(f"Pages fetched: {stats.pages_fetched}")
+        click.echo(f"Pagination stop - non-200: {stats.pagination_stop_non_200}")
+        click.echo(f"Pagination stop - empty page: {stats.pagination_stop_empty_page}")
+        click.echo(f"Pagination stop - short page with no next: {stats.pagination_stop_short_page_no_next}")
+
+    @cli.command("tidal-enrich")
+    @click.option(
+        "--in",
+        "input_csv",
+        required=True,
+        type=click.Path(exists=True, path_type=Path, dir_okay=False),  # type: ignore  # TODO: mypy-strict
+        help="Input Beatport seed CSV path.",
+    )
+    @click.option(
+        "--out",
+        "output_csv",
+        type=click.Path(path_type=Path, dir_okay=False),  # type: ignore  # TODO: mypy-strict
+        default=Path("beatport_tidal_enriched.csv"),
+        show_default=True,
+        help="Output CSV path for merged Beatport+TIDAL rows.",
+    )
+    @click.option("--tokens-path", type=click.Path(path_type=Path), help="Path to tokens.json")
+    def tidal_enrich(input_csv, output_csv, tokens_path):  # type: ignore  # TODO: mypy-strict
+        """Enrich a Beatport seed CSV with TIDAL metadata."""
+        from tagslut.metadata.auth import DEFAULT_TOKENS_PATH, TokenManager
+        from tagslut.metadata.enricher import Enricher
+
+        resolved_tokens_path = tokens_path or DEFAULT_TOKENS_PATH
+        token_manager = TokenManager(Path(resolved_tokens_path))
+
+        with Enricher(
+            db_path=Path("__vendor_only__"),
+            token_manager=token_manager,
+            providers=["tidal"],
+            dry_run=True,
+            mode="hoarding",
+        ) as enricher:
+            stats = enricher.enrich_beatport_seed_csv(input_csv, output_csv)
+
+        click.echo(f"Wrote TIDAL-enriched CSV: {output_csv}")
+        click.echo(f"Input rows: {stats.input_rows}")
+        click.echo(f"Discarded input rows: {stats.discarded_seed_rows}")
+        click.echo(f"Rows written: {stats.output_rows}")
+        click.echo(f"Matched by ISRC: {stats.isrc_matches}")
+        click.echo(f"Matched by title/artist fallback: {stats.title_artist_fallback_matches}")
+        click.echo(f"Unmatched: {stats.no_match_rows}")
+        click.echo(f"Ambiguous ISRC rows: {stats.ambiguous_isrc_rows}")
+        click.echo(f"Ambiguous fallback rows: {stats.ambiguous_fallback_rows}")
+        click.echo(f"Equal-rank fallback ties: {stats.fallback_equal_rank_ties}")
+
     @cli.command("canonize", hidden=True)
     @click.argument("path", type=click.Path(exists=True))
     @click.option("--canon/--no-canon", default=True, help="Enable canonical tag rules")
@@ -336,7 +442,7 @@ def register_misc_commands(cli: click.Group) -> None:
         required=True,
         help="Exact file path in DB (or on disk in --standalone mode)",
     )
-    @click.option("--providers", default="beatport,tidal,deezer,itunes", help="Comma-separated providers")
+    @click.option("--providers", default="beatport,tidal", help="Comma-separated providers")
     @click.option("--force", is_flag=True, help="Re-process even if already enriched")
     @click.option("--retry-no-match", is_flag=True, help="Retry files previously with no match")
     @click.option("--execute", is_flag=True, help="Write updates to DB (default: dry-run)")
@@ -371,10 +477,6 @@ def register_misc_commands(cli: click.Group) -> None:
             mode = "hoarding"
 
         provider_list = [p.strip() for p in providers.split(",") if p.strip()]
-        if "qobuz" in provider_list:
-            raise click.ClickException("Qobuz is disabled. Remove it from --providers.")
-        if "spotify" in provider_list:
-            raise click.ClickException("Spotify is disabled. Remove it from --providers.")
         token_manager = TokenManager()
 
         if standalone:
@@ -682,32 +784,12 @@ def register_misc_commands(cli: click.Group) -> None:
                 click.echo(f"✓ Created tokens template: {DEFAULT_TOKENS_PATH}")
 
             click.echo("Available providers:")
-            click.echo("  • Spotify    - Client credentials (get from developer.spotify.com)")
             click.echo("  • Beatport   - Manual token extraction (requires DJ account)")
             click.echo("  • Tidal      - Device authorization (requires subscription)")
-            click.echo("  • Qobuz      - Email/password login (requires account)")
-            click.echo("  • iTunes     - No authentication needed (public API)")
             click.echo("")
-
-            if click.confirm("Set up Spotify?", default=False):
-                click.echo("Get credentials from: https://developer.spotify.com/dashboard")
-                client_id = click.prompt("  Spotify Client ID", type=str)
-                client_secret = click.prompt("  Spotify Client Secret", type=str, hide_input=True)
-                # Update Spotify credentials in tokens
-                if "spotify" not in token_manager._tokens:
-                    token_manager._tokens["spotify"] = {}
-                token_manager._tokens["spotify"]["client_id"] = client_id
-                token_manager._tokens["spotify"]["client_secret"] = client_secret
-                token_manager._save_tokens()
-                click.echo("  ✓ Spotify configured")
-                click.echo("")
 
             if click.confirm("Set up Tidal?", default=False):
                 _tidal_device_login(token_manager)
-                click.echo("")
-
-            if click.confirm("Set up Qobuz?", default=False):
-                _qobuz_login(token_manager)
                 click.echo("")
 
             if click.confirm("Set up Beatport?", default=False):
@@ -791,79 +873,20 @@ def register_misc_commands(cli: click.Group) -> None:
         click.echo("     tagslut decide plan --policy library_balanced --input candidates.json")
         click.echo("")
 
-    @cli.command(name="_recover", hidden=True)
-    @click.argument('path', required=False, type=click.Path(exists=True))
-    @click.option('--db', type=click.Path(), help='Recovery database path')
-    @click.option(
-        '--phase',
-        type=click.Choice(['scan', 'repair', 'verify', 'report', 'all']),
-        default='all',
-        help='Pipeline phase to run (default: all)'
-    )
-    @click.option('--output', type=click.Path(), help='Report output path (CSV or JSON)')
-    @click.option('--workers', default=4, help='Parallel workers for scan phase')
-    @click.option('--execute', is_flag=True, help='Actually perform repairs (default: dry-run)')
-    @click.option('--include-valid', is_flag=True, help='Include valid files in reports')
-    @click.option('--init', 'interactive', is_flag=True, help='Interactive session initialization')
-    @click.option('--enrich', is_flag=True, help='Enrich salvaged files with metadata after verification')
-    @click.option('-v', '--verbose', is_flag=True, help='Verbose output')
-    def recover(
-        path: Any, db: Any, phase: Any, output: Any, workers: Any,
-        execute: Any, include_valid: Any, interactive: Any, enrich: Any, verbose: Any
-    ) -> None:
+    @cli.command(name="_recover", hidden=True, context_settings=WRAPPER_CONTEXT)
+    @click.argument("args", nargs=-1, type=click.UNPROCESSED)
+    def recover(args: Any) -> None:
         """
-        Recover corrupted FLAC files.
-
-        Scans for integrity issues, attempts FFmpeg-based salvage,
-        verifies repairs, and generates reports.
-
-        Internal command used by canonical verify/report wrappers.
+        Retired compatibility wrapper for the archived recovery workflow.
         """
-        raise click.ClickException(
-            "tagslut.recovery is archived. Use legacy/tagslut_recovery/ for the old recovery workflow."
-        )
+        del args
+        _raise_recovery_retired()
 
-    @cli.command("recovery", hidden=True)
-    @click.argument("paths", nargs=-1, type=click.Path(exists=True))
-    @click.option("--db", type=click.Path(), help="Database path (auto-detect from env if not provided)")
-    @click.option("--zone", help="Target zone (accepted, staging, etc.)")
-    @click.option("--move/--no-move", default=False, help="Move files (default: dry-run)")
-    @click.option("--require-duration-ok", is_flag=True, help="Block promotion unless duration_status is ok")
-    @click.option("--allow-duration-warn", is_flag=True, help="Allow warn status for manual override")
-    @click.option("--dj-only", is_flag=True, help="Treat all paths as DJ material")
-    @click.option("--log", type=click.Path(), help="Log file path (JSONL)")
-    def recovery(  # type: ignore  # TODO: mypy-strict
-        paths,
-        db,
-        zone,
-        move,
-        require_duration_ok,
-        allow_duration_warn,
-        dj_only,
-        log,
-    ):
+    @cli.command("recovery", hidden=True, context_settings=WRAPPER_CONTEXT)
+    @click.argument("args", nargs=-1, type=click.UNPROCESSED)
+    def recovery(args):  # type: ignore  # TODO: mypy-strict
         """
-        Stub for DJ-safe promotion (duration-aware recovery mode).
+        Retired compatibility wrapper for the archived recovery workflow.
         """
-        from tagslut.utils.audit_log import append_jsonl, resolve_log_path, now_iso
-
-        log_path = Path(log) if log else resolve_log_path("recovery_decisions")
-        append_jsonl(
-            log_path,
-            {
-                "event": "promotion_decision",
-                "timestamp": now_iso(),
-                "duplicate_group_id": None,
-                "is_dj_material": bool(dj_only),
-                "chosen_track_path": None,
-                "reason": "stub_not_implemented",
-                "alternatives": [],
-            },
-        )
-
-        click.echo("tagslut recovery is a stub (promotion logic not implemented yet).")
-        click.echo(f"  Paths: {len(paths)} | zone={zone} | move={move}")
-        if require_duration_ok:
-            click.echo("  Duration gate: require duration_status=ok")
-        if allow_duration_warn:
-            click.echo("  Override: allow duration_status=warn (manual)")
+        del args
+        _raise_recovery_retired()

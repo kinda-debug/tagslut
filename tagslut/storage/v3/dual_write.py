@@ -10,6 +10,7 @@ import json
 import os
 import re
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,7 @@ from tagslut.storage.schema import (
     V3_PROVENANCE_EVENT_TABLE,
     V3_TRACK_IDENTITY_TABLE,
 )
+from tagslut.storage.v3.identity_service import derive_identity_key, resolve_active_identity
 from tagslut.utils.config import get_config
 
 _TRUTHY = {"1", "true", "yes", "y", "on"}
@@ -258,6 +260,10 @@ def upsert_track_identity(
     key: str | None = None,
     duration_ref_ms: int | None = None,
     ref_source: str | None = None,
+    ingested_at: str | None = None,
+    ingestion_method: str | None = None,
+    ingestion_source: str | None = None,
+    ingestion_confidence: str | None = None,
 ) -> int | None:
     isrc_norm = _norm_text(isrc)
     beatport_norm = _norm_text(beatport_id)
@@ -266,15 +272,17 @@ def upsert_track_identity(
     bpm_norm = _norm_text(bpm)
     key_norm = _norm_text(key)
 
-    identity_key: str | None = None
-    if isrc_norm:
-        identity_key = f"isrc:{isrc_norm.lower()}"
-    elif beatport_norm:
-        identity_key = f"beatport:{beatport_norm}"
-    elif artist_norm and title_norm:
-        identity_key = f"text:{artist_norm}|{title_norm}"
-
-    if not identity_key:
+    try:
+        identity_key = derive_identity_key(
+            {
+                "isrc": isrc_norm,
+                "beatport_id": beatport_norm,
+                "artist_norm": artist_norm,
+                "title_norm": title_norm,
+            },
+            {},
+        )
+    except RuntimeError:
         return None
 
     columns = [
@@ -297,6 +305,10 @@ def upsert_track_identity(
         "canonical_key": key_norm,
         "duration_ref_ms": duration_ref_ms,
         "ref_source": _norm_text(ref_source),
+        "ingested_at": _norm_text(ingested_at) or datetime.now(timezone.utc).isoformat(),
+        "ingestion_method": _norm_text(ingestion_method) or "provider_api",
+        "ingestion_source": _norm_text(ingestion_source) or "",
+        "ingestion_confidence": _norm_text(ingestion_confidence) or "high",
     }
     for column, value in optional_values.items():
         if _column_exists(conn, V3_TRACK_IDENTITY_TABLE, column):
@@ -309,8 +321,9 @@ def upsert_track_identity(
         "artist_norm = COALESCE(excluded.artist_norm, artist_norm)",
         "title_norm = COALESCE(excluded.title_norm, title_norm)",
     ]
+    _PROVENANCE_COLS = {"ingested_at", "ingestion_method", "ingestion_source", "ingestion_confidence"}
     for column in optional_values:
-        if column in columns:
+        if column in columns and column not in _PROVENANCE_COLS:
             update_assignments.append(
                 f"{column} = COALESCE(excluded.{column}, {column})"
             )
@@ -343,6 +356,11 @@ def upsert_asset_link(
     link_source: str,
     active: bool = True,
 ) -> int:
+    resolved_identity = resolve_active_identity(conn, int(identity_id))
+    try:
+        resolved_identity_id = int(resolved_identity["id"])
+    except (TypeError, KeyError, IndexError):
+        resolved_identity_id = int(resolved_identity[0])
     existing_rows = conn.execute(
         f"SELECT id FROM {V3_ASSET_LINK_TABLE} WHERE asset_id = ? ORDER BY id ASC",
         (asset_id,),
@@ -364,7 +382,7 @@ def upsert_asset_link(
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
             """,
-            (identity_id, confidence, link_source, 1 if active else 0, keep_id),
+            (resolved_identity_id, confidence, link_source, 1 if active else 0, keep_id),
         )
     else:
         conn.execute(
@@ -373,7 +391,7 @@ def upsert_asset_link(
                 asset_id, identity_id, confidence, link_source, active
             ) VALUES (?, ?, ?, ?, ?)
             """,
-            (asset_id, identity_id, confidence, link_source, 1 if active else 0),
+            (asset_id, resolved_identity_id, confidence, link_source, 1 if active else 0),
         )
 
     row = conn.execute(
@@ -550,54 +568,68 @@ def dual_write_registered_file(
     duration_ref_source: str | None,
     event_time: str | None = None,
 ) -> tuple[int, int | None]:
-    asset_id = upsert_asset_file(
-        conn,
-        path=path,
-        content_sha256=content_sha256,
-        streaminfo_md5=streaminfo_md5,
-        checksum=checksum,
-        size_bytes=size_bytes,
-        mtime=mtime,
-        duration_s=duration_s,
-        sample_rate=sample_rate,
-        bit_depth=bit_depth,
-        bitrate=bitrate,
-        library=library,
-        zone=zone,
-        download_source=download_source,
-        download_date=download_date,
-        mgmt_status=mgmt_status,
-    )
+    owns_transaction = not conn.in_transaction
+    if owns_transaction:
+        conn.execute("BEGIN IMMEDIATE")
 
-    identity_hints = identity_hints_from_metadata(metadata)
-    identity_id = upsert_track_identity(
-        conn,
-        isrc=identity_hints["isrc"],
-        beatport_id=identity_hints["beatport_id"],
-        artist=identity_hints["artist"],
-        title=identity_hints["title"],
-        bpm=identity_hints["bpm"],
-        key=identity_hints["key"],
-        duration_ref_ms=duration_ref_ms,
-        ref_source=duration_ref_source or download_source,
-    )
-    if identity_id is not None:
-        upsert_asset_link(
+    try:
+        asset_id = upsert_asset_file(
             conn,
-            asset_id=asset_id,
-            identity_id=identity_id,
-            confidence=1.0 if identity_hints["isrc"] else 0.8,
-            link_source="register",
+            path=path,
+            content_sha256=content_sha256,
+            streaminfo_md5=streaminfo_md5,
+            checksum=checksum,
+            size_bytes=size_bytes,
+            mtime=mtime,
+            duration_s=duration_s,
+            sample_rate=sample_rate,
+            bit_depth=bit_depth,
+            bitrate=bitrate,
+            library=library,
+            zone=zone,
+            download_source=download_source,
+            download_date=download_date,
+            mgmt_status=mgmt_status,
         )
 
-    record_provenance_event(
-        conn,
-        event_type="registered",
-        status=mgmt_status,
-        asset_id=asset_id,
-        identity_id=identity_id,
-        source_path=str(path),
-        details={"source": download_source},
-        event_time=event_time,
-    )
-    return asset_id, identity_id
+        identity_hints = identity_hints_from_metadata(metadata)
+        identity_id = upsert_track_identity(
+            conn,
+            isrc=identity_hints["isrc"],
+            beatport_id=identity_hints["beatport_id"],
+            artist=identity_hints["artist"],
+            title=identity_hints["title"],
+            bpm=identity_hints["bpm"],
+            key=identity_hints["key"],
+            duration_ref_ms=duration_ref_ms,
+            ref_source=duration_ref_source or download_source,
+            ingestion_method="provider_api",
+            ingestion_source=download_source or "",
+            ingestion_confidence="high" if identity_hints["isrc"] else "uncertain",
+        )
+        if identity_id is not None:
+            upsert_asset_link(
+                conn,
+                asset_id=asset_id,
+                identity_id=identity_id,
+                confidence=1.0 if identity_hints["isrc"] else 0.8,
+                link_source="register",
+            )
+
+        record_provenance_event(
+            conn,
+            event_type="registered",
+            status=mgmt_status,
+            asset_id=asset_id,
+            identity_id=identity_id,
+            source_path=str(path),
+            details={"source": download_source},
+            event_time=event_time,
+        )
+        if owns_transaction:
+            conn.commit()
+        return asset_id, identity_id
+    except Exception:
+        if owns_transaction:
+            conn.rollback()
+        raise

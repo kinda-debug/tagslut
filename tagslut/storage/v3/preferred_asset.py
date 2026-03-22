@@ -156,6 +156,21 @@ def _ensure_preferred_asset_table(conn: sqlite3.Connection) -> None:
         raise RuntimeError("preferred_asset table missing; run create_schema_v3 in execute mode")
 
 
+def _assert_identity_is_active(conn: sqlite3.Connection, identity_id: int) -> None:
+    has_merged_into = _column_exists(conn, "track_identity", "merged_into_id")
+    select_sql = "SELECT id"
+    if has_merged_into:
+        select_sql += ", merged_into_id"
+    row = conn.execute(
+        f"{select_sql} FROM track_identity WHERE id = ?",
+        (int(identity_id),),
+    ).fetchone()
+    if row is None:
+        raise RuntimeError(f"identity not found: {identity_id}")
+    if has_merged_into and row["merged_into_id"] is not None:
+        raise LookupError(f"identity is merged: {identity_id}")
+
+
 def _build_reason_json(
     *,
     identity_id: int,
@@ -253,12 +268,18 @@ def choose_preferred_asset_for_identity(
     conn: sqlite3.Connection, identity_id: int
 ) -> PreferredChoice:
     """Choose one deterministic preferred asset for a specific identity."""
+    has_merged_into = _column_exists(conn, "track_identity", "merged_into_id")
+    select_sql = "SELECT id, identity_key"
+    if has_merged_into:
+        select_sql += ", merged_into_id"
     identity_row = conn.execute(
-        "SELECT id, identity_key FROM track_identity WHERE id = ?",
+        f"{select_sql} FROM track_identity WHERE id = ?",
         (int(identity_id),),
     ).fetchone()
     if identity_row is None:
         raise RuntimeError(f"identity not found: {identity_id}")
+    if has_merged_into and identity_row["merged_into_id"] is not None:
+        raise LookupError(f"identity is merged: {identity_id}")
 
     select_sql = _asset_select_sql(conn)
     where_active = _active_link_where(conn)
@@ -367,6 +388,7 @@ def upsert_preferred_assets(
     updated = 0
     unchanged = 0
     for choice in choices:
+        _assert_identity_is_active(conn, int(choice.identity_id))
         existing = conn.execute(
             """
             SELECT asset_id, score, reason_json, version

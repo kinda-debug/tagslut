@@ -8,7 +8,7 @@
 	verify-v3 doctor-v3 apply-v3-schema report-identity-qa plan-merge-beatport-dupes merge-beatport-dupes \
 	plan-preferred-asset compute-preferred-asset plan-identity-status compute-identity-status \
 	archive-orphans check-promote-invariant run-move-plan check-hardcoded-paths dj-candidates \
-	dj-missing-metadata dj-profile-get dj-profile-set dj-export-ready
+	dj-missing-metadata dj-profile-get dj-profile-set dj-export-ready check-v3-identity-integrity
 
 help: ## Show this help message
 	@echo "Tagslut - available targets:"
@@ -25,6 +25,14 @@ lock: ## Refresh poetry.lock
 
 test: ## Run tests
 	poetry run pytest
+
+check-v3-identity-integrity: ## Run the minimal v3 identity integrity proof tests
+	poetry run pytest -q \
+		tests/storage/v3/test_migration_runner.py \
+		tests/storage/v3/test_schema_equivalence_v11.py \
+		tests/storage/v3/test_transaction_boundaries.py \
+		tests/storage/v3/test_migration_0010.py \
+		tests/storage/v3/test_migration_0011.py
 
 lint: ## Run linting (flake8)
 	poetry run flake8 tagslut tools tests scripts

@@ -15,7 +15,7 @@ def _create_v3_fixture(tmp_path: Path) -> Path:
     try:
         create_schema_v3(conn)
         conn.executemany(
-            "INSERT INTO track_identity (id, identity_key, merged_into_id) VALUES (?, ?, NULL)",
+            "INSERT INTO track_identity (id, identity_key, merged_into_id, ingested_at, ingestion_method, ingestion_source, ingestion_confidence) VALUES (?, ?, NULL, '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')",
             [
                 (1, "id:one"),
                 (2, "id:two"),

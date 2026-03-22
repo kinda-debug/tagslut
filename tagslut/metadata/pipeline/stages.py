@@ -23,7 +23,6 @@ from tagslut.metadata.models.precedence import (
     ARTIST_PRECEDENCE,
     ALBUM_PRECEDENCE,
     ARTWORK_PRECEDENCE,
-    AUDIO_FEATURES_SOURCE,
 )
 from tagslut.metadata.providers.base import classify_match_confidence
 
@@ -235,17 +234,6 @@ def resolve_file(  # type: ignore  # TODO: mypy-strict
     # Store all matches
     result.matches = matches
 
-    # Enrich Spotify matches with audio features (BPM, key, energy, etc.)
-    # NOTE: Spotify audio features API is dead (Nov 2024). Skip entirely.
-    # Kept as commented code for reference if API ever returns.
-    # if mode in ("hoarding", "both"):
-    #     spotify_provider = provider_getter("spotify")
-    #     if spotify_provider and hasattr(spotify_provider, 'enrich_with_audio_features'):
-    #         for m in matches:
-    #             if m.service == "spotify" and m.match_confidence in (MatchConfidence.EXACT, MatchConfidence.STRONG):
-    #                 spotify_provider.enrich_with_audio_features(m)
-    #                 log(f"  spotify: enriched with audio features (BPM={m.bpm}, key={m.key})")
-
     # Apply cascade rules to get canonical values
     if matches:
         result = apply_cascade(result, file_info, mode)
@@ -410,37 +398,14 @@ def apply_cascade(
                 ARTWORK_PRECEDENCE, lambda m: m.album_art_url, hoarding_usable)
             result.canonical_album_art_url = artwork
 
-            # Spotify audio features (only from Spotify)
-            spotify_match = next((m for m in hoarding_usable if m.service ==
-                                 AUDIO_FEATURES_SOURCE), None)
-            if spotify_match:
-                result.canonical_energy = spotify_match.energy
-                result.canonical_danceability = spotify_match.danceability
-                result.canonical_valence = spotify_match.valence
-                result.canonical_acousticness = spotify_match.acousticness
-                result.canonical_instrumentalness = spotify_match.instrumentalness
-                result.canonical_loudness = spotify_match.loudness
-
             # Provider IDs for linking
             for m in hoarding_usable:
                 if not m.service_track_id:
                     continue
-                if m.service == "spotify":
-                    result.spotify_id = m.service_track_id
-                elif m.service == "beatport":
+                if m.service == "beatport":
                     result.beatport_id = m.service_track_id
                 elif m.service == "tidal":
                     result.tidal_id = m.service_track_id
-                elif m.service == "qobuz":
-                    result.qobuz_id = m.service_track_id
-                elif m.service == "itunes":
-                    result.itunes_id = m.service_track_id
-                elif m.service == "deezer":
-                    result.deezer_id = m.service_track_id
-                elif m.service == "traxsource":
-                    result.traxsource_id = m.service_track_id
-                elif m.service == "musicbrainz":
-                    result.musicbrainz_id = m.service_track_id
 
     return result
 

@@ -1,4 +1,4 @@
-<!-- Status: Active document. Synced 2026-03-09 after recent code/doc review. Historical or superseded material belongs in docs/archive/. -->
+<!-- Status: Active document. Synced 2026-03-14 after migration 0010 (DJ pipeline tables). Historical or superseded material belongs in docs/archive/. -->
 
 # Architecture
 
@@ -24,7 +24,7 @@ Use `tools/get <provider-url>` for day-to-day provider intake. It wraps:
 - local tag prep
 - promote/fix/quarantine/discard planning
 - downstream playlist generation
-- optional DJ MP3 creation with `--dj`
+- optional legacy DJ MP3 creation with `--dj` (deprecated; see `docs/DJ_WORKFLOW.md` for the canonical 4-stage pipeline)
 
 ### Staged-root path
 
@@ -83,20 +83,37 @@ The compatibility script `tools/review/move_from_plan.py` remains available but 
 
 ## DJ Layer
 
-There are two active downstream DJ paths.
+The canonical downstream DJ path is the explicit 4-stage pipeline. Legacy wrapper-driven
+DJ output still exists for compatibility, but it is deprecated and should not be treated
+as the primary operator contract. See `docs/DJ_WORKFLOW.md` for the canonical pipeline.
 
-### Wrapper-driven DJ output
+### Explicit 4-stage pipeline (canonical)
 
-`tools/get --dj` and `tools/get-intake --dj` create DJ MP3s after promote, write DJ playlists, and keep the FLAC master as the source of truth.
+The canonical DJ path is a linear, DB-backed pipeline with explicit state at each stage:
 
-### Deterministic v3 DJ pool
+1. **Register** — `tagslut mp3 reconcile` matches MP3s to identities and writes `mp3_asset` rows
+2. **Admit** — `tagslut dj backfill` / `dj admit` promotes assets to `dj_admission`
+3. **Emit** — `tagslut dj xml emit` writes deterministic Rekordbox XML; assigns stable `rekordbox_track_id` via `dj_track_id_map`; records manifest hash in `dj_export_state`
+4. **Patch** — `tagslut dj xml patch` re-emits after library changes while preserving all Rekordbox TrackIDs
 
-The preferred v3 path is:
+### Deprecated legacy wrapper path
+
+`tools/get --dj` and `tools/get-intake --dj` still exist as compatibility wrappers.
+They are not the supported curated-library workflow because they depend on legacy wrapper
+branching and side effects. See `docs/DJ_WORKFLOW.md` for the canonical 4-stage pipeline.
+
+The pipeline tables (`mp3_asset`, `dj_admission`, `dj_track_id_map`, `dj_playlist`,
+`dj_playlist_track`, `dj_export_state`, `reconcile_log`) were applied to `music_v3.db`
+via migration 0010 on 2026-03-14. See `docs/DB_V3_SCHEMA.md` for the full schema.
+
+### Deterministic v3 DJ pool (pool-wizard)
+
+For building a final cohort-based MP3 pool from `MASTER_LIBRARY`:
 
 1. export DJ candidates
 2. write DJ profile overlays
 3. export DJ-ready rows
-4. build the pool with `scripts/dj/build_pool_v3.py`
+4. `tagslut dj pool-wizard` (preferred) or `scripts/dj/build_pool_v3.py` (lower-level)
 
 This path is plan-first and produces deterministic manifests.
 

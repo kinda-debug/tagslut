@@ -17,23 +17,64 @@ if [ -z "${VOLUME_WORK:-}" ]; then
 fi
 
 GIG_ROOT="${VOLUME_WORK}/gig_runs/gig_2026_03_13"
+RUN_DIR_INPUT="${1:-${RUN_DIR:-}}"
 
-# Find the most recent timestamped directory
-RUN_DIR=$(find "$GIG_ROOT" -maxdepth 1 -type d -name "gig_2026_03_13_*" | sort -r | head -1)
-
-if [ -z "$RUN_DIR" ]; then
-    echo "ERROR: No timestamped run directory found in $GIG_ROOT"
+if [ ! -d "$GIG_ROOT" ]; then
+    echo "ERROR: Gig root not found at $GIG_ROOT"
     echo "Run 02_execute.sh first."
     exit 1
 fi
 
-POOL_DIR="${RUN_DIR}/pool"
+if [ -z "$RUN_DIR_INPUT" ]; then
+    echo "ERROR: RUN_DIR is required."
+    echo "Usage: RUN_DIR=/absolute/path/to/gig_2026_03_13_<timestamp> bash scripts/gig/03_validate_pool.sh"
+    echo "   or: bash scripts/gig/03_validate_pool.sh /absolute/path/to/gig_2026_03_13_<timestamp>"
+    exit 1
+fi
 
+RUN_DIR="$(cd "$RUN_DIR_INPUT" 2>/dev/null && pwd -P || true)"
+if [ -z "$RUN_DIR" ]; then
+    echo "ERROR: RUN_DIR is not accessible: $RUN_DIR_INPUT"
+    exit 1
+fi
+
+case "$RUN_DIR" in
+    "$GIG_ROOT"/gig_2026_03_13_*) ;;
+    *)
+        echo "ERROR: RUN_DIR must be inside $GIG_ROOT"
+        echo "Resolved RUN_DIR: $RUN_DIR"
+        exit 1
+        ;;
+esac
+
+RUN_BASENAME="$(basename "$RUN_DIR")"
+if [[ ! "$RUN_BASENAME" =~ ^gig_2026_03_13_[0-9]{8}_[0-9]{6}$ ]]; then
+    echo "ERROR: RUN_DIR basename must match gig_2026_03_13_<timestamp>"
+    echo "Resolved RUN_DIR basename: $RUN_BASENAME"
+    exit 1
+fi
+
+for required_path in \
+    "$RUN_DIR/answers.json" \
+    "$RUN_DIR/selected.csv" \
+    "$RUN_DIR/plan.csv" \
+    "$RUN_DIR/pool_manifest.json" \
+    "$RUN_DIR/receipts.jsonl" \
+    "$RUN_DIR/failures.jsonl"
+do
+    if [ ! -e "$required_path" ]; then
+        echo "ERROR: Required artifact missing: $required_path"
+        exit 1
+    fi
+done
+
+POOL_DIR="${RUN_DIR}/pool"
 if [ ! -d "$POOL_DIR" ]; then
     echo "ERROR: Pool directory not found at $POOL_DIR"
     exit 1
 fi
 
+echo "Using canonical run directory: $RUN_DIR"
 echo "Validating pool: $POOL_DIR"
 echo ""
 

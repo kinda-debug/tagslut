@@ -45,7 +45,9 @@ bash scripts/gig/02_execute.sh
 
 ### ☐ T-24 to T-20: Validate
 ```bash
-bash scripts/gig/03_validate_pool.sh
+# Use the exact "Resolved execute run directory" printed by 02_execute.sh
+RUN_DIR="/absolute/path/to/gig_2026_03_13_<timestamp>"
+bash scripts/gig/03_validate_pool.sh "$RUN_DIR"
 ```
 - [ ] No zero-byte files
 - [ ] No truncated files
@@ -111,7 +113,7 @@ bash scripts/gig/03_validate_pool.sh
 ## Critical Paths
 
 **Run directory:**  
-`$VOLUME_WORK/gig_runs/gig_2026_03_13/gig_2026_03_13_<timestamp>/`
+`<resolved_execute_run_dir>/`
 
 **Pool location:**  
 `<run_directory>/pool/`

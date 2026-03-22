@@ -201,11 +201,12 @@ poetry run tagslut dj pool-wizard \
   2>&1 | tee "$VOLUME_WORK/gig_runs/gig_2026_03_13/run.log"
 ```
 
-Pipe to `tee` unconditionally. A mid-run failure without a log means debugging from memory.
+Pipe to `tee` unconditionally. A mid-run failure without a log means debugging from memory. Treat the exact `Run directory:` printed by execute as canonical.
 
 **Immediate post-execute check:**
 ```bash
-find "$VOLUME_WORK/gig_runs/gig_2026_03_13/gig_2026_03_13_"*/pool -name "*.mp3" | wc -l
+RUN_DIR="/absolute/path/to/gig_2026_03_13_<timestamp>"
+find "$RUN_DIR/pool" -name "*.mp3" | wc -l
 ```
 
 This count must match `selected` in `pool_manifest.json`. A mismatch is a copy failure. Do not proceed to Rekordbox if counts diverge.
@@ -224,14 +225,8 @@ This count must match `selected` in `pool_manifest.json`. A mismatch is a copy f
 ## G — Pool File Validation
 
 ```bash
-# Zero-byte files — must return nothing
-find "$VOLUME_WORK/gig_runs/gig_2026_03_13/gig_2026_03_13_"*/pool -name "*.mp3" -size 0
-
-# Suspiciously small files (truncated copies) — must return nothing
-find "$VOLUME_WORK/gig_runs/gig_2026_03_13/gig_2026_03_13_"*/pool -name "*.mp3" -size -1M
-
-# Non-MP3 files that slipped in — must return nothing
-find "$VOLUME_WORK/gig_runs/gig_2026_03_13/gig_2026_03_13_"*/pool ! -name "*.mp3" -type f
+RUN_DIR="/absolute/path/to/gig_2026_03_13_<timestamp>"
+bash scripts/gig/03_validate_pool.sh "$RUN_DIR"
 ```
 
 Then do a real-world sanity pass:

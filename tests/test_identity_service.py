@@ -47,8 +47,13 @@ def test_resolve_active_identity_follows_two_hop_merge_chain(tmp_path) -> None:
                 identity_key,
                 canonical_artist,
                 canonical_title,
-                merged_into_id
-            ) VALUES (?, ?, ?, ?, ?)
+                merged_into_id,
+                ingested_at,
+                ingestion_method,
+                ingestion_source,
+                ingestion_confidence
+            ) VALUES (?, ?, ?, ?, ?,
+                '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')
             """,
             [
                 (1, "id:source", "Artist Source", "Track Source", None),
@@ -80,8 +85,13 @@ def test_resolve_or_create_identity_uses_existing_active_asset_link(tmp_path) ->
                 identity_key,
                 canonical_artist,
                 canonical_title,
-                merged_into_id
-            ) VALUES (?, ?, ?, ?, ?)
+                merged_into_id,
+                ingested_at,
+                ingestion_method,
+                ingestion_source,
+                ingestion_confidence
+            ) VALUES (?, ?, ?, ?, ?,
+                '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')
             """,
             [
                 (1, "id:linked-old", "Artist Old", "Track Old", None),
@@ -112,8 +122,10 @@ def test_resolve_or_create_identity_matches_by_isrc(tmp_path) -> None:
         asset_row = _asset_row(conn, 102, "/music/isrc.flac")
         conn.execute(
             """
-            INSERT INTO track_identity (id, identity_key, isrc, canonical_artist, canonical_title)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO track_identity (id, identity_key, isrc, canonical_artist, canonical_title,
+                ingested_at, ingestion_method, ingestion_source, ingestion_confidence)
+            VALUES (?, ?, ?, ?, ?,
+                '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')
             """,
             (10, "id:isrc", "ISRC-123", "Artist A", "Track A"),
         )
@@ -136,8 +148,10 @@ def test_resolve_or_create_identity_matches_by_provider_id(tmp_path) -> None:
         asset_row = _asset_row(conn, 103, "/music/provider.flac")
         conn.execute(
             """
-            INSERT INTO track_identity (id, identity_key, beatport_id, canonical_artist, canonical_title)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO track_identity (id, identity_key, beatport_id, canonical_artist, canonical_title,
+                ingested_at, ingestion_method, ingestion_source, ingestion_confidence)
+            VALUES (?, ?, ?, ?, ?,
+                '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')
             """,
             (11, "beatport:BP-1", "BP-1", "Artist B", "Track B"),
         )
@@ -152,6 +166,80 @@ def test_resolve_or_create_identity_matches_by_provider_id(tmp_path) -> None:
         conn.close()
 
     assert identity_id == 11
+
+
+def test_resolve_or_create_identity_reuses_existing_identity_for_same_provider_id(tmp_path) -> None:
+    conn = _open_fixture_db(tmp_path)
+    try:
+        _asset_row(conn, 201, "/music/a.flac", duration_s=300.0)
+        _asset_row(conn, 202, "/music/b.flac", duration_s=300.0)
+        conn.execute(
+            """
+            INSERT INTO track_identity (id, identity_key, beatport_id, canonical_artist, canonical_title,
+                ingested_at, ingestion_method, ingestion_source, ingestion_confidence)
+            VALUES (?, ?, ?, ?, ?,
+                '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')
+            """,
+            (30, "beatport:BP-123", "BP-123", "Artist A", "Track A"),
+        )
+        row_a = conn.execute("SELECT * FROM asset_file WHERE id = ?", (201,)).fetchone()
+        row_b = conn.execute("SELECT * FROM asset_file WHERE id = ?", (202,)).fetchone()
+        assert row_a is not None and row_b is not None
+
+        first_id = resolve_or_create_identity(
+            conn,
+            row_a,
+            {"beatport_id": "BP-123", "artist": "Artist A", "title": "Track A"},
+            {"source": "beatport"},
+        )
+        second_id = resolve_or_create_identity(
+            conn,
+            row_b,
+            {"beatport_id": "BP-123", "artist": "Artist A", "title": "Track A"},
+            {"source": "beatport"},
+        )
+        count = conn.execute("SELECT COUNT(*) FROM track_identity").fetchone()
+    finally:
+        conn.close()
+
+    assert first_id == 30
+    assert second_id == 30
+    assert count is not None
+    assert int(count[0]) == 1
+
+
+def test_resolve_or_create_identity_merges_provider_ids_for_same_isrc(tmp_path) -> None:
+    conn = _open_fixture_db(tmp_path)
+    try:
+        asset_row = _asset_row(conn, 203, "/music/isrc-merge.flac", duration_s=300.0)
+        conn.execute(
+            """
+            INSERT INTO track_identity (id, identity_key, isrc, beatport_id, canonical_artist, canonical_title,
+                ingested_at, ingestion_method, ingestion_source, ingestion_confidence)
+            VALUES (?, ?, ?, ?, ?, ?,
+                '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')
+            """,
+            (31, "isrc:merge-1", "ISRC-MERGE-1", "BP-999", "Artist A", "Track A"),
+        )
+
+        identity_id = resolve_or_create_identity(
+            conn,
+            asset_row,
+            {"isrc": "ISRC-MERGE-1", "tidal_id": "TD-777", "artist": "Artist A", "title": "Track A"},
+            {"source": "tidal"},
+        )
+        row = conn.execute("SELECT isrc, beatport_id, tidal_id FROM track_identity WHERE id = ?", (31,)).fetchone()
+        count = conn.execute("SELECT COUNT(*) FROM track_identity").fetchone()
+    finally:
+        conn.close()
+
+    assert identity_id == 31
+    assert row is not None
+    assert str(row["isrc"]) == "ISRC-MERGE-1"
+    assert str(row["beatport_id"]) == "BP-999"
+    assert str(row["tidal_id"]) == "TD-777"
+    assert count is not None
+    assert int(count[0]) == 1
 
 
 def test_resolve_or_create_identity_matches_fuzzy_and_preserves_exact_fields(tmp_path) -> None:
@@ -169,8 +257,13 @@ def test_resolve_or_create_identity_matches_fuzzy_and_preserves_exact_fields(tmp
                 title_norm,
                 canonical_artist,
                 canonical_title,
-                canonical_duration
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                canonical_duration,
+                ingested_at,
+                ingestion_method,
+                ingestion_source,
+                ingestion_confidence
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,
+                '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')
             """,
             (
                 12,
@@ -223,8 +316,13 @@ def test_resolve_or_create_identity_matches_fuzzy_with_short_artist_prefix(tmp_p
                 title_norm,
                 canonical_artist,
                 canonical_title,
-                canonical_duration
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                canonical_duration,
+                ingested_at,
+                ingestion_method,
+                ingestion_source,
+                ingestion_confidence
+            ) VALUES (?, ?, ?, ?, ?, ?, ?,
+                '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')
             """,
             (
                 13,
@@ -342,8 +440,13 @@ def test_mirror_identity_to_legacy_keeps_files_and_library_tracks_in_parity(tmp_
                 canonical_release_date,
                 canonical_bpm,
                 canonical_key,
-                ref_source
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ref_source,
+                ingested_at,
+                ingestion_method,
+                ingestion_source,
+                ingestion_confidence
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')
             """,
             (
                 20,
@@ -490,8 +593,13 @@ def test_mirror_identity_to_legacy_warns_when_files_has_no_canonical_columns(
                 id,
                 identity_key,
                 canonical_title,
-                canonical_artist
-            ) VALUES (?, ?, ?, ?)
+                canonical_artist,
+                ingested_at,
+                ingestion_method,
+                ingestion_source,
+                ingestion_confidence
+            ) VALUES (?, ?, ?, ?,
+                '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')
             """,
             (21, "warning:test", "Warning Title", "Warning Artist"),
         )
@@ -511,8 +619,10 @@ def test_link_asset_to_identity_upserts_single_active_row_per_asset(tmp_path) ->
         _asset_row(conn, 107, "/music/link-upsert.flac")
         conn.executemany(
             """
-            INSERT INTO track_identity (id, identity_key)
-            VALUES (?, ?)
+            INSERT INTO track_identity (id, identity_key,
+                ingested_at, ingestion_method, ingestion_source, ingestion_confidence)
+            VALUES (?, ?,
+                '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')
             """,
             [
                 (30, "id:first"),
@@ -546,3 +656,33 @@ def test_link_asset_to_identity_upserts_single_active_row_per_asset(tmp_path) ->
     assert float(row["confidence"]) == 0.95
     assert str(row["link_source"]) == "second-pass"
     assert int(row["active"]) == 1
+
+
+def test_link_asset_to_identity_resolves_merged_identity_to_active_row(tmp_path) -> None:
+    conn = _open_fixture_db(tmp_path)
+    try:
+        _asset_row(conn, 111, "/music/link-merged.flac")
+        conn.executemany(
+            """
+            INSERT INTO track_identity (id, identity_key, merged_into_id,
+                ingested_at, ingestion_method, ingestion_source, ingestion_confidence)
+            VALUES (?, ?, ?,
+                '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')
+            """,
+            [
+                (40, "id:active", None),
+                (41, "id:merged", 40),
+            ],
+        )
+
+        link_asset_to_identity(conn, 111, 41, 0.85, "merge-test")
+
+        row = conn.execute(
+            "SELECT identity_id FROM asset_link WHERE asset_id = ?",
+            (111,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert row is not None
+    assert int(row["identity_id"]) == 40

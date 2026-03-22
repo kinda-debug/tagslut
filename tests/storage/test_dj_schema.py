@@ -31,6 +31,13 @@ def test_gig_sets_table_exists(mem_db):
     assert "exported_at" in cols
 
 
+def test_gigs_table_exists(mem_db):
+    cols = {row[1] for row in mem_db.execute("PRAGMA table_info(gigs)")}
+    assert "date" in cols
+    assert "venue" in cols
+    assert "track_count" in cols
+
+
 def test_gig_set_tracks_table_exists(mem_db):
     cols = {row[1] for row in mem_db.execute("PRAGMA table_info(gig_set_tracks)")}
     assert "gig_set_id" in cols

@@ -48,12 +48,17 @@ Top-level commands hidden by policy until promoted:
 2. `tagslut enrich-file ...`
 3. `tagslut explain-keeper ...`
 4. `tagslut show-zone ...`
-5. `tagslut recovery ...`
 
 Compatibility scripts still allowed, but not canonical:
 1. `tools/review/move_from_plan.py`
 2. `tools/review/quarantine_from_plan.py`
 3. `tools/review/promote_by_tags.py`
+
+Retired hidden compatibility shims that may remain callable only to fail clearly:
+1. `tagslut recovery ...`
+2. `tagslut verify recovery ...`
+3. `tagslut report recovery ...`
+4. `tagslut _recover ...`
 
 Current rule for `tagslut intake process-root`:
 - on a v3 DB, use only `identify,enrich,art,promote,dj`
@@ -87,6 +92,27 @@ Compatibility wrappers were removed after satisfying these gates:
 2. Do not introduce new top-level CLI wrappers that bypass canonical surfaces.
 3. Keep runtime artifacts out of repo root; write to `artifacts/`.
 4. Keep docs synchronized with live CLI help and script surface map.
+5. Do not write to `track_identity` ad hoc outside the v3 identity service path.
+6. Do not chase `merged_into_id` outside the identity service.
+7. Do not perform per-file `library_track_sources` lookups in loops when a bulk preload is practical.
+8. Do not use filesystem-based DJ candidate discovery after the Phase 1 gate closes.
+
+## Operational Gates
+
+Before opening a focused PR during the migration period:
+
+```bash
+git fetch origin
+git log --oneline --decorate --graph --max-count=20 origin/dev..HEAD
+git log --oneline --decorate --graph --max-count=20 HEAD..origin/dev
+git diff --name-only origin/dev...HEAD
+git diff --stat origin/dev...HEAD
+```
+
+Interpretation:
+- empty diff both ways means the branch is redundant
+- non-empty diff with a clean working tree means the branch is reviewable
+- missing expected changes means you must locate them before continuing
 
 ## Validation Hooks
 

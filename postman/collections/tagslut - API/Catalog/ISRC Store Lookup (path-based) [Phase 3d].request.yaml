@@ -1,0 +1,60 @@
+$kind: http-request
+description: |-
+  ## Auth
+  Requires **catalog auth** — session cookie (`sessionid`) or Basic auth
+  (client_id / client_secret). Bearer token is NOT accepted by this endpoint
+  per the Beatport v4 OAS security definition. Test with Basic auth first;
+  fall back to session cookie if needed.
+
+  ## Response shape
+  Returns a **direct track record** (not a paginated wrapper). Top-level keys
+  include `id`, `isrc`, `name`, `artists`, `bpm`, `key`, `genre` — no
+  `results` / `count` / `next` envelope.
+
+  ## Comparison with `Tracks by ISRC (query param)`
+  | | `store/{isrc}/` (this request) | `?isrc=` (query param) |
+  |---|---|---|
+  | Response shape | Direct record | Paginated wrapper (`results[]`) |
+  | Metadata richness | Narrower — core fields only | Richer — full catalog fields |
+  | Auth | Catalog (cookie / Basic) | Catalog (cookie / Basic) |
+  | Pipeline preference | ❌ Not preferred | ✅ **Preferred for ISRC cross-verification** |
+
+  **Verdict:** Use `GET /v4/catalog/tracks/?isrc=` as the canonical ISRC
+  lookup for the pipeline's cross-verification step. This endpoint is useful
+  for spot-checking a single ISRC but returns less metadata and is a
+  special-case path. Keep as fallback only.
+url: '{{base_url}}/v4/catalog/tracks/store/{{beatport_test_isrc}}/'
+method: GET
+auth:
+  type: basic
+  credentials:
+    username: '{{beatport_client_id}}'
+    password: '{{beatport_client_secret}}'
+scripts:
+  - type: afterResponse
+    code: |-
+      console.log('Status: ' + pm.response.code);
+      if (pm.response.code === 200) {
+          var json = pm.response.json();
+
+          // Response shape detection
+          var isPaginated = ('results' in json && 'count' in json);
+          var isDirect = ('id' in json && 'isrc' in json);
+          console.log('Response shape: ' + (isPaginated ? 'PAGINATED WRAPPER' : isDirect ? 'DIRECT RECORD' : 'UNKNOWN'));
+
+          // Field presence
+          var fields = ['id', 'isrc', 'name', 'artists', 'bpm', 'key', 'genre'];
+          var record = isPaginated ? (json.results && json.results[0]) : json;
+          if (record) {
+              fields.forEach(function(f) {
+                  console.log('  ' + f + ': ' + (f in record ? JSON.stringify(record[f]).substring(0, 80) : 'MISSING'));
+              });
+          } else {
+              console.log('No record to inspect.');
+          }
+      } else {
+          console.log('FAILED (' + pm.response.code + ') — check auth: try Basic (client_id/secret) or session cookie');
+          console.log('Body: ' + pm.response.text().substring(0, 200));
+      }
+    language: text/javascript
+order: 3000

@@ -5,7 +5,6 @@
 # and outputs normalized JSON to stdout or appends to NDJSON file.
 #
 # Usage:
-#   source ./env_exports.sh
 #   ./beatport_harvest_catalog_track.sh 23011269
 #   ./beatport_harvest_catalog_track.sh 23011269 >> beatport_catalog_tracks.ndjson
 #
@@ -19,12 +18,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-# Source env if not already loaded
-if [ -z "${BEATPORT_ACCESS_TOKEN:-}" ]; then
-    if [ -f "${PROJECT_ROOT}/env_exports.sh" ]; then
-        source "${PROJECT_ROOT}/env_exports.sh"
-    fi
+# Get Beatport token from TokenManager (System B)
+if ! BEATPORT_ACCESS_TOKEN="$(tagslut auth token-get beatport 2>/dev/null)"; then
+    echo "ERROR: No valid Beatport token." >&2
+    echo "Run: tagslut auth login beatport" >&2
+    exit 1
 fi
+export BEATPORT_ACCESS_TOKEN
 
 RETRY_BASE_DELAY="${RETRY_BASE_DELAY:-10}"
 MAX_RETRIES="${MAX_RETRIES:-5}"
@@ -39,11 +39,7 @@ fi
 TRACK_ID="$1"
 
 # Check for required token
-TOKEN="${BEATPORT_ACCESS_TOKEN:-}"
-if [ -z "$TOKEN" ]; then
-    echo "ERROR: BEATPORT_ACCESS_TOKEN not set. Source env_exports.sh first." >&2
-    exit 1
-fi
+TOKEN="${BEATPORT_ACCESS_TOKEN}"
 
 do_with_retries() {
     local cmd="$1"

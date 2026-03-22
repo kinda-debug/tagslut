@@ -30,8 +30,8 @@ INDEX_REQUIRED_COMMANDS = {
 }
 DECIDE_REQUIRED_COMMANDS = {"profiles", "plan"}
 EXECUTE_REQUIRED_COMMANDS = {"move-plan", "quarantine-plan", "promote-tags"}
-VERIFY_REQUIRED_COMMANDS = {"duration", "recovery", "parity", "receipts"}
-REPORT_REQUIRED_COMMANDS = {"m3u", "duration", "recovery", "plan-summary"}
+VERIFY_REQUIRED_COMMANDS = {"duration", "parity", "receipts"}
+REPORT_REQUIRED_COMMANDS = {"m3u", "duration", "plan-summary"}
 AUTH_REQUIRED_COMMANDS = {"status", "init", "refresh", "login"}
 
 

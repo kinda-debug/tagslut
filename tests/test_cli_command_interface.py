@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 import types
+from pathlib import Path
 
 from click.testing import CliRunner
 
@@ -12,6 +14,8 @@ from tagslut.cli.main import (
     _TRANSITIONAL_COMMAND_REPLACEMENTS,
     cli,
 )
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _parse_commands(help_text: str) -> set[str]:
@@ -56,8 +60,8 @@ def test_phase4_group_subcommands_present() -> None:
         },
         "decide": {"profiles", "plan"},
         "execute": {"move-plan", "quarantine-plan", "promote-tags"},
-        "verify": {"duration", "recovery", "parity", "receipts"},
-        "report": {"m3u", "duration", "recovery", "plan-summary", "dj-review"},
+        "verify": {"duration", "parity", "receipts"},
+        "report": {"m3u", "duration", "plan-summary", "dj-review"},
         "auth": {"status", "init", "refresh", "login"},
     }
 
@@ -117,7 +121,7 @@ def test_scan_not_registered_in_click_command_map() -> None:
 def test_internal_replacement_map_targets_canonical_flows() -> None:
     assert _TRANSITIONAL_COMMAND_REPLACEMENTS["tagslut _mgmt"].startswith("tagslut index")
     assert _TRANSITIONAL_COMMAND_REPLACEMENTS["tagslut _metadata"].startswith("tagslut auth")
-    assert _TRANSITIONAL_COMMAND_REPLACEMENTS["tagslut _recover"].startswith("tagslut verify")
+    assert _TRANSITIONAL_COMMAND_REPLACEMENTS["tagslut _recover"].startswith("Recovery is retired")
     assert "tagslut scan" not in _TRANSITIONAL_COMMAND_REPLACEMENTS
     assert "tagslut mgmt" not in _TRANSITIONAL_COMMAND_REPLACEMENTS
 
@@ -206,3 +210,28 @@ def test_tagslut_help_has_no_deprecation_warning() -> None:
     result = runner.invoke(cli, ["--help"])
     assert result.exit_code == 0
     assert "deprecated" not in (result.output or "")
+
+
+def test_recovery_wrappers_hidden_from_active_help() -> None:
+    runner = CliRunner()
+    verify_help = runner.invoke(cli, ["verify", "--help"])
+    report_help = runner.invoke(cli, ["report", "--help"])
+
+    assert verify_help.exit_code == 0, verify_help.output
+    assert report_help.exit_code == 0, report_help.output
+    assert "recovery" not in _parse_commands(verify_help.output)
+    assert "recovery" not in _parse_commands(report_help.output)
+
+
+def test_recovery_compat_wrappers_fail_clearly() -> None:
+    for argv in (["recovery"], ["verify", "recovery"], ["report", "recovery"]):
+        result = subprocess.run(
+            [sys.executable, "-m", "tagslut", *argv],
+            cwd=PROJECT_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode != 0
+        combined = (result.stdout or "") + (result.stderr or "")
+        assert "legacy/tagslut_recovery/" in combined

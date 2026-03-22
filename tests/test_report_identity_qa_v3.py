@@ -47,8 +47,12 @@ def _create_v3_fixture(tmp_path: Path) -> Path:
                 spotify_id,
                 canonical_artist,
                 canonical_title,
-                enriched_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                enriched_at,
+                ingested_at,
+                ingestion_method,
+                ingestion_source,
+                ingestion_confidence
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
@@ -62,6 +66,10 @@ def _create_v3_fixture(tmp_path: Path) -> Path:
                     "Artist 1",
                     "Track 1",
                     "2026-03-01T00:00:00Z",
+                    '2026-01-01T00:00:00+00:00',
+                    'migration',
+                    'test_fixture',
+                    'legacy',
                 ),
                 (
                     2,
@@ -74,6 +82,10 @@ def _create_v3_fixture(tmp_path: Path) -> Path:
                     "Artist 2",
                     "",
                     "",
+                    '2026-01-01T00:00:00+00:00',
+                    'migration',
+                    'test_fixture',
+                    'legacy',
                 ),
                 (
                     3,
@@ -86,6 +98,10 @@ def _create_v3_fixture(tmp_path: Path) -> Path:
                     "Artist 3",
                     "Track 3",
                     "2026-03-01T00:00:00Z",
+                    '2026-01-01T00:00:00+00:00',
+                    'migration',
+                    'test_fixture',
+                    'legacy',
                 ),
                 (
                     4,
@@ -98,6 +114,10 @@ def _create_v3_fixture(tmp_path: Path) -> Path:
                     "Artist 4",
                     "Track 4",
                     "",
+                    '2026-01-01T00:00:00+00:00',
+                    'migration',
+                    'test_fixture',
+                    'legacy',
                 ),
             ],
         )

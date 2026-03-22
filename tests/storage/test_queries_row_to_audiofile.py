@@ -78,3 +78,5 @@ def test_row_to_audiofile_with_missing_optional_columns() -> None:
     assert audio.library is None
     assert audio.zone is None
     assert audio.duration is None
+    assert audio.dj_set_role is None
+    assert audio.dj_subrole is None

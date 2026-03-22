@@ -239,3 +239,32 @@ def test_summary_artifact_has_required_count_and_sample_keys(tmp_path: Path) -> 
     ):
         assert key in payload
         assert key in payload["samples"]
+
+
+def test_execute_backfill_still_runs_with_immediate_batch_transactions(tmp_path: Path) -> None:
+    db_path = _db_fixture(tmp_path)
+    artifacts_dir = tmp_path / "artifacts"
+
+    rc = main(
+        [
+            "--db",
+            str(db_path),
+            "--execute",
+            "--artifacts-dir",
+            str(artifacts_dir),
+            "--commit-every",
+            "1",
+            "--checkpoint-every",
+            "1",
+        ]
+    )
+
+    assert rc == 0
+
+    conn = sqlite3.connect(str(db_path))
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM asset_file").fetchone()[0] == 2
+        assert conn.execute("SELECT COUNT(*) FROM track_identity").fetchone()[0] == 1
+        assert conn.execute("SELECT COUNT(*) FROM asset_link WHERE active = 1").fetchone()[0] == 2
+    finally:
+        conn.close()

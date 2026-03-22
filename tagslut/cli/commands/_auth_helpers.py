@@ -46,23 +46,6 @@ def _tidal_device_login(token_manager) -> None:  # type: ignore  # TODO: mypy-st
     click.echo("\nAuthorization timed out. Please try again.")
 
 
-def _qobuz_login(token_manager) -> None:  # type: ignore  # TODO: mypy-strict
-    """Handle Qobuz email/password login."""
-    click.echo("Qobuz Login")
-    click.echo("-" * 40)
-
-    email = click.prompt("Email")
-    password = click.prompt("Password", hide_input=True)
-
-    click.echo("\nLogging in...")
-    token = token_manager.login_qobuz(email, password)
-
-    if token:
-        click.echo("Qobuz authentication successful!")
-    else:
-        click.echo("Login failed. Check your email and password.")
-
-
 def _beatport_token_input(token_manager) -> None:  # type: ignore  # TODO: mypy-strict
     """Handle manual Beatport token input."""
     click.echo("Beatport Token Setup")

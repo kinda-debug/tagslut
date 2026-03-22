@@ -48,6 +48,7 @@ echo "Starting execute mode..."
 echo ""
 
 # Run execute with logging
+set +e
 poetry run tagslut dj pool-wizard \
   --db "$TAGSLUT_DB" \
   --master-root "$MASTER_LIBRARY" \
@@ -57,24 +58,37 @@ poetry run tagslut dj pool-wizard \
   --non-interactive \
   --profile "$PROFILE" \
   2>&1 | tee "$RUN_LOG"
-
 exec_exit=${PIPESTATUS[0]}
+set -e
+
+mapfile -t RUN_DIR_MATCHES < <(sed -n 's/^Run directory: //p' "$RUN_LOG")
+parse_error=0
+RUN_DIR=""
+
+if [ "${#RUN_DIR_MATCHES[@]}" -eq 0 ]; then
+    echo "ERROR: Expected exactly one 'Run directory:' line in execute log, found 0."
+    parse_error=1
+elif [ "${#RUN_DIR_MATCHES[@]}" -gt 1 ]; then
+    echo "ERROR: Expected exactly one 'Run directory:' line in execute log, found ${#RUN_DIR_MATCHES[@]}."
+    printf 'Matches:\n'
+    printf '  %s\n' "${RUN_DIR_MATCHES[@]}"
+    parse_error=1
+else
+    RUN_DIR_RAW="${RUN_DIR_MATCHES[0]}"
+    RUN_DIR="$(cd "$RUN_DIR_RAW" 2>/dev/null && pwd -P || true)"
+    if [ -z "$RUN_DIR" ] || [ ! -d "$RUN_DIR" ]; then
+        echo "ERROR: Parsed run directory is not accessible: $RUN_DIR_RAW"
+        parse_error=1
+    fi
+fi
 
 echo ""
 echo "====================================="
-if [ $exec_exit -eq 0 ]; then
+if [ $exec_exit -eq 0 ] && [ $parse_error -eq 0 ]; then
     echo "Execute completed. Checking results..."
     echo ""
-    
-    # Find the timestamped directory
-    RUN_DIR=$(find "$GIG_ROOT" -maxdepth 1 -type d -name "gig_2026_03_13_*" | sort -r | head -1)
-    
-    if [ -z "$RUN_DIR" ]; then
-        echo "ERROR: Could not find timestamped run directory"
-        exit 1
-    fi
-    
-    echo "Run directory: $RUN_DIR"
+
+    echo "Resolved execute run directory: $RUN_DIR"
     echo ""
     
     # Count files
@@ -84,7 +98,8 @@ if [ $exec_exit -eq 0 ]; then
         echo "Files in pool: $FILE_COUNT"
         echo ""
         echo "NEXT STEPS:"
-        echo "1. Run 03_validate_pool.sh to check file integrity"
+        echo "1. Run 03_validate_pool.sh against this exact run:"
+        echo "   bash scripts/gig/03_validate_pool.sh \"$RUN_DIR\""
         echo "2. After validation passes, manually create:"
         echo "   ${RUN_DIR}/POOL_VERIFIED.txt"
         echo "3. Import ${POOL_DIR} into Rekordbox"
@@ -93,6 +108,11 @@ if [ $exec_exit -eq 0 ]; then
         exit 1
     fi
 else
-    echo "Execute FAILED. Check $RUN_LOG for details."
+    if [ $exec_exit -ne 0 ]; then
+        echo "Execute FAILED. Check $RUN_LOG for details."
+    fi
+    if [ $parse_error -ne 0 ]; then
+        echo "Run directory parsing FAILED. Fix this before continuing."
+    fi
     exit 1
 fi

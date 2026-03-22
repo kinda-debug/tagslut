@@ -40,10 +40,10 @@ def register_verify_group(cli: click.Group) -> None:
             inactive_exclude=inactive_exclude,
         )
 
-    @verify.command("recovery", context_settings=WRAPPER_CONTEXT)
+    @verify.command("recovery", hidden=True, context_settings=WRAPPER_CONTEXT)
     @click.argument("args", nargs=-1, type=click.UNPROCESSED)
     def verify_recovery(args):  # type: ignore  # TODO: mypy-strict
-        """Run recovery verification phase."""
+        """Retired compatibility wrapper for the archived recovery workflow."""
         run_tagslut_wrapper(["_recover", "--phase", "verify", *list(args)])
 
     @verify.command("parity", context_settings=WRAPPER_CONTEXT)

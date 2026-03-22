@@ -1,0 +1,923 @@
+#!/usr/bin/env python3
+"""tools/get-all — End-to-end intake + DJ pipeline.
+
+Orchestrates the full lifecycle from URL to Rekordbox XML:
+
+  Stage 1  precheck    Pre-download DB match (ISRC / provider ID / title+artist)
+  Stage 2  intake      Download → local tag prep → promote to master library
+  Stage 3  enrich      External metadata + cover art (post-promote)
+  Stage 4  transcode   Master FLAC → DJ MP3  (tagslut mp3 build)
+  Stage 5  dj          Backfill admission → validate → emit/patch Rekordbox XML
+
+Usage:
+  tools/get-all <provider-url> [options]
+
+Options:
+  --db PATH              SQLite DB path  (default: $TAGSLUT_DB)
+  --providers LIST       Enrich providers, comma-separated
+                           default: $ENRICH_PROVIDERS
+                                 or beatport,tidal,deezer,traxsource,musicbrainz
+  --xml-out PATH         Rekordbox XML output path
+                           default: $REKORDBOX_XML
+                                 or output/dj/rekordbox.xml
+  --dj-root PATH         DJ MP3 root for transcode stage
+                           default: $DJ_ROOT or $DJ_MP3_ROOT
+  --enrich-when WHEN     background  enrich launches in background inside intake (default)
+                         foreground  block on enrich after promote; providers apply
+                         skip        no enrich at all
+  --no-hoard-pre         Skip local tag prep before promote
+  --skip STAGE,...       Comma-separated stages to skip
+                           choices: precheck, intake, enrich, transcode, dj
+  --only STAGE           Run exactly one stage (skips all others)
+  --dry-run              Print commands; do not execute anything
+  --no-precheck          Skip pre-download DB match check
+  --force-download       Download even if equal-or-better copy exists in DB
+  --verbose              Show full command output + internal paths
+  -h, --help             Show this help
+
+Examples:
+  tools/get-all https://www.beatport.com/release/some-release/12345
+  tools/get-all https://tidal.com/browse/album/12345 --providers beatport,tidal
+  tools/get-all https://www.beatport.com/release/x/1 --skip transcode,dj
+  tools/get-all https://www.beatport.com/release/x/1 --only dj
+  tools/get-all https://www.beatport.com/release/x/1 --enrich-when foreground
+  tools/get-all https://www.beatport.com/release/x/1 --dry-run --verbose
+"""
+from __future__ import annotations
+
+import argparse
+import csv
+import os
+import sqlite3
+import subprocess
+import sys
+from dataclasses import dataclass, field
+from pathlib import Path
+
+
+# ---------------------------------------------------------------------------
+# Repo root + sys.path
+# ---------------------------------------------------------------------------
+
+def _find_repo_root() -> Path:
+    current = Path(__file__).resolve().parent
+    for _ in range(8):
+        if (current / "pyproject.toml").exists():
+            return current
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+    env_root = os.environ.get("TAGSLUT_ROOT", "")
+    if env_root:
+        return Path(env_root).resolve()
+    raise SystemExit("tools/get-all: cannot locate repo root (pyproject.toml not found)")
+
+
+REPO_ROOT: Path = _find_repo_root()
+
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+
+# ---------------------------------------------------------------------------
+# .env loader  (mirrors _load_env.sh: set -a; source .env; set +a)
+# ---------------------------------------------------------------------------
+
+def _load_dotenv() -> None:
+    env_file = REPO_ROOT / ".env"
+    if not env_file.exists():
+        return
+    for raw in env_file.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip().lstrip("export ").strip()
+        value = value.strip()
+        if len(value) >= 2 and value[0] in ('"', "'") and value[-1] == value[0]:
+            value = value[1:-1]
+        os.environ.setdefault(key, value)
+
+
+_load_dotenv()
+
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+ALL_STAGES: list[str] = ["precheck", "intake", "enrich", "transcode", "dj"]
+DEFAULT_PROVIDERS = "beatport,tidal,deezer,traxsource,musicbrainz"
+DEFAULT_XML_OUT   = "output/dj/rekordbox.xml"
+ARTIFACTS_DIR     = REPO_ROOT / "artifacts" / "compare"
+PRECHECK_OUT_DIR  = REPO_ROOT / "output" / "precheck"
+ENRICH_WHEN_CHOICES = ("background", "foreground", "skip")
+
+
+# ---------------------------------------------------------------------------
+# Config
+# ---------------------------------------------------------------------------
+
+@dataclass
+class Config:
+    url:            str
+    db:             str
+    providers:      list[str]
+    xml_out:        Path
+    dj_root:        Path | None
+    enrich_when:    str           # background | foreground | skip
+    hoard_pre:      bool          # run local tag prep before promote
+    skip_stages:    set[str]
+    dry_run:        bool
+    no_precheck:    bool
+    force_download: bool
+    verbose:        bool
+
+
+def _resolve_config(args: argparse.Namespace) -> Config:
+    # DB
+    db = (
+        args.db
+        or os.environ.get("TAGSLUT_DB", "")
+        or os.environ.get("V3_DB", "")
+    ).strip()
+    if not db:
+        raise SystemExit(
+            "tools/get-all: DB path required.\n"
+            "  Set $TAGSLUT_DB, $V3_DB, or pass --db <path>."
+        )
+
+    # Providers
+    raw_providers = (
+        args.providers
+        or os.environ.get("ENRICH_PROVIDERS", "")
+        or DEFAULT_PROVIDERS
+    )
+    providers = [p.strip() for p in raw_providers.split(",") if p.strip()]
+
+    # XML output path
+    raw_xml = (
+        args.xml_out
+        or os.environ.get("REKORDBOX_XML", "")
+        or os.environ.get("DJ_REKORDBOX_XML", "")
+    ).strip()
+    xml_out = Path(raw_xml) if raw_xml else REPO_ROOT / DEFAULT_XML_OUT
+    if not xml_out.is_absolute():
+        xml_out = REPO_ROOT / xml_out
+
+    # DJ MP3 root
+    raw_dj_root = (
+        args.dj_root
+        or os.environ.get("DJ_ROOT", "")
+        or os.environ.get("DJ_MP3_ROOT", "")
+        or os.environ.get("MP3_ROOT", "")
+    ).strip()
+    dj_root = Path(raw_dj_root).expanduser() if raw_dj_root else None
+    if dj_root is not None and not dj_root.is_absolute():
+        dj_root = (REPO_ROOT / dj_root).resolve()
+
+    # Stage skip set
+    skip_stages: set[str] = set()
+    if args.skip:
+        for item in args.skip.split(","):
+            s = item.strip()
+            if not s:
+                continue
+            if s not in ALL_STAGES:
+                raise SystemExit(
+                    f"tools/get-all: unknown stage {s!r}.\n"
+                    f"  Choices: {', '.join(ALL_STAGES)}"
+                )
+            skip_stages.add(s)
+
+    if args.only:
+        s = args.only.strip()
+        if s not in ALL_STAGES:
+            raise SystemExit(
+                f"tools/get-all: unknown --only stage {s!r}.\n"
+                f"  Choices: {', '.join(ALL_STAGES)}"
+            )
+        skip_stages = {x for x in ALL_STAGES if x != s}
+
+    if "transcode" not in skip_stages and dj_root is None:
+        raise SystemExit(
+            "tools/get-all: DJ MP3 root required for transcode stage.\n"
+            "  Set $DJ_ROOT, $DJ_MP3_ROOT, or $MP3_ROOT, or pass --dj-root <path>.\n"
+            "  Or skip transcode with --skip transcode."
+        )
+
+    # enrich_when drives auto-skip of the enrich stage
+    enrich_when = args.enrich_when
+    if enrich_when == "background":
+        # enrich runs inside intake (get-intake background); skip the explicit enrich stage
+        skip_stages.add("enrich")
+
+    return Config(
+        url=args.url,
+        db=db,
+        providers=providers,
+        xml_out=xml_out,
+        dj_root=dj_root,
+        enrich_when=enrich_when,
+        hoard_pre=not args.no_hoard_pre,
+        skip_stages=skip_stages,
+        dry_run=args.dry_run,
+        no_precheck=args.no_precheck,
+        force_download=args.force_download,
+        verbose=args.verbose,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Pipeline runner
+# ---------------------------------------------------------------------------
+
+class Pipeline:
+    def __init__(self, cfg: Config) -> None:
+        self.cfg = cfg
+        active = [s for s in ALL_STAGES if s not in cfg.skip_stages]
+        self._active_stages = active
+        self._step = 0
+
+        # Set by _stage_intake() after a successful real (non-dry-run) intake
+        # run.  Used by transcode/enrich to scope work to this run's promoted
+        # files only.
+        self._promoted_flacs_path: Path | None = None
+
+        # Set by _stage_precheck() after a successful real run.  Used by
+        # transcode as a fallback scope when intake promoted nothing new —
+        # covers tracks that were already in the DB but never transcoded.
+        self._precheck_decisions_path: Path | None = None
+
+    # ── Helpers ──────────────────────────────────────────────────────────
+
+    def _header(self, stage: str, description: str) -> None:
+        self._step += 1
+        total = len(self._active_stages)
+        label = f"[{self._step}/{total}] {stage}"
+        print(f"\n{'─' * 60}")
+        print(f"  {label}  {description}")
+        print(f"{'─' * 60}")
+
+    def _run(self, cmd: list[str], *, cwd: Path | None = None) -> int:
+        display = " ".join(str(c) for c in cmd)
+        print(f"→ {display}")
+        if self.cfg.dry_run:
+            print("  (dry-run: not executed)")
+            return 0
+        result = subprocess.run(
+            [str(c) for c in cmd],
+            cwd=str(cwd or REPO_ROOT),
+            env=os.environ.copy(),
+        )
+        return result.returncode
+
+    def _check_tool(self, path: Path) -> None:
+        if not path.exists():
+            raise SystemExit(f"tools/get-all: required tool not found: {path}")
+
+    def _infer_source(self) -> str:
+        url = self.cfg.url.lower()
+        if "beatport.com" in url:
+            return "bpdl"
+        if "tidal.com" in url:
+            return "tidal"
+        if "deezer.com" in url or "dzr.page" in url:
+            return "deezer"
+        return ""
+
+    def _latest_promoted_flacs_file(self) -> Path | None:
+        """Find the most recently written promoted_flacs_*.txt in artifacts/compare."""
+        if not ARTIFACTS_DIR.exists():
+            return None
+        candidates = sorted(
+            ARTIFACTS_DIR.glob("promoted_flacs_*.txt"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        return candidates[0] if candidates else None
+
+    def _latest_precheck_decisions_file(self) -> Path | None:
+        """Find the most recently written precheck_decisions_*.csv in output/precheck."""
+        if not PRECHECK_OUT_DIR.exists():
+            return None
+        candidates = sorted(
+            PRECHECK_OUT_DIR.glob("precheck_decisions_*.csv"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        return candidates[0] if candidates else None
+
+    def _resolve_identity_ids_from_flacs(self, paths_file: Path) -> list[int]:
+        """Resolve FLAC absolute paths in a promoted_flacs_*.txt to track_identity IDs.
+
+        Queries in priority order:
+          1. preferred_asset — updated immediately after promotion; the authoritative
+             link between a MASTER_LIBRARY asset_file row and its identity.  A newly
+             promoted file will have a preferred_asset row but may not yet have an
+             asset_link row (asset_link retains the old staging-path asset_file).
+          2. asset_link — fallback for files not yet promoted to preferred status.
+
+        Paths not found in either table are silently skipped.  Returns a
+        deduplicated list preserving order.
+        """
+        paths = [
+            line.strip()
+            for line in paths_file.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        if not paths:
+            return []
+
+        conn = sqlite3.connect(self.cfg.db)
+        try:
+            ids: list[int] = []
+            seen: set[int] = set()
+            for path in paths:
+                # Primary: preferred_asset is recomputed after every promotion and
+                # reliably maps the MASTER_LIBRARY asset_file.id to its identity.
+                row = conn.execute(
+                    """
+                    SELECT pa.identity_id
+                    FROM asset_file af
+                    JOIN preferred_asset pa ON pa.asset_id = af.id
+                    WHERE af.path = ?
+                    LIMIT 1
+                    """,
+                    (path,),
+                ).fetchone()
+
+                if row is None:
+                    # Fallback: asset_link covers files that pre-date the
+                    # preferred_asset computation or weren't promoted via intake.
+                    row = conn.execute(
+                        """
+                        SELECT al.identity_id
+                        FROM asset_file af
+                        JOIN asset_link al ON al.asset_id = af.id
+                        WHERE af.path = ?
+                        ORDER BY al.confidence DESC, al.id ASC
+                        LIMIT 1
+                        """,
+                        (path,),
+                    ).fetchone()
+
+                if row is not None and row[0] not in seen:
+                    seen.add(row[0])
+                    ids.append(row[0])
+        finally:
+            conn.close()
+
+        return ids
+
+    def _resolve_identity_ids_from_precheck(self, decisions_csv: Path) -> list[int]:
+        """Look up track_identity IDs for every track in a precheck decisions CSV.
+
+        Reads the provider track_id (beatport_id / tidal_id) and isrc columns,
+        then queries track_identity to map them to DB identity IDs.  Used as a
+        fallback scoping source for transcode when intake produced no new
+        promotions — e.g. because all tracks at the URL were already in the
+        library but had never been transcoded to MP3.
+
+        Returns a deduplicated list preserving CSV row order.
+        """
+        try:
+            with decisions_csv.open("r", encoding="utf-8", newline="") as f:
+                rows = list(csv.DictReader(f))
+        except Exception:
+            return []
+
+        if not rows:
+            return []
+
+        conn = sqlite3.connect(self.cfg.db)
+        try:
+            ids: list[int] = []
+            seen: set[int] = set()
+            for row in rows:
+                domain   = (row.get("domain")   or "").strip()
+                track_id = (row.get("track_id") or "").strip()
+                isrc     = (row.get("isrc")     or "").strip()
+
+                id_row = None
+
+                # Try provider ID first (most precise)
+                if domain == "beatport" and track_id:
+                    id_row = conn.execute(
+                        "SELECT id FROM track_identity WHERE beatport_id = ? LIMIT 1",
+                        (track_id,),
+                    ).fetchone()
+                elif domain == "tidal" and track_id:
+                    id_row = conn.execute(
+                        "SELECT id FROM track_identity WHERE tidal_id = ? LIMIT 1",
+                        (track_id,),
+                    ).fetchone()
+
+                # Fall back to ISRC
+                if id_row is None and isrc:
+                    id_row = conn.execute(
+                        "SELECT id FROM track_identity WHERE isrc = ? LIMIT 1",
+                        (isrc,),
+                    ).fetchone()
+
+                if id_row is not None and id_row[0] not in seen:
+                    seen.add(id_row[0])
+                    ids.append(id_row[0])
+        finally:
+            conn.close()
+
+        return ids
+
+    # ── Entry point ───────────────────────────────────────────────────────
+
+    def run(self) -> int:
+        cfg = self.cfg
+
+        if cfg.verbose or cfg.dry_run:
+            self._print_config()
+
+        for stage in ALL_STAGES:
+            if stage in cfg.skip_stages:
+                continue
+            rc = getattr(self, f"_stage_{stage}".replace("-", "_"))()
+            if rc != 0:
+                print(f"\n✗ get-all: stage '{stage}' failed (exit {rc})", file=sys.stderr)
+                return rc
+
+        print("\n✓ get-all complete")
+        return 0
+
+    def _print_config(self) -> None:
+        cfg = self.cfg
+        print("Config:")
+        print(f"  url           {cfg.url}")
+        print(f"  db            {cfg.db}")
+        print(f"  providers     {','.join(cfg.providers)}")
+        print(f"  xml-out       {cfg.xml_out}")
+        print(f"  dj-root       {cfg.dj_root or '(unset)'}")
+        print(f"  enrich-when   {cfg.enrich_when}")
+        print(f"  hoard-pre     {cfg.hoard_pre}")
+        active   = [s for s in ALL_STAGES if s not in cfg.skip_stages]
+        skipped  = [s for s in ALL_STAGES if s in cfg.skip_stages]
+        print(f"  active stages {', '.join(active)}")
+        if skipped:
+            print(f"  skipped       {', '.join(skipped)}")
+        print(f"  dry-run       {cfg.dry_run}")
+        print()
+
+    # ── Stage: precheck ──────────────────────────────────────────────────
+    #
+    # Standalone pre-download DB match check.  Informational: shows keep/skip
+    # decisions by ISRC > provider ID > title+artist.  Non-fatal on failure;
+    # get-intake runs its own internal precheck unless --no-precheck is set.
+    #
+    # After a successful real run, captures the decisions CSV path so the
+    # transcode stage can use it as a fallback scope for tracks that are
+    # already in the DB but have never been transcoded.
+
+    def _stage_precheck(self) -> int:
+        self._header("precheck", "Match URL tracks against DB before download")
+        script = REPO_ROOT / "tools" / "review" / "pre_download_check.py"
+        if not script.exists():
+            print(f"  precheck script not found: {script}  (skipping)")
+            return 0
+
+        cmd: list[str] = [
+            sys.executable, str(script),
+            "--input",  self.cfg.url,
+            "--db",     self.cfg.db,
+        ]
+        if self.cfg.verbose:
+            pass  # pre_download_check has no --verbose; output is always printed
+        rc = self._run(cmd)
+        if rc != 0:
+            print(f"  precheck exited {rc}  (non-fatal; continuing)")
+
+        # Capture the decisions CSV written by this run.  Used by transcode as
+        # a fallback when intake produced no new promotions.
+        if not self.cfg.dry_run:
+            self._precheck_decisions_path = self._latest_precheck_decisions_file()
+
+        return 0  # always continue — precheck is advisory
+
+    # ── Stage: intake ─────────────────────────────────────────────────────
+    #
+    # Delegates to tools/get-intake which runs:
+    #   download → fingerprint audit → promote plan → execute promotes
+    #   → (when hoard is on) local tag prep pre-promote
+    #   → (when hoard is on and enrich_when==background) background enrich+art
+    #
+    # After a successful real run, captures the most recently written
+    # promoted_flacs_*.txt so the transcode stage can scope to this run only.
+
+    def _stage_intake(self) -> int:
+        self._header("intake", "Download → tag-prep → promote to master library")
+        cfg = self.cfg
+
+        # Deezer: delegate entirely to tools/deemix (deemix wrapper handles its own pipeline)
+        if "deezer.com" in cfg.url.lower() or "dzr.page" in cfg.url.lower():
+            deemix = REPO_ROOT / "tools" / "deemix"
+            self._check_tool(deemix)
+            return self._run([str(deemix), cfg.url])
+
+        get_intake = REPO_ROOT / "tools" / "get-intake"
+        self._check_tool(get_intake)
+
+        cmd: list[str] = [
+            str(get_intake),
+            "--db",              cfg.db,
+            "--missing-policy",  "download",
+            "--execute",
+            "--m3u",
+            "--providers",      ",".join(cfg.providers),
+        ]
+
+        # Hoard / enrich timing
+        if cfg.enrich_when == "skip":
+            # skip both local tag prep and post-promote background enrich
+            cmd += ["--no-hoard"]
+        elif cfg.enrich_when == "foreground":
+            # We will run enrich ourselves in the next stage; tell get-intake to skip it
+            cmd += ["--no-hoard"]
+        elif not cfg.hoard_pre:
+            # hoard is on but local pre-promote tag prep is disabled
+            cmd += ["--no-tagging"]
+        # else: default --hoard — local tag prep on, background enrich after promote
+
+        if cfg.no_precheck:
+            cmd += ["--no-precheck"]
+        if cfg.force_download:
+            cmd += ["--force-download"]
+        if cfg.verbose:
+            cmd += ["--verbose"]
+
+        source = self._infer_source()
+        if source and source not in ("deezer",):
+            cmd += ["--source", source]
+
+        cmd.append(cfg.url)
+        rc = self._run(cmd)
+
+        # Capture the promoted_flacs file written by this run so transcode can
+        # scope to just these identities.  Skip in dry-run: get-intake didn't run.
+        if rc == 0 and not cfg.dry_run:
+            self._promoted_flacs_path = self._latest_promoted_flacs_file()
+
+        return rc
+
+    # ── Stage: enrich ─────────────────────────────────────────────────────
+    #
+    # Only runs when --enrich-when=foreground.  Finds the most recently
+    # written promoted_flacs_*.txt file from the intake run and calls
+    # post_move_enrich_art.py directly, blocking until it completes.
+    #
+    # When --enrich-when=background this stage is skipped automatically
+    # (added to skip_stages by _resolve_config); enrich runs inside intake.
+    # When --enrich-when=skip this stage is also skipped.
+
+    def _stage_enrich(self) -> int:
+        self._header("enrich", "External metadata + cover art (foreground, post-promote)")
+        cfg = self.cfg
+
+        enrich_script = REPO_ROOT / "tools" / "review" / "post_move_enrich_art.py"
+        self._check_tool(enrich_script)
+
+        paths_file = self._promoted_flacs_path or self._latest_promoted_flacs_file()
+        if paths_file is None:
+            print(
+                "  No promoted_flacs_*.txt found under artifacts/compare.\n"
+                "  Enrich stage requires a prior intake run with --execute.\n"
+                "  Skipping enrich."
+            )
+            return 0
+
+        if not self.cfg.dry_run:
+            count = sum(
+                1 for line in paths_file.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            )
+            print(f"  Using promoted paths file: {paths_file}  ({count} files)")
+
+        cmd: list[str] = [
+            sys.executable, str(enrich_script),
+            "--db",         cfg.db,
+            "--paths-file", str(paths_file),
+            "--providers",  ",".join(cfg.providers),
+        ]
+        return self._run(cmd)
+
+    # ── Stage: transcode ─────────────────────────────────────────────────
+    #
+    # Calls tagslut mp3 build scoped to the identities relevant to this run.
+    #
+    # Identity IDs are resolved from two sources (in priority order):
+    #
+    #   Source A — promoted_flacs_*.txt  (primary)
+    #     Tracks newly promoted to MASTER_LIBRARY in this intake session.
+    #     Set by _stage_intake() on success; falls back to the most recently
+    #     written file on disk for --only transcode reruns.
+    #
+    #   Source B — precheck_decisions_*.csv  (fallback)
+    #     All tracks at the current URL as returned by the precheck stage.
+    #     Used when source A yields zero IDs — which happens when intake
+    #     found nothing new to promote because every track was already in the
+    #     DB (precheck said skip=N, download=0).  In that case the tracks may
+    #     still need their first MP3 transcode, and the precheck CSV gives us
+    #     the exact set of identities to target without a full-DB rebuild.
+    #
+    # tagslut mp3 build accepted flags:
+    #   --db TEXT  --dj-root DIRECTORY  --identity-ids TEXT  --dry-run/--execute
+    # No --verbose flag exists on this command.
+
+    def _stage_transcode(self) -> int:
+        self._header("transcode", "FLAC → MP3 for DJ library  (tagslut mp3 build)")
+        cfg = self.cfg
+
+        if cfg.dj_root is None:
+            raise SystemExit(
+                "tools/get-all: transcode stage requested but no DJ root was resolved"
+            )
+
+        # ── Source A: promoted_flacs_*.txt ────────────────────────────────
+        paths_file = self._promoted_flacs_path or self._latest_promoted_flacs_file()
+        if paths_file is None:
+            raise SystemExit(
+                "tools/get-all: transcode stage requires a promoted_flacs_*.txt file\n"
+                "  under artifacts/compare/ but none was found.\n"
+                "  Run intake first, or use --skip transcode to skip this stage."
+            )
+
+        if self._promoted_flacs_path is None:
+            print(
+                f"  Note: intake did not run in this session; "
+                f"using most recent promoted file: {paths_file.name}"
+            )
+
+        # ── Resolve identity IDs ──────────────────────────────────────────
+        if cfg.dry_run:
+            # In dry-run: attempt DB queries (read-only) for a realistic command
+            # preview; gracefully degrade if either source is unavailable.
+            try:
+                identity_ids = self._resolve_identity_ids_from_flacs(paths_file)
+            except Exception as exc:
+                print(f"  (dry-run: could not resolve IDs from promoted_flacs: {exc})")
+                identity_ids = []
+
+            if not identity_ids and self._precheck_decisions_path is not None:
+                try:
+                    identity_ids = self._resolve_identity_ids_from_precheck(
+                        self._precheck_decisions_path
+                    )
+                    if identity_ids:
+                        print(
+                            f"  (dry-run: no promoted IDs; "
+                            f"would use {len(identity_ids)} ID(s) from precheck)"
+                        )
+                except Exception as exc:
+                    print(f"  (dry-run: could not resolve IDs from precheck: {exc})")
+
+            ids_str: str | None = ",".join(str(i) for i in identity_ids) if identity_ids else None
+
+        else:
+            # Real run: resolve from promoted_flacs first.
+            #
+            # Read the raw paths from the file to distinguish two cases:
+            #   (a) file is non-empty  → intake ran and promoted ≥1 FLAC this session
+            #   (b) file is empty / intake skipped → no new promotions
+            #
+            # The precheck-CSV fallback is ONLY permitted in case (b).  If intake
+            # promoted real files but the DB lookup returns zero IDs, that indicates
+            # a data-registration gap (e.g. preferred_asset not yet computed), not
+            # an empty promotion set — falling back to precheck IDs in that situation
+            # would scope transcode to a stale, unrelated set of identities.
+            promoted_paths = [
+                line.strip()
+                for line in paths_file.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+            intake_promoted_this_session = (
+                self._promoted_flacs_path is not None and bool(promoted_paths)
+            )
+
+            identity_ids = self._resolve_identity_ids_from_flacs(paths_file)
+
+            if not identity_ids:
+                if intake_promoted_this_session:
+                    # Intake promoted files but the preferred_asset + asset_link
+                    # lookup still returned zero IDs.  This should not happen after
+                    # the preferred_asset fix, but guard against it rather than
+                    # silently switching scope to stale precheck IDs.
+                    print(
+                        f"  WARNING: {len(promoted_paths)} file(s) listed in "
+                        f"{paths_file.name} but none resolved to a DB identity.\n"
+                        "  preferred_asset rows may not yet be computed for this run.\n"
+                        "  Skipping transcode — re-run after enrichment completes, or\n"
+                        "  run 'tagslut dj backfill --execute' manually once enrichment\n"
+                        "  has registered the preferred asset."
+                    )
+                    return 0
+
+                if self._precheck_decisions_path is not None:
+                    # Intake was skipped or genuinely promoted nothing.  Fall back
+                    # to the precheck CSV (tracks already in MASTER_LIBRARY that
+                    # have never been transcoded).
+                    identity_ids = self._resolve_identity_ids_from_precheck(
+                        self._precheck_decisions_path
+                    )
+                    if identity_ids:
+                        print(
+                            f"  No promoted files this session; falling back to "
+                            f"{len(identity_ids)} identity ID(s) from precheck "
+                            f"({self._precheck_decisions_path.name})"
+                        )
+
+            if not identity_ids:
+                print(
+                    "  No identity IDs resolved from promoted_flacs or precheck.\n"
+                    "  All tracks may already be transcoded (idempotent).\n"
+                    "  Skipping transcode."
+                )
+                return 0
+
+            ids_str = ",".join(str(i) for i in identity_ids)
+            print(f"  Scoped to {len(identity_ids)} identity ID(s)")
+
+        # ── Build and run the command ─────────────────────────────────────
+        cmd: list[str] = [
+            "poetry", "run", "tagslut",
+            "mp3", "build",
+            "--db",      cfg.db,
+            "--dj-root", str(cfg.dj_root),
+            "--execute",
+        ]
+        if ids_str:
+            cmd += ["--identity-ids", ids_str]
+
+        return self._run(cmd)
+
+    # ── Stage: dj ────────────────────────────────────────────────────────
+    #
+    # Runs the canonical 3-step post-transcode DJ pipeline:
+    #   1. dj backfill   — admit all ok mp3_asset rows into dj_admission
+    #   2. dj validate   — check for missing files or empty metadata
+    #   3. dj xml emit   — first run; or
+    #      dj xml patch  — subsequent runs (preserves stable Rekordbox TrackIDs)
+
+    def _has_prior_xml_export(self) -> bool:
+        """Return True iff dj_export_state has at least one rekordbox_xml row.
+
+        Uses the DB as the source of truth rather than filesystem presence.
+        A prior 'emit' that crashed after writing the file but before
+        committing to dj_export_state would otherwise cause 'patch' to fail.
+        """
+        try:
+            conn = sqlite3.connect(self.cfg.db)
+            row = conn.execute(
+                "SELECT id FROM dj_export_state"
+                " WHERE kind = 'rekordbox_xml' ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            conn.close()
+            return row is not None
+        except Exception:
+            return False
+
+    def _stage_dj(self) -> int:
+        self._header("dj", "Backfill → validate → Rekordbox XML")
+        cfg = self.cfg
+
+        # 1. backfill  (--execute required; default is dry-run)
+        rc = self._run([
+            "poetry", "run", "tagslut",
+            "dj", "backfill",
+            "--db", cfg.db,
+            "--execute",
+        ])
+        if rc != 0:
+            return rc
+
+        # 2. validate
+        rc = self._run([
+            "poetry", "run", "tagslut",
+            "dj", "validate",
+            "--db", cfg.db,
+        ])
+        if rc != 0:
+            return rc
+
+        # 3. xml emit or patch
+        # Decision is based on dj_export_state (DB), not file presence on disk.
+        # A prior emit that crashed after writing the file but before recording
+        # to the DB would otherwise cause 'patch' to fail on the next run.
+        xml_out = cfg.xml_out
+        if not cfg.dry_run:
+            xml_out.parent.mkdir(parents=True, exist_ok=True)
+
+        if not cfg.dry_run and self._has_prior_xml_export():
+            print(f"  Prior XML export found in DB → patching  {xml_out}")
+            xml_subcommand = "patch"
+        else:
+            print(f"  No prior XML export in DB → emitting  {xml_out}")
+            xml_subcommand = "emit"
+
+        rc = self._run([
+            "poetry", "run", "tagslut",
+            "dj", "xml", xml_subcommand,
+            "--db",  cfg.db,
+            "--out", str(xml_out),
+        ])
+        return rc
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+def _build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="tools/get-all",
+        description="End-to-end intake + DJ pipeline",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            f"Stages (in order): {', '.join(ALL_STAGES)}\n\n"
+            "Examples:\n"
+            "  tools/get-all https://www.beatport.com/release/my-release/12345\n"
+            "  tools/get-all https://tidal.com/browse/album/12345 --providers beatport,tidal\n"
+            "  tools/get-all https://beatport.com/release/x/1 --skip transcode,dj\n"
+            "  tools/get-all https://beatport.com/release/x/1 --only dj\n"
+            "  tools/get-all https://beatport.com/release/x/1 --enrich-when foreground\n"
+            "  tools/get-all https://beatport.com/release/x/1 --dry-run --verbose\n"
+        ),
+    )
+    p.add_argument("url", help="Provider URL (Beatport, Tidal, Deezer)")
+    p.add_argument(
+        "--db",
+        default="",
+        metavar="PATH",
+        help="SQLite DB path  (default: $TAGSLUT_DB)",
+    )
+    p.add_argument(
+        "--providers",
+        default="",
+        metavar="LIST",
+        help=(
+            f"Comma-separated enrich providers  "
+            f"(default: $ENRICH_PROVIDERS or {DEFAULT_PROVIDERS})"
+        ),
+    )
+    p.add_argument(
+        "--xml-out",
+        default="",
+        metavar="PATH",
+        help=f"Rekordbox XML output path  (default: $REKORDBOX_XML or {DEFAULT_XML_OUT})",
+    )
+    p.add_argument(
+        "--dj-root",
+        default="",
+        metavar="PATH",
+        help="DJ MP3 root for transcode stage  (default: $DJ_ROOT or $DJ_MP3_ROOT)",
+    )
+    p.add_argument(
+        "--enrich-when",
+        default="background",
+        choices=ENRICH_WHEN_CHOICES,
+        metavar="WHEN",
+        help="background (default) | foreground | skip",
+    )
+    p.add_argument(
+        "--no-hoard-pre",
+        action="store_true",
+        help="Skip local tag prep before promote",
+    )
+    p.add_argument(
+        "--skip",
+        default="",
+        metavar="STAGE,...",
+        help=f"Skip stages, comma-separated.  Choices: {', '.join(ALL_STAGES)}",
+    )
+    p.add_argument(
+        "--only",
+        default="",
+        metavar="STAGE",
+        help=f"Run exactly one stage.  Choices: {', '.join(ALL_STAGES)}",
+    )
+    p.add_argument("--dry-run",        action="store_true", help="Print commands; do not execute")
+    p.add_argument("--no-precheck",    action="store_true", help="Skip pre-download DB match check")
+    p.add_argument("--force-download", action="store_true", help="Download even if equal-or-better copy exists")
+    p.add_argument("--verbose",        action="store_true", help="Show full command output + internal paths")
+    return p
+
+
+def main() -> int:
+    parser = _build_parser()
+    args = parser.parse_args()
+    try:
+        cfg = _resolve_config(args)
+    except SystemExit as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    return Pipeline(cfg).run()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

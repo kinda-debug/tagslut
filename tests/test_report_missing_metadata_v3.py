@@ -70,8 +70,12 @@ def _create_fixture_db(tmp_path: Path) -> Path:
                 canonical_bpm,
                 canonical_key,
                 canonical_duration,
-                merged_into_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                merged_into_id,
+                ingested_at,
+                ingestion_method,
+                ingestion_source,
+                ingestion_confidence
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
@@ -93,6 +97,10 @@ def _create_fixture_db(tmp_path: Path) -> Path:
                     "8A",
                     320.0,
                     None,
+                    '2026-01-01T00:00:00+00:00',
+                    'migration',
+                    'test_fixture',
+                    'legacy',
                 ),
                 (
                     2,
@@ -113,6 +121,10 @@ def _create_fixture_db(tmp_path: Path) -> Path:
                     "",
                     300.0,
                     None,
+                    '2026-01-01T00:00:00+00:00',
+                    'migration',
+                    'test_fixture',
+                    'legacy',
                 ),
                 (
                     3,
@@ -133,6 +145,10 @@ def _create_fixture_db(tmp_path: Path) -> Path:
                     "9A",
                     310.0,
                     None,
+                    '2026-01-01T00:00:00+00:00',
+                    'migration',
+                    'test_fixture',
+                    'legacy',
                 ),
                 (
                     4,
@@ -153,6 +169,10 @@ def _create_fixture_db(tmp_path: Path) -> Path:
                     "10A",
                     320.0,
                     None,
+                    '2026-01-01T00:00:00+00:00',
+                    'migration',
+                    'test_fixture',
+                    'legacy',
                 ),
                 (
                     5,
@@ -173,6 +193,10 @@ def _create_fixture_db(tmp_path: Path) -> Path:
                     "11A",
                     330.0,
                     None,
+                    '2026-01-01T00:00:00+00:00',
+                    'migration',
+                    'test_fixture',
+                    'legacy',
                 ),
             ],
         )

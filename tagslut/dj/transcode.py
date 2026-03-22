@@ -101,6 +101,7 @@ class TrackRow:
     dedupe_key: Tuple[str, ...]
     output_path: Optional[Path] = None
     canonical_key: Optional[str] = None
+    dj_set_role: Optional[str] = None
 
 
 def make_dedupe_key(track: TrackRow) -> Tuple[str, ...]:
@@ -212,12 +213,12 @@ def dedupe_tracks(tracks: Iterable[TrackRow]) -> Tuple[List[TrackRow], List[Dict
     duplicates: List[Dict[str, object]] = []
 
     def source_priority(value: str) -> int:
-        v = normalize_text(value)
-        if v == "local":
+        normalized_source = normalize_text(value)
+        if normalized_source == "local":
             return 0
-        if v == "tidal":
+        if normalized_source == "tidal":
             return 1
-        if v == "streaming":
+        if normalized_source == "streaming":
             return 2
         return 3
 

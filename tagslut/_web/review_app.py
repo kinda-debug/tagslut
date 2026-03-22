@@ -736,8 +736,6 @@ def _search_links(query: str) -> list[dict[str, str]]:
         {"label": "Discogs", "url": f"https://www.google.com/search?q=site:discogs.com+{q}"},
         {"label": "Bandcamp", "url": f"https://www.google.com/search?q=site:bandcamp.com+{q}"},
         {"label": "YouTube", "url": f"https://www.google.com/search?q=site:youtube.com+{q}"},
-        {"label": "Spotify", "url": f"https://www.google.com/search?q=site:open.spotify.com+{q}"},
-        {"label": "Apple Music", "url": f"https://www.google.com/search?q=site:music.apple.com+{q}"},
     ]
 
 
@@ -1470,7 +1468,6 @@ _HTML = """
         <option value="">Any</option>
         <option value="beatport">beatport</option>
         <option value="tidal">tidal</option>
-        <option value="qobuz">qobuz</option>
         <option value="bpdl">bpdl</option>
         <option value="legacy">legacy</option>
       </select>

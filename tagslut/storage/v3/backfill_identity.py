@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import argparse
 import json
+import os
 import sqlite3
+import sys
+import traceback
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -17,6 +21,10 @@ from tagslut.storage.schema import (
     init_db,
 )
 from tagslut.storage.v3.dual_write import upsert_asset_file
+from tagslut.storage.v3.identity_service import (
+    link_asset_to_identity,
+    resolve_or_create_identity,
+)
 from tagslut.utils import env_paths
 
 _PROVIDER_COLUMNS: tuple[tuple[str, tuple[str, ...]], ...] = (
@@ -39,6 +47,7 @@ _SAMPLE_CATEGORIES = (
     "skipped",
     "conflicted",
     "fuzzy_near_collision",
+    "fingerprint_matched",
     "errors",
 )
 
@@ -174,6 +183,7 @@ class BackfillStats:
     conflicted: int = 0
     fuzzy_near_collision: int = 0
     errors: int = 0
+    fingerprint_matched: int = 0
     committed_batches: int = 0
     last_file_id: int = 0
     samples: dict[str, list[dict[str, Any]]] = field(
@@ -190,6 +200,7 @@ class BackfillStats:
             "conflicted": self.conflicted,
             "fuzzy_near_collision": self.fuzzy_near_collision,
             "errors": self.errors,
+            "fingerprint_matched": self.fingerprint_matched,
             "committed_batches": self.committed_batches,
             "last_file_id": self.last_file_id,
             "samples": self.samples,
@@ -206,6 +217,7 @@ class BackfillConfig:
     abort_error_rate_per_1000: float
     artifacts_dir: Path
     limit: int | None = None
+    verbose: bool = False
 
 
 def _maybe_set(payload: dict[str, Any], key: str, value: Any) -> None:
@@ -441,6 +453,70 @@ def _resolve_active_identity_row(
     return canonical, True
 
 
+def _identity_row_score(row: sqlite3.Row) -> tuple[int, int]:
+    score = 0
+    for field_name in (
+        "isrc",
+        *(name for name, _ in _PROVIDER_COLUMNS),
+        "artist_norm",
+        "title_norm",
+        "album_norm",
+        "canonical_artist",
+        "canonical_title",
+        "canonical_album",
+        "canonical_genre",
+        "canonical_label",
+        "canonical_release_date",
+        "duration_ref_ms",
+        "ref_source",
+    ):
+        if field_name in row.keys() and _norm_text(row[field_name]) is not None:
+            score += 1
+    return (score, -int(row["id"]))
+
+
+def _rows_have_consistent_exact_fields(rows: list[sqlite3.Row]) -> bool:
+    for field_name in ("isrc", *(name for name, _ in _PROVIDER_COLUMNS)):
+        values = set()
+        for row in rows:
+            if field_name not in row.keys():
+                continue
+            value = _norm_text(row[field_name])
+            if value:
+                values.add(value.lower())
+        if len(values) > 1:
+            return False
+    return True
+
+
+def _rows_have_compatible_core_identity(rows: list[sqlite3.Row]) -> bool:
+    artist_values = {_norm_text(row["artist_norm"]) for row in rows if "artist_norm" in row.keys()}
+    artist_values.discard(None)
+    title_values = {_norm_text(row["title_norm"]) for row in rows if "title_norm" in row.keys()}
+    title_values.discard(None)
+    if len(artist_values) > 1 or len(title_values) > 1:
+        return False
+    durations = []
+    for row in rows:
+        if "duration_ref_ms" not in row.keys():
+            continue
+        value = row["duration_ref_ms"]
+        if value is None:
+            continue
+        durations.append(int(value))
+    if durations and max(durations) - min(durations) > _FUZZY_DURATION_TOLERANCE_MS:
+        return False
+    return True
+
+
+def _choose_equivalent_identity(rows: list[sqlite3.Row]) -> sqlite3.Row | None:
+    if not rows or not _rows_have_compatible_core_identity(rows):
+        return None
+    if not _rows_have_consistent_exact_fields(rows):
+        return None
+    return max(rows, key=_identity_row_score)
+
+
 def _find_identity_by_asset_path(conn: sqlite3.Connection, path: str) -> tuple[int | None, bool]:
     if not _table_exists(conn, V3_ASSET_FILE_TABLE) or not _table_exists(conn, V3_ASSET_LINK_TABLE):
         return None, False
@@ -476,15 +552,33 @@ def _find_identity_by_exact_field(
     ).fetchall()
     if not rows:
         return None, False, False
-    canonical_ids: set[int] = set()
+    canonical_rows: dict[int, sqlite3.Row] = {}
     followed_merge = False
     for row in rows:
         canonical, followed = _resolve_active_identity_row(conn, row)
-        canonical_ids.add(int(canonical["id"]))
+        canonical_rows[int(canonical["id"])] = canonical
         followed_merge = followed_merge or followed
-    if len(canonical_ids) > 1:
+    if len(canonical_rows) > 1:
+        equivalent = _choose_equivalent_identity(list(canonical_rows.values()))
+        if equivalent is not None:
+            return int(equivalent["id"]), followed_merge, False
         return None, followed_merge, True
-    return min(canonical_ids), followed_merge, False
+    return min(canonical_rows), followed_merge, False
+
+
+def _find_identity_by_identity_key(conn: sqlite3.Connection, identity_key: str | None) -> tuple[int | None, bool]:
+    if not _table_exists(conn, V3_TRACK_IDENTITY_TABLE):
+        return None, False
+    if not identity_key:
+        return None, False
+    row = conn.execute(
+        f"SELECT * FROM {V3_TRACK_IDENTITY_TABLE} WHERE identity_key = ?",
+        (identity_key,),
+    ).fetchone()
+    if row is None:
+        return None, False
+    canonical, followed = _resolve_active_identity_row(conn, row)
+    return int(canonical["id"]), followed
 
 
 def _find_fuzzy_candidates(conn: sqlite3.Connection, payload: dict[str, Any]) -> list[int]:
@@ -522,87 +616,77 @@ def _find_fuzzy_candidates(conn: sqlite3.Connection, payload: dict[str, Any]) ->
     return [int(row["id"]) for row in rows]
 
 
-def _update_identity(conn: sqlite3.Connection, identity_id: int, payload: dict[str, Any], *, fuzzy: bool) -> None:
-    current = conn.execute(
-        f"SELECT * FROM {V3_TRACK_IDENTITY_TABLE} WHERE id = ?",
-        (identity_id,),
-    ).fetchone()
-    if current is None:
-        raise LookupError(f"identity not found: {identity_id}")
-    available_columns = _load_track_identity_columns(conn)
-    updates: dict[str, Any] = {}
-    exact_fields = {"isrc", *(name for name, _ in _PROVIDER_COLUMNS)}
-    for field_name, value in payload.items():
-        if field_name not in available_columns:
-            continue
-        if value is None:
-            continue
-        current_value = current[field_name] if field_name in current.keys() else None
-        if fuzzy and field_name in exact_fields and _norm_text(current_value):
-            continue
-        if current_value is None or str(current_value).strip() == "":
-            updates[field_name] = value
-    if not updates:
-        return
-    assignments = ", ".join(f"{field} = ?" for field in updates)
-    params = [updates[field] for field in updates]
-    params.append(identity_id)
-    conn.execute(
-        f"UPDATE {V3_TRACK_IDENTITY_TABLE} SET {assignments}, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-        tuple(params),
-    )
-
-
-def _insert_identity(conn: sqlite3.Connection, payload: dict[str, Any]) -> int:
-    identity_key = _identity_key_for_payload(payload)
-    if not identity_key:
-        raise RuntimeError("cannot create identity without exact or fuzzy identity fields")
-    full_payload = dict(payload)
-    full_payload["identity_key"] = identity_key
-    available_columns = _load_track_identity_columns(conn)
-    columns = [
-        key for key, value in full_payload.items() if value is not None and key in available_columns
-    ]
-    placeholders = ", ".join("?" for _ in columns)
-    conn.execute(
-        f"INSERT INTO {V3_TRACK_IDENTITY_TABLE} ({', '.join(columns)}) VALUES ({placeholders})",
-        tuple(full_payload[column] for column in columns),
-    )
-    row = conn.execute(
-        f"SELECT id FROM {V3_TRACK_IDENTITY_TABLE} WHERE identity_key = ?",
-        (identity_key,),
-    ).fetchone()
-    if row is None:
-        raise RuntimeError("failed to create track identity")
-    return int(row["id"])
-
-
-def _link_asset(conn: sqlite3.Connection, asset_id: int, identity_id: int, confidence: float, link_source: str) -> None:
-    conn.execute(
-        f"UPDATE {V3_ASSET_LINK_TABLE} SET active = 0, updated_at = CURRENT_TIMESTAMP WHERE asset_id = ?",
-        (asset_id,),
-    )
-    existing = conn.execute(
-        f"SELECT id FROM {V3_ASSET_LINK_TABLE} WHERE asset_id = ? AND identity_id = ?",
-        (asset_id, identity_id),
-    ).fetchone()
-    if existing is None:
-        conn.execute(
-            f"""
-            INSERT INTO {V3_ASSET_LINK_TABLE} (asset_id, identity_id, confidence, link_source, active)
-            VALUES (?, ?, ?, ?, 1)
-            """,
-            (asset_id, identity_id, confidence, link_source),
-        )
-        return
-    conn.execute(
+def _resolve_equivalent_fuzzy_candidates(
+    conn: sqlite3.Connection, candidate_ids: list[int]
+) -> int | None:
+    if len(candidate_ids) <= 1:
+        return candidate_ids[0] if candidate_ids else None
+    rows = conn.execute(
         f"""
-        UPDATE {V3_ASSET_LINK_TABLE}
-        SET confidence = ?, link_source = ?, active = 1, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
+        SELECT *
+        FROM {V3_TRACK_IDENTITY_TABLE}
+        WHERE id IN ({", ".join("?" for _ in candidate_ids)})
+        ORDER BY id ASC
         """,
-        (confidence, link_source, int(existing["id"])),
+        tuple(candidate_ids),
+    ).fetchall()
+    equivalent = _choose_equivalent_identity(list(rows))
+    if equivalent is None:
+        return None
+    return int(equivalent["id"])
+
+
+def _resolve_identity_via_service(
+    conn: sqlite3.Connection,
+    file_row: sqlite3.Row,
+    asset_id: int | None,
+    payload: dict[str, Any],
+) -> int:
+    asset_row = {
+        "id": asset_id,
+        "path": file_row["path"],
+        "duration_s": file_row["duration"] if "duration" in file_row.keys() else None,
+    }
+    return int(
+        resolve_or_create_identity(
+            conn,
+            asset_row,
+            payload,
+            {"source": "backfill_v3", "ref_source": payload.get("ref_source"),
+             "ingestion_method": "migration",
+             "ingestion_source": "backfill_v3",
+             "ingestion_confidence": "legacy"},
+        )
     )
+
+
+
+def _seed_legacy_fingerprint(conn, asset_id, file_row, file_columns):
+    """Copy legacy files.fingerprint to asset_file.chromaprint_fingerprint if not yet set."""
+    if "fingerprint" not in file_columns:
+        return
+    fp = _norm_text(file_row["fingerprint"])
+    if not fp:
+        return
+    if not _column_exists(conn, V3_ASSET_FILE_TABLE, "chromaprint_fingerprint"):
+        return
+    conn.execute(
+        f"UPDATE {V3_ASSET_FILE_TABLE} SET chromaprint_fingerprint = ? WHERE id = ? AND chromaprint_fingerprint IS NULL",
+        (fp, asset_id),
+    )
+
+
+def _find_identity_by_legacy_fingerprint(conn, file_row, file_columns, asset_id):
+    """Tier-4 identity lookup via legacy files.fingerprint -> asset_file.chromaprint_fingerprint."""
+    if "fingerprint" not in file_columns:
+        return None
+    fp = _norm_text(file_row["fingerprint"])
+    if not fp:
+        return None
+    if not _column_exists(conn, V3_ASSET_FILE_TABLE, "chromaprint_fingerprint"):
+        return None
+    from tagslut.storage.v3.chromaprint import find_identity_by_fingerprint
+    return find_identity_by_fingerprint(conn, fp, exclude_asset_id=asset_id)
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -616,6 +700,20 @@ def _checkpoint_payload(stats: BackfillStats, *, mode: str, db_path: str) -> dic
         "db_path": db_path,
         **stats.as_dict(),
     }
+
+
+def _emit_progress(config: BackfillConfig, stats: BackfillStats, *, event: str) -> None:
+    if not config.verbose:
+        return
+    print(
+        "progress "
+        f"event={event} processed={stats.processed} last_file_id={stats.last_file_id} "
+        f"created={stats.created} reused={stats.reused} merged={stats.merged} "
+        f"skipped={stats.skipped} conflicted={stats.conflicted} errors={stats.errors} "
+        f"fingerprint_matched={stats.fingerprint_matched} committed_batches={stats.committed_batches}",
+        file=sys.stderr,
+        flush=True,
+    )
 
 
 def backfill_v3_identity_links(
@@ -651,7 +749,7 @@ def backfill_v3_identity_links(
     rows = conn.execute(query, tuple(params)).fetchall()
 
     if config.execute:
-        conn.execute("BEGIN")
+        conn.execute("BEGIN IMMEDIATE")
 
     for row in rows:
         file_id = int(row["file_id"])
@@ -678,6 +776,7 @@ def backfill_v3_identity_links(
             asset_id: int | None = None
             if config.execute:
                 asset_id = upsert_asset_file(conn, **asset_payload)
+                _seed_legacy_fingerprint(conn, asset_id, row, file_columns)
 
             resolved_identity_id: int | None = None
             merged = False
@@ -720,7 +819,18 @@ def backfill_v3_identity_links(
                 stats.processed += 1
                 continue
 
+            identity_key_match_id, identity_key_followed_merge = _find_identity_by_identity_key(
+                conn, identity_key
+            )
+            if resolved_identity_id is None and identity_key_match_id is not None:
+                resolved_identity_id = identity_key_match_id
+                merged = merged or identity_key_followed_merge
+
             fuzzy_candidates = _find_fuzzy_candidates(conn, payload)
+            equivalent_fuzzy_identity_id = _resolve_equivalent_fuzzy_candidates(conn, fuzzy_candidates)
+            if resolved_identity_id is None and equivalent_fuzzy_identity_id is not None:
+                resolved_identity_id = equivalent_fuzzy_identity_id
+                fuzzy_candidates = [equivalent_fuzzy_identity_id]
             if resolved_identity_id is None and len(fuzzy_candidates) > 1:
                 stats.fuzzy_near_collision += 1
                 stats.conflicted += 1
@@ -739,8 +849,20 @@ def backfill_v3_identity_links(
                 resolved_identity_id = fuzzy_candidates[0]
 
             if resolved_identity_id is None:
+                resolved_identity_id = _find_identity_by_legacy_fingerprint(
+                    conn, row, file_columns, asset_id
+                )
+                if resolved_identity_id is not None:
+                    stats.fingerprint_matched += 1
+                    _append_sample(
+                        stats.samples,
+                        "fingerprint_matched",
+                        {"file_id": file_id, "path": row["path"], "identity_id": resolved_identity_id},
+                    )
+
+            if resolved_identity_id is None:
                 if config.execute:
-                    resolved_identity_id = _insert_identity(conn, payload)
+                    resolved_identity_id = _resolve_identity_via_service(conn, row, asset_id, payload)
                 stats.created += 1
                 _append_sample(
                     stats.samples,
@@ -749,7 +871,7 @@ def backfill_v3_identity_links(
                 )
             else:
                 if config.execute:
-                    _update_identity(conn, resolved_identity_id, payload, fuzzy=len(fuzzy_candidates) == 1)
+                    resolved_identity_id = _resolve_identity_via_service(conn, row, asset_id, payload)
                 stats.reused += 1
                 _append_sample(
                     stats.samples,
@@ -768,7 +890,7 @@ def backfill_v3_identity_links(
                 confidence = 1.0 if _norm_text(payload.get("isrc")) else 0.9 if any(
                     _norm_text(payload.get(provider)) for provider, _ in _PROVIDER_COLUMNS
                 ) else 0.7
-                _link_asset(conn, asset_id, resolved_identity_id, confidence, "backfill_v3")
+                link_asset_to_identity(conn, asset_id, resolved_identity_id, confidence, "backfill_v3")
             stats.processed += 1
         except Exception as exc:  # pragma: no cover - exercised via abort threshold tests
             stats.errors += 1
@@ -793,15 +915,18 @@ def backfill_v3_identity_links(
         if config.execute and stats.processed % config.commit_every == 0:
             conn.commit()
             stats.committed_batches += 1
-            conn.execute("BEGIN")
+            _emit_progress(config, stats, event="commit")
+            conn.execute("BEGIN IMMEDIATE")
         if stats.processed % config.checkpoint_every == 0:
             checkpoint_path = artifacts_dir / f"backfill_v3_checkpoint_{stamp}_{stats.last_file_id}.json"
             _write_json(checkpoint_path, _checkpoint_payload(stats, mode=mode, db_path=str(db_path)))
+            _emit_progress(config, stats, event="checkpoint")
 
     if config.execute:
         conn.commit()
         if stats.processed % config.commit_every != 0 and stats.processed > 0:
             stats.committed_batches += 1
+            _emit_progress(config, stats, event="commit")
 
     summary = _checkpoint_payload(stats, mode=mode, db_path=str(db_path))
     summary["artifact_paths"] = {
@@ -814,3 +939,111 @@ def backfill_v3_identity_links(
 
 def default_artifacts_dir() -> Path:
     return Path(env_paths.get_artifacts_dir())
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Backfill v3 asset/identity/link rows from legacy file inventory."
+    )
+    parser.add_argument(
+        "--db",
+        type=Path,
+        default=None,
+        help="Path to SQLite DB (defaults to TAGSLUT_DB)",
+    )
+    parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Apply changes (default: dry-run)",
+    )
+    parser.add_argument(
+        "--resume-from-file-id",
+        type=int,
+        default=0,
+        help="Resume processing after the given files.rowid",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Optional maximum number of rows to process",
+    )
+    parser.add_argument(
+        "--commit-every",
+        type=int,
+        default=500,
+        help="Commit every N processed rows in execute mode",
+    )
+    parser.add_argument(
+        "--checkpoint-every",
+        type=int,
+        default=500,
+        help="Write a checkpoint artifact every N processed rows",
+    )
+    parser.add_argument(
+        "--busy-timeout-ms",
+        type=int,
+        default=10_000,
+        help="SQLite busy timeout in milliseconds",
+    )
+    parser.add_argument(
+        "--abort-error-rate",
+        type=float,
+        default=50.0,
+        help="Abort when errors per 1000 processed rows exceed this threshold",
+    )
+    parser.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Print exception traceback on error",
+    )
+    args = parser.parse_args(argv)
+
+    db_path_arg = args.db
+    if db_path_arg is None:
+        env_db = os.environ.get("TAGSLUT_DB")
+        if env_db:
+            db_path_arg = Path(env_db)
+    if db_path_arg is None:
+        print("error: --db is required unless TAGSLUT_DB is set")
+        return 1
+
+    db_path = db_path_arg.expanduser().resolve()
+    config = BackfillConfig(
+        execute=bool(args.execute),
+        resume_from_file_id=args.resume_from_file_id,
+        commit_every=args.commit_every,
+        checkpoint_every=args.checkpoint_every,
+        busy_timeout_ms=args.busy_timeout_ms,
+        abort_error_rate_per_1000=args.abort_error_rate,
+        artifacts_dir=default_artifacts_dir(),
+        limit=args.limit,
+        verbose=bool(args.verbose),
+    )
+
+    try:
+        if args.verbose:
+            mode = "execute" if config.execute else "dry_run"
+            print(
+                f"starting backfill_identity mode={mode} db={db_path} "
+                f"resume_from_file_id={config.resume_from_file_id} limit={config.limit}",
+                file=sys.stderr,
+                flush=True,
+            )
+        conn = sqlite3.connect(str(db_path))
+        summary = backfill_v3_identity_links(conn, db_path=db_path, config=config)
+        print(json.dumps(summary, indent=2, sort_keys=True))
+    except Exception as exc:  # noqa: BLE001
+        print(f"error: {exc}", file=sys.stderr, flush=True)
+        if args.verbose:
+            traceback.print_exc()
+        return 1
+    finally:
+        if "conn" in locals():
+            conn.close()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

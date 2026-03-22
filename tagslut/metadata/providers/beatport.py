@@ -12,19 +12,411 @@ This provider uses multiple methods (in order of preference):
 API Reference: https://api.beatport.com/v4/docs/
 """
 
-from urllib.parse import quote
+from dataclasses import dataclass
+from datetime import datetime, timezone
 import logging
+import os
 import re
 import time
 from typing import Any, Dict, List, Optional
+from urllib.parse import quote
 
 import httpx
 
 from tagslut.metadata.auth import TokenManager
-from tagslut.metadata.models.types import ProviderTrack, MatchConfidence
-from tagslut.metadata.providers.base import AbstractProvider, RateLimitConfig
+from tagslut.metadata.beatport_normalize import normalize_beatport_track
+from tagslut.metadata.genre_normalization import GenreNormalizer
+from tagslut.metadata.models.types import (
+    BeatportSeedExportStats,
+    BeatportSeedRow,
+    CONFIDENCE_NUMERIC,
+    MatchConfidence,
+    ProviderTrack,
+    TidalBeatportMergedRow,
+    TidalSeedRow,
+)
+from tagslut.metadata.providers.base import (
+    AbstractProvider,
+    RateLimitConfig,
+    classify_match_confidence,
+)
 
 logger = logging.getLogger("tagslut.metadata.providers.beatport")
+
+_CATALOG_TRACK_FILTER_PARAMS = {
+    "artist_id",
+    "artist_name",
+    "available_worldwide",
+    "bpm",
+    "catalog_number",
+    "change_date",
+    "chord_type_id",
+    "current_status",
+    "dj_edits",
+    "enabled",
+    "encode_status",
+    "encoded_date",
+    "exclusive_date",
+    "exclusive_period",
+    "free_download_end_date",
+    "free_download_start_date",
+    "genre_enabled",
+    "genre_id",
+    "genre_name",
+    "guid",
+    "id",
+    "is_available_for_streaming",
+    "is_classic",
+    "is_explicit",
+    "is_hype",
+    "isrc",
+    "key_id",
+    "key_name",
+    "label_enabled",
+    "label_id",
+    "label_manager",
+    "label_name",
+    "label_name_exact",
+    "mix_name",
+    "name",
+    "new_release_date",
+    "order_by",
+    "page",
+    "per_page",
+    "pre_order_date",
+    "publish_date",
+    "publish_status",
+    "release_id",
+    "release_name",
+    "sale_type",
+    "sub_genre_id",
+    "supplier_id",
+    "supplier_name",
+    "track_number",
+    "type",
+    "type_id",
+    "ugc_remixes",
+    "was_ever_exclusive",
+}
+
+_SEARCH_TRACK_PARAMS = {
+    "q",
+    "count",
+    "preorder",
+    "from_publish_date",
+    "to_publish_date",
+    "from_release_date",
+    "to_release_date",
+    "genre_id",
+    "genre_name",
+    "mix_name",
+    "from_bpm",
+    "to_bpm",
+    "key_name",
+    "mix_name_weight",
+    "label_name_weight",
+    "dj_edits",
+    "ugc_remixes",
+    "dj_edits_and_ugc_remixes",
+    "is_available_for_streaming",
+}
+
+
+class BeatportClientError(RuntimeError):
+    """Base exception for official Beatport client failures."""
+
+
+class BeatportAuthError(BeatportClientError):
+    """Beatport auth was missing or rejected."""
+
+
+class BeatportRateLimitError(BeatportClientError):
+    """Beatport returned a rate-limit response."""
+
+
+class BeatportNotFoundError(BeatportClientError):
+    """Beatport resource was not found."""
+
+
+class BeatportMalformedResponseError(BeatportClientError):
+    """Beatport response body could not be parsed or was missing required keys."""
+
+
+@dataclass(frozen=True)
+class BeatportAuthConfig:
+    """Credential bundle resolved from env/config for Beatport official APIs."""
+
+    search_bearer_token: Optional[str] = None
+    catalog_basic_username: Optional[str] = None
+    catalog_basic_password: Optional[str] = None
+    catalog_session_id: Optional[str] = None
+
+    @property
+    def has_search_auth(self) -> bool:
+        return bool(self.search_bearer_token)
+
+    @property
+    def has_catalog_auth(self) -> bool:
+        return bool(self.catalog_session_id or (self.catalog_basic_username and self.catalog_basic_password))
+
+
+def _normalize_match_text(value: Optional[str]) -> str:
+    if not value:
+        return ""
+    return re.sub(r"\s+", " ", value).strip().lower()
+
+
+def _parse_duration_ms(payload: Dict[str, Any]) -> Optional[int]:
+    """Parse a duration from official Beatport payloads without guessing units."""
+    length_ms = payload.get("length_ms")
+    if isinstance(length_ms, int):
+        return length_ms
+    if isinstance(length_ms, float):
+        return int(length_ms)
+
+    length_text = payload.get("length")
+    if not isinstance(length_text, str):
+        return None
+
+    parts = [part.strip() for part in length_text.split(":")]
+    if not parts or not all(part.isdigit() for part in parts):
+        return None
+
+    total_seconds = 0
+    for part in parts:
+        total_seconds = (total_seconds * 60) + int(part)
+    return total_seconds * 1000
+
+
+def _extract_numeric_id(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        if text.isdigit():
+            return text
+        match = re.search(r"/(\d+)/?$", text)
+        if match:
+            return match.group(1)
+    return None
+
+
+class BeatportApiClient:
+    """Official Beatport API client using the locally checked-in OpenAPI contracts."""
+
+    CATALOG_BASE_URL = "https://api.beatport.com"
+    SEARCH_BASE_URL = "https://api.beatport.com"
+
+    def __init__(self, provider: "BeatportProvider") -> None:
+        self.provider = provider
+
+    def _auth_config(self) -> BeatportAuthConfig:
+        token = None
+        if self.provider.token_manager is not None:
+            token = self.provider.token_manager.ensure_valid_token("beatport")
+
+        creds = self.provider.token_manager.get_credentials("beatport") if self.provider.token_manager else {}
+        _env_token = os.getenv("BEATPORT_ACCESS_TOKEN")
+        if _env_token:
+            logger.warning(
+                "Using BEATPORT_ACCESS_TOKEN from environment variable. "
+                "Consider moving credentials to tokens.json via 'tagslut auth login beatport'."
+            )
+        _mgr_token = token.access_token if token else None
+
+        _env_basic_username = os.getenv("BEATPORT_BASIC_AUTH_USERNAME") or os.getenv("BEATPORT_CLIENT_ID")
+        if _env_basic_username:
+            logger.warning(
+                "Using Beatport catalog username/client_id from environment variable. "
+                "Consider moving credentials to tokens.json via 'tagslut auth init' or "
+                "'tagslut auth login beatport'."
+            )
+        _mgr_basic_username = creds.get("client_id")
+
+        _env_basic_password = os.getenv("BEATPORT_BASIC_AUTH_PASSWORD") or os.getenv("BEATPORT_CLIENT_SECRET")
+        if _env_basic_password:
+            logger.warning(
+                "Using Beatport catalog password/client_secret from environment variable. "
+                "Consider moving credentials to tokens.json via 'tagslut auth init' or "
+                "'tagslut auth login beatport'."
+            )
+        _mgr_basic_password = creds.get("client_secret")
+
+        return BeatportAuthConfig(
+            search_bearer_token=_mgr_token or _env_token,
+            catalog_basic_username=_mgr_basic_username or _env_basic_username,
+            catalog_basic_password=_mgr_basic_password or _env_basic_password,
+            catalog_session_id=(
+                os.getenv("BEATPORT_SESSIONID")
+                or os.getenv("BEATPORT_SESSION_ID")
+                or (self.provider.token_manager._tokens.get("beatport", {}).get("sessionid") if self.provider.token_manager else None)  # type: ignore[attr-defined]
+            ),
+        )
+
+    def _request_json(
+        self,
+        method: str,
+        url: str,
+        *,
+        auth_kind: str,
+        params: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        auth_config = self._auth_config()
+        headers: Dict[str, str] = {"Accept": "application/json"}
+        request_kwargs: Dict[str, Any] = {}
+
+        if auth_kind == "search":
+            if not auth_config.has_search_auth:
+                raise BeatportAuthError("Beatport search requires a bearer token")
+            headers["Authorization"] = f"Bearer {auth_config.search_bearer_token}"
+        elif auth_kind == "catalog":
+            if auth_config.catalog_session_id:
+                headers["Cookie"] = f"sessionid={auth_config.catalog_session_id}"
+            elif auth_config.catalog_basic_username and auth_config.catalog_basic_password:
+                request_kwargs["auth"] = (
+                    auth_config.catalog_basic_username,
+                    auth_config.catalog_basic_password,
+                )
+            else:
+                raise BeatportAuthError("Beatport catalog requires session cookie or basic auth credentials")
+        else:
+            raise BeatportClientError(f"Unsupported Beatport auth kind: {auth_kind}")
+
+        while True:
+            self.provider.rate_limiter.wait()
+            try:
+                response = self.provider.client.request(
+                    method,
+                    url,
+                    headers=headers,
+                    params=params,
+                    **request_kwargs,
+                )
+            except httpx.HTTPError as exc:
+                self.provider.rate_limiter.record_error()
+                if self.provider.rate_limiter.should_retry:
+                    continue
+                raise BeatportClientError(str(exc)) from exc
+
+            if response.status_code == 429:
+                retry_after = int(response.headers.get("Retry-After", "60"))
+                self.provider.rate_limiter.record_error()
+                logger.warning("beatport: rate limited, waiting %ds", retry_after)
+                time.sleep(retry_after)
+                if self.provider.rate_limiter.should_retry:
+                    continue
+                raise BeatportRateLimitError(f"Beatport rate limit exceeded for {url}")
+
+            if response.status_code in (401, 403):
+                self.provider.rate_limiter.record_error()
+                raise BeatportAuthError(f"Beatport auth failed for {url} ({response.status_code})")
+
+            if response.status_code == 404:
+                self.provider.rate_limiter.record_success()
+                raise BeatportNotFoundError(f"Beatport resource not found: {url}")
+
+            if response.status_code >= 500:
+                self.provider.rate_limiter.record_error()
+                if self.provider.rate_limiter.should_retry:
+                    continue
+                raise BeatportClientError(f"Beatport server error {response.status_code} for {url}")
+
+            if response.status_code >= 400:
+                self.provider.rate_limiter.record_success()
+                raise BeatportClientError(f"Beatport HTTP {response.status_code} for {url}")
+
+            self.provider.rate_limiter.record_success()
+            try:
+                payload = response.json()
+            except ValueError as exc:
+                raise BeatportMalformedResponseError(f"Beatport returned malformed JSON for {url}") from exc
+            if not isinstance(payload, dict):
+                raise BeatportMalformedResponseError(f"Beatport returned non-object JSON for {url}")
+            return payload
+
+    def catalog_list_tracks(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        clean_params = {k: v for k, v in params.items() if v is not None and k in _CATALOG_TRACK_FILTER_PARAMS}
+        return self._request_json(
+            "GET",
+            f"{self.CATALOG_BASE_URL}/v4/catalog/tracks/",
+            auth_kind="catalog",
+            params=clean_params,
+        )
+
+    def catalog_get_track(self, track_id: str | int) -> Dict[str, Any]:
+        return self._request_json(
+            "GET",
+            f"{self.CATALOG_BASE_URL}/v4/catalog/tracks/{track_id}/",
+            auth_kind="catalog",
+        )
+
+    def catalog_get_release(self, release_id: str | int) -> Dict[str, Any]:
+        return self._request_json(
+            "GET",
+            f"{self.CATALOG_BASE_URL}/v4/catalog/releases/{release_id}/",
+            auth_kind="catalog",
+        )
+
+    def catalog_list_genres(self, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        return self._request_json(
+            "GET",
+            f"{self.CATALOG_BASE_URL}/v4/catalog/genres/",
+            auth_kind="catalog",
+            params=params,
+        )
+
+    def catalog_list_subgenres(self, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        return self._request_json(
+            "GET",
+            f"{self.CATALOG_BASE_URL}/v4/catalog/sub-genres/",
+            auth_kind="catalog",
+            params=params,
+        )
+
+    def catalog_list_labels(self, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        return self._request_json(
+            "GET",
+            f"{self.CATALOG_BASE_URL}/v4/catalog/labels/",
+            auth_kind="catalog",
+            params=params,
+        )
+
+    def search_tracks(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        clean_params = {k: v for k, v in params.items() if v is not None and k in _SEARCH_TRACK_PARAMS}
+        return self._request_json(
+            "GET",
+            f"{self.SEARCH_BASE_URL}/search/v1/tracks",
+            auth_kind="search",
+            params=clean_params,
+        )
+
+
+def _normalize_vendor_text(value: Any) -> Optional[str]:
+    """Normalize spacing for vendor text without inventing canonical values."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return GenreNormalizer._normalize_spacing(text)
+
+
+def _stringify_vendor_value(value: Any) -> Optional[str]:
+    """Serialize vendor metadata values consistently for CSV output."""
+    if value is None:
+        return None
+    if isinstance(value, float):
+        if value.is_integer():
+            return str(int(value))
+        return f"{value:.2f}".rstrip("0").rstrip(".")
+    if isinstance(value, int):
+        return str(value)
+    text = str(value).strip()
+    return text or None
 
 
 class BeatportProvider(AbstractProvider):
@@ -57,6 +449,7 @@ class BeatportProvider(AbstractProvider):
         super().__init__(token_manager)
         self._auth_available: bool | None = None
         self._build_id: str | None = None  # Next.js build ID cache
+        self._api_client = BeatportApiClient(self)
 
     def _has_auth(self) -> bool:
         """Check if we have valid authentication."""
@@ -422,157 +815,645 @@ class BeatportProvider(AbstractProvider):
             logger.error("Failed to parse bulk mapping response: %s", e)
             return {i: None for i in bs_track_ids}
 
-    def fetch_by_id(self, track_id: str) -> Optional[ProviderTrack]:
-        """
-        Fetch track by Beatport ID.
+    @staticmethod
+    def _fallback_match_rank(match_confidence: MatchConfidence) -> int:
+        rank = {
+            MatchConfidence.EXACT: 4,
+            MatchConfidence.STRONG: 3,
+            MatchConfidence.MEDIUM: 2,
+            MatchConfidence.WEAK: 1,
+            MatchConfidence.NONE: 0,
+        }
+        return rank.get(match_confidence, 0)
 
-        Tries Next.js data endpoint first (no auth), falls back to API.
+    @staticmethod
+    def _seed_row_from_provider_track(track: ProviderTrack) -> Optional[BeatportSeedRow]:
+        """Convert a normalized Beatport track into a stable seed row."""
+        if not track.service_track_id or not track.title or not track.artist or not track.url:
+            return None
 
-        Args:
-            track_id: Beatport track ID (e.g., "12345")
+        raw = track.raw if isinstance(track.raw, dict) else {}
+        release = raw.get("release")
+        if not isinstance(release, dict):
+            release = {}
 
-        Returns:
-            ProviderTrack with match_confidence=EXACT, or None
-        """
-        # Method 1: Try Next.js data endpoint (no auth needed)
-        track_data = self._fetch_nextjs_track(int(track_id))
-        if track_data:
-            track = self._normalize_track(track_data)
-            track.match_confidence = MatchConfidence.EXACT
-            return track
+        normalized = normalize_beatport_track(raw)
+        return BeatportSeedRow(
+            beatport_track_id=_stringify_vendor_value(normalized.service_track_id or track.service_track_id) or "",
+            beatport_release_id=_stringify_vendor_value(
+                normalized.release_id or release.get("id") or track.album_id
+            ),
+            beatport_url=_normalize_vendor_text(track.url or raw.get("url")) or "",
+            title=track.title,
+            artist=track.artist,
+            isrc=track.isrc,
+            beatport_bpm=_stringify_vendor_value(normalized.bpm if normalized.bpm is not None else track.bpm),
+            beatport_key=_normalize_vendor_text(normalized.key or track.key),
+            beatport_genre=_normalize_vendor_text(normalized.genre or track.genre),
+            beatport_subgenre=_normalize_vendor_text(normalized.subgenre or track.sub_genre),
+            beatport_label=_normalize_vendor_text(normalized.label_name or track.label),
+            beatport_catalog_number=_normalize_vendor_text(normalized.catalog_number or track.catalog_number),
+            beatport_upc=_normalize_vendor_text(
+                release.get("upc") or raw.get("upc") or release.get("barcode") or raw.get("barcode")
+            ),
+            beatport_release_date=_normalize_vendor_text(
+                normalized.publish_date
+                or release.get("new_release_date")
+                or release.get("publish_date")
+                or track.release_date
+            ),
+        )
 
-        # Method 2: Try API if we have auth
-        if self._has_auth():
-            url = f"{self.BASE_URL}/tracks/{track_id}/"
-            response = self._make_request("GET", url)
-            if response and response.status_code == 200:
-                try:
-                    data = response.json()
-                    track = self._normalize_track(data)
-                    track.match_confidence = MatchConfidence.EXACT
-                    return track
-                except Exception as e:
-                    logger.error("Failed to parse Beatport API response: %s", e)
-
-        logger.debug("Could not fetch Beatport track %s", track_id)
-        return None
-
-    def search_by_isrc(self, isrc: str) -> List[ProviderTrack]:
-        """
-        Search for a track by ISRC using the authenticated API.
-
-        Args:
-            isrc: International Standard Recording Code
-
-        Returns:
-            List of ProviderTrack with match_confidence=EXACT
-        """
-        # Beatport's catalog ISRC endpoint is not part of the public, tokenless
-        # download/search workflow. Without auth it returns 401, so skip it
-        # entirely and let the pipeline continue to other provider/search stages.
+    def export_my_tracks_seed_rows(
+        self,
+        per_page: int = 100,
+    ) -> tuple[List[BeatportSeedRow], BeatportSeedExportStats]:
+        """Export stable seed rows from the authenticated Beatport library surface."""
         if not self._has_auth():
+            raise RuntimeError("Beatport authentication is required for library seed export")
+
+        page = 1
+        seed_rows: List[BeatportSeedRow] = []
+        stats = BeatportSeedExportStats()
+        seen_row_keys: set[tuple[str, ...]] = set()
+
+        while True:
+            response = self._make_request(
+                "GET",
+                "https://api.beatport.com/v4/my/beatport/tracks/",
+                params={"page": page, "per_page": per_page},
+            )
+            if response is None or response.status_code != 200:
+                stats.pagination_stop_non_200 += 1
+                logger.warning("Failed to fetch Beatport library page %d", page)
+                break
+
+            try:
+                payload = response.json()
+            except Exception as e:
+                logger.error("Failed to parse Beatport library response: %s", e)
+                break
+
+            stats.pages_fetched += 1
+            results = payload.get("results", [])
+            if not isinstance(results, list) or not results:
+                stats.pagination_stop_empty_page += 1
+                break
+
+            for item in results:
+                if not isinstance(item, dict):
+                    stats.rows_missing_required_fields += 1
+                    continue
+                track = self._normalize_track(item)
+                seed_row = self._seed_row_from_provider_track(track)
+                if seed_row is None:
+                    stats.rows_missing_required_fields += 1
+                    continue
+
+                row_key = tuple(
+                    getattr(seed_row, column) or ""
+                    for column in (
+                        "beatport_track_id",
+                        "beatport_release_id",
+                        "beatport_url",
+                        "title",
+                        "artist",
+                        "isrc",
+                    )
+                )
+                if row_key in seen_row_keys:
+                    stats.duplicate_rows += 1
+                    continue
+
+                seen_row_keys.add(row_key)
+                seed_rows.append(seed_row)
+                stats.exported_rows += 1
+                if not seed_row.isrc:
+                    stats.missing_isrc_rows += 1
+
+            if len(results) < per_page:
+                stats.pagination_stop_short_page_no_next += 1
+                break
+            page += 1
+
+        return seed_rows, stats
+
+    def _select_best_title_artist_match(
+        self,
+        seed_row: TidalSeedRow,
+    ) -> tuple[Optional[ProviderTrack], MatchConfidence, dict[str, int]]:
+        """Select the strongest Beatport title/artist fallback match for a seed row."""
+        candidates = self.search_by_artist_and_title(seed_row.artist, seed_row.title, limit=5)
+        telemetry = {
+            "ambiguous_fallback_rows": 1 if len(candidates) > 1 else 0,
+            "fallback_equal_rank_ties": 0,
+        }
+        if not candidates:
+            return None, MatchConfidence.NONE, telemetry
+
+        scored_candidates: List[tuple[int, MatchConfidence, ProviderTrack]] = []
+        for track in candidates:
+            track.match_confidence = classify_match_confidence(
+                seed_row.title,
+                seed_row.artist,
+                None,
+                track,
+            )
+            rank = self._fallback_match_rank(track.match_confidence)
+            scored_candidates.append((rank, track.match_confidence, track))
+
+        if telemetry["ambiguous_fallback_rows"]:
+            logger.info(
+                "Beatport fallback ambiguity for '%s' - '%s': %d candidates, selecting highest rank",
+                seed_row.artist,
+                seed_row.title,
+                len(candidates),
+            )
+
+        best_rank = max(rank for rank, _, _ in scored_candidates)
+        if best_rank <= 0:
+            return None, MatchConfidence.NONE, telemetry
+
+        best_candidates = [
+            (confidence, track)
+            for rank, confidence, track in scored_candidates
+            if rank == best_rank
+        ]
+        if len(best_candidates) > 1:
+            telemetry["fallback_equal_rank_ties"] = 1
+            logger.info(
+                "Beatport fallback tie for '%s' - '%s': %d top-rank candidates, keeping first",
+                seed_row.artist,
+                seed_row.title,
+                len(best_candidates),
+            )
+
+        best_confidence, best_track = best_candidates[0]
+        return best_track, best_confidence, telemetry
+
+    def _merged_row_from_match(
+        self,
+        seed_row: TidalSeedRow,
+        match: Optional[ProviderTrack],
+        match_method: str,
+        match_confidence: MatchConfidence,
+    ) -> TidalBeatportMergedRow:
+        """Build the final merged CSV row while preserving TIDAL source fields."""
+        merged = TidalBeatportMergedRow(
+            tidal_playlist_id=seed_row.tidal_playlist_id,
+            tidal_track_id=seed_row.tidal_track_id,
+            tidal_url=seed_row.tidal_url,
+            title=seed_row.title,
+            artist=seed_row.artist,
+            isrc=seed_row.isrc,
+            match_method=match_method,
+            match_confidence=match_confidence,
+            last_synced_at=datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        )
+
+        if match is None:
+            return merged
+
+        raw = match.raw if isinstance(match.raw, dict) else {}
+        normalized = normalize_beatport_track(raw)
+        release = raw.get("release")
+        if not isinstance(release, dict):
+            release = {}
+
+        merged.beatport_track_id = _stringify_vendor_value(
+            normalized.service_track_id or match.service_track_id
+        )
+        merged.beatport_release_id = _stringify_vendor_value(
+            normalized.release_id or release.get("id") or match.album_id
+        )
+        merged.beatport_url = _normalize_vendor_text(match.url or raw.get("url"))
+        merged.beatport_bpm = _stringify_vendor_value(normalized.bpm if normalized.bpm is not None else match.bpm)
+        merged.beatport_key = _normalize_vendor_text(normalized.key or match.key)
+        merged.beatport_genre = _normalize_vendor_text(normalized.genre or match.genre)
+        merged.beatport_subgenre = _normalize_vendor_text(normalized.subgenre or match.sub_genre)
+        merged.beatport_label = _normalize_vendor_text(normalized.label_name or match.label)
+        merged.beatport_catalog_number = _normalize_vendor_text(
+            normalized.catalog_number or match.catalog_number
+        )
+        merged.beatport_upc = _normalize_vendor_text(
+            release.get("upc") or raw.get("upc") or release.get("barcode") or raw.get("barcode")
+        )
+        merged.beatport_release_date = _normalize_vendor_text(
+            normalized.publish_date
+            or release.get("new_release_date")
+            or release.get("publish_date")
+            or match.release_date
+        )
+        return merged
+
+    def enrich_tidal_seed_row(
+        self,
+        seed_row: TidalSeedRow,
+    ) -> tuple[TidalBeatportMergedRow, dict[str, int]]:
+        """
+        Enrich a TIDAL seed row using Beatport-only lookup.
+
+        Lookup order is deterministic:
+        1. ISRC
+        2. title/artist fallback
+        """
+        telemetry = {
+            "ambiguous_isrc_rows": 0,
+            "ambiguous_fallback_rows": 0,
+            "fallback_equal_rank_ties": 0,
+        }
+        if seed_row.isrc:
+            isrc_matches = self.search_by_isrc(seed_row.isrc)
+            if len(isrc_matches) > 1:
+                telemetry["ambiguous_isrc_rows"] = 1
+                logger.info(
+                    "Beatport ISRC ambiguity for %s: %d candidates, keeping first",
+                    seed_row.isrc,
+                    len(isrc_matches),
+                )
+            if isrc_matches:
+                return self._merged_row_from_match(seed_row, isrc_matches[0], "isrc", MatchConfidence.EXACT), telemetry
+
+        fallback_match, fallback_confidence, fallback_telemetry = self._select_best_title_artist_match(seed_row)
+        telemetry.update(fallback_telemetry)
+        if fallback_match is not None:
+            return (
+                self._merged_row_from_match(
+                    seed_row,
+                    fallback_match,
+                    "title_artist_fallback",
+                    fallback_confidence,
+                ),
+                telemetry,
+            )
+
+        return self._merged_row_from_match(seed_row, None, "no_match", MatchConfidence.NONE), telemetry
+
+    def _fetch_release_for_track(self, track_payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        release = track_payload.get("release")
+        release_id = None
+        if isinstance(release, dict):
+            release_id = release.get("id") or release.get("release_id")
+        if release_id is None:
+            release_id = _extract_numeric_id(release)
+        if release_id is None:
+            return None
+        try:
+            return self._api_client.catalog_get_release(release_id)
+        except BeatportClientError as exc:
+            logger.debug("Failed to hydrate Beatport release %s: %s", release_id, exc)
+            return None
+
+    def _build_track_payload(
+        self,
+        *,
+        catalog_payload: Dict[str, Any],
+        search_payload: Optional[Dict[str, Any]] = None,
+        release_payload: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        payload = dict(catalog_payload)
+        payload["_catalog"] = dict(catalog_payload)
+
+        if search_payload:
+            payload["_search"] = dict(search_payload)
+            if not isinstance(payload.get("release"), dict) and isinstance(search_payload.get("release"), dict):
+                payload["release"] = dict(search_payload["release"])
+            if not isinstance(payload.get("label"), dict) and isinstance(search_payload.get("label"), dict):
+                payload["label"] = dict(search_payload["label"])
+            if not payload.get("artists") and isinstance(search_payload.get("artists"), list):
+                payload["artists"] = list(search_payload["artists"])
+            if not payload.get("genre") and search_payload.get("genre") is not None:
+                payload["genre"] = search_payload.get("genre")
+            if not payload.get("sub_genre") and search_payload.get("sub_genre") is not None:
+                payload["sub_genre"] = search_payload.get("sub_genre")
+
+        if release_payload:
+            payload["_release"] = dict(release_payload)
+            payload["release"] = dict(release_payload)
+            if not isinstance(payload.get("label"), dict) and isinstance(release_payload.get("label"), dict):
+                payload["label"] = dict(release_payload["label"])
+            if not payload.get("catalog_number") and release_payload.get("catalog_number"):
+                payload["catalog_number"] = release_payload.get("catalog_number")
+            if not payload.get("upc") and release_payload.get("upc"):
+                payload["upc"] = release_payload.get("upc")
+
+        return payload
+
+    def _provider_track_from_payload(
+        self,
+        payload: Dict[str, Any],
+        *,
+        confidence: MatchConfidence,
+    ) -> ProviderTrack:
+        track = self._normalize_track(payload)
+        track.match_confidence = confidence
+        return track
+
+    @staticmethod
+    def _search_query(title: str, artist: Optional[str] = None) -> str:
+        parts = [part.strip() for part in [artist, title] if part and part.strip()]
+        return " ".join(parts)
+
+    @staticmethod
+    def _rank_search_candidate(
+        candidate: Dict[str, Any],
+        *,
+        title: str,
+        artist: Optional[str],
+        mix_name: Optional[str],
+    ) -> tuple[int, int, float, int]:
+        candidate_title = _normalize_match_text(
+            str(candidate.get("track_name") or candidate.get("name") or "")
+        )
+        candidate_artist = _normalize_match_text(
+            ", ".join(
+                artist_obj.get("artist_name") or artist_obj.get("name") or ""
+                for artist_obj in candidate.get("artists", [])
+                if isinstance(artist_obj, dict)
+            )
+        )
+        title_text = _normalize_match_text(title)
+        artist_text = _normalize_match_text(artist)
+        mix_text = _normalize_match_text(mix_name)
+        candidate_mix = _normalize_match_text(str(candidate.get("mix_name") or ""))
+
+        exact_title = int(candidate_title == title_text and bool(title_text))
+        exact_artist = int(candidate_artist == artist_text and bool(artist_text))
+        exact_mix = int(candidate_mix == mix_text and bool(mix_text))
+        score = float(candidate.get("score") or 0.0)
+        track_id = int(candidate.get("track_id") or candidate.get("id") or 0)
+
+        # Deterministic ranking:
+        # 1) exact title match
+        # 2) exact artist match when artist was provided
+        # 3) exact mix-name match when requested
+        # 4) provider search score
+        # 5) stable tie-break on track_id
+        return (exact_title, exact_artist + exact_mix, score, -track_id)
+
+    @staticmethod
+    def _classify_text_search_confidence(
+        track: ProviderTrack,
+        *,
+        title: str,
+        artist: Optional[str],
+        mix_name: Optional[str],
+    ) -> MatchConfidence:
+        confidence = classify_match_confidence(title, artist, None, track)
+        if confidence != MatchConfidence.NONE:
+            return confidence
+
+        title_text = _normalize_match_text(title)
+        artist_text = _normalize_match_text(artist)
+        mix_text = _normalize_match_text(mix_name)
+
+        track_title = _normalize_match_text(track.title)
+        track_artist = _normalize_match_text(track.artist)
+        track_mix = _normalize_match_text(track.mix_name)
+
+        exact_title = bool(title_text) and track_title == title_text
+        exact_artist = bool(artist_text) and track_artist == artist_text
+        exact_mix = bool(mix_text) and track_mix == mix_text
+
+        if exact_title and not artist_text:
+            return MatchConfidence.MEDIUM
+        if exact_title and exact_mix:
+            return MatchConfidence.MEDIUM
+        if exact_title or exact_artist or exact_mix:
+            return MatchConfidence.WEAK
+        return MatchConfidence.NONE
+
+    def _legacy_text_search(
+        self,
+        *,
+        title: str,
+        artist: Optional[str],
+        mix_name: Optional[str],
+        limit: int,
+    ) -> List[ProviderTrack]:
+        query = self._search_query(title, artist)
+        web_results = self._search_web(query, limit)
+        if not web_results:
             return []
 
-        url = f"{self.BASE_URL}/tracks/"
-        params = {
-            "isrc": isrc,
-            "per_page": 5,
-        }
+        ranked_candidates = sorted(
+            [candidate for candidate in web_results if isinstance(candidate, dict)],
+            key=lambda candidate: self._rank_search_candidate(
+                candidate,
+                title=title,
+                artist=artist,
+                mix_name=mix_name,
+            ),
+            reverse=True,
+        )
 
-        response = self._make_request("GET", url, params=params)
-        if response and response.status_code == 200:
+        tracks: List[ProviderTrack] = []
+        for candidate in ranked_candidates:
             try:
-                data = response.json()
-                results = data.get("results", [])
-                tracks = []
-                for item in results:
-                    track = self._normalize_track(item)
-                    track.match_confidence = MatchConfidence.EXACT
-                    tracks.append(track)
-                return tracks
-            except Exception as e:
-                logger.error("Failed to parse Beatport ISRC search response: %s", e)
+                track = self._normalize_track(candidate)
+            except BeatportClientError as exc:
+                logger.debug("Skipping malformed Beatport web-search candidate for %r: %s", query, exc)
+                continue
+            track.match_confidence = self._classify_text_search_confidence(
+                track,
+                title=title,
+                artist=artist,
+                mix_name=mix_name,
+            )
+            tracks.append(track)
+        return tracks
 
-        return []
+    def search_track_by_isrc(self, isrc: str) -> List[ProviderTrack]:
+        """Official catalog exact-match lookup by ISRC."""
+        try:
+            payload = self._api_client.catalog_list_tracks({"isrc": isrc, "per_page": 10})
+        except BeatportAuthError as exc:
+            logger.warning("Beatport catalog auth unavailable for ISRC search: %s", exc)
+            return []
+        except BeatportClientError as exc:
+            logger.warning("Beatport ISRC search failed for %s: %s", isrc, exc)
+            return []
+
+        results = payload.get("results")
+        if not isinstance(results, list):
+            logger.warning("Beatport catalog track list missing results array for ISRC %s", isrc)
+            return []
+
+        tracks: List[ProviderTrack] = []
+        for item in results:
+            if not isinstance(item, dict):
+                logger.debug("Skipping malformed Beatport catalog ISRC item for %s", isrc)
+                continue
+            catalog_payload = dict(item)
+            track_id = catalog_payload.get("id")
+            if track_id is not None:
+                try:
+                    catalog_payload = self._api_client.catalog_get_track(track_id)
+                except BeatportClientError as exc:
+                    logger.debug("Beatport track hydrate failed for %s: %s", track_id, exc)
+            release_payload = self._fetch_release_for_track(catalog_payload) or self._fetch_release_for_track(item)
+            merged_payload = self._build_track_payload(
+                catalog_payload=catalog_payload,
+                search_payload=item,
+                release_payload=release_payload,
+            )
+            tracks.append(
+                self._provider_track_from_payload(
+                    merged_payload,
+                    confidence=MatchConfidence.EXACT,
+                )
+            )
+        return tracks
+
+    def search_track_by_text(
+        self,
+        title: str,
+        artist: Optional[str] = None,
+        **filters: Any,
+    ) -> List[ProviderTrack]:
+        """Official search-service candidate generation with catalog hydration."""
+        mix_name = filters.get("mix_name")
+        count = int(filters.get("count") or 10)
+        fallback_limit = min(max(count, 1), 50)
+        params = {
+            "q": self._search_query(title, artist),
+            "count": fallback_limit,
+        }
+        if mix_name:
+            params["mix_name"] = mix_name
+        for key, value in filters.items():
+            if key in _SEARCH_TRACK_PARAMS and value is not None:
+                params[key] = value
+
+        try:
+            payload = self._api_client.search_tracks(params)
+        except BeatportAuthError as exc:
+            logger.warning("Beatport search auth unavailable for text search: %s", exc)
+            return self._legacy_text_search(
+                title=title,
+                artist=artist,
+                mix_name=mix_name,
+                limit=fallback_limit,
+            )
+        except BeatportClientError as exc:
+            logger.warning("Beatport text search failed for %r: %s", params.get("q"), exc)
+            return self._legacy_text_search(
+                title=title,
+                artist=artist,
+                mix_name=mix_name,
+                limit=fallback_limit,
+            )
+
+        data = payload.get("data")
+        if not isinstance(data, list):
+            logger.warning("Beatport search response missing data array for query %r", params.get("q"))
+            return self._legacy_text_search(
+                title=title,
+                artist=artist,
+                mix_name=mix_name,
+                limit=fallback_limit,
+            )
+
+        ranked_candidates = sorted(
+            [candidate for candidate in data if isinstance(candidate, dict)],
+            key=lambda candidate: self._rank_search_candidate(
+                candidate,
+                title=title,
+                artist=artist,
+                mix_name=mix_name,
+            ),
+            reverse=True,
+        )
+
+        tracks: List[ProviderTrack] = []
+        for candidate in ranked_candidates:
+            track_id = candidate.get("track_id")
+            catalog_payload: Dict[str, Any] = dict(candidate)
+            if track_id is not None:
+                try:
+                    catalog_payload = self._api_client.catalog_get_track(track_id)
+                except BeatportClientError as exc:
+                    logger.debug("Beatport hydrate failed for search candidate %s: %s", track_id, exc)
+            release_payload = self._fetch_release_for_track(catalog_payload) or self._fetch_release_for_track(candidate)
+            merged_payload = self._build_track_payload(
+                catalog_payload=catalog_payload,
+                search_payload=candidate,
+                release_payload=release_payload,
+            )
+            track = self._normalize_track(merged_payload)
+            track.match_confidence = self._classify_text_search_confidence(
+                track,
+                title=title,
+                artist=artist,
+                mix_name=mix_name,
+            )
+            tracks.append(track)
+        if tracks:
+            return tracks
+        return self._legacy_text_search(
+            title=title,
+            artist=artist,
+            mix_name=mix_name,
+            limit=fallback_limit,
+        )
+
+    def get_track_by_id(self, track_id: str | int) -> ProviderTrack:
+        """Canonical catalog hydration by Beatport track ID."""
+        catalog_payload = self._api_client.catalog_get_track(track_id)
+        if "id" not in catalog_payload:
+            raise BeatportMalformedResponseError("Beatport catalog track detail missing id")
+        release_payload = self._fetch_release_for_track(catalog_payload)
+        merged_payload = self._build_track_payload(
+            catalog_payload=catalog_payload,
+            release_payload=release_payload,
+        )
+        return self._provider_track_from_payload(merged_payload, confidence=MatchConfidence.EXACT)
+
+    def get_genres(self) -> List[Dict[str, Any]]:
+        payload = self._api_client.catalog_list_genres({"page": 1, "per_page": 200})
+        results = payload.get("results")
+        if not isinstance(results, list):
+            raise BeatportMalformedResponseError("Beatport genres response missing results")
+        return [item for item in results if isinstance(item, dict)]
+
+    def get_subgenres(self) -> List[Dict[str, Any]]:
+        payload = self._api_client.catalog_list_subgenres({"page": 1, "per_page": 200})
+        results = payload.get("results")
+        if not isinstance(results, list):
+            raise BeatportMalformedResponseError("Beatport sub-genres response missing results")
+        return [item for item in results if isinstance(item, dict)]
+
+    def get_labels(self) -> List[Dict[str, Any]]:
+        payload = self._api_client.catalog_list_labels({"page": 1, "per_page": 200})
+        results = payload.get("results")
+        if not isinstance(results, list):
+            raise BeatportMalformedResponseError("Beatport labels response missing results")
+        return [item for item in results if isinstance(item, dict)]
+
+    def fetch_by_id(self, track_id: str) -> Optional[ProviderTrack]:
+        extracted_id = _extract_numeric_id(track_id)
+        if extracted_id is not None:
+            track_data = self._fetch_nextjs_track(int(extracted_id))
+            if track_data:
+                track = self._normalize_track(track_data)
+                track.match_confidence = MatchConfidence.EXACT
+                return track
+        try:
+            return self.get_track_by_id(track_id)
+        except BeatportClientError as exc:
+            logger.debug("Could not fetch Beatport track %s: %s", track_id, exc)
+            return None
+
+    def search_by_isrc(self, isrc: str) -> List[ProviderTrack]:
+        return self.search_track_by_isrc(isrc)
 
     def search_by_artist_and_title(
         self, artist: str, title: str, limit: int = 5
     ) -> List[ProviderTrack]:
-        """
-        Search for tracks using both artist and title filters (authenticated API).
-
-        This gives more precise results than a combined text search.
-
-        Args:
-            artist: Artist name
-            title: Track title
-            limit: Maximum results
-
-        Returns:
-            List of ProviderTrack objects
-        """
-        if not self._has_auth():
-            # Fall back to combined text search
-            return self.search(f"{artist} {title}", limit)
-
-        url = f"{self.BASE_URL}/tracks/"
-        params = {
-            "artist_name": artist,
-            "name": title,
-            "per_page": min(limit, 50),
-        }
-
-        response = self._make_request("GET", url, params=params)
-        if response and response.status_code == 200:
-            try:
-                data = response.json()
-                results = data.get("results", [])
-                if results:
-                    return [self._normalize_track(t) for t in results]
-            except Exception as e:
-                logger.error("Failed to parse Beatport artist+title search: %s", e)
-
-        # Fall back to combined text search via web
-        return self.search(f"{artist} {title}", limit)
+        return self.search_track_by_text(title, artist=artist, count=limit)
 
     def search(self, query: str, limit: int = 10) -> List[ProviderTrack]:
-        """
-        Search for tracks by text query.
-
-        Prefers authenticated API (better results), falls back to web scraping.
-
-        Args:
-            query: Search query (e.g., "artist title")
-            limit: Maximum results
-
-        Returns:
-            List of ProviderTrack objects
-        """
-        # Method 1: Try authenticated API (better filtering and results)
-        if self._has_auth():
-            url = f"{self.BASE_URL}/tracks/"
-            params = {
-                "name": query,
-                "per_page": min(limit, 50),
-            }
-
-            response = self._make_request("GET", url, params=params)
-            if response and response.status_code == 200:
-                try:
-                    data = response.json()
-                    results = data.get("results", [])
-                    if results:
-                        return [self._normalize_track(t) for t in results]
-                except Exception as e:
-                    logger.error("Failed to parse Beatport API search response: %s", e)
-
-        # Method 2: Fall back to web scraping (no auth needed)
-        web_results = self._search_web(query, limit)
-        if web_results:
-            return [self._normalize_track(t) for t in web_results]
-
-        logger.debug("Beatport search returned no results for: %s", query)
-        return []
+        return self.search_track_by_text(query, artist=None, count=limit)
 
     def _normalize_track(self, data: Dict[str, Any]) -> ProviderTrack:
         """
@@ -604,10 +1485,28 @@ class BeatportProvider(AbstractProvider):
 
         # Handle release/album
         release = data.get("release", {})
-        album_name = release.get("name") or release.get("release_name")
+        album_name = None
+        album_id = None
+        if isinstance(release, dict):
+            album_name = release.get("name") or release.get("release_name")
+            album_id = _extract_numeric_id(release.get("id") or release.get("release_id"))
+        else:
+            album_id = _extract_numeric_id(release)
 
-        # Handle publish_date
-        publish_date = data.get("publish_date", "")
+        release_payload = data.get("_release")
+        if isinstance(release_payload, dict):
+            album_name = album_name or release_payload.get("name") or release_payload.get("release_name")
+            album_id = album_id or _extract_numeric_id(
+                release_payload.get("id") or release_payload.get("release_id")
+            )
+
+        # Handle publish_date / release_date
+        publish_date = (
+            data.get("publish_date")
+            or data.get("release_date")
+            or data.get("new_release_date")
+            or ""
+        )
         year = None
         if publish_date:
             try:
@@ -638,25 +1537,38 @@ class BeatportProvider(AbstractProvider):
         else:
             sub_genre_name = None
 
-        # Handle label: either {name: ...} or label.label_name
+        # Handle label: either top-level label, release.label, or hydrated release payload
         label = data.get("label")
+        if not isinstance(label, dict) and isinstance(release, dict):
+            label = release.get("label")
+        if not isinstance(label, dict) and isinstance(release_payload, dict):
+            label = release_payload.get("label")
         if isinstance(label, dict):
             label_name = label.get("name") or label.get("label_name")
         else:
             label_name = None
 
-        # Handle duration: length_ms (Next.js) or length (search, already in ms)
-        duration_ms = data.get("length_ms") or data.get("length")
+        # Handle duration from official catalog/list payloads without guessing search units.
+        duration_ms = _parse_duration_ms(data)
 
         # Handle image
         image_url = (
             data.get("image", {}).get("uri") or
             data.get("track_image_uri") or
-            release.get("release_image_uri")
+            (release.get("release_image_uri") if isinstance(release, dict) else None) or
+            (
+                release_payload.get("image", {}).get("uri")
+                if isinstance(release_payload, dict) and isinstance(release_payload.get("image"), dict)
+                else None
+            )
         )
 
         # Catalog number from release
-        catalog_number = release.get("catalog_number")
+        catalog_number = data.get("catalog_number")
+        if catalog_number is None and isinstance(release, dict):
+            catalog_number = release.get("catalog_number")
+        if catalog_number is None and isinstance(release_payload, dict):
+            catalog_number = release_payload.get("catalog_number")
 
         # Track URL - build if not present
         slug = data.get("slug", "track")
@@ -666,13 +1578,16 @@ class BeatportProvider(AbstractProvider):
         preview_url = data.get("preview_url") or data.get("sample_url")
         waveform_url = data.get("waveform_url")
 
+        if not title or not track_id:
+            raise BeatportMalformedResponseError("Beatport track payload missing id or title")
+
         return ProviderTrack(
             service="beatport",
             service_track_id=str(track_id) if track_id else None,  # type: ignore  # TODO: mypy-strict
             title=title,
             artist=artist_name,
             album=album_name,
-            album_id=str(release.get("id")) if release.get("id") else None,
+            album_id=album_id,
             duration_ms=duration_ms,
             isrc=data.get("isrc"),
             bpm=data.get("bpm"),
@@ -688,7 +1603,7 @@ class BeatportProvider(AbstractProvider):
             url=track_url,
             preview_url=preview_url,
             waveform_url=waveform_url,
-            track_number=data.get("track_number"),
+            track_number=data.get("track_number") or data.get("number"),
             match_confidence=MatchConfidence.NONE,  # Set by caller
             raw=data,
         )

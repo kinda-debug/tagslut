@@ -54,8 +54,13 @@ def _create_fixture_db(tmp_path: Path) -> Path:
                 enriched_at,
                 merged_into_id,
                 created_at,
-                updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                updated_at,
+                ingested_at,
+                ingestion_method,
+                ingestion_source,
+                ingestion_confidence
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')
             """,
             [
                 (
@@ -171,7 +176,11 @@ def _create_no_timestamp_db(tmp_path: Path) -> Path:
                 id INTEGER PRIMARY KEY,
                 identity_key TEXT NOT NULL,
                 enriched_at TEXT,
-                merged_into_id INTEGER
+                merged_into_id INTEGER,
+                ingested_at TEXT NOT NULL,
+                ingestion_method TEXT NOT NULL,
+                ingestion_source TEXT NOT NULL,
+                ingestion_confidence TEXT NOT NULL
             );
             CREATE TABLE asset_link (
                 id INTEGER PRIMARY KEY,
@@ -188,7 +197,7 @@ def _create_no_timestamp_db(tmp_path: Path) -> Path:
             """
         )
         conn.execute(
-            "INSERT INTO track_identity (id, identity_key, enriched_at, merged_into_id) VALUES (?, ?, ?, ?)",
+            "INSERT INTO track_identity (id, identity_key, enriched_at, merged_into_id, ingested_at, ingestion_method, ingestion_source, ingestion_confidence) VALUES (?, ?, ?, ?, '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')",
             (1, "id:no-ts-orphan", "", None),
         )
         conn.execute(

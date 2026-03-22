@@ -34,14 +34,15 @@ def _seed_fixture_db(db_path: Path) -> None:
         conn.executemany(
             """
             INSERT INTO track_identity (
-                id, identity_key, isrc, beatport_id, spotify_id, canonical_artist, canonical_title
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                id, identity_key, isrc, beatport_id, spotify_id, canonical_artist, canonical_title,
+                ingested_at, ingestion_method, ingestion_source, ingestion_confidence
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
-                (1, "beatport:BP-1", None, "BP-1", None, "Artist One", "Track One"),
-                (2, "text:artist two|track two", None, None, "SP-2", "Artist Two", "Track Two"),
-                (3, "text:artist three|track three", None, None, None, "Artist Three", "Track Three"),
-                (4, "isrc:usrc17607839", None, None, None, "Artist Four", "Track Four"),
+                (1, "beatport:BP-1", None, "BP-1", None, "Artist One", "Track One", '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy'),
+                (2, "text:artist two|track two", None, None, "SP-2", "Artist Two", "Track Two", '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy'),
+                (3, "text:artist three|track three", None, None, None, "Artist Three", "Track Three", '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy'),
+                (4, "isrc:usrc17607839", None, None, None, "Artist Four", "Track Four", '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy'),
             ],
         )
         conn.executemany(

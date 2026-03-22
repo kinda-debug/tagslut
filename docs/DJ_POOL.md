@@ -1,6 +1,11 @@
-<!-- Status: Active document. Synced 2026-03-09 after recent code/doc review. Historical or superseded material belongs in docs/archive/. -->
+<!-- Status: Active document. Synced 2026-03-12 after DJ role/profile documentation refresh. Historical or superseded material belongs in docs/archive/. -->
 
 # DJ Pool Contract (v3)
+
+## Deprecation Notice
+
+`tools/get --dj` is deprecated. Use the canonical 4-stage DJ pipeline in
+`docs/DJ_WORKFLOW.md` instead.
 
 ## Purpose
 
@@ -69,7 +74,15 @@ Tracks selected for the DJ pool must resolve to a preferred asset.
 
 ## Pool Builder (B2)
 
-Primary implementation:
+Primary operator entrypoint:
+
+`poetry run tagslut dj pool-wizard`
+
+Live workflow implementation:
+
+`tagslut/exec/dj_pool_wizard.py`
+
+Lower-level builder:
 
 `scripts/dj/build_pool_v3.py`
 
@@ -99,10 +112,14 @@ No files are modified.
 
 Example:
 
-```
-python scripts/dj/build_pool_v3.py \
-  --db <path> \
-  --out-dir <pool_dir>
+```bash
+poetry run tagslut dj pool-wizard \
+  --db "$TAGSLUT_DB" \
+  --master-root "$MASTER_LIBRARY" \
+  --dj-cache-root "$DJ_LIBRARY" \
+  --out-root /tmp/dj_pool_runs \
+  --non-interactive \
+  --profile /path/to/profile.json
 ```
 
 ### Execute Mode
@@ -113,21 +130,61 @@ Execution must be explicit.
 
 Example:
 
-```
-python scripts/dj/build_pool_v3.py \
-  --db <path> \
-  --out-dir <pool_dir> \
-  --execute
+```bash
+poetry run tagslut dj pool-wizard \
+  --db "$TAGSLUT_DB" \
+  --master-root "$MASTER_LIBRARY" \
+  --dj-cache-root "$DJ_LIBRARY" \
+  --out-root /tmp/dj_pool_runs \
+  --execute \
+  --non-interactive \
+  --profile /path/to/profile.json
 ```
 
 Make targets may wrap this behavior.
 
+## Pool Profile Reference
+
+The JSON passed via `--profile /path/to/profile.json` is part of the operator-facing pool contract.
+
+For the export-layer profile in `tagslut/dj/export.py`, `pool_profile_from_dict()` honors the fields below. Higher-level workflows such as `tagslut dj pool-wizard` may carry additional workflow keys, but those are outside this `PoolProfile` subset.
+
+| Field | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `pool_name` | string | `""` | Optional label carried on `PoolProfile`. `tagslut dj pool-wizard` expects this in non-interactive profiles. |
+| `layout` | string | `"flat"` | Supported values: `flat`, `by_role`. `by_role` writes into role subdirectories and routes missing or invalid `dj_set_role` values to `_unassigned/`. |
+| `filename_template` | string | `"{artist} - {title}.mp3"` | Format string with `{artist}` and `{title}` placeholders. If rendering fails or produces an empty name, export falls back to the normal output filename. |
+| `bpm_min` | integer or `null` | `null` | Optional minimum BPM filter applied before export. |
+| `bpm_max` | integer or `null` | `null` | Optional maximum BPM filter applied before export. |
+| `only_roles` | array of strings or `null` | `null` | Optional allowlist of `files.dj_set_role` values: `groove`, `prime`, `bridge`, `club`. Tracks outside the set are excluded before output paths are assigned. |
+| `create_playlist` | boolean | `false` | When `true` and `layout` is `by_role`, write per-role M3U files at the pool root such as `10_GROOVE.m3u` and `20_PRIME.m3u`. |
+| `pool_overwrite_policy` | string | `"always"` | Supported values: `always`, `skip`. Other values fail validation. |
+
+Reference JSON:
+
+```json
+{
+  "pool_name": "gig_2026_03_13",
+  "layout": "by_role",
+  "filename_template": "{artist} - {title}.mp3",
+  "bpm_min": 98,
+  "bpm_max": 128,
+  "only_roles": ["groove", "prime", "bridge", "club"],
+  "create_playlist": true,
+  "pool_overwrite_policy": "always"
+}
+```
+
 ## Upstream Tag Preparation
 
-Two upstream paths can feed DJ MP3 creation:
+Canonical upstream path for curated DJ libraries:
 
-1. `tools/get --dj` / `tools/get-intake --dj` for wrapper-driven downstream output after promote
-2. `tagslut intake process-root --phases dj` for staged-root DJ preparation
+1. Follow `docs/DJ_WORKFLOW.md` and use Stage 1 (`tagslut mp3 reconcile` or `tagslut mp3 build`)
+
+Legacy or transitional upstream paths:
+
+1. `tools/get --dj` / `tools/get-intake --dj` remain deprecated wrapper-driven outputs after promote. See `docs/DJ_WORKFLOW.md` for the canonical 4-stage pipeline.
+2. `tagslut intake process-root --phases dj` is staged-root DJ preparation, not the primary curated-library contract.
 
 The staged-root DJ phase can enrich FLAC BPM/key from v3 identity data and use Essentia as fallback before MP3 transcode. Use `--phases dj --dry-run` to preview that work.
 

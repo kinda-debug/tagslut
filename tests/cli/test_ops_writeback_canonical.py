@@ -50,10 +50,14 @@ def test_ops_writeback_canonical_uses_v3_identity_data(tmp_path, monkeypatch) ->
             canonical_title,
             canonical_label,
             canonical_bpm,
-            canonical_key
-        ) VALUES (?, ?, ?, ?, ?, ?)
+            canonical_key,
+            ingested_at,
+            ingestion_method,
+            ingestion_source,
+            ingestion_confidence
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        ("artist::title", "Artist", "Title", "V3 Label", 128.0, "Am"),
+        ("artist::title", "Artist", "Title", "V3 Label", 128.0, "Am", '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy'),
     )
     identity_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
     conn.execute(

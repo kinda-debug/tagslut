@@ -1,0 +1,4 @@
+$kind: http-request
+url: "{{base_url}}/v4/my/account/"
+method: GET
+order: 2000

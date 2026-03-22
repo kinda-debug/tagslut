@@ -46,3 +46,39 @@ def test_run_pending_v3_requires_base_schema() -> None:
             run_pending_v3(conn)
     finally:
         conn.close()
+
+
+def test_run_pending_v3_ignores_underscore_prefixed_helper_modules(tmp_path: Path) -> None:
+    conn = sqlite3.connect(":memory:")
+    migration_dir = tmp_path / "migrations"
+    migration_dir.mkdir()
+    (migration_dir / "_0009_helper.py").write_text(
+        "\n".join(
+            [
+                "VERSION = 9",
+                "def up(conn):",
+                "    raise RuntimeError('helper module should not run')",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (migration_dir / "0010_add_test_marker.sql").write_text(
+        "CREATE TABLE migration_test_marker_v10 (id INTEGER PRIMARY KEY);",
+        encoding="utf-8",
+    )
+
+    try:
+        create_schema_v3(conn)
+
+        applied = run_pending_v3(conn, migrations_dir=migration_dir)
+
+        assert applied == ["0010_add_test_marker.sql"]
+        assert conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='migration_test_marker_v10'"
+        ).fetchone() is not None
+        assert conn.execute(
+            "SELECT 1 FROM schema_migrations WHERE schema_name = ? AND version = 10 AND note = ?",
+            (V3_SCHEMA_NAME, "0010_add_test_marker.sql"),
+        ).fetchone() is not None
+    finally:
+        conn.close()

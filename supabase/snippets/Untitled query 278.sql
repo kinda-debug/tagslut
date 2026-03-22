@@ -1,0 +1,1 @@
+select count(*) from asset_link;

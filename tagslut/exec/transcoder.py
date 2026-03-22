@@ -219,6 +219,22 @@ def transcode_to_mp3(
     return dest_path
 
 
+def build_dj_copy_filename(source_flac: Path) -> str:
+    """Return the DJ-copy filename for a FLAC source (no I/O besides tag read)."""
+    try:
+        flac_tags: Optional[FLAC] = FLAC(source_flac)
+    except Exception as e:
+        flac_tags = None
+        logger.warning("Could not read FLAC tags from %s: %s", source_flac, e)
+    return _build_mp3_filename(source_flac, flac_tags)
+
+
+def tag_mp3_as_dj_copy(mp3_path: Path, source_flac: Path) -> None:
+    """Apply the DJ tag policy to an existing MP3, pruning to the DJ-managed frames."""
+    flac_tags: Optional[FLAC] = FLAC(source_flac)
+    _apply_id3_tags(mp3_path, flac_tags, prune_existing=True)
+
+
 def transcode_to_mp3_from_snapshot(
     source: Path,
     dest_dir: Path,
@@ -257,6 +273,36 @@ def transcode_to_mp3_from_snapshot(
 
     logger.info("Transcoded from snapshot: %s -> %s", source, final_dest_path)
     return final_dest_path
+
+
+def transcode_to_mp3_full_tags(
+    source: Path,
+    dest_path: Path,
+    *,
+    bitrate: int = 320,
+    overwrite: bool = False,
+    ffmpeg_path: str | None = None,
+) -> Path:
+    """Transcode a FLAC to MP3 and apply a broader, library-friendly tag set."""
+    if not source.exists():
+        raise FileNotFoundError(f"Source file not found: {source}")
+    _check_ffmpeg(ffmpeg_path)
+
+    try:
+        flac_tags: Optional[FLAC] = FLAC(source)
+    except Exception as e:
+        flac_tags = None
+        logger.warning("Could not read FLAC tags from %s: %s", source, e)
+
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    if dest_path.exists() and not overwrite:
+        logger.info("Skipping transcode, already exists: %s", dest_path)
+        return dest_path
+
+    _run_ffmpeg_transcode(source, dest_path, bitrate=bitrate, ffmpeg_path=ffmpeg_path)
+    _apply_full_id3_tags(dest_path, flac_tags)
+    logger.info("Transcoded (full tags): %s -> %s", source, dest_path)
+    return dest_path
 
 
 def _run_ffmpeg_transcode(
@@ -355,6 +401,59 @@ def _apply_id3_tags(
         return vals[0] if vals else None
 
     _apply_dj_tag_policy(tags, flac_tags, first)
+    tags.save(mp3_path)
+
+
+def _apply_full_id3_tags(mp3_path: Path, flac_tags: Optional[FLAC]) -> None:
+    tags = _empty_id3()
+    if flac_tags is None:
+        tags.save(mp3_path)
+        return
+
+    def first(key: str) -> Optional[str]:
+        vals = flac_tags.get(key)
+        return vals[0] if vals else None
+
+    title = first("title")
+    artist = first("artist") or first("albumartist")
+    albumartist = first("albumartist")
+    album = first("album")
+    tracknumber = first("tracknumber")
+    discnumber = first("discnumber")
+    date = first("date") or first("originaldate") or first("year")
+    genre = first("genre")
+    bpm = first("bpm")
+    initialkey = first("initialkey") or first("key")
+    isrc = first("isrc")
+    label = first("label")
+
+    if title:
+        tags["TIT2"] = _text_frame("TIT2", title)
+    if artist:
+        tags["TPE1"] = _text_frame("TPE1", artist)
+    if albumartist:
+        tags["TPE2"] = _text_frame("TPE2", albumartist)
+    if album:
+        tags["TALB"] = _text_frame("TALB", album)
+    if tracknumber:
+        tags["TRCK"] = _text_frame("TRCK", tracknumber)
+    if discnumber:
+        tags["TPOS"] = _text_frame("TPOS", discnumber)
+    if date:
+        tags["TDRC"] = _text_frame("TDRC", date)
+    if genre:
+        tags["TCON"] = _text_frame("TCON", genre)
+    if bpm:
+        tags["TBPM"] = _text_frame("TBPM", bpm)
+    if initialkey:
+        tags["TKEY"] = _text_frame("TKEY", initialkey)
+        tags["TXXX:INITIALKEY"] = _user_text_frame("INITIALKEY", initialkey)
+    if isrc:
+        tags["TSRC"] = _text_frame("TSRC", isrc)
+    if label:
+        tags["TXXX:LABEL"] = _user_text_frame("LABEL", label)
+
+    _apply_cover_art(tags, flac_tags)
     tags.save(mp3_path)
 
 

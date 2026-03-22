@@ -142,7 +142,7 @@ case "$1" in
         fi
         CMD+=(--skip-errors)
         if [[ "$HAS_TRACK_QUALITY" -eq 0 ]]; then
-            CMD+=(--track-quality max)
+            CMD+=(-q max)
         fi
         if [[ ${#DOWNLOAD_ARGS[@]} -gt 0 ]]; then
             CMD+=("${DOWNLOAD_ARGS[@]}")

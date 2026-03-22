@@ -47,7 +47,14 @@ poetry run tagslut mp3 reconcile \
 ```
 
 Outputs:
+
 - `mp3_asset` rows linked to canonical identities and master assets
+
+Stage 2 transcode safety:
+
+- `mp3 build` and DJ-pool transcodes do not trust ffmpeg exit status alone.
+- After each transcode, the output MP3 is validated for existence, minimum size, mutagen readability, and duration greater than 1 second.
+- Validation failures raise `TranscodeError` before the output is accepted or registered.
 
 ### Stage 3 — Admit And Validate DJ Library
 
@@ -74,7 +81,8 @@ poetry run tagslut dj validate --db "$TAGSLUT_DB"
 
 Outputs:
 - `dj_admission` rows
-- validated DJ-library state ready for XML export
+- a `dj_validation_state` audit row keyed by the current DJ DB `state_hash`
+- validated DJ-library state ready for XML export only while that `state_hash` remains current
 
 ### Stage 4 — Emit Or Patch Rekordbox XML
 
@@ -85,6 +93,12 @@ poetry run tagslut dj xml emit \
   --db "$TAGSLUT_DB" \
   --out rekordbox.xml
 ```
+
+Pre-emit gate:
+
+- `dj xml emit` now requires a prior passing `dj validate` run for the current DJ DB state.
+- If admissions or playlists change after validation, rerun `poetry run tagslut dj validate --db "$TAGSLUT_DB"` before emitting again.
+- `--skip-validation` remains available as an emergency escape hatch, but it now prints a warning to stderr when used.
 
 Subsequent export preserving TrackIDs and Rekordbox cue points:
 
@@ -98,6 +112,7 @@ Outputs:
 - deterministic Rekordbox XML
 - stable `dj_track_id_map` assignments
 - `dj_export_state` manifest rows with XML hash plus DB-scope metadata
+- loud failure if no matching passing `dj validate` record exists for the current `state_hash`
 
 ## Operator Rule
 

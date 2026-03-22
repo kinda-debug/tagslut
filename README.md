@@ -108,6 +108,10 @@ poetry run tagslut intake <provider-url>
 poetry run tagslut mp3 reconcile \
   --db "$TAGSLUT_DB" --mp3-root "$DJ_LIBRARY" --execute
 
+# When building new MP3s from masters, tagslut validates the ffmpeg output
+# before accepting it: file must exist, be large enough, parse as MP3, and
+# report a duration greater than 1 second.
+
 # Stage 3: admit registered MP3s into the curated DJ library
 poetry run tagslut dj backfill --db "$TAGSLUT_DB"
 

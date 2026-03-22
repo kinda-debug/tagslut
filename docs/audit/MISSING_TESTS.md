@@ -31,17 +31,22 @@ High-value tests that should exist to prevent workflow failures and catch regres
 ### 2. FFmpeg Output Validation
 **Purpose**: Detect and handle FFmpeg failures before they corrupt DJ pool.
 
+**Status**: Covered on 2026-03-22 by [tests/exec/test_mp3_build_ffmpeg_errors.py](tests/exec/test_mp3_build_ffmpeg_errors.py).
+
 **Scenarios**:
+
 - A. FFmpeg binary missing → build fails with clear error
 - B. FFmpeg codec error (unsupported format) → build fails
 - C. FFmpeg truncates output (disk full) → file validation detects corruption
 - D. FFmpeg produces unreadable MP3 → ID3 tag validation detects it
 
 **Expected Behavior**:
+
 - Build exits with error code 1
 - Error message clearly identifies FFmpeg as source
 - Corrupt MP3 is not registered in mp3_asset
-- DB state is rolled back or left in "reverify_needed" state
+- DJ pool wizard surfaces validation failures as `transcode_failed`
+- Remaining gap: no DB-level readiness or rollback assertion yet
 
 **Test Location**: [tests/exec/test_mp3_build_ffmpeg_errors.py](tests/exec/test_mp3_build_ffmpeg_errors.py)
 
@@ -157,13 +162,17 @@ High-value tests that should exist to prevent workflow failures and catch regres
 ### 8. MP3 Output Validation Helper
 **Purpose**: Test-harness for MP3 file validation (size, duration, ID3).
 
+**Status**: Covered on 2026-03-22 in [tests/exec/test_mp3_build_ffmpeg_errors.py](tests/exec/test_mp3_build_ffmpeg_errors.py) rather than a separate unit module.
+
 **Scenarios**:
+
 - Truncated MP3 (10KB, duration < 1sec)
 - Valid MP3 (2MB, duration 3:45, ID3 complete)
 - Corrupted MP3 (header + garbage)
 - No ID3 tags
 
 **Expected Behavior**:
+
 - Each scenario correctly classified as playable or corrupted
 
 **Test Location**: [tests/unit/test_mp3_validation_helpers.py](tests/unit/test_mp3_validation_helpers.py)

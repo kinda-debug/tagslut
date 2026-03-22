@@ -65,6 +65,8 @@ Versioning: [Semantic Versioning](https://semver.org/)
 - `docs/DJ_PIPELINE.md`: concise canonical 4-stage DJ pipeline reference covering intake masters, MP3 build/reconcile, DJ admission/validation, and Rekordbox XML emit/patch.
 - `docs/audit/DJ_PIPELINE_DOC_TRIAGE.md`: active-doc DJ pipeline triage table for essential versus archived surfaces.
 - E2E proofs for an executing Stage 2 MP3 build, stable playlist ordering with ordinal collisions, and a determinism-regression guard when XML output changes without a DJ DB state change.
+- FFmpeg post-transcode MP3 validation in `tagslut/exec/transcoder.py`: successful ffmpeg exit is no longer accepted on its own. Stage 2/DJ-pool transcodes now fail fast if the output file is missing, suspiciously small, unreadable by mutagen, or shorter than 1 second.
+- Focused transcode failure coverage in `tests/exec/test_mp3_build_ffmpeg_errors.py`, including missing ffmpeg, non-zero ffmpeg exit, corrupt output detection, and DJ pool wizard failure surfacing.
 
 ### Changed - DJ Pipeline Hardening
 

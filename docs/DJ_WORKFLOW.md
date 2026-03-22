@@ -72,6 +72,12 @@ poetry run tagslut mp3 build \
 Use `mp3 reconcile` when MP3 files already exist. Use `mp3 build` when the DJ MP3
 layer still needs to be created from canonical masters.
 
+Transcode safety note:
+
+- ffmpeg success is not treated as sufficient proof of a good MP3.
+- Post-transcode validation rejects outputs that are missing, suspiciously small, unreadable by mutagen, or shorter than 1 second.
+- Validation failures surface as `TranscodeError`, so DJ-pool build flows record an explicit transcode failure instead of silently accepting a bad file.
+
 ### Stage 3 — DJ Admission (`dj backfill` or `dj admit`)
 
 Promote all registered `mp3_asset` rows (`status=verified`) into the curated DJ admission table:
@@ -104,6 +110,11 @@ poetry run tagslut dj validate \
 Use this stage after admission and before XML export. Validation is the contract check
 that keeps Stage 4 deterministic.
 
+On success, `dj validate` records a `dj_validation_state` row with the current DJ DB
+`state_hash`. `dj xml emit` checks for a passing row with that exact hash before it
+proceeds. If admissions or playlist membership change after validation, rerun
+`dj validate` before Stage 4.
+
 ### Stage 4 — Rekordbox Export (`dj xml emit` and `dj xml patch`)
 
 Use `dj xml emit` for a fresh deterministic export:
@@ -113,12 +124,14 @@ Write a deterministic Rekordbox-compatible XML from all admitted `dj_admission` 
 ```bash
 poetry run tagslut dj xml emit \
   --db "$TAGSLUT_DB" \
-  --output rekordbox.xml
+  --out rekordbox.xml
 ```
 
 - Assigns stable TrackIDs (persisted in `dj_track_id_map` so cue points survive re-imports)
 - Records a SHA-256 manifest hash in `dj_export_state`
-- Raises if validation finds missing MP3 files or empty metadata (use `--skip-validation` to override)
+- Refuses to proceed unless a prior passing `dj validate` run exists for the current DB `state_hash`
+- Still runs inline validation as a safety net for missing MP3 files and empty metadata
+- `--skip-validation` remains available for emergencies, but now prints a warning to stderr when used
 
 Use `dj xml patch` when the DJ library has changed and you need a fresh XML
 without resetting Rekordbox cue points:
@@ -126,7 +139,7 @@ without resetting Rekordbox cue points:
 ```bash
 poetry run tagslut dj xml patch \
   --db "$TAGSLUT_DB" \
-  --output rekordbox_v2.xml
+  --out rekordbox_v2.xml
 ```
 
 - Verifies the prior XML file's manifest hash before proceeding (fails loudly if tampered)

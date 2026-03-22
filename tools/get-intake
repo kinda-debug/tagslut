@@ -97,9 +97,9 @@ Options:
   --execute            Execute move plans (default: dry-run planning only)
   --m3u                Generate Roon-friendly merged M3U from promoted files
   --m3u-dir PATH       M3U output dir (default: $PLAYLIST_ROOT or library root)
-  --dj                 Transcode promoted FLACs to MP3 into DJ library root and write DJ playlists
-  --dj-root PATH       DJ MP3 root (default: $DJ_MP3_ROOT or $DJ_LIBRARY)
-  --dj-m3u-dir PATH    DJ playlist output dir (default: $DJ_PLAYLIST_ROOT or DJ root)
+  --dj                 [LEGACY] Build wrapper-driven DJ copies after promote; not the curated-library workflow
+  --dj-root PATH       DJ MP3 root for legacy wrapper output (default: $DJ_MP3_ROOT or $DJ_LIBRARY)
+  --dj-m3u-dir PATH    DJ playlist output dir for legacy wrapper output (default: $DJ_PLAYLIST_ROOT or DJ root)
   --m3u-only           Only generate merged M3U (skip download/scan/move stages)
   --playlist-file PATH Build M3U from playlist file (.m3u/.m3u8/.txt/.csv/.json)
   --missing-policy MODE

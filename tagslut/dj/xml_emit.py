@@ -99,9 +99,121 @@ def _fetch_active_admissions(
         LEFT JOIN dj_track_id_map dmap ON dmap.dj_admission_id = da.id
         LEFT JOIN files f ON f.isrc = ti.isrc
         WHERE da.status = 'admitted'
-        ORDER BY dmap.rekordbox_track_id ASC, da.id ASC
+        ORDER BY COALESCE(dmap.rekordbox_track_id, 0) ASC, da.id ASC
         """
     ).fetchall()
+
+
+def _fetch_playlist_rows(
+    conn: sqlite3.Connection,
+    playlist_scope: list[int] | None,
+) -> list[tuple[int, str, str | None]]:
+    if playlist_scope:
+        placeholders = ", ".join("?" * len(playlist_scope))
+        return conn.execute(
+            f"""
+            SELECT id, name, sort_key
+            FROM dj_playlist
+            WHERE id IN ({placeholders})
+            ORDER BY COALESCE(sort_key, '') ASC, name ASC, id ASC
+            """,
+            playlist_scope,
+        ).fetchall()
+    return conn.execute(
+        """
+        SELECT id, name, sort_key
+        FROM dj_playlist
+        ORDER BY COALESCE(sort_key, '') ASC, name ASC, id ASC
+        """
+    ).fetchall()
+
+
+def _fetch_playlist_members(
+    conn: sqlite3.Connection,
+    playlist_id: int,
+) -> list[tuple[int, int]]:
+    return conn.execute(
+        """
+        SELECT pt.dj_admission_id, pt.ordinal
+        FROM dj_playlist_track pt
+        JOIN dj_admission da ON da.id = pt.dj_admission_id
+        WHERE pt.playlist_id = ? AND da.status = 'admitted'
+        ORDER BY pt.ordinal ASC, pt.dj_admission_id ASC
+        """,
+        (playlist_id,),
+    ).fetchall()
+
+
+def _build_export_scope(
+    conn: sqlite3.Connection,
+    *,
+    playlist_scope: list[int] | None,
+) -> tuple[dict[str, object], str]:
+    admissions = conn.execute(
+        """
+        SELECT
+            da.id,
+            da.identity_id,
+            da.mp3_asset_id,
+            COALESCE(dmap.rekordbox_track_id, 0),
+            ma.path,
+            COALESCE(ma.bitrate, 0),
+            COALESCE(ti.title_norm, ''),
+            COALESCE(ti.artist_norm, ''),
+            COALESCE(f.bpm, 0),
+            COALESCE(f.key_camelot, '')
+        FROM dj_admission da
+        JOIN mp3_asset ma ON ma.id = da.mp3_asset_id
+        JOIN track_identity ti ON ti.id = da.identity_id
+        LEFT JOIN dj_track_id_map dmap ON dmap.dj_admission_id = da.id
+        LEFT JOIN files f ON f.isrc = ti.isrc
+        WHERE da.status = 'admitted'
+        ORDER BY da.id ASC
+        """
+    ).fetchall()
+
+    playlist_rows = _fetch_playlist_rows(conn, playlist_scope)
+    playlists: list[dict[str, object]] = []
+    for playlist_id, name, sort_key in playlist_rows:
+        members = _fetch_playlist_members(conn, playlist_id)
+        playlists.append(
+            {
+                "playlist_id": playlist_id,
+                "name": name,
+                "sort_key": sort_key or "",
+                "tracks": [
+                    {
+                        "dj_admission_id": dj_admission_id,
+                        "ordinal": ordinal,
+                    }
+                    for dj_admission_id, ordinal in members
+                ],
+            }
+        )
+
+    payload: dict[str, object] = {
+        "playlist_scope": sorted(playlist_scope) if playlist_scope else None,
+        "track_count": len(admissions),
+        "playlist_count": len(playlists),
+        "admissions": [
+            {
+                "dj_admission_id": row[0],
+                "identity_id": row[1],
+                "mp3_asset_id": row[2],
+                "rekordbox_track_id": row[3],
+                "path": row[4],
+                "bitrate": row[5],
+                "title": row[6],
+                "artist": row[7],
+                "bpm": row[8],
+                "key_camelot": row[9],
+            }
+            for row in admissions
+        ],
+        "playlists": playlists,
+    }
+    payload_json = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return payload, hashlib.sha256(payload_json.encode("utf-8")).hexdigest()
 
 
 def _assign_track_ids(
@@ -187,6 +299,7 @@ def emit_rekordbox_xml(
         )
 
     assigned = _assign_track_ids(conn, rows)
+    scope_payload, state_hash = _build_export_scope(conn, playlist_scope=playlist_scope)
 
     # Build XML tree
     root = ET.Element("DJ_PLAYLISTS", {"Version": "1.0.0"})
@@ -216,28 +329,10 @@ def emit_rekordbox_xml(
     root_node = ET.SubElement(
         playlists_root, "NODE", {"Name": "ROOT", "Type": "0", "Count": "0"}
     )
-    if playlist_scope:
-        placeholders = ", ".join("?" * len(playlist_scope))
-        pl_rows = conn.execute(
-            f"SELECT id, name FROM dj_playlist WHERE id IN ({placeholders}) ORDER BY sort_key ASC, name ASC",
-            playlist_scope,
-        ).fetchall()
-    else:
-        pl_rows = conn.execute(
-            "SELECT id, name FROM dj_playlist ORDER BY sort_key ASC, name ASC"
-        ).fetchall()
+    pl_rows = _fetch_playlist_rows(conn, playlist_scope)
 
-    for pl_id, pl_name in pl_rows:
-        member_rows = conn.execute(
-            """
-            SELECT pt.dj_admission_id
-            FROM dj_playlist_track pt
-            JOIN dj_admission da ON da.id = pt.dj_admission_id
-            WHERE pt.playlist_id = ? AND da.status = 'admitted'
-            ORDER BY pt.ordinal ASC
-            """,
-            (pl_id,),
-        ).fetchall()
+    for pl_id, pl_name, _sort_key in pl_rows:
+        member_rows = _fetch_playlist_members(conn, pl_id)
         track_ids = [assigned[r[0]] for r in member_rows if r[0] in assigned]
         root_node.append(_build_playlist_node(name=pl_name, track_ids=track_ids))
 
@@ -248,6 +343,25 @@ def emit_rekordbox_xml(
     tree.write(str(output_path), encoding="UTF-8", xml_declaration=True)
 
     manifest_hash = hashlib.sha256(output_path.read_bytes()).hexdigest()
+    prior = conn.execute(
+        """
+        SELECT manifest_hash, scope_json
+        FROM dj_export_state
+        WHERE kind = 'rekordbox_xml'
+        ORDER BY id DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    if prior is not None:
+        prior_hash, prior_scope_json = prior
+        try:
+            prior_scope = json.loads(prior_scope_json or "{}")
+        except json.JSONDecodeError:
+            prior_scope = {}
+        if prior_scope.get("state_hash") == state_hash and prior_hash != manifest_hash:
+            raise ValueError(
+                "Determinism violation: Rekordbox XML changed without a DJ DB state change."
+            )
 
     conn.execute(
         """
@@ -258,10 +372,16 @@ def emit_rekordbox_xml(
             str(output_path),
             manifest_hash,
             _now_iso(),
-            json.dumps({
-                "track_count": len(rows),
-                "playlist_count": len(pl_rows),
-            }),
+            json.dumps(
+                {
+                    "track_count": len(rows),
+                    "playlist_count": len(pl_rows),
+                    "state_hash": state_hash,
+                    "playlist_scope": sorted(playlist_scope) if playlist_scope else None,
+                    "scope": scope_payload,
+                },
+                sort_keys=True,
+            ),
         ),
     )
     conn.commit()

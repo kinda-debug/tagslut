@@ -17,25 +17,28 @@ import click
 Build and reconcile MP3 derivative assets.
 
 Part of the 4-stage DJ pipeline:
-  Stage 1: build      → Transcode canonical FLAC masters to DJ MP3s
-           reconcile  → Register existing DJ MP3s against canonical identities
-  Stage 2: dj admit / dj backfill
-  Stage 3: dj validate
-  Stage 4: dj xml emit / dj xml patch
+    Stage 1: intake      → Refresh canonical masters via tagslut intake
+    Stage 2: build       → Transcode canonical FLAC masters to DJ MP3s
+                     reconcile   → Register existing DJ MP3s against canonical identities
+    Stage 3: dj admit    → Admit verified MP3s and validate DJ state
+                     dj backfill → Auto-admit verified MP3s
+                     dj validate → Verify DJ library state
+    Stage 4: dj xml emit / dj xml patch
 
 Common subcommands:
   build, reconcile
 
-See: tagslut dj --help (Stages 2–4)
-Docs: docs/DJ_WORKFLOW.md
+See: tagslut dj --help (Stages 3-4)
+Docs: docs/DJ_PIPELINE.md
 """,
     epilog="""
 \b
 Examples:
+    tagslut intake <provider-url>
   tagslut mp3 reconcile --db <path> --mp3-root <path>
   tagslut mp3 build --db <path> --dj-root <path> --execute
 
-Next: tagslut dj --help (Stages 2–4)
+Next: tagslut dj --help (Stages 3-4)
 Then: tagslut dj backfill --db <path>
 """,
 )
@@ -45,7 +48,7 @@ def mp3_group() -> None:
 
 @mp3_group.command(
     "build",
-    help="Build MP3s from canonical FLAC masters. Stage 1a of the 4-stage pipeline.",
+    help="Build MP3s from canonical FLAC masters. Stage 2a of the 4-stage pipeline.",
 )
 @click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
 @click.option(
@@ -123,7 +126,10 @@ def mp3_build(
 
 @mp3_group.command(
     "reconcile",
-    help="Reconcile an existing MP3 root with the database. Stage 1b of the 4-stage pipeline. Next: tagslut dj backfill.",
+    help=(
+        "Reconcile an existing MP3 root with the database. "
+        "Stage 2b of the 4-stage pipeline. Next: tagslut dj backfill."
+    ),
 )
 @click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
 @click.option(

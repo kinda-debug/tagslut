@@ -45,6 +45,10 @@ def _create_work_db(path: Path) -> sqlite3.Connection:
             canonical_label TEXT,
             enriched_at TEXT,
             updated_at TEXT,
+            ingested_at TEXT,
+            ingestion_method TEXT,
+            ingestion_source TEXT,
+            ingestion_confidence TEXT,
             merged_into_id INTEGER
         );
         """
@@ -104,10 +108,15 @@ def test_sync_updates_files_and_identity_by_dj_pool_path(tmp_path: Path) -> None
             """
             INSERT INTO track_identity (
                 id, canonical_title, canonical_artist, canonical_album,
-                canonical_genre, canonical_bpm, canonical_key, canonical_label, enriched_at, updated_at
-            ) VALUES (10, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                canonical_genre, canonical_bpm, canonical_key, canonical_label,
+                enriched_at, updated_at,
+                ingested_at, ingestion_method, ingestion_source, ingestion_confidence
+            ) VALUES (10, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (None, None, None, None, 120.0, None, None, None, None),
+            (
+                None, None, None, None, 120.0, None, None, None, None,
+                "2026-01-01T00:00:00+00:00", "migration", "test_fixture", "legacy",
+            ),
         )
 
         donor_conn.execute(
@@ -193,10 +202,15 @@ def test_sync_skips_conflicting_identity_fields(tmp_path: Path) -> None:
             """
             INSERT INTO track_identity (
                 id, canonical_title, canonical_artist, canonical_album,
-                canonical_genre, canonical_bpm, canonical_key, canonical_label, enriched_at, updated_at
-            ) VALUES (20, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                canonical_genre, canonical_bpm, canonical_key, canonical_label,
+                enriched_at, updated_at,
+                ingested_at, ingestion_method, ingestion_source, ingestion_confidence
+            ) VALUES (20, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (None, None, None, None, None, None, None, None, None),
+            (
+                None, None, None, None, None, None, None, None, None,
+                "2026-01-01T00:00:00+00:00", "migration", "test_fixture", "legacy",
+            ),
         )
 
         donor_conn.executemany(
@@ -256,10 +270,15 @@ def test_sync_updates_by_normalized_title_artist_album_with_field_consensus(tmp_
             """
             INSERT INTO track_identity (
                 id, canonical_title, canonical_artist, canonical_album,
-                canonical_genre, canonical_bpm, canonical_key, canonical_label, enriched_at, updated_at
-            ) VALUES (30, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                canonical_genre, canonical_bpm, canonical_key, canonical_label,
+                enriched_at, updated_at,
+                ingested_at, ingestion_method, ingestion_source, ingestion_confidence
+            ) VALUES (30, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            ("Anywhere", "Ratboys", "The Window", None, None, None, None, None, None),
+            (
+                "Anywhere", "Ratboys", "The Window", None, None, None, None, None, None,
+                "2026-01-01T00:00:00+00:00", "migration", "test_fixture", "legacy",
+            ),
         )
 
         donor_conn.executemany(

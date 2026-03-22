@@ -351,7 +351,7 @@ Note: `files.dj_set_role` on the flat `files` table is a separate downstream exp
 
 ---
 
-## Ingestion Provenance Columns (migration 0012 — pending)
+## Ingestion Provenance Columns (migration 0012)
 
 Four NOT NULL columns added to `track_identity`:
 
@@ -362,14 +362,37 @@ Four NOT NULL columns added to `track_identity`:
 | `ingestion_source` | TEXT | Specific evidence e.g. `beatport_api:track_id=12345678` |
 | `ingestion_confidence` | TEXT | Five-tier vocabulary (see below) |
 
-`ingestion_confidence` CHECK constraint:
-  `('verified', 'corroborated', 'high', 'uncertain', 'legacy')`
+Enforcement:
+- SQLite insert trigger: `trg_track_identity_provenance_required`
+- Behavior: rejects INSERTs where `ingested_at`, `ingestion_method`, or `ingestion_confidence`
+  are NULL/blank, or where `ingestion_source` is NULL
+- Legacy `init_db()` additive migration path creates the same trigger for databases that do not
+  originate from `create_schema_v3()`
+
+`ingestion_confidence` vocabulary:
+
+| Tier | Meaning |
+|---|---|
+| `verified` | Directly confirmed from authoritative provider evidence |
+| `corroborated` | Confirmed by multiple consistent provider signals |
+| `high` | Strong single-source or rule-based confidence |
+| `uncertain` | Identity retained but evidence is conflicting or incomplete |
+| `legacy` | Backfilled historical row where original ingestion evidence is unavailable |
 
 `ingestion_method` vocabulary:
-  `provider_api`, `isrc_lookup`, `fingerprint_match`, `fuzzy_text_match`,
-  `picard_tag`, `manual`, `migration`, `multi_provider_reconcile`
 
-Full spec: `docs/INGESTION_PROVENANCE.md`, `docs/MULTI_PROVIDER_ID_POLICY.md`
+| Method | Meaning |
+|---|---|
+| `provider_api` | Direct provider/API metadata ingest |
+| `isrc_lookup` | Identity created from ISRC resolution |
+| `fingerprint_match` | Identity created from acoustic fingerprint matching |
+| `fuzzy_text_match` | Identity created from normalized text similarity |
+| `picard_tag` | Identity derived from Picard / MusicBrainz tagging |
+| `manual` | Operator-created or operator-confirmed row |
+| `migration` | Backfilled during schema/data migration |
+| `multi_provider_reconcile` | Created or hardened during multi-provider reconciliation |
+
+References: `docs/INGESTION_PROVENANCE.md`, `docs/MULTI_PROVIDER_ID_POLICY.md`
 
 ---
 

@@ -1172,6 +1172,10 @@ def _ensure_v3_schema(conn: sqlite3.Connection) -> None:
             "title_norm": "TEXT",
             "duration_ref_ms": "INTEGER",
             "ref_source": "TEXT",
+            "ingested_at": "TEXT",
+            "ingestion_method": "TEXT",
+            "ingestion_source": "TEXT",
+            "ingestion_confidence": "TEXT",
             "created_at": "TEXT DEFAULT CURRENT_TIMESTAMP",
             "updated_at": "TEXT DEFAULT CURRENT_TIMESTAMP",
         },
@@ -1183,6 +1187,36 @@ def _ensure_v3_schema(conn: sqlite3.Connection) -> None:
     conn.execute(
         f"CREATE INDEX IF NOT EXISTS idx_{V3_TRACK_IDENTITY_TABLE}_beatport "
         f"ON {V3_TRACK_IDENTITY_TABLE}(beatport_id)"
+    )
+    conn.execute(
+        f"CREATE INDEX IF NOT EXISTS idx_{V3_TRACK_IDENTITY_TABLE}_ingested_at "
+        f"ON {V3_TRACK_IDENTITY_TABLE}(ingested_at)"
+    )
+    conn.execute(
+        f"CREATE INDEX IF NOT EXISTS idx_{V3_TRACK_IDENTITY_TABLE}_ingestion_method "
+        f"ON {V3_TRACK_IDENTITY_TABLE}(ingestion_method)"
+    )
+    conn.execute(
+        f"CREATE INDEX IF NOT EXISTS idx_{V3_TRACK_IDENTITY_TABLE}_ingestion_confidence "
+        f"ON {V3_TRACK_IDENTITY_TABLE}(ingestion_confidence)"
+    )
+    conn.execute(
+        """
+        CREATE TRIGGER IF NOT EXISTS trg_track_identity_provenance_required
+        BEFORE INSERT ON track_identity
+        BEGIN
+            SELECT CASE
+                WHEN NEW.ingested_at IS NULL OR TRIM(NEW.ingested_at) = '' THEN
+                    RAISE(ABORT, 'track_identity.ingested_at is required')
+                WHEN NEW.ingestion_method IS NULL OR TRIM(NEW.ingestion_method) = '' THEN
+                    RAISE(ABORT, 'track_identity.ingestion_method is required')
+                WHEN NEW.ingestion_source IS NULL THEN
+                    RAISE(ABORT, 'track_identity.ingestion_source is required')
+                WHEN NEW.ingestion_confidence IS NULL OR TRIM(NEW.ingestion_confidence) = '' THEN
+                    RAISE(ABORT, 'track_identity.ingestion_confidence is required')
+            END;
+        END
+        """
     )
 
     conn.execute(

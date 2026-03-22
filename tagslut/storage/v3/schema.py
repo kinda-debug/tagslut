@@ -100,9 +100,22 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
             duration_ref_ms INTEGER,
             ref_source TEXT,
             ingested_at TEXT NOT NULL,
-            ingestion_method TEXT NOT NULL,
+            ingestion_method TEXT NOT NULL CHECK (
+                ingestion_method IN (
+                    'provider_api',
+                    'isrc_lookup',
+                    'fingerprint_match',
+                    'fuzzy_text_match',
+                    'picard_tag',
+                    'manual',
+                    'migration',
+                    'multi_provider_reconcile'
+                )
+            ),
             ingestion_source TEXT NOT NULL,
-            ingestion_confidence TEXT NOT NULL,
+            ingestion_confidence TEXT NOT NULL CHECK (
+                ingestion_confidence IN ('verified','corroborated','high','uncertain','legacy')
+            ),
             merged_into_id INTEGER REFERENCES track_identity(id),
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP

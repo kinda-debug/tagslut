@@ -16,7 +16,7 @@ Update it when tasks complete or priorities shift.
 3. Migration 0013 — five-tier CHECK (§16) ← COMPLETE (included in 0012)
 4. Fresh DB initialization (§10)        ← COMPLETE (db + env + settings + storage tests)
 5. Repo cleanup (§13)                   ← COMPLETE
-6. Phase 1 PR chain (§2)               ← COMPLETE (PRs 9-14 done, PR 15 needs design)
+6. Phase 1 PR chain (§2)               ← COMPLETE (PRs 9-15, all done)
 7. DJ pipeline hardening (§3)          ← UNBLOCKED (Phase 1 complete)
 ```
 
@@ -96,7 +96,7 @@ Commits: 730d2b1, 2fb2a50, 3f3f37d, bf3df38
 | 12 | Identity merge | `fix/identity-merge` | COMPLETE (195efc7, delivered via fix/migration-0006) |
 | 13 | DJ candidate export | -- | COMPLETE (delivered in scripts/dj/export_candidates_v3.py, 8/8 tests) |
 | 14 | docs/AGENT update | -- | COMPLETE (commit 8a0b00d) |
-| 15 | Phase 2 seam | -- | Needs design first |
+| 15 | Phase 2 seam | -- | COMPLETE (commit d992d20) |
 
 PRs 13–15 need prompts authored in Claude.ai before Codex can execute them.
 PR 12 prompt exists at `.github/prompts/phase1-pr12-identity-merge.prompt.md`.

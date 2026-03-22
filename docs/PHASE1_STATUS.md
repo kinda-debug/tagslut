@@ -20,12 +20,12 @@
 | 12 | identity merge | MERGED | (delivered in 195efc7, merged via fix/migration-0006) | 10 |
 | 13 | DJ candidate export | MERGED | (delivered in scripts/dj/export_candidates_v3.py + tests/test_export_dj_candidates_v3.py, 8/8 passing) | 11 |
 | 14 | docs/AGENT update | MERGED | (commit 8a0b00d) | 13 |
-| 15 | Phase 2 seam | NOT STARTED | -- | 14 |
+| 15 | Phase 2 seam | MERGED | (commit d992d20) | 14 |
 
 ## Current Gate
 
 Stage 5: identity merge - COMPLETE (195efc7).
-Current gate: PR 15 (Phase 2 seam). Needs design before prompt.
+Phase 1 PR chain COMPLETE. All PRs 1-15 merged.
 
 Status note (2026-03-22):
 

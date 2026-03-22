@@ -220,6 +220,47 @@ def _assert_active_links_resolve_to_canonical(conn: sqlite3.Connection) -> None:
         )
 
 
+def _assert_merge_lineage(
+    conn: sqlite3.Connection,
+    winner_id: int,
+    loser_ids: tuple[int, ...],
+) -> None:
+    if not _column_exists(conn, "track_identity", "merged_into_id"):
+        return
+    ids = (int(winner_id), *tuple(int(identity_id) for identity_id in loser_ids))
+    placeholders = ",".join("?" for _ in ids)
+    rows = conn.execute(
+        f"""
+        SELECT id, merged_into_id
+        FROM track_identity
+        WHERE id IN ({placeholders})
+        ORDER BY id ASC
+        """,
+        ids,
+    ).fetchall()
+    row_by_id = {int(row["id"]): row for row in rows}
+
+    winner_row = row_by_id.get(int(winner_id))
+    if winner_row is None:
+        raise RuntimeError(f"winner identity missing after merge: {winner_id}")
+    if winner_row["merged_into_id"] is not None:
+        raise RuntimeError(
+            f"winner identity must remain active after merge: winner_id={winner_id} "
+            f"merged_into_id={int(winner_row['merged_into_id'])}"
+        )
+
+    for loser_id in loser_ids:
+        loser_row = row_by_id.get(int(loser_id))
+        if loser_row is None:
+            raise RuntimeError(f"loser identity missing after merge: {loser_id}")
+        merged_into = loser_row["merged_into_id"]
+        if merged_into is None or int(merged_into) != int(winner_id):
+            raise RuntimeError(
+                f"loser identity does not resolve to winner after merge: "
+                f"loser_id={int(loser_id)} winner_id={winner_id} merged_into_id={merged_into!r}"
+            )
+
+
 def _sync_legacy_file_keys(
     conn: sqlite3.Connection, winner_key: str, loser_keys: tuple[str, ...]
 ) -> None:
@@ -383,6 +424,12 @@ def merge_group_by_repointing_assets(
                 if not _is_blank(loser_value):
                     fields_copied[field] = loser_value
                     break
+        if _column_exists(conn, "track_identity", "isrc") and _is_blank(winner_row["isrc"]):
+            for loser_id in normalized_losers:
+                loser_isrc = rows_by_id[int(loser_id)]["isrc"]
+                if not _is_blank(loser_isrc):
+                    fields_copied["isrc"] = loser_isrc
+                    break
 
         if _column_exists(conn, "track_identity", "merged_into_id"):
             for loser_id in normalized_losers:
@@ -443,6 +490,9 @@ def merge_group_by_repointing_assets(
                         """,
                         tuple(normalized_losers),
                     )
+                from tagslut.storage.v3.identity_service import mirror_identity_to_legacy
+
+                mirror_identity_to_legacy(conn, int(winner_id), asset_id=None)
 
         if not dry_run:
             where_active_identity = _active_identity_where(conn)
@@ -457,9 +507,11 @@ def merge_group_by_repointing_assets(
             duplicate_count = int(duplicate_row["n"]) if duplicate_row else 0
             if duplicate_count > 1:
                 raise RuntimeError(
-                    f"duplicate beatport_id remains after merge: beatport_id={beatport_id} active_count={duplicate_count}"
+                    "duplicate beatport_id remains after merge: "
+                    f"beatport_id={beatport_id} active_count={duplicate_count}"
                 )
 
+            _assert_merge_lineage(conn, int(winner_id), tuple(normalized_losers))
             _assert_asset_link_unique(conn)
             _assert_active_links_resolve_to_canonical(conn)
             _assert_foreign_keys_on(conn)

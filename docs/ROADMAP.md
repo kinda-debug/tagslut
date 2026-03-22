@@ -10,7 +10,7 @@ Update it when tasks complete or priorities shift.
 
 ## ⚠ Global execution order — do not skip ahead
 
-```
+```text
 1. Resume/refresh fix (§1)              ← COMPLETE
 2. Ingestion provenance migration (§14) ← COMPLETE (commit bef5931)
 3. Migration 0013 — five-tier CHECK (§16) ← COMPLETE (included in 0012)
@@ -27,7 +27,7 @@ Items 6 and 7 must not be started until items 1–4 are confirmed complete.
 ## Tool assignment logic
 
 | Tool | Use for |
-|---|---|
+| --- | --- |
 | **Codex** | Autonomous implementation — all tasks with a prompt file in `.github/prompts/`. Run from repo root. Never ask Codex to design; give it a spec first. |
 | **Claude Code** | Judgment-critical: prompt authoring, architecture decisions, cross-cutting audit, debugging where the problem is unclear. Rate-limited — use sparingly. |
 | **Copilot+** | Editor inline completions and single-file chat only. Not for agentic tasks. |
@@ -36,6 +36,7 @@ Items 6 and 7 must not be started until items 1–4 are confirmed complete.
 ## Delegation protocol — who does what, and when
 
 Every delegated task must start with:
+
 - **Read first:** the single file that must be read before anything else
 - **Verify before editing:** the exact command, failing test, or behavior to confirm
 - **Allowed verification:** targeted pytest only, unless full-suite exception is stated
@@ -43,21 +44,26 @@ Every delegated task must start with:
 - **Done when:** the observable completion condition
 
 ### 1. Codex = default executor
+
 Use when a prompt exists, spec is written, behavior and acceptance criteria are clear.
 Responsibilities: smallest reversible patch, targeted verification, conventional commits.
 
 ### 2. Claude Code = ambiguity resolver, prompt author, reviewer
+
 Use when the problem is unclear, change is architecture-sensitive, or identity/schema
 invariants may be affected. Should not become the default implementer.
 
 ### 3. Copilot+ = editor-only
+
 Inline completions, explanation of open files, tiny mechanical edits. Nothing else.
 
 ### 4. Operator-only lane
+
 Never delegate: `git push --force`, `git filter-repo`, direct DB file modification,
 writes to mounted library volumes, any step marked operator-only.
 
 ### 5. Escalation rules
+
 Copilot+ → Codex: change expands beyond one file, verification requires commands.
 Codex → Claude Code: spec underspecified, root cause differs, identity/storage affected.
 Any agent → operator: force-push, unmounted volume, real DB or library path required.
@@ -83,7 +89,7 @@ Commits: 730d2b1, 2fb2a50, 3f3f37d, bf3df38
 ## 2 — Phase 1 PR chain → **Codex** ▶ IN PROGRESS (current top priority)
 
 | PR | Task | Branch | Status |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | 9 | Migration 0006 merge | `fix/migration-0006` | IN PROGRESS — current gate |
 | 10 | Identity service | `fix/identity-service` | READY — depends on 9 |
 | 11 | Backfill command | `fix/backfill-v3` | READY — depends on 10 |
@@ -99,12 +105,15 @@ PRs 12–15 need prompts authored in Claude.ai before Codex can execute them.
 ## 3 — DJ pipeline → **Codex** ⛔ BLOCKED until Phase 1 lands
 
 ### 3.1 DJ pipeline hardening
+
 Prompt: `.github/prompts/dj-pipeline-hardening.prompt.md`
 
 ### 3.2 DJ workflow audit
+
 Prompt: `.github/prompts/dj-workflow-audit.prompt.md`
 
 ### 3.3 DJ admission backfill
+
 ⚠ No-op against empty DB. Run only after first successful ingestion into fresh DB.
 
 ---
@@ -112,10 +121,12 @@ Prompt: `.github/prompts/dj-workflow-audit.prompt.md`
 ## 4 — Lexicon → **Codex**
 
 ### 4.1 Lexicon reconcile
+
 Prompt: `.github/prompts/lexicon-reconcile.prompt.md`
 36% of identities (11,679) unmatched — no streaming-ID fallback in Lexicon DB.
 
 ### 4.2 Incremental backfill
+
 `python -m tagslut.dj.reconcile.lexicon_backfill --dry-run` after any Lexicon DB update.
 
 ---
@@ -129,6 +140,7 @@ Prompt: `.github/prompts/lexicon-reconcile.prompt.md`
 ---
 
 ## 6 — Open streams post → **Codex**
+
 Prompt: `.github/prompts/open-streams-post-0010.prompt.md`
 
 ---
@@ -136,10 +148,12 @@ Prompt: `.github/prompts/open-streams-post-0010.prompt.md`
 ## 7 — Repo housekeeping
 
 ### 7.1 Git history cleanup ⚠ OPERATOR-ONLY
+
 `git filter-repo --strip-blobs-bigger-than 10M` + `git push --force origin dev`
 Never delegate. Full runbook: `docs/OPS_RUNBOOK.md` (to be written).
 
 ### 7.2 Script and docs cleanup: COMPLETE (2026-03-22)
+
 Prompt: `.github/prompts/repo-cleanup.prompt.md`
 Cleanup manifest: `docs/CLEANUP_MANIFEST.md`
 Follow-up: residual `artifacts/*.log` files were relocated to the LEGACY epoch directory.
@@ -147,17 +161,20 @@ Follow-up: residual `artifacts/*.log` files were relocated to the LEGACY epoch d
 ---
 
 ## 8 — Copilot+ scope (editor only)
+
 Inline completions, quick chat about open files in VS Code. Not for agentic tasks.
 
 ---
 
 ## 9 — Reserved for Claude Code (rate-limit budget)
+
 Prompts for PRs 12–15, reviewing Codex output on identity model changes,
 debugging where the problem itself is unclear.
 
 ---
 
 ## 10 — Clean slate: new DB, new config → **you + Codex**
+
 ✅ COMPLETE (2026-03-22)
 
 Prerequisites §14 and §16 are landed.
@@ -183,6 +200,7 @@ Root cause: identity model built on MusicBrainz Picard-written tags. Picard matc
 aggressively and the origin of every identity is unverifiable.
 
 Rules:
+
 - Do not migrate identity rows from legacy DB to fresh DB
 - Picard must never touch files tagslut manages going forward
 - Legacy DB is read-only archaeology only — use `--db LEGACY_PATH` explicitly
@@ -225,6 +243,7 @@ Method vocabulary includes: `provider_api`, `isrc_lookup`, `fingerprint_match`,
 `fuzzy_text_match`, `picard_tag`, `manual`, `migration`, `multi_provider_reconcile`
 
 Codex task:
+
 1. Write `tagslut/storage/v3/migrations/0012_ingestion_provenance.py`
 2. Write `supabase/migrations/20260322000000_add_ingestion_provenance.sql`
 3. Add NOT NULL to `tagslut/storage/v3/schema.py`
@@ -256,6 +275,7 @@ Add `'multi_provider_reconcile'` to `ingestion_method` controlled vocabulary.
 Must land after migration 0012 (§14) and before fresh DB initialization (§10).
 
 Codex task:
+
 1. Write `tagslut/storage/v3/migrations/0013_confidence_tier_update.py`
 2. Update CHECK constraint in `tagslut/storage/v3/schema.py`
 3. Update `supabase/migrations/` with corresponding Postgres migration
@@ -282,7 +302,7 @@ Prompt: `.github/prompts/postman-api-optimize.prompt.md` (status: COMPLETE)
 ## Prompt files index
 
 | File | Task | Agent | Status |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `resume-refresh-fix.prompt.md` | Fix `--resume` in `tools/get-intake` | Codex | COMPLETE |
 | `repo-cleanup.prompt.md` | Archive dead scripts and stale docs | Codex | Ready |
 | `dj-pipeline-hardening.prompt.md` | DJ pipeline discipline | Codex | Blocked (Phase 1) |
@@ -293,7 +313,6 @@ Prompt: `.github/prompts/postman-api-optimize.prompt.md` (status: COMPLETE)
 
 Prompts for Phase 1 PRs 12–15 and Phase 2 seam: not yet written.
 Author in Claude.ai before delegating to Codex.
-
 
 ---
 
@@ -336,11 +355,13 @@ Commit: `feat(auth): establish tokens.json precedence, add token-get command`
 ### Phase 2 — Migrate shell scripts → **Codex** (after Phase 1)
 
 Replace env var reads in harvest scripts with:
+
 ```bash
 BEATPORT_ACCESS_TOKEN=$(tagslut token-get beatport)
 ```
 
 Scripts to update:
+
 - `tagslut/metadata/beatport_harvest_catalog_track.sh`
 - `tagslut/metadata/beatport_harvest_my_tracks.sh`
 - `tools/beatport_import_my_tracks.py` (docstring + credential read)
@@ -351,6 +372,7 @@ Commit: `fix(auth): migrate harvest scripts to token-get command`
 
 Beatport access tokens expire after 1 hour with no documented refresh grant.
 Research required before implementation:
+
 - Does Beatport OAuth 2.0 support refresh tokens?
 - If not, implement expiry detection + prompt for re-paste in TokenManager
 - Add expiry warning to `tagslut auth status`

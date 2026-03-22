@@ -7,12 +7,13 @@
 #   - deezer.com   → tools/deemix (Deezer wrapper + auto-register)
 #
 # Usage:
-#   tools/get [--sync|--synch|--simple|--enrich] <url> [extra-args...]
+#   tools/get [--sync|--synch|--simple|--enrich|--backfill] <url> [extra-args...]
 #
 # Examples:
 #   tools/get https://tidal.com/browse/playlist/12345
 #   tools/get https://www.beatport.com/release/some-release/12345
 #   tools/get https://listen.tidal.com/album/12345 --quality high
+#   tools/get --backfill https://tidal.com/album/36689581/u
 #
 # After downloading, register to inventory and generate M3U:
 #   tagslut index register <download-path> --source <tidal|bpdl>
@@ -38,13 +39,18 @@ fi
 
 usage() {
     echo "Primary workflow:"
-    echo "  tools/get <provider-url>         provider-native download behavior"
-    echo "  tools/get --enrich <provider-url>  precheck + download + local tag prep + promote + m3u"
+    echo "  tools/get <provider-url>           provider-native download behavior"
+    echo "  tools/get --enrich <provider-url>  precheck + download + tag + promote + m3u"
+    echo "  tools/get --backfill <provider-url>"
+    echo "    Download only missing tracks, then register + enrich (with DJ tags) + promote."
+    echo "    Existing files in the batch root are NOT re-downloaded."
+    echo "    Use this when you already have most tracks and just want them tagged and promoted."
     echo ""
-    echo "General usage: tools/get [--sync|--synch|--simple|--enrich] <url> [extra-args...]"
+    echo "General usage: tools/get [--sync|--synch|--simple|--enrich|--backfill] <url> [extra-args...]"
     echo "  --sync/--synch: intake workflow"
     echo "  --simple: downloader-only behavior"
     echo "  --enrich: intake + hoarding/enrich/art workflow"
+    echo "  --backfill: download missing + register + enrich (DJ tags always included) + promote"
     echo ""
     echo "Common high-level options:"
     echo "  --dj                 [DEPRECATED LEGACY] use the 4-stage pipeline instead"
@@ -84,6 +90,13 @@ elif [[ "$1" == "--simple" ]]; then
     shift
 elif [[ "$1" == "--enrich" ]]; then
     MODE="enrich"
+    shift
+elif [[ "$1" == "--backfill" ]]; then
+    # Backfill mode: download only missing tracks, then register + enrich (DJ tags always
+    # included: BPM, key, energy, label, genre, art) + promote to MASTER_LIBRARY.
+    # Existing files in the batch root are skipped by the downloader (--resume semantics).
+    # No re-downloading. Pass any TIDAL or Beatport album/playlist URL.
+    MODE="backfill"
     shift
 fi
 
@@ -170,8 +183,12 @@ build_intake_cmd() {
     done
 
     INTAKE_CMD=("$GET_INTAKE" --source "$source" --missing-policy download --execute --m3u)
-    if [[ "$MODE" == "enrich" ]]; then
+    if [[ "$MODE" == "enrich" || "$MODE" == "backfill" ]]; then
         INTAKE_CMD+=(--enrich)
+    fi
+    if [[ "$MODE" == "backfill" ]]; then
+        # Resume mode: tiddl sees existing files and skips them; pipeline continues for all.
+        INTAKE_CMD+=(--resume --force-download)
     fi
     if [[ "$precheck_enabled" -eq 0 ]]; then
         INTAKE_CMD+=(--no-precheck)
@@ -181,8 +198,7 @@ build_intake_cmd() {
         INTAKE_CMD+=("${intake_args[@]}")
     fi
 
-    # Prefer rendering via the Python Rich wrapper in sync/enrich modes.
-    # Raw backend output remains captured to an artifacts log; --verbose enables structured extra details.
+    # Prefer rendering via the Python Rich wrapper in sync/enrich/backfill modes.
     if [[ -x "$REPO_ROOT/.venv/bin/python" ]]; then
         WRAPPED_INTAKE_CMD=("$REPO_ROOT/.venv/bin/python" -m tagslut.exec.get_intake_console)
         if [[ "$wrapper_verbose" -eq 1 ]]; then
@@ -207,7 +223,7 @@ if [[ "$URL" == *"tidal.com"* ]]; then
         exit 1
     fi
     cd "$REPO_ROOT"
-    if [[ "$MODE" != "sync" && "$MODE" != "enrich" ]]; then
+    if [[ "$MODE" != "sync" && "$MODE" != "enrich" && "$MODE" != "backfill" ]]; then
         FORCE_NO_SKIP=0
         FORWARD_ARGS=()
         for arg in "$@"; do
@@ -234,12 +250,12 @@ elif [[ "$URL" == *"beatport.com"* ]]; then
         exit 1
     fi
     cd "$REPO_ROOT"
-    if [[ "$MODE" == "sync" || "$MODE" == "enrich" ]]; then
+    if [[ "$MODE" == "sync" || "$MODE" == "enrich" || "$MODE" == "backfill" ]]; then
         build_intake_cmd "bpdl" "$URL" "$@"
         exec "${INTAKE_CMD[@]}"
     fi
 
-    if [[ "$MODE" != "sync" && "$MODE" != "enrich" && $# -gt 0 && "$1" == "--report" ]]; then
+    if [[ "$MODE" != "sync" && "$MODE" != "enrich" && "$MODE" != "backfill" && $# -gt 0 && "$1" == "--report" ]]; then
         shift
         if [[ ! -x "$GET_REPORT" ]]; then
             echo "Error: get-report not found or not executable at: $GET_REPORT" >&2
@@ -248,7 +264,7 @@ elif [[ "$URL" == *"beatport.com"* ]]; then
         exec "$GET_REPORT" "$URL" "$@"
     fi
 
-    if [[ "$MODE" != "sync" && "$MODE" != "enrich" && $# -gt 0 && "$1" == "--raw-bpdl" ]]; then
+    if [[ "$MODE" != "sync" && "$MODE" != "enrich" && "$MODE" != "backfill" && $# -gt 0 && "$1" == "--raw-bpdl" ]]; then
         shift
         if [[ ! -x "$BPDL_BIN" ]]; then
             echo "Error: BeatportDL binary not found or not executable at: $BPDL_BIN" >&2
@@ -257,7 +273,7 @@ elif [[ "$URL" == *"beatport.com"* ]]; then
         exec "$BPDL_BIN" "$URL" "$@"
     fi
 
-    if [[ "$MODE" != "sync" && "$MODE" != "enrich" ]]; then
+    if [[ "$MODE" != "sync" && "$MODE" != "enrich" && "$MODE" != "backfill" ]]; then
         if [[ ! -x "$BPDL_BIN" ]]; then
             echo "Error: BeatportDL binary not found or not executable at: $BPDL_BIN" >&2
             exit 1

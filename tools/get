@@ -223,7 +223,7 @@ if [[ "$URL" == *"tidal.com"* ]]; then
         if [[ "$FORCE_NO_SKIP" -eq 1 ]]; then
             FORWARD_ARGS+=(--no-skip)
         fi
-        exec "$TIDDL_WRAPPER" "$URL" "${FORWARD_ARGS[@]}"
+        exec "$TIDDL_WRAPPER" "$URL" "${FORWARD_ARGS[@]+"${FORWARD_ARGS[@]}"}"
     fi
     build_intake_cmd "tidal" "$URL" "$@"
     exec "${INTAKE_CMD[@]}"

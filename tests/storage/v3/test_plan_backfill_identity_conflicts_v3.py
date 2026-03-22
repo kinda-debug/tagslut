@@ -54,14 +54,55 @@ def _fixture_db(tmp_path: Path) -> Path:
         conn.executemany(
             """
             INSERT INTO track_identity (
-                identity_key, isrc, artist_norm, title_norm, duration_ref_ms
-            ) VALUES (?, ?, ?, ?, ?)
+                identity_key, isrc, artist_norm, title_norm, duration_ref_ms,
+                ingested_at, ingestion_method, ingestion_source, ingestion_confidence
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
-                ("isrc:debe71100012-a", "DEBE71100012", "dj t.", "city life", 300000),
-                ("isrc:debe71100012-b", "DEBE71100012", "dj t. feat. cari golden", "city life (feat. cari golden) [acapella]", 300000),
-                ("isrc:gbalb9200002", "GBALB9200002", "the cure", "friday i'm in love", 215160),
-                ("isrc:gbalb9200003", "GBALB9200003", "the cure", "friday i'm in love", 214400),
+                (
+                    "isrc:debe71100012-a",
+                    "DEBE71100012",
+                    "dj t.",
+                    "city life",
+                    300000,
+                    "2026-01-01T00:00:00+00:00",
+                    "migration",
+                    "test_fixture",
+                    "legacy",
+                ),
+                (
+                    "isrc:debe71100012-b",
+                    "DEBE71100012",
+                    "dj t. feat. cari golden",
+                    "city life (feat. cari golden) [acapella]",
+                    300000,
+                    "2026-01-01T00:00:00+00:00",
+                    "migration",
+                    "test_fixture",
+                    "legacy",
+                ),
+                (
+                    "isrc:gbalb9200002",
+                    "GBALB9200002",
+                    "the cure",
+                    "friday i'm in love",
+                    215160,
+                    "2026-01-01T00:00:00+00:00",
+                    "migration",
+                    "test_fixture",
+                    "legacy",
+                ),
+                (
+                    "isrc:gbalb9200003",
+                    "GBALB9200003",
+                    "the cure",
+                    "friday i'm in love",
+                    214400,
+                    "2026-01-01T00:00:00+00:00",
+                    "migration",
+                    "test_fixture",
+                    "legacy",
+                ),
             ],
         )
         conn.commit()

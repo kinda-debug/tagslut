@@ -132,7 +132,11 @@ python -m tagslut execute move-plan \
 Execution writes receipts into the v3 move/provenance tables and also carries common per-track sidecars with the audio move.
 
 ## Maintainer PR Sync (Phase 1 stack)
-Use `tools/review/sync_phase1_prs.sh` to push the three immediate branch updates while preserving branch/PR scope boundaries.
+Phase 1 status has advanced: PRs 9, 10, and 11 are already merged into `dev`.
+The active gate is now PR 12 (identity merge).
+
+Use `tools/review/sync_phase1_prs.sh` only when you intentionally need to refresh
+legacy worktree branches for historical review workflows.
 
 ```bash
 # Optional: override worktree paths
@@ -142,29 +146,23 @@ BACKFILL_WT=/tmp/tagslut_wt_backfill \
 tools/review/sync_phase1_prs.sh
 ```
 
-The script pushes:
-- `fix/migration-0006` with `--force-with-lease` (PR #193)
-- `fix/identity-service` with `--force-with-lease` (PR #185)
-- `fix/backfill-v3` to remote branch `fix/dj-tag-enrichment` with `--force-with-lease`
+Current Phase 1 branch guidance:
 
-After pushing, open the DJ enrichment PR targeting `fix/identity-service`:
-
-```bash
-gh pr create --base fix/identity-service --head fix/dj-tag-enrichment \
-  --title "feat(dj): enrich FLAC DJ tags from v3 identity cache before transcode" \
-  --draft
-```
-
-This keeps DJ enrichment separate from `fix/v3-backfill-command` (PR #186).
+- PR 12: prompt ready at `.github/prompts/phase1-pr12-identity-merge.prompt.md`
+- PRs 13-15: prompts still required before execution
+- Stale local backfill branch history was archived under
+  `archive/fix-backfill-v3-stale-20260322`
 
 When you want to refresh the stack only when new commits exist, run `tools/review/auto_sync_phase1_prs.sh`. It uses the same `MIGRATION_WT`, `IDENTITY_WT`, and `BACKFILL_WT` overrides, checks each worktree against its upstream, and executes `sync_phase1_prs.sh` only when the local branch is ahead (or the remote is missing). The helper aborts with an error if a remote already contains commits that are not present locally so you can reconcile manually.
 
 ## Safety Gates
+
 - v3 doctor: schema and invariants
 - migration verification: aggregate preservation checks
 - promotion invariant guardrail: preferred-under-root must be selected when available
 
 Safe promotion sequence:
+
 ```bash
 make doctor-v3 V3=<V3_DB>
 make check-promote-invariant V3=<V3_DB> ROOT=<PROMOTE_ROOT> MINUTES=240 STRICT=1
@@ -173,6 +171,7 @@ make check-promote-invariant V3=<V3_DB> ROOT=<PROMOTE_ROOT> MINUTES=240 STRICT=1
 See [`docs/README.md`](docs/README.md) for the full documentation index.
 
 ## Repository Structure
+
 - `tagslut/`: runtime packages and CLI
 - `tools/`: operational wrappers and scripts
 - `scripts/db/`: DB verification, reporting, lifecycle and guardrail scripts

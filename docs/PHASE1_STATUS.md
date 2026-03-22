@@ -1,4 +1,4 @@
-<!-- Status: Active document. Synced 2026-03-09 after recent code/doc review. Historical or superseded material belongs in docs/archive/. -->
+<!-- Status: Active document. Synced 2026-03-22 after Phase 1 PR 11 merge + PR 12 gate update. Historical or superseded material belongs in docs/archive/. -->
 
 # Phase 1 Status
 
@@ -17,7 +17,7 @@
 | 9 | migration 0006 | MERGED | fix/migration-0006 | 8 |
 | 10 | identity service | MERGED | fix/identity-service | 9 |
 | 11 | backfill command | MERGED | fix/backfill-v3 | 10 |
-| 12 | identity merge | READY | -- | 10 |
+| 12 | identity merge | READY | fix/identity-merge | 10 |
 | 13 | DJ candidate export | NOT STARTED | -- | 11 |
 | 14 | docs/AGENT update | NOT STARTED | -- | 13 |
 | 15 | Phase 2 seam | NOT STARTED | -- | 14 |

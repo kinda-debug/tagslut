@@ -105,6 +105,7 @@ Console output:
   - non-TTY: stable plain text (no ANSI)
   - full raw backend log is always captured under `artifacts/intake/logs/get_intake_*.log` and referenced in the report header
   - `--verbose` includes structured per-stage command details (raw output is still in the log artifact)
+  - if provider link extraction fails before track expansion (for example `tidal_token_missing`), precheck can show `keep=0 skip=0 total=0` and download can show `selected=0` even though the URL is valid; confirm with `precheck_links_extracted_*.csv` / `precheck_extracted_report_*.md` notes
 
 ```bash
 # Default: precheck + download + local tag prep + promote + merged M3U

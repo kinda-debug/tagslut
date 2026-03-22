@@ -76,6 +76,7 @@ Notes:
 - default output is concise; use `--verbose` for internal paths, artifact files, and batch snapshots
 - local identify/tag prep runs before promote; external enrich + cover art now launch in the background after promote
 - `tools/get --m3u` writes Roon-style playlists inside `PLAYLIST_ROOT` using relative paths.
+- if a run reports precheck/download zeros (`keep=0 skip=0 total=0`, `selected=0`), verify link extraction status before assuming duplicate suppression: check `artifacts/compare/precheck_links_extracted_*.csv` and `artifacts/compare/precheck_extracted_report_*.md` for notes such as `tidal_token_missing`
 - work output is split by intent:
   - `FIX_ROOT` for salvageable metadata/tag issues (default: `/Volumes/MUSIC/_work/fix`)
   - `QUARANTINE_ROOT` / `$VOLUME_QUARANTINE` for risky files only (default: `/Volumes/MUSIC/_work/quarantine`)

@@ -91,8 +91,8 @@ Commits: 730d2b1, 2fb2a50, 3f3f37d, bf3df38
 | PR | Task | Branch | Status |
 | --- | --- | --- | --- |
 | 9 | Migration 0006 merge | `fix/migration-0006` | COMPLETE (commit 5995983) |
-| 10 | Identity service | `fix/identity-service` | IN PROGRESS — current gate |
-| 11 | Backfill command | `fix/backfill-v3` | READY — depends on 10 |
+| 10 | Identity service | `fix/identity-service` | COMPLETE (commit 767df22) |
+| 11 | Backfill command | `fix/backfill-v3` | READY — current gate, depends on 10 |
 | 12 | Identity merge | not started | Needs prompt |
 | 13 | DJ candidate export | not started | Needs prompt |
 | 14 | docs/AGENT update | not started | After 13 |

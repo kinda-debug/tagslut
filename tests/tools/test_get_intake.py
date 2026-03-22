@@ -239,3 +239,52 @@ def test_cross_root_audit_compute_root_args_can_expand_to_all_roots(tmp_path: Pa
 
     assert proc.returncode == 0, f"STDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
     assert proc.stdout.strip() == ""
+
+
+def test_emit_batch_leftovers_report_writes_sorted_audio_list(tmp_path: Path) -> None:
+    library_path = _write_shell_library(tmp_path)
+    batch_root = tmp_path / "batch"
+    out_dir = tmp_path / "out"
+    batch_root.mkdir()
+    out_dir.mkdir()
+
+    (batch_root / "z-last.flac").write_text("flac", encoding="utf-8")
+    (batch_root / "ignore.txt").write_text("text", encoding="utf-8")
+    nested = batch_root / "nested"
+    nested.mkdir()
+    (nested / "a-first.m4a").write_text("m4a", encoding="utf-8")
+
+    report_path = out_dir / "batch_leftovers.txt"
+    harness = tmp_path / "run-leftovers-report.sh"
+    harness.write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env bash",
+                "set -euo pipefail",
+                f"source {shlex.quote(str(library_path))}",
+                f"OUT_DIR={shlex.quote(str(out_dir))}",
+                "VERBOSE=1",
+                f"emit_batch_leftovers_report {shlex.quote(str(batch_root))} {shlex.quote(str(report_path))}",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    harness.chmod(0o755)
+
+    proc = subprocess.run(
+        ["bash", str(harness)],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0, f"STDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+    assert "Batch leftovers: 2" in proc.stdout
+    assert f"report: {report_path}" in proc.stdout
+    assert "Batch leftovers preview:" in proc.stdout
+    assert report_path.read_text(encoding="utf-8").splitlines() == [
+        str(nested / "a-first.m4a"),
+        str(batch_root / "z-last.flac"),
+    ]

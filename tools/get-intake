@@ -344,6 +344,53 @@ count_audio_files() {
   \) | wc -l | tr -d ' '
 }
 
+write_audio_file_list() {
+  local root="${1:-}"
+  local out_path="${2:-}"
+  if [[ -z "$root" || ! -d "$root" || -z "$out_path" ]]; then
+    return 0
+  fi
+  mkdir -p "$(dirname "$out_path")"
+  find "$root" -type f \( \
+    -iname '*.flac' -o \
+    -iname '*.mp3' -o \
+    -iname '*.wav' -o \
+    -iname '*.aif' -o \
+    -iname '*.aiff' -o \
+    -iname '*.m4a' \
+  \) | sort > "$out_path"
+}
+
+emit_batch_leftovers_report() {
+  local root="${1:-}"
+  local report_path="${2:-}"
+  local leftover_count="0"
+
+  if [[ -z "$root" || ! -d "$root" ]]; then
+    echo "Batch leftovers: root unavailable"
+    return 0
+  fi
+
+  leftover_count="$(count_audio_files "$root")"
+  if [[ "$leftover_count" -eq 0 ]]; then
+    echo "Batch leftovers: none"
+    return 0
+  fi
+
+  if [[ -z "$report_path" ]]; then
+    report_path="${OUT_DIR:-$REPO_ROOT/artifacts/compare}/batch_leftovers_$(date +%Y%m%d_%H%M%S).txt"
+  fi
+
+  write_audio_file_list "$root" "$report_path"
+
+  echo "Batch leftovers: $leftover_count"
+  echo "  report: $report_path"
+  if [[ "${VERBOSE:-0}" -eq 1 ]]; then
+    echo "Batch leftovers preview:"
+    preview_file_lines "$report_path" 5
+  fi
+}
+
 preview_file_lines() {
   local path="${1:-}"
   local limit="${2:-5}"
@@ -2883,6 +2930,8 @@ if [[ "$EXECUTE" -eq 1 ]]; then
   if [[ -n "$POST_MOVE_PID" ]]; then
     kv "Enrich/art" "pid=$POST_MOVE_PID log=$POST_MOVE_LOG"
   fi
+
+  emit_batch_leftovers_report "$BATCH_ROOT" "$OUT_DIR/batch_leftovers_$(date +%Y%m%d_%H%M%S).txt"
 
   if command -v poetry >/dev/null 2>&1; then
     run_cmd poetry run python -m tagslut.exec.intake_pretty_summary --out-dir "$OUT_DIR" || true

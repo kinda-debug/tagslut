@@ -103,7 +103,7 @@ PR 12 prompt exists at `.github/prompts/phase1-pr12-identity-merge.prompt.md`.
 
 ---
 
-## 3 — DJ pipeline → **Codex** ▶ UNBLOCKED (Phase 1 complete)
+## 3 — DJ pipeline → **Codex** ✅ COMPLETE (commits eab34d3, d52fe27)
 
 ### 3.1 DJ pipeline hardening
 

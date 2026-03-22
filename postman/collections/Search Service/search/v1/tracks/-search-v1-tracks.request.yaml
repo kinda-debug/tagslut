@@ -1,0 +1,164 @@
+$kind: http-request
+name: /search/v1/tracks
+description: Returns a set of track results
+url: "{{baseUrl}}/search/v1/tracks?q=string&count=20&preorder=false&from_publis\
+  h_date=1958-10-05&to_publish_date=1958-10-05&from_release_date=1958-10-05&to_\
+  release_date=1958-10-05&genre_id=string&genre_name=string&mix_name=string&fro\
+  m_bpm=1915&to_bpm=1915&key_name=string&mix_name_weight=1&label_name_weight=1&\
+  dj_edits=true&ugc_remixes=true&dj_edits_and_ugc_remixes=true&is_available_for\
+  _streaming=true"
+method: GET
+headers:
+  Accept: application/json
+queryParams:
+  - key: q
+    value: string
+    description: Search query text
+  - key: count
+    value: "20"
+    description: The number of results returned in the response
+  - key: preorder
+    value: "false"
+    description: |
+      
+      When FALSE, the response will not include tracks in a pre-order status.
+
+      When TRUE, the response will include tracks that are in a pre-order status
+  - key: from_publish_date
+    value: 1958-10-05
+    description: |
+      
+      The date a track was published on Beatport.com or Beatsource.com.
+
+      Format: YYYY-MM-DD
+  - key: to_publish_date
+    value: 1958-10-05
+    description: |
+      
+      The date a track was published on Beatport.com or Beatsource.com.
+
+      Format: YYYY-MM-DD
+  - key: from_release_date
+    value: 1958-10-05
+    description: |
+      
+      The date a track was released to the public.
+
+      Format: YYYY-MM-DD
+  - key: to_release_date
+    value: 1958-10-05
+    description: |
+      
+      The date a track was released to the public.
+
+      Format: YYYY-MM-DD
+  - key: genre_id
+    value: string
+    description: >
+      
+      Returns tracks that have the genre of the ID inputed. Multiple genre IDs
+      can be added
+
+      by separating them with a comma, ex: (89, 6, 14).
+
+
+      For a list of available genres and their IDs, make a GET call to our API
+      route /catalog/genres/
+  - key: genre_name
+    value: string
+    description: >
+      
+      Returns tracks that have a genre which partially matches the value
+      inputed.
+
+
+      For ex: “Techno” would return tracks with a genre of “Hard Techno”,
+      “Techno (Peak Time / Driving)”, etc.
+
+
+      For a list of genres and their names, make a GET call to our API route
+      /catalog/genres/
+  - key: mix_name
+    value: string
+    description: "Search for a specific mix name, ex: original"
+  - key: from_bpm
+    value: "1915"
+  - key: to_bpm
+    value: "1915"
+  - key: key_name
+    value: string
+    description: |
+      
+      Search for a specific key in the following format:
+
+      A Major, A Minor, A# Major, A# Minor, Ab Major, Ab Minor
+  - key: mix_name_weight
+    value: "1"
+    description: >
+      
+      This parameter determines how much weight to put on mix_name using the
+      search query text from q.
+
+
+      The higher the value the more weight is put on matching q to mix_name
+  - key: label_name_weight
+    value: "1"
+    description: >
+      
+      This parameter determines how much weight to put on label_name using the
+      search query text from q.
+
+
+      The higher the value the more weight is put on matching q to label_name
+  - key: dj_edits
+    value: "true"
+    description: |
+      
+      When FALSE, the response will exclude DJ Edit tracks.
+
+      When TRUE, the response will return only DJ Edit tracks.
+  - key: ugc_remixes
+    value: "true"
+    description: |
+      
+      When FALSE, the response will exclude UGC Remix tracks.
+
+      When TRUE, the response will return only UGC Remix tracks.
+  - key: dj_edits_and_ugc_remixes
+    value: "true"
+    description: >
+      
+      When FALSE, the response will exclude DJ Edits and UGC Remix tracks.
+
+
+      When TRUE, the response will return only DJ Edits or UGC Remix tracks.
+
+
+      When parameter is not included, the response will include DJ edits and UGC
+      remixes amongst other tracks.
+  - key: is_available_for_streaming
+    value: "true"
+    description: >
+      
+      By default the response will return both streamable and non-streamable
+      tracks.
+
+
+      **Note**: This is dependent on your app scope, if your scope inherently
+      does not allow
+
+      non-streamable tracks then only streamable tracks will be returned always.
+
+
+      When FALSE, the response will return only tracks that are not available
+      for streaming.
+
+
+      When TRUE, the response will return only tracks that are available for
+      streaming.
+auth:
+  type: bearer
+  credentials:
+    token: "{{bearerToken}}"
+examples: ./.resources/-search-v1-tracks.resources/examples
+order: 1000

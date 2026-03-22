@@ -1,0 +1,20 @@
+$kind: http-example
+request:
+  url: "{{baseUrl}}/search/health-check"
+  method: GET
+  headers:
+    Accept: application/json
+response:
+  statusCode: 200
+  statusText: OK
+  headers:
+    Content-Type: application/json
+  body:
+    type: json
+    content: |-
+      {
+        "remote_addr": "string",
+        "commit_hash": "string",
+        "service_es_connected": true
+      }
+order: 1000

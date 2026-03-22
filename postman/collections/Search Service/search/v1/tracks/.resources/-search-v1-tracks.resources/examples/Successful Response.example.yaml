@@ -1,0 +1,344 @@
+$kind: http-example
+request:
+  url: "{{baseUrl}}/search/v1/tracks?q=string&count=20&preorder=false&from_publis\
+    h_date=1958-10-05&to_publish_date=1958-10-05&from_release_date=1958-10-05&t\
+    o_release_date=1958-10-05&genre_id=string&genre_name=string&mix_name=string\
+    &from_bpm=1915&to_bpm=1915&key_name=string&mix_name_weight=1&label_name_wei\
+    ght=1&dj_edits=true&ugc_remixes=true&dj_edits_and_ugc_remixes=true&is_avail\
+    able_for_streaming=true"
+  method: GET
+  headers:
+    - key: Accept
+      value: application/json
+    - key: Authorization
+      value: Bearer <token>
+      description: "Added as a part of security scheme: bearer"
+  queryParams:
+    - key: q
+      value: string
+      description: Search query text
+    - key: count
+      value: "20"
+      description: The number of results returned in the response
+    - key: preorder
+      value: "false"
+      description: >
+        
+        When FALSE, the response will not include tracks in a pre-order status.
+
+
+        When TRUE, the response will include tracks that are in a pre-order
+        status
+    - key: from_publish_date
+      value: 1958-10-05
+      description: |
+        
+        The date a track was published on Beatport.com or Beatsource.com.
+
+        Format: YYYY-MM-DD
+    - key: to_publish_date
+      value: 1958-10-05
+      description: |
+        
+        The date a track was published on Beatport.com or Beatsource.com.
+
+        Format: YYYY-MM-DD
+    - key: from_release_date
+      value: 1958-10-05
+      description: |
+        
+        The date a track was released to the public.
+
+        Format: YYYY-MM-DD
+    - key: to_release_date
+      value: 1958-10-05
+      description: |
+        
+        The date a track was released to the public.
+
+        Format: YYYY-MM-DD
+    - key: genre_id
+      value: string
+      description: >
+        
+        Returns tracks that have the genre of the ID inputed. Multiple genre IDs
+        can be added
+
+        by separating them with a comma, ex: (89, 6, 14).
+
+
+        For a list of available genres and their IDs, make a GET call to our API
+        route /catalog/genres/
+    - key: genre_name
+      value: string
+      description: >
+        
+        Returns tracks that have a genre which partially matches the value
+        inputed.
+
+
+        For ex: “Techno” would return tracks with a genre of “Hard Techno”,
+        “Techno (Peak Time / Driving)”, etc.
+
+
+        For a list of genres and their names, make a GET call to our API route
+        /catalog/genres/
+    - key: mix_name
+      value: string
+      description: "Search for a specific mix name, ex: original"
+    - key: from_bpm
+      value: "1915"
+    - key: to_bpm
+      value: "1915"
+    - key: key_name
+      value: string
+      description: |
+        
+        Search for a specific key in the following format:
+
+        A Major, A Minor, A# Major, A# Minor, Ab Major, Ab Minor
+    - key: mix_name_weight
+      value: "1"
+      description: >
+        
+        This parameter determines how much weight to put on mix_name using the
+        search query text from q.
+
+
+        The higher the value the more weight is put on matching q to mix_name
+    - key: label_name_weight
+      value: "1"
+      description: >
+        
+        This parameter determines how much weight to put on label_name using the
+        search query text from q.
+
+
+        The higher the value the more weight is put on matching q to label_name
+    - key: dj_edits
+      value: "true"
+      description: |
+        
+        When FALSE, the response will exclude DJ Edit tracks.
+
+        When TRUE, the response will return only DJ Edit tracks.
+    - key: ugc_remixes
+      value: "true"
+      description: |
+        
+        When FALSE, the response will exclude UGC Remix tracks.
+
+        When TRUE, the response will return only UGC Remix tracks.
+    - key: dj_edits_and_ugc_remixes
+      value: "true"
+      description: >
+        
+        When FALSE, the response will exclude DJ Edits and UGC Remix tracks.
+
+
+        When TRUE, the response will return only DJ Edits or UGC Remix tracks.
+
+
+        When parameter is not included, the response will include DJ edits and
+        UGC remixes amongst other tracks.
+    - key: is_available_for_streaming
+      value: "true"
+      description: >
+        
+        By default the response will return both streamable and non-streamable
+        tracks.
+
+
+        **Note**: This is dependent on your app scope, if your scope inherently
+        does not allow
+
+        non-streamable tracks then only streamable tracks will be returned
+        always.
+
+
+        When FALSE, the response will return only tracks that are not available
+        for streaming.
+
+
+        When TRUE, the response will return only tracks that are available for
+        streaming.
+response:
+  statusCode: 200
+  statusText: OK
+  headers:
+    Content-Type: application/json
+  body:
+    type: json
+    content: |-
+      {
+        "data": [
+          {
+            "score": 501.5568908565426,
+            "add_date": "string",
+            "artists": [
+              {
+                "artist_id": 323,
+                "artist_name": "string",
+                "artist_type_name": "string"
+              },
+              {
+                "artist_id": 8995,
+                "artist_name": "string",
+                "artist_type_name": null
+              }
+            ],
+            "available_worldwide": 3034,
+            "change_date": "string",
+            "current_status": {
+              "current_status_id": null,
+              "current_status_name": null
+            },
+            "enabled": 7504,
+            "encode_status": "string",
+            "exclusive_period": 1159,
+            "genre_enabled": 7981,
+            "is_available_for_streaming": 840,
+            "is_classic": 155,
+            "label": {
+              "enabled": 3136,
+              "label_id": 4743,
+              "label_name": "string"
+            },
+            "label_manager": "string",
+            "mix_name": "string",
+            "publish_date": "string",
+            "publish_status": "string",
+            "release": {
+              "release_id": 5172,
+              "release_name": "string",
+              "release_image_uri": null,
+              "release_image_dynamic_uri": null
+            },
+            "release_date": "string",
+            "sale_type": "string",
+            "suggest": {
+              "input": "string",
+              "weight": 5499
+            },
+            "supplier_id": 8895,
+            "track_id": 4055,
+            "track_name": "string",
+            "track_number": 8772,
+            "update_date": "string",
+            "was_ever_exclusive": 5685,
+            "bpm": null,
+            "catalog_number": null,
+            "chord_type_id": 5885,
+            "exclusive_date": null,
+            "free_download_end_date": "string",
+            "free_download_start_date": null,
+            "guid": null,
+            "isrc": "string",
+            "key_id": null,
+            "key_name": null,
+            "length": null,
+            "pre_order_date": null,
+            "streaming_date": null,
+            "downloads": null,
+            "plays": null,
+            "price": null,
+            "is_explicit": null,
+            "is_available_for_alacarte": true,
+            "is_dj_edit": true,
+            "is_ugc_remix": null,
+            "is_pre_order": null,
+            "track_image_uri": null,
+            "track_image_dynamic_uri": "string",
+            "genre": null,
+            "sub_genre": null
+          },
+          {
+            "score": 7168.357010211935,
+            "add_date": "string",
+            "artists": [
+              {
+                "artist_id": null,
+                "artist_name": null,
+                "artist_type_name": "string"
+              },
+              {
+                "artist_id": 4185,
+                "artist_name": "string",
+                "artist_type_name": null
+              }
+            ],
+            "available_worldwide": 8608,
+            "change_date": "string",
+            "current_status": {
+              "current_status_id": null,
+              "current_status_name": "string"
+            },
+            "enabled": 3505,
+            "encode_status": "string",
+            "exclusive_period": 1311,
+            "genre_enabled": 4774,
+            "is_available_for_streaming": 7453,
+            "is_classic": 3013,
+            "label": {
+              "enabled": 4540,
+              "label_id": 788,
+              "label_name": "string"
+            },
+            "label_manager": "string",
+            "mix_name": "string",
+            "publish_date": "string",
+            "publish_status": "string",
+            "release": {
+              "release_id": 4259,
+              "release_name": "string",
+              "release_image_uri": "string",
+              "release_image_dynamic_uri": "string"
+            },
+            "release_date": "string",
+            "sale_type": "string",
+            "suggest": {
+              "input": "string",
+              "weight": null
+            },
+            "supplier_id": 2989,
+            "track_id": 5973,
+            "track_name": "string",
+            "track_number": 3181,
+            "update_date": "string",
+            "was_ever_exclusive": 3270,
+            "bpm": null,
+            "catalog_number": "string",
+            "chord_type_id": null,
+            "exclusive_date": null,
+            "free_download_end_date": null,
+            "free_download_start_date": null,
+            "guid": "string",
+            "isrc": null,
+            "key_id": null,
+            "key_name": null,
+            "length": 17,
+            "pre_order_date": "string",
+            "streaming_date": "string",
+            "downloads": 1904,
+            "plays": null,
+            "price": {
+              "code": "string",
+              "symbol": "string",
+              "value": 3599.2626680879434,
+              "display": "string"
+            },
+            "is_explicit": false,
+            "is_available_for_alacarte": true,
+            "is_dj_edit": null,
+            "is_ugc_remix": null,
+            "is_pre_order": null,
+            "track_image_uri": null,
+            "track_image_dynamic_uri": null,
+            "genre": null,
+            "sub_genre": null
+          }
+        ],
+        "debug": {},
+        "explain": null
+      }
+order: 1000

@@ -1,0 +1,123 @@
+$kind: http-example
+request:
+  url: "{{baseUrl}}/search/v1/releases?q=string&count=20&preorder=false&from_publ\
+    ish_date=1958-10-05&to_publish_date=1958-10-05&from_release_date=1958-10-05\
+    &to_release_date=1958-10-05&genre_id=string&genre_name=string&release_name_\
+    weight=1&label_name_weight=1"
+  method: GET
+  headers:
+    - key: Accept
+      value: application/json
+    - key: Authorization
+      value: Bearer <token>
+      description: "Added as a part of security scheme: bearer"
+  queryParams:
+    - key: q
+      value: string
+      description: Search query text
+    - key: count
+      value: "20"
+      description: The number of results returned in the response
+    - key: preorder
+      value: "false"
+      description: >
+        
+        When FALSE, the response will not include tracks in a pre-order status.
+
+
+        When TRUE, the response will include tracks that are in a pre-order
+        status
+    - key: from_publish_date
+      value: 1958-10-05
+      description: |
+        
+        The date a track was published on Beatport.com or Beatsource.com.
+
+        Format: YYYY-MM-DD
+    - key: to_publish_date
+      value: 1958-10-05
+      description: |
+        
+        The date a track was published on Beatport.com or Beatsource.com.
+
+        Format: YYYY-MM-DD
+    - key: from_release_date
+      value: 1958-10-05
+      description: |
+        
+        The date a track was released to the public.
+
+        Format: YYYY-MM-DD
+    - key: to_release_date
+      value: 1958-10-05
+      description: |
+        
+        The date a track was released to the public.
+
+        Format: YYYY-MM-DD
+    - key: genre_id
+      value: string
+      description: >
+        
+        Returns tracks that have the genre of the ID inputed. Multiple genre IDs
+        can be added
+
+        by separating them with a comma, ex: (89, 6, 14).
+
+
+        For a list of available genres and their IDs, make a GET call to our API
+        route /catalog/genres/
+    - key: genre_name
+      value: string
+      description: >
+        
+        Returns tracks that have a genre which partially matches the value
+        inputed.
+
+
+        For ex: “Techno” would return tracks with a genre of “Hard Techno”,
+        “Techno (Peak Time / Driving)”, etc.
+
+
+        For a list of genres and their names, make a GET call to our API route
+        /catalog/genres/
+    - key: release_name_weight
+      value: "1"
+    - key: label_name_weight
+      value: "1"
+      description: >
+        
+        This parameter determines how much weight to put on label_name using the
+        search query text from q.
+
+
+        The higher the value the more weight is put on matching q to label_name
+response:
+  statusCode: 422
+  statusText: Unprocessable Entity (WebDAV) (RFC 4918)
+  headers:
+    Content-Type: application/json
+  body:
+    type: json
+    content: |-
+      {
+        "detail": [
+          {
+            "loc": [
+              "string",
+              "string"
+            ],
+            "msg": "string",
+            "type": "string"
+          },
+          {
+            "loc": [
+              "string",
+              4904
+            ],
+            "msg": "string",
+            "type": "string"
+          }
+        ]
+      }
+order: 2000

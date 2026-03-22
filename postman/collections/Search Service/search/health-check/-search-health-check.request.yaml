@@ -1,0 +1,9 @@
+$kind: http-request
+name: /search/health-check
+description: Endpoint used for health checking the service and the ES connectivity status.
+url: "{{baseUrl}}/search/health-check"
+method: GET
+headers:
+  Accept: application/json
+examples: ./.resources/-search-health-check.resources/examples
+order: 1000

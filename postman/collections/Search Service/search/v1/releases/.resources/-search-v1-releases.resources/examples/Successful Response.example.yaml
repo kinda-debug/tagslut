@@ -1,0 +1,239 @@
+$kind: http-example
+request:
+  url: "{{baseUrl}}/search/v1/releases?q=string&count=20&preorder=false&from_publ\
+    ish_date=1958-10-05&to_publish_date=1958-10-05&from_release_date=1958-10-05\
+    &to_release_date=1958-10-05&genre_id=string&genre_name=string&release_name_\
+    weight=1&label_name_weight=1"
+  method: GET
+  headers:
+    - key: Accept
+      value: application/json
+    - key: Authorization
+      value: Bearer <token>
+      description: "Added as a part of security scheme: bearer"
+  queryParams:
+    - key: q
+      value: string
+      description: Search query text
+    - key: count
+      value: "20"
+      description: The number of results returned in the response
+    - key: preorder
+      value: "false"
+      description: >
+        
+        When FALSE, the response will not include tracks in a pre-order status.
+
+
+        When TRUE, the response will include tracks that are in a pre-order
+        status
+    - key: from_publish_date
+      value: 1958-10-05
+      description: |
+        
+        The date a track was published on Beatport.com or Beatsource.com.
+
+        Format: YYYY-MM-DD
+    - key: to_publish_date
+      value: 1958-10-05
+      description: |
+        
+        The date a track was published on Beatport.com or Beatsource.com.
+
+        Format: YYYY-MM-DD
+    - key: from_release_date
+      value: 1958-10-05
+      description: |
+        
+        The date a track was released to the public.
+
+        Format: YYYY-MM-DD
+    - key: to_release_date
+      value: 1958-10-05
+      description: |
+        
+        The date a track was released to the public.
+
+        Format: YYYY-MM-DD
+    - key: genre_id
+      value: string
+      description: >
+        
+        Returns tracks that have the genre of the ID inputed. Multiple genre IDs
+        can be added
+
+        by separating them with a comma, ex: (89, 6, 14).
+
+
+        For a list of available genres and their IDs, make a GET call to our API
+        route /catalog/genres/
+    - key: genre_name
+      value: string
+      description: >
+        
+        Returns tracks that have a genre which partially matches the value
+        inputed.
+
+
+        For ex: “Techno” would return tracks with a genre of “Hard Techno”,
+        “Techno (Peak Time / Driving)”, etc.
+
+
+        For a list of genres and their names, make a GET call to our API route
+        /catalog/genres/
+    - key: release_name_weight
+      value: "1"
+    - key: label_name_weight
+      value: "1"
+      description: >
+        
+        This parameter determines how much weight to put on label_name using the
+        search query text from q.
+
+
+        The higher the value the more weight is put on matching q to label_name
+response:
+  statusCode: 200
+  statusText: OK
+  headers:
+    Content-Type: application/json
+  body:
+    type: json
+    content: |-
+      {
+        "data": [
+          {
+            "score": 8291.94219002211,
+            "label": {
+              "enabled": 264,
+              "label_id": 9762,
+              "label_name": "string"
+            },
+            "aggregator": {
+              "aggregator_id": 5721,
+              "aggregator_name": "string"
+            },
+            "available_worldwide": 5304,
+            "exclusive": 6920,
+            "publish_date": "string",
+            "release_date": "string",
+            "release_id": 3948,
+            "release_name": "string",
+            "release_type": "string",
+            "status": 6193,
+            "update_date": "string",
+            "current_status": null,
+            "genre": [
+              {
+                "genre_id": null,
+                "genre_name": null
+              },
+              {
+                "genre_id": 8246,
+                "genre_name": "string"
+              }
+            ],
+            "tracks": null,
+            "key": [
+              {
+                "key_id": null,
+                "key_name": "string"
+              },
+              {
+                "key_id": null,
+                "key_name": null
+              }
+            ],
+            "artists": [
+              {
+                "artist_id": 9331,
+                "artist_name": "string",
+                "artist_type_name": "string"
+              },
+              {
+                "artist_id": null,
+                "artist_name": "string",
+                "artist_type_name": null
+              }
+            ],
+            "catalog_number": null,
+            "create_date": "string",
+            "encoded_date": "string",
+            "exclusive_date": "string",
+            "streaming_date": null,
+            "preorder_date": "string",
+            "label_manager": null,
+            "pre_order_date": "string",
+            "upc": "string",
+            "price": {
+              "code": "string",
+              "symbol": "string",
+              "value": 2327.4950128314886,
+              "display": "string"
+            },
+            "is_explicit": false,
+            "track_count": 2047,
+            "release_image_uri": null,
+            "release_image_dynamic_uri": "string",
+            "downloads": 3520,
+            "is_hype": false,
+            "is_pre_order": true,
+            "plays": null
+          },
+          {
+            "score": 758.7018730546769,
+            "label": {
+              "enabled": 2318,
+              "label_id": 6382,
+              "label_name": "string"
+            },
+            "aggregator": {
+              "aggregator_id": 4517,
+              "aggregator_name": "string"
+            },
+            "available_worldwide": 1851,
+            "exclusive": 14,
+            "publish_date": "string",
+            "release_date": "string",
+            "release_id": 1515,
+            "release_name": "string",
+            "release_type": "string",
+            "status": 4094,
+            "update_date": "string",
+            "current_status": null,
+            "genre": {
+              "genre_id": null,
+              "genre_name": null
+            },
+            "tracks": null,
+            "key": null,
+            "artists": null,
+            "catalog_number": null,
+            "create_date": "string",
+            "encoded_date": null,
+            "exclusive_date": "string",
+            "streaming_date": null,
+            "preorder_date": null,
+            "label_manager": "string",
+            "pre_order_date": null,
+            "upc": null,
+            "price": {
+              "code": "string",
+              "symbol": "string",
+              "value": 7816.865729572389,
+              "display": "string"
+            },
+            "is_explicit": false,
+            "track_count": 4199,
+            "release_image_uri": null,
+            "release_image_dynamic_uri": "string",
+            "downloads": null,
+            "is_hype": null,
+            "is_pre_order": null,
+            "plays": 3888
+          }
+        ],
+        "debug": null,
+        "explain": null
+      }
+order: 1000

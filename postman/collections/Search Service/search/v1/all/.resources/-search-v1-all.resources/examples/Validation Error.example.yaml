@@ -1,0 +1,120 @@
+$kind: http-example
+request:
+  url: "{{baseUrl}}/search/v1/all?q=string&count=20&preorder=false&tracks_from_re\
+    lease_date=1958-10-05&tracks_to_release_date=1958-10-05&releases_from_relea\
+    se_date=1958-10-05&releases_to_release_date=1958-10-05&is_approved=true&is_\
+    available_for_streaming=true"
+  method: GET
+  headers:
+    - key: Accept
+      value: application/json
+    - key: Authorization
+      value: Bearer <token>
+      description: "Added as a part of security scheme: bearer"
+  queryParams:
+    - key: q
+      value: string
+      description: Search query text
+    - key: count
+      value: "20"
+      description: The number of results returned in the response
+    - key: preorder
+      value: "false"
+      description: >
+        
+        When FALSE, the response will not include tracks or releases in a
+        pre-order status.
+
+
+        When TRUE, the response will include tracks and releases that are in a
+        pre-order status
+    - key: tracks_from_release_date
+      value: 1958-10-05
+      description: |
+        
+        The date a track was released to the public.
+
+        Format: YYYY-MM-DD
+    - key: tracks_to_release_date
+      value: 1958-10-05
+      description: |
+        
+        The date a track was released to the public.
+
+        Format: YYYY-MM-DD
+    - key: releases_from_release_date
+      value: 1958-10-05
+      description: |
+        
+        The date a release was released to the public.
+
+        Format: YYYY-MM-DD
+    - key: releases_to_release_date
+      value: 1958-10-05
+      description: |
+        
+        The date a release was released to the public.
+
+        Format: YYYY-MM-DD
+    - key: is_approved
+      value: "true"
+      description: >
+        
+        When TRUE, the response will only include charts that have been
+        approved.
+
+
+        When FALSE, the response will include all charts.
+
+
+        It is recommended to leave this set to TRUE
+    - key: is_available_for_streaming
+      value: "true"
+      description: >
+        
+        By default the response will return both streamable and non-streamable
+        tracks.
+
+
+        **Note**: This is dependent on your app scope, if your scope inherently
+        does not allow
+
+        non-streamable tracks then only streamable tracks will be returned
+        always.
+
+
+        When FALSE, the response will return only tracks that are not available
+        for streaming.
+
+
+        When TRUE, the response will return only tracks that are available for
+        streaming.
+response:
+  statusCode: 422
+  statusText: Unprocessable Entity (WebDAV) (RFC 4918)
+  headers:
+    Content-Type: application/json
+  body:
+    type: json
+    content: |-
+      {
+        "detail": [
+          {
+            "loc": [
+              "string",
+              "string"
+            ],
+            "msg": "string",
+            "type": "string"
+          },
+          {
+            "loc": [
+              "string",
+              4904
+            ],
+            "msg": "string",
+            "type": "string"
+          }
+        ]
+      }
+order: 2000

@@ -1,0 +1,100 @@
+$kind: http-example
+request:
+  url: "{{baseUrl}}/search/v1/charts?q=string&count=20&genre_id=string&genre_name\
+    =string&is_approved=true&from_publish_date=1958-10-05&to_publish_date=1958-\
+    10-05"
+  method: GET
+  headers:
+    - key: Accept
+      value: application/json
+    - key: Authorization
+      value: Bearer <token>
+      description: "Added as a part of security scheme: bearer"
+  queryParams:
+    - key: q
+      value: string
+      description: Search query text
+    - key: count
+      value: "20"
+      description: The number of results returned in the response
+    - key: genre_id
+      value: string
+      description: >
+        
+        Returns tracks that have the genre of the ID inputed. Multiple genre IDs
+        can be added
+
+        by separating them with a comma, ex: (89, 6, 14).
+
+
+        For a list of available genres and their IDs, make a GET call to our API
+        route /catalog/genres/
+    - key: genre_name
+      value: string
+      description: >
+        
+        Returns tracks that have a genre which partially matches the value
+        inputed.
+
+
+        For ex: “Techno” would return tracks with a genre of “Hard Techno”,
+        “Techno (Peak Time / Driving)”, etc.
+
+
+        For a list of genres and their names, make a GET call to our API route
+        /catalog/genres/
+    - key: is_approved
+      value: "true"
+      description: >
+        
+        When TRUE, the response will only include charts that have been
+        approved.
+
+
+        When FALSE, the response will include all charts.
+
+
+        It is recommended to leave this set to TRUE
+    - key: from_publish_date
+      value: 1958-10-05
+      description: |
+        
+        The date a chart was published on Beatport.com or Beatsource.com.
+
+        Format: YYYY-MM-DD
+    - key: to_publish_date
+      value: 1958-10-05
+      description: |
+        
+        The date a chart was published on Beatport.com or Beatsource.com.
+
+        Format: YYYY-MM-DD
+response:
+  statusCode: 422
+  statusText: Unprocessable Entity (WebDAV) (RFC 4918)
+  headers:
+    Content-Type: application/json
+  body:
+    type: json
+    content: |-
+      {
+        "detail": [
+          {
+            "loc": [
+              "string",
+              "string"
+            ],
+            "msg": "string",
+            "type": "string"
+          },
+          {
+            "loc": [
+              "string",
+              4904
+            ],
+            "msg": "string",
+            "type": "string"
+          }
+        ]
+      }
+order: 2000

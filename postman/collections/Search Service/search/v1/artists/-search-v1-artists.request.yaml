@@ -1,0 +1,32 @@
+$kind: http-request
+name: /search/v1/artists
+description: Returns a set of artist results
+url: "{{baseUrl}}/search/v1/artists?q=string&count=20&genre_id=string"
+method: GET
+headers:
+  Accept: application/json
+queryParams:
+  - key: q
+    value: string
+    description: Search query text
+  - key: count
+    value: "20"
+    description: The number of results returned in the response
+  - key: genre_id
+    value: string
+    description: >
+      
+      Returns tracks that have the genre of the ID inputed. Multiple genre IDs
+      can be added
+
+      by separating them with a comma, ex: (89, 6, 14).
+
+
+      For a list of available genres and their IDs, make a GET call to our API
+      route /catalog/genres/
+auth:
+  type: bearer
+  credentials:
+    token: "{{bearerToken}}"
+examples: ./.resources/-search-v1-artists.resources/examples
+order: 1000

@@ -41,7 +41,7 @@ For every file in `.github/prompts/`:
 | `.github/prompts/intake-pipeline-hardening.prompt.md` | STALE | Roadmap says already implemented on dev (no patch needed). Archive prompt (don’t run). |
 | `.github/prompts/lexicon-reconcile.prompt.md` | COMPLETE | Lexicon import + reconcile-scan surfaced in CLI (commit `03f2310`). |
 | `.github/prompts/migration-0012-provenance.prompt.md` | COMPLETE | Migration present (`0012_ingestion_provenance.py`); DB shows it applied as v3 migration 12. |
-| `.github/prompts/open-streams-post-0010.prompt.md` | READY | Use for remaining “open streams” work; keep strictly off `artifacts/`, `output/`, generated SDKs, and `docs/archive/`. |
+| `.github/prompts/open-streams-post-0010.prompt.md` | COMPLETE | Post written: `docs/posts/dj-pipeline-explicit-contract.md` (2026-03-23). |
 | `.github/prompts/phase1-pr10-identity-service.prompt.md` | COMPLETE | Roadmap PR10 marked complete (commit `767df22`). |
 | `.github/prompts/phase1-pr12-identity-merge.prompt.md` | COMPLETE | Roadmap PR12 marked complete (`195efc7`, delivered via migration-0006 stream). |
 | `.github/prompts/phase1-pr14-agent-docs-update.prompt.md` | COMPLETE | Roadmap PR14 marked complete (commit `8a0b00d`). |

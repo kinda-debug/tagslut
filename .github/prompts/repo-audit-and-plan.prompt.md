@@ -4,6 +4,15 @@ action plan written to docs/ACTION_PLAN.md.
 
 No code changes. No commits. Read → synthesise → write one file.
 
+SKIP ENTIRELY — do not read or list:
+- artifacts/           (1000+ timestamped run outputs — not docs)
+- output/              (600+ precheck/intake run CSVs and MDs — not docs)
+- postman/sdks/        (generated SDK code — not relevant)
+- docs/archive/        (archived/superseded — not current state)
+- .venv/               (Python virtualenv)
+- __pycache__/         (compiled bytecode)
+- .git/                (git internals)
+
 ---
 
 ## PART 1 — Read everything, in this order
@@ -103,6 +112,11 @@ Read every file in .github/prompts/. For each, note:
 ### H. DB state (read-only queries — do not write)
 Run these sqlite3 queries against the FRESH DB only:
   DB=/Users/georgeskhawam/Projects/tagslut_db/FRESH_2026/music_v3.db
+
+Do NOT query:
+  /Users/georgeskhawam/Projects/tagslut_db/LEGACY_2026-03-04_PICARD/music_v3.db  (LEGACY — read-only archaeology)
+  /Users/georgeskhawam/Projects/tagslut_db/music_v3.db  (DELETED symlink — must not exist)
+  artifacts/db/*.db  (pre-migration backups — do not query)
 
   sqlite3 "$DB" "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;"
   sqlite3 "$DB" "SELECT name FROM sqlite_master WHERE type='view' ORDER BY name;"

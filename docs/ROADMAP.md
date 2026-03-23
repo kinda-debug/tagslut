@@ -1,7 +1,7 @@
 # tagslut — Agent Roadmap
 
 <!-- Status: Active. Update as tasks complete or delegate assignments change. -->
-<!-- Last updated: 2026-03-22 — §3.4 XML validation gate review complete, §3.3/3.4 both closed -->
+<!-- Last updated: 2026-03-23 — §5 intake pipeline hardening verified already implemented on dev (no patch needed); §3.5 DJ admission backfill reclassified as pipeline-state-dependent (not a discrete task); §3.4 XML validation gate review complete -->
 
 This document maps all open work to the agent that should execute it.
 Update it when tasks complete or priorities shift.
@@ -144,9 +144,15 @@ Affected files include:
 - `tagslut/storage/v3/schema.py`
 - `tests/exec/test_dj_xml_preflight_validation.py`
 
-### 3.5 DJ admission backfill
+### 3.5 DJ admission backfill — pipeline-state-dependent, not a discrete task
 
-⚠ No-op against empty DB. Run only after first successful ingestion into fresh DB.
+Not a one-time task. Runs automatically as part of normal intake:
+`tools/get --dj` → `mp3 reconcile` → `dj backfill --execute`
+
+Current state (2026-03-23): `mp3 reconcile --dry-run` against DJ_LIBRARY returns 1 match
+against 170 fresh DB identities. The legacy DJ pool predates the fresh DB — backfill
+will grow naturally as `tools/get` intake populates `track_identity`.
+Remove from active queue. Re-run `dj backfill --dry-run` after any significant intake batch.
 
 ---
 
@@ -163,11 +169,15 @@ Prompt: `.github/prompts/lexicon-reconcile.prompt.md`
 
 ---
 
-## 5 — Intake pipeline hardening → **Codex** ▶ UNBLOCKED
+## 5 — Intake pipeline hardening: ✅ COMPLETE (2026-03-23, pre-existing on dev)
 
-- `precheck_inventory_dj` fallback for `--dj`-only runs without `--m3u`
-- `intake_pretty_summary` counter accuracy
-- Log redirect: `POST_MOVE_LOG` default path → epoch dir, not `artifacts/`
+All three fixes were already present on `dev` before the prompt was authored.
+Verified 2026-03-23: `bash -n tools/get-intake` → SYNTAX OK, 34 tests passing.
+No patch was needed. Prompt file retained for reference only.
+
+- Fix 1 (POST_MOVE_LOG → epoch dir): `tools/get-intake` lines 2871–2875
+- Fix 2 (planned.promote_move/stash_move/quarantine_move counters): `tagslut/exec/intake_pretty_summary.py` lines 111, 164–166
+- Fix 3 (DJ_ROOT/DJ_M3U_DIR guard before precheck-inventory fallback): `tools/get-intake` lines 1955, 1958
 
 ---
 
@@ -336,6 +346,7 @@ Prompt: `.github/prompts/postman-api-optimize.prompt.md` (status: COMPLETE)
 | File | Task | Agent | Status |
 | --- | --- | --- | --- |
 | `resume-refresh-fix.prompt.md` | Fix `--resume` in `tools/get-intake` | Codex | COMPLETE |
+| `intake-pipeline-hardening.prompt.md` | Intake pipeline 3-fix hardening | Codex | COMPLETE (pre-existing on dev, verified 2026-03-23) |
 | `repo-cleanup.prompt.md` | Archive dead scripts and stale docs | Codex | Ready |
 | `dj-pipeline-hardening.prompt.md` | DJ pipeline discipline | Codex | Blocked (Phase 1) |
 | `dj-workflow-audit.prompt.md` | DJ workflow audit | Codex | Blocked (Phase 1) |

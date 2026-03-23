@@ -9,9 +9,9 @@ from urllib.parse import urlparse
 class Environment(Enum):
     """The environments available for the SDK"""
 
-    DEFAULT = "https://{{base_url}}"
-    BASE_URL = "https://{{base_url}}"
-    BASE_URL_1 = "://{{base_url}}"
+    DEFAULT = "https://api.beatport.com"
+    BASE_URL = "https://api.beatport.com"
+    BASE_URL_1 = "https://api.beatport.com"
     API = "https://api.tidal.com"
     API_1 = "https://api.spotify.com"
     EXAMPLE = "https://example.com"

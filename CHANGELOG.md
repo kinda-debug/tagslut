@@ -89,6 +89,15 @@ Versioning: [Semantic Versioning](https://semver.org/)
 ### Removed
 - misleading documentation that treated wrapper-driven `tools/get --dj` behavior as the canonical curated-library workflow.
 
+## [Unreleased] - 2026-03-23
+
+### Changed - DJ Pipeline Contract
+
+- README, `AGENT.md`, `docs/DJ_PIPELINE.md`, `docs/ROADMAP.md`, and the `tagslut dj` / `tagslut mp3` help surface now present the same primary curated-library sequence: `tagslut intake` -> `tagslut mp3 build|reconcile` -> `tagslut dj backfill` -> `tagslut dj validate` -> `tagslut dj xml emit|patch`.
+- `tools/get --dj` and `tools/get-intake --dj` now print the same `[LEGACY] --dj is deprecated. Use the 4-stage pipeline. See: tagslut dj --help` warning in help text and at runtime.
+- `tagslut/dj/xml_emit.py` now refuses any attempt to reuse a `dj_admission` with a different existing `TrackID`, and it checks determinism against the latest prior export for the same DJ `state_hash`, not just the latest export row overall.
+- `tests/e2e/test_dj_pipeline.py` now proves the requested E2E-3/E2E-4/E2E-5 scenarios with DB assertions plus XML/manifest assertions.
+
 ## [Unreleased] - 2026-03-22
 
 ### Added - DJ Pipeline Hardening

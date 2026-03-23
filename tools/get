@@ -53,9 +53,8 @@ usage() {
     echo "  --backfill: download missing + register + enrich (DJ tags always included) + promote"
     echo ""
     echo "Common high-level options:"
-    echo "  --dj                 [LEGACY] This flag is deprecated. Use the 4-stage pipeline instead."
-    echo "                       See docs/DJ_PIPELINE.md or run: tagslut dj --help"
-    echo "                       Workflow: tagslut intake -> tagslut mp3 reconcile|build -> tagslut dj backfill|admit -> tagslut dj validate -> tagslut dj xml emit|patch"
+    echo "  --dj                 [LEGACY] --dj is deprecated. Use the 4-stage pipeline. See: tagslut dj --help"
+    echo "                       Workflow: tagslut intake -> tagslut mp3 build|reconcile -> tagslut dj backfill -> tagslut dj validate -> tagslut dj xml emit|patch"
     echo "  --no-precheck        skip duplicate-quality precheck"
     echo "  -f, --force          re-download even if already exists (provider-specific)"
     echo "  --force-download     keep matched tracks anyway"
@@ -161,9 +160,7 @@ build_intake_cmd() {
                 shift
                 ;;
             --dj)
-                echo "[LEGACY] WARNING: tools/get --dj is deprecated." >&2
-                echo "Use the 4-stage DJ pipeline instead." >&2
-                echo "See docs/DJ_PIPELINE.md or run: tagslut dj --help" >&2
+                echo "[LEGACY] --dj is deprecated. Use the 4-stage pipeline. See: tagslut dj --help" >&2
                 intake_args+=(--dj)
                 shift
                 ;;

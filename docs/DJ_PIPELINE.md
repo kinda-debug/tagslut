@@ -7,6 +7,10 @@ This is the canonical operator reference for the DJ workflow.
 `tools/get --dj` and `tools/get-intake --dj` are legacy wrapper paths. They are
 not the supported curated-library workflow.
 
+Primary workflow: `tagslut intake` -> `tagslut mp3 build` or `tagslut mp3 reconcile`
+-> `tagslut dj backfill` -> `tagslut dj validate` -> `tagslut dj xml emit` or
+`tagslut dj xml patch`.
+
 ## Canonical 4-Stage Workflow
 
 ### Stage 1 — Intake Masters
@@ -47,7 +51,6 @@ poetry run tagslut mp3 reconcile \
 ```
 
 Outputs:
-
 - `mp3_asset` rows linked to canonical identities and master assets
 
 Stage 2 transcode safety:
@@ -58,13 +61,13 @@ Stage 2 transcode safety:
 
 ### Stage 3 — Admit And Validate DJ Library
 
-Bulk-admit verified MP3 assets into the curated DJ layer:
+Bulk-admit verified MP3 assets into the curated DJ layer. This is the primary Stage 3 path:
 
 ```bash
 poetry run tagslut dj backfill --db "$TAGSLUT_DB"
 ```
 
-Or admit a specific identity / MP3 asset pair:
+For targeted one-off repairs, admit a specific identity / MP3 asset pair:
 
 ```bash
 poetry run tagslut dj admit \
@@ -118,6 +121,6 @@ Outputs:
 
 For a curated DJ library, run the stages in order:
 
-`intake` -> `mp3 build` or `mp3 reconcile` -> `dj admit` or `dj backfill` -> `dj validate` -> `dj xml emit` or `dj xml patch`
+`intake` -> `mp3 build` or `mp3 reconcile` -> `dj backfill` -> `dj validate` -> `dj xml emit` or `dj xml patch`
 
 For detailed discussion and legacy-wrapper context, see `docs/DJ_WORKFLOW.md`.

@@ -257,7 +257,8 @@ def _assign_track_ids(
     # Persist new assignments
     for da_id, track_id in assigned.items():
         existing = conn.execute(
-            "SELECT id FROM dj_track_id_map WHERE dj_admission_id = ?", (da_id,)
+            "SELECT rekordbox_track_id FROM dj_track_id_map WHERE dj_admission_id = ?",
+            (da_id,),
         ).fetchone()
         if existing is None:
             conn.execute(
@@ -266,6 +267,14 @@ def _assign_track_ids(
                 VALUES (?, ?, ?)
                 """,
                 (da_id, track_id, _now_iso()),
+            )
+            continue
+        existing_track_id = int(existing[0])
+        if existing_track_id != track_id:
+            raise ValueError(
+                "dj_track_id_map invariant violation: "
+                f"dj_admission_id={da_id} is already mapped to TrackID {existing_track_id}, "
+                f"refusing to reassign it to {track_id}."
             )
 
     return assigned
@@ -391,25 +400,26 @@ def emit_rekordbox_xml(
     tree.write(str(output_path), encoding="UTF-8", xml_declaration=True)
 
     manifest_hash = hashlib.sha256(output_path.read_bytes()).hexdigest()
-    prior = conn.execute(
+    prior_rows = conn.execute(
         """
         SELECT manifest_hash, scope_json
         FROM dj_export_state
         WHERE kind = 'rekordbox_xml'
         ORDER BY id DESC
-        LIMIT 1
         """
-    ).fetchone()
-    if prior is not None:
-        prior_hash, prior_scope_json = prior
+    ).fetchall()
+    for prior_hash, prior_scope_json in prior_rows:
         try:
             prior_scope = json.loads(prior_scope_json or "{}")
         except json.JSONDecodeError:
             prior_scope = {}
-        if prior_scope.get("state_hash") == state_hash and prior_hash != manifest_hash:
+        if prior_scope.get("state_hash") != state_hash:
+            continue
+        if prior_hash != manifest_hash:
             raise ValueError(
                 "Determinism violation: Rekordbox XML changed without a DJ DB state change."
             )
+        break
 
     conn.execute(
         """

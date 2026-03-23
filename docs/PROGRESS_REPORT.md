@@ -4,6 +4,25 @@
 
 Report date: March 23, 2026
 
+## Session: 2026-03-23 — DJ pipeline contract/help alignment and XML invariant proofs
+
+**Status**: Completed — commits pending.
+
+**What was done**:
+
+1. **Canonical DJ workflow wording aligned** across `AGENT.md`, `README.md`, `docs/DJ_PIPELINE.md`, `docs/ROADMAP.md`, and the `tagslut dj` / `tagslut mp3` help surface. The primary operator contract is now the same everywhere: `tagslut intake` -> `tagslut mp3 build|reconcile` -> `tagslut dj backfill` -> `tagslut dj validate` -> `tagslut dj xml emit|patch`.
+
+2. **Legacy wrapper warning hardened**. `tools/get --dj` and `tools/get-intake --dj` now both show the same `[LEGACY] --dj is deprecated. Use the 4-stage pipeline. See: tagslut dj --help` message in help text and at runtime.
+
+3. **Stage 4 invariants tightened** in `tagslut/dj/xml_emit.py`:
+   - `dj_track_id_map` now fails loudly if an existing `dj_admission` would be reassigned to a different `TrackID`.
+   - determinism checks now compare against the most recent prior export for the same DJ `state_hash`, not only the most recent export row.
+
+4. **Requested E2E proofs extended** in `tests/e2e/test_dj_pipeline.py`:
+   - E2E-3 now proves backfill + validate + first emit populate `dj_track_id_map`.
+   - E2E-4 now proves logical XML identity across repeated emits, stable `TrackID`s, and stored manifest hashes.
+   - E2E-5 now proves patch manifest persistence, unchanged prior `TrackID`s, and loud failure on tampered XML.
+
 ## Session: 2026-03-23 — Lexicon pipeline, master scan, schema fixes, symlink removal
 
 **Status**: Completed — commits pending (schema fix + roadmap update).

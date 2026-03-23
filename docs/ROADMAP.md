@@ -148,12 +148,12 @@ Affected files include:
 
 ### 3.5 DJ admission backfill — pipeline-state-dependent, not a discrete task
 
-Not a one-time task. Runs automatically as part of normal intake:
-`tools/get --dj` → `mp3 reconcile` → `dj backfill --execute`
+Not a one-time task. It follows the canonical curated-library pipeline:
+`tagslut intake` → `tagslut mp3 build|reconcile` → `tagslut dj backfill` → `tagslut dj validate` → `tagslut dj xml emit|patch`
 
 Current state (2026-03-23): `mp3 reconcile --dry-run` against DJ_LIBRARY returns 1 match
 against 170 fresh DB identities. The legacy DJ pool predates the fresh DB — backfill
-will grow naturally as `tools/get` intake populates `track_identity`.
+will grow naturally as Stage 1 and Stage 2 populate `track_identity` and `mp3_asset`.
 Remove from active queue. Re-run `dj backfill --dry-run` after any significant intake batch.
 
 ---

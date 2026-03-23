@@ -9,6 +9,13 @@ import sys
 
 import click
 
+CANONICAL_PIPELINE_TEXT = (
+    "Canonical curated-library flow: Stage 1 `tagslut intake`; "
+    "Stage 2 `tagslut mp3 build` or `tagslut mp3 reconcile`; "
+    "Stage 3 `tagslut dj backfill`, then `tagslut dj validate`; "
+    "Stage 4 `tagslut dj xml emit` or `tagslut dj xml patch`."
+)
+
 
 @click.group(
     "mp3",
@@ -20,9 +27,9 @@ Part of the 4-stage DJ pipeline:
     Stage 1: intake      → Refresh canonical masters via tagslut intake
     Stage 2: build       → Transcode canonical FLAC masters to DJ MP3s
                      reconcile   → Register existing DJ MP3s against canonical identities
-    Stage 3: dj admit    → Admit verified MP3s and validate DJ state
-                     dj backfill → Auto-admit verified MP3s
-                     dj validate → Verify DJ library state
+    Stage 3: dj backfill → Admit verified MP3s into DJ state
+                     dj validate → Verify DJ library state before XML export
+                     dj admit    → One-off manual admission when backfill is not the right tool
     Stage 4: dj xml emit / dj xml patch
 
 Common subcommands:
@@ -48,7 +55,7 @@ def mp3_group() -> None:
 
 @mp3_group.command(
     "build",
-    help="Build MP3s from canonical FLAC masters. Stage 2a of the 4-stage pipeline.",
+    help=f"Build MP3s from canonical FLAC masters. Stage 2a of the 4-stage pipeline. {CANONICAL_PIPELINE_TEXT}",
 )
 @click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
 @click.option(
@@ -128,7 +135,7 @@ def mp3_build(
     "reconcile",
     help=(
         "Reconcile an existing MP3 root with the database. "
-        "Stage 2b of the 4-stage pipeline. Next: tagslut dj backfill."
+        f"Stage 2b of the 4-stage pipeline. Next: tagslut dj backfill. {CANONICAL_PIPELINE_TEXT}"
     ),
 )
 @click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
@@ -197,7 +204,10 @@ def mp3_reconcile(
         )
 
 
-@mp3_group.command("scan", help="Scan MP3 root directories and write a manifest CSV.")
+@mp3_group.command(
+    "scan",
+    help=f"Scan MP3 root directories and write a manifest CSV. Outside the canonical 4-stage curated-library flow. {CANONICAL_PIPELINE_TEXT}",
+)
 @click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB (unused, kept for consistency).")
 @click.option(
     "--mp3-roots",
@@ -237,7 +247,10 @@ def mp3_scan(
         click.secho(f"  {len(result.errors)} error(s) during scan.", fg="yellow", err=True)
 
 
-@mp3_group.command("reconcile-scan", help="Reconcile a scan CSV against the DB using multi-tier matching.")
+@mp3_group.command(
+    "reconcile-scan",
+    help=f"Reconcile a scan CSV against the DB using multi-tier matching. Outside the canonical 4-stage curated-library flow. {CANONICAL_PIPELINE_TEXT}",
+)
 @click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
 @click.option("--scan-csv", "scan_csv", required=True, type=click.Path(exists=True), help="Scan CSV from mp3 scan.")
 @click.option("--out", "out_json", default=None, type=str, help="Output JSON summary path.")
@@ -302,7 +315,10 @@ def mp3_reconcile_scan(
         click.secho("Dry-run complete. Pass --execute to commit.", fg="yellow")
 
 
-@mp3_group.command("missing-masters", help="Report orphaned MP3s and FLACs without MP3s.")
+@mp3_group.command(
+    "missing-masters",
+    help=f"Report orphaned MP3s and FLACs without MP3s. Outside the canonical 4-stage curated-library flow. {CANONICAL_PIPELINE_TEXT}",
+)
 @click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
 @click.option("--out", "out_path", default=None, help="Output .md path (default: data/missing_masters_YYYYMMDD.md)")
 def mp3_missing_masters(

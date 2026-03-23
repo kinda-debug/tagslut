@@ -46,6 +46,12 @@ DEFAULT_OUTPUT = os.environ.get("DJ_OUTPUT_ROOT", "./output/dj_yes")
 DEFAULT_INPUT = os.environ.get("DJ_XLSX", "./input/DJ_YES.xlsx")
 DEFAULT_DJUSB = os.environ.get("DJ_USB_ROOT", "./output/dj_usb")
 TRACK_OVERRIDES_PATH = Path("config/dj/track_overrides.csv")
+CANONICAL_DJ_PIPELINE_TEXT = (
+    "Canonical curated-library flow: Stage 1 `tagslut intake`; "
+    "Stage 2 `tagslut mp3 build` or `tagslut mp3 reconcile`; "
+    "Stage 3 `tagslut dj backfill`, then `tagslut dj validate`; "
+    "Stage 4 `tagslut dj xml emit` or `tagslut dj xml patch`."
+)
 
 
 def _normalize_crate(value: str) -> str:
@@ -243,16 +249,16 @@ DJ library operations (Stages 3 and 4 of the 4-stage pipeline).
 Stages:
     Stage 1: intake     → Refresh canonical masters via tagslut intake
     Stage 2: mp3        → Build or reconcile MP3 derivatives
-    Stage 3: admit      → Select tracks for DJ library
-                     backfill   → Auto-admit verified MP3s
-                     validate   → Verify DJ library state
-  Stage 4: xml emit  → Generate Rekordbox XML
-           xml patch → Update prior XML after changes
+    Stage 3: backfill   → Admit verified MP3s into DJ state
+                     validate   → Verify DJ library state before XML export
+                     admit      → One-off manual admission when backfill is not the right tool
+    Stage 4: xml emit  → Generate Rekordbox XML
+                     xml patch → Update prior XML after changes
 
 Common subcommands:
   admit, backfill, validate, xml emit, xml patch
 
-Prerequisite: Stages 1 and 2 (tagslut intake, then tagslut mp3 reconcile or tagslut mp3 build)
+Primary workflow: Stage 1 `tagslut intake`, Stage 2 `tagslut mp3 build` or `tagslut mp3 reconcile`, Stage 3 `tagslut dj backfill` then `tagslut dj validate`, Stage 4 `tagslut dj xml emit` or `tagslut dj xml patch`
 
 See: docs/DJ_PIPELINE.md
 """,
@@ -260,7 +266,7 @@ See: docs/DJ_PIPELINE.md
 \b
 Example workflow:
     1. tagslut intake <provider-url>
-    2. tagslut mp3 reconcile --db <path> --mp3-root <path>
+    2. tagslut mp3 build --db <path> --dj-root <path> --execute
     3. tagslut dj backfill --db <path>
     4. tagslut dj validate --db <path>
     5. tagslut dj xml emit --db <path> --out rekordbox.xml
@@ -278,7 +284,7 @@ def dj_group() -> None:
 dj_group.add_command(role_group, name="role")
 
 
-@dj_group.command("curate")
+@dj_group.command("curate", help=f"Preview DJ curation results from an XLSX manifest. Outside the canonical 4-stage curated-library flow. {CANONICAL_DJ_PIPELINE_TEXT}")
 @click.option(
     "--input-xlsx",
     type=click.Path(exists=True),
@@ -338,7 +344,7 @@ def curate(
         click.echo(f"Missing on disk:     {result['dropped_missing_on_disk']}")
 
 
-@dj_group.command("export")
+@dj_group.command("export", help=f"Curate and transcode DJ library output from an XLSX manifest. Outside the canonical 4-stage curated-library flow. {CANONICAL_DJ_PIPELINE_TEXT}")
 @click.option(
     "--input-xlsx",
     type=click.Path(exists=True),
@@ -465,7 +471,7 @@ def export(
         click.echo(f"Exported {len(deduped)} tracks. {skipped} skipped (not yet classified).")
 
 
-@dj_group.command("prep-rekordbox")
+@dj_group.command("prep-rekordbox", help=f"Prepare a curated folder for Rekordbox. Outside the canonical 4-stage curated-library flow. {CANONICAL_DJ_PIPELINE_TEXT}")
 @click.option(
     "--root",
     "root_path",
@@ -635,7 +641,7 @@ def lexicon_push(dry_run: bool, only_high_confidence: bool, output_root: str) ->
         f"Pushed: {result['pushed']} | Skipped: {result['skipped']} | Failed: {result['failed']}")
 
 
-@dj_group.command("classify")
+@dj_group.command("classify", help=f"Score tracks into safe/block/review buckets. Outside the canonical 4-stage curated-library flow. {CANONICAL_DJ_PIPELINE_TEXT}")
 @click.option("--input", "input_path", required=True, type=click.Path(), help="Input XLSX, folder, or M3U")
 @click.option(
     "--policy",
@@ -699,7 +705,7 @@ def dj_classify(
         click.echo(f"Promoted to DJUSB: {ok} ok, {skipped} skipped, {failed} failed")
 
 
-@dj_group.command("review-app")
+@dj_group.command("review-app", help=f"Launch the DJ review web app. Outside the canonical 4-stage curated-library flow. {CANONICAL_DJ_PIPELINE_TEXT}")
 @click.option("--db", "db_path", type=click.Path(), default=None, help="SQLite DB path")
 @click.option("--library-prefix", default=None, help="Filter files by path prefix")
 @click.option("--host", default=None, help="Host to bind (default: 127.0.0.1)")
@@ -727,7 +733,7 @@ def review_app(
     run_python_script("tools/dj_review_app.py", tuple(args))
 
 
-@dj_group.command("gig-prep")
+@dj_group.command("gig-prep", help=f"Prepare a gig-focused DJ selection export. Outside the canonical 4-stage curated-library flow. {CANONICAL_DJ_PIPELINE_TEXT}")
 @click.option(
     "--date",
     "gig_date",
@@ -1056,7 +1062,7 @@ def crates_export(
     click.echo(f"Skipped (unclassified): {skipped}")
 
 
-@dj_group.command("pool-wizard")
+@dj_group.command("pool-wizard", help=f"Plan or build a DJ pool from curated library state. Outside the canonical 4-stage curated-library flow. {CANONICAL_DJ_PIPELINE_TEXT}")
 @click.option(
     "--db",
     "db_path",
@@ -1147,7 +1153,7 @@ def pool_wizard(
 
 @dj_group.command(
     "admit",
-    help="Admit one track into the DJ library. Stage 3a of the 4-stage pipeline.",
+    help=f"Admit one track into the DJ library. Stage 3a of the 4-stage pipeline, but `dj backfill` is the primary Stage 3 path. {CANONICAL_DJ_PIPELINE_TEXT}",
 )
 @click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
 @click.option(
@@ -1216,7 +1222,7 @@ def dj_admit(
 
 @dj_group.command(
     "backfill",
-    help="Auto-admit all verified MP3s to the DJ library. Stage 3b of the 4-stage pipeline.",
+    help=f"Auto-admit all verified MP3s to the DJ library. Primary Stage 3a of the 4-stage pipeline. {CANONICAL_DJ_PIPELINE_TEXT}",
 )
 @click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
 @click.option(
@@ -1281,7 +1287,7 @@ def dj_backfill(
 
 @dj_group.command(
     "validate",
-    help="Validate DJ library state. Stage 3c of the 4-stage pipeline.",
+    help=f"Validate DJ library state. Primary Stage 3b of the 4-stage pipeline. {CANONICAL_DJ_PIPELINE_TEXT}",
 )
 @click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
 @click.option("--verbose", "-v", is_flag=True, default=False)
@@ -1363,7 +1369,7 @@ def dj_validate(
 
 @dj_group.group(
     "xml",
-    help="Stage 4 Rekordbox XML commands: emit and patch. Requires Stage 3 admissions plus dj validate.",
+    help=f"Stage 4 Rekordbox XML commands: emit and patch. Primary flow: `tagslut dj backfill`, then `tagslut dj validate`, then `tagslut dj xml emit` or `tagslut dj xml patch`. {CANONICAL_DJ_PIPELINE_TEXT}",
 )
 def dj_xml_group() -> None:
     """Rekordbox XML emit and patch commands."""
@@ -1371,7 +1377,7 @@ def dj_xml_group() -> None:
 
 @dj_xml_group.command(
     "emit",
-    help="Emit Rekordbox XML from admitted tracks. Stage 4a of the 4-stage pipeline.",
+    help=f"Emit Rekordbox XML from admitted tracks. Primary Stage 4a of the 4-stage pipeline. {CANONICAL_DJ_PIPELINE_TEXT}",
 )
 @click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
 @click.option(
@@ -1446,7 +1452,7 @@ def dj_xml_emit(
 
 @dj_xml_group.command(
     "patch",
-    help="Patch a prior Rekordbox XML export while preserving TrackIDs. Stage 4b of the 4-stage pipeline.",
+    help=f"Patch a prior Rekordbox XML export while preserving TrackIDs. Primary Stage 4b of the 4-stage pipeline. {CANONICAL_DJ_PIPELINE_TEXT}",
 )
 @click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
 @click.option(

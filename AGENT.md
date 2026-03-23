@@ -11,7 +11,7 @@ Build curated DJ libraries with this 4-stage workflow:
 
 1. Intake masters: `poetry run tagslut intake <provider-url>`
 2. Build or reconcile MP3s: `poetry run tagslut mp3 build ...` or `poetry run tagslut mp3 reconcile ...`
-3. Admit and validate DJ state: `poetry run tagslut dj admit ...` or `poetry run tagslut dj backfill ...`, then `poetry run tagslut dj validate ...`
+3. Admit and validate DJ state: `poetry run tagslut dj backfill ...`, then `poetry run tagslut dj validate ...`
 4. Emit or patch Rekordbox XML: `poetry run tagslut dj xml emit ...` or `poetry run tagslut dj xml patch ...`
 
 `tools/get --dj` and `tools/get-intake --dj` are legacy wrapper paths and are not the supported curated-library workflow.

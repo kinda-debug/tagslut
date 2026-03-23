@@ -97,7 +97,7 @@ Options:
   --execute            Execute move plans (default: dry-run planning only)
   --m3u                Generate Roon-friendly merged M3U from promoted files
   --m3u-dir PATH       M3U output dir (default: $PLAYLIST_ROOT or library root)
-  --dj                 [LEGACY] Build wrapper-driven DJ copies after promote; not the curated-library workflow
+  --dj                 [LEGACY] --dj is deprecated. Use the 4-stage pipeline. See: tagslut dj --help
   --dj-root PATH       DJ MP3 root for legacy wrapper output (default: $DJ_MP3_ROOT or $DJ_LIBRARY)
   --dj-m3u-dir PATH    DJ playlist output dir for legacy wrapper output (default: $DJ_PLAYLIST_ROOT or DJ root)
   --m3u-only           Only generate merged M3U (skip download/scan/move stages)
@@ -1112,6 +1112,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     --dj)
       DJ_MODE=1
+      echo "[LEGACY] --dj is deprecated. Use the 4-stage pipeline. See: tagslut dj --help" >&2
       shift
       ;;
     --dj-root)

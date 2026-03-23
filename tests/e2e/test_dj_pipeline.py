@@ -134,6 +134,29 @@ def _create_playlist(
     return pl_id  # type: ignore[return-value]
 
 
+def _track_id_rows(conn: sqlite3.Connection) -> list[tuple[int, int]]:
+    return conn.execute(
+        "SELECT dj_admission_id, rekordbox_track_id FROM dj_track_id_map ORDER BY dj_admission_id ASC"
+    ).fetchall()
+
+
+def _xml_snapshot(path: Path) -> dict[str, object]:
+    root = ET.parse(str(path)).getroot()
+    return {
+        "tracks": [
+            tuple(sorted(track.attrib.items()))
+            for track in root.findall("COLLECTION/TRACK")
+        ],
+        "playlists": [
+            (
+                node.get("Name"),
+                [track.get("Key") for track in node.findall("TRACK")],
+            )
+            for node in root.findall("PLAYLISTS/NODE/NODE")
+        ],
+    }
+
+
 # ---------------------------------------------------------------------------
 # E2E-1: intake → mp3 build
 # ---------------------------------------------------------------------------
@@ -331,6 +354,15 @@ def test_e2e3_backfill_then_validate_passes(tmp_path: Path) -> None:
     report = validate_dj_library(conn)
     assert report.ok, f"Expected validate to pass after backfill. Got: {report.summary()}"
 
+    xml_path = tmp_path / "e2e3.xml"
+    manifest_hash = emit_rekordbox_xml(conn, output_path=xml_path, skip_validation=True)
+
+    assert xml_path.exists()
+    assert manifest_hash == hashlib.sha256(xml_path.read_bytes()).hexdigest()
+    assert len(_track_id_rows(conn)) == 3
+    tree = ET.parse(str(xml_path))
+    assert len(tree.getroot().findall("COLLECTION/TRACK")) == 3
+
 
 def test_e2e3_backfill_idempotent(tmp_path: Path) -> None:
     """Running backfill twice does not create duplicate admissions."""
@@ -368,6 +400,7 @@ def test_e2e4_xml_byte_identical_across_two_emits(tmp_path: Path) -> None:
     conn = _make_db(tmp_path)
 
     # Set up 3 admitted tracks
+    admission_ids: list[int] = []
     for n in range(3):
         mp3 = tmp_path / f"track_{n}.mp3"
         mp3.write_bytes(b"")
@@ -378,21 +411,35 @@ def test_e2e4_xml_byte_identical_across_two_emits(tmp_path: Path) -> None:
         mp3_id = _insert_mp3_asset(
             conn, identity_id=identity_id, asset_id=asset_id, path=str(mp3)
         )
-        admit_track(conn, identity_id=identity_id, mp3_asset_id=mp3_id)
+        admission_ids.append(
+            admit_track(conn, identity_id=identity_id, mp3_asset_id=mp3_id)
+        )
+    _create_playlist(conn, name="E2E4 Playlist", admission_ids=admission_ids)
     conn.commit()
 
     # First emit
     xml1 = tmp_path / "v1.xml"
     emit_rekordbox_xml(conn, output_path=xml1, skip_validation=True)
+    track_ids_v1 = _track_id_rows(conn)
 
     # Second emit (TrackIDs already in dj_track_id_map)
     xml2 = tmp_path / "v2.xml"
     emit_rekordbox_xml(conn, output_path=xml2, skip_validation=True)
+    track_ids_v2 = _track_id_rows(conn)
 
     assert xml1.read_bytes() == xml2.read_bytes(), (
         "Two emits from the same DB state must produce byte-identical XML. "
         f"Sizes: {len(xml1.read_bytes())} vs {len(xml2.read_bytes())}"
     )
+    assert _xml_snapshot(xml1) == _xml_snapshot(xml2)
+    assert track_ids_v1 == track_ids_v2
+
+    export_rows = conn.execute(
+        "SELECT output_path, manifest_hash FROM dj_export_state WHERE kind = 'rekordbox_xml' ORDER BY id ASC"
+    ).fetchall()
+    assert len(export_rows) == 2
+    for output_path, manifest_hash in export_rows:
+        assert manifest_hash == hashlib.sha256(Path(output_path).read_bytes()).hexdigest()
 
 
 def test_e2e4_xml_contains_all_admitted_tracks(tmp_path: Path) -> None:
@@ -597,7 +644,7 @@ def test_e2e5_patch_adds_new_playlist_track(tmp_path: Path) -> None:
     conn.commit()
 
     xml_v2 = tmp_path / "v2.xml"
-    patch_rekordbox_xml(conn, output_path=xml_v2, skip_validation=True)
+    manifest_hash = patch_rekordbox_xml(conn, output_path=xml_v2, skip_validation=True)
 
     # Patched XML must contain 3 tracks in the playlist
     tree = ET.parse(str(xml_v2))
@@ -622,6 +669,12 @@ def test_e2e5_patch_adds_new_playlist_track(tmp_path: Path) -> None:
             f"TrackID for admission {da_id} changed: {orig_track_id} → {current_id}"
         )
 
+    export_count = conn.execute(
+        "SELECT COUNT(*) FROM dj_export_state WHERE kind = 'rekordbox_xml'"
+    ).fetchone()[0]
+    assert export_count == 2
+    assert manifest_hash == hashlib.sha256(xml_v2.read_bytes()).hexdigest()
+
 
 def test_e2e5_patch_fails_on_tampered_xml(tmp_path: Path) -> None:
     """patch_rekordbox_xml fails loudly when the prior XML file has been modified."""
@@ -634,7 +687,7 @@ def test_e2e5_patch_fails_on_tampered_xml(tmp_path: Path) -> None:
     # Tamper: overwrite with different content
     xml_path.write_bytes(b"<tampered/>")
 
-    with pytest.raises(ValueError, match="does not match stored manifest hash"):
+    with pytest.raises(ValueError, match="stored manifest hash"):
         patch_rekordbox_xml(conn, output_path=tmp_path / "v2.xml", skip_validation=True)
 
 

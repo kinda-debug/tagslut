@@ -92,8 +92,8 @@ Notes:
 `tools/get --dj` is deprecated. Use the 4-stage DJ pipeline instead.
 
 For a curated DJ library, the only supported workflow is:
-`tagslut intake` -> `tagslut mp3 reconcile` or `tagslut mp3 build` ->
-`tagslut dj admit` or `tagslut dj backfill` -> `tagslut dj validate` ->
+`tagslut intake` -> `tagslut mp3 build` or `tagslut mp3 reconcile` ->
+`tagslut dj backfill` -> `tagslut dj validate` ->
 `tagslut dj xml emit` or `tagslut dj xml patch`. See `docs/DJ_PIPELINE.md`
 for the canonical reference.
 
@@ -108,12 +108,18 @@ poetry run tagslut intake <provider-url>
 poetry run tagslut mp3 reconcile \
   --db "$TAGSLUT_DB" --mp3-root "$DJ_LIBRARY" --execute
 
+# Stage 2 alternative: build DJ MP3s from canonical masters
+poetry run tagslut mp3 build \
+  --db "$TAGSLUT_DB" --dj-root "$DJ_LIBRARY" --execute
+
 # When building new MP3s from masters, tagslut validates the ffmpeg output
 # before accepting it: file must exist, be large enough, parse as MP3, and
 # report a duration greater than 1 second.
 
 # Stage 3: admit registered MP3s into the curated DJ library
 poetry run tagslut dj backfill --db "$TAGSLUT_DB"
+
+# Targeted one-off admission exists as `tagslut dj admit`, but it is not the primary Stage 3 path.
 
 # Stage 3: validate DJ library state (missing files, empty metadata)
 poetry run tagslut dj validate --db "$TAGSLUT_DB"

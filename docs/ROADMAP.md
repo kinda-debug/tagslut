@@ -2,6 +2,8 @@
 
 <!-- Status: Active. Update as tasks complete or delegate assignments change. -->
 <!-- Last updated: 2026-03-23 — §5 intake pipeline hardening verified already implemented on dev (no patch needed); §3.5 DJ admission backfill reclassified as pipeline-state-dependent (not a discrete task); §3.4 XML validation gate review complete -->
+<!-- Active action sequencing has moved to docs/ACTION_PLAN.md (generated 2026-03-23). -->
+<!-- This file remains the agent contract reference and historical record. -->
 
 This document maps all open work to the agent that should execute it.
 Update it when tasks complete or priorities shift.

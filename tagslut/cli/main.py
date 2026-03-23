@@ -30,6 +30,8 @@ from tagslut.cli.commands.report import register_report_group
 from tagslut.cli.commands.ops import register_ops_group
 from tagslut.cli.commands.verify import register_verify_group
 from tagslut.cli.commands.misc import register_misc_commands
+from tagslut.cli.commands.lexicon import lexicon_group
+from tagslut.cli.commands.master import master_group
 
 # Add project root to path so we can import tools as modules if needed
 sys.path.insert(0, str(Path(__file__).parents[2]))
@@ -83,11 +85,13 @@ register_ops_group(cli)
 register_library_group(cli)
 register_tag_group(cli)
 
-# Register DJ, export, gig, and MP3 groups
+# Register DJ, export, gig, MP3, lexicon, and master groups
 cli.add_command(dj_group)
 cli.add_command(export_group, name="export")
 cli.add_command(gig_group, name="gig")
 cli.add_command(mp3_group, name="mp3")
+cli.add_command(lexicon_group, name="lexicon")
+cli.add_command(master_group, name="master")
 
 # Register standalone misc commands (`init` is operator-facing; debug/stub
 # helpers are hidden from top-level help).

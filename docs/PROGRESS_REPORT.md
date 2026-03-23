@@ -1,8 +1,47 @@
-<!-- Status: Active document. Synced 2026-03-22 after §3.4 XML validation gate doc audit. -->
+<!-- Status: Active document. Synced 2026-03-23 after lexicon pipeline + master scan session. -->
 
 # Progress Report
 
-Report date: March 22, 2026
+Report date: March 23, 2026
+
+## Session: 2026-03-23 — Lexicon pipeline, master scan, schema fixes, symlink removal
+
+**Status**: Completed — commits pending (schema fix + roadmap update).
+
+**What was done**:
+
+1. **Symlink trap removed.** `/Users/georgeskhawam/Projects/tagslut_db/music_v3.db` was a
+   symlink pointing to the LEGACY (Picard-contaminated) DB. Removed permanently. The Codex
+   lexicon-reconcile session had routed all execute commands through this symlink. All
+   subsequent commands used the explicit FRESH DB path.
+
+2. **Codex schema bug caught and patched.** The new `mp3 reconcile-scan` and `master scan`
+   commands invented two non-existent columns (`source`, `status`) in their `track_identity`
+   stub inserts. Patched in `tagslut/exec/mp3_build.py` and `tagslut/exec/master_scan.py`
+   to use the correct provenance columns. Verified: reconcile-scan re-run → 0 errors.
+
+3. **Full pipeline executed against FRESH DB** (run_id `a655f8d4`):
+   - `mp3 scan`: 1,819 files → `data/mp3_scan_20260323.csv`
+   - `mp3 reconcile-scan --execute`: t2=1, stubs=1,816, errors=0
+   - `lexicon import --execute`: 9 matched, 19 fields written, 0 errors
+   - `lexicon import-playlists --execute`: 0 playlists (allowlist filtered all — needs investigation)
+   - `master scan --execute`: inserted=25,324, matched=18, stubs=25,306, errors=0
+
+4. **FRESH DB state after session**:
+   `track_identity`=188 (all `provider_api/high`, no stubs) · `asset_file`=25,534 ·
+   `mp3_asset`=1 · `dj_playlist`=0 · `reconcile_log`=27,163 · `identity_status`=188 active
+
+5. **Roadmap updated**: §5 marked complete (pre-existing); §3.5 reclassified as
+   pipeline-state-dependent.
+
+**Open items from this session**:
+- Commit: `chore(schema): fix stub inserts in mp3_build and master_scan`
+- Commit: `docs(roadmap): mark §5 complete, reclassify §3.5`
+- Investigate `lexicon import-playlists` 0 result — check allowlist vs actual Lexicon playlist names
+- Run `tagslut mp3 missing-masters --db FRESH_PATH` (read-only)
+- Close the Claude Code session that spawned `master scan --execute` without confirmation
+
+---
 
 ## Session: 2026-03-22 (pass 6) — §3.4 XML validation gate doc audit + roadmap close
 

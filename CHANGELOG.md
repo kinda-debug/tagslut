@@ -6,6 +6,37 @@ All notable changes to this project are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 Versioning: [Semantic Versioning](https://semver.org/)
 
+## [Unreleased] - 2026-03-23
+
+### Added
+- `tagslut mp3 scan` — scan one or more MP3 root directories, collect ID3 tags + audio
+  metadata (bitrate, sample rate, duration, SHA-256), and write a stable manifest CSV.
+  Progress printed every 500 files; each file logged to `data/logs/reconcile_scan_<run_id>.jsonl`.
+- `tagslut mp3 reconcile-scan` — enhanced multi-tier reconcile that reads a manifest CSV
+  and matches each MP3 against `track_identity` via: Tier 1 filename pattern, Tier 2 ISRC,
+  Tier 3 ID3 title+artist, Tier 4 fuzzy (flag-only). Unmatched files become stubs.
+  All decisions written to `reconcile_log` and a JSONL audit log. Idempotent, transactional.
+- `tagslut mp3 missing-masters` — generate a GitHub-flavored Markdown report of orphaned
+  MP3s (Section A, HIGH/MEDIUM/LOW priority) and FLACs with no MP3 derivative (Section B).
+- `tagslut lexicon import` — import Lexicon DJ library track metadata into TAGSLUT_DB.
+  Matches by path, title/artist, or streaming ID. Writes only NULL fields by default
+  (`--prefer-lexicon` to overwrite). Hard rules: `dj_tags_json` is never touched;
+  the `set_role='peak'` profile row is never modified; no new `dj_track_profile` rows created.
+- `tagslut lexicon import-playlists` — import allow-listed Lexicon playlists into
+  `dj_playlist` / `dj_playlist_track`. Enforces skip-list precisely; `fucked` playlist
+  tracks → `dj_admission.status='needs_review'`; `Duplicate Tracks *` → `is_duplicate`
+  flag in notes. Ordinal from Lexicon position is preserved. Idempotent.
+- `tagslut master scan` — register FLACs from `MASTER_LIBRARY` into `asset_file` +
+  `asset_link`. Matches existing identities via ISRC then title/artist; creates stubs
+  for unmatched files. Progress every 1,000 files. Idempotent.
+- `reconcile_log` table DDL and migration 0010 (if not already applied).
+- New test files: `tests/exec/test_mp3_reconcile.py`, `tests/exec/test_master_scan.py`,
+  `tests/dj/test_lexicon_import.py`, `tests/dj/test_lexicon_playlists.py`,
+  `tests/storage/test_reconcile_migration.py` — 58 new tests, all passing.
+
+### Changed
+- `tagslut cli main.py` — registered `lexicon` and `master` command groups.
+
 ## [Unreleased] - 2026-03-15
 
 ### Added

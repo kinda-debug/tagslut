@@ -1,4 +1,8 @@
 $kind: http-request
+description: "Validation step 6b: re-fetches a Beatport track by ID to confirm
+  the resolved track_identity data in the local database matches the current
+  live catalog response. Used to catch drift between cached enrichment data and
+  Beatport's upstream record."
 url: "{{base_url}}/v4/catalog/tracks/{{beatport_test_track_id}}/"
 method: GET
 auth:

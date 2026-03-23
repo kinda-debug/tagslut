@@ -1,4 +1,8 @@
 $kind: http-request
+description: Cross-checks a Beatport-verified ISRC against the TIDAL catalog.
+  Step 5b in the identity verification workflow. Queries the TIDAL tracks API
+  with the verified ISRC to confirm the track exists on TIDAL and to compare
+  metadata for enrichment consistency.
 url: https://api.tidal.com/v1/tracks?isrc={{beatport_verified_isrc}}&countryCode=US
 method: GET
 queryParams:

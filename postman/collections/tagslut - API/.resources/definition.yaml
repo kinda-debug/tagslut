@@ -1,4 +1,8 @@
 $kind: collection
+description: Postman collection for the tagslut music library management system.
+  Covers Beatport API v4 authentication, catalog lookups (tracks, releases,
+  ISRC), full-text search, and authenticated user library access. Used to enrich
+  track metadata, resolve ISRCs, and drive the DJ pipeline ingestion workflow.
 scripts:
   - type: http:beforeRequest
     code: >-

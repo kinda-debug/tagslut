@@ -1,4 +1,8 @@
 $kind: http-request
+description: Fetches the full catalog record for a single Beatport track by its
+  numeric ID. Returns title, artists, BPM, key, genre, release date, label, and
+  ISRC. Used during identity enrichment to populate track_identity metadata in
+  the tagslut v3 database.
 url: "{{base_url}}/v4/catalog/tracks/{{beatport_test_track_id}}/"
 method: GET
 auth:

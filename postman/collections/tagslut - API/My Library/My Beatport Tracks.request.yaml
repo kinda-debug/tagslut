@@ -1,4 +1,8 @@
 $kind: http-request
+description: Fetches the authenticated user's personal Beatport library ("My
+  Beatport") — the tracks they have purchased or saved. Paginated by page and
+  per_page. Used to cross-reference owned tracks against the tagslut library for
+  intake decisions and duplicate detection.
 url: "{{base_url}}/v4/my/beatport/tracks/?page=1&per_page=25"
 method: GET
 queryParams:

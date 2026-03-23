@@ -1,4 +1,8 @@
 $kind: http-request
+description: Looks up a track by the most recently processed ISRC (stored in
+  beatport_last_isrc). Step 5a in the identity verification workflow. Compares
+  the Beatport catalog response for a known ISRC to confirm round-trip data
+  integrity after enrichment.
 url: "{{base_url}}/v4/catalog/tracks/?isrc={{beatport_last_isrc}}"
 method: GET
 queryParams:

@@ -1,4 +1,8 @@
 $kind: http-request
+description: Path-based ISRC store lookup using Basic Auth (client_id +
+  client_secret). Part of Phase 3d testing to compare this endpoint's response
+  shape against the ?isrc= query-param variant. Per OAS spec, this route
+  requires cookie or basic auth only — Bearer tokens are not accepted.
 url: "{{base_url}}/v4/catalog/tracks/store/{{beatport_test_isrc}}/"
 method: GET
 auth:

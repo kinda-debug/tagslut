@@ -1,4 +1,8 @@
 $kind: http-request
+description: Cross-checks a Beatport-verified ISRC against the Spotify catalog.
+  Step 5c in the identity verification workflow. Uses the Spotify Search API
+  with an ISRC filter to confirm catalog presence and retrieve Spotify's track
+  metadata for cross-platform enrichment validation.
 url: https://api.spotify.com/v1/search?q=isrc:{{beatport_verified_isrc}}&type=track
 method: GET
 queryParams:

@@ -1,2 +1,6 @@
 $kind: collection
+description: Endpoints for verifying and cross-referencing track identities
+  between Beatport catalog data and the local tagslut v3 database. Used during
+  Phase 3 testing to validate ISRC resolution accuracy and response shape
+  consistency.
 order: 5000

@@ -1,4 +1,8 @@
 $kind: http-request
+description: "Fetches the track listing for a specific TIDAL album by its album
+  ID. Step 6a in the validation run: resolves a TIDAL album to individual tracks
+  so that each track's ISRC can be extracted and verified against the Beatport
+  catalog in subsequent steps."
 url: https://api.tidal.com/v1/albums/507881809/tracks?countryCode=US
 method: GET
 queryParams:

@@ -22,6 +22,7 @@ V3_SCHEMA_VERSION_CHROMAPRINT = 9
 V3_SCHEMA_VERSION_PROVIDER_UNIQUENESS = 10
 V3_SCHEMA_VERSION_PROVIDER_UNIQUENESS_HARDENING = 11
 V3_SCHEMA_VERSION_INGESTION_PROVENANCE = 12
+V3_SCHEMA_VERSION_CONFIDENCE_TIER_CHECK = 13
 V3_SCHEMA_VERSION_DJ_VALIDATION_STATE = 14
 
 
@@ -666,6 +667,17 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
             V3_SCHEMA_NAME,
             V3_SCHEMA_VERSION_INGESTION_PROVENANCE,
             "0012_ingestion_provenance.py",
+        ),
+    )
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO schema_migrations (schema_name, version, note)
+        VALUES (?, ?, ?)
+        """,
+        (
+            V3_SCHEMA_NAME,
+            V3_SCHEMA_VERSION_CONFIDENCE_TIER_CHECK,
+            "0013_confidence_tier_update.py",
         ),
     )
     conn.execute(

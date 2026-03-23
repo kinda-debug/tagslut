@@ -19,7 +19,7 @@ Current row counts, migration level, confirmed FRESH DB path, confirmed symlink 
 - Migration level:
   - `schema_migrations` latest applied: v3 migration 12 (`0012_ingestion_provenance.py`) as of 2026-03-22
   - Migration 0014 (`0014_dj_validation_state.py`) exists in source but was not reflected in the DB query — verify with `sqlite3 FRESH_DB "SELECT * FROM schema_migrations ORDER BY applied_at DESC LIMIT 5;"`
-  - Migration 0013 (five-tier confidence CHECK) is recorded as included in 0012 per ROADMAP §16
+  - Migration 0013 (five-tier confidence CHECK) is a separate SQLite migration required for upgraded DBs after v3 migration 12
 
 ### 2. Prompt file audit
 

@@ -15,7 +15,7 @@ Update it when tasks complete or priorities shift.
 ```text
 1. Resume/refresh fix (§1)              ← COMPLETE
 2. Ingestion provenance migration (§14) ← COMPLETE (commit bef5931)
-3. Migration 0013 — five-tier CHECK (§16) ← COMPLETE (included in 0012)
+3. Migration 0013 — five-tier CHECK (§16) ← COMPLETE (explicit SQLite migration)
 4. Fresh DB initialization (§10)        ← COMPLETE (db + env + settings + storage tests)
 5. Repo cleanup (§13)                   ← COMPLETE
 6. Phase 1 PR chain (§2)               ← COMPLETE (PRs 9-15, all done)

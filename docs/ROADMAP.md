@@ -105,15 +105,15 @@ PR 12 prompt exists at `.github/prompts/phase1-pr12-identity-merge.prompt.md`.
 
 ---
 
-## 3 — DJ pipeline → **Codex** ▶ ACTIVE FOLLOW-UP
+## 3 — DJ pipeline → **Codex**
 
 Base pipeline work is complete (`eab34d3`, `d52fe27`) and the workflow audit is complete (`16ee5ca`).
-The current stop point is a narrower hardening pass around Stage 2 transcode validation and
-Stage 4 validation-gate behavior.
+The narrower hardening pass around Stage 2 transcode validation and Stage 4 validation-gate
+behavior is now complete.
 
-### 3.1 DJ pipeline hardening
+### 3.1 DJ pipeline hardening ✅ COMPLETE
 
-Prompt: `.github/prompts/dj-pipeline-hardening.prompt.md`
+Prompt: `.github/prompts/dj-pipeline-hardening.prompt.md` (retired; historical only)
 
 ### 3.2 DJ workflow audit ✅ COMPLETE (commit 16ee5ca)
 
@@ -352,7 +352,7 @@ Prompt: `.github/prompts/postman-api-optimize.prompt.md` (status: COMPLETE)
 | `resume-refresh-fix.prompt.md` | Fix `--resume` in `tools/get-intake` | Codex | COMPLETE |
 | `intake-pipeline-hardening.prompt.md` | Intake pipeline 3-fix hardening | Codex | COMPLETE (pre-existing on dev, verified 2026-03-23) |
 | `repo-cleanup.prompt.md` | Archive dead scripts and stale docs | Codex | Ready |
-| `dj-pipeline-hardening.prompt.md` | DJ pipeline discipline | Codex | Blocked (Phase 1) |
+| `dj-pipeline-hardening.prompt.md` | DJ pipeline discipline | Codex | COMPLETE (retired execution prompt, 2026-03-24) |
 | `dj-workflow-audit.prompt.md` | DJ workflow audit | Codex | Blocked (Phase 1) |
 | `lexicon-reconcile.prompt.md` | Lexicon reconcile strategy | Codex | Ready |
 | `open-streams-post-0010.prompt.md` | Write DJ pipeline post | Codex | Ready |

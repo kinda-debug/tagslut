@@ -2,7 +2,7 @@
 
 Covers the five canonical E2E scenarios from the task specification:
 
-  E2E-1: intake → mp3 build (dry-run: FLAC not on disk, verify count reported)
+  E2E-1: intake → mp3 build (dry-run reports pending build count; execute writes file + row)
   E2E-2: existing inventory → mp3 reconcile (full reconcile flow)
   E2E-3: existing MP3 → dj admit / backfill (admit + validate passes)
   E2E-4: dj state → deterministic Rekordbox XML (byte-identical across two emits)
@@ -321,7 +321,7 @@ def test_e2e2_reconcile_skips_already_registered(tmp_path: Path) -> None:
 
 def test_e2e3_backfill_then_validate_passes(tmp_path: Path) -> None:
     """Given mp3_asset rows with no dj_admission rows,
-    backfill creates admissions, dj_track_id_map is populated on first emit,
+    backfill creates admissions, dj_track_id_map is assigned at admission time,
     and validate_dj_library passes with no errors.
     """
     conn = _make_db(tmp_path)

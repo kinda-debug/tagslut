@@ -4,6 +4,22 @@
 
 Report date: March 23, 2026
 
+## Session: 2026-03-23 (pass 3) — Migration 0013/0014 Complete
+
+**Status**: Completed — migrations 0013 and 0014 implemented, tested, and applied.
+
+**What was done**:
+
+1. **Migration 0013** (`0013_confidence_tier_update.py`) now enforces the five-tier `ingestion_confidence` CHECK (`verified`, `corroborated`, `high`, `uncertain`, `legacy`) and the eight-method `ingestion_method` vocabulary including `multi_provider_reconcile`.
+
+2. **Upgraded-DB enforcement gap closed** with an idempotent `track_identity` table recreation pattern that preserves existing rows while recreating indexes and the provenance trigger.
+
+3. **Migration 0014** (`0014_dj_validation_state.py`) added `dj_validation_state` to persist DJ validation audit results for the Stage 4 XML validation gate.
+
+4. **Verification completed**. `poetry run pytest tests/storage/v3/test_migration_0013.py tests/storage/v3/test_migration_runner_v3.py -q` returned `10 passed`. The FRESH DB now has a continuous migration chain `1-14`, accepts `multi_provider_reconcile`, and enforces the five-tier confidence vocabulary.
+
+5. **Root cause resolved**. Migration `0012` added provenance columns but did not enforce the documented CHECK vocabularies. Migration `0013` closes that gap for upgraded SQLite DBs.
+
 ## Session: 2026-03-23 — DJ pipeline contract/help alignment and XML invariant proofs
 
 **Status**: Completed — commits pending.

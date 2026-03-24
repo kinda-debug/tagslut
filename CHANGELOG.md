@@ -37,6 +37,21 @@ Versioning: [Semantic Versioning](https://semver.org/)
 ### Changed
 - `tagslut cli main.py` — registered `lexicon` and `master` command groups.
 
+## [Unreleased] - 2026-03-24
+
+### Changed - DJ Pipeline Discipline + XML Invariants
+- Docs now match the literal 4-stage curated-library pipeline commands (no `--master-root` on `tagslut mp3 build`), and DJ-adjacent docs explicitly point back to `docs/DJ_PIPELINE.md` as the operator source of truth.
+- `tagslut intake --mp3/--dj` is explicitly marked as a legacy convenience shortcut and emits a runtime warning pointing operators to the explicit 4-stage pipeline.
+- `tools/get --dj` help + runtime output are strengthened to an explicit `[LEGACY]` deprecation message with canonical pointers (`docs/DJ_PIPELINE.md`, `tagslut dj --help`).
+- `tagslut/dj/xml_emit.py` is hardened:
+  - deterministic track ordering is stable across initial emits and re-emits (no first-emit reordering drift),
+  - re-emit from identical DB state warns when output is identical to a prior export and fails loudly if bytes change without a DB-state change,
+  - `dj xml patch` requires the prior on-disk XML to exist and match its stored manifest hash before proceeding.
+- `tagslut/dj/admission.py` now assigns stable Rekordbox TrackIDs at Stage 3 admission time (`dj_track_id_map`), making TrackID stability independent of Stage 4.
+
+### Added
+- Migration `0011_harden_dj_xml_invariants.sql`: `dj_validation_state` table plus invariant triggers for immutable `dj_track_id_map` rows and required `dj_export_state` manifests.
+
 ## [Unreleased] - 2026-03-15
 
 ### Added

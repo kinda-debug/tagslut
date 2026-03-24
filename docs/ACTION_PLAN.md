@@ -17,9 +17,10 @@ Current row counts, migration level, confirmed FRESH DB path, confirmed symlink 
   - `reconcile_log`: 27163
 - `track_identity` ingestion distribution (FRESH DB): `provider_api | high | 188`
 - Migration level:
-  - `schema_migrations` latest applied: v3 migration 12 (`0012_ingestion_provenance.py`) as of 2026-03-22
-  - Migration 0014 (`0014_dj_validation_state.py`) exists in source but was not reflected in the DB query — verify with `sqlite3 FRESH_DB "SELECT * FROM schema_migrations ORDER BY applied_at DESC LIMIT 5;"`
-  - Migration 0013 (five-tier confidence CHECK) is a separate SQLite migration required for upgraded DBs after v3 migration 12
+  - `schema_migrations` latest applied: v3 migration 14 (`0014_dj_validation_state.py`) as of 2026-03-24
+  - Migration 0013 (`0013_confidence_tier_update.py`): COMPLETE in the FRESH DB; `track_identity` enforces the five-tier `ingestion_confidence` CHECK and accepts `multi_provider_reconcile`
+  - Migration 0014 (`0014_dj_validation_state.py`): COMPLETE in the FRESH DB; `dj_validation_state` exists
+  - Verification: `poetry run pytest tests/storage/v3/test_migration_0013.py tests/storage/v3/test_migration_runner_v3.py -q` -> `10 passed`
 
 ### 2. Prompt file audit
 

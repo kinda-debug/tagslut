@@ -84,6 +84,7 @@ poetry run tagslut dj validate --db "$TAGSLUT_DB"
 
 Outputs:
 - `dj_admission` rows
+- stable `dj_track_id_map` TrackID assignments (one row per admission; immutable)
 - a `dj_validation_state` audit row keyed by the current DJ DB `state_hash`
 - validated DJ-library state ready for XML export only while that `state_hash` remains current
 
@@ -113,7 +114,7 @@ poetry run tagslut dj xml patch \
 
 Outputs:
 - deterministic Rekordbox XML
-- stable `dj_track_id_map` assignments
+- stable `dj_track_id_map` assignments (reused; no reassignments)
 - `dj_export_state` manifest rows with XML hash plus DB-scope metadata
 - loud failure if no matching passing `dj validate` record exists for the current `state_hash`
 

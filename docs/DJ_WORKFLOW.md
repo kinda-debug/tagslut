@@ -64,13 +64,17 @@ an existing MP3 library, use `mp3 build`:
 ```bash
 poetry run tagslut mp3 build \
   --db "$TAGSLUT_DB" \
-  --master-root "$MASTER_LIBRARY" \
   --dj-root "$DJ_LIBRARY" \
   --execute
 ```
 
 Use `mp3 reconcile` when MP3 files already exist. Use `mp3 build` when the DJ MP3
 layer still needs to be created from canonical masters.
+
+Notes:
+- `mp3 build` discovers masters via DB `asset_file` + `asset_link` rows created during Stage 1.
+- Use `--identity-ids 1,2,3` to scope to a small set. Default is all identities missing verified MP3s.
+- `--dry-run` is the default; pass `--execute` to write files + DB rows.
 
 Transcode safety note:
 
@@ -97,6 +101,10 @@ poetry run tagslut dj admit \
 ```
 
 Writes rows to `dj_admission`. Idempotent: already-admitted tracks are skipped.
+
+Stage 3 also assigns stable Rekordbox TrackIDs:
+- `dj admit` / `dj backfill` ensure a `dj_track_id_map` row exists per admitted `dj_admission`.
+- TrackIDs are immutable and reused across Stage 4 re-emits and patch cycles.
 
 ### Stage 3 — DJ Validation (`dj validate`)
 
@@ -213,7 +221,10 @@ only for legacy ad-hoc intake where non-deterministic wrapper behavior is accept
 To build DJ copies for already-promoted masters outside of a download flow, run:
 
 ```bash
-poetry run tagslut dj backfill --db "$TAGSLUT_DB"
+poetry run tagslut mp3 build --db "$TAGSLUT_DB" --dj-root "$DJ_LIBRARY" --execute
+poetry run tagslut dj backfill --db "$TAGSLUT_DB" --execute
+poetry run tagslut dj validate --db "$TAGSLUT_DB"
+poetry run tagslut dj xml emit --db "$TAGSLUT_DB" --out rekordbox.xml
 ```
 
 ## DJ Library Root

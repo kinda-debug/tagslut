@@ -112,7 +112,7 @@ def _fetch_active_admissions(
         LEFT JOIN dj_track_id_map dmap ON dmap.dj_admission_id = da.id
         LEFT JOIN files f ON f.isrc = ti.isrc
         WHERE da.status = 'admitted'
-        ORDER BY COALESCE(dmap.rekordbox_track_id, 0) ASC, da.id ASC
+        ORDER BY da.id ASC
         """
     ).fetchall()
 
@@ -243,8 +243,18 @@ def _assign_track_ids(
     next_id = 1
 
     # First pass: collect existing IDs so next_id starts above them
+    seen_existing: dict[int, int] = {}
     for da_id, rekordbox_id, *_ in rows:
         if rekordbox_id is not None:
+            rekordbox_id = int(rekordbox_id)
+            prior_da = seen_existing.get(rekordbox_id)
+            if prior_da is not None and prior_da != da_id:
+                raise ValueError(
+                    "dj_track_id_map invariant violation: "
+                    f"TrackID {rekordbox_id} is already associated with dj_admission_id={prior_da} "
+                    f"but was also observed for dj_admission_id={da_id}."
+                )
+            seen_existing[rekordbox_id] = da_id
             assigned[da_id] = rekordbox_id
             next_id = max(next_id, rekordbox_id + 1)
 
@@ -402,13 +412,13 @@ def emit_rekordbox_xml(
     manifest_hash = hashlib.sha256(output_path.read_bytes()).hexdigest()
     prior_rows = conn.execute(
         """
-        SELECT manifest_hash, scope_json
+        SELECT id, manifest_hash, scope_json
         FROM dj_export_state
         WHERE kind = 'rekordbox_xml'
         ORDER BY id DESC
         """
     ).fetchall()
-    for prior_hash, prior_scope_json in prior_rows:
+    for prior_id, prior_hash, prior_scope_json in prior_rows:
         try:
             prior_scope = json.loads(prior_scope_json or "{}")
         except json.JSONDecodeError:
@@ -417,8 +427,13 @@ def emit_rekordbox_xml(
             continue
         if prior_hash != manifest_hash:
             raise ValueError(
-                "Determinism violation: Rekordbox XML changed without a DJ DB state change."
+                "Determinism violation: Rekordbox XML changed without a DJ DB state change.\n"
+                f"(state_hash: {state_hash}; prior_export_id: {prior_id})"
             )
+        _warn_stderr(
+            f"WARNING: Rekordbox XML output is identical to prior export id={prior_id} "
+            f"for the same DJ DB state_hash={state_hash}."
+        )
         break
 
     conn.execute(
@@ -488,16 +503,21 @@ def patch_rekordbox_xml(
 
     prior_id, prior_path, prior_hash = prior
 
-    # Verify prior file integrity if it still exists
+    # Verify prior file integrity (required; patch must not proceed if missing or tampered)
     prior_file = Path(prior_path)
-    if prior_file.exists():
-        current_hash = hashlib.sha256(prior_file.read_bytes()).hexdigest()
-        if current_hash != prior_hash:
-            raise ValueError(
-                f"Prior XML at {prior_path} does not match stored manifest hash. "
-                "The file may have been manually edited. "
-                "Use 'tagslut dj xml emit' for a clean full emit instead."
-            )
+    if not prior_file.exists():
+        raise ValueError(
+            f"Prior XML file not found on disk: {prior_path}\n"
+            "Patch requires verifying the on-disk XML matches its stored manifest hash.\n"
+            "Run 'tagslut dj xml emit' to create a fresh baseline export."
+        )
+    current_hash = hashlib.sha256(prior_file.read_bytes()).hexdigest()
+    if current_hash != prior_hash:
+        raise ValueError(
+            f"Prior XML at {prior_path} does not match stored manifest hash. "
+            "The file may have been manually edited. "
+            "Use 'tagslut dj xml emit' for a clean full emit instead."
+        )
 
     # Delegate to emit (TrackIDs are stable because they're in dj_track_id_map)
     return emit_rekordbox_xml(

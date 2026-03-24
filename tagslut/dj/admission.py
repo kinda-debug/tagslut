@@ -22,6 +22,29 @@ class DjAdmissionError(Exception):
     pass
 
 
+def _ensure_track_id_map(conn: sqlite3.Connection, *, admission_id: int) -> None:
+    """Ensure a stable Rekordbox TrackID exists for an admitted dj_admission row."""
+    existing = conn.execute(
+        "SELECT rekordbox_track_id FROM dj_track_id_map WHERE dj_admission_id = ?",
+        (admission_id,),
+    ).fetchone()
+    if existing is not None:
+        return
+
+    next_id = int(
+        conn.execute(
+            "SELECT COALESCE(MAX(rekordbox_track_id), 0) + 1 FROM dj_track_id_map"
+        ).fetchone()[0]
+    )
+    conn.execute(
+        """
+        INSERT INTO dj_track_id_map (dj_admission_id, rekordbox_track_id, assigned_at)
+        VALUES (?, ?, ?)
+        """,
+        (admission_id, next_id, _now_iso()),
+    )
+
+
 def admit_track(
     conn: sqlite3.Connection,
     *,
@@ -63,6 +86,7 @@ def admit_track(
                 admission_id,
             ),
         )
+        _ensure_track_id_map(conn, admission_id=admission_id)
         return admission_id
 
     cur = conn.execute(
@@ -78,7 +102,9 @@ def admit_track(
             json.dumps(notes) if notes else None,
         ),
     )
-    return cur.lastrowid  # type: ignore[return-value]
+    admission_id = int(cur.lastrowid)  # type: ignore[arg-type]
+    _ensure_track_id_map(conn, admission_id=admission_id)
+    return admission_id
 
 
 def backfill_admissions(conn: sqlite3.Connection) -> tuple[int, int]:

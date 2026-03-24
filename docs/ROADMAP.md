@@ -307,25 +307,27 @@ docstring restored. No behaviour changes. No further work needed.
 
 ---
 
-## 16 — Migration 0013: five-tier confidence CHECK → **Codex** ⛔ PREREQUISITE for §10
+## 16 — Migration 0013: five-tier confidence CHECK: COMPLETE (2026-03-24)
 
 Spec: `docs/MULTI_PROVIDER_ID_POLICY.md` §schema-implication
 
-Update `ingestion_confidence` CHECK constraint to allow five values:
+This landed as an explicit SQLite migration in
+`tagslut/storage/v3/migrations/0013_confidence_tier_update.py`; it was not included in
+migration `0012_ingestion_provenance.py`.
+
+`ingestion_confidence` CHECK constraint allows five values:
   `verified` | `corroborated` | `high` | `uncertain` | `legacy`
 
-Add `'multi_provider_reconcile'` to `ingestion_method` controlled vocabulary.
+`ingestion_method` controlled vocabulary includes `'multi_provider_reconcile'`.
 
-Must land after migration 0012 (§14) and before fresh DB initialization (§10).
+Verification:
 
-Codex task:
+1. `poetry run pytest tests/storage/v3/test_migration_0013.py tests/storage/v3/test_migration_runner_v3.py -q` -> `10 passed`
+2. FRESH DB migration chain `1-14` is complete
+3. `dj_validation_state` exists and `track_identity` enforces the documented SQLite CHECK vocabulary
 
-1. Write `tagslut/storage/v3/migrations/0013_confidence_tier_update.py`
-2. Update CHECK constraint in `tagslut/storage/v3/schema.py`
-3. Update `supabase/migrations/` with corresponding Postgres migration
-4. Update `docs/DB_V3_SCHEMA.md` — confidence and method vocabulary tables
-
-Commit: `feat(schema): five-tier ingestion_confidence CHECK + multi_provider_reconcile method`
+Root cause: migration `0012` added provenance columns but did not enforce the documented
+CHECK constraints. Migration `0013` closes that gap for upgraded SQLite DBs.
 
 ---
 

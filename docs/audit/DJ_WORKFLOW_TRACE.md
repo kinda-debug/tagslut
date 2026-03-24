@@ -88,7 +88,6 @@ poetry run tagslut intake <url>
 ```bash
 poetry run tagslut mp3 build \
   --db "$TAGSLUT_DB" \
-  --master-root "$MASTER_LIBRARY" \
   --dj-root "$DJ_LIBRARY" \
   --execute
 ```

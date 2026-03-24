@@ -83,6 +83,11 @@ def test_admit_track_creates_row(tmp_path: Path) -> None:
     row = conn.execute("SELECT id, status FROM dj_admission WHERE id = ?", (admission_id,)).fetchone()
     assert row is not None
     assert row[1] == "admitted"
+    track_row = conn.execute(
+        "SELECT rekordbox_track_id FROM dj_track_id_map WHERE dj_admission_id = ?",
+        (admission_id,),
+    ).fetchone()
+    assert track_row is not None
 
 
 def test_admit_track_raises_if_already_active(tmp_path: Path) -> None:
@@ -135,6 +140,8 @@ def test_backfill_admits_unlinked_mp3_assets(tmp_path: Path) -> None:
     assert skipped == 0
     count = conn.execute("SELECT COUNT(*) FROM dj_admission WHERE status = 'admitted'").fetchone()[0]
     assert count == 1
+    map_count = conn.execute("SELECT COUNT(*) FROM dj_track_id_map").fetchone()[0]
+    assert map_count == 1
 
 
 def test_backfill_skips_already_active(tmp_path: Path) -> None:

@@ -43,14 +43,21 @@ OPERATING RULES
 - Obey AGENT.md as primary rules. CLAUDE.md for Claude-specific behavior.
 - Never run destructive git commands (no force-push, no rebase, no history rewriting).
 - Keep all edits small and reviewable. No drive-by refactors.
+- Work only in the narrowest relevant scope. Do not scan the whole repo.
+- Do not touch artifacts, databases, generated files, caches, exports, or unrelated paths.
 - If ambiguous (e.g. DJ root path, MP3 root location), ask before guessing.
 - Prefer updating docs and tests before touching working code.
 
 ═══════════════════════════════════════════════════════
-TASK 1: Audit and triage every Markdown file in the repo
+TASK 1: Audit and triage DJ-related docs only (no repo-wide scans)
 ═══════════════════════════════════════════════════════
 
-Scan all *.md files across the entire repo. For each file, classify it as one of:
+Do NOT scan all *.md files across the repo.
+Limit doc discovery to the files explicitly listed in the CONTEXT section above,
+plus any additional Markdown files that are directly referenced (linked) by those
+context docs and are clearly about DJ/MP3/Rekordbox.
+
+For each in-scope Markdown file you open, classify it as one of:
 
   ESSENTIAL   — actively describes current behavior, workflow, or design.
                 Must be updated to reflect the 4-stage pipeline if it mentions DJ/MP3/Rekordbox.
@@ -218,4 +225,3 @@ For each task, produce:
 After all tasks are complete, produce a single CHANGELOG.md entry
 summarizing the full set of changes as if writing for a future contributor
 who has never seen the audit docs.
-

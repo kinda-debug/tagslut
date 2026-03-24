@@ -53,7 +53,8 @@ usage() {
     echo "  --backfill: download missing + register + enrich (DJ tags always included) + promote"
     echo ""
     echo "Common high-level options:"
-    echo "  --dj                 [LEGACY] --dj is deprecated. Use the 4-stage pipeline. See: tagslut dj --help"
+    echo "  --dj                 [LEGACY] This flag is deprecated. Use the 4-stage pipeline instead."
+    echo "                       See docs/DJ_PIPELINE.md or run: tagslut dj --help"
     echo "                       Workflow: tagslut intake -> tagslut mp3 build|reconcile -> tagslut dj backfill -> tagslut dj validate -> tagslut dj xml emit|patch"
     echo "  --no-precheck        skip duplicate-quality precheck"
     echo "  -f, --force          re-download even if already exists (provider-specific)"
@@ -72,6 +73,16 @@ usage() {
     echo "  tools/get-sync <beatport-url>    deprecated compatibility alias"
     echo "Use tools/get-help for the tiny version of this help."
     exit 1
+}
+
+DJ_LEGACY_WARNED=0
+warn_legacy_dj() {
+    if [[ "${DJ_LEGACY_WARNED:-0}" -eq 1 ]]; then
+        return 0
+    fi
+    echo "[LEGACY] --dj is deprecated. Use the explicit 4-stage pipeline instead." >&2
+    echo "See docs/DJ_PIPELINE.md or run: tagslut dj --help" >&2
+    DJ_LEGACY_WARNED=1
 }
 
 if [[ $# -lt 1 ]]; then
@@ -131,6 +142,13 @@ if [[ ${#PRE_URL_ARGS[@]} -gt 0 ]]; then
     set -- "${PRE_URL_ARGS[@]}" "$@"
 fi
 
+for arg in "$@"; do
+    if [[ "$arg" == "--dj" ]]; then
+        warn_legacy_dj
+        break
+    fi
+done
+
 INTAKE_CMD=()
 
 build_intake_cmd() {
@@ -160,7 +178,7 @@ build_intake_cmd() {
                 shift
                 ;;
             --dj)
-                echo "[LEGACY] --dj is deprecated. Use the 4-stage pipeline. See: tagslut dj --help" >&2
+                warn_legacy_dj
                 intake_args+=(--dj)
                 shift
                 ;;

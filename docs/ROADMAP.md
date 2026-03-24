@@ -366,7 +366,7 @@ Author in Claude.ai before delegating to Codex.
 ## 18 — Credential management consolidation → **Claude Code + Codex**
 
 Audit: `docs/CREDENTIAL_MANAGEMENT_AUDIT.md` (see full audit report)
-Target doc: `docs/CREDENTIAL_MANAGEMENT.md` (to be written)
+Target doc: `docs/CREDENTIAL_MANAGEMENT.md`
 
 ### Problem summary
 
@@ -379,9 +379,10 @@ Two credential systems operating in parallel with undocumented precedence:
 - **System C** (Postman): environment vars in Postman collection — integration
   testing only, not a source of truth
 
-Critical issue: `beatport.py` checks `os.getenv("BEATPORT_ACCESS_TOKEN")` FIRST,
-meaning a stale env var silently wins over a fresh token in tokens.json.
-No operator documentation of this precedence exists.
+Critical issue addressed in Phase 1: `beatport.py` had checked
+`os.getenv("BEATPORT_ACCESS_TOKEN")` first, meaning a stale env var could silently
+win over a fresh token in tokens.json. Operator documentation now exists in
+`docs/CREDENTIAL_MANAGEMENT.md`.
 
 ### Not on the critical path
 
@@ -389,13 +390,15 @@ This does not block migrations 0012/0013, fresh DB init, or Phase 1 PRs.
 The intake pipeline is functional with the existing setup.
 Do not start this until the migration chain is complete.
 
-### Phase 1 — Document + fix precedence → **Codex** (after §14 + §16 land)
+### Phase 1 — Document + fix precedence ✅ COMPLETE
 
-1. Write `docs/CREDENTIAL_MANAGEMENT.md` — tokens.json as single source of truth,
-   per-provider setup instructions, Postman sync note
-2. Fix precedence in `beatport.py` — tokens.json first, env var fallback with warning log
-3. Update `.env.example` to point at `~/.config/tagslut/tokens.json`
-4. Add `tagslut token-get <provider>` CLI command for shell script use
+Delivered:
+
+- `docs/CREDENTIAL_MANAGEMENT.md` written with `tokens.json` as the operator source of truth
+- Beatport provider path now prefers `TokenManager` / `tokens.json` before `BEATPORT_ACCESS_TOKEN`
+- `BEATPORT_ACCESS_TOKEN` remains fallback-only in Phase 1 and warns when used in the active provider path
+- `.env.example` now points operators to `~/.config/tagslut/tokens.json`
+- `tagslut token-get <provider>` added as the shell-facing token lookup command
 
 Commit: `feat(auth): establish tokens.json precedence, add token-get command`
 

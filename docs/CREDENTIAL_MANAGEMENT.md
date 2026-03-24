@@ -1,48 +1,119 @@
 # Credential Management
 
-tagslut stores provider credentials in:
+## Purpose
 
-`~/.config/tagslut/tokens.json`
+This document defines the Phase 1 credential source of truth for `tagslut` and the
+current operator workflow for provider tokens.
 
-Initialize the file with:
+## Source Of Truth
 
-`tagslut auth init`
+Primary source of truth: `TokenManager` backed by `~/.config/tagslut/tokens.json`
 
-Provider setup:
+- File location: `~/.config/tagslut/tokens.json`
+- Create or inspect it with `poetry run tagslut auth init` and `poetry run tagslut auth status`
+- Store active provider tokens here first
+- Treat shell environment variables as fallback-only where they still exist
 
-- TIDAL: run `tagslut auth login tidal`
-  - Uses device flow
-  - Refresh token is stored in `tokens.json`
-  - Access tokens auto-refresh when needed
+`tokens.json` wins over legacy environment variables in the active Beatport provider path.
 
-- Beatport: run `tagslut auth login beatport`
-  - Paste the JWT from `dj.beatport.com` DevTools
-  - Token lifetime is typically about 1 hour
-  - No automatic refresh for browser JWT tokens
-  - Re-paste a fresh token when expired
+## Current Provider Scope
 
-Check current auth state with:
+Current authenticated provider flows visible in repo code are:
 
-`tagslut auth status`
+- Beatport
+- Tidal
 
-Shell scripts should obtain tokens with:
+This Phase 1 patch does not introduce new provider auth flows beyond those current surfaces.
 
-`tagslut auth token-get beatport`
+## Provider Setup
 
-Precedence rule:
+### Beatport
 
-- `tokens.json` is the source of truth
-- Environment variables are fallback only
-- If an environment variable is used, a warning is logged
-- Do not keep `BEATPORT_ACCESS_TOKEN` set permanently in your shell profile
+Use `tokens.json` first.
 
-Postman:
+1. Run `poetry run tagslut auth init` once if `~/.config/tagslut/tokens.json` does not exist.
+2. Run `poetry run tagslut auth login beatport`.
+3. Paste the current Beatport bearer token from `dj.beatport.com` DevTools when prompted.
+4. Verify with `poetry run tagslut auth status`.
 
-- Postman environment variables are for API testing only
-- They are not a source of truth
-- Copy the token from `tokens.json` manually when needed for Postman
+Shell usage:
 
-Rotating a Beatport token:
+```bash
+poetry run tagslut token-get beatport
+```
 
-- Run `tagslut auth login beatport` and paste a new token
-- Or edit `~/.config/tagslut/tokens.json` directly
+Fallback behavior:
+
+- `BEATPORT_ACCESS_TOKEN` still works in Phase 1 only as a fallback
+- if that fallback is used in the active Beatport provider path, a warning is logged
+- stale `BEATPORT_ACCESS_TOKEN` values can still confuse shell sessions and Postman if you keep exporting them
+
+### Tidal
+
+Use `tokens.json`.
+
+1. Run `poetry run tagslut auth init` once if needed.
+2. Run `poetry run tagslut auth login tidal`.
+3. Complete the browser/device flow.
+4. Verify with `poetry run tagslut auth status`.
+
+Shell usage:
+
+```bash
+poetry run tagslut token-get tidal
+```
+
+Tidal refresh remains managed through the existing `TokenManager` refresh path.
+
+## Precedence Rules
+
+Primary:
+
+- `TokenManager`
+- `~/.config/tagslut/tokens.json`
+
+Fallback:
+
+- environment variables only where still supported by the current code path
+- in this Phase 1 patch, `BEATPORT_ACCESS_TOKEN` remains a fallback for Beatport search bearer auth
+
+If `tokens.json` already has a usable Beatport token, that token is used before `BEATPORT_ACCESS_TOKEN`.
+
+## Postman
+
+Postman is an integration and testing consumer only. It is not the credential source of truth.
+
+- keep the authoritative token in `~/.config/tagslut/tokens.json`
+- sync Postman manually from `tagslut token-get <provider>` when needed
+- do not treat Postman environment values as canonical
+
+## Shell And Script Usage
+
+Use the top-level shell-oriented command:
+
+```bash
+poetry run tagslut token-get beatport
+poetry run tagslut token-get tidal
+```
+
+Behavior:
+
+- success: prints only the token value on stdout
+- missing token: exits non-zero and prints the error to stderr
+
+The existing `poetry run tagslut auth token-get <provider>` command remains available, but
+`poetry run tagslut token-get <provider>` is the Phase 1 shell entrypoint.
+
+## Operator Notes
+
+- If you still export old credential env vars in your shell profile, remove or update them.
+- After this patch, the active Beatport provider path prefers `tokens.json`, but legacy env vars
+  can still affect older scripts that have not yet been migrated.
+- Keep `tokens.json` current, then pull tokens into shell consumers explicitly with `token-get`.
+
+## Current Limitations
+
+- Phase 1 does not migrate legacy shell scripts off env vars.
+- Beatport token refresh is still not implemented here.
+- Postman sync remains manual.
+- This patch does not redesign Qobuz, Spotify, or other non-active auth surfaces.

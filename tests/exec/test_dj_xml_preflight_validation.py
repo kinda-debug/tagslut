@@ -223,3 +223,56 @@ def test_emit_fails_when_admission_added_after_validate(tmp_path: Path) -> None:
             output_path=tmp_path / "rekordbox.xml",
             skip_validation=False,
         )
+
+
+def test_emit_blocks_bad_mp3_status_even_if_validation_state_passed(tmp_path: Path) -> None:
+    conn = _make_db()
+    admission_id = _setup_admitted_track(conn, tmp_path, suffix="bad_status")
+
+    mp3_asset_id = conn.execute(
+        "SELECT mp3_asset_id FROM dj_admission WHERE id = ?",
+        (admission_id,),
+    ).fetchone()[0]
+    conn.execute(
+        "UPDATE mp3_asset SET status = 'unverified' WHERE id = ?",
+        (mp3_asset_id,),
+    )
+    conn.commit()
+
+    _record_pass_for_current_state(conn)
+
+    with pytest.raises(ValueError, match=r"(?s)Pre-emit validation failed:.*BAD_MP3_STATUS"):
+        emit_rekordbox_xml(
+            conn,
+            output_path=tmp_path / "rekordbox.xml",
+            skip_validation=False,
+        )
+
+
+def test_emit_blocks_duplicate_mp3_path_even_if_validation_state_passed(tmp_path: Path) -> None:
+    conn = _make_db()
+    admission_id = _setup_admitted_track(conn, tmp_path, suffix="dup_1")
+
+    mp3_asset_id = conn.execute(
+        "SELECT mp3_asset_id FROM dj_admission WHERE id = ?",
+        (admission_id,),
+    ).fetchone()[0]
+
+    identity_id = _insert_identity(
+        conn,
+        title="Title dup_2",
+        artist="Artist dup_2",
+        isrc="ISRC-PREFLIGHT-dup_2",
+    )
+    _insert_asset_file(conn, path="/lib/track_dup_2.flac")
+    admit_track(conn, identity_id=identity_id, mp3_asset_id=mp3_asset_id)
+    conn.commit()
+
+    _record_pass_for_current_state(conn)
+
+    with pytest.raises(ValueError, match=r"(?s)Pre-emit validation failed:.*DUPLICATE_MP3_PATH"):
+        emit_rekordbox_xml(
+            conn,
+            output_path=tmp_path / "rekordbox.xml",
+            skip_validation=False,
+        )

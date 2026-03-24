@@ -295,7 +295,7 @@ def _run_inline_validation(conn: sqlite3.Connection) -> None:
 
     report = validate_dj_library(conn)
     blocking = [i for i in report.issues if i.kind in (
-        "MISSING_MP3_FILE", "DUPLICATE_MP3_PATH", "MISSING_METADATA"
+        "BAD_MP3_STATUS", "MISSING_MP3_FILE", "DUPLICATE_MP3_PATH", "MISSING_METADATA"
     )]
     if blocking:
         partial = DjValidationReport(issues=blocking)

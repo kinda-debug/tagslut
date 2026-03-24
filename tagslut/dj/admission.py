@@ -201,7 +201,9 @@ def validate_dj_library(conn: sqlite3.Connection) -> DjValidationReport:
         WHERE da.status = 'admitted'
         """
     ).fetchall()
+    mp3_paths: dict[str, list[tuple[int, int, int]]] = {}
     for da_id, identity_id, ma_id, mp3_path, mp3_status in rows:
+        mp3_paths.setdefault(str(mp3_path), []).append((int(da_id), int(ma_id), int(identity_id)))
         if mp3_status != "verified":
             report.add(
                 "BAD_MP3_STATUS",
@@ -218,6 +220,19 @@ def validate_dj_library(conn: sqlite3.Connection) -> DjValidationReport:
                 mp3_asset_id=ma_id,
                 dj_admission_id=da_id,
             )
+
+    # 1b. MP3 path must not be shared across admitted admissions.
+    for mp3_path, refs in mp3_paths.items():
+        if len(refs) < 2:
+            continue
+        admission_ids = sorted({da_id for da_id, _ma_id, _identity_id in refs})
+        mp3_asset_ids = sorted({ma_id for _da_id, ma_id, _identity_id in refs})
+        identity_ids = sorted({identity_id for _da_id, _ma_id, identity_id in refs})
+        report.add(
+            "DUPLICATE_MP3_PATH",
+            "Multiple admitted tracks reference the same MP3 path "
+            f"({mp3_path}); dj_admission_ids={admission_ids}; mp3_asset_ids={mp3_asset_ids}; identity_ids={identity_ids}",
+        )
 
     # 2. Playlist members must be admitted admissions
     orphan_rows = conn.execute(

@@ -47,6 +47,28 @@ def test_auth_token_get_prints_only_access_token(monkeypatch) -> None:
     assert result.output == "abc123token\n"
 
 
+def test_top_level_token_get_prints_only_access_token(monkeypatch) -> None:
+    token = TokenInfo(
+        access_token="top-level-token",
+        expires_at=4102444800.0,
+    )
+
+    monkeypatch.setattr(
+        "tagslut.metadata.auth.TokenManager",
+        lambda path=None: _FakeTokenManager(token),
+    )
+    monkeypatch.setattr(
+        "tagslut.metadata.auth.DEFAULT_TOKENS_PATH",
+        Path("/tmp/tokens.json"),
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["token-get", "beatport"])
+
+    assert result.exit_code == 0
+    assert result.output == "top-level-token\n"
+
+
 def test_auth_token_get_exits_1_when_token_missing(monkeypatch) -> None:
     monkeypatch.setattr(
         "tagslut.metadata.auth.TokenManager",

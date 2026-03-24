@@ -1,3 +1,9 @@
+RETIRED EXECUTION PROMPT
+
+Status: COMPLETE as of 2026-03-24.
+Do not use this file as active execution input. Preserve it only as historical context for the
+completed §3.1 DJ pipeline hardening work.
+
 You are an expert Python and data-modeling engineer working in the tagslut repository.
 
 Goal:

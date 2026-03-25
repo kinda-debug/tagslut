@@ -246,6 +246,11 @@ def compute_cohort_health(
     files_has_is_dj_material = _column_exists(conn, "files", "is_dj_material")
     files_has_dj_flag = _column_exists(conn, "files", "dj_flag")
     files_has_dj_pool_path = _column_exists(conn, "files", "dj_pool_path")
+    dj_pool_path_condition = (
+        "(dj_pool_path IS NOT NULL AND TRIM(dj_pool_path) <> '')"
+        if files_has_dj_pool_path
+        else "0"
+    )
 
     flagged_row = conn.execute(
         f"""
@@ -254,7 +259,7 @@ def compute_cohort_health(
             AS is_dj_material_count,
           SUM(CASE WHEN {'dj_flag = 1' if files_has_dj_flag else '0'} THEN 1 ELSE 0 END)
             AS dj_flag_count,
-          SUM(CASE WHEN {'(dj_pool_path IS NOT NULL AND TRIM(dj_pool_path) <> \'\')' if files_has_dj_pool_path else '0'} THEN 1 ELSE 0 END)
+                    SUM(CASE WHEN {dj_pool_path_condition} THEN 1 ELSE 0 END)
             AS dj_pool_path_count,
           SUM(CASE WHEN {cohort_definition} THEN 1 ELSE 0 END)
             AS flagged_union_count

@@ -331,26 +331,35 @@ class TidalProvider(AbstractProvider):
     def fetch_by_id(self, track_id: str) -> Optional[ProviderTrack]:
         return self._fetch_track_provider_track(track_id, confidence=MatchConfidence.EXACT)
 
-    # Transport: v2 JSON:API — uses filter[isrc] on GET /tracks. ISRC-capable.
+    # Transport: v2 JSON:API — uses filter[isrc] on GET /tracks. Follows next-link pagination up to limit.
     def search_by_isrc(self, isrc: str, limit: int = 5) -> List[ProviderTrack]:
-        url = f"{self.BASE_URL}/tracks"
-        params = {
+        next_url: Optional[str] = f"{self.BASE_URL}/tracks"
+        params: Optional[Dict[str, Any]] = {
             "filter[isrc]": (isrc or "").strip(),
             "limit": min(int(limit), 50),
             "include": ["albums", "artists"],
         }
-        payload = self._request_json_document(url, params=params, failure_context=f"isrc {isrc}")
-        if payload is None:
-            return []
-        included_index = self._build_included_index(payload)
         results: List[ProviderTrack] = []
-        for item in self._extract_data_items(payload):
-            track = self._normalize_track(item, included_index)
-            if track is None:
-                continue
-            if track.isrc and track.isrc.strip().upper() == (isrc or "").strip().upper():
-                track.match_confidence = MatchConfidence.EXACT
-                results.append(track)
+        while next_url and len(results) < limit:
+            payload = self._request_json_document(
+                next_url,
+                params=params,
+                failure_context=f"isrc {isrc}",
+            )
+            if payload is None:
+                break
+            included_index = self._build_included_index(payload)
+            for item in self._extract_data_items(payload):
+                if len(results) >= limit:
+                    break
+                track = self._normalize_track(item, included_index)
+                if track is None:
+                    continue
+                if track.isrc and track.isrc.strip().upper() == (isrc or "").strip().upper():
+                    track.match_confidence = MatchConfidence.EXACT
+                    results.append(track)
+            next_url = self._resolve_next_url(payload)
+            params = None  # params only on first request; next_url already encodes them
         return results[:limit]
 
     # Transport: v2 JSON:API — text search via searchResults endpoint. No ISRC filter.
@@ -658,4 +667,3 @@ class TidalProvider(AbstractProvider):
             stats.playlist_id = playlist_title
 
         return seed_rows, stats
-

@@ -100,7 +100,7 @@ def _make_upgrade_db(path: Path, migrations_dir: Path) -> None:
         conn.execute(
             """
             DELETE FROM schema_migrations
-            WHERE schema_name = 'v3' AND version IN (10, 11, 12, 14)
+            WHERE schema_name = 'v3' AND version IN (10, 11, 12, 13, 14)
             """
         )
         conn.execute("DROP TABLE IF EXISTS dj_validation_state")
@@ -119,6 +119,7 @@ def _make_upgrade_db(path: Path, migrations_dir: Path) -> None:
         "0010_track_identity_provider_uniqueness.py",
         "0011_track_identity_provider_uniqueness_hardening.py",
         "0012_ingestion_provenance.py",
+        "0013_confidence_tier_update.py",
         "0014_dj_validation_state.py",
     ]
 
@@ -133,6 +134,7 @@ def test_fresh_create_schema_v3_matches_v11_upgrade_path_for_effective_schema(
         "0010_track_identity_provider_uniqueness.py",
         "0011_track_identity_provider_uniqueness_hardening.py",
         "0012_ingestion_provenance.py",
+        "0013_confidence_tier_update.py",
         "0014_dj_validation_state.py",
     ):
         shutil.copy2(source_dir / filename, migrations_dir / filename)

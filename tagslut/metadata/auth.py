@@ -42,13 +42,14 @@ def _get_tidal_credentials() -> Tuple[str, str]:
     """
     Get Tidal client credentials.
 
-    These are PUBLIC credentials from the tiddl project, embedded in the official
-    Tidal desktop app. They are NOT secrets and are safe to include in source.
+    These are PUBLIC credentials from the official Tidal Android/mobile app,
+    widely used by open-source projects (tidal-dl, orpheus, tiddl, etc.).
+    They are NOT secrets and are safe to include in source.
     Override via TIDAL_CLIENT_ID and TIDAL_CLIENT_SECRET env vars if needed.
     """
-    # Default: base64-encoded public credentials from tiddl/Tidal desktop app
-    default_encoded = "ZlgySnhkbW50WldLMGl4VDsxTm45QWZEQWp4cmdKRkpiS05XTGVBeUtHVkdtSU51WFBQTEhWWEF2eEFnPQ=="
-    default_id, default_secret = base64.b64decode(default_encoded).decode().split(";")
+    # Default: Tidal Android app public credentials (well-known, widely used)
+    default_id = "zU4XHVVkc2tDPo4t"
+    default_secret = "VJKhDFqJPqvsPVNBV6ukXTJmVvxvvbssk55ZTPOrs"
 
     client_id = os.getenv("TIDAL_CLIENT_ID", default_id)
     client_secret = os.getenv("TIDAL_CLIENT_SECRET", default_secret)

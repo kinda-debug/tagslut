@@ -1,12 +1,13 @@
 $kind: http-request
 description: Cross-checks a Beatport-verified ISRC against the TIDAL catalog.
-  Step 5b in the identity verification workflow. Queries the TIDAL tracks API
+  Step 5b in the identity verification workflow. Queries the TIDAL v2 tracks API
   with the verified ISRC to confirm the track exists on TIDAL and to compare
-  metadata for enrichment consistency.
-url: https://api.tidal.com/v1/tracks?isrc={{beatport_verified_isrc}}&countryCode=US
+  metadata for enrichment consistency. Uses JSON:API response shape
+  (openapi.tidal.com/v2) — track fields are under data[].attributes.
+url: https://openapi.tidal.com/v2/tracks?filter[isrc]={{beatport_verified_isrc}}&countryCode=US
 method: GET
 queryParams:
-  isrc: "{{beatport_verified_isrc}}"
+  filter[isrc]: "{{beatport_verified_isrc}}"
   countryCode: US
 auth:
   type: bearer
@@ -27,25 +28,30 @@ scripts:
       }
 
 
-      var json  = pm.response.json();
+      if (!pm.environment.get('tidal_access_token')) {
+          console.warn('[5b] WARNING: tidal_access_token is empty — request may have used no auth.');
+      }
 
-      var items = json.items || (Array.isArray(json) ? json : []);
+
+      // TIDAL v2 JSON:API: resources are in data[], not items[]
+      var json = pm.response.json();
+      var data = json.data || [];
 
 
-      if (!items.length) {
+      if (!data.length) {
           console.log('[5b] WARNING: TIDAL returned 0 results for ISRC ' +
               pm.environment.get('beatport_verified_isrc'));
           return;
       }
 
 
-      var tidalIsrc    = items[0].isrc;
-
+      var track        = data[0];
+      var attrs        = track.attributes || {};
+      var tidalIsrc    = attrs.isrc;
       var beatportIsrc = pm.environment.get('beatport_verified_isrc');
 
 
       console.log('[5b] beatport_isrc = ' + beatportIsrc);
-
       console.log('[5b] tidal_isrc    = ' + tidalIsrc);
 
 
@@ -57,23 +63,19 @@ scripts:
       }
 
 
-      // Log extra TIDAL fields useful for provenance enrichment
-
-      var t = items[0];
-
-      var extras = ['id', 'title', 'duration', 'explicit', 'audioQuality',
-      'version'];
-
+      // v2 enrichment fields — all under attributes; id is resource-level
+      // audioQuality is NOT in v2 TracksAttributes; use mediaTags for quality tier
+      var bonusV2 = ['bpm', 'key', 'keyScale', 'mediaTags', 'popularity',
+                     'version', 'duration', 'explicit', 'toneTags', 'title'];
       var found = [];
-
-      extras.forEach(function(f) {
-          if (t[f] !== null && t[f] !== undefined) {
-              found.push(f + '=' + JSON.stringify(t[f]).substring(0, 40));
+      bonusV2.forEach(function(f) {
+          if (attrs[f] !== null && attrs[f] !== undefined) {
+              found.push(f + '=' + JSON.stringify(attrs[f]).substring(0, 40));
           }
       });
-
+      if (track.id) found.push('id=' + track.id);
       if (found.length) {
-          console.log('[5b] TIDAL enrichment fields: ' + found.join(', '));
+          console.log('[5b] TIDAL v2 enrichment fields: ' + found.join(', '));
       }
     language: text/javascript
 order: 2000

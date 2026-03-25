@@ -2,10 +2,12 @@ $kind: http-request
 description: "Fetches the track listing for a specific TIDAL album by its album
   ID. Step 6a in the validation run: resolves a TIDAL album to individual tracks
   so that each track's ISRC can be extracted and verified against the Beatport
-  catalog in subsequent steps."
-url: https://api.tidal.com/v1/albums/507881809/tracks?countryCode=US
+  catalog in subsequent steps. Uses TIDAL v2 JSON:API (openapi.tidal.com/v2)
+  with include=items to sideload tracks into the included[] array."
+url: https://openapi.tidal.com/v2/albums/507881809?include=items&countryCode=US
 method: GET
 queryParams:
+  include: items
   countryCode: US
 auth:
   type: bearer
@@ -25,46 +27,42 @@ scripts:
       }
 
 
-      var json  = pm.response.json();
+      // TIDAL v2 JSON:API: included tracks are sideloaded into included[], not json.items[]
+      var json     = pm.response.json();
+      var included = json.included || [];
 
-      var items = json.items || (Array.isArray(json) ? json : []);
+      var tracks = included.filter(function(r) { return r.type === 'tracks'; });
 
 
-      if (!items.length) {
-          console.log('[6a] WARNING: album 507881809 returned 0 tracks.');
+      if (!tracks.length) {
+          console.log('[6a] WARNING: album 507881809 returned 0 included tracks.' +
+              ' Verify include=items is supported for this album.');
           return;
       }
 
 
-      var track = items[0];
-
-      var isrc  = track.isrc;
-
-      var tid   = track.id;
+      var track = tracks[0];
+      var attrs = track.attributes || {};
+      var isrc  = attrs.isrc;
+      var tid   = track.id;  // resource-level id, not in attributes
 
 
       if (!isrc) {
-          console.log('[6a] WARNING: first track has no ISRC field. Keys: ' +
-              Object.keys(track).join(', '));
+          console.log('[6a] WARNING: first track has no ISRC in attributes. Keys: ' +
+              Object.keys(attrs).join(', '));
           return;
       }
 
 
-      pm.environment.set('beatport_test_isrc',   isrc);
-
-      pm.environment.set('tidal_seed_track_id',  String(tid));
-
-      pm.environment.set('tidal_seed_isrc',      isrc);
+      pm.environment.set('beatport_test_isrc',  isrc);
+      pm.environment.set('tidal_seed_track_id', String(tid));
+      pm.environment.set('tidal_seed_isrc',     isrc);
 
 
-      console.log('[6a] Seed track: "' + (track.title || track.name || '?') +
-          '" by ' + (track.artist && track.artist.name ? track.artist.name : '?'));
+      console.log('[6a] Seed track: "' + (attrs.title || '?') + '"');
       console.log('[6a] tidal_track_id        = ' + tid);
-
       console.log('[6a] beatport_test_isrc    = ' + isrc);
-
       console.log('[6a] tidal_seed_isrc       = ' + isrc);
-
-      console.log('[6a] Total tracks in album : ' + items.length);
+      console.log('[6a] Total included tracks : ' + tracks.length);
     language: text/javascript
 order: 1000

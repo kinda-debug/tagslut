@@ -1,3 +1,21 @@
+"""
+V3 SQLite migration runner.
+
+Tracks applied migrations by numeric version in the `schema_migrations`
+table under schema_name='v3'. Skips files whose names start with "_".
+Runs PRAGMA foreign_key_check + integrity_check after each apply batch.
+
+Python migration contract: module must export both:
+  - `VERSION: int`  (numeric version, must be > current schema version)
+  - `up(conn: sqlite3.Connection) -> None`
+
+Does NOT handle ADD COLUMN IF NOT EXISTS — write standard ALTER TABLE.
+Accepts a live sqlite3.Connection in addition to a db path.
+
+See also: tagslut/storage/migration_runner.py (root runner, name-based tracking)
+See also: tagslut/storage/base_migration_runner.py (divergence documentation)
+"""
+
 from __future__ import annotations
 
 import importlib.util
@@ -5,9 +23,12 @@ import re
 import sqlite3
 from pathlib import Path
 from types import ModuleType
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
-from tagslut.storage.v3.db import open_db_v3
+if TYPE_CHECKING:
+    def open_db_v3(db_path: str | Path) -> sqlite3.Connection: ...
+else:
+    from tagslut.storage.v3.db import open_db_v3
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
 _VERSION_PREFIX_RE = re.compile(r"^(?P<version>\d+)")
@@ -117,8 +138,12 @@ def run_pending_v3(
     migrations_dir: Path | None = None,
 ) -> list[str]:
     applied: list[str] = []
-    owns_connection = not isinstance(db_path, sqlite3.Connection)
-    conn = open_db_v3(db_path) if owns_connection else db_path
+    if isinstance(db_path, sqlite3.Connection):
+        owns_connection = False
+        conn = db_path
+    else:
+        owns_connection = True
+        conn = open_db_v3(db_path)
     try:
         _require_base_schema(conn)
         current_version = _schema_version(conn)

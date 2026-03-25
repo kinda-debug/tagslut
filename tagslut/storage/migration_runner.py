@@ -1,3 +1,18 @@
+"""
+Root SQLite migration runner.
+
+Tracks applied migrations by filename in the `migrations_applied` table.
+Handles ADD COLUMN IF NOT EXISTS via regex rewrite.
+Does NOT skip underscore-prefixed files — never point this runner at
+tagslut/storage/v3/migrations/ as that directory contains draft files
+prefixed with "_" that the v3 runner deliberately skips.
+
+Python migration contract: module must export `up(conn: sqlite3.Connection) -> None`.
+
+See also: tagslut/storage/v3/migration_runner.py (v3 runner, version-based tracking)
+See also: tagslut/storage/base_migration_runner.py (divergence documentation)
+"""
+
 from __future__ import annotations
 
 import importlib.util

@@ -241,11 +241,15 @@ if [[ "$URL" == *"tidal.com"* ]]; then
     cd "$REPO_ROOT"
     if [[ "$MODE" != "sync" && "$MODE" != "enrich" && "$MODE" != "backfill" ]]; then
         FORCE_NO_SKIP=0
+        WRAPPER_VERBOSE=0
         FORWARD_ARGS=()
         for arg in "$@"; do
             case "$arg" in
                 --force-download|--force|-f)
                     FORCE_NO_SKIP=1
+                    ;;
+                --verbose)
+                    WRAPPER_VERBOSE=1
                     ;;
                 *)
                     FORWARD_ARGS+=("$arg")
@@ -254,6 +258,9 @@ if [[ "$URL" == *"tidal.com"* ]]; then
         done
         if [[ "$FORCE_NO_SKIP" -eq 1 ]]; then
             FORWARD_ARGS+=(--no-skip)
+        fi
+        if [[ "$WRAPPER_VERBOSE" -eq 1 ]]; then
+            echo "[get] routing tidal URL to tools/tiddl" >&2
         fi
         exec "$TIDDL_WRAPPER" "$URL" "${FORWARD_ARGS[@]+"${FORWARD_ARGS[@]}"}"
     fi

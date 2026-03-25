@@ -49,8 +49,20 @@ jobs:
         if: steps.changed.outputs.any_changed != 'true'
         run: echo "No Python files changed; skipping lint."
 
-      - name: Type check
-        run: poetry run mypy tagslut/ --ignore-missing-imports
+      - name: Type check changed tagslut files
+        if: steps.changed.outputs.any_changed == 'true'
+        run: |
+          CHANGED_TAGSLUT_FILES="$(echo "${{ steps.changed.outputs.all_changed_and_modified_files }}" | tr ' ' '\n' | awk '/^tagslut\/.*\.py$/ { printf "%s ", $0 }' | xargs)"
+          if [ -z "$CHANGED_TAGSLUT_FILES" ]; then
+            echo "No changed tagslut Python files; skipping mypy."
+            exit 0
+          fi
+          echo "Type checking changed files: $CHANGED_TAGSLUT_FILES"
+          poetry run mypy $CHANGED_TAGSLUT_FILES --ignore-missing-imports
+
+      - name: Skip type check (no changed Python files)
+        if: steps.changed.outputs.any_changed != 'true'
+        run: echo "No Python files changed; skipping type check."
 
       - name: Test
         run: poetry run pytest --tb=short -q

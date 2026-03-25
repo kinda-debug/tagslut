@@ -41,6 +41,14 @@ Do not use `docs/ROADMAP.md`, `docs/PROGRESS_REPORT.md`, `docs/PHASE1_STATUS.md`
 **Why still open:** The redesign queue still lacks an explicit decision on whether non-Beatport duplicate remediation is manual-only or backed by generic tooling.  
 **Done when:** architecture and ops docs state the policy clearly enough to unblock any dependent proof-test work.
 
+### Follow-up: staged lint cleanup (by module family)
+- Debt-heavy modules are temporarily excluded from CI linting (`tagslut/storage/v3/migrations`, `tagslut/storage/v3/legacy`, `tagslut/storage/v2`). Lint remains enabled for actively touched Python surfaces.
+- Stage cleanup by module family, re-enabling lint in CI as each family is cleaned:
+  1. `tagslut/storage/v3/migrations`
+  2. `tagslut/storage/v3/legacy` and `tagslut/storage/v2`
+  3. Remaining `tagslut/storage/v3` submodules (chunked by domain: identity / ingest / reconcile / dj)
+  4. CLI + tools
+
 ## Recently completed — do not reopen
 
 - Pytest collection blocker for missing `tools.dj_usb_analyzer` import.

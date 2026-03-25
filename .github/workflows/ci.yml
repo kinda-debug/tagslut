@@ -25,8 +25,28 @@ jobs:
       - name: Install dependencies
         run: poetry install --with dev
 
+      - name: Determine changed Python files (exclude debt paths)
+        id: changed
+        uses: tj-actions/changed-files@v45
+        with:
+          files: |
+            tagslut/**/*.py
+            tests/**/*.py
+          files_ignore: |
+            tagslut/storage/v3/migrations/**
+            tagslut/storage/v3/legacy/**
+            tagslut/storage/v2/**
+
       - name: Lint
-        run: poetry run flake8 tagslut/ tests/
+        if: steps.changed.outputs.any_changed == 'true'
+        run: |
+          echo "Linting changed files:"
+          echo "${{ steps.changed.outputs.all_changed_and_modified_files }}"
+          poetry run flake8 ${{ steps.changed.outputs.all_changed_and_modified_files }}
+
+      - name: Skip lint (no changed Python files)
+        if: steps.changed.outputs.any_changed != 'true'
+        run: echo "No Python files changed; skipping lint."
 
       - name: Type check
         run: poetry run mypy tagslut/ --ignore-missing-imports

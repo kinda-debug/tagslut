@@ -54,7 +54,7 @@ Compatibility scripts still allowed, but not canonical:
 2. `tools/review/quarantine_from_plan.py`
 3. `tools/review/promote_by_tags.py`
 
-Retired hidden compatibility shims that may remain callable only to fail clearly:
+Retired hidden compatibility shims removed:
 1. `tagslut recovery ...`
 2. `tagslut verify recovery ...`
 3. `tagslut report recovery ...`
@@ -69,6 +69,77 @@ Current rule for `tagslut intake process-root`:
 - Warning period starts: February 9, 2026
 - Target archival/removal window: June-July 2026 (aligned to `docs/archive/REDESIGN_TRACKER.md` Phase 5)
 - Dated decommission plan: `docs/archive/phase-specs-2026-02-09/PHASE5_LEGACY_DECOMMISSION.md`
+
+## Legacy Wrapper Family Audit (2026-03-25)
+
+This section scopes hard removal by wrapper family so deletion PRs stay narrow and reversible.
+
+### Family A: intake shell wrappers (`tools/get*`)
+
+- Wrappers still present:
+  - `tools/get`
+  - `tools/get-intake`
+  - `tools/get-sync`
+  - `tools/get-report`
+  - `tools/get-help`
+  - `tools/get-auto`
+  - `tools/get-all`
+- Internal callers still depending on this family:
+  - `tagslut/exec/intake_orchestrator.py` calls `tools/get` for stage 2 download.
+  - `tools/playlist-sync` shells out to `tools/get`.
+  - `tools/get-auto` shells out to `tools/get`.
+  - `tools/get-report` shells out to `tools/get-intake`.
+  - `scripts/check_cli_docs_consistency.py` enforces active docs examples that include `tools/get`, `tools/get-intake`, `tools/get-sync`, and `tools/get-report`.
+- Canonical replacement:
+  - Operator path: `poetry run tagslut intake <provider-url>`.
+  - Existing-root orchestration: `python -m tagslut intake process-root ...` (v3-safe phases only).
+- Delete-now vs hold-temporarily:
+  - Hold temporarily: `tools/get`, `tools/get-intake` (active internal/runtime dependency).
+  - Candidate to remove after caller/doc rewrite: `tools/get-sync`, `tools/get-report`, `tools/get-help`, `tools/get-auto`, `tools/get-all`.
+
+### Family B: legacy move/quarantine executors (`tools/review/*` wrappers)
+
+- Wrappers still present:
+  - `tools/review/promote_by_tags.py`
+  - `tools/review/quarantine_from_plan.py`
+  - `tools/review/move_from_plan.py`
+- Internal callers still depending on this family:
+  - `tagslut/cli/commands/execute.py` delegates `execute promote-tags` to `tools/review/promote_by_tags.py`.
+  - `tagslut/cli/commands/execute.py` delegates `execute quarantine-plan` to `tools/review/quarantine_from_plan.py`.
+  - `Makefile` targets `promote-dry` and `promote` call `tools/review/promote_by_tags.py`.
+  - `tools/review/recommend_plan_to_moves.py` usage text still points to `tools/review/quarantine_from_plan.py`.
+- Canonical replacement:
+  - `poetry run tagslut execute move-plan ...`.
+  - Native `tagslut execute promote-tags` and `tagslut execute quarantine-plan` implementations that no longer shell to `tools/review/*`.
+- Delete-now vs hold-temporarily:
+  - Hold temporarily: `promote_by_tags.py`, `quarantine_from_plan.py` (direct runtime dependency through `tagslut execute`).
+  - Candidate to remove in a focused cleanup: `move_from_plan.py` (already marked deprecated; no active runtime delegation from `tagslut execute`).
+
+### Family C: hidden retired compatibility commands
+
+- Wrappers still present:
+  - None.
+- Internal callers still depending on this family:
+  - None in active runtime flow.
+- Canonical replacement:
+  - None. Recovery workflow is retired and archived under `legacy/tagslut_recovery/`.
+- Delete-now vs hold-temporarily:
+  - Removed in focused family cleanup.
+
+### Family-ordered PR sequence (no mass deletion)
+
+- Intake-wrapper decoupling PRs: move internal callers off `tools/get*` (`intake_orchestrator`, `playlist-sync`, `get-auto`) and update `scripts/check_cli_docs_consistency.py` expectations to canonical surfaces.
+- Intake-wrapper removal PRs: remove leaf aliases first (`get-sync`, `get-report`, `get-help`), then `get-auto`/`get-all`, then `get`/`get-intake` last.
+- Review-wrapper decoupling PRs: replace `tagslut execute promote-tags` and `tagslut execute quarantine-plan` shell delegation with native command implementations, then remove Makefile dependence on `tools/review/promote_by_tags.py`.
+- Review-wrapper removal PRs: remove `move_from_plan.py` first, then remove `promote_by_tags.py` and `quarantine_from_plan.py` after decoupling lands.
+- Hidden-retired command cleanup PR: complete.
+
+### Exit criteria for hard-removal stream
+
+- No runtime command path in `tagslut/cli` shells to legacy wrappers.
+- No operational helper scripts shell to legacy wrappers.
+- Docs and consistency checks no longer require legacy wrapper examples.
+- Wrapper-family removal PRs are merged in the sequence above with focused rollback scope.
 
 ## Phase 5 Decommission Gates
 

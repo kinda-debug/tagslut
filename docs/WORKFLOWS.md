@@ -389,6 +389,58 @@ python -m tagslut intake process-root \
 
 Current `--dry-run` scope is DJ-only. If you need scan/register/integrity behavior, run the dedicated commands from the manual workflow instead of relying on `process-root`.
 
+### process-root phase contracts (v3-safe set)
+
+The v3-safe phase set is:
+
+- identify
+- enrich
+- art
+- promote
+- dj
+
+Use this as a maintainership contract for `tagslut intake process-root` on a v3 DB.
+
+#### identify
+
+- Inputs: staged audio files under `--root`, v3 DB at `--db`.
+- Outputs: identity-linked staged cohort (rows are associated to v3 identity where matchable).
+- DB side effects: writes/updates identity linkage state used by downstream v3 views and phase decisions.
+- Filesystem side effects: none on audio payload; source files remain in staged root.
+- Handoff: produces the identity-backed working set consumed by enrich.
+
+#### enrich
+
+- Inputs: identify-phase cohort plus provider configuration (canonical provider set is Beatport and TIDAL).
+- Outputs: refreshed canonical metadata used by export and DJ shaping (artist/title/genre/label/BPM/key/year when available).
+- DB side effects: updates enrichment-backed identity metadata payloads and related provenance for enrichment operations.
+- Filesystem side effects: no library moves; metadata fetch work may emit operational artifacts/logs only.
+- Handoff: passes metadata-complete cohort to art.
+
+#### art
+
+- Inputs: enriched cohort from prior phases and artwork provider availability.
+- Outputs: artwork enrichment state for tracks where art is resolved.
+- DB side effects: updates artwork/provenance state associated with the v3 identity-backed cohort.
+- Filesystem side effects: may write artwork-related operational artifacts; does not promote or relocate library audio.
+- Handoff: passes identity+metadata+art-ready cohort to promote.
+
+#### promote
+
+- Inputs: staged cohort at `--root`, destination library root via `--library`, and prior phase eligibility state.
+- Outputs: accepted library placement under `MASTER_LIBRARY` for promotable files.
+- DB side effects: records promoted file state/paths used by downstream DJ/export workflows.
+- Filesystem side effects: moves/copies promotable files from staged root into library layout (per current promote policy).
+- Handoff: produces promoted master-library cohort consumed by dj.
+
+#### dj
+
+- Inputs: promoted cohort and v3 identity-backed DJ metadata context.
+- Outputs: DJ-prep eligibility state and DJ-facing artifacts needed for downstream DJ pool/export workflows.
+- DB side effects: writes DJ-phase provenance/state updates used by `dj` command-group workflows.
+- Filesystem side effects: no direct Rekordbox export; writes DJ-phase artifacts in configured output locations.
+- Handoff: terminal phase for `process-root`; downstream operator flow continues with canonical DJ commands (`tagslut dj ...`).
+
 ## Reviewed Plan Execution
 
 For CSV-backed move plans, use the canonical executor:

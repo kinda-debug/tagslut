@@ -1839,6 +1839,8 @@ if [[ "$DOWNLOAD" -eq 1 ]]; then
   BATCH_AUDIO_BEFORE_DOWNLOAD="$(count_audio_files "$BATCH_ROOT")"
   if [[ "$USE_DOWNLOAD_PRECHECK" -eq 1 ]]; then
     step "$STEP" "$TOTAL_STEPS" "Pre-download check"
+    PRECHECK_STATUS=""
+    PRECHECK_NOTE=""
     PRECHECK_CANDIDATE_QUALITY_RANK="$(precheck_candidate_quality_rank)"
     PRECHECK_ARGS=(
       "$PRE_DOWNLOAD_CHECK_SCRIPT"
@@ -1861,6 +1863,7 @@ if [[ "$DOWNLOAD" -eq 1 ]]; then
     PRECHECK_DECISIONS_CSV="$(ls -1t "$OUT_DIR"/precheck_decisions_*.csv 2>/dev/null | head -n1 || true)"
     [[ -n "$PRECHECK_DECISIONS_CSV" ]] || err "Could not find precheck decisions in $OUT_DIR"
     PRECHECK_TRACKS_CSV="$(ls -1t "$OUT_DIR"/precheck_tracks_extracted_*.csv 2>/dev/null | head -n1 || true)"
+    PRECHECK_LINKS_SUMMARY_CSV="$(ls -1t "$OUT_DIR"/precheck_links_extracted_*.csv 2>/dev/null | head -n1 || true)"
     KEEP_URLS_TXT="$(ls -1t "$OUT_DIR"/precheck_keep_track_urls_*.txt 2>/dev/null | head -n1 || true)"
     [[ -n "$KEEP_URLS_TXT" ]] || err "Could not find precheck keep URL list in $OUT_DIR"
     if [[ -n "$PRECHECK_TRACKS_CSV" && -n "$URL" ]]; then
@@ -1905,6 +1908,37 @@ emit("KEEP_URLS_TXT", keep_file)
 PY
 )"
 
+    if [[ -n "$PRECHECK_LINKS_SUMMARY_CSV" && -f "$PRECHECK_LINKS_SUMMARY_CSV" ]]; then
+      eval "$(python - "$PRECHECK_LINKS_SUMMARY_CSV" <<'PY'
+import csv
+import shlex
+import sys
+
+status = ""
+note = ""
+
+with open(sys.argv[1], newline="", encoding="utf-8", errors="replace") as handle:
+    reader = csv.DictReader(handle)
+    first = next(reader, None)
+    if first:
+        status = (first.get("status") or "").strip()
+        note = (first.get("note") or "").strip()
+
+print(f"PRECHECK_STATUS={shlex.quote(status)}")
+print(f"PRECHECK_NOTE={shlex.quote(note)}")
+PY
+)"
+    fi
+
+    if [[ "$SOURCE" == "tidal" && "${PREFILTER_TOTAL:-0}" -eq 0 && "$PRECHECK_NOTE" == "tidal_token_missing" ]]; then
+      if [[ "$FORCE_DOWNLOAD" -eq 1 ]]; then
+        echo "Precheck extraction unavailable (tidal_token_missing); falling back to direct TIDAL download because --force-download was requested."
+        USE_DOWNLOAD_PRECHECK=0
+      else
+        err "Tidal precheck could not extract tracks because API auth is unavailable (tidal_token_missing). Re-authenticate TIDAL or rerun with --no-precheck."
+      fi
+    fi
+
     echo "$(clr "$CLR_BOLD" "Precheck")"
     kv "Total" "$PREFILTER_TOTAL"
     kv "Keep" "$(clr "$CLR_GREEN" "$PREFILTER_KEEP")"
@@ -1915,7 +1949,13 @@ PY
     fi
     if [[ "$VERBOSE" -eq 1 ]]; then
       kv "Decisions" "$PRECHECK_DECISIONS_CSV"
+      if [[ -n "$PRECHECK_LINKS_SUMMARY_CSV" ]]; then
+        kv "Links" "$PRECHECK_LINKS_SUMMARY_CSV"
+      fi
       kv "Keep URLs" "$KEEP_URLS_TXT"
+      if [[ -n "$PRECHECK_NOTE" ]]; then
+        kv "Note" "$PRECHECK_NOTE"
+      fi
       if [[ -f "$KEEP_URLS_TXT" ]]; then
         echo "  $(clr "$CLR_DIM" "keep preview:")"
         preview_file_lines "$KEEP_URLS_TXT" 5

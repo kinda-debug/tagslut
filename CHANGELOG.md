@@ -6,6 +6,20 @@ All notable changes to this project are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 Versioning: [Semantic Versioning](https://semver.org/)
 
+## [Unreleased] - 2026-03-26
+
+### Fixed
+- `get_intake_console.py` — artifact selection now derives run stamp from raw log
+  filename and prefers files matching that exact stamp, preventing stale precheck
+  CSVs from prior runs being attached to the current report.
+- `tools/get-intake` — detects Tidal auth failure (`tidal_token_missing`) during
+  link extraction and reports it clearly. With `--force-download`, bypasses precheck
+  and falls back to direct Tidal download instead of silently reporting `total=0`.
+
+### Changed
+- Replaced `flake8-custom-import-rules` dev dependency (unused, pinned `typer <0.16`)
+  with `tiddl ^3.2.2` (Python ≥3.13 marker). Unblocks `typer >=0.20` for tiddl CLI.
+
 ## [Unreleased] - 2026-03-23
 
 ### Added

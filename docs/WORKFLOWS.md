@@ -106,6 +106,7 @@ Console output:
   - full raw backend log is always captured under `artifacts/intake/logs/get_intake_*.log` and referenced in the report header
   - `--verbose` includes structured per-stage command details (raw output is still in the log artifact)
   - if provider link extraction fails before track expansion (for example `tidal_token_missing`), precheck can show `keep=0 skip=0 total=0` and download can show `selected=0` even though the URL is valid; confirm with `precheck_links_extracted_*.csv` / `precheck_extracted_report_*.md` notes
+  - with `--force-download`, a `tidal_token_missing` extraction failure bypasses precheck entirely and falls back to direct Tidal download; without `--force-download`, the pipeline fails with an explicit re-auth message
 
 ```bash
 # Default: precheck + download + local tag prep + promote + merged M3U

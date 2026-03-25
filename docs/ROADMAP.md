@@ -171,12 +171,19 @@ Prompt: `.github/prompts/lexicon-reconcile.prompt.md`
 
 ---
 
-## 5 — Intake pipeline hardening: ✅ COMPLETE (2026-03-23, pre-existing on dev)
+## 5 — Intake pipeline hardening: ✅ COMPLETE (2026-03-26, updated)
 
-All three fixes were already present on `dev` before the prompt was authored.
-Verified 2026-03-23: `bash -n tools/get-intake` → SYNTAX OK, 34 tests passing.
-No patch was needed. Prompt file retained for reference only.
+All three original fixes were already present on `dev` before the prompt was authored.
+Two additional fixes applied 2026-03-26:
 
+- Fix 4 (stamp-aware artifact selection): `get_intake_console.py` now derives run stamp from
+  raw log filename and prefers files matching that exact stamp — prevents stale precheck CSVs
+  from hot `artifacts/compare` directory being attached to the current report.
+- Fix 5 (Tidal auth-failure fallback): `tools/get-intake` detects `tidal_token_missing` from
+  link extraction. With `--force-download`, bypasses precheck and falls back to direct Tidal
+  download. Without `--force-download`, fails with explicit re-auth instructions.
+
+Original three fixes (unchanged):
 - Fix 1 (POST_MOVE_LOG → epoch dir): `tools/get-intake` lines 2871–2875
 - Fix 2 (planned.promote_move/stash_move/quarantine_move counters): `tagslut/exec/intake_pretty_summary.py` lines 111, 164–166
 - Fix 3 (DJ_ROOT/DJ_M3U_DIR guard before precheck-inventory fallback): `tools/get-intake` lines 1955, 1958

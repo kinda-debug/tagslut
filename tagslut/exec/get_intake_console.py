@@ -227,25 +227,94 @@ def _latest_after(dir_path: Path, pattern: str, *, started: float) -> Path | Non
     return None
 
 
+def _run_stamp_from_raw_log(raw_log: Path) -> str | None:
+    stem = raw_log.stem
+    prefix = "get_intake_"
+    if not stem.startswith(prefix):
+        return None
+    stamp = stem[len(prefix) :]
+    return stamp or None
+
+
+def _artifact_for_run(
+    dir_path: Path,
+    pattern: str,
+    *,
+    started: float,
+    run_stamp: str | None,
+) -> Path | None:
+    if not dir_path.exists():
+        return None
+
+    candidates: list[Path] = []
+    for path in dir_path.glob(pattern):
+        try:
+            if path.stat().st_mtime >= started - 1.0:
+                candidates.append(path)
+        except OSError:
+            continue
+
+    if not candidates:
+        return None
+
+    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+
+    if run_stamp:
+        stamped = [path for path in candidates if path.stem.endswith(f"_{run_stamp}")]
+        if stamped:
+            return stamped[0]
+
+    return candidates[0]
+
+
 def _discover_artifacts(*, started: float, raw_log: Path) -> RunArtifacts:
     artifacts_root = get_artifacts_dir().expanduser().resolve()
     compare_dir = artifacts_root / "compare"
+    run_stamp = _run_stamp_from_raw_log(raw_log)
     out = RunArtifacts(raw_log=raw_log, compare_dir=compare_dir)
-    out.precheck_decisions_csv = _latest_after(compare_dir, "precheck_decisions_*.csv", started=started)
-    out.precheck_tracks_csv = _latest_after(compare_dir, "precheck_tracks_extracted_*.csv", started=started)
-    out.keep_urls_txt = _latest_after(compare_dir, "precheck_keep_track_urls_*.txt", started=started)
-    out.keep_tidal_urls_txt = _latest_after(compare_dir, "precheck_keep_tidal_urls_*.txt", started=started)
-    out.keep_bpdl_urls_txt = _latest_after(compare_dir, "precheck_keep_bpdl_urls_*.txt", started=started)
-    out.precheck_summary_csv = _latest_after(compare_dir, "precheck_summary_*.csv", started=started)
-    out.precheck_report_md = _latest_after(compare_dir, "precheck_report_*.md", started=started)
-    out.plan_summary_json = _latest_after(compare_dir, "plan_fpcalc_unique_final_summary_*.json", started=started)
-    out.plan_promote_csv = _latest_after(compare_dir, "plan_promote_fpcalc_unique_final_*.csv", started=started)
-    out.plan_stash_csv = _latest_after(compare_dir, "plan_stash_fpcalc_unique_final_*.csv", started=started)
-    out.plan_quarantine_csv = _latest_after(compare_dir, "plan_quarantine_fpcalc_unique_final_*.csv", started=started)
-    out.fix_plan_summary_json = _latest_after(compare_dir, "plan_move_skipped_to_fix_summary_*.json", started=started)
-    out.discard_plan_summary_json = _latest_after(compare_dir, "plan_move_skipped_to_discard_summary_*.json", started=started)
-    out.promoted_txt = _latest_after(compare_dir, "promoted_audio_*.txt", started=started) or _latest_after(
-        compare_dir, "promoted_flacs_*.txt", started=started
+    out.precheck_decisions_csv = _artifact_for_run(
+        compare_dir, "precheck_decisions_*.csv", started=started, run_stamp=run_stamp
+    )
+    out.precheck_tracks_csv = _artifact_for_run(
+        compare_dir, "precheck_tracks_extracted_*.csv", started=started, run_stamp=run_stamp
+    )
+    out.keep_urls_txt = _artifact_for_run(
+        compare_dir, "precheck_keep_track_urls_*.txt", started=started, run_stamp=run_stamp
+    )
+    out.keep_tidal_urls_txt = _artifact_for_run(
+        compare_dir, "precheck_keep_tidal_urls_*.txt", started=started, run_stamp=run_stamp
+    )
+    out.keep_bpdl_urls_txt = _artifact_for_run(
+        compare_dir, "precheck_keep_bpdl_urls_*.txt", started=started, run_stamp=run_stamp
+    )
+    out.precheck_summary_csv = _artifact_for_run(
+        compare_dir, "precheck_summary_*.csv", started=started, run_stamp=run_stamp
+    )
+    out.precheck_report_md = _artifact_for_run(
+        compare_dir, "precheck_report_*.md", started=started, run_stamp=run_stamp
+    )
+    out.plan_summary_json = _artifact_for_run(
+        compare_dir, "plan_fpcalc_unique_final_summary_*.json", started=started, run_stamp=run_stamp
+    )
+    out.plan_promote_csv = _artifact_for_run(
+        compare_dir, "plan_promote_fpcalc_unique_final_*.csv", started=started, run_stamp=run_stamp
+    )
+    out.plan_stash_csv = _artifact_for_run(
+        compare_dir, "plan_stash_fpcalc_unique_final_*.csv", started=started, run_stamp=run_stamp
+    )
+    out.plan_quarantine_csv = _artifact_for_run(
+        compare_dir, "plan_quarantine_fpcalc_unique_final_*.csv", started=started, run_stamp=run_stamp
+    )
+    out.fix_plan_summary_json = _artifact_for_run(
+        compare_dir, "plan_move_skipped_to_fix_summary_*.json", started=started, run_stamp=run_stamp
+    )
+    out.discard_plan_summary_json = _artifact_for_run(
+        compare_dir, "plan_move_skipped_to_discard_summary_*.json", started=started, run_stamp=run_stamp
+    )
+    out.promoted_txt = _artifact_for_run(
+        compare_dir, "promoted_audio_*.txt", started=started, run_stamp=run_stamp
+    ) or _artifact_for_run(
+        compare_dir, "promoted_flacs_*.txt", started=started, run_stamp=run_stamp
     )
     out.moves_jsonl = _latest_after(artifacts_root, "moves_*.jsonl", started=started)
     report_md = artifacts_root / "genre_normalization_report.md"
@@ -260,11 +329,21 @@ def _discover_artifacts(*, started: float, raw_log: Path) -> RunArtifacts:
     hoard_values = (Path("tag_hoard_out") / "tags_values.csv").resolve()
     if hoard_values.exists() and hoard_values.stat().st_mtime >= started - 1.0:
         out.tag_hoard_values_csv = hoard_values
-    out.dj_identity_ids_txt = _latest_after(compare_dir, "dj_identity_ids_*.txt", started=started)
-    out.dj_manifest_csv = _latest_after(compare_dir, "dj_manifest_*.csv", started=started)
-    out.dj_receipts_jsonl = _latest_after(compare_dir, "dj_receipts_*.jsonl", started=started)
-    out.dj_playlist_inputs_txt = _latest_after(compare_dir, "dj_playlist_inputs_*.txt", started=started)
-    out.roon_m3u_inputs_txt = _latest_after(compare_dir, "roon_m3u_inputs_*.txt", started=started)
+    out.dj_identity_ids_txt = _artifact_for_run(
+        compare_dir, "dj_identity_ids_*.txt", started=started, run_stamp=run_stamp
+    )
+    out.dj_manifest_csv = _artifact_for_run(
+        compare_dir, "dj_manifest_*.csv", started=started, run_stamp=run_stamp
+    )
+    out.dj_receipts_jsonl = _artifact_for_run(
+        compare_dir, "dj_receipts_*.jsonl", started=started, run_stamp=run_stamp
+    )
+    out.dj_playlist_inputs_txt = _artifact_for_run(
+        compare_dir, "dj_playlist_inputs_*.txt", started=started, run_stamp=run_stamp
+    )
+    out.roon_m3u_inputs_txt = _artifact_for_run(
+        compare_dir, "roon_m3u_inputs_*.txt", started=started, run_stamp=run_stamp
+    )
     return out
 
 

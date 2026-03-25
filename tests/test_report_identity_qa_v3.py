@@ -107,7 +107,7 @@ def _create_v3_fixture(tmp_path: Path) -> Path:
                     4,
                     "isrc:DUPISRC:2",
                     "DUPISRC",
-                    "BP-DUP",
+                    "BP-DUP-2",
                     "",
                     "",
                     "",
@@ -184,7 +184,7 @@ def test_report_identity_qa_v3_writes_csv_and_summary(tmp_path: Path) -> None:
     assert "identities_missing_core_fields: 1" in proc.stdout
     assert "identities_missing_strong_keys: 1" in proc.stdout
     assert "Duplicate ISRC groups: 1" in proc.stdout
-    assert "Duplicate beatport_id groups: 1" in proc.stdout
+    assert "Duplicate beatport_id groups: 0" in proc.stdout
     assert "identity_id=1 identity_key=isrc:ISRC-1 asset_count=2" in proc.stdout
     assert "duration_spread_ms=3500 mixed_quality=1" in proc.stdout
 

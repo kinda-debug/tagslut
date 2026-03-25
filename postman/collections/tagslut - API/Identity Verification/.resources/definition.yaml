@@ -4,3 +4,12 @@ description: Endpoints for verifying and cross-referencing track identities
   Phase 3 testing to validate ISRC resolution accuracy and response shape
   consistency.
 order: 5000
+scripts:
+  - type: beforeRequest
+    code: >-
+      // Warn if tidal_access_token is missing before any request in this folder fires.
+      // Scoped to Identity Verification only — does not affect Beatport-only requests.
+      if (!pm.environment.get('tidal_access_token')) {
+          console.warn('[tidal-guard] tidal_access_token is not set — 5b and 5c will 401. Set it manually in the environment.');
+      }
+    language: text/javascript

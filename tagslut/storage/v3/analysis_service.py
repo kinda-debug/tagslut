@@ -7,7 +7,7 @@ import sqlite3
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from tagslut.exec.dj_tag_snapshot import DjTagSnapshot
 from tagslut.storage.v3.dual_write import resolve_asset_id_by_path
@@ -65,7 +65,7 @@ def _normalize_analysis_energy(value: Any) -> int | None:
 
 def _resolve_export_row(conn: sqlite3.Connection, identity_id: int) -> sqlite3.Row | None:
     conn.row_factory = sqlite3.Row
-    return conn.execute(
+    row_any = conn.execute(
         """
         SELECT *
         FROM v_dj_export_metadata_v1
@@ -73,6 +73,7 @@ def _resolve_export_row(conn: sqlite3.Connection, identity_id: int) -> sqlite3.R
         """,
         (int(identity_id),),
     ).fetchone()
+    return cast(sqlite3.Row | None, row_any)
 
 
 def _snapshot_from_row(

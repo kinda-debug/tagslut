@@ -138,9 +138,9 @@ def test_tier1_filename_match(tmp_path: Path) -> None:
 def test_tier2_isrc_match(tmp_path: Path) -> None:
     """Tier 2: ISRC in ID3 tag → matched_t2 += 1."""
     conn = _make_db()
-    _seed_identity(conn, key="k2", artist_norm="", title_norm="", isrc="USABC1234567")
+    _seed_identity(conn, key="k2", artist_norm="", title_norm="", isrc=" us abc 12 34567 ")
 
-    rows = [_default_row("/path/some_file.mp3", id3_isrc="USABC1234567")]
+    rows = [_default_row("/path/some_file.mp3", id3_isrc="us abc 12 34567")]
     csv_path = tmp_path / "scan.csv"
     _write_scan_csv(rows, csv_path)
 

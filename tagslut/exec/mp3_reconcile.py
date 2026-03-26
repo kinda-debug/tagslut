@@ -14,8 +14,11 @@ import importlib
 import re
 from typing import Callable, cast
 
-_ISRC_SPLIT_RE = re.compile(r"[;,/|\s]+")
+_ISRC_SPLIT_RE = re.compile(r"[;,/|]+")
 _ISRC_STRIP_RE = re.compile(r"[\s-]+")
+_ISRC_FIND_RE = re.compile(
+    r"([A-Za-z]{2})[\s-]*([A-Za-z0-9]{3})[\s-]*([0-9]{2})[\s-]*([0-9]{5})"
+)
 
 _FEAT_BRACKET_RE = re.compile(
     r"\s*(?:\(|\[)\s*(?:feat\.?|ft\.?|featuring|with)\b.*?(?:\)|\])\s*",
@@ -54,13 +57,17 @@ def normalize_isrc(value: str | None) -> str:
     """Normalize ISRC-ish strings for case-insensitive matching.
 
     - Strips surrounding whitespace
-    - Takes the first token when multiple are present
+    - Takes the first ISRC-like match when multiple are present
     - Upper-cases
-    - Removes whitespace and hyphens so tags like "US-ABC-1234567" still match
+    - Removes whitespace and hyphens so tags like "US-ABC-1234567" or "US ABC 1234567" still match
     """
     text = (value or "").strip()
     if not text:
         return ""
+    match = _ISRC_FIND_RE.search(text)
+    if match is not None:
+        return ("".join(match.groups())).upper()
+
     token = ""
     for part in _ISRC_SPLIT_RE.split(text):
         part = part.strip()

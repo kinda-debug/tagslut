@@ -67,6 +67,10 @@ postman/collections/*Copy*/
 .postman/config.json
 .postman/resources.yaml
 
+# Postman exports: ignore secret variants, but track the main exports
+postman/*secrets*.json
+!postman/environment.json
+!postman/collection.json
 # =============================================================================
 # Database / binary / archive
 # =============================================================================
@@ -277,3 +281,7 @@ scripts/workflow_health_rescan.py
 phase1_harvest/
 postman/sdks/
 postman/collections/tagslut - API/insomnia-export.1774520966035/env-merged.yaml
+
+# Postman local-only secret variants
+postman/environment.secrets.json
+postman/*.local.json

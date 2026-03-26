@@ -32,6 +32,11 @@ Thumbs.db
 # =============================================================================
 # Environment / secrets (never commit)
 # =============================================================================
+# START_HERE.sh should NOT be in .gitignore
+# (it contains no secrets, only references to env_exports.sh)
+#
+# Environment variables with secrets
+env_exports.sh
 .env
 *.key
 *.pem

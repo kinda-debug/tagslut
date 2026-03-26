@@ -55,10 +55,11 @@ fi
 # 5. Verify volumes
 echo ""
 echo "💿 Checking mounted volumes..."
-if [ -d "/Volumes/MUSIC" ]; then
-    echo "   ✅ /Volumes/MUSIC mounted"
+if [ ! -d "/Volumes/MUSIC" ]; then
+    echo "   ⚠️  /Volumes/MUSIC not mounted - some operations will fail"
+    echo "   Mount the MUSIC volume and re-run this script"
 else
-    echo "   ❌ /Volumes/MUSIC not mounted"
+    echo "   ✅ /Volumes/MUSIC mounted"
 fi
 
 # 6. Show quick commands

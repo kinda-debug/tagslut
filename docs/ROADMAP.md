@@ -1,8 +1,10 @@
 # tagslut — Agent Roadmap
 
 <!-- Status: Active. Update as tasks complete or delegate assignments change. -->
-<!-- Last updated: 2026-03-23 — §5 intake pipeline hardening verified already implemented on dev (no patch needed); §3.5 DJ admission backfill reclassified as pipeline-state-dependent (not a discrete task); §3.4 XML validation gate review complete -->
-<!-- Active action sequencing has moved to docs/ACTION_PLAN.md (generated 2026-03-23). -->
+<!-- Last updated: 2026-03-26 — All Phase 1 and TIDAL migration work complete through commit 50062ea.
+     Next work: token bridge (tiddl → tokens.json), download strategy rewrite (best-available-source),
+     ReccoBeats provider stub, credential management phase 2/3, DJ pipeline review items. -->
+<!-- Active action sequencing has moved to docs/ACTION_PLAN.md -->
 <!-- This file remains the agent contract reference and historical record. -->
 
 This document maps all open work to the agent that should execute it.
@@ -19,10 +21,13 @@ Update it when tasks complete or priorities shift.
 4. Fresh DB initialization (§10)        ← COMPLETE (db + env + settings + storage tests)
 5. Repo cleanup (§13)                   ← COMPLETE
 6. Phase 1 PR chain (§2)               ← COMPLETE (PRs 9-15, all done)
-7. DJ pipeline hardening (§3)          ← UNBLOCKED (Phase 1 complete)
+7. TIDAL provider migration (§19)       ← COMPLETE (commit 50062ea)
+8. Intake pipeline hardening (§5)       ← COMPLETE (commits 8590e75, d0c42e6)
+9. DJ pipeline hardening (§3)          ← UNBLOCKED (open review items remain)
+10. Token bridge + download strategy (§20, §21) ← NEXT
 ```
 
-Items 6 and 7 must not be started until items 1–4 are confirmed complete.
+Items must not be skipped; each depends on the prior gate being confirmed complete.
 
 ---
 
@@ -88,7 +93,7 @@ Commits: 730d2b1, 2fb2a50, 3f3f37d, bf3df38
 
 ---
 
-## 2 — Phase 1 PR chain → **Codex** ▶ IN PROGRESS (current top priority)
+## 2 — Phase 1 PR chain: COMPLETE (2026-03-25)
 
 | PR | Task | Branch | Status |
 | --- | --- | --- | --- |
@@ -100,45 +105,29 @@ Commits: 730d2b1, 2fb2a50, 3f3f37d, bf3df38
 | 14 | docs/AGENT update | -- | COMPLETE (commit 8a0b00d) |
 | 15 | Phase 2 seam | -- | COMPLETE (commit d992d20) |
 
-PRs 13–15 need prompts authored in Claude.ai before Codex can execute them.
-PR 12 prompt exists at `.github/prompts/phase1-pr12-identity-merge.prompt.md`.
-
 ---
 
 ## 3 — DJ pipeline → **Codex**
 
 Base pipeline work is complete (`eab34d3`, `d52fe27`) and the workflow audit is complete (`16ee5ca`).
-The narrower hardening pass around Stage 2 transcode validation and Stage 4 validation-gate
-behavior is now complete.
 
 ### 3.1 DJ pipeline hardening ✅ COMPLETE
 
-Prompt: `.github/prompts/dj-pipeline-hardening.prompt.md` (retired; historical only)
-
 ### 3.2 DJ workflow audit ✅ COMPLETE (commit 16ee5ca)
-
-Prompt: `.github/prompts/dj-workflow-audit.prompt.md`
 
 ### 3.3 FFmpeg output validation ✅ COMPLETE (commit de59b4f)
 
-Prompt: `.github/prompts/dj-ffmpeg-validation.prompt.md`
-
 Delivered:
-
 - post-transcode MP3 validation in `tagslut/exec/transcoder.py`
 - wizard failure surfacing in `tagslut/exec/dj_pool_wizard.py`
 - focused tests in `tests/exec/test_mp3_build_ffmpeg_errors.py`
-- follow-up cleanup commit `ea266a3` removed a duplicate helper definition
-- doc commits `d234572` and `2d48601` recorded the operator-facing behavior
 
 ### 3.4 XML validation gate ⚠ REVIEW NEEDED
 
-A separate DJ validation-state / XML preflight gate feature landed during the same work window.
-It is broader than the FFmpeg-only prompt and should be treated as a separate review item before
-further DJ hardening continues.
+A broader DJ validation-state / XML preflight gate feature landed and should be
+reviewed before further DJ hardening continues.
 
-Affected files include:
-
+Affected files:
 - `tagslut/cli/commands/dj.py`
 - `tagslut/dj/admission.py`
 - `tagslut/dj/xml_emit.py`
@@ -146,15 +135,9 @@ Affected files include:
 - `tagslut/storage/v3/schema.py`
 - `tests/exec/test_dj_xml_preflight_validation.py`
 
-### 3.5 DJ admission backfill — pipeline-state-dependent, not a discrete task
+### 3.5 DJ admission backfill — pipeline-state-dependent
 
-Not a one-time task. It follows the canonical curated-library pipeline:
-`tagslut intake` → `tagslut mp3 build|reconcile` → `tagslut dj backfill` → `tagslut dj validate` → `tagslut dj xml emit|patch`
-
-Current state (2026-03-23): `mp3 reconcile --dry-run` against DJ_LIBRARY returns 1 match
-against 170 fresh DB identities. The legacy DJ pool predates the fresh DB — backfill
-will grow naturally as Stage 1 and Stage 2 populate `track_identity` and `mp3_asset`.
-Remove from active queue. Re-run `dj backfill --dry-run` after any significant intake batch.
+Not a one-time task. Re-run `dj backfill --dry-run` after any significant intake batch.
 
 ---
 
@@ -171,22 +154,20 @@ Prompt: `.github/prompts/lexicon-reconcile.prompt.md`
 
 ---
 
-## 5 — Intake pipeline hardening: ✅ COMPLETE (2026-03-26, updated)
+## 5 — Intake pipeline hardening: ✅ COMPLETE (2026-03-26)
 
-All three original fixes were already present on `dev` before the prompt was authored.
-Two additional fixes applied 2026-03-26:
+All five fixes applied and on `dev`:
 
-- Fix 4 (stamp-aware artifact selection): `get_intake_console.py` now derives run stamp from
-  raw log filename and prefers files matching that exact stamp — prevents stale precheck CSVs
-  from hot `artifacts/compare` directory being attached to the current report.
-- Fix 5 (Tidal auth-failure fallback): `tools/get-intake` detects `tidal_token_missing` from
-  link extraction. With `--force-download`, bypasses precheck and falls back to direct Tidal
-  download. Without `--force-download`, fails with explicit re-auth instructions.
-
-Original three fixes (unchanged):
 - Fix 1 (POST_MOVE_LOG → epoch dir): `tools/get-intake` lines 2871–2875
-- Fix 2 (planned.promote_move/stash_move/quarantine_move counters): `tagslut/exec/intake_pretty_summary.py` lines 111, 164–166
-- Fix 3 (DJ_ROOT/DJ_M3U_DIR guard before precheck-inventory fallback): `tools/get-intake` lines 1955, 1958
+- Fix 2 (planned counters): `tagslut/exec/intake_pretty_summary.py` lines 111, 164–166
+- Fix 3 (DJ_ROOT/DJ_M3U_DIR guard): `tools/get-intake` lines 1955, 1958
+- Fix 4 (stamp-aware artifact selection): `get_intake_console.py` — derives run stamp from
+  raw log filename; prevents stale precheck CSVs from prior runs being attached to current report
+- Fix 5 (Tidal auth-failure fallback): `tools/get-intake` — detects `tidal_token_missing`;
+  with `--force-download` bypasses precheck and falls back to direct Tidal download;
+  without `--force-download` fails with explicit re-auth instructions
+
+Commits: `8590e75`, `d0c42e6`
 
 ---
 
@@ -205,10 +186,6 @@ Never delegate. Full runbook: `docs/OPS_RUNBOOK.md` (to be written).
 
 ### 7.2 Script and docs cleanup: COMPLETE (2026-03-22)
 
-Prompt: `.github/prompts/repo-cleanup.prompt.md`
-Cleanup manifest: `docs/CLEANUP_MANIFEST.md`
-Follow-up: residual `artifacts/*.log` files were relocated to the LEGACY epoch directory.
-
 ---
 
 ## 8 — Copilot+ scope (editor only)
@@ -219,39 +196,25 @@ Inline completions, quick chat about open files in VS Code. Not for agentic task
 
 ## 9 — Reserved for Claude Code (rate-limit budget)
 
-Prompts for PRs 12–15, reviewing Codex output on identity model changes,
-debugging where the problem itself is unclear.
+Prompts for PR 12–15 and Phase 2 seam: done.
+Use budget for: token bridge design (§20), download strategy revision (§21),
+ReccoBeats provider spec (§22), Beatport token refresh research (§18 phase 3).
 
 ---
 
-## 10 — Clean slate: new DB, new config → **you + Codex**
-
-✅ COMPLETE (2026-03-22)
-
-Prerequisites §14 and §16 are landed.
+## 10 — Clean slate: new DB, new config: ✅ COMPLETE (2026-03-22)
 
 DB paths:
   LEGACY: `/Users/georgeskhawam/Projects/tagslut_db/LEGACY_2026-03-04_PICARD/music_v3.db`
   FRESH:  `/Users/georgeskhawam/Projects/tagslut_db/FRESH_2026/music_v3.db`
 
-Completion evidence:
-
-- `.env` created from `.env.example`
-- fresh DB created at FRESH path
-- `.vscode/settings.json` updated with `music (fresh)` and `music (legacy — read-only)`
-- `poetry run pytest tests/storage/ -v` passed (`139 passed`)
-
-Gate status: satisfied. Phase 1 PR chain may proceed.
-
 ---
 
 ## 11 — Why the legacy DB cannot be trusted
 
-Root cause: identity model built on MusicBrainz Picard-written tags. Picard matches
-aggressively and the origin of every identity is unverifiable.
+Root cause: identity model built on MusicBrainz Picard-written tags.
 
 Rules:
-
 - Do not migrate identity rows from legacy DB to fresh DB
 - Picard must never touch files tagslut manages going forward
 - Legacy DB is read-only archaeology only — use `--db LEGACY_PATH` explicitly
@@ -260,95 +223,180 @@ Rules:
 
 ## 12 — DB and backup audit: COMPLETE (2026-03-21)
 
-Epoch renamed EPOCH_2026-03-04 → LEGACY_2026-03-04_PICARD. Redundant backups deleted.
-Write-test markers deleted (~450+). Backup taken: `music_v3.bak.20260321.db`.
-Artifacts swept to `/Volumes/SAD/tagslut_artifacts_archive/` (182 MB).
-`lexicondj_update.db` WAL checkpointed.
-
-Backup policy: one backup per significant session, named `music_v3.bak.YYYYMMDD.db`.
-Keep last two. Delete older manually.
+Epoch renamed EPOCH_2026-03-04 → LEGACY_2026-03-04_PICARD.
+Backup policy: one backup per significant session, named `music_v3.bak.YYYYMMDD.db`. Keep last two.
 
 ---
 
 ## 13 — Script, docs, log cleanup: COMPLETE (2026-03-22)
 
-Cleanup pass complete. See `docs/CLEANUP_MANIFEST.md` for deleted, archived,
-and intentionally retained files.
-
-Log policy: logs write to epoch directory, not `artifacts/`. Requires one-line patch
-to `tools/get-intake` (`POST_MOVE_LOG` default path) — add to §5 after resume fix lands.
+See `docs/CLEANUP_MANIFEST.md`.
 
 ---
 
-## 14 — Ingestion provenance migration → **Codex** ⛔ PREREQUISITE for §10
-
-Spec: `docs/INGESTION_PROVENANCE.md` + `docs/MULTI_PROVIDER_ID_POLICY.md`
+## 14 — Ingestion provenance migration: ✅ COMPLETE (commit bef5931)
 
 Four columns on `track_identity`: `ingested_at`, `ingestion_method`,
 `ingestion_source`, `ingestion_confidence` — all NOT NULL, no DEFAULT.
-
-Confidence vocabulary (five-tier — see §16 for CHECK constraint):
-  `verified` | `corroborated` | `high` | `uncertain` | `legacy`
-
-Method vocabulary includes: `provider_api`, `isrc_lookup`, `fingerprint_match`,
-`fuzzy_text_match`, `picard_tag`, `manual`, `migration`, `multi_provider_reconcile`
-
-Codex task:
-
-1. Write `tagslut/storage/v3/migrations/0012_ingestion_provenance.py`
-2. Write `supabase/migrations/20260322000000_add_ingestion_provenance.sql`
-3. Add NOT NULL to `tagslut/storage/v3/schema.py`
-4. Update all five `track_identity` insert surfaces
-5. Add enforcement trigger in both schema.py and migration 0012
-6. Update ~25 test fixtures (use conftest.py helper to reduce churn)
-7. Update `docs/DB_V3_SCHEMA.md`
-
-Commit: `feat(schema): add ingestion provenance columns to track_identity`
 
 ---
 
 ## 15 — TIDAL OAuth refactor: COMPLETE (2026-03-21)
 
-Commit: `3a3595c`. Global mutable state removed, monotonic clock, private naming,
-docstring restored. No behaviour changes. No further work needed.
+Commit: `3a3595c`. Global mutable state removed, monotonic clock, private naming.
 
 ---
 
 ## 16 — Migration 0013: five-tier confidence CHECK: COMPLETE (2026-03-24)
 
-Spec: `docs/MULTI_PROVIDER_ID_POLICY.md` §schema-implication
+`ingestion_confidence` CHECK allows: `verified` | `corroborated` | `high` | `uncertain` | `legacy`
 
-This landed as an explicit SQLite migration in
-`tagslut/storage/v3/migrations/0013_confidence_tier_update.py`; it was not included in
-migration `0012_ingestion_provenance.py`.
-
-`ingestion_confidence` CHECK constraint allows five values:
-  `verified` | `corroborated` | `high` | `uncertain` | `legacy`
-
-`ingestion_method` controlled vocabulary includes `'multi_provider_reconcile'`.
-
-Verification:
-
-1. `poetry run pytest tests/storage/v3/test_migration_0013.py tests/storage/v3/test_migration_runner_v3.py -q` -> `10 passed`
-2. FRESH DB migration chain `1-14` is complete
-3. `dj_validation_state` exists and `track_identity` enforces the documented SQLite CHECK vocabulary
-
-Root cause: migration `0012` added provenance columns but did not enforce the documented
-CHECK constraints. Migration `0013` closes that gap for upgraded SQLite DBs.
+Verification: `poetry run pytest tests/storage/v3/test_migration_0013.py tests/storage/v3/test_migration_runner_v3.py -q` → 10 passed
 
 ---
 
 ## 17 — Postman API collection: COMPLETE (2026-03-21)
 
-All agent tasks done. Final commit: `14c9e29`.
-
-Completed: collection cleanup, `base_url` + token expiry, ISRC auth resolution,
-Track by ID field validation, Identity Verification chain (5a Beatport → 5b TIDAL
-→ 5c Spotify), Validation Run folder (6a → 6b → 5a → 5b → 5c), token guard.
+Final commit: `14c9e29`. All collection cleanup, v2 TIDAL migration, auth guards done.
 
 Remaining operator task: run Validation Run in Collection Runner with live TIDAL token.
-Pass: `5b` + `5c` both log `CORROBORATED`. Then open PR `dev → main`.
-Prompt: `.github/prompts/postman-api-optimize.prompt.md` (status: COMPLETE)
+Pass: `5b` + `5c` both log `CORROBORATED`.
+
+---
+
+## 18 — Credential management consolidation → **Claude Code + Codex**
+
+### Phase 1 ✅ COMPLETE
+
+- `docs/CREDENTIAL_MANAGEMENT.md` written with `tokens.json` as operator source of truth
+- Beatport provider prefers `TokenManager` / `tokens.json` before `BEATPORT_ACCESS_TOKEN`
+- `tagslut token-get <provider>` added as shell-facing token lookup command
+
+### Phase 2 — Migrate shell scripts → **Codex** (after Phase 1)
+
+Replace env var reads in harvest scripts:
+
+```bash
+BEATPORT_ACCESS_TOKEN=$(tagslut token-get beatport)
+```
+
+Scripts to update:
+- `tagslut/metadata/beatport_harvest_catalog_track.sh`
+- `tagslut/metadata/beatport_harvest_my_tracks.sh`
+- `tools/beatport_import_my_tracks.py`
+
+### Phase 3 — Beatport token refresh → **Claude Code design + Codex impl**
+
+Beatport access tokens expire after 1 hour with no documented refresh grant.
+Research whether Beatport OAuth 2.0 supports refresh tokens before implementing.
+
+---
+
+## 19 — TIDAL v2 provider migration: ✅ COMPLETE (2026-03-26)
+
+All TIDAL-related fixes landed on `dev` through commit `50062ea`:
+
+| Fix | File | Commit | Status |
+| --- | --- | --- | --- |
+| `search_by_isrc` v2 next-link pagination | `tidal.py` | `db326ca` | ✅ |
+| Lambda mock `limit=5` stubs (4 tests) | `test_tidal_beatport_enrichment.py` | `50062ea` | ✅ |
+| `_make_request` mypy override — match parent signature | `tidal.py` | `50062ea` | ✅ |
+| `_parse_duration_ms` docstring — v1 numeric / v2 ISO 8601 | `tidal.py` | `50062ea` | ✅ |
+| Wire v2 attributes: `key_scale`, `tone_tags`, `popularity` | `tidal.py` + `types.py` | `50062ea` | ✅ |
+| `TidalSeedExportStats` field alignment | `tidal.py` | `50062ea` | ✅ |
+
+`poetry run mypy tagslut/metadata/providers/tidal.py --ignore-missing-imports` — clean ✅
+`poetry run pytest tests/test_tidal_beatport_enrichment.py -v` — 12 passed ✅
+
+Notes:
+- TIDAL v2 `/tracks/{id}` attributes confirmed: `bpm`, `key`, `keyScale`, `toneTags`, `popularity`,
+  `explicit`, `mediaTags`, `duration` (ISO 8601), `isrc`, `copyright`, `title`, `version`
+- Audio feature fields (`energy`, `danceability`, `valence`, etc.) are **not** in TIDAL v2 —
+  these require a third-party source (ReccoBeats or similar); see §22
+- Beatport remains the authority for BPM/key when TIDAL returns null (sparse coverage)
+- `genres` relationship available via `?include=genres` but not yet wired; add when needed
+
+---
+
+## 20 — tiddl → tokens.json bridge → **Codex** ⬅ NEXT
+
+### Problem
+
+`TagTokenManager` reads only from `~/.config/tagslut/tokens.json`.
+`tiddl` stores its session (including `refresh_token`) in `~/.tiddl/config.toml`.
+These are completely separate auth states — tagslut fires "tidal token expired" warnings
+even when tiddl has a live authenticated session.
+
+### Fix
+
+Add a fallback read in `tagslut/metadata/auth.py` → `load_tokens()`:
+if `tokens.json` has no `tidal` section or an empty `refresh_token`, attempt to
+read `~/.tiddl/config.toml` (or `TIDDL_CONFIG` env override) and import the
+`refresh_token` from the `[token]` section. Write it into `tokens.json` so future
+reads are self-healing.
+
+Config path reference: `docs/TIDDL_CONFIG.md`
+
+**Verification:**
+```bash
+# Clear tidal from tokens.json, confirm tiddl has a live session, then:
+poetry run tagslut index enrich --providers tidal --dry-run
+# Must NOT print "tidal token expired"
+```
+
+**Done when:** `tagslut index enrich` runs without token warnings when `~/.tiddl/config.toml`
+has a valid session.
+
+**Commit:** `fix(auth): fallback tidal refresh_token from tiddl config.toml`
+
+---
+
+## 21 — Download strategy rewrite → **Claude Code** ⬅ NEXT
+
+### Problem
+
+`docs/DOWNLOAD_STRATEGY.md` is outdated. It declares Beatport as metadata-only
+and disables Beatport-as-audio-source fallback. This is wrong for two reasons:
+
+1. Many tracks exist **only on Beatport** (white-label, promo, label exclusives)
+2. TIDAL v2 now exposes BPM, key, keyScale, toneTags natively — partially replacing
+   the old Beatport-as-sole-metadata-authority assumption
+
+### New strategy (to document)
+
+| Track situation | Audio source | Metadata source |
+| --- | --- | --- |
+| On TIDAL + Beatport | TIDAL (tiddl) | TIDAL for key/bpm/tone; Beatport for genre/label/catalog |
+| On TIDAL only | TIDAL (tiddl) | TIDAL only |
+| On Beatport only | Beatport download | Beatport native, no TIDAL enrichment needed |
+| Neither | Manual | — |
+
+`ingestion_method` already distinguishes these. Beatport downloads get
+`provider_api` with `canonical_source=beatport`.
+
+**Task:** Rewrite `docs/DOWNLOAD_STRATEGY.md` to reflect best-available-source.
+Enable `FALLBACK_ENABLED=true` for Beatport-only tracks.
+Update `INGESTION_PROVENANCE.md` cascade rules if affected.
+
+---
+
+## 22 — ReccoBeats provider stub → **Codex** (post-§20/21)
+
+`EnrichmentResult` already has `canonical_energy`, `canonical_danceability`,
+`canonical_valence`, etc. with comment `# never populated - Spotify audio features API was removed`.
+
+ReccoBeats (used by algojuke/juke) is a third-party audio analysis API that provides
+these Spotify-style audio features. Adding a `ReccoBeatsProvider` would populate
+these fields without touching TIDAL or Beatport.
+
+**Pre-requisites:**
+- ReccoBeats API access confirmed (key obtained)
+- `ProviderTrack` audio feature fields added (blocked on §19 — DONE)
+- Cascade rules in enrichment updated to prefer ReccoBeats for these fields
+
+**Task:** Write `tagslut/metadata/providers/reccobeats.py` as a minimal stub
+with `fetch_by_isrc(isrc) -> Optional[ProviderTrack]` returning energy/danceability/valence.
+Do not implement until API key is confirmed available.
 
 ---
 
@@ -357,92 +405,16 @@ Prompt: `.github/prompts/postman-api-optimize.prompt.md` (status: COMPLETE)
 | File | Task | Agent | Status |
 | --- | --- | --- | --- |
 | `resume-refresh-fix.prompt.md` | Fix `--resume` in `tools/get-intake` | Codex | COMPLETE |
-| `intake-pipeline-hardening.prompt.md` | Intake pipeline 3-fix hardening | Codex | COMPLETE (pre-existing on dev, verified 2026-03-23) |
-| `repo-cleanup.prompt.md` | Archive dead scripts and stale docs | Codex | Ready |
-| `dj-pipeline-hardening.prompt.md` | DJ pipeline discipline | Codex | COMPLETE (retired execution prompt, 2026-03-24) |
-| `dj-workflow-audit.prompt.md` | DJ workflow audit | Codex | Blocked (Phase 1) |
+| `intake-pipeline-hardening.prompt.md` | Intake pipeline 3-fix hardening | Codex | COMPLETE |
+| `repo-cleanup.prompt.md` | Archive dead scripts and stale docs | Codex | COMPLETE |
+| `dj-pipeline-hardening.prompt.md` | DJ pipeline discipline | Codex | COMPLETE (retired) |
+| `dj-workflow-audit.prompt.md` | DJ workflow audit | Codex | COMPLETE |
+| `dj-ffmpeg-validation.prompt.md` | FFmpeg output validation | Codex | COMPLETE |
 | `lexicon-reconcile.prompt.md` | Lexicon reconcile strategy | Codex | Ready |
 | `open-streams-post-0010.prompt.md` | Write DJ pipeline post | Codex | Ready |
-| `postman-api-optimize.prompt.md` | Beatport API collection | Postman | COMPLETE |
+| `postman-api-optimize.prompt.md` | Beatport/TIDAL API collection | Postman | COMPLETE |
 
-Prompts for Phase 1 PRs 12–15 and Phase 2 seam: not yet written.
-Author in Claude.ai before delegating to Codex.
-
----
-
-## 18 — Credential management consolidation → **Claude Code + Codex**
-
-Audit: `docs/CREDENTIAL_MANAGEMENT_AUDIT.md` (see full audit report)
-Target doc: `docs/CREDENTIAL_MANAGEMENT.md`
-
-### Problem summary
-
-Two credential systems operating in parallel with undocumented precedence:
-
-- **System A** (legacy): `env_exports.sh` shell pattern — archived but still
-  referenced by 3 harvest scripts and 1 Python docstring
-- **System B** (modern): `TokenManager` + `~/.config/tagslut/tokens.json` —
-  correct approach but incompletely adopted
-- **System C** (Postman): environment vars in Postman collection — integration
-  testing only, not a source of truth
-
-Critical issue addressed in Phase 1: `beatport.py` had checked
-`os.getenv("BEATPORT_ACCESS_TOKEN")` first, meaning a stale env var could silently
-win over a fresh token in tokens.json. Operator documentation now exists in
-`docs/CREDENTIAL_MANAGEMENT.md`.
-
-### Not on the critical path
-
-This does not block migrations 0012/0013, fresh DB init, or Phase 1 PRs.
-The intake pipeline is functional with the existing setup.
-Do not start this until the migration chain is complete.
-
-### Phase 1 — Document + fix precedence ✅ COMPLETE
-
-Delivered:
-
-- `docs/CREDENTIAL_MANAGEMENT.md` written with `tokens.json` as the operator source of truth
-- Beatport provider path now prefers `TokenManager` / `tokens.json` before `BEATPORT_ACCESS_TOKEN`
-- `BEATPORT_ACCESS_TOKEN` remains fallback-only in Phase 1 and warns when used in the active provider path
-- `.env.example` now points operators to `~/.config/tagslut/tokens.json`
-- `tagslut token-get <provider>` added as the shell-facing token lookup command
-
-Commit: `feat(auth): establish tokens.json precedence, add token-get command`
-
-### Phase 2 — Migrate shell scripts → **Codex** (after Phase 1)
-
-Replace env var reads in harvest scripts with:
-
-```bash
-BEATPORT_ACCESS_TOKEN=$(tagslut token-get beatport)
-```
-
-Scripts to update:
-
-- `tagslut/metadata/beatport_harvest_catalog_track.sh`
-- `tagslut/metadata/beatport_harvest_my_tracks.sh`
-- `tools/beatport_import_my_tracks.py` (docstring + credential read)
-
-Commit: `fix(auth): migrate harvest scripts to token-get command`
-
-### Phase 3 — Beatport token refresh → **Claude Code design + Codex impl**
-
-Beatport access tokens expire after 1 hour with no documented refresh grant.
-Research required before implementation:
-
-- Does Beatport OAuth 2.0 support refresh tokens?
-- If not, implement expiry detection + prompt for re-paste in TokenManager
-- Add expiry warning to `tagslut auth status`
-
-### Open questions (operator decisions required before Phase 1)
-
-1. Should `BEATPORT_ACCESS_TOKEN` env var remain supported as a fallback,
-   or be removed entirely? (Postman and CI may depend on it)
-2. Should Postman token sync be automated (`tagslut postman sync`) or remain manual?
-3. Qobuz stores email + password_md5 in tokens.json — acceptable or switch to API key?
-
-### Estimated effort
-
-Phase 1: 2–3 hours (Codex, well-scoped)
-Phase 2: 1–2 hours (Codex, mechanical)
-Phase 3: unknown (depends on Beatport refresh research)
+Prompts needed (author in Claude.ai before delegating):
+- `tiddl-token-bridge.prompt.md` — for §20
+- `download-strategy-rewrite.prompt.md` — for §21
+- `reccobeats-provider-stub.prompt.md` — for §22

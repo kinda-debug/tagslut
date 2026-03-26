@@ -84,9 +84,13 @@ class TidalProvider(AbstractProvider):
     @staticmethod
     def _parse_duration_ms(value: Any) -> Optional[int]:
         """
-        Parse duration to milliseconds. TIDAL v2 returns ISO 8601 (PT3M45S).
-        Numeric branch is legacy v1 playlist export (integer seconds).
+        Parse duration to milliseconds.
+        - TIDAL v2 (openapi.tidal.com/v2): returns ISO 8601 string, e.g. "PT3M45S".
+        - TIDAL v1 playlist export (api.tidal.com/v1): returns integer seconds.
+          Numeric branch is retained for v1 only; do not pass numerics from v2 paths.
         """
+        # v1 playlist export returns duration as integer seconds (api.tidal.com/v1 only).
+        # pragma: no branch
         if isinstance(value, (int, float)):
             return int(float(value) * 1000)
         if not isinstance(value, str):
@@ -232,7 +236,7 @@ class TidalProvider(AbstractProvider):
             return f"{self.BASE_URL}{next_url}"
         return f"{self.BASE_URL}/{next_url}"
 
-    def _normalize_track(  # type: ignore[override]
+    def _normalize_track(  # type: ignore[override]  # noqa: override — signature extends parent with optional included_index and narrows return to Optional[ProviderTrack]; Liskov-safe at call sites
         self,
         resource: Dict[str, Any],
         included_index: Optional[Dict[tuple[str, str], Dict[str, Any]]] = None,
@@ -598,6 +602,8 @@ class TidalProvider(AbstractProvider):
             malformed_playlist_items=0,
             duplicate_rows=0,
             pages_fetched=0,
+            pagination_stop_non_200=0,
+            pagination_stop_empty_page=0,
             pagination_stop_short_page_no_next=0,
             pagination_stop_repeated_next=0,
         )

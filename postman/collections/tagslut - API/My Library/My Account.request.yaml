@@ -1,7 +1,0 @@
-$kind: http-request
-description: Returns the authenticated user's Beatport account details including
-  username, email, and subscription status. Used to verify the active session
-  and confirm API access scope before running batch enrichment operations.
-url: "{{base_url}}/v4/my/account/"
-method: GET
-order: 2000

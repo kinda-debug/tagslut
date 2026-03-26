@@ -1,3 +1,0 @@
-$kind: collection
-description: Search service. Uses Bearer token (HTTPBearer scheme).
-order: 3000

@@ -1,3 +1,0 @@
-$kind: collection
-description: Authenticated user library endpoints. Bearer token required.
-order: 4000

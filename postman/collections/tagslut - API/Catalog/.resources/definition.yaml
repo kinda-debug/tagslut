@@ -1,6 +1,0 @@
-$kind: collection
-description: |-
-  Catalog endpoints. /v4/catalog/tracks/ accepts Bearer, basic, or cookie.
-  /v4/catalog/tracks/store/{isrc}/ per OAS requires cookie or basic only.
-  Phase 3d test: compare store/{isrc} vs ?isrc= response shape.
-order: 2000

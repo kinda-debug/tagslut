@@ -1,6 +1,0 @@
-$kind: collection
-description: End-to-end validation run requests that walk through a complete
-  ISRC resolution and cross-platform catalog check. Steps 6a+ resolve a known
-  TIDAL or Beatport release down to individual ISRCs and verify each record
-  across services.
-order: 6000

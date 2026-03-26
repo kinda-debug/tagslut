@@ -889,7 +889,7 @@ def test_cli_mp3_root_deprecated_alias_is_dj_root_in_mp3_only_mode(
 ) -> None:
     import click
 
-    runner = CliRunner()
+    runner = CliRunner(mix_stderr=False)
 
     @click.group()
     def cli():

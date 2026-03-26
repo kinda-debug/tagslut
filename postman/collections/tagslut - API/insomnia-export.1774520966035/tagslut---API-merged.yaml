@@ -34,7 +34,10 @@ collection:
               created: 1774520220922
               modified: 1774520220922
               isPrivate: false
-              description: ""
+              description: Exchanges Beatport OAuth2 client credentials (client_id +
+                client_secret) for a short-lived Bearer access token. The token
+                is stored in the beatport_access_token environment variable and
+                is required by all catalog, search, and library endpoints.
               sortKey: -1774520212345
             method: POST
             body:
@@ -87,7 +90,10 @@ collection:
               created: 1774520220923
               modified: 1774520220923
               isPrivate: false
-              description: ""
+              description: Validates and introspects an existing Bearer token against the
+                Beatport OAuth2 server. Returns token metadata including active
+                status and scopes. Useful for confirming a token is still valid
+                before making batch catalog or enrichment requests.
               sortKey: -1774520212344
             method: GET
             authentication:
@@ -118,43 +124,6 @@ collection:
 
             Phase 3d test: compare store/{isrc} vs ?isrc= response shape.
         children:
-          - url: "{{base_url}}/v4/catalog/tracks/"
-            name: Tracks by ISRC (query param)
-            meta:
-              id: req_e3bc86afcd344d5299c08268c18f1bd5
-              created: 1774520220924
-              modified: 1774520220924
-              isPrivate: false
-              description: ""
-              sortKey: -1774520212341
-            method: GET
-            parameters:
-              - name: isrc
-                value: "{{beatport_test_isrc}}"
-                disabled: false
-            scripts:
-              afterResponse: >-
-                // Phase 3d: log response shape for comparison with store/{isrc}
-
-                if (insomnia.response.code === 200) {
-                    var json = insomnia.response.json();
-                    console.log('Type: ' + typeof json);
-                    console.log('Is array: ' + Array.isArray(json.results || json));
-                    console.log('Has count: ' + ('count' in json));
-                    console.log('Has results: ' + ('results' in json));
-                    if (json.results) console.log('Results count: ' + json.results.length);
-                    if (json.results && json.results[0]) {
-                        console.log('First result keys: ' + Object.keys(json.results[0]).join(', '));
-                    }
-                }
-            settings:
-              renderRequestBody: true
-              encodeUrl: true
-              followRedirects: global
-              cookies:
-                send: true
-                store: true
-              rebuildPath: true
           - url: "{{base_url}}/v4/catalog/tracks/{{beatport_test_track_id}}/"
             name: Track by ID
             meta:
@@ -162,7 +131,10 @@ collection:
               created: 1774520220924
               modified: 1774520220924
               isPrivate: false
-              description: ""
+              description: Fetches the full catalog record for a single Beatport track by its
+                numeric ID. Returns title, artists, BPM, key, genre, release
+                date, label, and ISRC. Used during identity enrichment to
+                populate track_identity metadata in the tagslut v3 database.
               sortKey: -1774520212342
             method: GET
             authentication:
@@ -254,6 +226,46 @@ collection:
                 send: true
                 store: true
               rebuildPath: true
+          - url: "{{base_url}}/v4/catalog/tracks/"
+            name: Tracks by ISRC (query param)
+            meta:
+              id: req_e3bc86afcd344d5299c08268c18f1bd5
+              created: 1774520220924
+              modified: 1774520220924
+              isPrivate: false
+              description: Looks up catalog tracks by ISRC using the standard query parameter
+                format. Returns an array of matching track records. Used to
+                cross-reference library files against Beatport catalog data
+                during the enrichment pipeline phase.
+              sortKey: -1774520212341
+            method: GET
+            parameters:
+              - name: isrc
+                value: "{{beatport_test_isrc}}"
+                disabled: false
+            scripts:
+              afterResponse: >-
+                // Phase 3d: log response shape for comparison with store/{isrc}
+
+                if (insomnia.response.code === 200) {
+                    var json = insomnia.response.json();
+                    console.log('Type: ' + typeof json);
+                    console.log('Is array: ' + Array.isArray(json.results || json));
+                    console.log('Has count: ' + ('count' in json));
+                    console.log('Has results: ' + ('results' in json));
+                    if (json.results) console.log('Results count: ' + json.results.length);
+                    if (json.results && json.results[0]) {
+                        console.log('First result keys: ' + Object.keys(json.results[0]).join(', '));
+                    }
+                }
+            settings:
+              renderRequestBody: true
+              encodeUrl: true
+              followRedirects: global
+              cookies:
+                send: true
+                store: true
+              rebuildPath: true
           - url: "{{base_url}}/v4/catalog/tracks/store/{{beatport_test_isrc}}/"
             name: ISRC Store Lookup (path-based) [Phase 3d]
             meta:
@@ -261,7 +273,11 @@ collection:
               created: 1774520220924
               modified: 1774520220924
               isPrivate: false
-              description: ""
+              description: Path-based ISRC store lookup using Basic Auth (client_id +
+                client_secret). Part of Phase 3d testing to compare this
+                endpoint's response shape against the ?isrc= query-param
+                variant. Per OAS spec, this route requires cookie or basic auth
+                only — Bearer tokens are not accepted.
               sortKey: -1774520212340
             method: GET
             authentication:
@@ -310,7 +326,10 @@ collection:
               created: 1774520220925
               modified: 1774520220925
               isPrivate: false
-              description: ""
+              description: Retrieves the full catalog record for a Beatport release (album/EP)
+                by its numeric release ID. Returns release title, label, catalog
+                number, release date, and genre. Used to resolve release-level
+                metadata when enriching track identities in the DJ pipeline.
               sortKey: -1774520212339
             method: GET
             settings:
@@ -328,7 +347,10 @@ collection:
               created: 1774520220925
               modified: 1774520220925
               isPrivate: false
-              description: ""
+              description: Returns a paginated list of tracks belonging to a specific Beatport
+                release. Fetches up to 100 tracks per page. Used to bulk-enrich
+                track identities when ingesting an entire release into the
+                tagslut v3 database during the intake pipeline.
               sortKey: -1774520212338
             method: GET
             parameters:
@@ -358,7 +380,10 @@ collection:
               created: 1774520220926
               modified: 1774520220926
               isPrivate: false
-              description: ""
+              description: Full-text search across the Beatport catalog using the dedicated
+                search service (v1). Accepts a free-text query and returns up to
+                the specified count of matching tracks. Used to discover tracks
+                by title or artist when the Beatport ID or ISRC is not known.
               sortKey: -1774520212336
             method: GET
             parameters:
@@ -391,7 +416,11 @@ collection:
               created: 1774520220926
               modified: 1774520220926
               isPrivate: false
-              description: ""
+              description: Fetches the authenticated user's personal Beatport library ("My
+                Beatport") — the tracks they have purchased or saved. Paginated
+                by page and per_page. Used to cross-reference owned tracks
+                against the tagslut library for intake decisions and duplicate
+                detection.
               sortKey: -1774520212334
             method: GET
             parameters:
@@ -416,7 +445,10 @@ collection:
               created: 1774520220927
               modified: 1774520220927
               isPrivate: false
-              description: ""
+              description: Returns the authenticated user's Beatport account details including
+                username, email, and subscription status. Used to verify the
+                active session and confirm API access scope before running batch
+                enrichment operations.
               sortKey: -1774520212333
             method: GET
             settings:
@@ -445,7 +477,10 @@ collection:
               created: 1774520220927
               modified: 1774520220927
               isPrivate: false
-              description: ""
+              description: Looks up a track by the most recently processed ISRC (stored in
+                beatport_last_isrc). Step 5a in the identity verification
+                workflow. Compares the Beatport catalog response for a known
+                ISRC to confirm round-trip data integrity after enrichment.
               sortKey: -1774520212331
             method: GET
             parameters:
@@ -508,6 +543,102 @@ collection:
                 send: true
                 store: true
               rebuildPath: true
+          - url: https://api.tidal.com/v1/tracks
+            name: 5b - TIDAL ISRC Cross-Check
+            meta:
+              id: req_71e8fbdf02c54b17b32fa94ade5da642
+              created: 1774520220928
+              modified: 1774520220928
+              isPrivate: false
+              description: Cross-checks a Beatport-verified ISRC against the TIDAL catalog.
+                Step 5b in the identity verification workflow. Queries the TIDAL
+                tracks API with the verified ISRC to confirm the track exists on
+                TIDAL and to compare metadata for enrichment consistency.
+              sortKey: -1774520212330
+            method: GET
+            parameters:
+              - name: isrc
+                value: "{{beatport_verified_isrc}}"
+                disabled: false
+              - name: countryCode
+                value: US
+                disabled: false
+            authentication:
+              type: bearer
+              disabled: false
+              token: "{{tidal_access_token}}"
+              prefix: ""
+            scripts:
+              afterResponse: >-
+                var code = insomnia.response.code;
+
+                console.log('[5b] Status: ' + code);
+
+
+                if (code !== 200) {
+                    console.log('[5b] TIDAL request FAILED — body: ' +
+                        insomnia.response.text().substring(0, 300));
+                    return;
+                }
+
+
+                var json  = insomnia.response.json();
+
+                var items = json.items || (Array.isArray(json) ? json : []);
+
+
+                if (!items.length) {
+                    console.log('[5b] WARNING: TIDAL returned 0 results for ISRC ' +
+                        insomnia.environment.get('beatport_verified_isrc'));
+                    return;
+                }
+
+
+                var tidalIsrc    = items[0].isrc;
+
+                var beatportIsrc =
+                insomnia.environment.get('beatport_verified_isrc');
+
+
+                console.log('[5b] beatport_isrc = ' + beatportIsrc);
+
+                console.log('[5b] tidal_isrc    = ' + tidalIsrc);
+
+
+                if (tidalIsrc && beatportIsrc && tidalIsrc === beatportIsrc) {
+                    console.log('[5b] CORROBORATED — both providers agree: ' + beatportIsrc);
+                } else {
+                    console.log('[5b] CONFLICT: beatport_isrc=' + beatportIsrc +
+                        ' tidal_isrc=' + tidalIsrc);
+                }
+
+
+                // Log extra TIDAL fields useful for provenance enrichment
+
+                var t = items[0];
+
+                var extras = ['id', 'title', 'duration', 'explicit',
+                'audioQuality', 'version'];
+
+                var found = [];
+
+                extras.forEach(function(f) {
+                    if (t[f] !== null && t[f] !== undefined) {
+                        found.push(f + '=' + JSON.stringify(t[f]).substring(0, 40));
+                    }
+                });
+
+                if (found.length) {
+                    console.log('[5b] TIDAL enrichment fields: ' + found.join(', '));
+                }
+            settings:
+              renderRequestBody: true
+              encodeUrl: true
+              followRedirects: global
+              cookies:
+                send: true
+                store: true
+              rebuildPath: true
           - url: https://api.spotify.com/v1/search
             name: 5c - Spotify ISRC Cross-Check
             meta:
@@ -515,7 +646,11 @@ collection:
               created: 1774520220928
               modified: 1774520220928
               isPrivate: false
-              description: ""
+              description: Cross-checks a Beatport-verified ISRC against the Spotify catalog.
+                Step 5c in the identity verification workflow. Uses the Spotify
+                Search API with an ISRC filter to confirm catalog presence and
+                retrieve Spotify's track metadata for cross-platform enrichment
+                validation.
               sortKey: -1774520212329
             method: GET
             parameters:
@@ -616,99 +751,6 @@ collection:
                 send: true
                 store: true
               rebuildPath: true
-          - url: https://api.tidal.com/v1/tracks
-            name: 5b - TIDAL ISRC Cross-Check
-            meta:
-              id: req_71e8fbdf02c54b17b32fa94ade5da642
-              created: 1774520220928
-              modified: 1774520220928
-              isPrivate: false
-              description: ""
-              sortKey: -1774520212330
-            method: GET
-            parameters:
-              - name: isrc
-                value: "{{beatport_verified_isrc}}"
-                disabled: false
-              - name: countryCode
-                value: US
-                disabled: false
-            authentication:
-              type: bearer
-              disabled: false
-              token: "{{tidal_access_token}}"
-              prefix: ""
-            scripts:
-              afterResponse: >-
-                var code = insomnia.response.code;
-
-                console.log('[5b] Status: ' + code);
-
-
-                if (code !== 200) {
-                    console.log('[5b] TIDAL request FAILED — body: ' +
-                        insomnia.response.text().substring(0, 300));
-                    return;
-                }
-
-
-                var json  = insomnia.response.json();
-
-                var items = json.items || (Array.isArray(json) ? json : []);
-
-
-                if (!items.length) {
-                    console.log('[5b] WARNING: TIDAL returned 0 results for ISRC ' +
-                        insomnia.environment.get('beatport_verified_isrc'));
-                    return;
-                }
-
-
-                var tidalIsrc    = items[0].isrc;
-
-                var beatportIsrc =
-                insomnia.environment.get('beatport_verified_isrc');
-
-
-                console.log('[5b] beatport_isrc = ' + beatportIsrc);
-
-                console.log('[5b] tidal_isrc    = ' + tidalIsrc);
-
-
-                if (tidalIsrc && beatportIsrc && tidalIsrc === beatportIsrc) {
-                    console.log('[5b] CORROBORATED — both providers agree: ' + beatportIsrc);
-                } else {
-                    console.log('[5b] CONFLICT: beatport_isrc=' + beatportIsrc +
-                        ' tidal_isrc=' + tidalIsrc);
-                }
-
-
-                // Log extra TIDAL fields useful for provenance enrichment
-
-                var t = items[0];
-
-                var extras = ['id', 'title', 'duration', 'explicit',
-                'audioQuality', 'version'];
-
-                var found = [];
-
-                extras.forEach(function(f) {
-                    if (t[f] !== null && t[f] !== undefined) {
-                        found.push(f + '=' + JSON.stringify(t[f]).substring(0, 40));
-                    }
-                });
-
-                if (found.length) {
-                    console.log('[5b] TIDAL enrichment fields: ' + found.join(', '));
-                }
-            settings:
-              renderRequestBody: true
-              encodeUrl: true
-              followRedirects: global
-              cookies:
-                send: true
-                store: true
-              rebuildPath: true
       - name: Validation Run
         meta:
           id: fld_8f940ffa601e40efb05aeba9833de6d0
@@ -720,24 +762,6 @@ collection:
             a known TIDAL or Beatport release down to individual ISRCs and
             verify each record across services.
         children:
-          - url: https://example.com
-            name: 6c - Run Notes
-            meta:
-              id: req_3a2429f890284b089245607e9779150e
-              created: 1774520220929
-              modified: 1774520220929
-              isPrivate: false
-              description: ""
-              sortKey: -1774520212325
-            method: GET
-            settings:
-              renderRequestBody: true
-              encodeUrl: true
-              followRedirects: global
-              cookies:
-                send: true
-                store: true
-              rebuildPath: true
           - url: https://api.tidal.com/v1/albums/507881809/tracks
             name: 6a - Resolve TIDAL Album to ISRC
             meta:
@@ -745,7 +769,10 @@ collection:
               created: 1774520220929
               modified: 1774520220929
               isPrivate: false
-              description: ""
+              description: "Fetches the track listing for a specific TIDAL album by its album
+                ID. Step 6a in the validation run: resolves a TIDAL album to
+                individual tracks so that each track's ISRC can be extracted and
+                verified against the Beatport catalog in subsequent steps."
               sortKey: -1774520212327
             method: GET
             parameters:
@@ -827,7 +854,10 @@ collection:
               created: 1774520220929
               modified: 1774520220929
               isPrivate: false
-              description: ""
+              description: "Validation step 6b: re-fetches a Beatport track by ID to confirm
+                the resolved track_identity data in the local database matches
+                the current live catalog response. Used to catch drift between
+                cached enrichment data and Beatport's upstream record."
               sortKey: -1774520212326
             method: GET
             authentication:
@@ -899,6 +929,27 @@ collection:
                         console.log('[6b] ISRC PRE-CHECK FAILED: Beatport=' + json.isrc + ' TIDAL seed=' + tidalSeedIsrc);
                     }
                 }
+            settings:
+              renderRequestBody: true
+              encodeUrl: true
+              followRedirects: global
+              cookies:
+                send: true
+                store: true
+              rebuildPath: true
+          - url: https://example.com
+            name: 6c - Run Notes
+            meta:
+              id: req_3a2429f890284b089245607e9779150e
+              created: 1774520220929
+              modified: 1774520220929
+              isPrivate: false
+              description: Placeholder request used to capture inline notes, run-specific
+                observations, and test findings during the validation workflow.
+                Not a real API call. Used to document step-by-step outcomes
+                alongside the other validation requests in this folder.
+              sortKey: -1774520212325
+            method: GET
             settings:
               renderRequestBody: true
               encodeUrl: true

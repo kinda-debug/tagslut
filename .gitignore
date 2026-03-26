@@ -270,3 +270,5 @@ scripts/classify_tracks_sqlite_v2.patch
 scripts/playlist_finalize_audit.sh
 scripts/workflow_health_rescan.py
 phase1_harvest/
+postman/sdks/
+postman/collections/tagslut - API/insomnia-export.1774520966035/env-merged.yaml

@@ -19,6 +19,19 @@ It separates physical files from logical track identities, then applies determin
 - Promotion moves files with post-run invariant checks.
 
 ## Quick Start
+
+1. **Set up your environment:**
+   ```bash
+   source START_HERE.sh
+   ```
+
+2. **Learn the commands:**
+   - [Command Guide](docs/COMMAND_GUIDE.md) - Which command to use when
+   - [DJ Pipeline](docs/DJ_PIPELINE.md) - DJ workflow reference
+   - [Download Strategy](docs/DOWNLOAD_STRATEGY.md) - Provider selection rules
+
+Manual setup (legacy/reference):
+
 ```bash
 cd <TAGSLUT_REPO>
 source .venv/bin/activate

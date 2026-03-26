@@ -1117,14 +1117,6 @@ def _process_reconcile_row(
 
     # Matched (Tier 1/2/3) — handle duplicate MP3s for same identity
     if not dry_run:
-        existing_mp3s = conn.execute(
-            """
-            SELECT id, bitrate, status FROM mp3_asset
-            WHERE identity_id = ? AND status IN ('verified','unverified','superseded')
-            """,
-            (identity_id,),
-        ).fetchall()
-
         # Insert this MP3 first
         conn.execute(
             """
@@ -1138,26 +1130,27 @@ def _process_reconcile_row(
             (identity_id, path_str, zone, sha256, bitrate, sample_rate, duration_s),
         )
 
-        # Duplicate handling: keep highest bitrate as 'verified', others 'superseded'
-        if existing_mp3s:
-            all_mp3s = conn.execute(
-                "SELECT id, bitrate FROM mp3_asset WHERE identity_id = ? AND status != 'superseded'",
-                (identity_id,),
-            ).fetchall()
-            if len(all_mp3s) > 1:
-                best_row = max(all_mp3s, key=lambda r: r[1] or 0)
-                best_id = best_row[0]
-                for mp3_row in all_mp3s:
-                    if mp3_row[0] == best_id:
-                        conn.execute(
-                            "UPDATE mp3_asset SET status='verified' WHERE id=?",
-                            (mp3_row[0],),
-                        )
-                    else:
-                        conn.execute(
-                            "UPDATE mp3_asset SET status='superseded' WHERE id=?",
-                            (mp3_row[0],),
-                        )
+        # Keep the highest bitrate MP3 as 'verified', others 'superseded'.
+        # This must also promote the first (only) MP3 for an identity to 'verified',
+        # otherwise Stage 3 `dj backfill` will admit zero rows.
+        all_mp3s = conn.execute(
+            "SELECT id, bitrate FROM mp3_asset WHERE identity_id = ? AND status != 'superseded'",
+            (identity_id,),
+        ).fetchall()
+        if all_mp3s:
+            best_row = max(all_mp3s, key=lambda r: r[1] or 0)
+            best_id = best_row[0]
+            for mp3_row in all_mp3s:
+                if mp3_row[0] == best_id:
+                    conn.execute(
+                        "UPDATE mp3_asset SET status='verified' WHERE id=?",
+                        (mp3_row[0],),
+                    )
+                elif len(all_mp3s) > 1:
+                    conn.execute(
+                        "UPDATE mp3_asset SET status='superseded' WHERE id=?",
+                        (mp3_row[0],),
+                    )
 
     action_name = f"matched_tier{tier}"
     if tier == 1:

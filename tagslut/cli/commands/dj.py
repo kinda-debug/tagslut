@@ -1242,7 +1242,7 @@ def dj_backfill(
     """
     import sqlite3
 
-    from tagslut.dj.admission import backfill_admissions
+    from tagslut.exec.dj_backfill import MP3_RECONCILE_SUCCESS_STATUS, backfill_dj_admissions
     from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
 
     import os
@@ -1266,12 +1266,13 @@ def dj_backfill(
             count = conn.execute(
                 """
                 SELECT COUNT(*) FROM mp3_asset ma
-                WHERE ma.status = 'verified'
+                WHERE ma.status = ?
                   AND NOT EXISTS (
                     SELECT 1 FROM dj_admission da
                     WHERE da.identity_id = ma.identity_id AND da.status = 'admitted'
                   )
-                """
+                """,
+                (MP3_RECONCILE_SUCCESS_STATUS,),
             ).fetchone()[0]
             conn.close()
             click.echo(f"Dry-run: {count} mp3_asset row(s) would be admitted.")
@@ -1279,7 +1280,7 @@ def dj_backfill(
                 click.secho("Pass --execute to admit them.", fg="yellow")
             return
 
-        admitted, skipped = backfill_admissions(conn)
+        admitted, skipped = backfill_dj_admissions(conn)
         conn.commit()
     finally:
         conn.close()

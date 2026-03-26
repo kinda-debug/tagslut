@@ -98,6 +98,17 @@ def temp_db(tmp_path: Path) -> Path:
         """
     )
 
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS dj_track_id_map (
+            id INTEGER PRIMARY KEY,
+            dj_admission_id INTEGER UNIQUE,
+            rekordbox_track_id INTEGER NOT NULL UNIQUE,
+            assigned_at TEXT
+        )
+        """
+    )
+
     conn.commit()
     conn.close()
 

@@ -1,0 +1,2480 @@
+{
+  "info": {
+    "_postman_id": "d3f8de55-e4a7-4728-b3ca-5ee725b60aef",
+    "name": "tagslut-api",
+    "description": "## Folder map\n- **TIDAL**: TIDAL v2 track fetch + album/playlist track expansion.\n- **Beatport**: Beatport track fetch + hydrate/search fallbacks.\n- **Comparison & Normalization**: Provider JSON -> canonical parsing/validation and TIDAL vs Beatport comparison/status.\n- **Operator Output**: Human-readable summary / print outputs.\n- **Utilities**: Auth/token setup and misc helpers.\n",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "53520441",
+    "_collection_link": "https://go.postman.co/collection/53520441-d3f8de55-e4a7-4728-b3ca-5ee725b60aef?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "TIDAL",
+      "item": [
+        {
+          "name": "Expand - TIDAL Album Tracks (secondary)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// ============================================================",
+                  "// Expand - TIDAL Album Tracks (secondary)",
+                  "// Enumerates track candidates from a TIDAL album (JSON:API).",
+                  "// Stores tidal_album_track_candidates and tidal_candidate_count.",
+                  "// Does NOT perform identity join.",
+                  "// ============================================================",
+                  "",
+                  "pm.test('HTTP 200 OK', () => pm.response.to.have.status(200));",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "// JSON:API: top-level must have data array",
+                  "pm.test('JSON:API: top-level data array present', () => {",
+                  "  pm.expect(body).to.have.property('data').that.is.an('array');",
+                  "});",
+                  "",
+                  "if (!body.data || !Array.isArray(body.data)) {",
+                  "  pm.environment.set('tidal_candidate_count', '0');",
+                  "  pm.environment.set('tidal_album_track_candidates', '[]');",
+                  "  pm.test('FAIL: No data array — cannot enumerate album tracks', () => {",
+                  "    pm.expect.fail('JSON:API data array missing. Schema drift or wrong endpoint.');",
+                  "  });",
+                  "  return;",
+                  "}",
+                  "",
+                  "// Build included map for attribute lookup (JSON:API includes)",
+                  "const includedMap = {};",
+                  "if (Array.isArray(body.included)) {",
+                  "  body.included.forEach(item => {",
+                  "    if (item.type && item.id) {",
+                  "      includedMap[`${item.type}::${item.id}`] = item;",
+                  "    }",
+                  "  });",
+                  "}",
+                  "",
+                  "const candidates = [];",
+                  "",
+                  "body.data.forEach(rel => {",
+                  "  // rel is a relationship item: {type, id} or {type, id, attributes}",
+                  "  const trackId = rel.id;",
+                  "  const trackType = rel.type; // typically 'tracks'",
+                  "",
+                  "  // Try to get attributes from included",
+                  "  const included = includedMap[`${trackType}::${trackId}`] || {};",
+                  "  const attrs = included.attributes || rel.attributes || {};",
+                  "",
+                  "  const isrc  = attrs.isrc  || attrs.externalIds?.isrc || '';",
+                  "  const title = attrs.title || attrs.name || '';",
+                  "",
+                  "  candidates.push({ id: trackId, isrc, title });",
+                  "});",
+                  "",
+                  "const count = candidates.length;",
+                  "pm.environment.set('tidal_candidate_count', String(count));",
+                  "pm.environment.set('tidal_album_track_candidates', JSON.stringify(candidates));",
+                  "pm.environment.set('workflow_class', 'secondary');",
+                  "",
+                  "pm.test(`Album expansion: ${count} candidate(s) found`, () => {",
+                  "  pm.expect(count).to.be.above(0, 'No tracks found in album. Check lookup_album_id_tidal.');",
+                  "});",
+                  "",
+                  "console.log(`[TIDAL ALBUM] ${count} track candidate(s) stored in tidal_album_track_candidates`);",
+                  "console.log('[TIDAL ALBUM] To validate a candidate: set lookup_isrc and lookup_track_id_tidal from the list, then run the primary ISRC fetch.');",
+                  "",
+                  "// Print first few candidates for operator inspection",
+                  "const preview = candidates.slice(0, 5);",
+                  "preview.forEach((c, i) => {",
+                  "  console.log(`  [${i}] id=${c.id} | isrc=${c.isrc || '(no isrc in relationship)'} | title=${c.title || '(no title in relationship)'}`);",
+                  "});",
+                  "if (count > 5) console.log(`  ... and ${count - 5} more`);",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tidal_access_token}}",
+                "disabled": false
+              },
+              {
+                "key": "Accept",
+                "value": "application/vnd.api+json",
+                "disabled": false
+              }
+            ],
+            "url": {
+              "raw": "https://api.tidal.com/v2/albums/{{lookup_album_id_tidal}}/relationships/items",
+              "protocol": "https",
+              "host": [
+                "api",
+                "tidal",
+                "com"
+              ],
+              "path": [
+                "v2",
+                "albums",
+                "{{lookup_album_id_tidal}}",
+                "relationships",
+                "items"
+              ]
+            },
+            "description": "SECONDARY — TIDAL album expansion. Enumerates all track candidates from a TIDAL album. Stores results in tidal_album_track_candidates (JSON array of {id, isrc, title}) and sets tidal_candidate_count. Does NOT perform identity join — use the primary ISRC fetch to validate individual candidates by setting lookup_isrc and lookup_track_id_tidal from the candidates list."
+          },
+          "response": []
+        },
+        {
+          "name": "Fetch - TIDAL v2 Track (JSON:API)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// ============================================================",
+                  "// Fetch - TIDAL v2 Track (JSON:API)",
+                  "// Workflow: PRIMARY — ISRC canonical lookup",
+                  "// ============================================================",
+                  "",
+                  "pm.test('Response is 200', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "let body;",
+                  "try {",
+                  "  body = pm.response.json();",
+                  "} catch(e) {",
+                  "  pm.environment.set('tidal_status', 'FAIL: Response not valid JSON');",
+                  "  pm.test('TIDAL response is valid JSON', () => { throw new Error(e.message); });",
+                  "  return;",
+                  "}",
+                  "",
+                  "// JSON:API: expect { data: [...] } or { data: { ... } }",
+                  "if (!body || !body.data) {",
+                  "  pm.environment.set('tidal_status', 'FAIL: Schema drift — no data key');",
+                  "  pm.test('TIDAL JSON:API structure', () => { throw new Error('Missing body.data'); });",
+                  "  return;",
+                  "}",
+                  "",
+                  "pm.test('TIDAL JSON:API structure present', () => { pm.expect(body.data).to.exist; });",
+                  ""
+                ]
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// ─── Fetch - TIDAL v2 Track ─── pre-request script ───────────────────────────",
+                  "// Guards against missing/expired TIDAL bearer token.",
+                  "// If tidal_refresh_token + tidal_refresh_url are present, auto-refreshes.",
+                  "// Otherwise fails loudly with operator instructions.",
+                  "",
+                  "(function () {",
+                  "    const token      = pm.environment.get(\"tidal_access_token\");",
+                  "    const expiry     = pm.environment.get(\"tidal_token_expiry\");",
+                  "    const refreshTok = pm.environment.get(\"tidal_refresh_token\");",
+                  "    const refreshUrl = pm.environment.get(\"tidal_refresh_url\");",
+                  "    const clientId   = pm.environment.get(\"tidal_client_id\");",
+                  "    const clientSec  = pm.environment.get(\"tidal_client_secret\");",
+                  "",
+                  "    const now = Date.now();",
+                  "    const isExpired = !expiry || now >= parseInt(expiry, 10);",
+                  "    const isMissing = !token || token.trim() === \"\";",
+                  "",
+                  "    if (!isMissing && !isExpired) {",
+                  "        console.log(\"[TIDAL Pre] Token valid. Proceeding.\");",
+                  "        return; // All good",
+                  "    }",
+                  "",
+                  "    const reason = isMissing ? \"missing\" : \"expired\";",
+                  "    console.warn(\"[TIDAL Pre] Token is \" + reason + \".\");",
+                  "",
+                  "    // ── Attempt refresh if credentials are available ──────────────────────────",
+                  "    const canRefreshWithRefreshToken = refreshTok && refreshTok.trim() !== \"\" && refreshUrl && refreshUrl.trim() !== \"\";",
+                  "    const canRefreshWithClientCreds  = clientId && clientId.trim() !== \"\" && clientSec && clientSec.trim() !== \"\" && refreshUrl && refreshUrl.trim() !== \"\";",
+                  "",
+                  "    if (canRefreshWithRefreshToken) {",
+                  "        console.log(\"[TIDAL Pre] Attempting token refresh via refresh_token grant...\");",
+                  "        const body = \"grant_type=refresh_token&refresh_token=\" + encodeURIComponent(refreshTok)",
+                  "            + \"&client_id=\" + encodeURIComponent(clientId || \"\")",
+                  "            + \"&client_secret=\" + encodeURIComponent(clientSec || \"\");",
+                  "",
+                  "        pm.sendRequest({",
+                  "            url: refreshUrl,",
+                  "            method: \"POST\",",
+                  "            header: { \"Content-Type\": \"application/x-www-form-urlencoded\" },",
+                  "            body: { mode: \"raw\", raw: body }",
+                  "        }, function (err, res) {",
+                  "            if (err) {",
+                  "                console.error(\"[TIDAL Pre] Refresh request failed:\", err);",
+                  "                throw new Error(\"[TIDAL Pre] OPERATOR ACTION REQUIRED: Token refresh failed. Run 'Auth - TIDAL (Set access token)' manually.\");",
+                  "            }",
+                  "            let json;",
+                  "            try { json = res.json(); } catch (e) {",
+                  "                throw new Error(\"[TIDAL Pre] Refresh response not JSON. Status: \" + res.status);",
+                  "            }",
+                  "            if (!json.access_token) {",
+                  "                throw new Error(\"[TIDAL Pre] Refresh response missing access_token: \" + JSON.stringify(json));",
+                  "            }",
+                  "            pm.environment.set(\"tidal_access_token\", json.access_token);",
+                  "            const expiresIn = json.expires_in || 3600;",
+                  "            pm.environment.set(\"tidal_token_expiry\", String(Date.now() + expiresIn * 1000 - 30000));",
+                  "            if (json.refresh_token) pm.environment.set(\"tidal_refresh_token\", json.refresh_token);",
+                  "            console.log(\"[TIDAL Pre] Token refreshed successfully via refresh_token.\");",
+                  "        });",
+                  "",
+                  "    } else if (canRefreshWithClientCreds) {",
+                  "        console.log(\"[TIDAL Pre] Attempting token refresh via client_credentials grant...\");",
+                  "        const body = \"grant_type=client_credentials\"",
+                  "            + \"&client_id=\" + encodeURIComponent(clientId)",
+                  "            + \"&client_secret=\" + encodeURIComponent(clientSec);",
+                  "",
+                  "        pm.sendRequest({",
+                  "            url: refreshUrl,",
+                  "            method: \"POST\",",
+                  "            header: { \"Content-Type\": \"application/x-www-form-urlencoded\" },",
+                  "            body: { mode: \"raw\", raw: body }",
+                  "        }, function (err, res) {",
+                  "            if (err) {",
+                  "                console.error(\"[TIDAL Pre] Client-creds refresh failed:\", err);",
+                  "                throw new Error(\"[TIDAL Pre] OPERATOR ACTION REQUIRED: Token refresh failed. Run 'Auth - TIDAL (Set access token)' manually.\");",
+                  "            }",
+                  "            let json;",
+                  "            try { json = res.json(); } catch (e) {",
+                  "                throw new Error(\"[TIDAL Pre] Refresh response not JSON. Status: \" + res.status);",
+                  "            }",
+                  "            if (!json.access_token) {",
+                  "                throw new Error(\"[TIDAL Pre] Refresh response missing access_token: \" + JSON.stringify(json));",
+                  "            }",
+                  "            pm.environment.set(\"tidal_access_token\", json.access_token);",
+                  "            const expiresIn = json.expires_in || 3600;",
+                  "            pm.environment.set(\"tidal_token_expiry\", String(Date.now() + expiresIn * 1000 - 30000));",
+                  "            console.log(\"[TIDAL Pre] Token refreshed successfully via client_credentials.\");",
+                  "        });",
+                  "",
+                  "    } else {",
+                  "        // No refresh path available — fail loudly",
+                  "        throw new Error(",
+                  "            \"[TIDAL Pre] OPERATOR ACTION REQUIRED: tidal_access_token is \" + reason +",
+                  "            \" and no refresh credentials are configured. \" +",
+                  "            \"Run 'Auth - TIDAL (Set access token)' first, or set tidal_client_id + tidal_client_secret in the environment.\"",
+                  "        );",
+                  "    }",
+                  "})();",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tidal_access_token}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/vnd.api+json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl_tidal}}/tracks",
+              "host": [
+                "{{baseUrl_tidal}}"
+              ],
+              "path": [
+                "tracks"
+              ],
+              "query": [
+                {
+                  "key": "filter[isrc]",
+                  "value": "{{lookup_isrc}}",
+                  "description": "ISRC lookup — set lookup_isrc in environment"
+                },
+                {
+                  "key": "countryCode",
+                  "value": "{{tidal_country_code}}"
+                },
+                {
+                  "key": "include",
+                  "value": "{{tidal_include}}",
+                  "description": "Comma-separated: artists,albums"
+                }
+              ]
+            },
+            "description": "Fetch a TIDAL v2 track via JSON:API. Uses env vars:\n- baseUrl_tidal\n- tidal_track_id\n- tidal_country_code\n- tidal_include\n- tidal_access_token\n\nSaves raw provider response into `raw_tidal_track`."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Beatport",
+      "item": [
+        {
+          "name": "Hydrate - Beatport Track by ID (secondary)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// ============================================================",
+                  "// Hydrate - Beatport Track by ID (secondary)",
+                  "// Only run when lookup_track_id_beatport is already set by",
+                  "// the primary ISRC list fetch. Validates single-track response.",
+                  "// ============================================================",
+                  "",
+                  "pm.test('HTTP 200 OK', () => pm.response.to.have.status(200));",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "// Guard: must be a single object, not a list",
+                  "pm.test('Response is a single track object (not a list)', () => {",
+                  "  pm.expect(body).to.be.an('object');",
+                  "  pm.expect(body).to.not.have.property('results');",
+                  "  pm.expect(body).to.not.have.property('data').that.is.an('array');",
+                  "});",
+                  "",
+                  "// Schema drift guard",
+                  "const required = ['id', 'isrc', 'name'];",
+                  "required.forEach(field => {",
+                  "  pm.test(`Field present: ${field}`, () => {",
+                  "    pm.expect(body).to.have.property(field);",
+                  "  });",
+                  "});",
+                  "",
+                  "if (body.id && body.isrc && body.name) {",
+                  "  // Cross-check: ID must match what was set by primary fetch",
+                  "  const expectedId = pm.environment.get('lookup_track_id_beatport');",
+                  "  pm.test('Track ID matches lookup_track_id_beatport', () => {",
+                  "    pm.expect(String(body.id)).to.equal(String(expectedId));",
+                  "  });",
+                  "",
+                  "  // Cross-check: ISRC must match lookup_isrc",
+                  "  const expectedIsrc = pm.environment.get('lookup_isrc');",
+                  "  pm.test('ISRC matches lookup_isrc', () => {",
+                  "    pm.expect(body.isrc).to.equal(expectedIsrc);",
+                  "  });",
+                  "",
+                  "  // Enrich beatport vars with hydrated data",
+                  "  pm.environment.set('beatport_title',       body.name);",
+                  "  pm.environment.set('beatport_isrc',        body.isrc);",
+                  "  pm.environment.set('beatport_duration_ms', String(body.length_ms || body.duration_ms || ''));",
+                  "  pm.environment.set('beatport_explicit',    String(body.is_explicit || body.explicit || false));",
+                  "",
+                  "  const artistNames = (body.artists || []).map(a => a.name).join(', ');",
+                  "  pm.environment.set('beatport_artist', artistNames);",
+                  "",
+                  "  const albumTitle = (body.release && body.release.name) ? body.release.name : '';",
+                  "  pm.environment.set('beatport_album', albumTitle);",
+                  "",
+                  "  pm.environment.set('beatport_match_status', 'hydrated');",
+                  "  console.log('[BP HYDRATE] Track hydrated:', body.name, '| ISRC:', body.isrc);",
+                  "} else {",
+                  "  pm.environment.set('beatport_match_status', 'HYDRATE_SCHEMA_DRIFT');",
+                  "  pm.test('FAIL: Schema drift — required fields missing in hydrate response', () => {",
+                  "    pm.expect.fail('Schema drift: id/isrc/name missing. Do not proceed.');",
+                  "  });",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{beatport_access_token}}",
+                "disabled": false
+              }
+            ],
+            "url": {
+              "raw": "https://api.beatport.com/v4/catalog/tracks/{{lookup_track_id_beatport}}/",
+              "protocol": "https",
+              "host": [
+                "api",
+                "beatport",
+                "com"
+              ],
+              "path": [
+                "v4",
+                "catalog",
+                "tracks",
+                "{{lookup_track_id_beatport}}",
+                ""
+              ]
+            },
+            "description": "SECONDARY — Beatport track hydration by ID. Use only when lookup_track_id_beatport is already known (set by the primary ISRC list fetch). Returns the full single-track object for deeper field inspection. Do not use this as a primary lookup — it bypasses ISRC validation."
+          },
+          "response": []
+        },
+        {
+          "name": "Fetch - Beatport Track",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// ─── Parse+Validate - Beatport Track ─── post-response script ────────────────",
+                  "// Extracts all beatport_* environment variables from the Beatport API response.",
+                  "// Handles multiple known response shapes:",
+                  "//   Shape A: Single track object at root (GET /catalog/tracks/{id})",
+                  "//   Shape B: Paginated list { results: [...] } (GET /catalog/tracks/?isrc=...)",
+                  "//   Shape C: { track: {...} } wrapper",
+                  "// Fails loudly if response shape is unrecognised.",
+                  "",
+                  "(function () {",
+                  "    pm.test(\"Beatport response is 200\", function () { pm.response.to.have.status(200); });",
+                  "",
+                  "    let body;",
+                  "    try {",
+                  "        body = pm.response.json();",
+                  "    } catch (e) {",
+                  "        pm.test(\"Beatport response is valid JSON\", function () {",
+                  "            pm.expect.fail(\"Response is not valid JSON: \" + e.message);",
+                  "        });",
+                  "        return;",
+                  "    }",
+                  "",
+                  "    // ── 1. Detect response shape ──────────────────────────────────────────────",
+                  "    let track = null;",
+                  "    let shapeDetected = null;",
+                  "",
+                  "    if (body && typeof body === \"object\" && !Array.isArray(body)) {",
+                  "        if (body.id && body.name !== undefined) {",
+                  "            // Shape A: root-level track object",
+                  "            track = body;",
+                  "            shapeDetected = \"A:root_track\";",
+                  "        } else if (body.results && Array.isArray(body.results) && body.results.length > 0) {",
+                  "            // Shape B: paginated list",
+                  "            track = body.results[0];",
+                  "            shapeDetected = \"B:paginated_results\";",
+                  "            if (body.results.length > 1) {",
+                  "                console.warn(\"[Beatport Parse] Multiple results (\" + body.results.length + \"). Using first. IDs: \" +",
+                  "                    body.results.map(function (r) { return r.id; }).join(\", \"));",
+                  "            }",
+                  "        } else if (body.track && typeof body.track === \"object\") {",
+                  "            // Shape C: wrapped track",
+                  "            track = body.track;",
+                  "            shapeDetected = \"C:wrapped_track\";",
+                  "        } else if (body.results && Array.isArray(body.results) && body.results.length === 0) {",
+                  "            console.warn(\"[Beatport Parse] Empty results array. ISRC may not be in Beatport catalog.\");",
+                  "            pm.environment.set(\"beatport_title_present\", \"false\");",
+                  "            pm.environment.set(\"beatport_isrc_present\",  \"false\");",
+                  "            pm.environment.set(\"beatport_bpm_present\",   \"false\");",
+                  "            pm.environment.set(\"beatport_key_present\",   \"false\");",
+                  "            pm.environment.set(\"beatport_duration_present\", \"false\");",
+                  "            pm.environment.set(\"beatport_explicit_present\", \"false\");",
+                  "            pm.environment.set(\"beatport_genre_present\",    \"false\");",
+                  "            pm.environment.set(\"beatport_artwork_present\",  \"false\");",
+                  "            pm.test(\"Beatport track found\", function () {",
+                  "                pm.expect.fail(\"No results returned from Beatport. Track not in catalog.\");",
+                  "            });",
+                  "            return;",
+                  "        } else {",
+                  "            // Unknown shape — fail loudly",
+                  "            pm.test(\"Beatport response shape recognised\", function () {",
+                  "                pm.expect.fail(",
+                  "                    \"[Beatport Parse] UNKNOWN RESPONSE SHAPE. Cannot extract track data. \" +",
+                  "                    \"Top-level keys: \" + Object.keys(body).join(\", \") + \". \" +",
+                  "                    \"Expected: root track object, { results: [...] }, or { track: {...} }.\"",
+                  "                );",
+                  "            });",
+                  "            console.error(\"[Beatport Parse] Unknown shape. Body sample:\", JSON.stringify(body).substring(0, 500));",
+                  "            return;",
+                  "        }",
+                  "    } else {",
+                  "        pm.test(\"Beatport response shape recognised\", function () {",
+                  "            pm.expect.fail(\"[Beatport Parse] Response is not an object. Got: \" + typeof body);",
+                  "        });",
+                  "        return;",
+                  "    }",
+                  "",
+                  "    console.log(\"[Beatport Parse] Shape detected:\", shapeDetected);",
+                  "",
+                  "    pm.test(\"Beatport track found\", function () {",
+                  "        pm.expect(track).to.be.an(\"object\").and.not.null;",
+                  "    });",
+                  "",
+                  "    // ── 2. Helper: set env var ────────────────────────────────────────────────",
+                  "    function setVar(key, value, presentKey) {",
+                  "        const serialised = (value === null || value === undefined)",
+                  "            ? \"\"",
+                  "            : (typeof value === \"object\" ? JSON.stringify(value) : String(value));",
+                  "        pm.environment.set(key, serialised);",
+                  "        if (presentKey !== undefined) {",
+                  "            pm.environment.set(presentKey, (value !== null && value !== undefined && value !== \"\") ? \"true\" : \"false\");",
+                  "        }",
+                  "    }",
+                  "",
+                  "    // ── 3. Core track fields ──────────────────────────────────────────────────",
+                  "    setVar(\"beatport_track_id\",   track.id   || null);",
+                  "    setVar(\"beatport_title\",      track.name || track.title || null, \"beatport_title_present\");",
+                  "    setVar(\"beatport_mix_name\",   track.mix_name || track.mix || null, \"beatport_mix_name_present\");",
+                  "    setVar(\"beatport_isrc_value\", track.isrc || null, \"beatport_isrc_present\");",
+                  "    setVar(\"beatport_slug\",       track.slug || null);",
+                  "    setVar(\"beatport_url\",        track.url  || (track.slug ? \"https://www.beatport.com/track/\" + track.slug + \"/\" + track.id : null));",
+                  "",
+                  "    // ── 4. BPM ────────────────────────────────────────────────────────────────",
+                  "    const bpm = track.bpm !== undefined && track.bpm !== null ? track.bpm : null;",
+                  "    setVar(\"beatport_bpm\", bpm, \"beatport_bpm_present\");",
+                  "",
+                  "    // ── 5. Key ────────────────────────────────────────────────────────────────",
+                  "    // Beatport key can be: { name: \"A min\", camelot: \"8A\" } or a string",
+                  "    let keyValue = null;",
+                  "    if (track.key) {",
+                  "        if (typeof track.key === \"object\") {",
+                  "            keyValue = track.key.name || track.key.camelot || JSON.stringify(track.key);",
+                  "        } else {",
+                  "            keyValue = String(track.key);",
+                  "        }",
+                  "    }",
+                  "    setVar(\"beatport_key\", keyValue, \"beatport_key_present\");",
+                  "",
+                  "    // ── 6. Duration ───────────────────────────────────────────────────────────",
+                  "    // Beatport returns duration in seconds (integer) or as \"mm:ss\" string",
+                  "    let durationMs = null;",
+                  "    let durationSec = null;",
+                  "    if (track.length_ms !== undefined && track.length_ms !== null) {",
+                  "        durationMs  = track.length_ms;",
+                  "        durationSec = Math.round(track.length_ms / 1000);",
+                  "    } else if (track.duration !== undefined && track.duration !== null) {",
+                  "        if (typeof track.duration === \"number\") {",
+                  "            durationSec = track.duration;",
+                  "            durationMs  = track.duration * 1000;",
+                  "        } else if (typeof track.duration === \"string\" && track.duration.includes(\":\")) {",
+                  "            const parts = track.duration.split(\":\");",
+                  "            durationSec = parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);",
+                  "            durationMs  = durationSec * 1000;",
+                  "        }",
+                  "    } else if (track.length !== undefined && track.length !== null) {",
+                  "        if (typeof track.length === \"number\") {",
+                  "            durationSec = track.length;",
+                  "            durationMs  = track.length * 1000;",
+                  "        } else if (typeof track.length === \"string\" && track.length.includes(\":\")) {",
+                  "            const parts = track.length.split(\":\");",
+                  "            durationSec = parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);",
+                  "            durationMs  = durationSec * 1000;",
+                  "        }",
+                  "    }",
+                  "    setVar(\"beatport_duration_ms\",      durationMs,  \"beatport_duration_present\");",
+                  "    setVar(\"beatport_duration_seconds\", durationSec);",
+                  "",
+                  "    // ── 7. Explicit ───────────────────────────────────────────────────────────",
+                  "    const explicit = track.is_explicit !== undefined ? track.is_explicit",
+                  "                   : track.explicit    !== undefined ? track.explicit",
+                  "                   : null;",
+                  "    setVar(\"beatport_explicit\", explicit, \"beatport_explicit_present\");",
+                  "",
+                  "    // ── 8. Genre + Sub-genre ──────────────────────────────────────────────────",
+                  "    let genreValue    = null;",
+                  "    let subGenreValue = null;",
+                  "    if (track.genre) {",
+                  "        genreValue = typeof track.genre === \"object\" ? (track.genre.name || JSON.stringify(track.genre)) : String(track.genre);",
+                  "    } else if (Array.isArray(track.genres) && track.genres.length > 0) {",
+                  "        genreValue = track.genres.map(function (g) { return typeof g === \"object\" ? g.name : g; }).join(\", \");",
+                  "    }",
+                  "    if (track.sub_genre) {",
+                  "        subGenreValue = typeof track.sub_genre === \"object\" ? (track.sub_genre.name || JSON.stringify(track.sub_genre)) : String(track.sub_genre);",
+                  "    } else if (Array.isArray(track.sub_genres) && track.sub_genres.length > 0) {",
+                  "        subGenreValue = track.sub_genres.map(function (g) { return typeof g === \"object\" ? g.name : g; }).join(\", \");",
+                  "    }",
+                  "    setVar(\"beatport_genre\",     genreValue,    \"beatport_genre_present\");",
+                  "    setVar(\"beatport_sub_genre\", subGenreValue);",
+                  "",
+                  "    // ── 9. Artists ────────────────────────────────────────────────────────────",
+                  "    let artistObjects    = [];",
+                  "    let primaryArtist    = null;",
+                  "    let remixerObjects   = [];",
+                  "",
+                  "    if (Array.isArray(track.artists) && track.artists.length > 0) {",
+                  "        artistObjects = track.artists.map(function (a) {",
+                  "            return { id: a.id || null, name: a.name || null, slug: a.slug || null };",
+                  "        });",
+                  "        primaryArtist = artistObjects[0].name || null;",
+                  "    }",
+                  "    if (Array.isArray(track.remixers) && track.remixers.length > 0) {",
+                  "        remixerObjects = track.remixers.map(function (r) {",
+                  "            return { id: r.id || null, name: r.name || null };",
+                  "        });",
+                  "    }",
+                  "",
+                  "    setVar(\"beatport_artists\",              artistObjects.length > 0 ? JSON.stringify(artistObjects) : null);",
+                  "    setVar(\"beatport_primary_artist_name\",  primaryArtist);",
+                  "    setVar(\"beatport_remixers\",             remixerObjects.length > 0 ? JSON.stringify(remixerObjects) : null);",
+                  "",
+                  "    // ── 10. Release (album) ───────────────────────────────────────────────────",
+                  "    const release = track.release || {};",
+                  "    setVar(\"beatport_release_title\",  release.name  || release.title || null);",
+                  "    setVar(\"beatport_release_id\",     release.id    || null);",
+                  "    setVar(\"beatport_release_date\",   track.new_release_date || track.publish_date || release.date || null);",
+                  "    setVar(\"beatport_new_release_date\", track.new_release_date || null);",
+                  "    setVar(\"beatport_pre_order_date\",   track.pre_order_date  || null);",
+                  "    setVar(\"beatport_track_number\",     track.number          || track.track_number || null);",
+                  "    setVar(\"beatport_catalog_number\",   release.catalog_number || track.catalog_number || null);",
+                  "",
+                  "    // ── 11. Label ─────────────────────────────────────────────────────────────",
+                  "    const label = track.label || release.label || {};",
+                  "    setVar(\"beatport_label_name\", label.name || null);",
+                  "    setVar(\"beatport_label_id\",   label.id   || null);",
+                  "",
+                  "    // ── 12. Artwork ───────────────────────────────────────────────────────────",
+                  "    // Beatport: track.image.uri or track.image.dynamic_uri or release.image.uri",
+                  "    let artworkUrl = null;",
+                  "    const img = track.image || release.image || null;",
+                  "    if (img) {",
+                  "        artworkUrl = img.uri || img.dynamic_uri || img.url || null;",
+                  "        // dynamic_uri has {w} {h} placeholders — resolve to 1400x1400",
+                  "        if (artworkUrl && artworkUrl.includes(\"{w}\")) {",
+                  "            artworkUrl = artworkUrl.replace(\"{w}\", \"1400\").replace(\"{h}\", \"1400\");",
+                  "        }",
+                  "    }",
+                  "    setVar(\"beatport_artwork_url\", artworkUrl, \"beatport_artwork_present\");",
+                  "",
+                  "    // ── 13. Streaming / availability flags ────────────────────────────────────",
+                  "    setVar(\"beatport_is_available_for_streaming\", track.is_available_for_streaming !== undefined ? track.is_available_for_streaming : null);",
+                  "    setVar(\"beatport_is_available_for_download\",  track.is_available_for_download  !== undefined ? track.is_available_for_download  : null);",
+                  "    setVar(\"beatport_is_classic\",                 track.is_classic !== undefined ? track.is_classic : null);",
+                  "    setVar(\"beatport_is_hype\",                    track.is_hype    !== undefined ? track.is_hype    : null);",
+                  "    setVar(\"beatport_publish_status\",             track.publish_status || null);",
+                  "",
+                  "    // ── 14. Store raw track for downstream use ────────────────────────────────",
+                  "    pm.environment.set(\"raw_beatport_track\", JSON.stringify(track));",
+                  "",
+                  "    // ── 15. Summary log ───────────────────────────────────────────────────────",
+                  "    console.log(\"[Beatport Parse] Extracted track:\", {",
+                  "        id:       track.id,",
+                  "        title:    track.name || track.title,",
+                  "        mix_name: track.mix_name,",
+                  "        isrc:     track.isrc,",
+                  "        bpm:      bpm,",
+                  "        key:      keyValue,",
+                  "        duration: durationSec,",
+                  "        artist:   primaryArtist,",
+                  "        genre:    genreValue,",
+                  "        label:    label.name",
+                  "    });",
+                  "",
+                  "    pm.test(\"Beatport track has title\", function () {",
+                  "        pm.expect(track.name || track.title).to.be.a(\"string\").and.not.empty;",
+                  "    });",
+                  "    pm.test(\"Beatport track has ISRC\", function () {",
+                  "        pm.expect(track.isrc).to.be.a(\"string\").and.not.empty;",
+                  "    });",
+                  "    pm.test(\"Beatport track has BPM\", function () {",
+                  "        pm.expect(bpm).to.not.be.null;",
+                  "    });",
+                  "})();",
+                  ""
+                ]
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// ─── Fetch - Beatport Track ─── pre-request script ───────────────────────────",
+                  "// Auto-refreshes Beatport access token if missing or expired.",
+                  "// Uses beatport_refresh_token if available, otherwise falls back to",
+                  "// password grant using beatport_username + beatport_password.",
+                  "",
+                  "(function () {",
+                  "    const token      = pm.environment.get(\"beatport_access_token\");",
+                  "    const expiry     = pm.environment.get(\"beatport_token_expiry\");",
+                  "    const tokenUrl   = pm.environment.get(\"beatport_token_url\") || \"https://api.beatport.com/v4/auth/o/token/\";",
+                  "    const clientId   = pm.environment.get(\"beatport_client_id\");",
+                  "    const clientSec  = pm.environment.get(\"beatport_client_secret\");",
+                  "    const refreshTok = pm.environment.get(\"beatport_refresh_token\");",
+                  "    const username   = pm.environment.get(\"beatport_username\");",
+                  "    const password   = pm.environment.get(\"beatport_password\");",
+                  "",
+                  "    const now = Date.now();",
+                  "    const isExpired = !expiry || now >= parseInt(expiry, 10);",
+                  "    const isMissing = !token || token.trim() === \"\";",
+                  "",
+                  "    if (!isMissing && !isExpired) {",
+                  "        console.log(\"[Beatport Pre] Token valid. Proceeding.\");",
+                  "        return;",
+                  "    }",
+                  "",
+                  "    const reason = isMissing ? \"missing\" : \"expired\";",
+                  "    console.warn(\"[Beatport Pre] Token is \" + reason + \". Attempting refresh...\");",
+                  "",
+                  "    // ── Build grant body ──────────────────────────────────────────────────────",
+                  "    let grantBody;",
+                  "    let grantType;",
+                  "",
+                  "    if (refreshTok && refreshTok.trim() !== \"\") {",
+                  "        grantType = \"refresh_token\";",
+                  "        grantBody = \"grant_type=refresh_token\"",
+                  "            + \"&refresh_token=\" + encodeURIComponent(refreshTok)",
+                  "            + (clientId  ? \"&client_id=\"     + encodeURIComponent(clientId)  : \"\")",
+                  "            + (clientSec ? \"&client_secret=\" + encodeURIComponent(clientSec) : \"\");",
+                  "    } else if (username && username.trim() !== \"\" && password && password.trim() !== \"\") {",
+                  "        grantType = \"password\";",
+                  "        grantBody = \"grant_type=password\"",
+                  "            + \"&username=\" + encodeURIComponent(username)",
+                  "            + \"&password=\" + encodeURIComponent(password)",
+                  "            + (clientId  ? \"&client_id=\"     + encodeURIComponent(clientId)  : \"\")",
+                  "            + (clientSec ? \"&client_secret=\" + encodeURIComponent(clientSec) : \"\");",
+                  "    } else if (clientId && clientId.trim() !== \"\" && clientSec && clientSec.trim() !== \"\") {",
+                  "        grantType = \"client_credentials\";",
+                  "        grantBody = \"grant_type=client_credentials\"",
+                  "            + \"&client_id=\"     + encodeURIComponent(clientId)",
+                  "            + \"&client_secret=\" + encodeURIComponent(clientSec);",
+                  "    } else {",
+                  "        throw new Error(",
+                  "            \"[Beatport Pre] OPERATOR ACTION REQUIRED: beatport_access_token is \" + reason +",
+                  "            \" and no credentials are configured. \" +",
+                  "            \"Set beatport_username + beatport_password (or beatport_client_id + beatport_client_secret) in the environment, \" +",
+                  "            \"then run 'Auth - Beatport (Set access token)' first.\"",
+                  "        );",
+                  "    }",
+                  "",
+                  "    console.log(\"[Beatport Pre] Using grant_type:\", grantType);",
+                  "",
+                  "    pm.sendRequest({",
+                  "        url: tokenUrl,",
+                  "        method: \"POST\",",
+                  "        header: { \"Content-Type\": \"application/x-www-form-urlencoded\" },",
+                  "        body: { mode: \"raw\", raw: grantBody }",
+                  "    }, function (err, res) {",
+                  "        if (err) {",
+                  "            throw new Error(\"[Beatport Pre] Token refresh request failed: \" + err);",
+                  "        }",
+                  "        let json;",
+                  "        try { json = res.json(); } catch (e) {",
+                  "            throw new Error(\"[Beatport Pre] Token refresh response not JSON. Status: \" + res.status + \" Body: \" + res.text());",
+                  "        }",
+                  "        if (!json.access_token) {",
+                  "            throw new Error(\"[Beatport Pre] Token refresh response missing access_token. Body: \" + JSON.stringify(json));",
+                  "        }",
+                  "        pm.environment.set(\"beatport_access_token\", json.access_token);",
+                  "        const expiresIn = json.expires_in || 86400;",
+                  "        pm.environment.set(\"beatport_token_expiry\", String(Date.now() + expiresIn * 1000 - 30000));",
+                  "        if (json.refresh_token) pm.environment.set(\"beatport_refresh_token\", json.refresh_token);",
+                  "        if (json.token_type)   pm.environment.set(\"beatport_token_type\",    json.token_type);",
+                  "        console.log(\"[Beatport Pre] Token refreshed successfully via\", grantType);",
+                  "    });",
+                  "})();",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{beatport_access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{beatport_access_token}}"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "https://api.beatport.com/v4/catalog/tracks/",
+              "protocol": "https",
+              "host": [
+                "api",
+                "beatport",
+                "com"
+              ],
+              "path": [
+                "v4",
+                "catalog",
+                "tracks",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "isrc",
+                  "value": "{{lookup_isrc}}",
+                  "description": "Filter on exact ISRC match"
+                }
+              ]
+            },
+            "description": "Fetch a Beatport track (endpoint may differ depending on your Beatport API plan).\n\nUses env vars:\n- baseUrl_beatport\n- beatport_track_id\n- beatport_access_token\n\nSaves raw provider response into `raw_beatport_track`."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Comparison & Normalization",
+      "item": [
+        {
+          "name": "Parse+Validate - Beatport (provider JSON -> canonical)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// ============================================================",
+                  "// Parse+Validate - Beatport (list response -> canonical)",
+                  "// Workflow: PRIMARY — ISRC list lookup",
+                  "// Expects: GET /v4/catalog/tracks/?isrc={{lookup_isrc}}",
+                  "// ============================================================",
+                  "",
+                  "const REQUIRED_FIELDS = ['id', 'isrc', 'name', 'artists', 'release'];",
+                  "",
+                  "function failLoud(reason, matchCount) {",
+                  "  pm.environment.set('beatport_match_status', 'FAIL: ' + reason);",
+                  "  pm.environment.set('beatport_match_count', String(matchCount !== undefined ? matchCount : '?'));",
+                  "  // Clear any stale beatport canonical vars",
+                  "  ['beatport_isrc','beatport_title','beatport_artist','beatport_album',",
+                  "   'beatport_duration_ms','beatport_explicit','beatport_status',",
+                  "   'lookup_track_id_beatport'].forEach(k => pm.environment.set(k, ''));",
+                  "  pm.test('Beatport ISRC lookup: unambiguous single match', () => { throw new Error(reason); });",
+                  "}",
+                  "",
+                  "pm.test('Response is 200', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "let body;",
+                  "try {",
+                  "  body = pm.response.json();",
+                  "} catch(e) {",
+                  "  failLoud('Response is not valid JSON: ' + e.message);",
+                  "  return;",
+                  "}",
+                  "",
+                  "// Must be a list/paginated response",
+                  "if (!body || typeof body !== 'object') {",
+                  "  failLoud('Response body is not an object');",
+                  "  return;",
+                  "}",
+                  "",
+                  "// Beatport v4 list responses use { results: [...], count: N, next, previous }",
+                  "const results = body.results;",
+                  "if (!Array.isArray(results)) {",
+                  "  failLoud('Schema drift: expected body.results to be an array, got: ' + typeof results);",
+                  "  return;",
+                  "}",
+                  "",
+                  "const count = results.length;",
+                  "pm.environment.set('beatport_match_count', String(count));",
+                  "",
+                  "if (count === 0) {",
+                  "  failLoud('No tracks found for ISRC ' + pm.environment.get('lookup_isrc'), 0);",
+                  "  return;",
+                  "}",
+                  "",
+                  "if (count > 1) {",
+                  "  failLoud('Ambiguous: ' + count + ' tracks returned for ISRC ' + pm.environment.get('lookup_isrc') + ' — cannot determine canonical match', count);",
+                  "  return;",
+                  "}",
+                  "",
+                  "// Exactly one result — validate schema",
+                  "const track = results[0];",
+                  "const missing = REQUIRED_FIELDS.filter(f => track[f] === undefined || track[f] === null);",
+                  "if (missing.length > 0) {",
+                  "  failLoud('Schema drift: missing required fields: ' + missing.join(', '), 1);",
+                  "  return;",
+                  "}",
+                  "",
+                  "// Extract canonical fields",
+                  "const isrc = track.isrc || '';",
+                  "const title = track.name || '';",
+                  "const artists = Array.isArray(track.artists)",
+                  "  ? track.artists.map(a => a.name || a.artist_name || '').filter(Boolean).join(', ')",
+                  "  : (track.artists || '');",
+                  "const album = (track.release && track.release.name) ? track.release.name : '';",
+                  "const durationMs = track.length_ms !== undefined ? track.length_ms",
+                  "  : track.duration_ms !== undefined ? track.duration_ms",
+                  "  : track.length !== undefined ? Math.round(track.length * 1000)",
+                  "  : '';",
+                  "const explicit = track.explicit !== undefined ? String(track.explicit) : '';",
+                  "const trackId = String(track.id);",
+                  "",
+                  "// Validate ISRC matches what we looked up",
+                  "const lookupIsrc = pm.environment.get('lookup_isrc') || '';",
+                  "if (lookupIsrc && isrc && isrc.toUpperCase() !== lookupIsrc.toUpperCase()) {",
+                  "  failLoud('ISRC mismatch: requested ' + lookupIsrc + ' but got ' + isrc, 1);",
+                  "  return;",
+                  "}",
+                  "",
+                  "// All good — set canonical vars",
+                  "pm.environment.set('beatport_isrc', isrc);",
+                  "pm.environment.set('beatport_title', title);",
+                  "pm.environment.set('beatport_artist', artists);",
+                  "pm.environment.set('beatport_album', album);",
+                  "pm.environment.set('beatport_duration_ms', String(durationMs));",
+                  "pm.environment.set('beatport_explicit', explicit);",
+                  "pm.environment.set('beatport_status', 'ok');",
+                  "pm.environment.set('beatport_match_status', 'MATCHED');",
+                  "pm.environment.set('beatport_match_count', '1');",
+                  "pm.environment.set('lookup_track_id_beatport', trackId);",
+                  "",
+                  "pm.test('Beatport ISRC lookup: unambiguous single match', () => { pm.expect(count).to.equal(1); });",
+                  "pm.test('Beatport track has required fields', () => { pm.expect(missing.length).to.equal(0); });",
+                  "pm.test('Beatport ISRC matches lookup', () => {",
+                  "  if (lookupIsrc) pm.expect(isrc.toUpperCase()).to.equal(lookupIsrc.toUpperCase());",
+                  "});",
+                  "pm.test('Beatport canonical vars set', () => {",
+                  "  pm.expect(pm.environment.get('beatport_title')).to.not.be.empty;",
+                  "  pm.expect(pm.environment.get('beatport_artist')).to.not.be.empty;",
+                  "});",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://postman-echo.com/get",
+              "protocol": "https",
+              "host": [
+                "postman-echo",
+                "com"
+              ],
+              "path": [
+                "get"
+              ]
+            },
+            "description": "Parses `raw_beatport_track` into canonical fields and provenance.\n\nWrites/merges:\n- canonical_track (adds beatport-side fields without removing tidal-side)\n- provenance_map\n\nFails loudly on missing/invalid JSON or major schema drift."
+          },
+          "response": []
+        },
+        {
+          "name": "Parse+Validate - TIDAL v2 (JSON:API -> canonical)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// ============================================================",
+                  "// Parse+Validate - TIDAL v2 (JSON:API -> canonical)",
+                  "// Workflow: PRIMARY — ISRC canonical lookup",
+                  "// JSON:API parsing only — no fallback to non-JSON:API shapes",
+                  "// ============================================================",
+                  "",
+                  "function failLoud(reason) {",
+                  "  pm.environment.set('tidal_status', 'FAIL: ' + reason);",
+                  "  ['tidal_isrc','tidal_title','tidal_artist','tidal_album',",
+                  "   'tidal_duration_ms','tidal_explicit','tidal_album_id',",
+                  "   'lookup_track_id_tidal'].forEach(k => pm.environment.set(k, ''));",
+                  "  pm.test('TIDAL JSON:API parse: valid canonical record', () => { throw new Error(reason); });",
+                  "}",
+                  "",
+                  "pm.test('Response is 200', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "let body;",
+                  "try {",
+                  "  body = pm.response.json();",
+                  "} catch(e) {",
+                  "  failLoud('Response is not valid JSON: ' + e.message);",
+                  "  return;",
+                  "}",
+                  "",
+                  "// JSON:API strict: must have data",
+                  "if (!body || !body.data) {",
+                  "  failLoud('Schema drift: missing body.data (not a JSON:API response)');",
+                  "  return;",
+                  "}",
+                  "",
+                  "// data may be array (search) or single object (by-id)",
+                  "const dataArr = Array.isArray(body.data) ? body.data : [body.data];",
+                  "const included = Array.isArray(body.included) ? body.included : [];",
+                  "",
+                  "if (dataArr.length === 0) {",
+                  "  failLoud('No TIDAL track data returned for ISRC ' + pm.environment.get('lookup_isrc'));",
+                  "  return;",
+                  "}",
+                  "",
+                  "// For ISRC lookup, expect exactly one track",
+                  "if (dataArr.length > 1) {",
+                  "  failLoud('Ambiguous: ' + dataArr.length + ' TIDAL tracks returned — cannot determine canonical match');",
+                  "  return;",
+                  "}",
+                  "",
+                  "const item = dataArr[0];",
+                  "",
+                  "// JSON:API resource object: { id, type, attributes, relationships }",
+                  "if (!item.attributes) {",
+                  "  failLoud('Schema drift: JSON:API resource missing attributes');",
+                  "  return;",
+                  "}",
+                  "",
+                  "const attrs = item.attributes;",
+                  "const trackId = item.id || '';",
+                  "",
+                  "// Required attribute fields",
+                  "const REQUIRED_ATTRS = ['title', 'isrc'];",
+                  "const missingAttrs = REQUIRED_ATTRS.filter(f => attrs[f] === undefined || attrs[f] === null || attrs[f] === '');",
+                  "if (missingAttrs.length > 0) {",
+                  "  failLoud('Schema drift: missing required attributes: ' + missingAttrs.join(', '));",
+                  "  return;",
+                  "}",
+                  "",
+                  "// Extract canonical fields",
+                  "const isrc = attrs.isrc || '';",
+                  "const title = attrs.title || '';",
+                  "",
+                  "// Artists: from relationships -> included",
+                  "let artists = '';",
+                  "if (item.relationships && item.relationships.artists && item.relationships.artists.data) {",
+                  "  const artistRefs = Array.isArray(item.relationships.artists.data)",
+                  "    ? item.relationships.artists.data",
+                  "    : [item.relationships.artists.data];",
+                  "  const artistNames = artistRefs.map(ref => {",
+                  "    const inc = included.find(i => i.type === ref.type && i.id === ref.id);",
+                  "    return inc && inc.attributes && inc.attributes.name ? inc.attributes.name : null;",
+                  "  }).filter(Boolean);",
+                  "  artists = artistNames.join(', ');",
+                  "}",
+                  "// Fallback: inline artists array",
+                  "if (!artists && Array.isArray(attrs.artists)) {",
+                  "  artists = attrs.artists.map(a => a.name || '').filter(Boolean).join(', ');",
+                  "}",
+                  "",
+                  "// Album: from relationships -> included",
+                  "let album = '';",
+                  "let albumId = '';",
+                  "if (item.relationships && item.relationships.albums && item.relationships.albums.data) {",
+                  "  const albumRef = Array.isArray(item.relationships.albums.data)",
+                  "    ? item.relationships.albums.data[0]",
+                  "    : item.relationships.albums.data;",
+                  "  if (albumRef) {",
+                  "    albumId = albumRef.id || '';",
+                  "    const incAlbum = included.find(i => i.type === albumRef.type && i.id === albumRef.id);",
+                  "    if (incAlbum && incAlbum.attributes) album = incAlbum.attributes.title || '';",
+                  "  }",
+                  "}",
+                  "",
+                  "const durationMs = attrs.duration !== undefined ? attrs.duration",
+                  "  : attrs.duration_ms !== undefined ? attrs.duration_ms",
+                  "  : '';",
+                  "const explicit = attrs.explicit !== undefined ? String(attrs.explicit) : '';",
+                  "",
+                  "// Validate ISRC matches lookup",
+                  "const lookupIsrc = pm.environment.get('lookup_isrc') || '';",
+                  "if (lookupIsrc && isrc && isrc.toUpperCase() !== lookupIsrc.toUpperCase()) {",
+                  "  failLoud('ISRC mismatch: requested ' + lookupIsrc + ' but got ' + isrc);",
+                  "  return;",
+                  "}",
+                  "",
+                  "// Set canonical vars",
+                  "pm.environment.set('tidal_isrc', isrc);",
+                  "pm.environment.set('tidal_title', title);",
+                  "pm.environment.set('tidal_artist', artists);",
+                  "pm.environment.set('tidal_album', album);",
+                  "pm.environment.set('tidal_duration_ms', String(durationMs));",
+                  "pm.environment.set('tidal_explicit', explicit);",
+                  "pm.environment.set('tidal_album_id', albumId);",
+                  "pm.environment.set('tidal_status', 'ok');",
+                  "pm.environment.set('lookup_track_id_tidal', trackId);",
+                  "",
+                  "pm.test('TIDAL JSON:API parse: valid canonical record', () => { pm.expect(missingAttrs.length).to.equal(0); });",
+                  "pm.test('TIDAL ISRC matches lookup', () => {",
+                  "  if (lookupIsrc) pm.expect(isrc.toUpperCase()).to.equal(lookupIsrc.toUpperCase());",
+                  "});",
+                  "pm.test('TIDAL canonical vars set', () => {",
+                  "  pm.expect(pm.environment.get('tidal_title')).to.not.be.empty;",
+                  "});",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://postman-echo.com/get",
+              "protocol": "https",
+              "host": [
+                "postman-echo",
+                "com"
+              ],
+              "path": [
+                "get"
+              ]
+            },
+            "description": "Parses `raw_tidal_track` (JSON:API) into canonical fields and a provenance map.\n\nWrites:\n- canonical_track (JSON string; tidal-side only fields populated)\n- provenance_map\n\nFails loudly on JSON:API schema drift / missing expected keys."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Operator Output",
+      "item": [
+        {
+          "name": "Operator Summary (print outputs)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// ============================================================",
+                  "// Operator Summary (print outputs)",
+                  "// Reflects workflow class and candidate counts",
+                  "// ============================================================",
+                  "",
+                  "const workflowClass      = pm.environment.get('workflow_class') || 'primary';",
+                  "const lookupIsrc         = pm.environment.get('lookup_isrc') || '(not set)';",
+                  "const lookupQuery        = pm.environment.get('lookup_query') || '(not set)';",
+                  "const lookupAlbumTidal   = pm.environment.get('lookup_album_id_tidal') || '(not set)';",
+                  "const lookupPlaylistTidal= pm.environment.get('lookup_playlist_id_tidal') || '(not set)';",
+                  "",
+                  "// TIDAL",
+                  "const tidalStatus        = pm.environment.get('tidal_status') || '(not run)';",
+                  "const tidalIsrc          = pm.environment.get('tidal_isrc') || '';",
+                  "const tidalTitle         = pm.environment.get('tidal_title') || '';",
+                  "const tidalArtist        = pm.environment.get('tidal_artist') || '';",
+                  "const tidalAlbum         = pm.environment.get('tidal_album') || '';",
+                  "const tidalDur           = pm.environment.get('tidal_duration_ms') || '';",
+                  "const tidalExplicit      = pm.environment.get('tidal_explicit') || '';",
+                  "const tidalAlbumId       = pm.environment.get('tidal_album_id') || '';",
+                  "const tidalTrackId       = pm.environment.get('lookup_track_id_tidal') || '';",
+                  "const tidalCandidateCount= pm.environment.get('tidal_candidate_count') || '0';",
+                  "",
+                  "let tidalAlbumCandidates = [];",
+                  "let tidalPlaylistCandidates = [];",
+                  "try { tidalAlbumCandidates = JSON.parse(pm.environment.get('tidal_album_track_candidates') || '[]'); } catch(e) {}",
+                  "try { tidalPlaylistCandidates = JSON.parse(pm.environment.get('tidal_playlist_track_candidates') || '[]'); } catch(e) {}",
+                  "",
+                  "// Beatport",
+                  "const bpMatchStatus      = pm.environment.get('beatport_match_status') || '(not run)';",
+                  "const bpMatchCount       = pm.environment.get('beatport_match_count') || '0';",
+                  "const bpIsrc             = pm.environment.get('beatport_isrc') || '';",
+                  "const bpTitle            = pm.environment.get('beatport_title') || '';",
+                  "const bpArtist           = pm.environment.get('beatport_artist') || '';",
+                  "const bpAlbum            = pm.environment.get('beatport_album') || '';",
+                  "const bpDur              = pm.environment.get('beatport_duration_ms') || '';",
+                  "const bpExplicit         = pm.environment.get('beatport_explicit') || '';",
+                  "const bpTrackId          = pm.environment.get('lookup_track_id_beatport') || '';",
+                  "",
+                  "// Compare",
+                  "const operatorNotes      = pm.environment.get('operator_notes') || '(compare not run)';",
+                  "",
+                  "// Workflow class label",
+                  "const workflowLabels = {",
+                  "  'primary':   'PRIMARY — Track-by-ISRC canonical validation',",
+                  "  'secondary': 'SECONDARY — Album expansion + per-track validation',",
+                  "  'tertiary':  'TERTIARY — Playlist audit/expansion + per-track validation',",
+                  "  'fallback':  'FALLBACK — Text search (explicit operator trigger only)'",
+                  "};",
+                  "const workflowLabel = workflowLabels[workflowClass] || workflowClass;",
+                  "",
+                  "const divider = '═'.repeat(60);",
+                  "const thin    = '─'.repeat(60);",
+                  "",
+                  "const lines = [",
+                  "  divider,",
+                  "  '  OPERATOR SUMMARY',",
+                  "  '  Workflow: ' + workflowLabel,",
+                  "  thin,",
+                  "  '  Lookup ISRC         : ' + lookupIsrc,",
+                  "  '  Lookup Query        : ' + lookupQuery,",
+                  "  '  TIDAL Album ID      : ' + lookupAlbumTidal,",
+                  "  '  TIDAL Playlist ID   : ' + lookupPlaylistTidal,",
+                  "  thin,",
+                  "  '  ── TIDAL ──',",
+                  "  '  Status              : ' + tidalStatus,",
+                  "  '  Track ID            : ' + tidalTrackId,",
+                  "  '  ISRC                : ' + tidalIsrc,",
+                  "  '  Title               : ' + tidalTitle,",
+                  "  '  Artist              : ' + tidalArtist,",
+                  "  '  Album               : ' + tidalAlbum + (tidalAlbumId ? ' [id:' + tidalAlbumId + ']' : ''),",
+                  "  '  Duration (ms)       : ' + tidalDur,",
+                  "  '  Explicit            : ' + tidalExplicit,",
+                  "  '  Album candidates    : ' + tidalAlbumCandidates.length + ' track(s)',",
+                  "  '  Playlist candidates : ' + tidalPlaylistCandidates.length + ' track(s)',",
+                  "  '  Candidate count var : ' + tidalCandidateCount,",
+                  "  thin,",
+                  "  '  ── BEATPORT ──',",
+                  "  '  Match status        : ' + bpMatchStatus,",
+                  "  '  Match count         : ' + bpMatchCount,",
+                  "  '  Track ID            : ' + bpTrackId,",
+                  "  '  ISRC                : ' + bpIsrc,",
+                  "  '  Title               : ' + bpTitle,",
+                  "  '  Artist              : ' + bpArtist,",
+                  "  '  Album               : ' + bpAlbum,",
+                  "  '  Duration (ms)       : ' + bpDur,",
+                  "  '  Explicit            : ' + bpExplicit,",
+                  "  thin,",
+                  "  '  ── COMPARISON ──',",
+                  "  '  Notes               : ' + operatorNotes,",
+                  "  divider",
+                  "];",
+                  "",
+                  "console.log(lines.join('\\n'));",
+                  "",
+                  "// Visualizer table",
+                  "const rows = [",
+                  "  { field: 'Workflow',          tidal: workflowLabel,   beatport: workflowLabel },",
+                  "  { field: 'Status',            tidal: tidalStatus,     beatport: bpMatchStatus },",
+                  "  { field: 'Track ID',          tidal: tidalTrackId,    beatport: bpTrackId },",
+                  "  { field: 'ISRC',              tidal: tidalIsrc,       beatport: bpIsrc },",
+                  "  { field: 'Title',             tidal: tidalTitle,      beatport: bpTitle },",
+                  "  { field: 'Artist',            tidal: tidalArtist,     beatport: bpArtist },",
+                  "  { field: 'Album',             tidal: tidalAlbum,      beatport: bpAlbum },",
+                  "  { field: 'Duration (ms)',     tidal: tidalDur,        beatport: bpDur },",
+                  "  { field: 'Explicit',          tidal: tidalExplicit,   beatport: bpExplicit },",
+                  "  { field: 'Album candidates',  tidal: tidalAlbumCandidates.length, beatport: '—' },",
+                  "  { field: 'Playlist candidates', tidal: tidalPlaylistCandidates.length, beatport: '—' },",
+                  "  { field: 'BP match count',    tidal: '—',             beatport: bpMatchCount },",
+                  "  { field: 'Comparison notes',  tidal: operatorNotes,   beatport: operatorNotes },",
+                  "];",
+                  "",
+                  "pm.visualizer.set(`",
+                  "<style>",
+                  "  body { font-family: monospace; font-size: 13px; }",
+                  "  table { border-collapse: collapse; width: 100%; }",
+                  "  th { background: #1a1a2e; color: #e0e0e0; padding: 6px 10px; text-align: left; }",
+                  "  td { padding: 5px 10px; border-bottom: 1px solid #ddd; vertical-align: top; }",
+                  "  tr:nth-child(even) td { background: #f5f5f5; }",
+                  "  .label { font-weight: bold; color: #333; white-space: nowrap; }",
+                  "  .ok { color: #2e7d32; } .fail { color: #c62828; }",
+                  "</style>",
+                  "<h3 style=\"font-family:monospace\">Operator Summary — {{workflow}}</h3>",
+                  "<table>",
+                  "  <tr><th>Field</th><th>TIDAL</th><th>Beatport</th></tr>",
+                  "  {{#each rows}}",
+                  "  <tr>",
+                  "    <td class=\"label\">{{field}}</td>",
+                  "    <td>{{tidal}}</td>",
+                  "    <td>{{beatport}}</td>",
+                  "  </tr>",
+                  "  {{/each}}",
+                  "</table>",
+                  "`, { rows, workflow: workflowLabel });",
+                  "",
+                  "pm.test('Operator summary rendered', () => { pm.expect(rows.length).to.be.above(0); });",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://postman-echo.com/get",
+              "protocol": "https",
+              "host": [
+                "postman-echo",
+                "com"
+              ],
+              "path": [
+                "get"
+              ]
+            },
+            "description": "Final step for runner: prints canonical/provenance/comparison/summary to the Postman console and leaves them in environment vars."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Utilities",
+      "item": [
+        {
+          "name": "Auth - TIDAL (Set access token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// ─── Auth - TIDAL (Set access token) ─── post-response script ───────────────",
+                  "// Parses the OAuth2 token response and writes tidal_access_token + expiry.",
+                  "// Works for both client_credentials and refresh_token grant types.",
+                  "",
+                  "pm.test(\"TIDAL auth response is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"TIDAL auth response has access_token\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property(\"access_token\");",
+                  "});",
+                  "",
+                  "(function () {",
+                  "    let json;",
+                  "    try {",
+                  "        json = pm.response.json();",
+                  "    } catch (e) {",
+                  "        console.error(\"[TIDAL Auth] Failed to parse response JSON:\", e.message);",
+                  "        return;",
+                  "    }",
+                  "",
+                  "    if (!json.access_token) {",
+                  "        console.error(\"[TIDAL Auth] No access_token in response. Body:\", JSON.stringify(json));",
+                  "        return;",
+                  "    }",
+                  "",
+                  "    pm.environment.set(\"tidal_access_token\", json.access_token);",
+                  "",
+                  "    // Compute expiry timestamp (epoch ms)",
+                  "    const expiresIn = json.expires_in || 3600;",
+                  "    const expiryMs = Date.now() + (expiresIn * 1000) - 30000; // 30s buffer",
+                  "    pm.environment.set(\"tidal_token_expiry\", String(expiryMs));",
+                  "",
+                  "    if (json.refresh_token) {",
+                  "        pm.environment.set(\"tidal_refresh_token\", json.refresh_token);",
+                  "    }",
+                  "",
+                  "    if (json.token_type) {",
+                  "        // Normalise to Bearer",
+                  "        pm.environment.set(\"tidal_token_type\", json.token_type);",
+                  "    }",
+                  "",
+                  "    console.log(\"[TIDAL Auth] Token saved. Expires in\", expiresIn, \"seconds (with 30s buffer).\");",
+                  "    console.log(\"[TIDAL Auth] Token type:\", json.token_type || \"Bearer\");",
+                  "})();",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "client_credentials",
+                  "type": "text"
+                },
+                {
+                  "key": "client_id",
+                  "value": "{{tidal_client_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "client_secret",
+                  "value": "{{tidal_client_secret}}",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{tidal_refresh_url}}",
+              "host": [
+                "{{tidal_refresh_url}}"
+              ]
+            },
+            "description": "Set `tidal_access_token` in the environment manually (secret).\n\nThis request exists to make the workflow explicit and runnable in Collection Runner (it will fail fast if the token is missing)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Get data",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "postman-echo.com/get",
+          "host": [
+            "postman-echo",
+            "com"
+          ],
+          "path": [
+            "get"
+          ]
+        },
+        "description": "This is a GET request and it is used to \"get\" data from an endpoint. There is no request body for a GET request, but you can use query parameters to help specify the resource you want data on (e.g., in this request, we have `id=1`).\n\nA successful GET response will have a `200 OK` status, and should include some kind of response body - for example, HTML web content or JSON data."
+      },
+      "response": []
+    },
+    {
+      "name": "Get data Copy",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "postman-echo.com/get",
+          "host": [
+            "postman-echo",
+            "com"
+          ],
+          "path": [
+            "get"
+          ]
+        },
+        "description": "This is a GET request and it is used to \"get\" data from an endpoint. There is no request body for a GET request, but you can use query parameters to help specify the resource you want data on (e.g., in this request, we have `id=1`).\n\nA successful GET response will have a `200 OK` status, and should include some kind of response body - for example, HTML web content or JSON data."
+      },
+      "response": []
+    },
+    {
+      "name": "Post data",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Successful POST request\", function () {",
+              "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+              "});",
+              ""
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n\t\"name\": \"Add your name in the body\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "postman-echo.com/post",
+          "host": [
+            "postman-echo",
+            "com"
+          ],
+          "path": [
+            "post"
+          ]
+        },
+        "description": "This is a POST request, submitting data to an API via the request body. This request submits JSON data, and the data is reflected in the response.\n\nA successful POST request typically returns a `200 OK` or `201 Created` response code."
+      },
+      "response": []
+    },
+    {
+      "name": "Post data Copy",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Successful POST request\", function () {",
+              "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+              "});",
+              ""
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n\t\"name\": \"Add your name in the body\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "postman-echo.com/post",
+          "host": [
+            "postman-echo",
+            "com"
+          ],
+          "path": [
+            "post"
+          ]
+        },
+        "description": "This is a POST request, submitting data to an API via the request body. This request submits JSON data, and the data is reflected in the response.\n\nA successful POST request typically returns a `200 OK` or `201 Created` response code."
+      },
+      "response": []
+    },
+    {
+      "name": "Auth - Beatport (Set access token)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// ─── Auth - Beatport (Set access token) ─── post-response script ─────────────",
+              "// Parses the OAuth2 token response and writes beatport_access_token + expiry.",
+              "",
+              "pm.test(\"Beatport auth response is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Beatport auth response has access_token\", function () {",
+              "    const json = pm.response.json();",
+              "    pm.expect(json).to.have.property(\"access_token\");",
+              "});",
+              "",
+              "(function () {",
+              "    let json;",
+              "    try {",
+              "        json = pm.response.json();",
+              "    } catch (e) {",
+              "        console.error(\"[Beatport Auth] Failed to parse response JSON:\", e.message);",
+              "        return;",
+              "    }",
+              "",
+              "    if (!json.access_token) {",
+              "        console.error(\"[Beatport Auth] No access_token in response. Body:\", JSON.stringify(json));",
+              "        return;",
+              "    }",
+              "",
+              "    pm.environment.set(\"beatport_access_token\", json.access_token);",
+              "",
+              "    const expiresIn = json.expires_in || 86400;",
+              "    const expiryMs = Date.now() + (expiresIn * 1000) - 30000; // 30s buffer",
+              "    pm.environment.set(\"beatport_token_expiry\", String(expiryMs));",
+              "",
+              "    if (json.refresh_token) {",
+              "        pm.environment.set(\"beatport_refresh_token\", json.refresh_token);",
+              "    }",
+              "",
+              "    if (json.token_type) {",
+              "        pm.environment.set(\"beatport_token_type\", json.token_type);",
+              "    }",
+              "",
+              "    console.log(\"[Beatport Auth] Token saved. Expires in\", expiresIn, \"seconds (with 30s buffer).\");",
+              "})();",
+              ""
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/x-www-form-urlencoded"
+          }
+        ],
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": [
+            {
+              "key": "grant_type",
+              "value": "password",
+              "description": "Use 'password' for user credentials, 'client_credentials' for app-only",
+              "type": "text"
+            },
+            {
+              "key": "username",
+              "value": "{{beatport_username}}",
+              "description": "Beatport account email",
+              "type": "text"
+            },
+            {
+              "key": "password",
+              "value": "{{beatport_password}}",
+              "description": "Beatport account password",
+              "type": "text"
+            },
+            {
+              "key": "client_id",
+              "value": "{{beatport_client_id}}",
+              "type": "text"
+            },
+            {
+              "key": "client_secret",
+              "value": "{{beatport_client_secret}}",
+              "type": "text"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{beatport_token_url}}",
+          "host": [
+            "{{beatport_token_url}}"
+          ]
+        },
+        "description": "Set `beatport_access_token` in the environment manually (secret).\n\nThis request exists to make the workflow explicit and runnable in Collection Runner (it will fail fast if the token is missing)."
+      },
+      "response": []
+    },
+    {
+      "name": "Auth - Beatport (Set access token) Copy",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// ─── Auth - Beatport (Set access token) ─── post-response script ─────────────",
+              "// Parses the OAuth2 token response and writes beatport_access_token + expiry.",
+              "",
+              "pm.test(\"Beatport auth response is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Beatport auth response has access_token\", function () {",
+              "    const json = pm.response.json();",
+              "    pm.expect(json).to.have.property(\"access_token\");",
+              "});",
+              "",
+              "(function () {",
+              "    let json;",
+              "    try {",
+              "        json = pm.response.json();",
+              "    } catch (e) {",
+              "        console.error(\"[Beatport Auth] Failed to parse response JSON:\", e.message);",
+              "        return;",
+              "    }",
+              "",
+              "    if (!json.access_token) {",
+              "        console.error(\"[Beatport Auth] No access_token in response. Body:\", JSON.stringify(json));",
+              "        return;",
+              "    }",
+              "",
+              "    pm.environment.set(\"beatport_access_token\", json.access_token);",
+              "",
+              "    const expiresIn = json.expires_in || 86400;",
+              "    const expiryMs = Date.now() + (expiresIn * 1000) - 30000; // 30s buffer",
+              "    pm.environment.set(\"beatport_token_expiry\", String(expiryMs));",
+              "",
+              "    if (json.refresh_token) {",
+              "        pm.environment.set(\"beatport_refresh_token\", json.refresh_token);",
+              "    }",
+              "",
+              "    if (json.token_type) {",
+              "        pm.environment.set(\"beatport_token_type\", json.token_type);",
+              "    }",
+              "",
+              "    console.log(\"[Beatport Auth] Token saved. Expires in\", expiresIn, \"seconds (with 30s buffer).\");",
+              "})();",
+              ""
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/x-www-form-urlencoded"
+          }
+        ],
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": [
+            {
+              "key": "grant_type",
+              "value": "password",
+              "description": "Use 'password' for user credentials, 'client_credentials' for app-only",
+              "type": "text"
+            },
+            {
+              "key": "username",
+              "value": "{{beatport_username}}",
+              "description": "Beatport account email",
+              "type": "text"
+            },
+            {
+              "key": "password",
+              "value": "{{beatport_password}}",
+              "description": "Beatport account password",
+              "type": "text"
+            },
+            {
+              "key": "client_id",
+              "value": "{{beatport_client_id}}",
+              "type": "text"
+            },
+            {
+              "key": "client_secret",
+              "value": "{{beatport_client_secret}}",
+              "type": "text"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{beatport_token_url}}",
+          "host": [
+            "{{beatport_token_url}}"
+          ]
+        },
+        "description": "Set `beatport_access_token` in the environment manually (secret).\n\nThis request exists to make the workflow explicit and runnable in Collection Runner (it will fail fast if the token is missing)."
+      },
+      "response": []
+    },
+    {
+      "name": "Compare+Status (TIDAL vs Beatport)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// ============================================================",
+              "// Compare+Status (TIDAL vs Beatport)",
+              "// Workflow: PRIMARY — cross-provider canonical comparison",
+              "// Only meaningful after both primary fetch+parse steps succeed",
+              "// ============================================================",
+              "",
+              "const workflowClass = pm.environment.get('workflow_class') || 'primary';",
+              "const tidalStatus = pm.environment.get('tidal_status') || '';",
+              "const beatportMatchStatus = pm.environment.get('beatport_match_status') || '';",
+              "",
+              "// Guard: both providers must have succeeded",
+              "pm.test('TIDAL primary fetch succeeded', () => {",
+              "  pm.expect(tidalStatus).to.equal('ok');",
+              "});",
+              "pm.test('Beatport primary fetch succeeded', () => {",
+              "  pm.expect(beatportMatchStatus).to.equal('MATCHED');",
+              "});",
+              "",
+              "if (tidalStatus !== 'ok' || beatportMatchStatus !== 'MATCHED') {",
+              "  pm.environment.set('operator_notes',",
+              "    'Compare skipped — provider fetch incomplete. TIDAL: ' + tidalStatus + ' | Beatport: ' + beatportMatchStatus);",
+              "  return;",
+              "}",
+              "",
+              "// Pull canonical vars",
+              "const tidalIsrc    = (pm.environment.get('tidal_isrc') || '').toUpperCase().trim();",
+              "const beatportIsrc = (pm.environment.get('beatport_isrc') || '').toUpperCase().trim();",
+              "const tidalTitle   = (pm.environment.get('tidal_title') || '').toLowerCase().trim();",
+              "const bpTitle      = (pm.environment.get('beatport_title') || '').toLowerCase().trim();",
+              "const tidalArtist  = (pm.environment.get('tidal_artist') || '').toLowerCase().trim();",
+              "const bpArtist     = (pm.environment.get('beatport_artist') || '').toLowerCase().trim();",
+              "const tidalDur     = parseInt(pm.environment.get('tidal_duration_ms') || '0', 10);",
+              "const bpDur        = parseInt(pm.environment.get('beatport_duration_ms') || '0', 10);",
+              "",
+              "const isrcMatch    = tidalIsrc && beatportIsrc && tidalIsrc === beatportIsrc;",
+              "const titleMatch   = tidalTitle && bpTitle && tidalTitle === bpTitle;",
+              "const artistMatch  = tidalArtist && bpArtist && tidalArtist === bpArtist;",
+              "const durDiff      = Math.abs(tidalDur - bpDur);",
+              "const durMatch     = tidalDur > 0 && bpDur > 0 && durDiff <= 2000;",
+              "",
+              "const notes = [];",
+              "if (!isrcMatch)  notes.push('ISRC mismatch: TIDAL=' + tidalIsrc + ' BP=' + beatportIsrc);",
+              "if (!titleMatch) notes.push('Title mismatch: TIDAL=\"' + tidalTitle + '\" BP=\"' + bpTitle + '\"');",
+              "if (!artistMatch) notes.push('Artist mismatch: TIDAL=\"' + tidalArtist + '\" BP=\"' + bpArtist + '\"');",
+              "if (!durMatch && tidalDur > 0 && bpDur > 0) notes.push('Duration diff: ' + durDiff + 'ms');",
+              "",
+              "pm.environment.set('operator_notes', notes.length === 0 ? 'All fields match' : notes.join(' | '));",
+              "",
+              "pm.test('ISRC matches across providers', () => { pm.expect(isrcMatch).to.be.true; });",
+              "pm.test('Title matches across providers', () => { pm.expect(titleMatch).to.be.true; });",
+              "pm.test('Artist matches across providers', () => { pm.expect(artistMatch).to.be.true; });",
+              "pm.test('Duration within 2s tolerance', () => {",
+              "  if (tidalDur > 0 && bpDur > 0) pm.expect(durDiff).to.be.below(2001);",
+              "});",
+              ""
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "https://postman-echo.com/get",
+          "protocol": "https",
+          "host": [
+            "postman-echo",
+            "com"
+          ],
+          "path": [
+            "get"
+          ]
+        },
+        "description": "Compares canonicalized TIDAL vs Beatport values and sets per-field comparison status.\n\nWrites:\n- comparison_status\n- operator_summary (human-readable JSON)\n\nDoes not dedupe; retains both provider values + provenance."
+      },
+      "response": []
+    },
+    {
+      "name": "Compare+Status (TIDAL vs Beatport) Copy",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// ============================================================",
+              "// Compare+Status (TIDAL vs Beatport)",
+              "// Workflow: PRIMARY — cross-provider canonical comparison",
+              "// Only meaningful after both primary fetch+parse steps succeed",
+              "// ============================================================",
+              "",
+              "const workflowClass = pm.environment.get('workflow_class') || 'primary';",
+              "const tidalStatus = pm.environment.get('tidal_status') || '';",
+              "const beatportMatchStatus = pm.environment.get('beatport_match_status') || '';",
+              "",
+              "// Guard: both providers must have succeeded",
+              "pm.test('TIDAL primary fetch succeeded', () => {",
+              "  pm.expect(tidalStatus).to.equal('ok');",
+              "});",
+              "pm.test('Beatport primary fetch succeeded', () => {",
+              "  pm.expect(beatportMatchStatus).to.equal('MATCHED');",
+              "});",
+              "",
+              "if (tidalStatus !== 'ok' || beatportMatchStatus !== 'MATCHED') {",
+              "  pm.environment.set('operator_notes',",
+              "    'Compare skipped — provider fetch incomplete. TIDAL: ' + tidalStatus + ' | Beatport: ' + beatportMatchStatus);",
+              "  return;",
+              "}",
+              "",
+              "// Pull canonical vars",
+              "const tidalIsrc    = (pm.environment.get('tidal_isrc') || '').toUpperCase().trim();",
+              "const beatportIsrc = (pm.environment.get('beatport_isrc') || '').toUpperCase().trim();",
+              "const tidalTitle   = (pm.environment.get('tidal_title') || '').toLowerCase().trim();",
+              "const bpTitle      = (pm.environment.get('beatport_title') || '').toLowerCase().trim();",
+              "const tidalArtist  = (pm.environment.get('tidal_artist') || '').toLowerCase().trim();",
+              "const bpArtist     = (pm.environment.get('beatport_artist') || '').toLowerCase().trim();",
+              "const tidalDur     = parseInt(pm.environment.get('tidal_duration_ms') || '0', 10);",
+              "const bpDur        = parseInt(pm.environment.get('beatport_duration_ms') || '0', 10);",
+              "",
+              "const isrcMatch    = tidalIsrc && beatportIsrc && tidalIsrc === beatportIsrc;",
+              "const titleMatch   = tidalTitle && bpTitle && tidalTitle === bpTitle;",
+              "const artistMatch  = tidalArtist && bpArtist && tidalArtist === bpArtist;",
+              "const durDiff      = Math.abs(tidalDur - bpDur);",
+              "const durMatch     = tidalDur > 0 && bpDur > 0 && durDiff <= 2000;",
+              "",
+              "const notes = [];",
+              "if (!isrcMatch)  notes.push('ISRC mismatch: TIDAL=' + tidalIsrc + ' BP=' + beatportIsrc);",
+              "if (!titleMatch) notes.push('Title mismatch: TIDAL=\"' + tidalTitle + '\" BP=\"' + bpTitle + '\"');",
+              "if (!artistMatch) notes.push('Artist mismatch: TIDAL=\"' + tidalArtist + '\" BP=\"' + bpArtist + '\"');",
+              "if (!durMatch && tidalDur > 0 && bpDur > 0) notes.push('Duration diff: ' + durDiff + 'ms');",
+              "",
+              "pm.environment.set('operator_notes', notes.length === 0 ? 'All fields match' : notes.join(' | '));",
+              "",
+              "pm.test('ISRC matches across providers', () => { pm.expect(isrcMatch).to.be.true; });",
+              "pm.test('Title matches across providers', () => { pm.expect(titleMatch).to.be.true; });",
+              "pm.test('Artist matches across providers', () => { pm.expect(artistMatch).to.be.true; });",
+              "pm.test('Duration within 2s tolerance', () => {",
+              "  if (tidalDur > 0 && bpDur > 0) pm.expect(durDiff).to.be.below(2001);",
+              "});",
+              ""
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "https://postman-echo.com/get",
+          "protocol": "https",
+          "host": [
+            "postman-echo",
+            "com"
+          ],
+          "path": [
+            "get"
+          ]
+        },
+        "description": "Compares canonicalized TIDAL vs Beatport values and sets per-field comparison status.\n\nWrites:\n- comparison_status\n- operator_summary (human-readable JSON)\n\nDoes not dedupe; retains both provider values + provenance."
+      },
+      "response": []
+    },
+    {
+      "name": "Fallback - Beatport Search by Query (tertiary, explicit trigger only)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// ============================================================",
+              "// Fallback - Beatport Search by Query",
+              "// EXPLICIT OPERATOR TRIGGER ONLY — not part of primary workflow.",
+              "// Fails loudly on 0 or >1 results. Only sets canonical vars",
+              "// if exactly one result AND its ISRC matches lookup_isrc.",
+              "// ============================================================",
+              "",
+              "pm.test('HTTP 200 OK', () => pm.response.to.have.status(200));",
+              "",
+              "const body = pm.response.json();",
+              "",
+              "// Warn loudly that this is a fallback path",
+              "console.warn('[BP FALLBACK] Text search is inherently ambiguous. Validate results carefully.');",
+              "",
+              "// Locate results array — handle both {results:[]} and {tracks:{results:[]}} shapes",
+              "let results = null;",
+              "if (Array.isArray(body.results)) {",
+              "  results = body.results;",
+              "} else if (body.tracks && Array.isArray(body.tracks.results)) {",
+              "  results = body.tracks.results;",
+              "} else if (body.tracks && Array.isArray(body.tracks.data)) {",
+              "  results = body.tracks.data;",
+              "}",
+              "",
+              "pm.test('Results array present in response', () => {",
+              "  pm.expect(results).to.not.be.null;",
+              "  pm.expect(results).to.be.an('array');",
+              "});",
+              "",
+              "if (!results) {",
+              "  pm.environment.set('beatport_match_status', 'FALLBACK_SCHEMA_DRIFT');",
+              "  pm.test('FAIL: Cannot locate results array — schema drift', () => {",
+              "    pm.expect.fail('Schema drift: no results array found. Do not proceed.');",
+              "  });",
+              "  return;",
+              "}",
+              "",
+              "const count = results.length;",
+              "pm.environment.set('beatport_match_count', String(count));",
+              "",
+              "pm.test(`Exactly one result returned (got ${count})`, () => {",
+              "  pm.expect(count).to.equal(1,",
+              "    `AMBIGUOUS: search returned ${count} result(s). Cannot safely identify track. Do not guess.`);",
+              "});",
+              "",
+              "if (count === 0) {",
+              "  pm.environment.set('beatport_match_status', 'FALLBACK_NO_MATCH');",
+              "  console.error('[BP FALLBACK] No results for query:', pm.environment.get('lookup_query'));",
+              "  return;",
+              "}",
+              "",
+              "if (count > 1) {",
+              "  pm.environment.set('beatport_match_status', 'FALLBACK_AMBIGUOUS');",
+              "  console.error('[BP FALLBACK] Ambiguous:', count, 'results. Refusing to set canonical vars.');",
+              "  return;",
+              "}",
+              "",
+              "// Exactly one result — still must validate ISRC",
+              "const track = results[0];",
+              "const expectedIsrc = pm.environment.get('lookup_isrc');",
+              "",
+              "pm.test('Single result has ISRC field', () => {",
+              "  pm.expect(track).to.have.property('isrc');",
+              "});",
+              "",
+              "if (expectedIsrc && track.isrc) {",
+              "  pm.test('ISRC matches lookup_isrc', () => {",
+              "    pm.expect(track.isrc).to.equal(expectedIsrc,",
+              "      `ISRC mismatch: got ${track.isrc}, expected ${expectedIsrc}. Refusing to set canonical vars.`);",
+              "  });",
+              "",
+              "  if (track.isrc !== expectedIsrc) {",
+              "    pm.environment.set('beatport_match_status', 'FALLBACK_ISRC_MISMATCH');",
+              "    console.error('[BP FALLBACK] ISRC mismatch. Not setting canonical vars.');",
+              "    return;",
+              "  }",
+              "}",
+              "",
+              "// Safe to set canonical vars",
+              "pm.environment.set('lookup_track_id_beatport', String(track.id));",
+              "pm.environment.set('beatport_isrc',            track.isrc || '');",
+              "pm.environment.set('beatport_title',           track.name || '');",
+              "pm.environment.set('beatport_duration_ms',     String(track.length_ms || track.duration_ms || ''));",
+              "pm.environment.set('beatport_explicit',        String(track.is_explicit || track.explicit || false));",
+              "",
+              "const artistNames = (track.artists || []).map(a => a.name).join(', ');",
+              "pm.environment.set('beatport_artist', artistNames);",
+              "",
+              "const albumTitle = (track.release && track.release.name) ? track.release.name : '';",
+              "pm.environment.set('beatport_album', albumTitle);",
+              "",
+              "pm.environment.set('beatport_match_status', 'fallback_matched');",
+              "pm.environment.set('workflow_class', 'fallback');",
+              "",
+              "console.log('[BP FALLBACK] Matched via search:', track.name, '| ISRC:', track.isrc);",
+              ""
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{beatport_access_token}}",
+            "disabled": false
+          }
+        ],
+        "url": {
+          "raw": "https://api.beatport.com/search/v1/tracks?q={{lookup_query}}",
+          "protocol": "https",
+          "host": [
+            "api",
+            "beatport",
+            "com"
+          ],
+          "path": [
+            "search",
+            "v1",
+            "tracks"
+          ],
+          "query": [
+            {
+              "key": "q",
+              "value": "{{lookup_query}}"
+            }
+          ]
+        },
+        "description": "FALLBACK — Beatport text search. Must only be run when explicitly triggered by the operator (not part of the primary workflow). Results are inherently ambiguous; the test script enforces loud failure on 0 or >1 results and will not set canonical vars unless exactly one result is returned and its ISRC matches lookup_isrc."
+      },
+      "response": []
+    },
+    {
+      "name": "Fallback - Beatport Search by Query (tertiary, explicit trigger only) Copy",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// ============================================================",
+              "// Fallback - Beatport Search by Query",
+              "// EXPLICIT OPERATOR TRIGGER ONLY — not part of primary workflow.",
+              "// Fails loudly on 0 or >1 results. Only sets canonical vars",
+              "// if exactly one result AND its ISRC matches lookup_isrc.",
+              "// ============================================================",
+              "",
+              "pm.test('HTTP 200 OK', () => pm.response.to.have.status(200));",
+              "",
+              "const body = pm.response.json();",
+              "",
+              "// Warn loudly that this is a fallback path",
+              "console.warn('[BP FALLBACK] Text search is inherently ambiguous. Validate results carefully.');",
+              "",
+              "// Locate results array — handle both {results:[]} and {tracks:{results:[]}} shapes",
+              "let results = null;",
+              "if (Array.isArray(body.results)) {",
+              "  results = body.results;",
+              "} else if (body.tracks && Array.isArray(body.tracks.results)) {",
+              "  results = body.tracks.results;",
+              "} else if (body.tracks && Array.isArray(body.tracks.data)) {",
+              "  results = body.tracks.data;",
+              "}",
+              "",
+              "pm.test('Results array present in response', () => {",
+              "  pm.expect(results).to.not.be.null;",
+              "  pm.expect(results).to.be.an('array');",
+              "});",
+              "",
+              "if (!results) {",
+              "  pm.environment.set('beatport_match_status', 'FALLBACK_SCHEMA_DRIFT');",
+              "  pm.test('FAIL: Cannot locate results array — schema drift', () => {",
+              "    pm.expect.fail('Schema drift: no results array found. Do not proceed.');",
+              "  });",
+              "  return;",
+              "}",
+              "",
+              "const count = results.length;",
+              "pm.environment.set('beatport_match_count', String(count));",
+              "",
+              "pm.test(`Exactly one result returned (got ${count})`, () => {",
+              "  pm.expect(count).to.equal(1,",
+              "    `AMBIGUOUS: search returned ${count} result(s). Cannot safely identify track. Do not guess.`);",
+              "});",
+              "",
+              "if (count === 0) {",
+              "  pm.environment.set('beatport_match_status', 'FALLBACK_NO_MATCH');",
+              "  console.error('[BP FALLBACK] No results for query:', pm.environment.get('lookup_query'));",
+              "  return;",
+              "}",
+              "",
+              "if (count > 1) {",
+              "  pm.environment.set('beatport_match_status', 'FALLBACK_AMBIGUOUS');",
+              "  console.error('[BP FALLBACK] Ambiguous:', count, 'results. Refusing to set canonical vars.');",
+              "  return;",
+              "}",
+              "",
+              "// Exactly one result — still must validate ISRC",
+              "const track = results[0];",
+              "const expectedIsrc = pm.environment.get('lookup_isrc');",
+              "",
+              "pm.test('Single result has ISRC field', () => {",
+              "  pm.expect(track).to.have.property('isrc');",
+              "});",
+              "",
+              "if (expectedIsrc && track.isrc) {",
+              "  pm.test('ISRC matches lookup_isrc', () => {",
+              "    pm.expect(track.isrc).to.equal(expectedIsrc,",
+              "      `ISRC mismatch: got ${track.isrc}, expected ${expectedIsrc}. Refusing to set canonical vars.`);",
+              "  });",
+              "",
+              "  if (track.isrc !== expectedIsrc) {",
+              "    pm.environment.set('beatport_match_status', 'FALLBACK_ISRC_MISMATCH');",
+              "    console.error('[BP FALLBACK] ISRC mismatch. Not setting canonical vars.');",
+              "    return;",
+              "  }",
+              "}",
+              "",
+              "// Safe to set canonical vars",
+              "pm.environment.set('lookup_track_id_beatport', String(track.id));",
+              "pm.environment.set('beatport_isrc',            track.isrc || '');",
+              "pm.environment.set('beatport_title',           track.name || '');",
+              "pm.environment.set('beatport_duration_ms',     String(track.length_ms || track.duration_ms || ''));",
+              "pm.environment.set('beatport_explicit',        String(track.is_explicit || track.explicit || false));",
+              "",
+              "const artistNames = (track.artists || []).map(a => a.name).join(', ');",
+              "pm.environment.set('beatport_artist', artistNames);",
+              "",
+              "const albumTitle = (track.release && track.release.name) ? track.release.name : '';",
+              "pm.environment.set('beatport_album', albumTitle);",
+              "",
+              "pm.environment.set('beatport_match_status', 'fallback_matched');",
+              "pm.environment.set('workflow_class', 'fallback');",
+              "",
+              "console.log('[BP FALLBACK] Matched via search:', track.name, '| ISRC:', track.isrc);",
+              ""
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{beatport_access_token}}",
+            "disabled": false
+          }
+        ],
+        "url": {
+          "raw": "https://api.beatport.com/search/v1/tracks?q={{lookup_query}}",
+          "protocol": "https",
+          "host": [
+            "api",
+            "beatport",
+            "com"
+          ],
+          "path": [
+            "search",
+            "v1",
+            "tracks"
+          ],
+          "query": [
+            {
+              "key": "q",
+              "value": "{{lookup_query}}"
+            }
+          ]
+        },
+        "description": "FALLBACK — Beatport text search. Must only be run when explicitly triggered by the operator (not part of the primary workflow). Results are inherently ambiguous; the test script enforces loud failure on 0 or >1 results and will not set canonical vars unless exactly one result is returned and its ISRC matches lookup_isrc."
+      },
+      "response": []
+    },
+    {
+      "name": "Expand - TIDAL Playlist Tracks (tertiary)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// ============================================================",
+              "// Expand - TIDAL Playlist Tracks (tertiary)",
+              "// Enumerates track candidates from a TIDAL playlist (JSON:API).",
+              "// Stores tidal_playlist_track_candidates and tidal_candidate_count.",
+              "// Does NOT perform identity join.",
+              "// ============================================================",
+              "",
+              "pm.test('HTTP 200 OK', () => pm.response.to.have.status(200));",
+              "",
+              "const body = pm.response.json();",
+              "",
+              "// JSON:API: top-level must have data array",
+              "pm.test('JSON:API: top-level data array present', () => {",
+              "  pm.expect(body).to.have.property('data').that.is.an('array');",
+              "});",
+              "",
+              "if (!body.data || !Array.isArray(body.data)) {",
+              "  pm.environment.set('tidal_candidate_count', '0');",
+              "  pm.environment.set('tidal_playlist_track_candidates', '[]');",
+              "  pm.test('FAIL: No data array — cannot enumerate playlist tracks', () => {",
+              "    pm.expect.fail('JSON:API data array missing. Schema drift or wrong endpoint.');",
+              "  });",
+              "  return;",
+              "}",
+              "",
+              "// Build included map for attribute lookup (JSON:API includes)",
+              "const includedMap = {};",
+              "if (Array.isArray(body.included)) {",
+              "  body.included.forEach(item => {",
+              "    if (item.type && item.id) {",
+              "      includedMap[`${item.type}::${item.id}`] = item;",
+              "    }",
+              "  });",
+              "}",
+              "",
+              "const candidates = [];",
+              "",
+              "body.data.forEach(rel => {",
+              "  const trackId   = rel.id;",
+              "  const trackType = rel.type;",
+              "",
+              "  const included = includedMap[`${trackType}::${trackId}`] || {};",
+              "  const attrs    = included.attributes || rel.attributes || {};",
+              "",
+              "  const isrc  = attrs.isrc  || attrs.externalIds?.isrc || '';",
+              "  const title = attrs.title || attrs.name || '';",
+              "",
+              "  candidates.push({ id: trackId, isrc, title });",
+              "});",
+              "",
+              "const count = candidates.length;",
+              "pm.environment.set('tidal_candidate_count', String(count));",
+              "pm.environment.set('tidal_playlist_track_candidates', JSON.stringify(candidates));",
+              "pm.environment.set('workflow_class', 'tertiary');",
+              "",
+              "pm.test(`Playlist expansion: ${count} candidate(s) found`, () => {",
+              "  pm.expect(count).to.be.above(0, 'No tracks found in playlist. Check lookup_playlist_id_tidal.');",
+              "});",
+              "",
+              "console.log(`[TIDAL PLAYLIST] ${count} track candidate(s) stored in tidal_playlist_track_candidates`);",
+              "console.log('[TIDAL PLAYLIST] To validate a candidate: set lookup_isrc and lookup_track_id_tidal from the list, then run the primary ISRC fetch.');",
+              "",
+              "// Print first few candidates for operator inspection",
+              "const preview = candidates.slice(0, 5);",
+              "preview.forEach((c, i) => {",
+              "  console.log(`  [${i}] id=${c.id} | isrc=${c.isrc || '(no isrc in relationship)'} | title=${c.title || '(no title in relationship)'}`)",
+              "});",
+              "if (count > 5) console.log(`  ... and ${count - 5} more`);",
+              ""
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tidal_access_token}}",
+            "disabled": false
+          },
+          {
+            "key": "Accept",
+            "value": "application/vnd.api+json",
+            "disabled": false
+          }
+        ],
+        "url": {
+          "raw": "https://api.tidal.com/v2/playlists/{{lookup_playlist_id_tidal}}/relationships/items",
+          "protocol": "https",
+          "host": [
+            "api",
+            "tidal",
+            "com"
+          ],
+          "path": [
+            "v2",
+            "playlists",
+            "{{lookup_playlist_id_tidal}}",
+            "relationships",
+            "items"
+          ]
+        },
+        "description": "TERTIARY — TIDAL playlist audit/expansion. Enumerates all track candidates from a TIDAL playlist. Stores results in tidal_playlist_track_candidates (JSON array of {id, isrc, title}) and sets tidal_candidate_count. Does NOT perform identity join — use the primary ISRC fetch to validate individual candidates by setting lookup_isrc and lookup_track_id_tidal from the candidates list."
+      },
+      "response": []
+    },
+    {
+      "name": "Expand - TIDAL Playlist Tracks (tertiary) Copy",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// ============================================================",
+              "// Expand - TIDAL Playlist Tracks (tertiary)",
+              "// Enumerates track candidates from a TIDAL playlist (JSON:API).",
+              "// Stores tidal_playlist_track_candidates and tidal_candidate_count.",
+              "// Does NOT perform identity join.",
+              "// ============================================================",
+              "",
+              "pm.test('HTTP 200 OK', () => pm.response.to.have.status(200));",
+              "",
+              "const body = pm.response.json();",
+              "",
+              "// JSON:API: top-level must have data array",
+              "pm.test('JSON:API: top-level data array present', () => {",
+              "  pm.expect(body).to.have.property('data').that.is.an('array');",
+              "});",
+              "",
+              "if (!body.data || !Array.isArray(body.data)) {",
+              "  pm.environment.set('tidal_candidate_count', '0');",
+              "  pm.environment.set('tidal_playlist_track_candidates', '[]');",
+              "  pm.test('FAIL: No data array — cannot enumerate playlist tracks', () => {",
+              "    pm.expect.fail('JSON:API data array missing. Schema drift or wrong endpoint.');",
+              "  });",
+              "  return;",
+              "}",
+              "",
+              "// Build included map for attribute lookup (JSON:API includes)",
+              "const includedMap = {};",
+              "if (Array.isArray(body.included)) {",
+              "  body.included.forEach(item => {",
+              "    if (item.type && item.id) {",
+              "      includedMap[`${item.type}::${item.id}`] = item;",
+              "    }",
+              "  });",
+              "}",
+              "",
+              "const candidates = [];",
+              "",
+              "body.data.forEach(rel => {",
+              "  const trackId   = rel.id;",
+              "  const trackType = rel.type;",
+              "",
+              "  const included = includedMap[`${trackType}::${trackId}`] || {};",
+              "  const attrs    = included.attributes || rel.attributes || {};",
+              "",
+              "  const isrc  = attrs.isrc  || attrs.externalIds?.isrc || '';",
+              "  const title = attrs.title || attrs.name || '';",
+              "",
+              "  candidates.push({ id: trackId, isrc, title });",
+              "});",
+              "",
+              "const count = candidates.length;",
+              "pm.environment.set('tidal_candidate_count', String(count));",
+              "pm.environment.set('tidal_playlist_track_candidates', JSON.stringify(candidates));",
+              "pm.environment.set('workflow_class', 'tertiary');",
+              "",
+              "pm.test(`Playlist expansion: ${count} candidate(s) found`, () => {",
+              "  pm.expect(count).to.be.above(0, 'No tracks found in playlist. Check lookup_playlist_id_tidal.');",
+              "});",
+              "",
+              "console.log(`[TIDAL PLAYLIST] ${count} track candidate(s) stored in tidal_playlist_track_candidates`);",
+              "console.log('[TIDAL PLAYLIST] To validate a candidate: set lookup_isrc and lookup_track_id_tidal from the list, then run the primary ISRC fetch.');",
+              "",
+              "// Print first few candidates for operator inspection",
+              "const preview = candidates.slice(0, 5);",
+              "preview.forEach((c, i) => {",
+              "  console.log(`  [${i}] id=${c.id} | isrc=${c.isrc || '(no isrc in relationship)'} | title=${c.title || '(no title in relationship)'}`)",
+              "});",
+              "if (count > 5) console.log(`  ... and ${count - 5} more`);",
+              ""
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tidal_access_token}}",
+            "disabled": false
+          },
+          {
+            "key": "Accept",
+            "value": "application/vnd.api+json",
+            "disabled": false
+          }
+        ],
+        "url": {
+          "raw": "https://api.tidal.com/v2/playlists/{{lookup_playlist_id_tidal}}/relationships/items",
+          "protocol": "https",
+          "host": [
+            "api",
+            "tidal",
+            "com"
+          ],
+          "path": [
+            "v2",
+            "playlists",
+            "{{lookup_playlist_id_tidal}}",
+            "relationships",
+            "items"
+          ]
+        },
+        "description": "TERTIARY — TIDAL playlist audit/expansion. Enumerates all track candidates from a TIDAL playlist. Stores results in tidal_playlist_track_candidates (JSON array of {id, isrc, title}) and sets tidal_candidate_count. Does NOT perform identity join — use the primary ISRC fetch to validate individual candidates by setting lookup_isrc and lookup_track_id_tidal from the candidates list."
+      },
+      "response": []
+    }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Collection-level test: ensure environment is active",
+          "pm.test(\"Active environment is set\", function () {",
+          "    pm.expect(pm.environment.name).to.not.be.undefined;",
+          "});",
+          ""
+        ]
+      }
+    },
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Collection-level pre-request: validate environment is active",
+          "// This runs before every request in the collection.",
+          "(function () {",
+          "    if (!pm.environment || !pm.environment.name) {",
+          "        console.warn(\"[Collection Pre] No active environment. Set 'Metadata Validation Operator (TIDAL v2 + Beatport)' as active environment.\");",
+          "    }",
+          "})();",
+          ""
+        ]
+      }
+    }
+  ]
+}

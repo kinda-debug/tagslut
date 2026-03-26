@@ -152,6 +152,14 @@ logs/
 !CODEOWNERS
 !openapi.json
 
+# Postman exports (allowlisted despite *.json rule above)
+!postman/
+!postman/**
+!postman/collection.json
+!postman/collection.example.json
+!postman/environment.json
+!postman/environment.secrets.example.json
+
 # =============================================================================
 # Generated output / runtime artifacts
 # =============================================================================

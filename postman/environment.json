@@ -1,0 +1,292 @@
+{
+	"id": "238dc6d3-318f-5f83-bddd-28dfbcf183e5",
+	"name": "env",
+	"values": [
+		{
+			"key": "DATABASE_URL",
+			"value": "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "TAGSLUT_DB",
+			"value": "/Users/georgeskhawam/Projects/tagslut_db/FRESH_2026/music_v3.db",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "VOLUME_STAGING",
+			"value": "/Volumes/MUSIC/mdl",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "LOCAL_STAGING",
+			"value": "$HOME/Music/mdl",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "VOLUME_SUSPECT",
+			"value": "$VOLUME_STAGING/suspect",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "VOLUME_WORK",
+			"value": "/Volumes/MUSIC/_work",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "FIX_ROOT",
+			"value": "$VOLUME_WORK/fix",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "QUARANTINE_ROOT",
+			"value": "$VOLUME_WORK/quarantine",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "DISCARD_ROOT",
+			"value": "$VOLUME_WORK/discard",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "VOLUME_QUARANTINE",
+			"value": "$QUARANTINE_ROOT",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "MASTER_LIBRARY",
+			"value": "/Volumes/MUSIC/MASTER_LIBRARY",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "LIBRARY_ROOT",
+			"value": "$MASTER_LIBRARY",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "VOLUME_LIBRARY",
+			"value": "$MASTER_LIBRARY",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "ROOT_TD",
+			"value": "$VOLUME_STAGING/tidal",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "TIDDL_DOWNLOAD_ROOT",
+			"value": "$ROOT_TD",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "ROOT_BP",
+			"value": "$VOLUME_STAGING/bpdl",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "TAGSLUT_ARTIFACTS",
+			"value": "/Users/georgeskhawam/Projects/tagslut/artifacts",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "TAGSLUT_REPORTS",
+			"value": "/Users/georgeskhawam/Projects/tagslut/artifacts/reports",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "PLAYLIST_ROOT",
+			"value": "$MASTER_LIBRARY/playlists",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "ROON_PLAYLIST_PREFIX",
+			"value": "roon-",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "SCAN_WORKERS",
+			"value": "8",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "SCAN_PROGRESS_INTERVAL",
+			"value": "100",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "SCAN_CHECK_INTEGRITY",
+			"value": "true",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "SCAN_CHECK_HASH",
+			"value": "true",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "SCAN_INCREMENTAL",
+			"value": "true",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "AUTO_APPROVE_THRESHOLD",
+			"value": "0.95",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "QUARANTINE_RETENTION_DAYS",
+			"value": "14",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "PREFER_HIGH_BITRATE",
+			"value": "true",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "PREFER_HIGH_SAMPLE_RATE",
+			"value": "true",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "PREFER_VALID_INTEGRITY",
+			"value": "true",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "DJ_LIBRARY",
+			"value": "/Volumes/MUSIC/DJ_LIBRARY",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "DJ_MP3_ROOT",
+			"value": "$DJ_LIBRARY",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "DJ_PLAYLIST_ROOT",
+			"value": "$DJ_LIBRARY",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "DJ_PLAYLIST_PREFIX",
+			"value": "dj-",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "DJ_LIBRARY_ROOT",
+			"value": "$MASTER_LIBRARY",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "TIDAL_CLIENT_ID",
+			"value": "B4mmBLyG0VC2kBEo",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "TIDAL_CLIENT_SECRET",
+			"value": "woCDikSzrk3HJubLyDyOfvCwjtV2qblsmLc8dnhEcx0=",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "CLIENT_ID",
+			"value": "B4mmBLyG0VC2kBEo",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "REDIRECT_URI",
+			"value": "http://localhost:8888/callback",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "AUTH_URL",
+			"value": "https://login.tidal.com/authorize",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "TOKEN_URL",
+			"value": "https://auth.tidal.com/v1/oauth2/token",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "STAGING_ROOT",
+			"value": "/Volumes/MUSIC/mdl",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "base_url",
+			"value": "https://api.beatport.com",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "beatport_test_track_id",
+			"value": "",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "tidal_access_token",
+			"value": "",
+			"type": "default",
+			"enabled": false
+		},
+		{
+			"key": "beatport_access_token",
+			"value": "",
+			"type": "default",
+			"enabled": false
+		},
+		{
+			"key": "spotify_access_token",
+			"value": "",
+			"type": "default",
+			"enabled": false
+		}
+	],
+	"color": null,
+	"_postman_variable_scope": "environment",
+	"_postman_exported_at": "2026-03-23T08:11:32.251Z",
+	"_postman_exported_using": "Postman/12.2.4"
+}

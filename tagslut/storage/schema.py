@@ -1514,12 +1514,10 @@ def _ensure_mp3_dj_tables(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS dj_validation_state (
-          id           INTEGER PRIMARY KEY AUTOINCREMENT,
-          validated_at TEXT    NOT NULL,
-          state_hash   TEXT    NOT NULL,
-          issue_count  INTEGER NOT NULL,
-          passed       INTEGER NOT NULL CHECK(passed IN (0,1)),
-          summary      TEXT
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          state_hash TEXT NOT NULL,
+          passed INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
         )
         """
     )

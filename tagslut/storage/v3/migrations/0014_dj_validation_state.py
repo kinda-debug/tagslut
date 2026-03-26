@@ -13,11 +13,9 @@ def up(conn: sqlite3.Connection) -> None:
         """
         CREATE TABLE IF NOT EXISTS dj_validation_state (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            validated_at TEXT NOT NULL,
             state_hash TEXT NOT NULL,
-            issue_count INTEGER NOT NULL DEFAULT 0,
             passed INTEGER NOT NULL DEFAULT 0,
-            summary TEXT
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
         )
         """
     )

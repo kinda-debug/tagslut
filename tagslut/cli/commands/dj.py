@@ -1421,6 +1421,7 @@ def dj_xml_emit(
     Records export manifest in dj_export_state for patch integrity checking.
     """
     import sqlite3
+    import sys
     from pathlib import Path
 
     from tagslut.dj.xml_emit import emit_rekordbox_xml
@@ -1450,6 +1451,12 @@ def dj_xml_emit(
         )
     except ValueError as exc:
         conn.close()
+        if str(exc) == (
+            "ERROR: no passing dj validate record for current state.\n"
+            "Run `tagslut dj validate` first."
+        ):
+            click.echo(str(exc), err=True)
+            sys.exit(1)
         raise click.ClickException(str(exc)) from exc
     finally:
         conn.close()
@@ -1503,6 +1510,7 @@ def dj_xml_patch(
     Use 'tagslut dj xml emit' for a clean initial emit.
     """
     import sqlite3
+    import sys
     from pathlib import Path
 
     from tagslut.dj.xml_emit import patch_rekordbox_xml
@@ -1533,6 +1541,12 @@ def dj_xml_patch(
         )
     except ValueError as exc:
         conn.close()
+        if str(exc) == (
+            "ERROR: no passing dj validate record for current state.\n"
+            "Run `tagslut dj validate` first."
+        ):
+            click.echo(str(exc), err=True)
+            sys.exit(1)
         raise click.ClickException(str(exc)) from exc
     finally:
         conn.close()

@@ -107,7 +107,8 @@ Pre-emit gate:
 - `dj xml emit` now requires a prior passing `dj validate` run for the current DJ DB state.
 - If `dj_admission` rows change after validation (add/remove), rerun `poetry run tagslut dj validate --db "$TAGSLUT_DB"` before emitting again.
 - `--skip-validation` remains available as an emergency escape hatch, but prints the following warning to stderr:
-  `WARNING: --skip-validation bypasses the dj validate gate. Use only for emergencies.`
+  `WARNING: --skip-validation bypasses the dj validate gate.`
+  `Use only for emergencies.`
 
 Subsequent export preserving TrackIDs and Rekordbox cue points:
 

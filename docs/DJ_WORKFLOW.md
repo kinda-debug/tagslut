@@ -124,7 +124,7 @@ On success, `dj validate` records a `dj_validation_state` row with the current D
 proceeds. If `dj_admission` rows change after validation (add/remove), rerun
 `dj validate` before Stage 4.
 
-`state_hash` is computed as SHA-256 over newline-delimited `dj_admission.id` values from:
+`state_hash` is computed as SHA-256 over concatenated `dj_admission.id` values from:
 `SELECT id FROM dj_admission ORDER BY id ASC`.
 
 ### Stage 4 — Rekordbox Export (`dj xml emit` and `dj xml patch`)
@@ -144,7 +144,8 @@ poetry run tagslut dj xml emit \
 - Refuses to proceed unless a prior passing `dj validate` run exists for the current DB `state_hash`
 - Still runs inline validation as a safety net for missing MP3 files and empty metadata
 - `--skip-validation` remains available for emergencies, but prints the following warning to stderr:
-  `WARNING: --skip-validation bypasses the dj validate gate. Use only for emergencies.`
+  `WARNING: --skip-validation bypasses the dj validate gate.`
+  `Use only for emergencies.`
 
 Use `dj xml patch` when the DJ library has changed and you need a fresh XML
 without resetting Rekordbox cue points:

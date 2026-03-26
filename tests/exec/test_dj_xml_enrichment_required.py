@@ -9,6 +9,7 @@ import pytest
 from tagslut.dj.admission import admit_track, validate_dj_library
 from tagslut.dj.xml_emit import emit_rekordbox_xml
 from tagslut.storage.schema import init_db
+from tagslut.storage.v3.dj_state import compute_dj_state_hash
 from tests.conftest import PROV_COLS, PROV_VALS
 
 
@@ -170,6 +171,16 @@ def test_emit_with_missing_artist_title_blocked_by_validate(tmp_path: Path) -> N
 
     report = validate_dj_library(conn)
     assert any(issue.kind == "MISSING_METADATA" for issue in report.issues)
+    from tagslut.dj.admission import record_validation_state
+
+    record_validation_state(
+        conn,
+        state_hash=compute_dj_state_hash(conn),
+        issue_count=0,
+        passed=True,
+        summary="forced pass (test)",
+    )
+    conn.commit()
 
     out_xml = tmp_path / "rekordbox_invalid_metadata.xml"
     with pytest.raises(ValueError, match="Pre-emit validation"):

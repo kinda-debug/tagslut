@@ -130,7 +130,7 @@ def test_emit_requires_prior_validate_pass(tmp_path: Path) -> None:
     conn = _make_db()
     _setup_admitted_track(conn, tmp_path, suffix="needs_validate")
 
-    with pytest.raises(ValueError, match="no passing 'dj validate' run"):
+    with pytest.raises(ValueError, match="no passing dj validate record"):
         emit_rekordbox_xml(
             conn,
             output_path=tmp_path / "rekordbox.xml",
@@ -161,7 +161,7 @@ def test_emit_fails_when_state_hash_stale(tmp_path: Path) -> None:
     )
     conn.commit()
 
-    with pytest.raises(ValueError, match="no passing 'dj validate' run"):
+    with pytest.raises(ValueError, match="no passing dj validate record"):
         emit_rekordbox_xml(
             conn,
             output_path=tmp_path / "rekordbox.xml",
@@ -181,10 +181,8 @@ def test_emit_with_skip_validation_bypasses_gate(
 
     assert output_path.exists()
     captured = capsys.readouterr()
-    assert (
-        "WARNING: --skip-validation bypasses the dj validate gate. Use only for emergencies."
-        in captured.err
-    )
+    assert "WARNING: --skip-validation bypasses the dj validate gate." in captured.err
+    assert "Use only for emergencies." in captured.err
 
 
 def test_validate_command_records_state_hash(tmp_path: Path) -> None:
@@ -218,7 +216,7 @@ def test_emit_fails_when_admission_added_after_validate(tmp_path: Path) -> None:
     _record_pass_for_current_state(conn)
     _setup_admitted_track(conn, tmp_path, suffix="after")
 
-    with pytest.raises(ValueError, match="no passing 'dj validate' run"):
+    with pytest.raises(ValueError, match="no passing dj validate record"):
         emit_rekordbox_xml(
             conn,
             output_path=tmp_path / "rekordbox.xml",

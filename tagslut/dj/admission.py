@@ -285,18 +285,29 @@ def record_validation_state(
     summary: str | None = None,
 ) -> int:
     """Insert a dj_validation_state row and return its id."""
-    cur = conn.execute(
-        """
-        INSERT INTO dj_validation_state
-          (validated_at, state_hash, issue_count, passed, summary)
-        VALUES (?, ?, ?, ?, ?)
-        """,
-        (
-            _now_iso(),
-            state_hash,
-            issue_count,
-            1 if passed else 0,
-            summary,
-        ),
-    )
+    cols = {
+        str(row[1])
+        for row in conn.execute("PRAGMA table_info(dj_validation_state)").fetchall()
+    }
+
+    if "validated_at" in cols:
+        cur = conn.execute(
+            """
+            INSERT INTO dj_validation_state
+              (validated_at, state_hash, issue_count, passed, summary)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                _now_iso(),
+                state_hash,
+                issue_count,
+                1 if passed else 0,
+                summary,
+            ),
+        )
+    else:
+        cur = conn.execute(
+            "INSERT INTO dj_validation_state (state_hash, passed) VALUES (?, ?)",
+            (state_hash, 1 if passed else 0),
+        )
     return cur.lastrowid  # type: ignore[return-value]

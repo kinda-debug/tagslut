@@ -319,19 +319,16 @@ def _run_pre_emit_validation(conn: sqlite3.Connection) -> None:
 
     row = conn.execute(
         """
-        SELECT id
-        FROM dj_validation_state
-        WHERE passed = 1 AND state_hash = ?
-        ORDER BY validated_at DESC, id DESC
-        LIMIT 1
+        SELECT id FROM dj_validation_state
+        WHERE state_hash = ? AND passed = 1
+        ORDER BY id DESC LIMIT 1
         """,
         (state_hash,),
     ).fetchone()
     if row is None:
         raise ValueError(
-            "Pre-emit validation gate: no passing 'dj validate' run found for current DB state.\n"
-            "Run 'tagslut dj validate' first, then retry 'tagslut dj xml emit'.\n"
-            f"(Current state_hash: {state_hash})"
+            "ERROR: no passing dj validate record for current state.\n"
+            "Run `tagslut dj validate` first."
         )
 
     _run_inline_validation(conn)
@@ -355,7 +352,8 @@ def emit_rekordbox_xml(
     """
     if skip_validation:
         _warn_stderr(
-            "WARNING: --skip-validation bypasses the dj validate gate. Use only for emergencies."
+            "WARNING: --skip-validation bypasses the dj validate gate.\n"
+            "Use only for emergencies."
         )
     else:
         _run_pre_emit_validation(conn)

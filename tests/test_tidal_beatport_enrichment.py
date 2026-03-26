@@ -540,7 +540,7 @@ def test_beatport_enrichment_propagates_fallback_confidence(tmp_path: Path, monk
             "new_release_date": "2024-01-01",
         },
     }
-    monkeypatch.setattr(BeatportProvider, "search_by_isrc", lambda self, isrc: [])
+    monkeypatch.setattr(BeatportProvider, "search_by_isrc", lambda self, isrc, limit=5: [])
     monkeypatch.setattr(
         BeatportProvider,
         "search_by_artist_and_title",
@@ -623,7 +623,7 @@ def test_tidal_enrichment_isrc_match(tmp_path: Path, monkeypatch) -> None:
         url="https://tidal.com/browse/track/tidal-123",
         match_confidence=MatchConfidence.EXACT,
     )
-    monkeypatch.setattr(TidalProvider, "search_by_isrc", lambda self, isrc: [tidal_track])
+    monkeypatch.setattr(TidalProvider, "search_by_isrc", lambda self, isrc, limit=5: [tidal_track])
     monkeypatch.setattr(TidalProvider, "search", lambda self, query, limit=5: [])
 
     output_csv = tmp_path / "beatport_tidal_enriched.csv"
@@ -662,7 +662,7 @@ def test_tidal_enrichment_no_match_preserves_beatport_row(tmp_path: Path, monkey
         ],
     )
 
-    monkeypatch.setattr(TidalProvider, "search_by_isrc", lambda self, isrc: [])
+    monkeypatch.setattr(TidalProvider, "search_by_isrc", lambda self, isrc, limit=5: [])
     monkeypatch.setattr(TidalProvider, "search", lambda self, query, limit=5: [])
 
     output_csv = tmp_path / "beatport_tidal_enriched.csv"
@@ -708,7 +708,7 @@ def test_tidal_enrichment_propagates_fallback_confidence(tmp_path: Path, monkeyp
         url="https://tidal.com/browse/track/tidal-999",
         match_confidence=MatchConfidence.NONE,
     )
-    monkeypatch.setattr(TidalProvider, "search_by_isrc", lambda self, isrc: [])
+    monkeypatch.setattr(TidalProvider, "search_by_isrc", lambda self, isrc, limit=5: [])
     monkeypatch.setattr(TidalProvider, "search", lambda self, query, limit=5: [tidal_track])
 
     output_csv = tmp_path / "beatport_tidal_enriched.csv"

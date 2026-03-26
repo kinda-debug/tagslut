@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import lru_cache
 import os
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -57,7 +58,7 @@ def load_config_from_env() -> TagslutApiClientConfig:
     )
 
 
-def build_client(config: TagslutApiClientConfig):
+def build_client(config: TagslutApiClientConfig) -> Any:
     """Build a TagslutApiSdk client from a resolved config object."""
 
     try:
@@ -77,7 +78,7 @@ def build_client(config: TagslutApiClientConfig):
 
 
 @lru_cache(maxsize=1)
-def get_client():
+def get_client() -> Any:
     """Return a cached TagslutApiSdk instance configured from environment."""
 
     return build_client(load_config_from_env())

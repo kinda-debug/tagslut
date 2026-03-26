@@ -83,6 +83,10 @@ class TidalProvider(AbstractProvider):
 
     @staticmethod
     def _parse_duration_ms(value: Any) -> Optional[int]:
+        """
+        Parse duration to milliseconds. TIDAL v2 returns ISO 8601 (PT3M45S).
+        Numeric branch is legacy v1 playlist export (integer seconds).
+        """
         if isinstance(value, (int, float)):
             return int(float(value) * 1000)
         if not isinstance(value, str):
@@ -120,16 +124,18 @@ class TidalProvider(AbstractProvider):
             headers["Authorization"] = f"Bearer {token.access_token}"
         return headers
 
-    def _make_request(self, *args, **kwargs):  # type: ignore[override]  # TODO: mypy-strict
-        params = kwargs.get("params")
-        if params is None:
-            params = {}
-        else:
-            params = dict(params)
-        if "countryCode" not in params:
-            params["countryCode"] = self.COUNTRY_CODE
-        kwargs["params"] = params
-        return super()._make_request(*args, **kwargs)
+    def _make_request(
+        self,
+        method: str,
+        url: str,
+        headers: Optional[Dict[str, str]] = None,
+        params: Optional[Dict[str, Any]] = None,
+        **kwargs: Any,
+    ) -> Optional[httpx.Response]:
+        merged_params = dict(params) if params is not None else {}
+        if "countryCode" not in merged_params:
+            merged_params["countryCode"] = self.COUNTRY_CODE
+        return super()._make_request(method, url, headers=headers, params=merged_params, **kwargs)
 
     def _request_json_document(
         self,
@@ -138,7 +144,7 @@ class TidalProvider(AbstractProvider):
         params: Optional[Dict[str, Any]] = None,
         failure_context: str,
     ) -> Optional[Dict[str, Any]]:
-        response = self._make_request("GET", url, params=params)  # type: ignore[arg-type]
+        response = self._make_request("GET", url, params=params)
         if response is None or response.status_code != 200:
             logger.warning("Failed to fetch TIDAL %s", failure_context)
             return None
@@ -201,6 +207,7 @@ class TidalProvider(AbstractProvider):
         for identifier in self._relationship_identifiers(resource, relationship_name):
             if not isinstance(identifier, dict):
                 continue
+            resolved: Optional[Dict[str, Any]]
             if isinstance(identifier.get("attributes"), dict):
                 resolved = identifier
             else:
@@ -225,7 +232,7 @@ class TidalProvider(AbstractProvider):
             return f"{self.BASE_URL}{next_url}"
         return f"{self.BASE_URL}/{next_url}"
 
-    def _normalize_track(
+    def _normalize_track(  # type: ignore[override]
         self,
         resource: Dict[str, Any],
         included_index: Optional[Dict[tuple[str, str], Dict[str, Any]]] = None,
@@ -233,22 +240,22 @@ class TidalProvider(AbstractProvider):
         if not isinstance(resource, dict):
             return None
 
-        if "resource" in resource and isinstance(resource.get("resource"), dict):
-            resource = resource.get("resource", {})
-
-        attributes: Dict[str, Any]
-        relationships: Dict[str, Any]
-        resource_id: Any
+        embedded_resource = resource.get("resource")
+        if isinstance(embedded_resource, dict):
+            resource = embedded_resource
 
         if "attributes" not in resource and "id" in resource and "title" in resource:
             attributes = resource  # already flattened
             relationships = {}
             resource_id = attributes.get("id")
         else:
-            attributes = resource.get("attributes")
-            if not isinstance(attributes, dict):
+            raw_attributes = resource.get("attributes")
+            if not isinstance(raw_attributes, dict):
                 return None
-            relationships = resource.get("relationships") if isinstance(resource.get("relationships"), dict) else {}
+            attributes = raw_attributes
+
+            raw_relationships = resource.get("relationships")
+            relationships = raw_relationships if isinstance(raw_relationships, dict) else {}
             resource_id = resource.get("id")
 
         track_id = str(resource_id) if resource_id is not None else None
@@ -273,13 +280,17 @@ class TidalProvider(AbstractProvider):
 
         albums = self._related_resources(resource_wrapper, "albums", included_index)
         album = albums[0] if albums else None
-        album_attributes = (
-            album.get("attributes")
-            if isinstance(album, dict) and isinstance(album.get("attributes"), dict)
-            else {}
-        )
+        album_attributes: Dict[str, Any] = {}
+        album_id = None
+        if isinstance(album, dict):
+            raw_album_attributes = album.get("attributes")
+            if isinstance(raw_album_attributes, dict):
+                album_attributes = raw_album_attributes
+            raw_album_id = album.get("id")
+            if raw_album_id is not None:
+                album_id = str(raw_album_id)
+
         album_name = album_attributes.get("title")
-        album_id = str(album.get("id")) if isinstance(album, dict) and album.get("id") is not None else None
         release_date = album_attributes.get("releaseDate")
 
         duration_ms = self._parse_duration_ms(attributes.get("duration"))
@@ -296,6 +307,10 @@ class TidalProvider(AbstractProvider):
             isrc=attributes.get("isrc"),
             release_date=release_date,
             bpm=attributes.get("bpm"),
+            key=attributes.get("key"),
+            key_scale=attributes.get("keyScale"),
+            tone_tags=attributes.get("toneTags"),
+            popularity=attributes.get("popularity"),
             explicit=attributes.get("explicit"),
             audio_quality=self._media_tags_to_audio_quality(attributes.get("mediaTags")),
             copyright=attributes.get("copyright"),
@@ -576,65 +591,81 @@ class TidalProvider(AbstractProvider):
     ) -> tuple[List[TidalSeedRow], TidalSeedExportStats]:
         playlist_id = self._parse_playlist_id(playlist_url_or_id)
         stats = TidalSeedExportStats(
-            input_playlist=str(playlist_url_or_id or "").strip(),
             playlist_id=playlist_id or "",
             exported_rows=0,
             missing_isrc_rows=0,
-            missing_required_rows=0,
-            malformed_rows=0,
+            rows_missing_required_fields=0,
+            malformed_playlist_items=0,
             duplicate_rows=0,
-            pages=0,
+            pages_fetched=0,
             pagination_stop_short_page_no_next=0,
             pagination_stop_repeated_next=0,
         )
         if not playlist_id:
-            stats.malformed_rows += 1
+            stats.malformed_playlist_items += 1
             return [], stats
 
         seed_rows: List[TidalSeedRow] = []
         seen_row_keys: set[tuple[str, str, str, str, str]] = set()
+        seen_next_urls: set[str] = set()
 
-        # Fetch playlist title (optional; best-effort)
-        playlist_title = ""
-        try:
-            meta = self._tidal_v1_get(f"{self.V1_BASE_URL}/playlists/{playlist_id}", params={})
-            if meta.status_code == 200:
-                data = meta.json()
-                if isinstance(data, dict):
-                    playlist_title = str(data.get("title") or "")
-        except Exception:
-            pass
+        next_url: Optional[str] = f"{self.BASE_URL}/playlists/{quote(playlist_id, safe='')}/relationships/items"
+        params: Optional[Dict[str, Any]] = {
+            "include": ["tracks", "tracks.albums", "tracks.artists"],
+            "limit": 100,
+        }
 
-        offset = 0
-        limit = 100
-        while True:
-            stats.pages += 1
-            resp = self._tidal_v1_get(
-                f"{self.V1_BASE_URL}/playlists/{playlist_id}/tracks",
-                params={"limit": limit, "offset": offset},
-            )
-            if resp.status_code != 200:
-                logger.warning("TIDAL playlist tracks fetch failed: status=%s", resp.status_code)
+        while next_url:
+            response = self._make_request("GET", next_url, params=params)
+            if response is None:
+                stats.pagination_stop_non_200 += 1
+                break
+            if response.status_code != 200:
+                stats.pagination_stop_non_200 += 1
                 break
 
-            payload = resp.json()
-            items = payload.get("items", []) if isinstance(payload, dict) else []
-            if not isinstance(items, list) or not items:
-                stats.pagination_stop_short_page_no_next += 1
+            stats.pages_fetched += 1
+            try:
+                payload = response.json()
+            except Exception as exc:
+                logger.error("Failed to parse TIDAL playlist %s response: %s", playlist_id, exc)
+                stats.pagination_stop_non_200 += 1
+                break
+            if not isinstance(payload, dict):
+                stats.pagination_stop_non_200 += 1
                 break
 
-            for item in items:
-                if not isinstance(item, dict):
-                    stats.malformed_rows += 1
+            included_index = self._build_included_index(payload)
+            identifiers = self._extract_data_items(payload)
+            if not identifiers:
+                stats.pagination_stop_empty_page += 1
+                break
+
+            for identifier in identifiers:
+                identifier_type = str(identifier.get("type") or "").strip()
+                identifier_id = str(identifier.get("id") or "").strip()
+                if identifier_type != "tracks" or not identifier_id:
+                    stats.rows_missing_required_fields += 1
                     continue
-                track_id = str(item.get("id") or "").strip()
-                title = str(item.get("title") or "").strip()
-                artist = self._join_names(item.get("artists")) or ""
-                isrc = str(item.get("isrc") or "").strip() or None
-                url = f"https://tidal.com/browse/track/{track_id}" if track_id else ""
+
+                track_resource = included_index.get(("tracks", identifier_id))
+                if track_resource is None:
+                    stats.malformed_playlist_items += 1
+                    continue
+
+                track = self._normalize_track(track_resource, included_index)
+                if track is None:
+                    stats.malformed_playlist_items += 1
+                    continue
+
+                track_id = (track.service_track_id or "").strip()
+                title = (track.title or "").strip()
+                artist = (track.artist or "").strip()
+                url = (track.url or "").strip()
+                isrc = (track.isrc or "").strip() or None
 
                 if not track_id or not title or not artist or not url:
-                    stats.missing_required_rows += 1
+                    stats.rows_missing_required_fields += 1
                     continue
 
                 row_key = (playlist_id, track_id, url, title, artist)
@@ -658,12 +689,16 @@ class TidalProvider(AbstractProvider):
                 )
                 stats.exported_rows += 1
 
-            if len(items) < limit:
+            next_candidate = self._resolve_next_url(payload)
+            if not next_candidate:
                 stats.pagination_stop_short_page_no_next += 1
                 break
-            offset += len(items)
+            if next_candidate in seen_next_urls:
+                stats.pagination_stop_repeated_next += 1
+                break
+            seen_next_urls.add(next_candidate)
 
-        if playlist_title and not stats.playlist_id:
-            stats.playlist_id = playlist_title
+            next_url = next_candidate
+            params = None  # params only on first request; next_url already encodes them
 
         return seed_rows, stats

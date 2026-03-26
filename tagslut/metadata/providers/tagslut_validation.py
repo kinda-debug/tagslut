@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
-import requests
+import requests  # type: ignore[import-untyped]
 
 from tagslut.metadata.providers.tagslut_api_client import get_client
 
@@ -77,7 +77,7 @@ def lookup_isrc(isrc: str) -> Optional[Dict[str, Any]]:
         if not result.get("results"):
             return None
             
-        return result
+        return cast(Dict[str, Any], result)
         
     except requests.RequestException as exc:
         raise RuntimeError(f"ISRC lookup failed for {isrc}: {exc}") from exc

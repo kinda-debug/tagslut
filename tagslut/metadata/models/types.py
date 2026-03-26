@@ -62,6 +62,9 @@ class ProviderTrack:
     # DJ-essential
     bpm: Optional[float] = None
     key: Optional[str] = None                 # Musical key (e.g. "F# min")
+    key_scale: Optional[str] = None
+    tone_tags: Optional[List[str]] = None
+    popularity: Optional[float] = None
     genre: Optional[str] = None
     sub_genre: Optional[str] = None           # Beatport sub-genre
 

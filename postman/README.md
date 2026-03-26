@@ -14,44 +14,62 @@ This folder stores **sanitized** Postman exports (Collection + Environment) for 
 
 ---
 
-## Export from Postman (Collection + Environment)
+## Keeping Postman Cloud in sync with this repo
 
-### 1) Export the collection
+This folder is the Git-tracked “source of truth” for the latest **sanitized** exports:
 
-1. In Postman (Cloud), locate the collection **"tagslut-api"**.
-2. Click the **…** (More actions) menu → **Export**.
+- `postman/collection.json` ← export of the [tagslut-api](collection/53520441-d3f8de55-e4a7-4728-b3ca-5ee725b60aef) collection
+- `postman/environment.json` ← export of the [Metadata Validation Operator (TIDAL v2 + Beatport)](environment/53520441-47ecd53d-7f46-4803-823a-b0b71b513bd8) environment (**no secrets**)
+
+When you change requests / scripts / variables in Postman Cloud, **re-export** into these files so the repo stays in sync.
+
+---
+
+## Export from Postman UI → write to `postman/*.json`
+
+### Export the collection (`postman/collection.json`)
+
+1. In Postman, locate the **tagslut-api** collection.
+2. Click **…** (More actions) → **Export**.
 3. Choose **Collection v2.1** format.
-4. Save the file to:
-
+4. Save/overwrite:
    - `postman/collection.json`
 
-> Note: `postman/collection.example.json` is a tiny stub you can reference for shape, but the real file committed in this repo should be the full export at `postman/collection.json`.
-
-### 2) Export the environment
+### Export the environment (`postman/environment.json`)
 
 1. In Postman, open **Environments**.
-2. Find **"Metadata Validation Operator (TIDAL v2 + Beatport)"**.
+2. Find **Metadata Validation Operator (TIDAL v2 + Beatport)**.
 3. Click **Export**.
-4. Save the file to:
-
+4. Save/overwrite:
    - `postman/environment.json`
 
 ---
 
-## Import into Postman
+## Secrets: don’t commit them
+
+Postman environment exports can include tokens, API keys, refresh tokens, client secrets, etc. Do **not** commit real secret values.
+
+- Use `postman/environment.secrets.example.json` as the template for which secret keys are expected.
+- Store real secrets in **Postman Vault** (preferred) or in a local-only file/flow (for example via `postman/env_exports.sh`).
+
+Before committing, open `postman/environment.json` and ensure secret values are placeholders/empty.
+
+---
+
+## Import from `postman/*.json` → Postman UI
 
 ### Import the collection
 
 1. In Postman, click **Import**.
 2. Select `postman/collection.json`.
+3. If prompted, choose the target workspace and complete the import.
 
 ### Import the environment
 
 1. In Postman, click **Import**.
 2. Select `postman/environment.json`.
-3. Select the imported environment as the active environment.
+3. Set it as the active environment.
 
----
 
 ## Update workflow (keeping exports current)
 

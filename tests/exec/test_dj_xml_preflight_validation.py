@@ -11,8 +11,9 @@ from tagslut.dj.admission import (
     record_validation_state,
     validate_dj_library,
 )
-from tagslut.dj.xml_emit import _build_export_scope, emit_rekordbox_xml
+from tagslut.dj.xml_emit import emit_rekordbox_xml
 from tagslut.storage.schema import init_db
+from tagslut.storage.v3.dj_state import compute_dj_state_hash
 from tests.conftest import PROV_COLS, PROV_VALS
 
 _MIGRATION_PATH = (
@@ -113,7 +114,7 @@ def _setup_admitted_track(
 
 
 def _record_pass_for_current_state(conn: sqlite3.Connection) -> str:
-    _scope_payload, state_hash = _build_export_scope(conn, playlist_scope=None)
+    state_hash = compute_dj_state_hash(conn)
     record_validation_state(
         conn,
         state_hash=state_hash,
@@ -181,7 +182,7 @@ def test_emit_with_skip_validation_bypasses_gate(
     assert output_path.exists()
     captured = capsys.readouterr()
     assert (
-        "WARNING: --skip-validation bypasses DJ library integrity checks. Use only for emergencies."
+        "WARNING: --skip-validation bypasses the dj validate gate. Use only for emergencies."
         in captured.err
     )
 
@@ -193,7 +194,7 @@ def test_validate_command_records_state_hash(tmp_path: Path) -> None:
     report = validate_dj_library(conn)
     assert report.ok
 
-    _scope_payload, state_hash = _build_export_scope(conn, playlist_scope=None)
+    state_hash = compute_dj_state_hash(conn)
     record_validation_state(
         conn,
         state_hash=state_hash,

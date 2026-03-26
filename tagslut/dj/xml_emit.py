@@ -15,6 +15,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
 
+from tagslut.storage.v3.dj_state import compute_dj_state_hash
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -304,7 +306,7 @@ def _run_inline_validation(conn: sqlite3.Connection) -> None:
 
 def _run_pre_emit_validation(conn: sqlite3.Connection) -> None:
     """Enforce a recorded passing validation for the current DB state."""
-    _scope_payload, state_hash = _build_export_scope(conn, playlist_scope=None)
+    state_hash = compute_dj_state_hash(conn)
 
     if not _table_exists(conn, "dj_validation_state"):
         _warn_stderr(
@@ -353,7 +355,7 @@ def emit_rekordbox_xml(
     """
     if skip_validation:
         _warn_stderr(
-            "WARNING: --skip-validation bypasses DJ library integrity checks. Use only for emergencies."
+            "WARNING: --skip-validation bypasses the dj validate gate. Use only for emergencies."
         )
     else:
         _run_pre_emit_validation(conn)
@@ -366,7 +368,8 @@ def emit_rekordbox_xml(
         )
 
     assigned = _assign_track_ids(conn, rows)
-    scope_payload, state_hash = _build_export_scope(conn, playlist_scope=playlist_scope)
+    scope_payload, scope_hash = _build_export_scope(conn, playlist_scope=playlist_scope)
+    state_hash = compute_dj_state_hash(conn)
 
     # Build XML tree
     root = ET.Element("DJ_PLAYLISTS", {"Version": "1.0.0"})
@@ -423,16 +426,17 @@ def emit_rekordbox_xml(
             prior_scope = json.loads(prior_scope_json or "{}")
         except json.JSONDecodeError:
             prior_scope = {}
-        if prior_scope.get("state_hash") != state_hash:
+        prior_scope_hash = prior_scope.get("scope_hash") or prior_scope.get("state_hash")
+        if prior_scope_hash != scope_hash:
             continue
         if prior_hash != manifest_hash:
             raise ValueError(
                 "Determinism violation: Rekordbox XML changed without a DJ DB state change.\n"
-                f"(state_hash: {state_hash}; prior_export_id: {prior_id})"
+                f"(scope_hash: {scope_hash}; prior_export_id: {prior_id})"
             )
         _warn_stderr(
             f"WARNING: Rekordbox XML output is identical to prior export id={prior_id} "
-            f"for the same DJ DB state_hash={state_hash}."
+            f"for the same export scope_hash={scope_hash}."
         )
         break
 
@@ -450,6 +454,7 @@ def emit_rekordbox_xml(
                     "track_count": len(rows),
                     "playlist_count": len(pl_rows),
                     "state_hash": state_hash,
+                    "scope_hash": scope_hash,
                     "playlist_scope": sorted(playlist_scope) if playlist_scope else None,
                     "scope": scope_payload,
                 },

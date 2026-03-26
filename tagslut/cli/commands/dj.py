@@ -1245,6 +1245,13 @@ def dj_backfill(
     from tagslut.dj.admission import backfill_admissions
     from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
 
+    import os
+
+    if db_path is None and not os.environ.get("TAGSLUT_DB"):
+        raise click.ClickException(
+            "Missing database path. Pass --db /path/to/music.db or set TAGSLUT_DB=/path/to/music.db."
+        )
+
     try:
         resolved_db = resolve_cli_env_db_path(
             db_path, purpose="write", source_label="--db"
@@ -1277,7 +1284,7 @@ def dj_backfill(
     finally:
         conn.close()
 
-    click.echo(f"Backfill complete: admitted={admitted} skipped_already_active={skipped}")
+    click.echo(f"Admitted {admitted} new, skipped {skipped} existing.")
 
 
 # ---------------------------------------------------------------------------
@@ -1308,7 +1315,7 @@ def dj_validate(
     import sys
 
     from tagslut.dj.admission import record_validation_state, validate_dj_library
-    from tagslut.dj.xml_emit import _build_export_scope
+    from tagslut.storage.v3.dj_state import compute_dj_state_hash
     from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
 
     try:
@@ -1325,7 +1332,7 @@ def dj_validate(
     try:
         report = validate_dj_library(conn)
         try:
-            _scope_payload, state_hash = _build_export_scope(conn, playlist_scope=None)
+            state_hash = compute_dj_state_hash(conn)
             record_validation_state(
                 conn,
                 state_hash=state_hash,

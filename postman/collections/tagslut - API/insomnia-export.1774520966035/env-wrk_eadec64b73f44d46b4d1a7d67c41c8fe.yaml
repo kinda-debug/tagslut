@@ -1,0 +1,27 @@
+type: environment.insomnia.rest/5.0
+schema_version: "5.1"
+name: env
+meta:
+  id: wrk_eadec64b73f44d46b4d1a7d67c41c8fe
+  created: 1774520220917
+  modified: 1774520220917
+  description: ""
+environments:
+  name: env
+  meta:
+    id: env_6246600ee82e49cebffe85065ec32d5b
+    created: 1774520220917
+    modified: 1774520843512
+    isPrivate: false
+  data:
+    base_url: https://api.beatport.com
+    beatport_access_token: fmpB06sumKOSNNxRIvoSv2fIXJk9GS
+    beatport_test_isrc: USQX91300105
+    beatport_test_track_name: Instant Crush
+    beatport_test_artist: Daft Punk
+    TAGSLUT_API_BASE_URL: https://api.beatport.com
+    TAGSLUT_API_ACCESS_TOKEN: fmpB06sumKOSNNxRIvoSv2fIXJk9GS
+    DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+    TAGSLUT_DB: /Users/georgeskhawam/Projects/tagslut_db/FRESH_2026/music_v3.db
+    ROOT_TD: /Volumes/MUSIC/mdl/tidal
+    ROOT_BP: /Volumes/MUSIC/mdl/bpdl

@@ -37,7 +37,7 @@ Role: Provider authentication and token lifecycle flows.
 8. `poetry run tagslut mp3 ...`
 Role: MP3 derivative asset management (Stage 2 of the 4-stage DJ pipeline; prerequisite: Stage 1 intake).
 - `mp3 build` — transcode preferred FLAC master(s) to MP3 and register in `mp3_asset`
-- `mp3 reconcile` — scan an existing MP3 root and register files in `mp3_asset` without re-transcoding
+- `mp3 reconcile` — scan an existing MP3 root (via `--mp3-root` or `$DJ_LIBRARY`) and register files in `mp3_asset` without re-transcoding
 
 9. `poetry run tagslut dj ...`
 Role: DJ library admission, validation, and Rekordbox XML export (Stages 3 and 4).

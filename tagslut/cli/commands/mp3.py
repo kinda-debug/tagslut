@@ -141,8 +141,9 @@ def mp3_build(
 @click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
 @click.option(
     "--mp3-root",
-    required=True,
-    help="Root directory of existing MP3 files to reconcile.",
+    required=False,
+    default=None,
+    help="Root directory of existing MP3 files to reconcile (defaults to $DJ_LIBRARY).",
     type=click.Path(exists=True, file_okay=False),
 )
 @click.option(
@@ -154,7 +155,7 @@ def mp3_build(
 @click.option("--verbose", "-v", is_flag=True, default=False)
 def mp3_reconcile(
     db_path: str | None,
-    mp3_root: str,
+    mp3_root: str | None,
     dry_run: bool,
     verbose: bool,
 ) -> None:
@@ -163,6 +164,7 @@ def mp3_reconcile(
     Matches via ISRC tag first, then title+artist. Files that already have an
     mp3_asset row are skipped. Safe to re-run (idempotent).
     """
+    import os
     import sqlite3
     from pathlib import Path
 
@@ -176,11 +178,18 @@ def mp3_reconcile(
     except DbResolutionError as exc:
         raise click.ClickException(str(exc)) from exc
 
+    resolved_mp3_root = mp3_root or os.environ.get("DJ_LIBRARY") or ""
+    if not resolved_mp3_root:
+        raise click.ClickException("Missing --mp3-root (or set DJ_LIBRARY).")
+    mp3_root_path = Path(resolved_mp3_root).expanduser()
+    if not mp3_root_path.exists() or not mp3_root_path.is_dir():
+        raise click.ClickException(f"MP3 root does not exist or is not a directory: {mp3_root_path}")
+
     conn = sqlite3.connect(str(resolved_db))
     try:
         result = reconcile_mp3_library(
             conn,
-            mp3_root=Path(mp3_root),
+            mp3_root=mp3_root_path,
             dry_run=dry_run,
         )
     finally:

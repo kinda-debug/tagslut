@@ -57,6 +57,7 @@ poetry run tagslut mp3 reconcile \
 
 Matches each MP3 to a `track_identity` row via ISRC (preferred) or title+artist.
 Registers the file in `mp3_asset`. Use `--dry-run` (default) to preview matches.
+If `--mp3-root` is omitted, `tagslut mp3 reconcile` falls back to `$DJ_LIBRARY` (must be exported).
 
 If you need to generate DJ MP3s from canonical FLAC masters instead of reconciling
 an existing MP3 library, use `mp3 build`:

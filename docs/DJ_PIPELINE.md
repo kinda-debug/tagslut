@@ -50,6 +50,10 @@ poetry run tagslut mp3 reconcile \
   --execute
 ```
 
+Notes:
+- Default is `--dry-run` (no DB writes); pass `--execute` to register rows.
+- If `--mp3-root` is omitted, `tagslut mp3 reconcile` falls back to `$DJ_LIBRARY` (must be exported).
+
 Outputs:
 - `mp3_asset` rows linked to canonical identities and master assets
 

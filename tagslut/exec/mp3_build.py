@@ -19,6 +19,12 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+from tagslut.exec.mp3_reconcile import (
+    normalize_artist_for_match,
+    normalize_isrc,
+    normalize_title_for_match,
+)
+
 
 MP3_ASSET_PROFILE_FULL_TAGS = "mp3_asset_320_cbr_full"
 DJ_COPY_PROFILE = "dj_copy_320_cbr"
@@ -364,6 +370,56 @@ def reconcile_mp3_library(
 
     result = Mp3ReconcileResult()
 
+    # Preload identity maps for case-insensitive / whitespace-insensitive matching.
+    def _column_exists(table: str, column: str) -> bool:
+        try:
+            return any(
+                str(r[1]) == column
+                for r in conn.execute(f"PRAGMA table_info({table})").fetchall()
+            )
+        except sqlite3.OperationalError:
+            return False
+
+    has_canonical_artist = _column_exists("track_identity", "canonical_artist")
+    has_canonical_title = _column_exists("track_identity", "canonical_title")
+    has_merged_into_id = _column_exists("track_identity", "merged_into_id")
+    where_clause = "WHERE merged_into_id IS NULL" if has_merged_into_id else ""
+
+    isrc_map: dict[str, list[int]] = {}
+    norm_map: dict[tuple[str, str], list[int]] = {}
+    if has_canonical_artist and has_canonical_title:
+        identity_rows = conn.execute(
+            f"""
+            SELECT id, isrc, artist_norm, title_norm, canonical_artist, canonical_title
+            FROM track_identity
+            {where_clause}
+            """
+        ).fetchall()
+    else:
+        identity_rows = conn.execute(
+            f"""
+            SELECT id, isrc, artist_norm, title_norm
+            FROM track_identity
+            {where_clause}
+            """
+        ).fetchall()
+
+    for row in identity_rows:
+        if has_canonical_artist and has_canonical_title:
+            iid, isrc_val, artist_norm, title_norm, canonical_artist, canonical_title = row
+        else:
+            iid, isrc_val, artist_norm, title_norm = row
+            canonical_artist = None
+            canonical_title = None
+        if isrc_val:
+            key = normalize_isrc(str(isrc_val))
+            if key:
+                isrc_map.setdefault(key, []).append(int(iid))
+        a_key = normalize_artist_for_match(artist_norm or canonical_artist)
+        t_key = normalize_title_for_match(title_norm or canonical_title)
+        if a_key and t_key:
+            norm_map.setdefault((a_key, t_key), []).append(int(iid))
+
     for mp3_file in sorted(mp3_root.rglob("*.mp3")):
         try:
             tags = ID3(str(mp3_file))
@@ -375,39 +431,42 @@ def reconcile_mp3_library(
             continue
 
         isrc_frame = tags.get("TSRC")
-        isrc = str(isrc_frame.text[0]) if isrc_frame and isrc_frame.text else None
+        isrc_raw = str(isrc_frame.text[0]) if isrc_frame and isrc_frame.text else None
         title_frame = tags.get("TIT2")
-        title = str(title_frame.text[0]) if title_frame and title_frame.text else None
+        title_raw = str(title_frame.text[0]) if title_frame and title_frame.text else None
         artist_frame = tags.get("TPE1")
-        artist = str(artist_frame.text[0]) if artist_frame and artist_frame.text else None
+        artist_raw = str(artist_frame.text[0]) if artist_frame and artist_frame.text else None
 
         identity_id: int | None = None
-        if isrc:
-            row = conn.execute(
-                "SELECT id FROM track_identity WHERE isrc = ? LIMIT 1",
-                (isrc,),
-            ).fetchone()
-            if row:
-                identity_id = row[0]
+        isrc_key = normalize_isrc(isrc_raw)
+        if isrc_key:
+            candidates = isrc_map.get(isrc_key, [])
+            if len(candidates) == 1:
+                identity_id = candidates[0]
+            elif len(candidates) > 1:
+                result.unmatched += 1
+                result.errors.append(
+                    f"ISRC conflict for {mp3_file.name} (isrc={isrc_raw!r}, candidates={candidates})"
+                )
+                continue
 
-        if identity_id is None and title and artist:
-            row = conn.execute(
-                """
-                SELECT id FROM track_identity
-                WHERE lower(title_norm)  = lower(?)
-                  AND lower(artist_norm) = lower(?)
-                LIMIT 1
-                """,
-                (title, artist),
-            ).fetchone()
-            if row:
-                identity_id = row[0]
+        if identity_id is None and title_raw and artist_raw:
+            key = (normalize_artist_for_match(artist_raw), normalize_title_for_match(title_raw))
+            candidates = norm_map.get(key, [])
+            if len(candidates) == 1:
+                identity_id = candidates[0]
+            elif len(candidates) > 1:
+                result.unmatched += 1
+                result.errors.append(
+                    f"Title/artist conflict for {mp3_file.name} (title={title_raw!r}, artist={artist_raw!r}, candidates={candidates})"
+                )
+                continue
 
         if identity_id is None:
             result.unmatched += 1
             result.errors.append(
                 f"No identity match for {mp3_file.name} "
-                f"(isrc={isrc!r}, title={title!r}, artist={artist!r})"
+                f"(isrc={isrc_raw!r}, title={title_raw!r}, artist={artist_raw!r})"
             )
             continue
 
@@ -444,10 +503,10 @@ def reconcile_mp3_library(
         conn.execute(
             """
             INSERT OR IGNORE INTO mp3_asset
-              (identity_id, asset_id, profile, path, status, transcoded_at)
-            VALUES (?, ?, 'mp3_320_cbr_reconciled', ?, 'verified', datetime('now'))
+              (identity_id, asset_id, profile, path, status, source, zone, reconciled_at)
+            VALUES (?, ?, 'mp3_320_cbr_reconciled', ?, 'verified', 'mp3_reconcile', ?, datetime('now'))
             """,
-            (identity_id, master_row[0], str(mp3_file)),
+            (identity_id, master_row[0], str(mp3_file), mp3_root.name),
         )
         conn.commit()
         result.linked += 1
@@ -665,20 +724,13 @@ _FILENAME_RE = re.compile(
 )
 
 
-def _norm(s: str | None) -> str:
-    """Normalise a string for matching: lower, strip, collapse whitespace."""
-    if not s:
-        return ""
-    return re.sub(r"\s+", " ", s.lower().strip())
-
-
 def _parse_filename(filename: str) -> tuple[str, str] | None:
     """Return (artist_norm, title_norm) from a filename or None."""
     m = _FILENAME_RE.match(filename)
     if not m:
         return None
-    artist = _norm(m.group("artist"))
-    title = _norm(m.group("title"))
+    artist = normalize_artist_for_match(m.group("artist"))
+    title = normalize_title_for_match(m.group("title"))
     if artist and title:
         return artist, title
     return None
@@ -786,15 +838,52 @@ def reconcile_mp3_scan(
     # norm_key → list of identity_ids
     _norm_map: dict[tuple[str, str], list[int]] = {}
     _isrc_map: dict[str, list[int]] = {}
-    for id_row in conn.execute(
-        "SELECT id, isrc, artist_norm, title_norm FROM track_identity WHERE merged_into_id IS NULL"
-    ).fetchall():
-        iid = id_row[0]
-        isrc_val = id_row[1]
-        a_norm = _norm(id_row[2])
-        t_norm = _norm(id_row[3])
+
+    def _column_exists(table: str, column: str) -> bool:
+        try:
+            return any(
+                str(r[1]) == column
+                for r in conn.execute(f"PRAGMA table_info({table})").fetchall()
+            )
+        except sqlite3.OperationalError:
+            return False
+
+    has_canonical_artist = _column_exists("track_identity", "canonical_artist")
+    has_canonical_title = _column_exists("track_identity", "canonical_title")
+    has_merged_into_id = _column_exists("track_identity", "merged_into_id")
+    where_clause = "WHERE merged_into_id IS NULL" if has_merged_into_id else ""
+
+    if has_canonical_artist and has_canonical_title:
+        identity_rows = conn.execute(
+            f"""
+            SELECT id, isrc, artist_norm, title_norm, canonical_artist, canonical_title
+            FROM track_identity
+            {where_clause}
+            """
+        ).fetchall()
+    else:
+        identity_rows = conn.execute(
+            f"""
+            SELECT id, isrc, artist_norm, title_norm
+            FROM track_identity
+            {where_clause}
+            """
+        ).fetchall()
+
+    for row in identity_rows:
+        if has_canonical_artist and has_canonical_title:
+            iid, isrc_val, artist_norm, title_norm, canonical_artist, canonical_title = row
+        else:
+            iid, isrc_val, artist_norm, title_norm = row
+            canonical_artist = None
+            canonical_title = None
+
+        a_norm = normalize_artist_for_match(artist_norm or canonical_artist)
+        t_norm = normalize_title_for_match(title_norm or canonical_title)
         if isrc_val:
-            _isrc_map.setdefault(isrc_val.strip(), []).append(iid)
+            isrc_key = normalize_isrc(str(isrc_val))
+            if isrc_key:
+                _isrc_map.setdefault(isrc_key, []).append(iid)
         if a_norm and t_norm:
             _norm_map.setdefault((a_norm, t_norm), []).append(iid)
 
@@ -866,7 +955,7 @@ def _process_reconcile_row(
         return
 
     filename = Path(path_str).name
-    isrc_val = (row.get("id3_isrc") or "").strip() or None
+    isrc_raw = (row.get("id3_isrc") or "").strip() or None
     id3_title = (row.get("id3_title") or "").strip() or None
     id3_artist = (row.get("id3_artist") or "").strip() or None
     bitrate_raw = row.get("bitrate")
@@ -893,8 +982,9 @@ def _process_reconcile_row(
             confidence = "HIGH"
 
     # Tier 2 — ISRC
-    if identity_id is None and isrc_val:
-        candidates = isrc_map.get(isrc_val, [])
+    isrc_key = normalize_isrc(isrc_raw)
+    if identity_id is None and isrc_key:
+        candidates = isrc_map.get(isrc_key, [])
         if len(candidates) == 1:
             identity_id = candidates[0]
             tier = 2
@@ -905,14 +995,14 @@ def _process_reconcile_row(
                 conn, run_id=run_id, source="mp3_reconcile",
                 action="CONFLICT", confidence="HIGH", mp3_path=path_str,
                 identity_id=None, lexicon_track_id=None,
-                details={"tier": 2, "candidates": candidates, "isrc": isrc_val},
+                details={"tier": 2, "candidates": candidates, "isrc": isrc_raw},
                 jsonl_fh=jsonl_fh, dry_run=dry_run,
             )
             return
 
     # Tier 3 — ID3 title+artist normalised
     if identity_id is None and id3_title and id3_artist:
-        key = (_norm(id3_artist), _norm(id3_title))
+        key = (normalize_artist_for_match(id3_artist), normalize_title_for_match(id3_title))
         candidates = norm_map.get(key, [])
         if len(candidates) == 1:
             identity_id = candidates[0]
@@ -931,7 +1021,7 @@ def _process_reconcile_row(
 
     # Tier 4 — fuzzy
     if identity_id is None and fuzzy_ratio and id3_title and id3_artist:
-        query_str = f"{_norm(id3_artist)} {_norm(id3_title)}"
+        query_str = f"{normalize_artist_for_match(id3_artist)} {normalize_title_for_match(id3_title)}"
         best_score = 0.0
         best_id: int | None = None
         for (a_n, t_n), iids in norm_map.items():
@@ -959,19 +1049,44 @@ def _process_reconcile_row(
         if not dry_run:
             # Insert track_identity stub
             import uuid as _uuid
+            import sqlite3 as _sqlite3
             stub_key = f"stub_{_uuid.uuid4().hex[:12]}"
-            conn.execute(
-                """
-                INSERT OR IGNORE INTO track_identity
-                  (identity_key, canonical_title, canonical_artist,
-                   artist_norm, title_norm,
-                   ingested_at, ingestion_method, ingestion_source, ingestion_confidence)
-                VALUES (?, ?, ?, ?, ?,
-                        datetime('now'), 'mp3_reconcile', 'mp3_reconcile_stub', 'uncertain')
-                """,
-                (stub_key, id3_title or filename, id3_artist or "",
-                 _norm(id3_artist), _norm(id3_title or filename)),
-            )
+
+            try:
+                columns = {
+                    str(r[1])
+                    for r in conn.execute("PRAGMA table_info(track_identity)").fetchall()
+                }
+            except _sqlite3.OperationalError:
+                columns = set()
+
+            from datetime import datetime as _dt, timezone as _tz
+
+            values = {
+                "identity_key": stub_key,
+                "canonical_title": id3_title or filename,
+                "canonical_artist": id3_artist or "",
+                "artist_norm": normalize_artist_for_match(id3_artist),
+                "title_norm": normalize_title_for_match(id3_title or filename),
+                # v3 ingestion provenance (required on v3 schemas)
+                "ingested_at": _dt.now(tz=_tz.utc).isoformat(),
+                "ingestion_method": "mp3_reconcile",
+                "ingestion_source": "mp3_reconcile_stub",
+                "ingestion_confidence": "uncertain",
+                # legacy/minimal schemas
+                "status": "stub_pending_master",
+                "source": "mp3_reconcile",
+            }
+
+            insert_keys = [k for k in values.keys() if k in columns]
+            if insert_keys:
+                cols_sql = ", ".join(insert_keys)
+                placeholders = ", ".join("?" for _ in insert_keys)
+                params = [values[k] for k in insert_keys]
+                conn.execute(
+                    f"INSERT OR IGNORE INTO track_identity ({cols_sql}) VALUES ({placeholders})",
+                    params,
+                )
             stub_row = conn.execute(
                 "SELECT id FROM track_identity WHERE identity_key = ?", (stub_key,)
             ).fetchone()

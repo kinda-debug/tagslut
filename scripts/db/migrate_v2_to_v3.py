@@ -60,9 +60,9 @@ EXPECTED_V2_FILES_COLUMNS_STRICT = {
     "canonical_title",
 }
 PROVIDER_ID_COLUMNS = (
-    # "spotify_id",  # purged
+    "spotify_id",
     "tidal_id",
-    # "qobuz_id",  # purged
+    "qobuz_id",
     "apple_music_id",
     "itunes_id",
     "deezer_id",
@@ -273,8 +273,8 @@ def _upsert_track_identity(
         "isrc": computed_isrc or _norm_text(row.get("isrc")),
         "beatport_id": computed_beatport_id or _norm_text(row.get("beatport_id")),
         "tidal_id": _norm_text(row.get("tidal_id")),
-        # "qobuz_id": _norm_text(row.get("qobuz_id")),  # purged
-        # "spotify_id": _norm_text(row.get("spotify_id")),  # purged
+        "qobuz_id": _norm_text(row.get("qobuz_id")),
+        "spotify_id": _norm_text(row.get("spotify_id")),
         "apple_music_id": _norm_text(row.get("apple_music_id")),
         "deezer_id": _norm_text(row.get("deezer_id")),
         "traxsource_id": _norm_text(row.get("traxsource_id")),

@@ -35,8 +35,6 @@ jobs:
             tests/**/*.py
           files_ignore: |
             tagslut/storage/v3/migrations/**
-            tagslut/storage/v3/legacy/**
-            tagslut/storage/v2/**
 
       - name: Lint
         if: steps.changed.outputs.any_changed == 'true'
@@ -65,4 +63,4 @@ jobs:
         run: echo "No Python files changed; skipping type check."
 
       - name: Test
-        run: poetry run pytest --tb=short -q
+        run: poetry run pytest --tb=short -q --cov=tagslut --cov-report=term-missing --cov-fail-under=60

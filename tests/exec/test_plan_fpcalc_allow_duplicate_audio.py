@@ -6,6 +6,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PLAN_FPCALC = PROJECT_ROOT / "tools" / "review" / "plan_fpcalc_promote_unique_to_final_library.py"
+
 
 def _create_files_table(conn: sqlite3.Connection) -> None:
     conn.execute(
@@ -121,7 +124,7 @@ def test_plan_fpcalc_allow_duplicate_audio_promotes_when_layout_differs(tmp_path
 
     base_cmd = [
         sys.executable,
-        "tools/review/plan_fpcalc_promote_unique_to_final_library.py",
+        str(PLAN_FPCALC),
         "--db",
         str(db_path),
         "--source-root",
@@ -141,7 +144,7 @@ def test_plan_fpcalc_allow_duplicate_audio_promotes_when_layout_differs(tmp_path
     ]
 
     # Default behavior: stash duplicates already in FINAL.
-    r1 = subprocess.run(base_cmd, capture_output=True, text=True)
+    r1 = subprocess.run(base_cmd, cwd=PROJECT_ROOT, capture_output=True, text=True)
     assert r1.returncode == 0, r1.stderr
     summary1 = json.loads(_latest(out_dir, "plan_fpcalc_unique_final_summary_*.json").read_text(encoding="utf-8"))
     planned1 = summary1["planned"]
@@ -151,7 +154,7 @@ def test_plan_fpcalc_allow_duplicate_audio_promotes_when_layout_differs(tmp_path
     assert planned1["stash_move"] == 0
 
     # Allow-duplicate behavior: promote when layout differs and dest doesn't exist.
-    r2 = subprocess.run(base_cmd + ["--allow-duplicate-audio"], capture_output=True, text=True)
+    r2 = subprocess.run(base_cmd + ["--allow-duplicate-audio"], cwd=PROJECT_ROOT, capture_output=True, text=True)
     assert r2.returncode == 0, r2.stderr
     summary2 = json.loads(_latest(out_dir, "plan_fpcalc_unique_final_summary_*.json").read_text(encoding="utf-8"))
     planned2 = summary2["planned"]

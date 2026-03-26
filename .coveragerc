@@ -1,0 +1,16 @@
+[run]
+source = tagslut
+omit =
+    tagslut/storage/v2/*
+    tagslut/storage/v3/legacy/*
+    tagslut/storage/v3/migrations/*
+    tagslut/storage/migrations/*
+
+[report]
+fail_under = 60
+show_missing = True
+omit =
+    tagslut/storage/v2/*
+    tagslut/storage/v3/legacy/*
+    tagslut/storage/v3/migrations/*
+    tagslut/storage/migrations/*

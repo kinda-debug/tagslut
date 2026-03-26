@@ -25,6 +25,10 @@ CREATE TABLE IF NOT EXISTS track_identity (
     title_norm TEXT,
     canonical_title TEXT,
     canonical_artist TEXT,
+    ingested_at TEXT,
+    ingestion_method TEXT,
+    ingestion_source TEXT,
+    ingestion_confidence TEXT,
     source TEXT,
     status TEXT,
     merged_into_id INTEGER,
@@ -130,7 +134,7 @@ def test_stub_created_for_unmatched_flac(tmp_path: Path) -> None:
     assert result["stubs_created"] == 1
 
     stub = conn.execute(
-        "SELECT id, status FROM track_identity WHERE status = 'stub_pending_enrichment'"
+        "SELECT id FROM track_identity WHERE identity_key LIKE 'stub_master_%'"
     ).fetchone()
     assert stub is not None
 

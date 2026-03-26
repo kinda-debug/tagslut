@@ -124,7 +124,7 @@ def test_transcode_error_surfaces_in_pool_wizard_failures(tmp_path: Path):
             profile = {"bitrate": 320}
             run_dir = tmp_path
 
-            receipts, failures = execute_plan(conn, plan_rows, profile, run_dir)
+            receipts, failures, _transcode_failures = execute_plan(conn, plan_rows, profile, run_dir)
 
             # Should have one failure with transcode_failed error type
             assert len(failures) == 1

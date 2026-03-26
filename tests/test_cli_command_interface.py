@@ -121,7 +121,7 @@ def test_scan_not_registered_in_click_command_map() -> None:
 def test_internal_replacement_map_targets_canonical_flows() -> None:
     assert _TRANSITIONAL_COMMAND_REPLACEMENTS["tagslut _mgmt"].startswith("tagslut index")
     assert _TRANSITIONAL_COMMAND_REPLACEMENTS["tagslut _metadata"].startswith("tagslut auth")
-    assert _TRANSITIONAL_COMMAND_REPLACEMENTS["tagslut _recover"].startswith("Recovery is retired")
+    assert "tagslut _recover" not in _TRANSITIONAL_COMMAND_REPLACEMENTS
     assert "tagslut scan" not in _TRANSITIONAL_COMMAND_REPLACEMENTS
     assert "tagslut mgmt" not in _TRANSITIONAL_COMMAND_REPLACEMENTS
 
@@ -234,4 +234,4 @@ def test_recovery_compat_wrappers_fail_clearly() -> None:
         )
         assert result.returncode != 0
         combined = (result.stdout or "") + (result.stderr or "")
-        assert "legacy/tagslut_recovery/" in combined
+        assert "No such command 'recovery'" in combined

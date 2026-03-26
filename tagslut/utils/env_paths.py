@@ -26,7 +26,6 @@ _CANONICAL_VOLUME_ENV_VARS: dict[str, tuple[str, ...]] = {
 
 _LEGACY_ENV_NAMES: dict[str, tuple[str, ...]] = {
     "VOLUME_LIBRARY": ("LIBRARY_ROOT", "MASTER_LIBRARY"),
-    "VOLUME_STAGING": ("STAGING_ROOT",),
     "VOLUME_QUARANTINE": ("QUARANTINE_ROOT",),
     "VOLUME_WORK": ("WORK_ROOT",),
 }

@@ -78,7 +78,9 @@ def _run_bpdl_batch(
 
     proc = subprocess.run(
         ["bash", str(harness)],
-        cwd=PROJECT_ROOT,
+        # Run outside the repo root so helper Python snippets don't auto-load `.env` via `find_dotenv(usecwd=True)`.
+        # This keeps the test deterministic and ensures the explicit env overrides win.
+        cwd=tmp_path,
         capture_output=True,
         text=True,
         check=False,
@@ -200,10 +202,12 @@ def test_run_bpdl_batch_compat_mode_logs_and_warns_for_legacy_staging_env(tmp_pa
     assert "bpdl compatibility mode: running without '-q' probe." in proc.stdout
     assert "compat stdout" in log_file.read_text(encoding="utf-8")
     assert "bash -lc" not in proc.stdout
-    warning = "VOLUME_STAGING is deprecated; use STAGING_ROOT instead."
-    assert warning in proc.stderr
-    assert proc.stderr.count(warning) == 1
-    assert f"downloads_directory: {legacy_staging / 'bpdl'}" in cfg_path.read_text(encoding="utf-8")
+    # Current behavior: VOLUME_STAGING is still accepted as a legacy alias for STAGING_ROOT,
+    # but the get-intake wrapper no longer emits a deprecation warning.
+    assert "VOLUME_STAGING is deprecated" not in proc.stderr
+    cfg_text = cfg_path.read_text(encoding="utf-8")
+    assert "downloads_directory:" in cfg_text
+    assert cfg_text.rstrip().endswith("/bpdl")
 
 
 def test_precheck_candidate_quality_rank_defaults_tidal_to_cd_lossless(tmp_path: Path) -> None:

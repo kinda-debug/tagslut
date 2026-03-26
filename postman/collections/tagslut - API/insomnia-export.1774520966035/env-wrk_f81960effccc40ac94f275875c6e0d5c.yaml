@@ -57,4 +57,10 @@ environments:
     TOKEN_URL: https://auth.tidal.com/v1/oauth2/token
     STAGING_ROOT: /Volumes/MUSIC/mdl
     base_url: https://api.beatport.com
+    beatport_access_token: fmpB06sumKOSNNxRIvoSv2fIXJk9GS
     beatport_test_track_id: ""
+    beatport_test_isrc: USQX91300105
+    beatport_test_track_name: Instant Crush
+    beatport_test_artist: Daft Punk
+    TAGSLUT_API_BASE_URL: https://api.beatport.com
+    TAGSLUT_API_ACCESS_TOKEN: fmpB06sumKOSNNxRIvoSv2fIXJk9GS

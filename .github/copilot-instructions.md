@@ -49,6 +49,20 @@ Do not suggest alternative invocations or new entrypoints.
 - `artifacts/` — operational output. Do not modify.
 - `docs/archive/` — superseded material. Do not read or update.
 
+## DJ pipeline
+
+For curated DJ-library work, the primary operator workflow is the explicit 4-stage pipeline:
+
+1. intake masters via `poetry run tagslut intake <provider-url>`
+2. build or reconcile MP3 derivatives via `poetry run tagslut mp3 build ...` or `poetry run tagslut mp3 reconcile ...`
+3. admit and validate DJ state via `poetry run tagslut dj admit ...` or `poetry run tagslut dj backfill ...`, then `poetry run tagslut dj validate ...`
+4. emit or patch Rekordbox XML via `poetry run tagslut dj xml emit ...` or `poetry run tagslut dj xml patch ...`
+
+`tools/get --dj` and `tools/get-intake --dj` are legacy compatibility paths and should not be
+treated as the recommended curated-library contract.
+Use `docs/DJ_PIPELINE.md` as the concise operator reference and `docs/DJ_WORKFLOW.md` for the
+extended rationale.
+
 ## Tool division of labor
 
 This repo uses multiple AI tools. Stay in your lane:
@@ -64,6 +78,14 @@ This repo uses multiple AI tools. Stay in your lane:
 
 When a request involves more than 2 files or requires running commands to verify
 behavior, suggest using Claude Code instead of attempting it inline.
+
+## Git and safety guidelines
+
+- **Allowed**: `git status`, `git diff`, targeted `git add`, conventional `git commit`.
+- **Forbidden**: `git push --force`, `git rebase --interactive`, deleting branches or tags.
+
+When unsure about a potentially destructive command, explain the recommended manual steps
+for a human to execute rather than running it.
 
 ## Active work
 

@@ -67,10 +67,16 @@ postman/collections/*Copy*/
 .postman/config.json
 .postman/resources.yaml
 
-# Postman exports: ignore secret variants, but track the main exports
-postman/*secrets*.json
-!postman/environment.json
+# --- Postman exports (track these) ---
+!postman/
 !postman/collection.json
+!postman/collection.example.json
+!postman/environment.json
+!postman/environment.secrets.example.json
+
+# --- Postman secrets (do NOT track real secrets) ---
+postman/*secrets*.json
+postman/environment.secrets.json
 # =============================================================================
 # Database / binary / archive
 # =============================================================================
@@ -283,5 +289,4 @@ postman/sdks/
 postman/collections/tagslut - API/insomnia-export.1774520966035/env-merged.yaml
 
 # Postman local-only secret variants
-postman/environment.secrets.json
 postman/*.local.json

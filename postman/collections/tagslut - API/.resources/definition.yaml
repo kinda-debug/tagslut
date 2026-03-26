@@ -1,59 +1,31 @@
 $kind: collection
-description: Postman collection for the tagslut music library management system.
-  Covers Beatport API v4 authentication, catalog lookups (tracks, releases,
-  ISRC), full-text search, and authenticated user library access. Used to enrich
-  track metadata, resolve ISRCs, and drive the DJ pipeline ingestion workflow.
-scripts:
-  - type: http:beforeRequest
-    code: >-
-      // Collection-level token guard (Task 8)
+name: tagslut - API
+description: |-
+  Tagslut API collection — Beatport v4, TIDAL v2 JSON:API, and Spotify Web API.
 
-      // Runs before every Bearer-authenticated request in the collection.
+  ## Environment contract
+  Use postman/environments/tagslut.environment.yaml (YAML source) or its
+  exported JSON equivalent as the runnable environment.
 
-      // Skips the token endpoint itself to avoid infinite loops.
+  Required runtime variables (all must be present in the env):
+    base_url                  — https://api.beatport.com
+    beatport_client_id        — OAuth client ID
+    beatport_client_secret    — OAuth client secret
+    beatport_access_token     — set by Auth > Get Beatport Token
+    beatport_token_expires_at — set by Auth > Get Beatport Token
+    beatport_last_isrc        — set by Identity Verification > 5a
+    beatport_last_track_id    — set by Catalog > Track by ID
+    beatport_verified_id      — set by Validation Run > 6b
+    beatport_verified_isrc    — set by Validation Run > 6b
+    beatport_test_isrc        — static test ISRC (e.g. USQX91300105)
+    beatport_test_track_id    — static test track ID
+    beatport_test_release_id  — static test release ID
+    beatport_search_query     — static search query string
+    tidal_access_token        — Bearer token for TIDAL v2
+    tidal_seed_track_id       — set by Identity Verification > 5b
+    tidal_seed_isrc           — set by Identity Verification > 5b
+    spotify_access_token      — Bearer token for Spotify
+    spotify_verified_id       — set by Identity Verification > 5c
 
-
-      var url = request.url || '';
-
-
-      // Don't guard the token fetch or the introspect endpoint
-
-      if (url.indexOf('/v4/auth/o/token/') !== -1 ||
-          url.indexOf('/v4/auth/o/introspect/') !== -1) {
-          return;
-      }
-
-
-      var expiresAt = pm.environment.get('beatport_token_expires_at');
-
-      var token     = pm.environment.get('beatport_access_token');
-
-
-      // No token at all
-
-      if (!token) {
-          console.warn('[token-guard] beatport_access_token is not set. Run Auth / Get Token first.');
-          return;
-      }
-
-
-      // No expiry recorded yet (token was set outside this collection)
-
-      if (!expiresAt) {
-          return;
-      }
-
-
-      var secondsLeft = (parseInt(expiresAt, 10) - Date.now()) / 1000;
-
-
-      if (secondsLeft <= 0) {
-          console.warn('[token-guard] beatport_access_token has EXPIRED (' +
-              Math.abs(secondsLeft).toFixed(0) + 's ago). Run Auth / Get Token.');
-      } else if (secondsLeft < 60) {
-          console.warn('[token-guard] beatport_access_token expires in ' +
-              secondsLeft.toFixed(0) + 's — consider refreshing before this run.');
-      }
-
-      // else: token is healthy, no noise
-    language: text/javascript
+  Operator/filesystem variables (ROOT_TD, ROOT_BP, TAGSLUT_DB, etc.) live
+  in the separate env.environment.yaml and must NOT be merged here.

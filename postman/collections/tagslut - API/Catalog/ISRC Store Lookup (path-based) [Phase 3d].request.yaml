@@ -1,8 +1,12 @@
 $kind: http-request
-description: Path-based ISRC store lookup using Basic Auth (client_id +
-  client_secret). Part of Phase 3d testing to compare this endpoint's response
-  shape against the ?isrc= query-param variant. Per OAS spec, this route
-  requires cookie or basic auth only — Bearer tokens are not accepted.
+description: |-
+  DRAFT Phase 3d. Not included in production validation runs.
+
+  Path-based ISRC store lookup using Basic Auth (client_id + client_secret).
+  Part of Phase 3d testing to compare this Beatport v4 endpoint's response
+  shape against the ?isrc= query-param variant (Catalog > Tracks by ISRC).
+  Per OAS spec, this route requires cookie or basic auth only — Bearer tokens
+  are not accepted. URL is Beatport v4, not TIDAL.
 url: "{{base_url}}/v4/catalog/tracks/store/{{beatport_test_isrc}}/"
 method: GET
 auth:
@@ -18,12 +22,12 @@ scripts:
       if (pm.response.code === 200) {
           var json = pm.response.json();
 
-          // Response shape detection
+          // Response shape detection (Beatport v4 can return paginated wrapper or direct record)
           var isPaginated = ('results' in json && 'count' in json);
           var isDirect = ('id' in json && 'isrc' in json);
           console.log('Response shape: ' + (isPaginated ? 'PAGINATED WRAPPER' : isDirect ? 'DIRECT RECORD' : 'UNKNOWN'));
 
-          // Field presence
+          // Field presence audit — used to validate Beatport v4 path-based shape
           var fields = ['id', 'isrc', 'name', 'artists', 'bpm', 'key', 'genre'];
           var record = isPaginated ? (json.results && json.results[0]) : json;
           if (record) {

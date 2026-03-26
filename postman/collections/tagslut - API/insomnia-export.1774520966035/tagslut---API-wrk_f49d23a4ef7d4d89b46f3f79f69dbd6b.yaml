@@ -1,0 +1,968 @@
+type: collection.insomnia.rest/5.0
+schema_version: "5.1"
+name: tagslut - API
+meta:
+  id: wrk_f49d23a4ef7d4d89b46f3f79f69dbd6b
+  created: 1774520220920
+  modified: 1774520220920
+  description: ""
+collection:
+  - name: tagslut - API
+    meta:
+      id: fld_17916ddb70ac415381d4383519517d0c
+      created: 1774520220920
+      modified: 1774520220920
+      sortKey: -1774520212347
+      description: Postman collection for the tagslut music library management system.
+        Covers Beatport API v4 authentication, catalog lookups (tracks,
+        releases, ISRC), full-text search, and authenticated user library
+        access. Used to enrich track metadata, resolve ISRCs, and drive the DJ
+        pipeline ingestion workflow.
+    children:
+      - name: Auth
+        meta:
+          id: fld_1a08644fb887447a8d42a6072f483510
+          created: 1774520220921
+          modified: 1774520220921
+          sortKey: -1774520212346
+          description: OAuth2 Client Credentials flow for DJ app token.
+        children:
+          - url: "{{base_url}}/v4/auth/o/token/"
+            name: Get Token (Client Credentials)
+            meta:
+              id: req_15a92cc36fe348fc93414105cd4951f6
+              created: 1774520220922
+              modified: 1774520220922
+              isPrivate: false
+              description: ""
+              sortKey: -1774520212345
+            method: POST
+            body:
+              mimeType: application/x-www-form-urlencoded
+              params:
+                - name: grant_type
+                  value: client_credentials
+                  disabled: false
+                - name: client_id
+                  value: "{{beatport_client_id}}"
+                  disabled: false
+                - name: client_secret
+                  value: "{{beatport_client_secret}}"
+                  disabled: false
+            headers:
+              - name: Content-Type
+                value: application/x-www-form-urlencoded
+            scripts:
+              preRequest: >-
+                var expiresAt =
+                insomnia.environment.get('beatport_token_expires_at');
+
+                if (expiresAt) {
+                    var secondsLeft = (parseInt(expiresAt) - Date.now()) / 1000;
+                    if (secondsLeft < 60) {
+                        console.warn('WARNING: Beatport token expires in ' + secondsLeft.toFixed(0) + 's — fetching new token.');
+                    }
+                }
+              afterResponse: >-
+                if (insomnia.response.code === 200) {
+                    var json = insomnia.response.json();
+                    if (json.access_token) {
+                        insomnia.environment.set('beatport_access_token', json.access_token);
+                        insomnia.environment.set('beatport_token_expires_at', String(Date.now() + (json.expires_in * 1000)));
+                        console.log('Token set. Expires in: ' + json.expires_in + 's');
+                    }
+                }
+            settings:
+              renderRequestBody: true
+              encodeUrl: true
+              followRedirects: global
+              cookies:
+                send: true
+                store: true
+              rebuildPath: true
+          - url: "{{base_url}}/v4/auth/o/introspect/"
+            name: Introspect Token
+            meta:
+              id: req_8cf713bd7ec3449bb4bd6028fd4d1dd3
+              created: 1774520220923
+              modified: 1774520220923
+              isPrivate: false
+              description: ""
+              sortKey: -1774520212344
+            method: GET
+            authentication:
+              type: bearer
+              disabled: false
+              token: "{{beatport_access_token}}"
+              prefix: ""
+            settings:
+              renderRequestBody: true
+              encodeUrl: true
+              followRedirects: global
+              cookies:
+                send: true
+                store: true
+              rebuildPath: true
+      - name: Catalog
+        meta:
+          id: fld_cbeecd5042ff4e14a5d9ed3509529596
+          created: 1774520220923
+          modified: 1774520220923
+          sortKey: -1774520212343
+          description: >-
+            Catalog endpoints. /v4/catalog/tracks/ accepts Bearer, basic, or
+            cookie.
+
+            /v4/catalog/tracks/store/{isrc}/ per OAS requires cookie or basic
+            only.
+
+            Phase 3d test: compare store/{isrc} vs ?isrc= response shape.
+        children:
+          - url: "{{base_url}}/v4/catalog/tracks/"
+            name: Tracks by ISRC (query param)
+            meta:
+              id: req_e3bc86afcd344d5299c08268c18f1bd5
+              created: 1774520220924
+              modified: 1774520220924
+              isPrivate: false
+              description: ""
+              sortKey: -1774520212341
+            method: GET
+            parameters:
+              - name: isrc
+                value: "{{beatport_test_isrc}}"
+                disabled: false
+            scripts:
+              afterResponse: >-
+                // Phase 3d: log response shape for comparison with store/{isrc}
+
+                if (insomnia.response.code === 200) {
+                    var json = insomnia.response.json();
+                    console.log('Type: ' + typeof json);
+                    console.log('Is array: ' + Array.isArray(json.results || json));
+                    console.log('Has count: ' + ('count' in json));
+                    console.log('Has results: ' + ('results' in json));
+                    if (json.results) console.log('Results count: ' + json.results.length);
+                    if (json.results && json.results[0]) {
+                        console.log('First result keys: ' + Object.keys(json.results[0]).join(', '));
+                    }
+                }
+            settings:
+              renderRequestBody: true
+              encodeUrl: true
+              followRedirects: global
+              cookies:
+                send: true
+                store: true
+              rebuildPath: true
+          - url: "{{base_url}}/v4/catalog/tracks/{{beatport_test_track_id}}/"
+            name: Track by ID
+            meta:
+              id: req_eb04169692bd4e8e8e35914828956e40
+              created: 1774520220924
+              modified: 1774520220924
+              isPrivate: false
+              description: ""
+              sortKey: -1774520212342
+            method: GET
+            authentication:
+              type: bearer
+              disabled: false
+              token: "{{beatport_access_token}}"
+              prefix: ""
+            scripts:
+              afterResponse: >-
+                var code = insomnia.response.code;
+
+                console.log('Status: ' + code);
+
+
+                if (code !== 200) {
+                    console.log('FAILED — body: ' + insomnia.response.text().substring(0, 300));
+                    return;
+                }
+
+
+                var json = insomnia.response.json();
+
+
+                // ── Canonical field validation
+                ────────────────────────────────────────
+
+                var canonical = ['id', 'isrc', 'name', 'artists', 'bpm', 'key',
+                'genre', 'mix_name'];
+
+                canonical.forEach(function(f) {
+                    var val = json[f];
+                    if (val === null || val === undefined) {
+                        console.log('WARNING: missing field ' + f);
+                    } else {
+                        console.log(f + ': ' + JSON.stringify(val).substring(0, 80));
+                    }
+                });
+
+
+                // release.label is nested — check separately
+
+                var label = json.release && json.release.label;
+
+                if (!label) {
+                    console.log('WARNING: missing field release.label');
+                } else {
+                    console.log('release.label: ' + JSON.stringify(label).substring(0, 80));
+                }
+
+
+                // ── Provider-linkable bonus fields
+                ────────────────────────────────────
+
+                var bonus = ['upc', 'copyright', 'version', 'explicit',
+                'audioQuality'];
+
+                var found = [];
+
+                bonus.forEach(function(f) {
+                    if (json[f] !== null && json[f] !== undefined) {
+                        found.push(f + '=' + JSON.stringify(json[f]).substring(0, 40));
+                    }
+                });
+
+                if (found.length > 0) {
+                    console.log('Provider-linkable fields present: ' + found.join(', '));
+                } else {
+                    console.log('No provider-linkable bonus fields found in this response.');
+                }
+
+
+                // ── Chain variables
+                ───────────────────────────────────────────────────
+
+                if (json.id) {
+                    insomnia.environment.set('beatport_last_track_id', json.id);
+                    console.log('Set beatport_last_track_id = ' + json.id);
+                }
+
+                if (json.isrc) {
+                    insomnia.environment.set('beatport_last_isrc', json.isrc);
+                    console.log('Set beatport_last_isrc = ' + json.isrc);
+                }
+            settings:
+              renderRequestBody: true
+              encodeUrl: true
+              followRedirects: global
+              cookies:
+                send: true
+                store: true
+              rebuildPath: true
+          - url: "{{base_url}}/v4/catalog/tracks/store/{{beatport_test_isrc}}/"
+            name: ISRC Store Lookup (path-based) [Phase 3d]
+            meta:
+              id: req_f2eb48e614dc4e2e9214707392d3d037
+              created: 1774520220924
+              modified: 1774520220924
+              isPrivate: false
+              description: ""
+              sortKey: -1774520212340
+            method: GET
+            authentication:
+              type: basic
+              username: "{{beatport_client_id}}"
+              password: "{{beatport_client_secret}}"
+              disabled: false
+            scripts:
+              afterResponse: >-
+                console.log('Status: ' + insomnia.response.code);
+
+                if (insomnia.response.code === 200) {
+                    var json = insomnia.response.json();
+
+                    // Response shape detection
+                    var isPaginated = ('results' in json && 'count' in json);
+                    var isDirect = ('id' in json && 'isrc' in json);
+                    console.log('Response shape: ' + (isPaginated ? 'PAGINATED WRAPPER' : isDirect ? 'DIRECT RECORD' : 'UNKNOWN'));
+
+                    // Field presence
+                    var fields = ['id', 'isrc', 'name', 'artists', 'bpm', 'key', 'genre'];
+                    var record = isPaginated ? (json.results && json.results[0]) : json;
+                    if (record) {
+                        fields.forEach(function(f) {
+                            console.log('  ' + f + ': ' + (f in record ? JSON.stringify(record[f]).substring(0, 80) : 'MISSING'));
+                        });
+                    } else {
+                        console.log('No record to inspect.');
+                    }
+                } else {
+                    console.log('FAILED (' + insomnia.response.code + ') — check auth: try Basic (client_id/secret) or session cookie');
+                    console.log('Body: ' + insomnia.response.text().substring(0, 200));
+                }
+            settings:
+              renderRequestBody: true
+              encodeUrl: true
+              followRedirects: global
+              cookies:
+                send: true
+                store: true
+              rebuildPath: true
+          - url: "{{base_url}}/v4/catalog/releases/{{beatport_test_release_id}}/"
+            name: Release by ID
+            meta:
+              id: req_01fc60bde9ec41e597c287fb2b2c1db6
+              created: 1774520220925
+              modified: 1774520220925
+              isPrivate: false
+              description: ""
+              sortKey: -1774520212339
+            method: GET
+            settings:
+              renderRequestBody: true
+              encodeUrl: true
+              followRedirects: global
+              cookies:
+                send: true
+                store: true
+              rebuildPath: true
+          - url: "{{base_url}}/v4/catalog/releases/{{beatport_test_release_id}}/tracks/"
+            name: Release Tracks
+            meta:
+              id: req_5b1fdeded03e466eaa16491528bca93f
+              created: 1774520220925
+              modified: 1774520220925
+              isPrivate: false
+              description: ""
+              sortKey: -1774520212338
+            method: GET
+            parameters:
+              - name: per_page
+                value: "100"
+                disabled: false
+            settings:
+              renderRequestBody: true
+              encodeUrl: true
+              followRedirects: global
+              cookies:
+                send: true
+                store: true
+              rebuildPath: true
+      - name: Search
+        meta:
+          id: fld_95065201e69c4508ad8d3530e5d2d867
+          created: 1774520220925
+          modified: 1774520220925
+          sortKey: -1774520212337
+          description: Search service. Uses Bearer token (HTTPBearer scheme).
+        children:
+          - url: "{{base_url}}/search/v1/tracks"
+            name: Search Tracks by Text
+            meta:
+              id: req_c0b5927966244c7093d8872e69994211
+              created: 1774520220926
+              modified: 1774520220926
+              isPrivate: false
+              description: ""
+              sortKey: -1774520212336
+            method: GET
+            parameters:
+              - name: q
+                value: "{{beatport_search_query}}"
+                disabled: false
+              - name: count
+                value: "10"
+                disabled: false
+            settings:
+              renderRequestBody: true
+              encodeUrl: true
+              followRedirects: global
+              cookies:
+                send: true
+                store: true
+              rebuildPath: true
+      - name: My Library
+        meta:
+          id: fld_ca36fffa2dde4e519373eaf0f24e7242
+          created: 1774520220926
+          modified: 1774520220926
+          sortKey: -1774520212335
+          description: Authenticated user library endpoints. Bearer token required.
+        children:
+          - url: "{{base_url}}/v4/my/beatport/tracks/"
+            name: My Beatport Tracks
+            meta:
+              id: req_25456af5757d49b2ae1f11d84a7f7f01
+              created: 1774520220926
+              modified: 1774520220926
+              isPrivate: false
+              description: ""
+              sortKey: -1774520212334
+            method: GET
+            parameters:
+              - name: page
+                value: "1"
+                disabled: false
+              - name: per_page
+                value: "25"
+                disabled: false
+            settings:
+              renderRequestBody: true
+              encodeUrl: true
+              followRedirects: global
+              cookies:
+                send: true
+                store: true
+              rebuildPath: true
+          - url: "{{base_url}}/v4/my/account/"
+            name: My Account
+            meta:
+              id: req_f98cfe894f814b03af09f657d03a4786
+              created: 1774520220927
+              modified: 1774520220927
+              isPrivate: false
+              description: ""
+              sortKey: -1774520212333
+            method: GET
+            settings:
+              renderRequestBody: true
+              encodeUrl: true
+              followRedirects: global
+              cookies:
+                send: true
+                store: true
+              rebuildPath: true
+      - name: Identity Verification
+        meta:
+          id: fld_5e260117c86a46aebcb9c717651fc89d
+          created: 1774520220927
+          modified: 1774520220927
+          sortKey: -1774520212332
+          description: Endpoints for verifying and cross-referencing track identities
+            between Beatport catalog data and the local tagslut v3 database.
+            Used during Phase 3 testing to validate ISRC resolution accuracy and
+            response shape consistency.
+        children:
+          - url: "{{base_url}}/v4/catalog/tracks/"
+            name: 5a - Beatport ISRC Lookup
+            meta:
+              id: req_d9668f6eebc242319fa0d2c9a8e44013
+              created: 1774520220927
+              modified: 1774520220927
+              isPrivate: false
+              description: ""
+              sortKey: -1774520212331
+            method: GET
+            parameters:
+              - name: isrc
+                value: "{{beatport_last_isrc}}"
+                disabled: false
+            authentication:
+              type: bearer
+              disabled: false
+              token: "{{beatport_access_token}}"
+              prefix: ""
+            scripts:
+              afterResponse: >-
+                var code = insomnia.response.code;
+
+                console.log('[5a] Status: ' + code);
+
+
+                if (code !== 200) {
+                    console.log('[5a] FAILED — body: ' + insomnia.response.text().substring(0, 300));
+                    return;
+                }
+
+
+                var json = insomnia.response.json();
+
+                var results = json.results || (Array.isArray(json) ? json : []);
+
+
+                if (!results.length) {
+                    console.log('[5a] WARNING: Beatport returned 0 results for ISRC ' +
+                        insomnia.environment.get('beatport_last_isrc'));
+                    return;
+                }
+
+
+                var track = results[0];
+
+                var bpId   = track.id;
+
+                var bpIsrc = track.isrc;
+
+
+                insomnia.environment.set('beatport_verified_id',   bpId);
+
+                insomnia.environment.set('beatport_verified_isrc', bpIsrc);
+
+
+                console.log('[5a] beatport_verified_id   = ' + bpId);
+
+                console.log('[5a] beatport_verified_isrc = ' + bpIsrc);
+
+                console.log('[5a] Results in page: ' + results.length +
+                    (json.count !== undefined ? ' / total: ' + json.count : ''));
+            settings:
+              renderRequestBody: true
+              encodeUrl: true
+              followRedirects: global
+              cookies:
+                send: true
+                store: true
+              rebuildPath: true
+          - url: https://api.spotify.com/v1/search
+            name: 5c - Spotify ISRC Cross-Check
+            meta:
+              id: req_480c200860524f338ee2673c43996d60
+              created: 1774520220928
+              modified: 1774520220928
+              isPrivate: false
+              description: ""
+              sortKey: -1774520212329
+            method: GET
+            parameters:
+              - name: q
+                value: isrc:{{beatport_verified_isrc}}
+                disabled: false
+              - name: type
+                value: track
+                disabled: false
+            authentication:
+              type: bearer
+              disabled: false
+              token: "{{spotify_access_token}}"
+              prefix: ""
+            scripts:
+              afterResponse: >-
+                var code = insomnia.response.code;
+
+                console.log('[5c] Status: ' + code);
+
+
+                if (code === 401) {
+                    console.log('[5c] FAILED — 401 Unauthorized. Refresh spotify_access_token.');
+                    return;
+                }
+
+                if (code !== 200) {
+                    console.log('[5c] FAILED — body: ' + insomnia.response.text().substring(0, 300));
+                    return;
+                }
+
+
+                var json  = insomnia.response.json();
+
+                var items = json.tracks && json.tracks.items ? json.tracks.items
+                : [];
+
+
+                if (!items.length) {
+                    console.log('[5c] WARNING: Spotify returned 0 results for ISRC ' +
+                        insomnia.environment.get('beatport_verified_isrc'));
+                    return;
+                }
+
+
+                var track        = items[0];
+
+                var spotifyIsrc  = track.external_ids &&
+                track.external_ids.isrc;
+
+                var beatportIsrc =
+                insomnia.environment.get('beatport_verified_isrc');
+
+
+                console.log('[5c] beatport_isrc = ' + beatportIsrc);
+
+                console.log('[5c] spotify_isrc  = ' + spotifyIsrc);
+
+
+                if (spotifyIsrc && beatportIsrc && spotifyIsrc === beatportIsrc)
+                {
+                    console.log('[5c] CORROBORATED — Beatport + TIDAL + Spotify all agree: ' + beatportIsrc);
+                } else {
+                    console.log('[5c] CONFLICT: beatport_isrc=' + beatportIsrc +
+                        ' spotify_isrc=' + spotifyIsrc);
+                }
+
+
+                // Log Spotify enrichment fields useful for provenance
+
+                var extras = ['id', 'name', 'duration_ms', 'explicit',
+                'popularity'];
+
+                var found  = [];
+
+                extras.forEach(function(f) {
+                    if (track[f] !== null && track[f] !== undefined) {
+                        found.push(f + '=' + JSON.stringify(track[f]).substring(0, 40));
+                    }
+                });
+
+                if (found.length) {
+                    console.log('[5c] Spotify enrichment fields: ' + found.join(', '));
+                }
+
+
+                // Store spotify_id for provenance
+
+                if (track.id) {
+                    insomnia.environment.set('spotify_verified_id', track.id);
+                    console.log('[5c] Set spotify_verified_id = ' + track.id);
+                }
+            settings:
+              renderRequestBody: true
+              encodeUrl: true
+              followRedirects: global
+              cookies:
+                send: true
+                store: true
+              rebuildPath: true
+          - url: https://api.tidal.com/v1/tracks
+            name: 5b - TIDAL ISRC Cross-Check
+            meta:
+              id: req_71e8fbdf02c54b17b32fa94ade5da642
+              created: 1774520220928
+              modified: 1774520220928
+              isPrivate: false
+              description: ""
+              sortKey: -1774520212330
+            method: GET
+            parameters:
+              - name: isrc
+                value: "{{beatport_verified_isrc}}"
+                disabled: false
+              - name: countryCode
+                value: US
+                disabled: false
+            authentication:
+              type: bearer
+              disabled: false
+              token: "{{tidal_access_token}}"
+              prefix: ""
+            scripts:
+              afterResponse: >-
+                var code = insomnia.response.code;
+
+                console.log('[5b] Status: ' + code);
+
+
+                if (code !== 200) {
+                    console.log('[5b] TIDAL request FAILED — body: ' +
+                        insomnia.response.text().substring(0, 300));
+                    return;
+                }
+
+
+                var json  = insomnia.response.json();
+
+                var items = json.items || (Array.isArray(json) ? json : []);
+
+
+                if (!items.length) {
+                    console.log('[5b] WARNING: TIDAL returned 0 results for ISRC ' +
+                        insomnia.environment.get('beatport_verified_isrc'));
+                    return;
+                }
+
+
+                var tidalIsrc    = items[0].isrc;
+
+                var beatportIsrc =
+                insomnia.environment.get('beatport_verified_isrc');
+
+
+                console.log('[5b] beatport_isrc = ' + beatportIsrc);
+
+                console.log('[5b] tidal_isrc    = ' + tidalIsrc);
+
+
+                if (tidalIsrc && beatportIsrc && tidalIsrc === beatportIsrc) {
+                    console.log('[5b] CORROBORATED — both providers agree: ' + beatportIsrc);
+                } else {
+                    console.log('[5b] CONFLICT: beatport_isrc=' + beatportIsrc +
+                        ' tidal_isrc=' + tidalIsrc);
+                }
+
+
+                // Log extra TIDAL fields useful for provenance enrichment
+
+                var t = items[0];
+
+                var extras = ['id', 'title', 'duration', 'explicit',
+                'audioQuality', 'version'];
+
+                var found = [];
+
+                extras.forEach(function(f) {
+                    if (t[f] !== null && t[f] !== undefined) {
+                        found.push(f + '=' + JSON.stringify(t[f]).substring(0, 40));
+                    }
+                });
+
+                if (found.length) {
+                    console.log('[5b] TIDAL enrichment fields: ' + found.join(', '));
+                }
+            settings:
+              renderRequestBody: true
+              encodeUrl: true
+              followRedirects: global
+              cookies:
+                send: true
+                store: true
+              rebuildPath: true
+      - name: Validation Run
+        meta:
+          id: fld_8f940ffa601e40efb05aeba9833de6d0
+          created: 1774520220929
+          modified: 1774520220929
+          sortKey: -1774520212328
+          description: End-to-end validation run requests that walk through a complete
+            ISRC resolution and cross-platform catalog check. Steps 6a+ resolve
+            a known TIDAL or Beatport release down to individual ISRCs and
+            verify each record across services.
+        children:
+          - url: https://example.com
+            name: 6c - Run Notes
+            meta:
+              id: req_3a2429f890284b089245607e9779150e
+              created: 1774520220929
+              modified: 1774520220929
+              isPrivate: false
+              description: ""
+              sortKey: -1774520212325
+            method: GET
+            settings:
+              renderRequestBody: true
+              encodeUrl: true
+              followRedirects: global
+              cookies:
+                send: true
+                store: true
+              rebuildPath: true
+          - url: https://api.tidal.com/v1/albums/507881809/tracks
+            name: 6a - Resolve TIDAL Album to ISRC
+            meta:
+              id: req_3bdfaabd5cd2419d83f997fc3cf6b7f0
+              created: 1774520220929
+              modified: 1774520220929
+              isPrivate: false
+              description: ""
+              sortKey: -1774520212327
+            method: GET
+            parameters:
+              - name: countryCode
+                value: US
+                disabled: false
+            authentication:
+              type: bearer
+              disabled: false
+              token: "{{tidal_access_token}}"
+              prefix: ""
+            scripts:
+              afterResponse: >-
+                var code = insomnia.response.code;
+
+                console.log('[6a] Status: ' + code);
+
+
+                if (code !== 200) {
+                    console.log('[6a] FAILED — body: ' + insomnia.response.text().substring(0, 400));
+                    return;
+                }
+
+
+                var json  = insomnia.response.json();
+
+                var items = json.items || (Array.isArray(json) ? json : []);
+
+
+                if (!items.length) {
+                    console.log('[6a] WARNING: album 507881809 returned 0 tracks.');
+                    return;
+                }
+
+
+                var track = items[0];
+
+                var isrc  = track.isrc;
+
+                var tid   = track.id;
+
+
+                if (!isrc) {
+                    console.log('[6a] WARNING: first track has no ISRC field. Keys: ' +
+                        Object.keys(track).join(', '));
+                    return;
+                }
+
+
+                insomnia.environment.set('beatport_test_isrc',   isrc);
+
+                insomnia.environment.set('tidal_seed_track_id',  String(tid));
+
+                insomnia.environment.set('tidal_seed_isrc',      isrc);
+
+
+                console.log('[6a] Seed track: "' + (track.title || track.name ||
+                '?') +
+                    '" by ' + (track.artist && track.artist.name ? track.artist.name : '?'));
+                console.log('[6a] tidal_track_id        = ' + tid);
+
+                console.log('[6a] beatport_test_isrc    = ' + isrc);
+
+                console.log('[6a] tidal_seed_isrc       = ' + isrc);
+
+                console.log('[6a] Total tracks in album : ' + items.length);
+            settings:
+              renderRequestBody: true
+              encodeUrl: true
+              followRedirects: global
+              cookies:
+                send: true
+                store: true
+              rebuildPath: true
+          - url: "{{base_url}}/v4/catalog/tracks/{{beatport_test_track_id}}/"
+            name: 6b - Track by ID (Validation)
+            meta:
+              id: req_c874eb0089214f299f5c5c9d376c0a3c
+              created: 1774520220929
+              modified: 1774520220929
+              isPrivate: false
+              description: ""
+              sortKey: -1774520212326
+            method: GET
+            authentication:
+              type: bearer
+              disabled: false
+              token: "{{beatport_access_token}}"
+              prefix: ""
+            scripts:
+              afterResponse: >-
+                var code = insomnia.response.code;
+
+                console.log('[6b] Status: ' + code);
+
+
+                if (code !== 200) {
+                    console.log('[6b] FAILED — body: ' + insomnia.response.text().substring(0, 300));
+                    return;
+                }
+
+
+                var json = insomnia.response.json();
+
+
+                // Canonical field validation
+
+                var canonical = ['id', 'isrc', 'name', 'artists', 'bpm', 'key',
+                'genre', 'mix_name'];
+
+                canonical.forEach(function(f) {
+                    var val = json[f];
+                    if (val === null || val === undefined) {
+                        console.log('[6b] WARNING: missing field ' + f);
+                    } else {
+                        console.log('[6b] ' + f + ': ' + JSON.stringify(val).substring(0, 80));
+                    }
+                });
+
+
+                var label = json.release && json.release.label;
+
+                if (!label) {
+                    console.log('[6b] WARNING: missing field release.label');
+                } else {
+                    console.log('[6b] release.label: ' + JSON.stringify(label).substring(0, 80));
+                }
+
+
+                // Chain variables
+
+                if (json.id) {
+                    insomnia.environment.set('beatport_last_track_id', json.id);
+                    console.log('[6b] Set beatport_last_track_id = ' + json.id);
+                }
+
+                if (json.isrc) {
+                    insomnia.environment.set('beatport_last_isrc', json.isrc);
+                    console.log('[6b] Set beatport_last_isrc = ' + json.isrc);
+                }
+
+
+                // ISRC agreement check against TIDAL seed
+
+                var tidalSeedIsrc = insomnia.environment.get('tidal_seed_isrc');
+
+                if (tidalSeedIsrc && json.isrc) {
+                    if (json.isrc === tidalSeedIsrc) {
+                        console.log('[6b] ISRC PRE-CHECK PASSED: Beatport ISRC matches TIDAL seed (' + json.isrc + ')');
+                    } else {
+                        console.log('[6b] ISRC PRE-CHECK FAILED: Beatport=' + json.isrc + ' TIDAL seed=' + tidalSeedIsrc);
+                    }
+                }
+            settings:
+              renderRequestBody: true
+              encodeUrl: true
+              followRedirects: global
+              cookies:
+                send: true
+                store: true
+              rebuildPath: true
+    scripts:
+      preRequest: >-
+        // Collection-level token guard (Task 8)
+
+        // Runs before every Bearer-authenticated request in the collection.
+
+        // Skips the token endpoint itself to avoid infinite loops.
+
+
+        var url = request.url || '';
+
+
+        // Don't guard the token fetch or the introspect endpoint
+
+        if (url.indexOf('/v4/auth/o/token/') !== -1 ||
+            url.indexOf('/v4/auth/o/introspect/') !== -1) {
+            return;
+        }
+
+
+        var expiresAt = insomnia.environment.get('beatport_token_expires_at');
+
+        var token     = insomnia.environment.get('beatport_access_token');
+
+
+        // No token at all
+
+        if (!token) {
+            console.warn('[token-guard] beatport_access_token is not set. Run Auth / Get Token first.');
+            return;
+        }
+
+
+        // No expiry recorded yet (token was set outside this collection)
+
+        if (!expiresAt) {
+            return;
+        }
+
+
+        var secondsLeft = (parseInt(expiresAt, 10) - Date.now()) / 1000;
+
+
+        if (secondsLeft <= 0) {
+            console.warn('[token-guard] beatport_access_token has EXPIRED (' +
+                Math.abs(secondsLeft).toFixed(0) + 's ago). Run Auth / Get Token.');
+        } else if (secondsLeft < 60) {
+            console.warn('[token-guard] beatport_access_token expires in ' +
+                secondsLeft.toFixed(0) + 's — consider refreshing before this run.');
+        }
+
+        // else: token is healthy, no noise
+environments:
+  name: Base Environment
+  meta:
+    id: env_c52894a8513747ac664958fb7bc7c81c40659455
+    created: 1774520220932
+    modified: 1774520220932
+    isPrivate: false

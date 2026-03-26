@@ -268,9 +268,9 @@
 		},
 		{
 			"key": "tidal_access_token",
-			"value": "",
+			"value": "eyJraWQiOiJ2OU1GbFhqWSIsImFsZyI6IkVTMjU2In0.eyJ0eXBlIjoibzJfYWNjZXNzIiwidWlkIjoyMDczMTU3MDAsInNjb3BlIjoid191c3Igcl91c3Igd19zdWIiLCJnVmVyIjowLCJzVmVyIjowLCJjaWQiOjEzMzE5LCJjYyI6IkZSIiwiYXQiOiJJTlRFUk5BTCIsImV4cCI6MTc3NDU3Mzk3OCwic2lkIjoiYjVkZTg4ZTEtMzhhMy00Mjg0LWJhODctYmEwZjMwZTJkM2I5IiwiaXNzIjoiaHR0cHM6Ly9hdXRoLnRpZGFsLmNvbS92MSJ9.VnLNy1s2o-gJtfXFz8BFdbhhCA4yd_ZwM_bCQFxggsrsilCrglvHV6kHtvWHWpsjVWn4zJAjRVzBL--a3VLFug",
 			"type": "default",
-			"enabled": false
+			"enabled": true
 		},
 		{
 			"key": "beatport_access_token",

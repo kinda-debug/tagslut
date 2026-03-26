@@ -239,6 +239,10 @@ if [[ "$URL" == *"tidal.com"* ]]; then
         exit 1
     fi
     cd "$REPO_ROOT"
+    # --dj implies full intake pipeline; treat the same as --sync mode
+    for __arg in "$@"; do
+        [[ "$__arg" == "--dj" ]] && { MODE="sync"; break; }
+    done
     if [[ "$MODE" != "sync" && "$MODE" != "enrich" && "$MODE" != "backfill" ]]; then
         FORCE_NO_SKIP=0
         WRAPPER_VERBOSE=0

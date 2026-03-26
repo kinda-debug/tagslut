@@ -26,7 +26,7 @@ export TAGSLUT_REPORTS="$TAGSLUT_ARTIFACTS/reports"
 
 # === Worker config ===
 export SCAN_WORKERS=8
-export ROON_PLAYLIST_PREFIX="roon-"
+export ROON_PLAYLIST_PREFIX=""
 
 # === TIDAL OAuth (PRIMARY download source) ===
 export TIDAL_CLIENT_ID="B4mmBLyG0VC2kBEo"

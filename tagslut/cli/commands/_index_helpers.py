@@ -138,6 +138,8 @@ def write_m3u(*, playlist_name: str, files: list[Path], output_dir: Path, path_m
         lines.append(_playlist_entry(file_path, output_dir=output_dir, path_mode=path_mode))
 
     output_path.write_text("\n".join(lines), encoding="utf-8")
+    if not output_path.exists():
+        raise OSError(f"M3U write failed - file not found after write: {output_path}")
     return output_path
 
 
@@ -357,9 +359,9 @@ def run_report_m3u(
         for group_name, files in groups.items():
             playlist_name = safe_playlist_name(group_name)
             if merge:
-                stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+                stamp = datetime.now().strftime("%Y%m%d")
                 label = source or "tagslut"
-                playlist_name = f"{label}-{stamp}"
+                playlist_name = f"{stamp}_T-{label}"
             playlist_name = f"{name_prefix}{playlist_name}{name_suffix}"
 
             output_path = write_m3u(

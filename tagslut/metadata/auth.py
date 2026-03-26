@@ -249,6 +249,43 @@ class TokenManager:
             logger.error("Failed to refresh Tidal token: %s", e)
             return None
 
+    def sync_from_tiddl(self) -> Optional[TokenInfo]:
+        """
+        Import the current tiddl token from ~/.tiddl/auth.json.
+
+        tiddl manages its own auth independently. When its token is valid
+        and tagslut's token is expired/missing, this method copies tiddl's
+        token into tokens.json so tagslut tools can use the TIDAL API.
+        """
+        tiddl_auth = Path.home() / ".tiddl" / "auth.json"
+        if not tiddl_auth.exists():
+            logger.debug("~/.tiddl/auth.json not found — tiddl not installed or not authenticated")
+            return None
+        try:
+            with open(tiddl_auth) as f:
+                data = json.load(f)
+            access_token = data.get("token") or ""
+            expires_at = float(data.get("expires_at", 0))
+            if not access_token or expires_at < time.time():
+                logger.debug("tiddl token is missing or expired; skipping sync")
+                return None
+            self.set_token(
+                "tidal",
+                access_token=access_token,
+                refresh_token=data.get("refresh_token"),
+                expires_at=expires_at,
+                token_type="Bearer",
+                country_code=data.get("country_code", "US"),
+            )
+            logger.info(
+                "Imported tiddl token into tagslut (expires in %dm)",
+                int((expires_at - time.time()) / 60),
+            )
+            return self.get_token("tidal")
+        except Exception as e:
+            logger.warning("Failed to read tiddl auth.json: %s", e)
+            return None
+
     def start_tidal_device_auth(self) -> Optional[Dict[str, Any]]:
         """
         Start Tidal device authorization flow.
@@ -451,10 +488,18 @@ class TokenManager:
             if provider == "tidal":
                 # Tidal needs refresh_token from device auth
                 if self._tokens.get("tidal", {}).get("refresh_token"):
-                    return self.refresh_tidal_token()
-                else:
-                    logger.warning("Tidal not authenticated. Run 'tagslut auth login tidal'")
-                    return None
+                    refreshed = self.refresh_tidal_token()
+                    if refreshed is not None:
+                        return refreshed
+                    # Refresh failed (e.g. client_id mismatch) — fall back to tiddl
+                    logger.info("Token refresh failed; trying tiddl fallback")
+                    return self.sync_from_tiddl()
+                # No refresh token — try tiddl before giving up
+                tiddl_token = self.sync_from_tiddl()
+                if tiddl_token is not None:
+                    return tiddl_token
+                logger.warning("Tidal not authenticated. Run 'tagslut auth login tidal'")
+                return None
             elif provider == "beatport":
                 return self.refresh_beatport_token()
             else:

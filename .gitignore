@@ -299,3 +299,5 @@ postman/collections/tagslut - API/insomnia-export.1774520966035/env-merged.yaml
 # Postman local-only secret variants
 postman/*.local.json
 postman/env.postman_environment.json
+env_exports.sh
+postman/environment.json

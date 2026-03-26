@@ -99,16 +99,9 @@ Responsibilities:
 
 Produces:
 
-`manifest.csv`
+- A JSON plan manifest on stdout (includes `would_transcode` per row).
 
-Describes:
-- source path
-- destination path
-- identity_id
-- preferred_asset_id
-- planned action
-
-No files are modified.
+No files are written in `--plan` mode, and no transcoding is performed.
 
 Example:
 

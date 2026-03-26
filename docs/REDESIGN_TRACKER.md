@@ -137,6 +137,7 @@ listed in §6.
 - **Next milestone:** Exercise the transcode path using a disposable
   fixture or copied development DB state that includes a row with
   `identity_id` and no reusable MP3 source.
+- **Completed:** 2026-03-26 — fix(dj): pool-wizard transcode error handling, failure artifact, plan-mode guard
 - **Detail:** [DJ_POOL.md](DJ_POOL.md),
   `tagslut/exec/dj_pool_wizard.py`
 

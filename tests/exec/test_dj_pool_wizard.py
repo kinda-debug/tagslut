@@ -64,6 +64,22 @@ def _create_files_table(conn: sqlite3.Connection) -> None:
     )
 
 
+def _create_mp3_asset_table(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS mp3_asset (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            identity_id INTEGER NOT NULL,
+            asset_id INTEGER NOT NULL,
+            profile TEXT NOT NULL,
+            path TEXT NOT NULL UNIQUE,
+            status TEXT NOT NULL,
+            transcoded_at TEXT
+        );
+        """
+    )
+
+
 def _fixed_datetime(year: int, month: int, day: int, hour: int, minute: int, second: int) -> type[datetime]:
     class FixedDateTime(datetime):
         @classmethod
@@ -79,6 +95,18 @@ def _run_dir(out_root: Path) -> Path:
     candidates = sorted(path for path in out_root.iterdir() if path.is_dir())
     assert len(candidates) == 1
     return candidates[0]
+
+
+def _write_min_flac(path: Path, *, sample_rate: int = 44100, seconds: float = 1.2) -> None:
+    import shutil
+
+    # Prefer a bundled fixture over runtime generation to keep tests hermetic.
+    fixture_root = Path(__file__).resolve().parents[1] / "data"
+    src = fixture_root / "healthy.flac"
+    if not src.exists():
+        raise FileNotFoundError(f"Missing FLAC fixture: {src}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(src, path)
 
 
 def open_db(db_path: Path) -> sqlite3.Connection:
@@ -205,6 +233,7 @@ def wizard_db() -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys = ON")
     create_schema_v3(conn)
     _create_files_table(conn)
+    _create_mp3_asset_table(conn)
     conn.commit()
     try:
         yield conn
@@ -220,6 +249,7 @@ def db_path(tmp_path: Path) -> Path:
     conn.execute("PRAGMA foreign_keys = ON")
     create_schema_v3(conn)
     _create_files_table(conn)
+    _create_mp3_asset_table(conn)
     conn.commit()
     conn.close()
     return db_file
@@ -1227,8 +1257,7 @@ def test_integration_transcode_path_plan_and_execute_artifacts(
     conn = open_db(db_path)
     master_root = tmp_path / "MASTER"
     source_path = master_root / "transcode_only.flac"
-    source_path.parent.mkdir(parents=True, exist_ok=True)
-    source_path.write_bytes(b"flac")
+    _write_min_flac(source_path)
 
     insert_track(
         conn,
@@ -1322,18 +1351,13 @@ def test_integration_transcode_path_plan_and_execute_artifacts(
     assert plan_result.exit_code == 0
     assert "transcode: 1" in plan_result.output
 
-    plan_run_dir = _run_dir(plan_out)
-    assert (plan_run_dir / "selected.csv").exists()
-    assert (plan_run_dir / "plan.csv").exists()
-    assert (plan_run_dir / "pool_manifest.json").exists()
-
-    with (plan_run_dir / "plan.csv").open("r", encoding="utf-8", newline="") as fh:
-        plan_rows = list(csv.DictReader(fh))
-    assert len(plan_rows) == 1
-    assert plan_rows[0]["identity_id"] == "200"
-    assert plan_rows[0]["selected"] == "True"
-    assert plan_rows[0]["cache_action"] == "transcode"
-    assert plan_rows[0]["pool_action"] == "copy_after_transcode"
+    assert not plan_out.exists()
+    json_start = plan_result.output.find("{")
+    json_end = plan_result.output.rfind("}")
+    assert json_start != -1
+    assert json_end != -1
+    plan_manifest = json.loads(plan_result.output[json_start : json_end + 1])
+    assert plan_manifest["rows"][0]["would_transcode"] is True
 
     exec_out = tmp_path / "exec_out"
     exec_result = CliRunner().invoke(
@@ -1365,6 +1389,7 @@ def test_integration_transcode_path_plan_and_execute_artifacts(
         "pool_manifest.json",
         "receipts.jsonl",
         "failures.jsonl",
+        "transcode_failures.json",
     ):
         assert (run_dir / artifact).exists()
 
@@ -1379,6 +1404,7 @@ def test_integration_transcode_path_plan_and_execute_artifacts(
         if line.strip()
     ]
     assert failures == []
+    assert json.loads((run_dir / "transcode_failures.json").read_text(encoding="utf-8")) == []
     assert len(receipts) == 1
     receipt = receipts[0]
     assert receipt["cache_action"] == "transcode"
@@ -1420,6 +1446,261 @@ def test_integration_transcode_path_plan_and_execute_artifacts(
     assert file_row["dj_pool_path"] == receipt["cache_source_path"]
     assert event_row is not None
     assert int(event_row["n"]) == 1
+
+
+@pytest.mark.integration
+def test_integration_execute_transcode_writes_mp3_asset_and_empty_transcode_failures(
+    tmp_path: Path,
+    db_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tagslut.exec import transcoder
+
+    conn = open_db(db_path)
+    master_root = tmp_path / "MASTER"
+    source_path = master_root / "ok.flac"
+    _write_min_flac(source_path)
+    insert_track(
+        conn,
+        str(source_path),
+        is_dj_material=1,
+        identity_id=301,
+        artist="Ok Artist",
+        title="Ok Title",
+        genre="House",
+    )
+    conn.commit()
+    conn.close()
+
+    class _Snapshot:
+        artist = "Ok Artist"
+        title = "Ok Title"
+        album = None
+        genre = "House"
+        label = "Fixture"
+        year = 2026
+        isrc = None
+        bpm = "126"
+        musical_key = "8A"
+        energy_1_10 = 7
+        bpm_source = "fixture"
+        key_source = "fixture"
+        energy_source = "fixture"
+        identity_id = 301
+        preferred_asset_id = None
+        preferred_path = None
+
+        def as_dict(self) -> dict:
+            return {
+                "artist": self.artist,
+                "title": self.title,
+                "album": self.album,
+                "genre": self.genre,
+                "label": self.label,
+                "year": self.year,
+                "isrc": self.isrc,
+                "bpm": self.bpm,
+                "musical_key": self.musical_key,
+                "energy_1_10": self.energy_1_10,
+            }
+
+    def _fake_resolve_snapshot(
+        _conn: sqlite3.Connection,
+        identity_id: int,
+        run_essentia: bool,
+        dry_run: bool,
+    ) -> _Snapshot:
+        assert identity_id == 301
+        assert run_essentia is True
+        assert dry_run is False
+        return _Snapshot()
+
+    def _fake_run_ffmpeg_transcode(
+        _source: Path,
+        dest_path: Path,
+        *,
+        bitrate: int,
+        ffmpeg_path: str | None,
+        validate_output: bool = True,
+    ) -> None:
+        assert bitrate == 320
+        assert ffmpeg_path is None
+        dest_path.parent.mkdir(parents=True, exist_ok=True)
+        dest_path.write_bytes(b"x" * 8192)
+
+    monkeypatch.setattr(transcoder, "_check_ffmpeg", lambda *args, **kwargs: None)
+    monkeypatch.setattr(transcoder, "_run_ffmpeg_transcode", _fake_run_ffmpeg_transcode)
+    monkeypatch.setattr(transcoder, "_apply_snapshot_id3_tags", lambda *args, **kwargs: None)
+    monkeypatch.setattr(wizard, "resolve_dj_tag_snapshot", _fake_resolve_snapshot)
+
+    profile_path = tmp_path / "profile_ok.json"
+    profile_path.write_text(
+        json.dumps(
+            {
+                "pool_name": "tx_ok",
+                "pool_overwrite_policy": "always",
+                "cache_overwrite_policy": "always",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    out_root = tmp_path / "out_ok"
+    result = CliRunner().invoke(
+        dj_group,
+        [
+            "pool-wizard",
+            "--db",
+            str(db_path),
+            "--master-root",
+            str(master_root),
+            "--dj-cache-root",
+            str(tmp_path / "DJ"),
+            "--out-root",
+            str(out_root),
+            "--execute",
+            "--non-interactive",
+            "--profile",
+            str(profile_path),
+        ],
+    )
+    assert result.exit_code == 0
+
+    run_dir = _run_dir(out_root)
+    assert json.loads((run_dir / "transcode_failures.json").read_text(encoding="utf-8")) == []
+
+    conn = open_db(db_path)
+    mp3_row = conn.execute(
+        "SELECT identity_id, profile, path FROM mp3_asset WHERE identity_id = ?",
+        (301,),
+    ).fetchone()
+    conn.close()
+    assert mp3_row is not None
+    assert int(mp3_row["identity_id"]) == 301
+    assert Path(str(mp3_row["path"])).exists()
+
+
+@pytest.mark.integration
+def test_integration_transcode_failure_records_transcode_failures_no_mp3_asset(
+    tmp_path: Path,
+    db_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tagslut.exec import transcoder
+
+    conn = open_db(db_path)
+    master_root = tmp_path / "MASTER"
+    source_path = master_root / "bad.flac"
+    _write_min_flac(source_path)
+    insert_track(
+        conn,
+        str(source_path),
+        is_dj_material=1,
+        identity_id=302,
+        artist="Bad Artist",
+        title="Bad Title",
+        genre="House",
+    )
+    conn.commit()
+    conn.close()
+
+    class _Snapshot:
+        artist = "Bad Artist"
+        title = "Bad Title"
+        album = None
+        genre = "House"
+        label = "Fixture"
+        year = 2026
+        isrc = None
+        bpm = "126"
+        musical_key = "8A"
+        energy_1_10 = 7
+        bpm_source = "fixture"
+        key_source = "fixture"
+        energy_source = "fixture"
+        identity_id = 302
+        preferred_asset_id = None
+        preferred_path = None
+
+        def as_dict(self) -> dict:
+            return {
+                "artist": self.artist,
+                "title": self.title,
+                "album": self.album,
+                "genre": self.genre,
+                "label": self.label,
+                "year": self.year,
+                "isrc": self.isrc,
+                "bpm": self.bpm,
+                "musical_key": self.musical_key,
+                "energy_1_10": self.energy_1_10,
+            }
+
+    def _fake_resolve_snapshot(
+        _conn: sqlite3.Connection,
+        identity_id: int,
+        run_essentia: bool,
+        dry_run: bool,
+    ) -> _Snapshot:
+        assert identity_id == 302
+        assert run_essentia is True
+        assert dry_run is False
+        return _Snapshot()
+
+    class _FailedRun:
+        returncode = 1
+        stderr = "ffmpeg exploded"
+        stdout = ""
+
+    monkeypatch.setattr(transcoder, "_check_ffmpeg", lambda *args, **kwargs: None)
+    monkeypatch.setattr(transcoder.subprocess, "run", lambda *args, **kwargs: _FailedRun())
+    monkeypatch.setattr(wizard, "resolve_dj_tag_snapshot", _fake_resolve_snapshot)
+
+    profile_path = tmp_path / "profile_bad.json"
+    profile_path.write_text(
+        json.dumps(
+            {
+                "pool_name": "tx_bad",
+                "pool_overwrite_policy": "always",
+                "cache_overwrite_policy": "always",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    out_root = tmp_path / "out_bad"
+    result = CliRunner().invoke(
+        dj_group,
+        [
+            "pool-wizard",
+            "--db",
+            str(db_path),
+            "--master-root",
+            str(master_root),
+            "--dj-cache-root",
+            str(tmp_path / "DJ"),
+            "--out-root",
+            str(out_root),
+            "--execute",
+            "--non-interactive",
+            "--profile",
+            str(profile_path),
+        ],
+    )
+    assert result.exit_code == 1
+
+    run_dir = _run_dir(out_root)
+    failures = json.loads((run_dir / "transcode_failures.json").read_text(encoding="utf-8"))
+    assert len(failures) == 1
+    assert failures[0]["identity_id"] == 302
+
+    conn = open_db(db_path)
+    mp3_row = conn.execute(
+        "SELECT id FROM mp3_asset WHERE identity_id = ?",
+        (302,),
+    ).fetchone()
+    conn.close()
+    assert mp3_row is None
 
 
 @pytest.mark.integration

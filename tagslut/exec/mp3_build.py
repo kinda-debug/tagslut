@@ -30,6 +30,25 @@ MP3_ASSET_PROFILE_FULL_TAGS = "mp3_asset_320_cbr_full"
 DJ_COPY_PROFILE = "dj_copy_320_cbr"
 
 
+def insert_mp3_asset_row(
+    conn: sqlite3.Connection,
+    *,
+    identity_id: int,
+    asset_id: int,
+    profile: str,
+    path: Path,
+    status: str = "verified",
+) -> None:
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO mp3_asset
+          (identity_id, asset_id, profile, path, status, transcoded_at)
+        VALUES (?, ?, ?, ?, ?, datetime('now'))
+        """,
+        (int(identity_id), int(asset_id), str(profile), str(path), str(status)),
+    )
+
+
 @dataclass
 class Mp3BuildResult:
     built: int = 0

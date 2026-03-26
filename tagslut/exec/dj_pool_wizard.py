@@ -9,9 +9,11 @@ from datetime import datetime
 from pathlib import Path
 import re
 import shutil
+from typing import Any, Mapping
 
 import click
-from tagslut.exec.transcoder import transcode_to_mp3_from_snapshot
+from tagslut.exec.mp3_build import DJ_COPY_PROFILE, insert_mp3_asset_row
+from tagslut.exec.transcoder import TranscodeError, transcode_to_mp3_from_snapshot
 from tagslut.storage.models import DJ_SET_ROLES
 from tagslut.storage.v3 import record_provenance_event, resolve_asset_id_by_path
 from tagslut.storage.v3.analysis_service import resolve_dj_tag_snapshot
@@ -27,6 +29,7 @@ _ROLE_PLAYLIST_FILENAMES = {
     for index, role in enumerate(_ROLE_PLAYLIST_ORDER, start=1)
 }
 _INTERACTIVE_VALUE_PREVIEW_LIMIT = 12
+JsonDict = dict[str, Any]
 
 
 def sanitize_component(value: str | None) -> str:
@@ -37,7 +40,7 @@ def sanitize_component(value: str | None) -> str:
     return sanitized or "_"
 
 
-def _track_value(track: dict, *keys: str) -> object | None:
+def _track_value(track: Mapping[str, object], *keys: str) -> object | None:
     for key in keys:
         value = track.get(key)
         if value is not None:
@@ -45,7 +48,7 @@ def _track_value(track: dict, *keys: str) -> object | None:
     return None
 
 
-def _track_text(track: dict, *keys: str) -> str:
+def _track_text(track: Mapping[str, object], *keys: str) -> str:
     value = _track_value(track, *keys)
     if value is None:
         return ""
@@ -119,7 +122,7 @@ def _iso_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _failure(row: dict, error_type: str, message: str) -> dict:
+def _failure(row: Mapping[str, Any], error_type: str, message: str) -> JsonDict:
     return {
         "identity_id": row.get("identity_id"),
         "master_path": row.get("master_path"),
@@ -139,7 +142,7 @@ def _normalize_dj_set_role(value: object) -> str | None:
     return role
 
 
-def _validated_only_roles(profile: dict) -> tuple[bool, list[str]]:
+def _validated_only_roles(profile: Mapping[str, Any]) -> tuple[bool, list[str]]:
     raw_roles = profile.get("only_roles")
     if raw_roles is None:
         return False, []
@@ -162,7 +165,7 @@ def _validated_only_roles(profile: dict) -> tuple[bool, list[str]]:
     return True, normalized
 
 
-def _role_subfolder(track: dict) -> Path:
+def _role_subfolder(track: Mapping[str, Any]) -> Path:
     role = _normalize_dj_set_role(track.get("dj_set_role"))
     if role is not None:
         return Path("pool") / role
@@ -177,7 +180,7 @@ def _role_subfolder(track: dict) -> Path:
     return Path("pool") / "_unassigned"
 
 
-def _build_cache_dest(run_dir: Path, row: dict, profile: dict) -> Path:
+def _build_cache_dest(run_dir: Path, row: Mapping[str, Any], profile: Mapping[str, Any]) -> Path:
     """Cache dest inside run_dir/cache/ for transcoded files."""
     identity_id = row["identity_id"]
     artist = sanitize_component(_track_text(row, "canonical_artist", "artist") or "Unknown_Artist")
@@ -197,7 +200,7 @@ def _sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
-def _write_jsonl(path: Path, rows: list[dict]) -> None:
+def _write_jsonl(path: Path, rows: list[JsonDict]) -> None:
     with path.open("w", encoding="utf-8") as fh:
         for row in rows:
             fh.write(json.dumps(row) + "\n")
@@ -239,7 +242,7 @@ def validate_schema_and_views(conn: sqlite3.Connection) -> None:
 def compute_cohort_health(
     conn: sqlite3.Connection,
     master_root: Path,
-) -> dict:
+) -> JsonDict:
     prefix = str(master_root).rstrip("/") + "/%"
     cohort_clause = _locked_cohort_clause(conn, alias="f")
     cohort_definition = _locked_cohort_definition(conn)
@@ -378,7 +381,7 @@ def compute_cohort_health(
 def compute_cohort_duplicates(
     conn: sqlite3.Connection,
     master_root: Path,
-) -> dict:
+) -> JsonDict:
     prefix = str(master_root).rstrip("/") + "/%"
     cohort_clause = _locked_cohort_clause(conn, alias="f")
 
@@ -419,7 +422,7 @@ def compute_cohort_duplicates(
 def _collect_available_value_counts(
     conn: sqlite3.Connection,
     master_root: Path,
-    profile: dict,
+    profile: Mapping[str, Any],
     *,
     field: str,
 ) -> list[tuple[str, int]]:
@@ -439,7 +442,7 @@ def _collect_available_value_counts(
 def _prompt_available_value_filter(
     conn: sqlite3.Connection,
     master_root: Path,
-    profile: dict,
+    profile: Mapping[str, Any],
     *,
     field: str,
     label: str,
@@ -599,8 +602,8 @@ def resolve_mp3_source(
 def select_flagged_master_paths(
     conn: sqlite3.Connection,
     master_root: Path,
-    profile: dict,
-) -> list[dict]:
+    profile: Mapping[str, Any],
+) -> list[JsonDict]:
     only_roles_supplied, only_roles = _validated_only_roles(profile)
     prefix = str(master_root).rstrip("/") + "/%"
     cohort_clause = _locked_cohort_clause(conn, alias="f")
@@ -895,8 +898,8 @@ def select_flagged_master_paths(
 
 def build_pool_dest_path(
     run_dir: Path,
-    track: dict,
-    profile: dict,
+    track: Mapping[str, object],
+    profile: Mapping[str, Any],
 ) -> Path:
     layout = str(profile.get("layout", "by_genre") or "by_genre")
     template = str(profile.get("filename_template", "{artist} - {title}.mp3") or "{artist} - {title}.mp3")
@@ -932,13 +935,13 @@ def build_pool_dest_path(
 
 def plan_actions(
     conn: sqlite3.Connection,
-    selected_tracks: list[dict],
+    selected_tracks: list[JsonDict],
     run_dir: Path,
-    profile: dict,
-) -> list[dict]:
+    profile: Mapping[str, Any],
+) -> list[JsonDict]:
     selected_tracks = sorted(selected_tracks, key=lambda row: row["master_path"])
     seen_identities: dict[str, str] = {}
-    plan_rows: list[dict] = []
+    plan_rows: list[JsonDict] = []
 
     for track in selected_tracks:
         identity_id = track["identity_id"]
@@ -1077,12 +1080,13 @@ def plan_actions(
 
 def execute_plan(
     conn: sqlite3.Connection,
-    plan_rows: list[dict],
-    profile: dict,
+    plan_rows: list[JsonDict],
+    profile: Mapping[str, Any],
     run_dir: Path,
-) -> tuple[list[dict], list[dict]]:
-    receipts: list[dict] = []
-    failures: list[dict] = []
+) -> tuple[list[JsonDict], list[JsonDict], list[JsonDict]]:
+    receipts: list[JsonDict] = []
+    failures: list[JsonDict] = []
+    transcode_failures: list[JsonDict] = []
     bitrate = int(profile.get("bitrate", 320))
     ffmpeg_path = profile.get("ffmpeg_path") or None
     cache_overwrite_policy = profile.get("cache_overwrite_policy", "never")
@@ -1136,6 +1140,16 @@ def execute_plan(
                     ffmpeg_path=ffmpeg_path,
                     dest_path=cache_dest,
                 )
+            except TranscodeError as exc:
+                transcode_failures.append({
+                    "identity_id": row.get("identity_id"),
+                    "master_path": row.get("master_path"),
+                    "final_dest_path": row.get("final_dest_path"),
+                    "error": str(exc),
+                    "timestamp": _iso_now(),
+                })
+                failures.append(_failure(row, "transcode_failed", str(exc)))
+                continue
             except Exception as exc:
                 failures.append(_failure(row, "transcode_failed", str(exc)))
                 continue
@@ -1144,7 +1158,16 @@ def execute_plan(
                 asset_id = resolve_asset_id_by_path(
                     conn, Path(row["master_path"])
                 )
+                if asset_id is None:
+                    raise ValueError(f"asset_id missing for master_path {row['master_path']}")
                 conn.execute("BEGIN")
+                insert_mp3_asset_row(
+                    conn,
+                    identity_id=int(row["identity_id"]),
+                    asset_id=int(asset_id),
+                    profile=DJ_COPY_PROFILE,
+                    path=cache_dest,
+                )
                 conn.execute(
                     "UPDATE files SET dj_pool_path = ? WHERE path = ?",
                     (str(cache_dest), row["master_path"]),
@@ -1238,17 +1261,17 @@ def execute_plan(
             "energy_source": snapshot_meta.get("energy_source"),
         })
 
-    return receipts, failures
+    return receipts, failures, transcode_failures
 
 
 def build_pool_manifest(
     run_dir: Path,
-    plan: list[dict],
-    receipts: list[dict],
-    failures: list[dict],
-    profile: dict,
+    plan: list[JsonDict],
+    receipts: list[JsonDict],
+    failures: list[JsonDict],
+    profile: Mapping[str, Any],
     plan_mode: bool,
-) -> dict:
+) -> JsonDict:
     executed = {row["final_dest_path"]: row for row in receipts}
     failed_paths = {row["final_dest_path"] for row in failures}
 
@@ -1262,7 +1285,7 @@ def build_pool_manifest(
         if row.get("cache_source_type") == "legacy" and row["selected"]
     )
 
-    manifest_rows: list[dict] = []
+    manifest_rows: list[JsonDict] = []
     for row in plan:
         if plan_mode:
             status = "planned"
@@ -1283,6 +1306,7 @@ def build_pool_manifest(
             "cache_source_path": row["cache_source_path"],
             "final_dest_path": row["final_dest_path"],
             "playlist_rel_path": None,
+            "would_transcode": bool(row.get("selected") and row.get("cache_action") == "transcode"),
             "bpm": row.get("bpm"),
             "musical_key": row.get("musical_key"),
             "dj_set_role": row.get("dj_set_role"),
@@ -1315,7 +1339,7 @@ def build_pool_manifest(
 
 
 def generate_playlist(
-    manifest: dict,
+    manifest: Mapping[str, Any],
     playlist_path: Path,
     mode: str,
 ) -> None:
@@ -1341,12 +1365,12 @@ def generate_playlist(
 
 
 def generate_role_playlists(
-    manifest: dict,
+    manifest: Mapping[str, Any],
     pool_root: Path,
     mode: str,
 ) -> list[Path]:
     written: list[Path] = []
-    rows_by_role = {role: [] for role in _ROLE_PLAYLIST_ORDER}
+    rows_by_role: dict[str, list[JsonDict]] = {role: [] for role in _ROLE_PLAYLIST_ORDER}
 
     for row in manifest["rows"]:
         if row["status"] != "executed":
@@ -1374,9 +1398,9 @@ def generate_role_playlists(
 def run_interactive_wizard(
     conn: sqlite3.Connection,
     master_root: Path,
-    health: dict,
-    dups: dict,
-) -> dict:
+    health: Mapping[str, Any],
+    dups: Mapping[str, Any],
+) -> JsonDict:
     def _prompt_float_or_none(label: str) -> float | None:
         raw = click.prompt(f"{label} (blank = no limit)", default="").strip()
         try:
@@ -1950,24 +1974,6 @@ def run_pool_wizard(
             click.echo(f"Error: {exc}", err=True)
             return 2
 
-        run_dir.mkdir(parents=True, exist_ok=True)
-
-        (run_dir / "answers.json").write_text(
-            json.dumps(profile, indent=2), encoding="utf-8"
-        )
-
-        if profile_path_resolved:
-            profile_path_resolved.write_text(
-                json.dumps(profile, indent=2), encoding="utf-8"
-            )
-
-        (run_dir / "cohort_health.json").write_text(
-            json.dumps(health, indent=2), encoding="utf-8"
-        )
-        (run_dir / "cohort_duplicates.json").write_text(
-            json.dumps(dups, indent=2), encoding="utf-8"
-        )
-
         try:
             selected = select_flagged_master_paths(conn, master_root_resolved, profile)
         except ValueError as exc:
@@ -1986,21 +1992,7 @@ def run_pool_wizard(
             ):
                 return 2
 
-        if selected:
-            selected_csv = run_dir / "selected.csv"
-            with selected_csv.open("w", newline="", encoding="utf-8") as fh:
-                writer = csv.DictWriter(fh, fieldnames=selected[0].keys())
-                writer.writeheader()
-                writer.writerows(selected)
-
         plan = plan_actions(conn, selected, run_dir, profile)
-
-        plan_csv = run_dir / "plan.csv"
-        if plan:
-            with plan_csv.open("w", newline="", encoding="utf-8") as fh:
-                writer = csv.DictWriter(fh, fieldnames=plan[0].keys())
-                writer.writeheader()
-                writer.writerows(plan)
 
         total = len(plan)
         selected_n = sum(1 for row in plan if row["selected"])
@@ -2017,37 +2009,84 @@ def run_pool_wizard(
         manifest = build_pool_manifest(
             run_dir, plan, [], [], profile, plan_mode=plan_mode
         )
+        if plan_mode:
+            click.echo(json.dumps(manifest, indent=2))
+            s = manifest["execution_summary"]
+            click.echo(
+                f"selected={s['selected']} executed={s['executed']} "
+                f"skipped={s['skipped']} failed={s['failed']} "
+                f"no_v3_identity={s['no_v3_identity']} "
+                f"legacy_cache_fallback={s['legacy_cache_fallback']}"
+            )
+            click.echo(f"Run directory: {run_dir}")
+            return 0
+
+        run_dir.mkdir(parents=True, exist_ok=True)
+
+        (run_dir / "answers.json").write_text(
+            json.dumps(profile, indent=2), encoding="utf-8"
+        )
+
+        if profile_path_resolved:
+            profile_path_resolved.write_text(
+                json.dumps(profile, indent=2), encoding="utf-8"
+            )
+
+        (run_dir / "cohort_health.json").write_text(
+            json.dumps(health, indent=2), encoding="utf-8"
+        )
+        (run_dir / "cohort_duplicates.json").write_text(
+            json.dumps(dups, indent=2), encoding="utf-8"
+        )
+
+        if selected:
+            selected_csv = run_dir / "selected.csv"
+            with selected_csv.open("w", newline="", encoding="utf-8") as fh:
+                writer = csv.DictWriter(fh, fieldnames=selected[0].keys())
+                writer.writeheader()
+                writer.writerows(selected)
+
+        if plan:
+            plan_csv = run_dir / "plan.csv"
+            with plan_csv.open("w", newline="", encoding="utf-8") as fh:
+                writer = csv.DictWriter(fh, fieldnames=plan[0].keys())
+                writer.writeheader()
+                writer.writerows(plan)
+
         (run_dir / "pool_manifest.json").write_text(
             json.dumps(manifest, indent=2), encoding="utf-8"
         )
 
-        if not plan_mode:
-            receipts, failures = execute_plan(conn, plan, profile, run_dir)
+        receipts, failures, transcode_failures = execute_plan(conn, plan, profile, run_dir)
 
-            _write_jsonl(run_dir / "receipts.jsonl", receipts)
-            _write_jsonl(run_dir / "failures.jsonl", failures)
+        _write_jsonl(run_dir / "receipts.jsonl", receipts)
+        _write_jsonl(run_dir / "failures.jsonl", failures)
+        (run_dir / "transcode_failures.json").write_text(
+            json.dumps(transcode_failures, indent=2),
+            encoding="utf-8",
+        )
 
-            manifest = build_pool_manifest(
-                run_dir, plan, receipts, failures, profile, plan_mode=False
-            )
-            (run_dir / "pool_manifest.json").write_text(
-                json.dumps(manifest, indent=2), encoding="utf-8"
-            )
+        manifest = build_pool_manifest(
+            run_dir, plan, receipts, failures, profile, plan_mode=False
+        )
+        (run_dir / "pool_manifest.json").write_text(
+            json.dumps(manifest, indent=2), encoding="utf-8"
+        )
 
-            if profile.get("create_playlist", False):
-                playlist_mode = profile.get("playlist_mode", "relative")
-                if str(profile.get("layout", "by_genre") or "by_genre") == "by_role":
-                    generate_role_playlists(
-                        manifest,
-                        run_dir / "pool",
-                        mode=playlist_mode,
-                    )
-                else:
-                    generate_playlist(
-                        manifest,
-                        run_dir / "playlist.m3u8",
-                        mode=playlist_mode,
-                    )
+        if profile.get("create_playlist", False):
+            playlist_mode = profile.get("playlist_mode", "relative")
+            if str(profile.get("layout", "by_genre") or "by_genre") == "by_role":
+                generate_role_playlists(
+                    manifest,
+                    run_dir / "pool",
+                    mode=playlist_mode,
+                )
+            else:
+                generate_playlist(
+                    manifest,
+                    run_dir / "playlist.m3u8",
+                    mode=playlist_mode,
+                )
 
         s = manifest["execution_summary"]
         click.echo(
@@ -2057,6 +2096,6 @@ def run_pool_wizard(
             f"legacy_cache_fallback={s['legacy_cache_fallback']}"
         )
         click.echo(f"Run directory: {run_dir}")
-        return 1 if (not plan_mode and failures) else 0
+        return 1 if failures else 0
     finally:
         conn.close()

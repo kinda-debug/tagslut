@@ -14,11 +14,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from rich.console import Console
-from rich.console import Group
-from rich.panel import Panel
 from rich.rule import Rule
-from rich.table import Table
-from rich.text import Text
 
 from tagslut.utils.env_paths import get_artifacts_dir
 
@@ -585,6 +581,9 @@ def _write_outcomes_csv(*, artifacts: RunArtifacts, report: RunReport) -> Path:
         "inferred_from_log",
     ]
     with out_path.open("w", encoding="utf-8", newline="") as fh:
+        # PROVENANCE STUB: when ProvenanceTracker is wired in, call here:
+        #   ProvenanceTracker.flush_to_csv(out_path)
+        #   — this is where per-track provider API source + file hash gets persisted.
         w = csv.DictWriter(fh, fieldnames=fieldnames)
         w.writeheader()
         for key in report.track_order:
@@ -942,6 +941,9 @@ class GetIntakeLogParser:
         return self.report
 
     def _buffer_download_outcome(self, *, title: str, outcome: TrackOutcome, reason: str, quality: str = "", dest: str = "") -> None:
+        # PROVENANCE STUB: when ProvenanceTracker is wired in, record here:
+        #   ProvenanceTracker.record_download(track_key=self._current_download_track_key,
+        #       provider="tidal"|"beatport", dest=dest, quality=quality, ts=utcnow())
         if self._current_download_track_key:
             self.report.pending_download_by_key[self._current_download_track_key] = {"title": title, "outcome": outcome, "reason": reason, "quality": quality, "dest": dest}
             return
@@ -989,33 +991,6 @@ def _format_toggles(report: RunReport, *, verbose: bool) -> str:
     return " ".join(parts) if parts else ""
 
 
-def _stage_purpose(name: str) -> str:
-    lowered = (name or "").strip().lower()
-    if "pre-download" in lowered:
-        return "Decide what to download (idempotency + quality)."
-    if lowered.startswith("download"):
-        return "Acquire audio into batch root."
-    if "quick duplicate check" in lowered:
-        return "Detect inventory conflicts (strict)."
-    if "trust scan" in lowered:
-        return "Scan, integrity-check, and register to DB."
-    if "local identify" in lowered:
-        return "Identify and prepare tagging/enrichment."
-    if "cross-root fingerprint" in lowered:
-        return "Audit fingerprints across roots."
-    if "plan promote" in lowered:
-        return "Plan promote/fix/quarantine/discard moves."
-    if "apply plans" in lowered:
-        return "Execute move plans (or dry-run)."
-    if "roon m3u" in lowered:
-        return "Generate merged M3U outputs."
-    if "dj mp3" in lowered or lowered.startswith("build dj"):
-        return "Build DJ MP3 copies and playlists."
-    if "launch background enrich" in lowered:
-        return "Background enrich + cover art."
-    return ""
-
-
 def _unknown_keep_count(report: RunReport) -> int:
     count = 0
     for key in report.keep_track_keys:
@@ -1027,424 +1002,221 @@ def _unknown_keep_count(report: RunReport) -> int:
     return count
 
 
-def _render_rich(
+def _render_clean(
     report: RunReport,
     artifacts: RunArtifacts,
     *,
     verbose: bool,
-    success_limit: int,
-    console: Console | None = None,
+    out: Any = None,
 ) -> None:
-    console = console or Console()
+    """Clean flat-text output formatter. Target: < 50 lines for a typical album intake.
+
+    Format:
+      <source> — <N> tracks
+      Precheck: <N> available[, <N> skipped (<reason>)]
+      Download: <N> downloaded (<N> already present)
+      Scan: <N> succeeded[, <N> failed (<type>)]
+      Plan: promote <N>[, stash <N>, fix <N>, quarantine <N>]
+
+      ✓ PROMOTED (<N> tracks):
+        /full/path/to/track.flac
+        ...
+
+      ⚠ FIX QUEUE (<N> tracks):
+        /path → reason: <issue>
+        ...
+
+      ✗ FAILURES (<N> tracks):
+        Artist - Title → reason
+
+      M3U: /path
+      DJ: <N> resolved | why not: <reason>
+
+      Log: /path
+      Outcomes: /path
+      [ATTENTION: <issue>]
+    """
+    import sys as _sys
+    w = (out or _sys.stdout).write
     roots = _roots_map(report)
 
-    header = Table(show_header=False, box=None, pad_edge=False)
-    header.add_column("k", style="dim", no_wrap=True)
-    header.add_column("v")
-    header.add_row("Source", report.source or "?")
-    header.add_row("URL", report.url or "?")
-    header.add_row("Batch root", report.batch_root or "?")
-    header.add_row("DB", report.db_path or "?")
-    header.add_row("Library", report.library_root or "?")
-    toggles = _format_toggles(report, verbose=verbose)
-    if toggles:
-        header.add_row("Toggles", toggles)
-    if report.notices:
-        header.add_row("Notices", str(len(report.notices)))
-    header.add_row("Raw log", str(artifacts.raw_log))
-    console.print(Panel(header, title="tools/get Run", border_style="cyan"))
+    # ── Lead line ─────────────────────────────────────────────────────────────
+    url = report.url or ""
+    total = report.precheck_total or report.requested_total or "?"
+    tidal_m = re.search(r"tidal\.com/(?:browse/)?(\w+)/(\d+)", url, re.IGNORECASE)
+    if tidal_m:
+        lead_id = f"Tidal {tidal_m.group(1)} {tidal_m.group(2)}"
+    else:
+        lead_id = report.source or url or "?"
+    w(f"{lead_id} — {total} tracks\n")
 
-    if report.notices:
-        limit = 12 if verbose else 6
-        lines = report.notices[:limit]
-        more = len(report.notices) - len(lines)
-        notice_text = "\n".join(lines) + (f"\n… (+{more} more)" if more > 0 else "")
-        console.print(Panel(Text(notice_text, style="yellow"), title="Notices", border_style="yellow"))
-
-    for st in report.stages:
-        style = {"ok": "green", "failed": "red", "skipped": "yellow", "running": "cyan"}.get(st.status, "dim")
-        body = Table(show_header=False, box=None, pad_edge=False)
-        body.add_column("k", style="dim", no_wrap=True)
-        body.add_column("v")
-        purpose = _stage_purpose(st.name)
-        if purpose:
-            body.add_row("purpose", purpose)
-        body.add_row("status", Text(st.status, style=style))
-
-        lowered = st.name.lower()
-        if "pre-download" in lowered:
-            if report.precheck_total is not None:
-                body.add_row("tracks", str(report.precheck_total))
-            if report.precheck_keep is not None:
-                body.add_row("keep", str(report.precheck_keep))
-            if report.precheck_skip is not None:
-                body.add_row("skip", str(report.precheck_skip))
-            if report.source_selection_attempted:
-                bits = [
-                    f"attempted={report.source_selection_attempted}",
-                    f"tidal={report.source_selection_tidal or 0}",
-                    f"beatport={report.source_selection_beatport or 0}",
-                ]
-                if report.source_selection_ambiguous:
-                    bits.append(f"ambiguous={report.source_selection_ambiguous}")
-                if report.source_selection_unverified:
-                    bits.append(f"unverified={report.source_selection_unverified}")
-                if report.source_selection_not_better:
-                    bits.append(f"not_better={report.source_selection_not_better}")
-                if report.source_selection_unavailable:
-                    bits.append(f"unavailable={report.source_selection_unavailable}")
-                body.add_row("source_select", " ".join(bits))
-        elif lowered.startswith("download"):
-            if report.selected_for_download is not None:
-                body.add_row("selected", str(report.selected_for_download))
-            body.add_row("downloaded", str(report.download_downloaded))
-            body.add_row("present", str(report.download_present))
-            body.add_row("failed", str(report.download_failed))
-            unknown_keep = _unknown_keep_count(report)
-            if unknown_keep:
-                body.add_row("unaccounted", Text(str(unknown_keep), style="yellow"))
-        elif "trust scan" in lowered:
-            if report.scan_discovered is not None:
-                body.add_row("discovered", str(report.scan_discovered))
-            if report.scan_succeeded is not None:
-                body.add_row("succeeded", str(report.scan_succeeded))
-            if report.scan_failed is not None:
-                body.add_row("failed", str(report.scan_failed))
-            if report.scan_failure_breakdown:
-                breakdown = ", ".join(f"{k}={v}" for k, v in report.scan_failure_breakdown.items())
-                body.add_row("breakdown", breakdown)
-        elif "local identify" in lowered:
-            providers = _toggle_val(report, "providers")
-            if providers:
-                body.add_row("providers", providers)
-            if report.hoard_scanned_files is not None:
-                body.add_row("hoard", str(report.hoard_scanned_files))
-            if report.normalize_genres_updated is not None:
-                body.add_row("genre_norm", str(report.normalize_genres_updated))
-            if report.tagged_count is not None:
-                body.add_row("tagged", str(report.tagged_count))
-        elif "plan promote" in lowered:
-            if report.plan_promote_move is not None:
-                body.add_row("promote", str(report.plan_promote_move))
-            if report.plan_stash_move is not None:
-                body.add_row("stash", str(report.plan_stash_move))
-            if report.plan_quarantine_move is not None:
-                body.add_row("quarantine", str(report.plan_quarantine_move))
-            if report.fix_planned_move is not None:
-                body.add_row("fix", str(report.fix_planned_move))
-            if report.discard_planned_move is not None:
-                body.add_row("discard", str(report.discard_planned_move))
-        elif "apply plans" in lowered:
-            if report.apply_moved is not None:
-                body.add_row("moved", str(report.apply_moved))
-            if report.apply_skipped_missing:
-                body.add_row("skipped_missing", Text(str(report.apply_skipped_missing), style="yellow"))
-            if report.apply_skipped_exists:
-                body.add_row("skipped_exists", Text(str(report.apply_skipped_exists), style="yellow"))
-            if report.apply_failed is not None and report.apply_failed:
-                body.add_row("failed", Text(str(report.apply_failed), style="red"))
-        elif "roon m3u" in lowered:
-            if report.m3u_count is not None:
-                body.add_row("m3u", str(report.m3u_count))
-            if report.m3u_paths:
-                body.add_row("latest", _abbrev_path(report.m3u_paths[0], roots=roots))
-        elif "dj mp3" in lowered or lowered.startswith("build dj"):
-            if report.dj_identity_resolved is not None:
-                body.add_row("resolved_ids", str(report.dj_identity_resolved))
-
-        details: list[str] = []
-        if verbose and st.details:
-            details = st.details[:12]
-            if len(st.details) > len(details):
-                details.append(f"… (+{len(st.details) - len(details)} more)")
-        group = Group(body, Text("\n".join(details), style="dim")) if details else body
-        console.print(Panel(group, title=f"[{st.idx}/{st.total}] {st.name}", border_style=style))
-
-    summary = Table(show_header=False, box=None, pad_edge=False)
-    summary.add_column("k", style="dim", no_wrap=True)
-    summary.add_column("v")
-    if report.requested_total is not None:
-        summary.add_row("Requested", str(report.requested_total))
+    # ── Precheck ──────────────────────────────────────────────────────────────
     if report.precheck_total is not None:
-        summary.add_row("Precheck", f"keep={report.precheck_keep} skip={report.precheck_skip} total={report.precheck_total}")
-        if report.precheck_skip_reason_counts:
-            top = sorted(report.precheck_skip_reason_counts.items(), key=lambda kv: (-kv[1], kv[0]))[:4]
-            summary.add_row("Skip reasons", ", ".join(f"{k}={v}" for k, v in top))
-        if report.source_selection_attempted:
-            bits = [
-                f"attempted={report.source_selection_attempted}",
-                f"tidal={report.source_selection_tidal or 0}",
-                f"beatport={report.source_selection_beatport or 0}",
+        keep = report.precheck_keep or 0
+        skip = report.precheck_skip or 0
+        skip_detail = ""
+        if skip and report.precheck_skip_reason_counts:
+            top = sorted(report.precheck_skip_reason_counts.items(), key=lambda kv: -kv[1])[:3]
+            skip_detail = " (" + ", ".join(f"{k}={v}" for k, v in top) + ")"
+        skip_part = f", {skip} skipped{skip_detail}" if skip else ""
+        w(f"Precheck: {keep} tracks available{skip_part}\n")
+
+    # ── Download ──────────────────────────────────────────────────────────────
+    present = report.download_present
+    failed_dl = report.download_failed
+    present_part = f" ({present} already present)" if present else ""
+    failed_part = f", {failed_dl} failed" if failed_dl else ""
+    w(f"Download: {report.download_downloaded} tracks downloaded{present_part}{failed_part}\n")
+
+    # ── Scan ──────────────────────────────────────────────────────────────────
+    if report.scan_succeeded is not None or report.scan_failed is not None:
+        scan_ok = report.scan_succeeded or 0
+        scan_fail = report.scan_failed or 0
+        breakdown = ""
+        if scan_fail and report.scan_failure_breakdown:
+            breakdown = " (" + ", ".join(report.scan_failure_breakdown.keys()) + ")"
+        fail_part = f", {scan_fail} failed{breakdown}" if scan_fail else ""
+        w(f"Scan: {scan_ok} succeeded{fail_part}\n")
+
+    # ── Plan summary ──────────────────────────────────────────────────────────
+    plan_parts = []
+    if report.plan_promote_move is not None:
+        plan_parts.append(f"promote {report.plan_promote_move}")
+    if report.plan_stash_move:
+        plan_parts.append(f"stash {report.plan_stash_move}")
+    if report.fix_planned_move:
+        plan_parts.append(f"fix {report.fix_planned_move}")
+    if report.plan_quarantine_move:
+        plan_parts.append(f"quarantine {report.plan_quarantine_move}")
+    if report.discard_planned_move:
+        plan_parts.append(f"discard {report.discard_planned_move}")
+    if plan_parts:
+        w(f"Plan: {', '.join(plan_parts)}\n")
+
+    # ── Promoted paths ────────────────────────────────────────────────────────
+    promoted_paths: list[str] = []
+    if artifacts.promoted_txt and artifacts.promoted_txt.exists():
+        try:
+            promoted_paths = [
+                ln.strip()
+                for ln in artifacts.promoted_txt.read_text(encoding="utf-8").splitlines()
+                if ln.strip()
             ]
-            if report.source_selection_ambiguous:
-                bits.append(f"ambiguous={report.source_selection_ambiguous}")
-            if report.source_selection_unverified:
-                bits.append(f"unverified={report.source_selection_unverified}")
-            if report.source_selection_not_better:
-                bits.append(f"not_better={report.source_selection_not_better}")
-            if report.source_selection_unavailable:
-                bits.append(f"unavailable={report.source_selection_unavailable}")
-            summary.add_row("Source select", " ".join(bits))
-    if report.selected_for_download is not None:
-        summary.add_row("Selected", str(report.selected_for_download))
-    summary.add_row("Downloaded", str(report.download_downloaded))
-    summary.add_row("Present", str(report.download_present))
-    summary.add_row("Failed", str(report.download_failed))
+        except Exception:
+            pass
+    if not promoted_paths:
+        for key in report.track_order:
+            tr = report.tracks.get(key)
+            if tr and tr.outcome in {"downloaded", "present"} and tr.dest:
+                promoted_paths.append(tr.dest)
+    if promoted_paths:
+        w(f"\n✓ PROMOTED ({len(promoted_paths)} tracks):\n")
+        for p in promoted_paths:
+            w(f"  {p}\n")
+
+    # ── Fix queue ─────────────────────────────────────────────────────────────
+    fix_rows: list[tuple[str, str]] = []
+    if artifacts.fix_plan_summary_json and artifacts.fix_plan_summary_json.exists():
+        fix_dir = artifacts.fix_plan_summary_json.parent
+        fix_csvs = sorted(
+            fix_dir.glob("plan_move_skipped_to_fix_*.csv"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        if fix_csvs:
+            try:
+                import csv as _csv
+                with fix_csvs[0].open("r", encoding="utf-8", newline="") as fh:
+                    for row in _csv.DictReader(fh):
+                        src_path = (row.get("src") or row.get("source") or row.get("path") or "").strip()
+                        reason = (row.get("reason") or row.get("skip_reason") or "").strip()
+                        if src_path:
+                            fix_rows.append((src_path, reason))
+            except Exception:
+                pass
+    # fall back to per-track data
+    if not fix_rows:
+        for key in report.track_order:
+            tr = report.tracks.get(key)
+            if not tr:
+                continue
+            if tr.outcome == "failed" or (tr.outcome_reason and "fix" in tr.outcome_reason.lower()):
+                dest = tr.dest or tr.db_path or ""
+                reason = tr.outcome_reason or tr.precheck_reason or "unknown"
+                fix_rows.append((dest, reason))
+    if fix_rows:
+        w(f"\n⚠ FIX QUEUE ({len(fix_rows)} tracks):\n")
+        for path, reason in fix_rows:
+            w(f"  {path} → reason: {reason}\n")
+
+    # ── Download failures ─────────────────────────────────────────────────────
+    fix_paths = {p for p, _ in fix_rows}
+    dl_failures = [
+        tr
+        for key in report.track_order
+        if (tr := report.tracks.get(key))
+        and tr.outcome == "failed"
+        and (tr.dest or tr.db_path or "") not in fix_paths
+    ]
+    if dl_failures:
+        w(f"\n✗ FAILURES ({len(dl_failures)} tracks):\n")
+        for tr in dl_failures:
+            detail = tr.outcome_reason or tr.precheck_reason or "unknown"
+            ident = f"{tr.artist} - {tr.title}" if tr.artist and tr.title else tr.title or tr.track_id
+            w(f"  {ident} → {detail}\n")
+
+    # ── M3U ──────────────────────────────────────────────────────────────────
+    if report.m3u_paths:
+        w(f"\nM3U: {report.m3u_paths[0]}\n")
+
+    # ── DJ ───────────────────────────────────────────────────────────────────
+    dj_requested = _toggle_val(report, "dj") == "1"
+    if dj_requested:
+        resolved = report.dj_identity_resolved or 0
+        if resolved:
+            w(f"\nDJ: {resolved} resolved\n")
+            for p in report.dj_m3u_paths:
+                w(f"  playlist: {p}\n")
+            if artifacts.dj_manifest_csv:
+                w(f"  manifest: {artifacts.dj_manifest_csv}\n")
+        else:
+            # Diagnose why DJ resolved 0 rather than silently failing
+            all_present = (report.download_present or 0) > 0 and (report.download_downloaded or 0) == 0
+            if all_present:
+                w("\nDJ: 0 resolved (all files already in library — run dj_backfill for existing tracks)\n")
+            elif (report.plan_promote_move or 0) == 0 and (report.apply_moved or 0) == 0:
+                w("\nDJ: 0 resolved (no tracks promoted this run)\n")
+            else:
+                w("\nDJ: 0 resolved (no matching DJ pool identities — check dj_identity_ids artifact)\n")
+            if artifacts.dj_identity_ids_txt:
+                w(f"  identity ids: {artifacts.dj_identity_ids_txt}\n")
+
+    # ── Key artifacts ─────────────────────────────────────────────────────────
+    w(f"\nLog: {artifacts.raw_log}\n")
+    if artifacts.outcomes_csv:
+        w(f"Outcomes: {artifacts.outcomes_csv}\n")
+    if artifacts.precheck_decisions_csv:
+        w(f"Precheck CSV: {artifacts.precheck_decisions_csv}\n")
+
+    # ── Attention items (anomalies only) ──────────────────────────────────────
+    attention: list[str] = []
     unknown_keep = _unknown_keep_count(report)
     if unknown_keep:
-        summary.add_row("Unaccounted", Text(str(unknown_keep), style="yellow"))
-
-    table = Table(title="Per-track outcomes", show_lines=False)
-    table.add_column("#", style="dim", width=4, no_wrap=True)
-    table.add_column("Track", overflow="fold")
-    table.add_column("Outcome", no_wrap=True)
-    table.add_column("Details", overflow="fold")
-
-    rows = [report.tracks[k] for k in report.track_order if k in report.tracks]
-    failures_or_skips = [r for r in rows if r.outcome in {"failed", "skipped"}]
-    successes = [r for r in rows if r.outcome in {"downloaded", "present"}]
-    unknowns = [r for r in rows if r.outcome == "unknown"]
-    render_rows = failures_or_skips + unknowns + successes[:success_limit]
-    for r in render_rows:
-        outcome_style = {"downloaded": "green", "present": "cyan", "skipped": "yellow", "failed": "red", "unknown": "dim"}[r.outcome]
-        if r.source_selection_winner and r.source_selection_winner != r.domain:
-            src = f"{r.domain}→{r.source_selection_winner}"
-        else:
-            src = r.domain
-        reason = r.outcome_reason or r.precheck_reason
-        if r.outcome in {"downloaded", "present"} and r.precheck_reason:
-            if reason.startswith("downloaded") or reason.startswith("already present"):
-                reason = r.precheck_reason
-        quality = r.quality
-        if not quality and r.source_selection_winner == "tidal" and r.tidal_audio_quality:
-            quality = r.tidal_audio_quality
-
-        track_text = Text()
-        if r.artist:
-            track_text.append(r.artist)
-        else:
-            track_text.append("?")
-        track_text.append("\n")
-        track_text.append(r.title or "?")
-        if src:
-            track_text.append("\n")
-            track_text.append(src, style="dim")
-
-        dest = _abbrev_path(r.dest, roots=roots) if r.dest else ""
-        evidence_line = "log (inferred-from-log)" if r.inferred_from_log else "csv"
-        details_lines: list[str] = [
-            f"reason: {reason or '-'}",
-            f"dest: {dest or '-'}",
-            f"quality: {quality or '-'}",
-            f"evidence: {evidence_line}",
-        ]
-        table.add_row(
-            str(r.index or ""),
-            track_text,
-            Text(r.outcome, style=outcome_style),
-            "\n".join(details_lines),
-        )
-
-    footer = ""
-    if len(successes) > success_limit:
-        footer = f"success rows truncated: showing {success_limit}/{len(successes)}"
-
-    body = Table.grid(padding=(0, 1))
-    body.add_row(summary)
-    body.add_row(Rule(style="dim"))
-    body.add_row(table)
-    if footer:
-        body.add_row(Text(footer, style="dim"))
-    console.print(Panel(body, title="Download Accountability", border_style="cyan"))
-
-    meta = Table(show_header=False, box=None, pad_edge=False)
-    meta.add_column("k", style="dim", no_wrap=True)
-    meta.add_column("v")
-    providers = _toggle_val(report, "providers")
-    if providers:
-        meta.add_row("Providers", providers)
-    if report.hoard_scanned_files is not None:
-        meta.add_row("Tag hoard", str(report.hoard_scanned_files))
-    if report.normalize_genres_updated is not None or artifacts.genre_normalization_report:
-        meta.add_row(
-            "Genre norm",
-            f"updated={report.normalize_genres_updated if report.normalize_genres_updated is not None else '?'}",
-        )
-    if report.tagged_count is not None:
-        style = "yellow" if report.tagged_count == 0 else "green"
-        meta.add_row("Tagged files", Text(str(report.tagged_count), style=style))
-    meta.add_row("Field-level diffs", Text("not observable in v1 (see raw log)", style="dim"))
-    console.print(Panel(meta, title="Metadata / Tagging", border_style="magenta"))
-
-    dj = Table(show_header=False, box=None, pad_edge=False)
-    dj.add_column("k", style="dim", no_wrap=True)
-    dj.add_column("v")
-    dj_mode = _toggle_val(report, "dj")
-    if dj_mode:
-        dj.add_row("DJ requested", dj_mode)
-    if report.dj_identity_resolved is not None:
-        style = "yellow" if report.dj_identity_resolved == 0 else "green"
-        dj.add_row("Resolved IDs", Text(str(report.dj_identity_resolved), style=style))
-    console.print(Panel(dj, title="DJ", border_style="magenta"))
-
-    final = Table(show_header=False, box=None, pad_edge=False)
-    final.add_column("k", style="dim", no_wrap=True)
-    final.add_column("v")
-    if report.precheck_total is not None:
-        precheck_bits = [
-            f"keep={report.precheck_keep if report.precheck_keep is not None else '?'}",
-            f"skip={report.precheck_skip if report.precheck_skip is not None else '?'}",
-            f"total={report.precheck_total}",
-        ]
-        if report.source_selection_attempted:
-            precheck_bits.append(
-                "source_select="
-                f"{report.source_selection_attempted}/"
-                f"tidal:{report.source_selection_tidal or 0}"
-                f"/beatport:{report.source_selection_beatport or 0}"
-            )
-        final.add_row("Precheck", " ".join(precheck_bits))
-    final.add_row(
-        "Download",
-        f"selected={report.selected_for_download if report.selected_for_download is not None else '?'} "
-        f"ok={report.download_downloaded} present={report.download_present} failed={report.download_failed}"
-        + (f" unaccounted={unknown_keep}" if unknown_keep else ""),
-    )
-    if report.scan_discovered is not None or report.scan_failed is not None:
-        final.add_row(
-            "Scan",
-            f"discovered={report.scan_discovered if report.scan_discovered is not None else '?'} "
-            f"succeeded={report.scan_succeeded if report.scan_succeeded is not None else '?'} "
-            f"failed={report.scan_failed if report.scan_failed is not None else '?'}",
-        )
-    if report.plan_promote_move is not None or report.apply_moved is not None:
-        plan_bits = []
-        if report.plan_promote_move is not None:
-            plan_bits.append(f"promote={report.plan_promote_move}")
-        if report.plan_stash_move is not None:
-            plan_bits.append(f"stash={report.plan_stash_move}")
-        if report.plan_quarantine_move is not None:
-            plan_bits.append(f"quar={report.plan_quarantine_move}")
-        if report.fix_planned_move is not None:
-            plan_bits.append(f"fix={report.fix_planned_move}")
-        if report.discard_planned_move is not None:
-            plan_bits.append(f"discard={report.discard_planned_move}")
-        final.add_row("Plan", " ".join(plan_bits) if plan_bits else "?")
-    if report.apply_moved is not None:
-        moves_bits = [
-            f"moved={report.apply_moved}",
-        ]
-        if report.apply_skipped_missing is not None:
-            moves_bits.append(f"skipped_missing={report.apply_skipped_missing}")
-        if report.apply_skipped_exists is not None:
-            moves_bits.append(f"skipped_exists={report.apply_skipped_exists}")
-        moves_bits.append(f"failed={report.apply_failed if report.apply_failed is not None else '?'}")
-        final.add_row(
-            "Moves",
-            " ".join(moves_bits),
-        )
-    if (
-        report.run_promoted is not None
-        or report.run_stashed is not None
-        or report.run_quarantined is not None
-        or report.run_fix_skips is not None
-        or report.run_discarded is not None
-    ):
-        bits: list[str] = []
-        if report.run_promoted is not None:
-            bits.append(f"promoted={report.run_promoted}")
-        if report.run_stashed is not None:
-            bits.append(f"stashed={report.run_stashed}")
-        if report.run_quarantined is not None:
-            bits.append(f"quar={report.run_quarantined}")
-        if report.run_fix_skips is not None:
-            bits.append(f"fix={report.run_fix_skips}")
-        if report.run_discarded is not None:
-            bits.append(f"discard={report.run_discarded}")
-        final.add_row("Disposition", " ".join(bits))
-    if report.m3u_count is not None:
-        final.add_row("M3U", str(report.m3u_count))
-    if report.run_dj_exports is not None:
-        final.add_row("DJ exports", str(report.run_dj_exports))
-    console.print(Panel(final, title="Final Summary", border_style="cyan"))
-
-    arts = Table(show_header=False, box=None, pad_edge=False)
-    arts.add_column("k", style="dim", no_wrap=True)
-    arts.add_column("v")
-    arts.add_row("raw_log", str(artifacts.raw_log))
-    if artifacts.precheck_decisions_csv:
-        arts.add_row("precheck_decisions", str(artifacts.precheck_decisions_csv))
-    if artifacts.precheck_tracks_csv:
-        arts.add_row("precheck_tracks", str(artifacts.precheck_tracks_csv))
-    if artifacts.keep_urls_txt:
-        arts.add_row("keep_urls", str(artifacts.keep_urls_txt))
-    if artifacts.keep_tidal_urls_txt:
-        arts.add_row("keep_tidal_urls", str(artifacts.keep_tidal_urls_txt))
-    if artifacts.keep_bpdl_urls_txt:
-        arts.add_row("keep_bpdl_urls", str(artifacts.keep_bpdl_urls_txt))
-    if artifacts.precheck_summary_csv:
-        arts.add_row("precheck_summary", str(artifacts.precheck_summary_csv))
-    if artifacts.precheck_report_md:
-        arts.add_row("precheck_report", str(artifacts.precheck_report_md))
-    if artifacts.outcomes_csv:
-        arts.add_row("outcomes", str(artifacts.outcomes_csv))
-    if artifacts.plan_summary_json:
-        arts.add_row("plan_summary", str(artifacts.plan_summary_json))
-    if artifacts.plan_promote_csv:
-        arts.add_row("plan_promote", str(artifacts.plan_promote_csv))
-    if artifacts.plan_stash_csv:
-        arts.add_row("plan_stash", str(artifacts.plan_stash_csv))
-    if artifacts.plan_quarantine_csv:
-        arts.add_row("plan_quarantine", str(artifacts.plan_quarantine_csv))
-    if artifacts.fix_plan_summary_json:
-        arts.add_row("plan_fix_summary", str(artifacts.fix_plan_summary_json))
-    if artifacts.discard_plan_summary_json:
-        arts.add_row("plan_discard_summary", str(artifacts.discard_plan_summary_json))
-    if artifacts.moves_jsonl:
-        arts.add_row("moves_log", str(artifacts.moves_jsonl))
-    if artifacts.promoted_txt:
-        arts.add_row("promoted_list", str(artifacts.promoted_txt))
-    if report.m3u_paths:
-        arts.add_row("m3u", str(report.m3u_paths[0]))
-    if artifacts.genre_normalization_report:
-        arts.add_row("genre_norm_report", str(artifacts.genre_normalization_report))
-    if artifacts.genre_normalization_rows_csv:
-        arts.add_row("genre_norm_rows", str(artifacts.genre_normalization_rows_csv))
-    if artifacts.tag_hoard_summary_json:
-        arts.add_row("tag_hoard", str(artifacts.tag_hoard_summary_json))
-    if artifacts.tag_hoard_values_csv:
-        arts.add_row("tag_hoard_values", str(artifacts.tag_hoard_values_csv))
-    if artifacts.dj_identity_ids_txt:
-        arts.add_row("dj_identity_ids", str(artifacts.dj_identity_ids_txt))
-    if artifacts.dj_manifest_csv:
-        arts.add_row("dj_manifest", str(artifacts.dj_manifest_csv))
-    if artifacts.dj_receipts_jsonl:
-        arts.add_row("dj_receipts", str(artifacts.dj_receipts_jsonl))
-    if artifacts.dj_playlist_inputs_txt:
-        arts.add_row("dj_playlist_inputs", str(artifacts.dj_playlist_inputs_txt))
-    if artifacts.roon_m3u_inputs_txt:
-        arts.add_row("roon_m3u_inputs", str(artifacts.roon_m3u_inputs_txt))
-    console.print(Panel(arts, title="Key Artifacts", border_style="cyan"))
-
-    attention: list[str] = []
-    if report.download_failed:
-        attention.append(f"download failed: {report.download_failed}")
-    if unknown_keep:
         attention.append(f"unaccounted keep tracks: {unknown_keep} (check outcomes/raw log)")
-    if report.apply_skipped_exists:
-        attention.append(f"moves skipped_exists: {report.apply_skipped_exists}")
+    if report.download_failed:
+        attention.append(f"download failures: {report.download_failed}")
     if report.apply_skipped_missing:
         attention.append(f"moves skipped_missing: {report.apply_skipped_missing}")
-    if report.scan_failed:
-        attention.append(f"scan failed: {report.scan_failed}")
-    if report.scan_failure_breakdown.get("InputSkipped"):
-        attention.append(f"scan InputSkipped: {report.scan_failure_breakdown['InputSkipped']}")
-    if _toggle_val(report, "dj") == "1" and report.dj_identity_resolved == 0:
-        attention.append("DJ export skipped: resolved 0 promoted identities")
+    if report.apply_failed:
+        attention.append(f"moves failed: {report.apply_failed}")
     if report.tagged_count == 0 and _toggle_val(report, "tagging") == "1":
-        attention.append("tagging applied 0 file(s)")
+        attention.append("tagging: applied 0 files")
+    for n in report.notices[:3]:
+        attention.append(f"notice: {n}")
     if attention:
-        console.print(Panel("\n".join(f"- {a}" for a in attention), title="Attention Needed", border_style="red"))
+        w("\n")
+        for item in attention:
+            w(f"ATTENTION: {item}\n")
 
 
 def _render_plain(report: RunReport, artifacts: RunArtifacts, *, out: Any, success_limit: int) -> None:
@@ -1604,9 +1376,10 @@ def _render_plain(report: RunReport, artifacts: RunArtifacts, *, out: Any, succe
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="tools/get-intake console wrapper (Rich TTY + plain non-TTY).")
-    ap.add_argument("--verbose", action="store_true", help="Show more details (still structured).")
-    ap.add_argument("--success-limit", type=int, default=40, help="Max success rows to print in default mode.")
+    ap = argparse.ArgumentParser(description="tools/get-intake console wrapper. Outputs clean flat text by default.")
+    ap.add_argument("--verbose", action="store_true", help="Show more details in output.")
+    ap.add_argument("--plain", action="store_true", help="Use legacy plain/pipe-friendly output (no symbols).")
+    ap.add_argument("--success-limit", type=int, default=40, help="Max success rows in --plain mode.")
     ap.add_argument("--", dest="dashdash", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("cmd", nargs=argparse.REMAINDER, help="Command to run (pass after --).")
     ns = ap.parse_args(argv)
@@ -1661,11 +1434,13 @@ def main(argv: list[str] | None = None) -> int:
     _load_plan_summaries(report, artifacts)
     _write_outcomes_csv(artifacts=artifacts, report=report)
 
-    if _is_tty() and not os.environ.get("NO_COLOR"):
-        Console().print(Rule(style="dim"))
-        _render_rich(report, artifacts, verbose=bool(ns.verbose), success_limit=int(ns.success_limit))
-    else:
+    # _render_clean is the canonical output path. --plain uses the legacy formatter.
+    if getattr(ns, "plain", False):
         _render_plain(report, artifacts, out=sys.stdout, success_limit=int(ns.success_limit))
+    else:
+        if _is_tty() and not os.environ.get("NO_COLOR"):
+            Console().print(Rule(style="dim"))
+        _render_clean(report, artifacts, verbose=bool(ns.verbose))
 
     if rc != 0:
         tail = raw_log.read_text(encoding="utf-8", errors="replace").splitlines()[-40:]

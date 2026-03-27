@@ -411,6 +411,7 @@ def _print_summary(
     plan_csv: Path,
     missing_csv: Path,
     elapsed: float,
+    no_flac_scan: bool = False,
 ) -> None:
     ok       = [r for r in results if r.action in ("ok", "ok+dedupe")]
     orphans  = [r for r in results if r.action == "orphan_mp3"]
@@ -431,19 +432,31 @@ def _print_summary(
     for r in ok:
         method_counts[r.match_method] = method_counts.get(r.match_method, 0) + 1
 
+    no_flac_scan = len(flacs_no_mp3) == 0 and len(ok) == 0
+
     print(f"\nMP3 Reconciliation Plan — {_utc_stamp()}")
     print(f"Elapsed: {elapsed:.1f}s\n")
     print(f"MP3s scanned:        {len(results)}")
-    print(f"  matched to FLAC:   {len(ok)}  ({', '.join(f'{m}={c}' for m,c in sorted(method_counts.items()))})")
-    print(f"  orphan (no FLAC):  {len(orphans)}")
-    print(f"  cross-root dupes:  {len(dedupe)}")
-    print(f"FLACs missing MP3:   {len(flacs_no_mp3)}")
+    if no_flac_scan:
+        print(f"  (FLAC scan skipped — run without --no-flac-scan for full match results)")
+        unclassified = [r for r in results if r.action == "orphan_mp3"]
+        print(f"  cross-root dupes:  {len(dedupe)}  (present in 2+ roots)")
+        print(f"  single-root only:  {len(unclassified)}  (not seen in any other root)")
+    else:
+        match_detail = ', '.join(f'{m}={c}' for m,c in sorted(method_counts.items())) if method_counts else "none"
+        print(f"  matched to FLAC:   {len(ok)}  ({match_detail})")
+        print(f"  orphan (no FLAC):  {len(orphans)}  (no match in MASTER_LIBRARY)")
+        print(f"  cross-root dupes:  {len(dedupe)}")
+        print(f"FLACs missing MP3:   {len(flacs_no_mp3)}")
     print()
     print("By root:")
     for root, counts in sorted(by_root.items()):
-        print(f"  {root:30s}  ok={counts['ok']}  orphan={counts['orphan']}  dedupe={counts['dedupe']}")
+        if no_flac_scan:
+            print(f"  {root:30s}  dupes={counts['dedupe']}  single-root={counts['orphan']}")
+        else:
+            print(f"  {root:30s}  matched={counts['ok']}  orphan={counts['orphan']}  dedupe={counts['dedupe']}")
     print()
-    if orphans:
+    if orphans and not no_flac_scan:
         print(f"Orphan MP3s (no FLAC match) — top 20:")
         for r in orphans[:20]:
             print(f"  [{r.mp3.root}] {r.mp3.artist} – {r.mp3.title}")
@@ -467,7 +480,8 @@ def _print_summary(
             print(f"  … +{len(dupes)-10} more")
     print()
     print(f"Plan CSV:    {plan_csv}")
-    print(f"Missing CSV: {missing_csv}")
+    if not no_flac_scan:
+        print(f"Missing CSV: {missing_csv}")
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
@@ -598,12 +612,15 @@ def main(argv: list[str] | None = None) -> int:
     _write_plan_csv(results, plan_csv)
     if not ns.no_flac_scan:
         _write_missing_mp3_csv(flacs_no_mp3, missing_csv)
+    else:
+        missing_csv = Path("/dev/null")  # sentinel — not written
 
     _print_summary(
         results, flacs_no_mp3, dupes,
         plan_csv=plan_csv,
         missing_csv=missing_csv,
         elapsed=time.time() - t0,
+        no_flac_scan=ns.no_flac_scan,
     )
     return 0
 

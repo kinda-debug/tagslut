@@ -1,0 +1,594 @@
+#!/usr/bin/env python3
+"""mp3_reconcile_scan — cross-volume MP3 reconciliation planner.
+
+Scans all known MP3 roots and MASTER_LIBRARY FLACs, then produces a
+reconciliation plan showing:
+  - MP3s matched to a FLAC in MASTER_LIBRARY (by ISRC, then by artist/title norm)
+  - MP3s with no FLAC counterpart (orphans — possible stale copies)
+  - FLACs with no MP3 anywhere (MP3 build candidates)
+  - MP3s duplicated across multiple roots (dedupe candidates)
+
+Output: CSV plan + human-readable summary to stdout.
+Non-destructive: reads only, writes plan files to artifacts dir.
+
+Usage:
+  tools/mp3_reconcile_scan [--roots ROOT [ROOT ...]] [--out-dir DIR]
+                            [--match-mode isrc|title|both] [--min-score N]
+                            [--no-flac-scan] [--verbose]
+
+Defaults:
+  roots: MP3_LIBRARY  DJ_LIBRARY  DJ_POOL_MANUAL_MP3
+  flac_root: MASTER_LIBRARY  (skip with --no-flac-scan)
+  out_dir: $TAGSLUT_ARTIFACTS/compare/  or ./artifacts/compare/
+  match_mode: both  (try ISRC first, fall back to normalised title match)
+  min_score: 85  (fuzzy title similarity threshold, 0-100)
+"""
+from __future__ import annotations
+
+import argparse
+import csv
+import hashlib
+import os
+import re
+import sys
+import time
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Iterator
+
+# ── Optional mutagen for tag reading ──────────────────────────────────────────
+try:
+    from mutagen.mp3 import MP3
+    from mutagen.id3 import ID3NoHeaderError
+    HAS_MUTAGEN = True
+except ImportError:
+    HAS_MUTAGEN = False
+
+# ── Volume layout (matches project directives) ────────────────────────────────
+DEFAULT_MP3_ROOTS = [
+    "/Volumes/MUSIC/MP3_LIBRARY",
+    "/Volumes/MUSIC/DJ_LIBRARY",
+    "/Volumes/MUSIC/DJ_POOL_MANUAL_MP3",
+]
+DEFAULT_FLAC_ROOT = "/Volumes/MUSIC/MASTER_LIBRARY"
+
+_ISRC_RE = re.compile(
+    r"([A-Za-z]{2}[\s-]?[A-Za-z0-9]{3}[\s-]?[0-9]{2}[\s-]?[0-9]{5})"
+)
+_FEAT_RE = re.compile(
+    r"\s*(?:\(|\[)?\s*(?:feat\.?|ft\.?|featuring|with)\b.*?(?:\)|\])?\s*$",
+    re.IGNORECASE,
+)
+_MIX_SUFFIX_RE = re.compile(
+    r"\s*[\(\[]\s*[^\)\]]*\b(?:mix|remix|edit|version|dub|rework|vip|instrumental|radio|club|extended|bootleg|live)\b[^\)\]]*[\)\]]\s*$",
+    re.IGNORECASE,
+)
+_ARTICLE_RE = re.compile(r"^(?:the|a|an)\s+", re.IGNORECASE)
+_NON_ALPHA_RE = re.compile(r"[^a-z0-9]")
+
+
+def _utc_stamp() -> str:
+    return datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+
+
+def _norm(text: str) -> str:
+    """Collapse to bare alpha-numeric for fuzzy matching."""
+    t = (text or "").lower()
+    t = _FEAT_RE.sub("", t)
+    t = _MIX_SUFFIX_RE.sub("", t)
+    t = _ARTICLE_RE.sub("", t)
+    t = _NON_ALPHA_RE.sub("", t)
+    return t.strip()
+
+
+def _norm_isrc(value: str) -> str:
+    return re.sub(r"[\s\-]", "", value).upper()
+
+def _similarity(a: str, b: str) -> int:
+    """Fast bigram similarity 0-100. No external deps."""
+    if not a or not b:
+        return 0
+    if a == b:
+        return 100
+    def bigrams(s: str) -> dict[str, int]:
+        d: dict[str, int] = {}
+        for i in range(len(s) - 1):
+            bg = s[i:i+2]
+            d[bg] = d.get(bg, 0) + 1
+        return d
+    ba, bb = bigrams(a), bigrams(b)
+    intersection = sum(min(ba.get(k, 0), bb.get(k, 0)) for k in ba)
+    total = sum(ba.values()) + sum(bb.values())
+    return int(200 * intersection / total) if total else 0
+
+
+@dataclass
+class AudioFile:
+    path: Path
+    root: str           # logical root label
+    ext: str            # "mp3" | "flac"
+    size: int
+    isrc: str = ""
+    artist: str = ""
+    title: str = ""
+    album: str = ""
+    artist_norm: str = field(default="", init=False)
+    title_norm: str = field(default="", init=False)
+
+    def __post_init__(self) -> None:
+        self.artist_norm = _norm(self.artist)
+        self.title_norm = _norm(self.title)
+
+    def key_isrc(self) -> str:
+        return _norm_isrc(self.isrc) if self.isrc else ""
+
+    def key_title(self) -> str:
+        return f"{self.artist_norm}|{self.title_norm}"
+
+
+@dataclass
+class MatchResult:
+    mp3: AudioFile
+    flac: AudioFile | None
+    match_method: str       # "isrc" | "title" | "fuzzy" | "none"
+    score: int              # 0-100; 100 = exact ISRC
+    duplicate_roots: list[str] = field(default_factory=list)
+    action: str = ""        # "ok" | "orphan_mp3" | "missing_mp3" | "dedupe"
+
+def _read_mp3_tags(path: Path) -> tuple[str, str, str, str]:
+    """Return (isrc, artist, title, album). Empty strings on failure."""
+    isrc = artist = title = album = ""
+    if not HAS_MUTAGEN:
+        # Fall back to filename parsing
+        stem = path.stem
+        parts = stem.split(" – ", 1)
+        if len(parts) == 2:
+            artist = parts[0].strip()
+            title_part = parts[1].strip()
+            # strip leading track number like "01 Title" or "(2020) Album – 01 Title"
+            title_m = re.match(r"^(?:\(\d{4}\)\s+[^–]+ – )?(\d+)\s+(.+)$", title_part)
+            if title_m:
+                title = title_m.group(2).strip()
+            else:
+                title = title_part
+        return isrc, artist, title, album
+    try:
+        tags = MP3(str(path)).tags
+        if tags is None:
+            raise ID3NoHeaderError()
+        def _get(frame: str) -> str:
+            f = tags.get(frame)
+            return str(f.text[0]).strip() if f and getattr(f, "text", None) else ""
+        artist = _get("TPE1") or _get("TPE2")
+        title  = _get("TIT2")
+        album  = _get("TALB")
+        tsrc   = tags.get("TSRC")
+        if tsrc and getattr(tsrc, "text", None):
+            isrc = str(tsrc.text[0]).strip()
+        if not isrc:
+            # search in TXXX frames
+            for key in tags:
+                if key.startswith("TXXX"):
+                    val = str(tags[key].text[0]) if getattr(tags[key], "text", None) else ""
+                    m = _ISRC_RE.search(val)
+                    if m:
+                        isrc = m.group(1)
+                        break
+        if not isrc and artist and title:
+            # search COMM frames
+            for key in tags:
+                if key.startswith("COMM"):
+                    val = str(tags[key].text[0]) if getattr(tags[key], "text", None) else ""
+                    m = _ISRC_RE.search(val)
+                    if m:
+                        isrc = m.group(1)
+                        break
+    except Exception:
+        pass
+    return isrc, artist, title, album
+
+
+def _read_flac_tags(path: Path) -> tuple[str, str, str, str]:
+    """Return (isrc, artist, title, album). Empty strings on failure."""
+    isrc = artist = title = album = ""
+    if not HAS_MUTAGEN:
+        return isrc, artist, title, album
+    try:
+        from mutagen.flac import FLAC
+        tags = FLAC(str(path))
+        def _get(key: str) -> str:
+            vals = tags.get(key.lower()) or tags.get(key.upper()) or []
+            return str(vals[0]).strip() if vals else ""
+        isrc   = _get("isrc")
+        artist = _get("artist") or _get("albumartist")
+        title  = _get("title")
+        album  = _get("album")
+    except Exception:
+        pass
+    return isrc, artist, title, album
+
+def _scan_root(
+    root_path: Path,
+    root_label: str,
+    ext: str,
+    *,
+    verbose: bool,
+) -> list[AudioFile]:
+    """Walk root_path and return AudioFile records for all files of given ext."""
+    results: list[AudioFile] = []
+    pattern = f"*.{ext}"
+    count = 0
+    for path in root_path.rglob(pattern):
+        try:
+            size = path.stat().st_size
+        except OSError:
+            continue
+        if ext == "mp3":
+            isrc, artist, title, album = _read_mp3_tags(path)
+        else:
+            isrc, artist, title, album = _read_flac_tags(path)
+        # If tags are empty, parse from filename as fallback
+        if not artist and not title:
+            stem = path.stem
+            # DJ_LIBRARY format: "Artist – (YYYY) Album – NN Title"
+            m = re.match(r"^(.+?)\s+–\s+(?:\(\d{4}\)\s+.+?\s+–\s+\d+\s+)?(.+)$", stem)
+            if m:
+                artist = m.group(1).strip()
+                title = m.group(2).strip()
+            else:
+                title = stem
+        af = AudioFile(
+            path=path,
+            root=root_label,
+            ext=ext,
+            size=size,
+            isrc=_norm_isrc(isrc) if isrc else "",
+            artist=artist,
+            title=title,
+            album=album,
+        )
+        results.append(af)
+        count += 1
+        if verbose and count % 500 == 0:
+            print(f"  [{root_label}] scanned {count}…", file=sys.stderr)
+    if verbose:
+        print(f"  [{root_label}] {count} {ext} files", file=sys.stderr)
+    return results
+
+
+def _build_flac_index(
+    flacs: list[AudioFile],
+) -> tuple[dict[str, AudioFile], dict[str, list[AudioFile]]]:
+    """Return (isrc_index, title_index). title_index maps norm key → list."""
+    by_isrc: dict[str, AudioFile] = {}
+    by_title: dict[str, list[AudioFile]] = {}
+    for af in flacs:
+        if af.isrc:
+            by_isrc.setdefault(af.isrc, af)
+        key = af.key_title()
+        if key:
+            by_title.setdefault(key, []).append(af)
+    return by_isrc, by_title
+
+def _match_mp3(
+    mp3: AudioFile,
+    by_isrc: dict[str, AudioFile],
+    by_title: dict[str, list[AudioFile]],
+    *,
+    match_mode: str,
+    min_score: int,
+) -> tuple[AudioFile | None, str, int]:
+    """Return (flac, method, score). method in 'isrc'|'title'|'fuzzy'|'none'."""
+    # 1. ISRC exact match
+    if match_mode in ("isrc", "both") and mp3.isrc:
+        flac = by_isrc.get(mp3.isrc)
+        if flac:
+            return flac, "isrc", 100
+
+    # 2. Exact normalised title match
+    if match_mode in ("title", "both") and mp3.key_title():
+        candidates = by_title.get(mp3.key_title())
+        if candidates:
+            return candidates[0], "title", 95
+
+    # 3. Fuzzy title match — only when artist AND title are known
+    if match_mode in ("title", "both") and mp3.artist_norm and mp3.title_norm:
+        best_flac: AudioFile | None = None
+        best_score = 0
+        # Search only flacs sharing same artist prefix (first 4 chars) for speed
+        prefix = mp3.artist_norm[:4]
+        for key, candidates in by_title.items():
+            if not key.startswith(prefix):
+                continue
+            for flac in candidates:
+                score = min(
+                    _similarity(mp3.artist_norm, flac.artist_norm),
+                    _similarity(mp3.title_norm, flac.title_norm),
+                )
+                if score > best_score:
+                    best_score = score
+                    best_flac = flac
+        if best_flac and best_score >= min_score:
+            return best_flac, "fuzzy", best_score
+
+    return None, "none", 0
+
+
+def _find_duplicates(
+    mp3s: list[AudioFile],
+) -> dict[str, list[AudioFile]]:
+    """Group MP3s that appear in multiple roots by ISRC or title key."""
+    by_isrc: dict[str, list[AudioFile]] = {}
+    by_title: dict[str, list[AudioFile]] = {}
+    for af in mp3s:
+        if af.isrc:
+            by_isrc.setdefault(af.isrc, []).append(af)
+        key = af.key_title()
+        if key:
+            by_title.setdefault(key, []).append(af)
+    dupes: dict[str, list[AudioFile]] = {}
+    for isrc, group in by_isrc.items():
+        if len({af.root for af in group}) > 1:
+            dupes[f"isrc:{isrc}"] = group
+    for key, group in by_title.items():
+        if len({af.root for af in group}) > 1 and f"isrc:{group[0].isrc}" not in dupes:
+            dupes[f"title:{key}"] = group
+    return dupes
+
+def _write_plan_csv(results: list[MatchResult], out_path: Path) -> None:
+    fieldnames = [
+        "action",
+        "match_method",
+        "score",
+        "mp3_root",
+        "mp3_path",
+        "mp3_artist",
+        "mp3_title",
+        "mp3_album",
+        "mp3_isrc",
+        "mp3_size",
+        "flac_path",
+        "flac_artist",
+        "flac_title",
+        "flac_isrc",
+        "duplicate_roots",
+    ]
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with out_path.open("w", encoding="utf-8", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=fieldnames)
+        w.writeheader()
+        for r in results:
+            w.writerow({
+                "action":          r.action,
+                "match_method":    r.match_method,
+                "score":           r.score,
+                "mp3_root":        r.mp3.root,
+                "mp3_path":        str(r.mp3.path),
+                "mp3_artist":      r.mp3.artist,
+                "mp3_title":       r.mp3.title,
+                "mp3_album":       r.mp3.album,
+                "mp3_isrc":        r.mp3.isrc,
+                "mp3_size":        r.mp3.size,
+                "flac_path":       str(r.flac.path) if r.flac else "",
+                "flac_artist":     r.flac.artist if r.flac else "",
+                "flac_title":      r.flac.title if r.flac else "",
+                "flac_isrc":       r.flac.isrc if r.flac else "",
+                "duplicate_roots": ",".join(r.duplicate_roots),
+            })
+
+
+def _write_missing_mp3_csv(flacs_no_mp3: list[AudioFile], out_path: Path) -> None:
+    """FLACs that have no MP3 counterpart anywhere — MP3 build candidates."""
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with out_path.open("w", encoding="utf-8", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=["flac_path","artist","title","album","isrc","size"])
+        w.writeheader()
+        for af in flacs_no_mp3:
+            w.writerow({
+                "flac_path": str(af.path),
+                "artist":    af.artist,
+                "title":     af.title,
+                "album":     af.album,
+                "isrc":      af.isrc,
+                "size":      af.size,
+            })
+
+def _print_summary(
+    results: list[MatchResult],
+    flacs_no_mp3: list[AudioFile],
+    dupes: dict[str, list[AudioFile]],
+    *,
+    plan_csv: Path,
+    missing_csv: Path,
+    elapsed: float,
+) -> None:
+    ok       = [r for r in results if r.action == "ok"]
+    orphans  = [r for r in results if r.action == "orphan_mp3"]
+    dedupe   = [r for r in results if r.action == "dedupe"]
+
+    by_root: dict[str, dict[str, int]] = {}
+    for r in results:
+        root = r.mp3.root
+        by_root.setdefault(root, {"ok": 0, "orphan": 0, "dedupe": 0})
+        if r.action == "ok":
+            by_root[root]["ok"] += 1
+        elif r.action == "orphan_mp3":
+            by_root[root]["orphan"] += 1
+        elif r.action == "dedupe":
+            by_root[root]["dedupe"] += 1
+
+    method_counts: dict[str, int] = {}
+    for r in ok:
+        method_counts[r.match_method] = method_counts.get(r.match_method, 0) + 1
+
+    print(f"\nMP3 Reconciliation Plan — {_utc_stamp()}")
+    print(f"Elapsed: {elapsed:.1f}s\n")
+    print(f"MP3s scanned:        {len(results)}")
+    print(f"  matched to FLAC:   {len(ok)}  ({', '.join(f'{m}={c}' for m,c in sorted(method_counts.items()))})")
+    print(f"  orphan (no FLAC):  {len(orphans)}")
+    print(f"  cross-root dupes:  {len(dedupe)}")
+    print(f"FLACs missing MP3:   {len(flacs_no_mp3)}")
+    print()
+    print("By root:")
+    for root, counts in sorted(by_root.items()):
+        print(f"  {root:30s}  ok={counts['ok']}  orphan={counts['orphan']}  dedupe={counts['dedupe']}")
+    print()
+    if orphans:
+        print(f"Orphan MP3s (no FLAC match) — top 20:")
+        for r in orphans[:20]:
+            print(f"  [{r.mp3.root}] {r.mp3.artist} – {r.mp3.title}")
+        if len(orphans) > 20:
+            print(f"  … +{len(orphans)-20} more (see plan CSV)")
+    print()
+    if flacs_no_mp3:
+        print(f"FLACs with no MP3 (build candidates) — top 20:")
+        for af in flacs_no_mp3[:20]:
+            print(f"  {af.artist} – {af.title}")
+        if len(flacs_no_mp3) > 20:
+            print(f"  … +{len(flacs_no_mp3)-20} more (see missing CSV)")
+    print()
+    if dupes:
+        print(f"Cross-root duplicates — {len(dupes)} groups:")
+        for key, group in list(dupes.items())[:10]:
+            roots = ", ".join(sorted({af.root for af in group}))
+            af0 = group[0]
+            print(f"  {af0.artist} – {af0.title}  →  [{roots}]")
+        if len(dupes) > 10:
+            print(f"  … +{len(dupes)-10} more")
+    print()
+    print(f"Plan CSV:    {plan_csv}")
+    print(f"Missing CSV: {missing_csv}")
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(
+        description="Scan all MP3 roots and MASTER_LIBRARY FLACs → reconciliation plan."
+    )
+    ap.add_argument(
+        "--roots", nargs="+", default=DEFAULT_MP3_ROOTS,
+        metavar="ROOT",
+        help="MP3 root directories to scan (default: MP3_LIBRARY DJ_LIBRARY DJ_POOL_MANUAL_MP3)",
+    )
+    ap.add_argument(
+        "--flac-root", default=DEFAULT_FLAC_ROOT,
+        help=f"FLAC master library root (default: {DEFAULT_FLAC_ROOT})",
+    )
+    ap.add_argument(
+        "--no-flac-scan", action="store_true",
+        help="Skip FLAC scan; only report orphan MP3s and cross-root dupes",
+    )
+    ap.add_argument(
+        "--match-mode", choices=("isrc", "title", "both"), default="both",
+        help="Matching strategy: isrc | title | both (default: both)",
+    )
+    ap.add_argument(
+        "--min-score", type=int, default=85,
+        help="Minimum fuzzy similarity score 0-100 to accept a title match (default: 85)",
+    )
+    ap.add_argument(
+        "--out-dir",
+        default=os.environ.get("TAGSLUT_ARTIFACTS", "./artifacts") + "/compare",
+        help="Output directory for plan CSVs",
+    )
+    ap.add_argument("--verbose", action="store_true", help="Progress to stderr")
+    ns = ap.parse_args(argv)
+
+    t0 = time.time()
+    stamp = _utc_stamp()
+    out_dir = Path(ns.out_dir).expanduser().resolve()
+
+    # ── Validate roots ────────────────────────────────────────────────────────
+    mp3_roots: list[tuple[str, Path]] = []
+    for raw in ns.roots:
+        p = Path(raw).expanduser().resolve()
+        label = p.name
+        if not p.exists():
+            print(f"WARNING: root not mounted/missing, skipping: {p}", file=sys.stderr)
+            continue
+        mp3_roots.append((label, p))
+
+    if not mp3_roots:
+        print("ERROR: no MP3 roots available (are volumes mounted?)", file=sys.stderr)
+        return 1
+
+    flac_root = Path(ns.flac_root).expanduser().resolve()
+    if not ns.no_flac_scan and not flac_root.exists():
+        print(f"ERROR: FLAC root not mounted: {flac_root}", file=sys.stderr)
+        print("  Use --no-flac-scan to skip FLAC matching.", file=sys.stderr)
+        return 1
+
+    # ── Scan MP3 roots ────────────────────────────────────────────────────────
+    all_mp3s: list[AudioFile] = []
+    for label, root_path in mp3_roots:
+        if ns.verbose:
+            print(f"Scanning MP3s in {root_path} …", file=sys.stderr)
+        all_mp3s.extend(_scan_root(root_path, label, "mp3", verbose=ns.verbose))
+
+    # ── Scan FLAC root ────────────────────────────────────────────────────────
+    all_flacs: list[AudioFile] = []
+    if not ns.no_flac_scan:
+        if ns.verbose:
+            print(f"Scanning FLACs in {flac_root} …", file=sys.stderr)
+        all_flacs = _scan_root(flac_root, "MASTER_LIBRARY", "flac", verbose=ns.verbose)
+
+    # ── Build FLAC index ──────────────────────────────────────────────────────
+    by_isrc, by_title = _build_flac_index(all_flacs)
+
+    # ── Detect cross-root MP3 duplicates ─────────────────────────────────────
+    dupes = _find_duplicates(all_mp3s)
+    dupe_keys: set[str] = set()
+    for group in dupes.values():
+        for af in group:
+            dupe_keys.add(str(af.path))
+
+    # ── Match MP3s to FLACs ───────────────────────────────────────────────────
+    matched_flac_paths: set[str] = set()
+    results: list[MatchResult] = []
+    for mp3 in all_mp3s:
+        flac, method, score = _match_mp3(
+            mp3, by_isrc, by_title,
+            match_mode=ns.match_mode,
+            min_score=ns.min_score,
+        )
+        dup_roots = []
+        if str(mp3.path) in dupe_keys:
+            # find which other roots have this track
+            isrc_key = f"isrc:{mp3.isrc}" if mp3.isrc else None
+            title_key = f"title:{mp3.key_title()}"
+            group = dupes.get(isrc_key or "") or dupes.get(title_key) or []
+            dup_roots = sorted({af.root for af in group} - {mp3.root})
+
+        if flac:
+            matched_flac_paths.add(str(flac.path))
+        action = "ok" if flac else "orphan_mp3"
+        if dup_roots:
+            action = "dedupe"
+
+        results.append(MatchResult(
+            mp3=mp3, flac=flac,
+            match_method=method, score=score,
+            duplicate_roots=dup_roots,
+            action=action,
+        ))
+
+    # ── FLACs with no MP3 match ───────────────────────────────────────────────
+    flacs_no_mp3 = [af for af in all_flacs if str(af.path) not in matched_flac_paths]
+
+    # ── Write outputs ─────────────────────────────────────────────────────────
+    plan_csv    = out_dir / f"mp3_reconcile_plan_{stamp}.csv"
+    missing_csv = out_dir / f"mp3_reconcile_missing_mp3_{stamp}.csv"
+    _write_plan_csv(results, plan_csv)
+    if not ns.no_flac_scan:
+        _write_missing_mp3_csv(flacs_no_mp3, missing_csv)
+
+    _print_summary(
+        results, flacs_no_mp3, dupes,
+        plan_csv=plan_csv,
+        missing_csv=missing_csv,
+        elapsed=time.time() - t0,
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

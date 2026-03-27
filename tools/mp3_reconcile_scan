@@ -260,12 +260,21 @@ def _scan_root(
 def _build_flac_index(
     flacs: list[AudioFile],
 ) -> tuple[dict[str, AudioFile], dict[str, list[AudioFile]]]:
-    """Return (isrc_index, title_index). title_index maps norm key → list."""
+    """Return (isrc_index, title_index). title_index maps norm key → list.
+
+    FLAC tags sometimes store multiple ISRCs in one field separated by
+    semicolons, commas, or slashes (e.g. 'AA1BB2200001;CC3DD4400002').
+    We index every value so any of them can match an MP3 ISRC.
+    """
     by_isrc: dict[str, AudioFile] = {}
     by_title: dict[str, list[AudioFile]] = {}
+    _ISRC_SEP = re.compile(r"[;,/|]+")
     for af in flacs:
         if af.isrc:
-            by_isrc.setdefault(af.isrc, af)
+            for part in _ISRC_SEP.split(af.isrc):
+                norm = _norm_isrc(part)
+                if norm:
+                    by_isrc.setdefault(norm, af)
         key = af.key_title()
         if key:
             by_title.setdefault(key, []).append(af)
@@ -403,19 +412,19 @@ def _print_summary(
     missing_csv: Path,
     elapsed: float,
 ) -> None:
-    ok       = [r for r in results if r.action == "ok"]
+    ok       = [r for r in results if r.action in ("ok", "ok+dedupe")]
     orphans  = [r for r in results if r.action == "orphan_mp3"]
-    dedupe   = [r for r in results if r.action == "dedupe"]
+    dedupe   = [r for r in results if r.action in ("dedupe", "ok+dedupe")]
 
     by_root: dict[str, dict[str, int]] = {}
     for r in results:
         root = r.mp3.root
         by_root.setdefault(root, {"ok": 0, "orphan": 0, "dedupe": 0})
-        if r.action == "ok":
+        if r.action in ("ok", "ok+dedupe"):
             by_root[root]["ok"] += 1
-        elif r.action == "orphan_mp3":
+        if r.action == "orphan_mp3":
             by_root[root]["orphan"] += 1
-        elif r.action == "dedupe":
+        if r.action in ("dedupe", "ok+dedupe"):
             by_root[root]["dedupe"] += 1
 
     method_counts: dict[str, int] = {}
@@ -560,9 +569,18 @@ def main(argv: list[str] | None = None) -> int:
 
         if flac:
             matched_flac_paths.add(str(flac.path))
-        action = "ok" if flac else "orphan_mp3"
-        if dup_roots:
+
+        # Action priority: a track with a FLAC match is "ok" even if it also
+        # appears in other roots. "dedupe" only applies to unmatched tracks
+        # so the operator knows they exist in multiple places with no FLAC home.
+        if flac:
+            action = "ok"
+            if dup_roots:
+                action = "ok+dedupe"
+        elif dup_roots:
             action = "dedupe"
+        else:
+            action = "orphan_mp3"
 
         results.append(MatchResult(
             mp3=mp3, flac=flac,

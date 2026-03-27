@@ -102,6 +102,12 @@ def main() -> None:
         default=None,
         help="Path to optional logfile (appends).",
     )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Process at most N rows from the backlog (useful for testing).",
+    )
     args = parser.parse_args()
 
     start_ts = time.time()
@@ -114,7 +120,7 @@ def main() -> None:
         handlers=handlers,
     )
     logger = logging.getLogger("backlog")
-    logger.info("Starting backlog run dry-run=%s", args.dry_run)
+    logger.info("Starting backlog run dry-run=%s limit=%s", args.dry_run, args.limit)
 
     workbook_path = Path(args.workbook).expanduser()
     if not workbook_path.exists():
@@ -142,11 +148,15 @@ def main() -> None:
     backlog: list[Path] = []
     missing_files: list[Path] = []
     missing_db: list[Path] = []
+    rows_seen = 0
     for row in sheet.iter_rows(min_row=2, values_only=True):
+        if args.limit is not None and rows_seen >= args.limit:
+            break
         raw = row[path_idx] if len(row) > path_idx else None
         if not raw:
             continue
         flac_path = Path(str(raw).strip()).expanduser()
+        rows_seen += 1
         if not flac_path.exists():
             missing_files.append(flac_path)
             continue
@@ -196,7 +206,6 @@ def main() -> None:
         return
 
     result_full = None
-    result_full = None
     if full_tag_missing:
         logger.info("Scheduling %d new full-tag MP3 builds", len(full_tag_missing))
         print(f"{len(full_tag_missing)} FLACs are missing MP3_LIBRARY (full-tag) assets.")
@@ -231,7 +240,7 @@ def main() -> None:
     elapsed = time.time() - start_ts
     logger.info("Backlog run complete (%0.1f s)", elapsed)
     print("\nBacklog summary:")
-    print(f"  workbook rows scanned: {len(backlog)}")
+    print(f"  workbook rows scanned: {rows_seen}")
     print(f"  missing files: {len(missing_files)}")
     print(f"  missing DB entries: {len(missing_db)}")
     print(f"  DJ copies produced (candidates): {len(candidates)}")

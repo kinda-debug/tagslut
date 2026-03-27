@@ -12,7 +12,12 @@ def register_report_group(cli: click.Group) -> None:
         """Canonical reporting and export commands."""
 
     @report.command("m3u")
-    @click.argument("paths", nargs=-1, type=click.Path(exists=True), required=True)
+    @click.argument("paths", nargs=-1, type=click.Path(exists=True), required=False)
+    @click.option(
+        "--paths-file",
+        type=click.Path(exists=True),
+        help="Text file with one path per line (avoids command line length limits).",
+    )
     @click.option("--db", type=click.Path(), help="Database path")
     @click.option("--source", help="Source label for playlist naming")
     @click.option("--m3u-dir", type=click.Path(), help="Output directory")
@@ -37,6 +42,7 @@ def register_report_group(cli: click.Group) -> None:
     @click.option("--verbose", is_flag=True, help="Print extra details about playlist generation")
     def report_m3u(  # type: ignore  # TODO: mypy-strict
         paths,
+        paths_file,
         db,
         source,
         m3u_dir,
@@ -47,8 +53,16 @@ def register_report_group(cli: click.Group) -> None:
         verbose,
     ):
         """Generate M3U playlists from paths."""
+        selected_paths = list(paths or ())
+        if paths_file:
+            with open(paths_file, "r", encoding="utf-8", errors="replace") as handle:
+                for raw in handle.read().splitlines():
+                    text = raw.strip()
+                    if not text or text.startswith("#"):
+                        continue
+                    selected_paths.append(text)
         run_report_m3u(
-            paths=tuple(paths),
+            paths=tuple(selected_paths),
             merge=merge,
             m3u_dir=m3u_dir,
             db=db,

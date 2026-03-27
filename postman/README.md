@@ -70,6 +70,57 @@ Before committing, open `postman/environment.json` and ensure secret values are 
 2. Select `postman/environment.json`.
 3. Set it as the active environment.
 
+---
+
+## Linking Postman runs to tagslut provenance (who/what tagged it)
+
+tagslut v3 writes an audit trail into the `provenance_event` table and stores
+identity ingestion attribution on `track_identity.ingestion_*`.
+
+### Field contract + provider authority
+
+- `postman/collection.json` is treated as the **field contract** (the tags you expect to exist on fully-tagged FLACs).
+- In code, **Beatport is authoritative for DJ tags** (BPM/key/genre/label) when available. This is the intended validation alignment with the Postman collection.
+
+To attribute Postman/Newman runs to an operator and a run, set these env vars in
+the same shell session you use to run Newman and ingest the report:
+
+- `TAGSLUT_OPERATOR` (fallback: `$LOGNAME`/`$USER`)
+- `TAGSLUT_RUN_ID` (string; operator-chosen)
+- `TAGSLUT_TOOL=postman` (recommended)
+- `TAGSLUT_CORRELATION_ID` (optional; stable correlation id for a run)
+
+For CLI intake runs (for example `tools/get --mp3 ...` / `tools/get --dj ...`), set:
+
+- `TAGSLUT_TOOL=cli` (recommended)
+
+### Newman → ingest into v3 DB
+
+1. Run Newman with a JSON report (example):
+
+```bash
+export TAGSLUT_OPERATOR="georges"
+export TAGSLUT_RUN_ID="postman_$(date +%Y%m%d_%H%M%S)"
+export TAGSLUT_TOOL="postman"
+
+newman run postman/collection.json -e postman/environment.json \
+  --reporters json --reporter-json-export artifacts/postman/newman_report.json
+```
+
+2. Ingest into `provenance_event`:
+
+```bash
+poetry run python -m tagslut postman ingest \
+  --db "$TAGSLUT_DB" \
+  --newman-report artifacts/postman/newman_report.json
+```
+
+3. Query attribution:
+
+```bash
+poetry run python -m tagslut v3 provenance show --db "$TAGSLUT_DB" --isrc USABC1234567
+```
+
 
 ## Update workflow (keeping exports current)
 

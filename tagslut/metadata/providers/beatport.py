@@ -281,6 +281,8 @@ class BeatportApiClient:
                     auth_config.catalog_basic_username,
                     auth_config.catalog_basic_password,
                 )
+            elif auth_config.search_bearer_token:
+                headers["Authorization"] = f"Bearer {auth_config.search_bearer_token}"
             else:
                 raise BeatportAuthError("Beatport catalog requires session cookie or basic auth credentials")
         else:

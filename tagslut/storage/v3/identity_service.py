@@ -195,6 +195,34 @@ def _identity_value_map(
             or "high"
         ),
     }
+    try:
+        from tagslut.utils.provenance_context import (
+            current_correlation_id,
+            current_operator,
+            current_run_id,
+            current_tool,
+        )
+
+        ingestion_source = str(values.get("ingestion_source") or "").strip()
+        if "op=" not in ingestion_source:
+            op = current_operator()
+            tool = current_tool()
+            run_id = current_run_id()
+            corr_id = current_correlation_id()
+            suffix_parts: list[str] = []
+            if op:
+                suffix_parts.append(f"op={op}")
+            if tool:
+                suffix_parts.append(f"tool={tool}")
+            if run_id:
+                suffix_parts.append(f"run={run_id}")
+            if corr_id:
+                suffix_parts.append(f"corr={corr_id}")
+            if suffix_parts:
+                suffix = "|".join(suffix_parts)
+                values["ingestion_source"] = f"{ingestion_source}|{suffix}" if ingestion_source else suffix
+    except Exception:
+        pass
     return values
 
 

@@ -21,6 +21,14 @@ from tagslut.exec.dj_tag_snapshot import DjTagSnapshot
 
 logger = logging.getLogger(__name__)
 
+# FLAC Vorbis keys already mapped to explicit ID3 frames in _apply_full_id3_tags.
+# Any FLAC key NOT in this set is treated as a credit role and written as TXXX.
+_FULL_TAG_STANDARD_KEYS: frozenset[str] = frozenset({
+    "title", "artist", "albumartist", "album", "tracknumber", "discnumber",
+    "date", "originaldate", "year", "genre", "bpm", "initialkey", "key",
+    "isrc", "label", "copyright", "lyrics", "comment", "composer",
+})
+
 DJ_MANAGED_FRAMES = (
     "TIT2",
     "TPE1",
@@ -486,6 +494,33 @@ def _apply_full_id3_tags(mp3_path: Path, flac_tags: Optional[FLAC]) -> None:
         tags["TSRC"] = _text_frame("TSRC", isrc)
     if label:
         tags["TXXX:LABEL"] = _user_text_frame("LABEL", label)
+
+    copyright_val = first("copyright")
+    if copyright_val:
+        tags["TCOP"] = _text_frame("TCOP", copyright_val)
+
+    composer = first("composer")
+    if composer:
+        tags["TCOM"] = _text_frame("TCOM", composer)
+
+    lyrics = first("lyrics")
+    if lyrics:
+        _id3_add(tags, _mutagen_id3().USLT(encoding=3, lang="eng", desc="", text=lyrics))
+
+    comment = first("comment")
+    if comment:
+        _id3_add(tags, _mutagen_id3().COMM(encoding=3, lang="eng", desc="", text=comment))
+
+    # Write any remaining FLAC keys (e.g. tiddl credit roles: PRODUCER, MIXER,
+    # REMIXER, ENGINEER, LYRICIST, …) as TXXX frames.
+    for flac_key in flac_tags.keys():
+        if flac_key.lower() in _FULL_TAG_STANDARD_KEYS:
+            continue
+        vals = flac_tags.get(flac_key)
+        if vals:
+            value = "; ".join(str(v) for v in vals if str(v).strip())
+            if value:
+                tags[f"TXXX:{flac_key.upper()}"] = _user_text_frame(flac_key.upper(), value)
 
     _apply_cover_art(tags, flac_tags)
     tags.save(mp3_path)

@@ -98,11 +98,11 @@ Notes:
 - `--force-download` bypasses the pre-download skip so matched URLs are still fetched, but equal-or-better library files still win at promote time unless you run an explicit replacement workflow
 - `tools/get-intake` is the advanced/backend command for existing batch roots, `--m3u-only`, and direct pipeline control.
 - `tools/get-sync` is a deprecated Beatport compatibility alias.
-- `tools/get --dj` is **legacy** — emits a deprecation warning and may produce non-deterministic results. Use the DJ pipeline below.
+- `tools/get --mp3` / `tools/get --dj` route to the canonical `tagslut intake url` orchestration to ensure the FLAC cohort is fully tagged once before writing MP3 derivatives.
 
 ## 4-Stage DJ Pipeline
 
-`tools/get --dj` is deprecated. Use the 4-stage DJ pipeline instead.
+`tools/get --dj` is a convenience for URL → fully-tagged FLAC → MP3 derivatives. It does not replace the curated DJ pipeline below (admission/validation/XML).
 
 For a curated DJ library, the only supported workflow is:
 `tagslut intake` -> `tagslut mp3 build` or `tagslut mp3 reconcile` ->

@@ -3,8 +3,9 @@
 Orchestrates:
 1. Precheck (binding by default for non-dry-run; owned by tools/get-intake)
 2. Download + local tag prep + promote (via tools/get-intake, called via tools/get)
-3. MP3 stage (full-tag mp3_asset generation; scoped to promoted cohort with resume fallback)
-4. DJ stage  (DJ-copy mp3_asset generation; extends MP3 stage)
+3. Enrich/writeback (single pass over the FLAC cohort used for derivatives)
+4. MP3 stage (full-tag mp3_asset generation; scoped to promoted cohort with resume fallback)
+5. DJ stage  (DJ-copy mp3_asset generation; extends MP3 stage)
 
 Emits structured JSON artifact on every invocation.
 """
@@ -14,6 +15,7 @@ import os
 import json
 import re
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -30,7 +32,7 @@ from tagslut.utils.env_paths import get_artifacts_dir
 class IntakeStageResult:
     """Result of a single intake stage."""
 
-    stage: str  # "precheck" | "download" | "promote" | "mp3" | "dj"
+    stage: str  # "precheck" | "download" | "promote" | "enrich" | "mp3" | "dj"
     status: str  # "ok" | "skipped" | "blocked" | "failed"
     detail: str | None = None
     artifact_path: Path | None = None
@@ -1153,7 +1155,7 @@ def run_intake(
     no_precheck: bool = False,
     force_download: bool = False,
 ) -> IntakeResult:
-    """Run intake orchestration: precheck → download → promote → [mp3] → [dj].
+    """Run intake orchestration: precheck → download → promote → [enrich] → [mp3] → [dj].
 
     Args:
         url: Provider URL (Beatport, Tidal, Deezer)
@@ -1290,7 +1292,7 @@ def run_intake(
     # ────────────────────────────────────────────────────────────────────
     if not dry_run and disposition == "completed":
         try:
-            download_cmd = [str(get_script), url]
+            download_cmd = [str(get_script), "--sync", url]
             if no_precheck:
                 download_cmd.append("--no-precheck")
             if force_download:
@@ -1421,10 +1423,119 @@ def run_intake(
             )
 
     # ────────────────────────────────────────────────────────────────────
-    # Stage 4: MP3 (full-tag mp3_asset)
+    # Stage 3.5: Enrich + canonical writeback (single pass; required for --mp3/--dj)
     # ────────────────────────────────────────────────────────────────────
     mp3_inputs: list[str] = []
     mp3_inputs_source: str | None = None
+
+    def _normalize_flac_cohort(paths: list[str]) -> list[str]:
+        seen: set[str] = set()
+        normalized: list[str] = []
+        for raw in paths:
+            try:
+                p = Path(raw).expanduser().resolve()
+            except Exception:
+                continue
+            if p.suffix.lower() != ".flac":
+                continue
+            if not p.is_file():
+                continue
+            key = str(p)
+            if key in seen:
+                continue
+            seen.add(key)
+            normalized.append(key)
+        return sorted(normalized)
+
+    if promoted_paths:
+        mp3_inputs = _normalize_flac_cohort(promoted_paths)
+        mp3_inputs_source = "promoted_flacs"
+    elif precheck_csv_path is not None:
+        mp3_inputs = _normalize_flac_cohort(_load_precheck_skip_db_paths(precheck_csv_path))
+        mp3_inputs_source = "precheck_skip_db_paths"
+
+    if dry_run:
+        stages.append(
+            IntakeStageResult(
+                stage="enrich",
+                status="skipped",
+                detail="--dry-run passed" if mp3 else "--mp3 not passed",
+            )
+        )
+    elif not mp3:
+        stages.append(
+            IntakeStageResult(
+                stage="enrich",
+                status="skipped",
+                detail="--mp3 not passed",
+            )
+        )
+    elif disposition == "failed":
+        stages.append(
+            IntakeStageResult(
+                stage="enrich",
+                status="skipped",
+                detail="blocked by earlier failure",
+            )
+        )
+    elif not mp3_inputs:
+        stages.append(
+            IntakeStageResult(
+                stage="enrich",
+                status="skipped",
+                detail="no FLAC inputs selected",
+            )
+        )
+    else:
+        enrich_paths_file = artifact_dir / f"intake_{stamp}_enrich_paths.txt"
+        enrich_paths_file.write_text("\n".join(mp3_inputs) + "\n", encoding="utf-8")
+
+        providers_arg: str | None = None
+        lowered_url = url.lower()
+        if "tidal.com" in lowered_url:
+            providers_arg = "beatport,tidal" if dj else "tidal"
+        elif "beatport.com" in lowered_url:
+            providers_arg = "beatport,tidal"
+
+        enrich_script = repo_root / "tools" / "review" / "post_move_enrich_art.py"
+        enrich_cmd = [
+            sys.executable,
+            str(enrich_script),
+            "--db",
+            str(db_path),
+            "--paths-file",
+            str(enrich_paths_file),
+        ]
+        if providers_arg:
+            enrich_cmd += ["--providers", providers_arg]
+
+        try:
+            subprocess.run(enrich_cmd, check=True, cwd=str(repo_root))
+            detail = f"inputs={len(mp3_inputs)} from {mp3_inputs_source or 'unknown'}"
+            if providers_arg:
+                detail += f" providers={providers_arg}"
+            stages.append(
+                IntakeStageResult(
+                    stage="enrich",
+                    status="ok",
+                    detail=detail,
+                    artifact_path=enrich_paths_file,
+                )
+            )
+        except subprocess.CalledProcessError as exc:
+            stages.append(
+                IntakeStageResult(
+                    stage="enrich",
+                    status="failed",
+                    detail=f"Enrich subprocess failed: exit {exc.returncode}",
+                    artifact_path=enrich_paths_file,
+                )
+            )
+            disposition = "failed"
+
+    # ────────────────────────────────────────────────────────────────────
+    # Stage 4: MP3 (full-tag mp3_asset)
+    # ────────────────────────────────────────────────────────────────────
     if dry_run:
         stages.append(
             IntakeStageResult(
@@ -1461,13 +1572,6 @@ def run_intake(
             disposition = "failed"
             mp3_inputs = []
         else:
-            if promoted_paths:
-                mp3_inputs = list(promoted_paths)
-                mp3_inputs_source = "promoted_flacs"
-            elif precheck_csv_path is not None:
-                mp3_inputs = _load_precheck_skip_db_paths(precheck_csv_path)
-                mp3_inputs_source = "precheck_skip_db_paths"
-
             if mp3_inputs:
                 from tagslut.exec.mp3_build import build_full_tag_mp3_assets_from_flac_paths
 

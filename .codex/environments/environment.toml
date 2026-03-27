@@ -27,3 +27,8 @@ command = "poetry run pytest tests/dj -q"
 name = "env-check"
 icon = "run"
 command = "poetry run python -c \"import tagslut; print('tagslut import OK')\""
+
+[[actions]]
+name = "transcode_excel_backlog"
+icon = "run"
+command = "bash START_HERE.sh && python scripts/transcode_excel_backlog.py --dry-run"

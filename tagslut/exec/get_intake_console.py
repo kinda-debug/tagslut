@@ -1039,6 +1039,24 @@ def _render_clean(
     import sys as _sys
     w = (out or _sys.stdout).write
     roots = _roots_map(report)
+    found_paths: list[str] = []
+    for key in report.track_order:
+        tr = report.tracks.get(key)
+        if not tr:
+            continue
+        if (tr.precheck_decision or "").strip().lower() != "skip":
+            continue
+        raw_path = (tr.db_path or "").strip()
+        if not raw_path:
+            continue
+        try:
+            p = Path(raw_path).expanduser().resolve()
+        except Exception:
+            continue
+        if not p.exists() or not p.is_file() or p.suffix.lower() != ".flac":
+            continue
+        found_paths.append(str(p))
+    found_paths = sorted(set(found_paths))
 
     # ── Lead line ─────────────────────────────────────────────────────────────
     url = report.url or ""
@@ -1049,6 +1067,12 @@ def _render_clean(
     else:
         lead_id = report.source or url or "?"
     w(f"{lead_id} — {total} tracks\n")
+    try:
+        total_int = int(total)  # type: ignore[arg-type]
+    except Exception:
+        total_int = None
+    if total_int == 1 and len(found_paths) == 1:
+        w(f"FOUND: {found_paths[0]}\n")
 
     # ── Precheck ──────────────────────────────────────────────────────────────
     if report.precheck_total is not None:
@@ -1092,6 +1116,12 @@ def _render_clean(
         plan_parts.append(f"discard {report.discard_planned_move}")
     if plan_parts:
         w(f"Plan: {', '.join(plan_parts)}\n")
+
+    # ── Found (already in inventory) ──────────────────────────────────────────
+    if found_paths:
+        w(f"\n✓ FOUND ({len(found_paths)} tracks):\n")
+        for path in found_paths:
+            w(f"  {path}\n")
 
     # ── Promoted paths ────────────────────────────────────────────────────────
     promoted_paths: list[str] = []

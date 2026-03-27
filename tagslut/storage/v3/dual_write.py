@@ -531,7 +531,16 @@ def record_provenance_event(
     details: dict[str, Any] | None = None,
     event_time: str | None = None,
 ) -> int:
-    details_json = json.dumps(details or {}, sort_keys=True, separators=(",", ":"))
+    merged_details: dict[str, Any] = dict(details or {})
+    try:
+        from tagslut.utils.provenance_context import context_details
+
+        for k, v in context_details().items():
+            if k not in merged_details and v:
+                merged_details[k] = v
+    except Exception:
+        pass
+    details_json = json.dumps(merged_details, sort_keys=True, separators=(",", ":"))
     cursor = conn.execute(
         f"""
         INSERT INTO {V3_PROVENANCE_EVENT_TABLE} (

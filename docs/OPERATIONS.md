@@ -34,6 +34,7 @@ export STAGING_ROOT="${STAGING_ROOT:-$VOLUME_STAGING}"
 export ROOT_BP="${ROOT_BP:-$STAGING_ROOT/bpdl}"
 export ROOT_TD="${ROOT_TD:-$STAGING_ROOT/tidal}"
 export PLAYLIST_ROOT="${PLAYLIST_ROOT:-$MASTER_LIBRARY/playlists}"
+export MP3_LIBRARY="${MP3_LIBRARY:-/Volumes/MUSIC/MP3_LIBRARY}"
 export DJ_PLAYLIST_ROOT="${DJ_PLAYLIST_ROOT:-$DJ_LIBRARY}"
 export VOLUME_WORK="${VOLUME_WORK:-/Volumes/MUSIC/_work}"
 export FIX_ROOT="${FIX_ROOT:-$VOLUME_WORK/fix}"
@@ -46,9 +47,10 @@ export COMPARE_ROOT="${COMPARE_ROOT:-${TAGSLUT_ARTIFACTS:-artifacts}/compare}"
 
 Notes:
 - `MASTER_LIBRARY` is the canonical master library stored as FLAC.
+- `MP3_LIBRARY` is the full-tag playback MP3 library derived from masters.
 - `PLAYLIST_ROOT` is the Roon-visible playlist folder inside the master library. `tools/get` writes relative-path M3Us there.
 - `DJ_LIBRARY` is the derived DJ library.
-- `DJ_PLAYLIST_ROOT` is the DJ playlist destination. If you invoke the deprecated legacy path `tools/get --dj`, it writes absolute-path M3Us there for Rekordbox/Lexicon. See `docs/DJ_PIPELINE.md` for the canonical 4-stage pipeline.
+- `DJ_PLAYLIST_ROOT` is the DJ playlist destination.
 - work output is split:
   - `FIX_ROOT=/Volumes/MUSIC/_work/fix` for salvageable metadata/tag issues
   - `QUARANTINE_ROOT` / `VOLUME_QUARANTINE=/Volumes/MUSIC/_work/quarantine` for risky files only
@@ -80,7 +82,7 @@ Notes:
 - expired quarantine can be reviewed or purged with `python tools/review/quarantine_gc.py --root "$QUARANTINE_ROOT" --days "$QUARANTINE_RETENTION_DAYS"`
 - `tools/get-intake` is the advanced/backend command for existing batch roots and `--m3u-only`.
 - `tools/get-sync` is deprecated and kept only as a compatibility alias.
-- `tools/get --dj` is **legacy** (emits a deprecation warning at runtime). Use the 4-stage DJ pipeline instead.
+- `tools/get --mp3` / `tools/get --dj` route to `tagslut intake url` orchestration (single enrich/writeback pass before MP3/DJ derivatives).
 
 ## DJ Pipeline (Canonical Workflow)
 

@@ -61,8 +61,9 @@ poetry run tagslut intake "https://www.beatport.com/release/.../..." \
 1. **Precheck** - Runs `tools/review/pre_download_check.py` to decide what to download
 2. **Download** - Calls `tools/get` for approved tracks only
 3. **Promote** - Observes the promoted cohort for this run (from `tools/get`)
-4. **MP3** (optional) - Full-tag MP3 assets written under `--mp3-root`
-5. **DJ** (optional) - Separate DJ copies written under `--dj-root`
+4. **Enrich** (optional) - Single pass over the FLAC cohort: provider enrichment + canonical tag writeback (+ v3 refresh)
+5. **MP3** (optional) - Full-tag MP3 assets written under `--mp3-root`
+6. **DJ** (optional) - Separate DJ copies written under `--dj-root`
 
 **Roots and invariants:**
 - MP3 asset library (`--mp3-root`) and DJ library (`--dj-root`) are different things.
@@ -126,16 +127,16 @@ tools/get "https://www.beatport.com/release/.../..." --verbose
 Deprecated legacy path:
 
 ```bash
-tools/get "https://www.beatport.com/release/.../..." --dj
+tools/get --dj "https://www.beatport.com/release/.../..."
 ```
 
-`tools/get --dj` is deprecated. Use the 4-stage DJ pipeline instead.
-See `docs/DJ_PIPELINE.md` for the canonical pipeline.
+`tools/get --mp3` / `tools/get --dj` are convenience entry points that route to
+`tagslut intake url` orchestration (single enrich/writeback pass before MP3/DJ derivatives).
+For curated DJ pool admission/validation/XML, use the canonical pipeline in `docs/DJ_PIPELINE.md`.
 
 High-level workflow flags:
 - `--m3u` writes Roon-friendly relative-path playlists into `PLAYLIST_ROOT`
 - local identify/tag prep runs before promote; external enrich + cover art are launched in the background after promote
-- `--dj` is **legacy** (emits a deprecation warning). See `docs/DJ_PIPELINE.md` for the canonical 4-stage DJ pipeline.
 - `--hoard` keeps the tagging/enrich/art pipeline on (default)
 - `--no-hoard` disables tagging/enrich/art
 - `--no-precheck` bypasses same-or-better duplicate filtering

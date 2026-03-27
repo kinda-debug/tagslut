@@ -48,17 +48,20 @@ echo "Setting up core paths..."
 
 : "${TAGSLUT_DB:=${TAGSLUT_ROOT}_db/FRESH_2026/music_v3.db}"
 : "${MASTER_LIBRARY:=/Volumes/MUSIC/MASTER_LIBRARY}"
+: "${MP3_LIBRARY:=/Volumes/MUSIC/MP3_LIBRARY}"
 : "${DJ_LIBRARY:=/Volumes/MUSIC/DJ_LIBRARY}"
 : "${STAGING_ROOT:=/Volumes/MUSIC/mdl}"
 
 export TAGSLUT_DB
 export MASTER_LIBRARY
+export MP3_LIBRARY
 export DJ_LIBRARY
 export STAGING_ROOT
 
 echo "   TAGSLUT_ROOT:   ${TAGSLUT_ROOT}"
 echo "   TAGSLUT_DB:     ${TAGSLUT_DB}"
 echo "   MASTER_LIBRARY: ${MASTER_LIBRARY}"
+echo "   MP3_LIBRARY:    ${MP3_LIBRARY}"
 echo "   DJ_LIBRARY:     ${DJ_LIBRARY}"
 echo "   STAGING_ROOT:   ${STAGING_ROOT}"
 
@@ -92,14 +95,20 @@ echo ""
 echo "QUICK COMMANDS (copy-paste ready):"
 echo "-----------------------------------------------------"
 echo ""
-echo "# Download a release:"
+echo "# Download a release (precheck + promote + playlist):"
 echo "tools/get <beatport-or-tidal-url>"
 echo ""
-echo "# Build DJ MP3s from existing masters:"
-echo "poetry run tagslut mp3 build --db \"\$TAGSLUT_DB\" --dj-root \"\$DJ_LIBRARY\" --limit 10 --execute"
+echo "# One-pass: URL → FLAC tag writeback → MP3_LIBRARY (full tags):"
+echo "tools/get --mp3 <beatport-or-tidal-url>"
+echo ""
+echo "# One-pass: URL → FLAC tag writeback → MP3_LIBRARY (full tags) + DJ_LIBRARY (minimal DJ tags):"
+echo "tools/get --dj <beatport-or-tidal-url>"
+echo ""
+echo "# Build full-tag MP3s from existing masters (explicit pipeline Stage 2a):"
+echo "poetry run tagslut mp3 build --db \"\$TAGSLUT_DB\" --dj-root \"\$MP3_LIBRARY\" --limit 10 --execute"
 echo ""
 echo "# Register existing MP3s without transcoding:"
-echo "poetry run tagslut mp3 reconcile --db \"\$TAGSLUT_DB\" --mp3-root \"\$DJ_LIBRARY\" --execute"
+echo "poetry run tagslut mp3 reconcile --db \"\$TAGSLUT_DB\" --mp3-root \"\$MP3_LIBRARY\" --execute"
 echo ""
 echo "# Export Rekordbox XML:"
 echo "poetry run tagslut dj backfill --db \"\$TAGSLUT_DB\""

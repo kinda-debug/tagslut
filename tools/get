@@ -27,9 +27,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TIDDL_WRAPPER="$SCRIPT_DIR/tiddl"
 DEEMIX_WRAPPER="$SCRIPT_DIR/deemix"
-BPDL_BIN="$SCRIPT_DIR/beatportdl/bpdl/bpdl"
 GET_INTAKE="$SCRIPT_DIR/get-intake"
-GET_REPORT="$SCRIPT_DIR/get-report"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 ENV_LOADER="$SCRIPT_DIR/_load_env.sh"
 
@@ -72,9 +70,6 @@ usage() {
     echo "  quarantine  risky files only (default: \$QUARANTINE_ROOT / \$VOLUME_QUARANTINE)"
     echo "  discard     deterministic duplicates like dest_exists (default: \$DISCARD_ROOT)"
     echo ""
-    echo "Beatport-specific:"
-    echo "  tools/get-report <beatport-url>  report only, no download"
-    echo "  tools/get-sync <beatport-url>    deprecated compatibility alias"
     echo "Use tools/get-help for the tiny version of this help."
     exit 1
 }
@@ -441,41 +436,9 @@ if [[ "$URL" == *"tidal.com"* ]]; then
     exec "${INTAKE_CMD[@]}"
 
 elif [[ "$URL" == *"beatport.com"* ]]; then
-    if [[ ! -x "$GET_INTAKE" ]]; then
-        echo "Error: get-intake not found or not executable at: $GET_INTAKE" >&2
-        exit 1
-    fi
-    cd "$REPO_ROOT"
-    if [[ "$MODE" == "sync" || "$MODE" == "enrich" || "$MODE" == "backfill" ]]; then
-        build_intake_cmd "bpdl" "$URL" "$@"
-        exec "${INTAKE_CMD[@]}"
-    fi
-
-    if [[ "$MODE" != "sync" && "$MODE" != "enrich" && "$MODE" != "backfill" && $# -gt 0 && "$1" == "--report" ]]; then
-        shift
-        if [[ ! -x "$GET_REPORT" ]]; then
-            echo "Error: get-report not found or not executable at: $GET_REPORT" >&2
-            exit 1
-        fi
-        exec "$GET_REPORT" "$URL" "$@"
-    fi
-
-    if [[ "$MODE" != "sync" && "$MODE" != "enrich" && "$MODE" != "backfill" && $# -gt 0 && "$1" == "--raw-bpdl" ]]; then
-        shift
-        if [[ ! -x "$BPDL_BIN" ]]; then
-            echo "Error: BeatportDL binary not found or not executable at: $BPDL_BIN" >&2
-            exit 1
-        fi
-        exec "$BPDL_BIN" "$URL" "$@"
-    fi
-
-    if [[ "$MODE" != "sync" && "$MODE" != "enrich" && "$MODE" != "backfill" ]]; then
-        if [[ ! -x "$BPDL_BIN" ]]; then
-            echo "Error: BeatportDL binary not found or not executable at: $BPDL_BIN" >&2
-            exit 1
-        fi
-        exec "$BPDL_BIN" "$URL" "$@"
-    fi
+    echo "Error: Beatport downloads are retired. Beatport is metadata-only." >&2
+    echo "Find the track on TIDAL and use that URL instead." >&2
+    exit 1
 
 elif [[ "$URL" == *"deezer.com"* || "$URL" == *"dzr.page.link"* ]]; then
     if [[ ! -x "$DEEMIX_WRAPPER" ]]; then

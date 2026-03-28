@@ -58,9 +58,6 @@ PRE_DOWNLOAD_CHECK_SCRIPT="$SCRIPT_DIR/review/pre_download_check.py"
 POST_MOVE_ENRICH_SCRIPT="$SCRIPT_DIR/review/post_move_enrich_art.py"
 BUILD_POOL_V3_SCRIPT="$REPO_ROOT/scripts/dj/build_pool_v3.py"
 PLAN_SKIPPED_SCRIPT="$SCRIPT_DIR/review/plan_move_skipped.py"
-BPDL_BIN="$SCRIPT_DIR/beatportdl/bpdl/bpdl"
-BPDL_CONFIG="${BPDL_CONFIG:-$HOME/.config/beatportdl/config.yml}"
-
 AUTO_DB_AMBIGUOUS=0
 AUTO_DB_CANDIDATES=()
 
@@ -69,7 +66,7 @@ usage() {
 Usage:
   tools/get-intake [options] <url> [-- downloader-args...]
   tools/get-intake --no-download --batch-root <path> [options]
-  tools/get-intake --m3u-only (--url <beatport-url> | --playlist-file <file>) [options]
+  tools/get-intake --m3u-only (--url <url> | --playlist-file <file>) [options]
   tools/get-intake <provider-url>   # auto: use provider download root when --batch-root omitted
 
 Note:
@@ -78,8 +75,8 @@ Note:
   m3u-only workflows, and direct pipeline control.
 
 Options:
-  --batch-root PATH    Download batch root to process (default: $ROOT_BP/$ROOT_TD or $VOLUME_STAGING/<provider>)
-  --source TEXT        Source label (bpdl|tidal). Auto-inferred from URL if omitted.
+  --batch-root PATH    Download batch root to process (default: $ROOT_TD or $VOLUME_STAGING/tidal)
+  --source TEXT        Source label (tidal). Auto-inferred from URL if omitted.
   --url URL            Source URL (alternative to positional URL)
   --db PATH            SQLite DB path (default: $TAGSLUT_DB or auto-detected tagslut_db epoch; errors if ambiguous)
   --library-root PATH  Final library root (default: $LIBRARY_ROOT or $VOLUME_LIBRARY or $MASTER_LIBRARY)
@@ -117,14 +114,8 @@ Options:
   -h, --help           Show this help
 
 Examples:
-  tools/get-intake "https://www.beatport.com/chart/.../12345"
-
-  tools/get-intake --batch-root "$ROOT_BP" \
-    "https://www.beatport.com/release/.../12345"
-
   tools/get-intake --no-download --batch-root "$STAGING_ROOT/clean" --execute
 
-  tools/get-intake --m3u-only --m3u --url "https://www.beatport.com/chart/.../12345"
 EOF
 }
 
@@ -532,22 +523,6 @@ latest_file_after_marker() {
   find "$search_dir" -maxdepth 1 -type f -name "$pattern" -newer "$marker_file" -print | sort | tail -n1 || true
 }
 
-bpdl_downloads_dir_from_config() {
-  local cfg=""
-  cfg="$(bpdl_config_path)"
-  if [[ ! -f "$cfg" ]]; then
-    echo ""
-    return 0
-  fi
-  local raw
-  raw="$(sed -n 's/^downloads_directory:[[:space:]]*//p' "$cfg" | head -n1)"
-  raw="${raw%\"}"
-  raw="${raw#\"}"
-  raw="${raw%\'}"
-  raw="${raw#\'}"
-  echo "$raw"
-}
-
 tiddl_downloads_dir_from_config() {
   local cfg=""
   local kind="json"
@@ -631,102 +606,23 @@ print(Path(sys.argv[1]).expanduser().resolve())
 PY
 }
 
-bpdl_binary_dir() {
-  local resolved=""
-  if [[ -n "${BPDL_BIN:-}" && -e "$BPDL_BIN" ]]; then
-    resolved="$(resolve_path "$BPDL_BIN" 2>/dev/null || true)"
-  fi
-  if [[ -n "$resolved" ]]; then
-    dirname "$resolved"
-    return 0
-  fi
-  echo ""
-}
-
-bpdl_config_path() {
-  local candidate=""
-  local resolved_env=""
-  local env_dir=""
-  local bin_dir=""
-
-  if [[ -n "${BPDL_CONFIG:-}" ]]; then
-    resolved_env="$(resolve_path "$BPDL_CONFIG" 2>/dev/null || true)"
-    if [[ -n "$resolved_env" ]]; then
-      env_dir="$(dirname "$resolved_env")"
-    fi
-  fi
-  bin_dir="$(bpdl_binary_dir)"
-
-  while IFS= read -r candidate; do
-    [[ -n "$candidate" ]] || continue
-    if [[ -f "$candidate" ]]; then
-      printf '%s\n' "$candidate"
-      return 0
-    fi
-  done < <(
-    printf '%s\n' \
-      "${bin_dir:+$bin_dir/beatportdl-config.yml}" \
-      "${resolved_env:-}" \
-      "${env_dir:+$env_dir/beatportdl-config.yml}" \
-      "$HOME/.config/beatportdl/beatportdl-config.yml" \
-      "$HOME/.config/beatportdl/config.yml" | awk 'NF && !seen[$0]++'
-  )
-
-  echo ""
-}
-
-bpdl_workdir_from_config() {
-  local cfg=""
-  local bin_dir=""
-
-  cfg="$(bpdl_config_path)"
-  if [[ -n "$cfg" && "$(basename "$cfg")" == "beatportdl-config.yml" ]]; then
-    dirname "$cfg"
-    return 0
-  fi
-
-  bin_dir="$(bpdl_binary_dir)"
-  if [[ -n "$bin_dir" && -f "$bin_dir/beatportdl-config.yml" ]]; then
-    printf '%s\n' "$bin_dir"
-    return 0
-  fi
-
-  if [[ -n "$cfg" ]]; then
-    dirname "$cfg"
-    return 0
-  fi
-
-  printf '%s\n' "$REPO_ROOT"
-}
-
 default_batch_root() {
   local staging_root=""
   local local_staging=""
-  local bpdl_root=""
   local tiddl_root=""
   staging_root="$(resolved_staging_root)"
   local_staging="${LOCAL_STAGING:-$HOME/Music/mdl}"
-  bpdl_root="$(bpdl_downloads_dir_from_config)"
   tiddl_root="$(tiddl_downloads_dir_from_config)"
-  if [[ "${SOURCE:-}" == "tidal" ]]; then
-    first_usable_path \
-      "${BATCH_ROOT:-}" \
-      "${ROOT_TD:-}" \
-      "${TIDDL_DOWNLOAD_ROOT:-}" \
-      "${tiddl_root:-}" \
-      "${staging_root:+$staging_root/tidal}" \
-      "${local_staging:+$local_staging/tidal}" \
-      "$HOME/Downloads/tiddl" \
-      "$REPO_ROOT/output/downloads/tidal"
-    return 0
-  fi
+
   first_usable_path \
     "${BATCH_ROOT:-}" \
-    "${ROOT_BP:-}" \
-    "${bpdl_root:-}" \
-    "${staging_root:+$staging_root/bpdl}" \
-    "${local_staging:+$local_staging/bpdl}" \
-    "$REPO_ROOT/output/downloads/bpdl"
+    "${ROOT_TD:-}" \
+    "${TIDDL_DOWNLOAD_ROOT:-}" \
+    "${tiddl_root:-}" \
+    "${staging_root:+$staging_root/tidal}" \
+    "${local_staging:+$local_staging/tidal}" \
+    "$HOME/Downloads/tiddl" \
+    "$REPO_ROOT/output/downloads/tidal"
 }
 
 default_library_root() {
@@ -844,109 +740,9 @@ autodetect_db_path() {
   echo "${candidates[0]}"
 }
 
-ensure_bpdl_download_target() {
-  local cfg=""
-  cfg="$(bpdl_config_path)"
-  [[ -f "$cfg" ]] || return 0
-
-  local configured_target=""
-  local target=""
-  local staging_root=""
-  local local_staging=""
-  configured_target="$(bpdl_downloads_dir_from_config)"
-  staging_root="$(resolved_staging_root)"
-  local_staging="${LOCAL_STAGING:-$HOME/Music/mdl}"
-
-  target="$(first_usable_path \
-    "${ROOT_BP:-}" \
-    "${configured_target:-}" \
-    "${staging_root:+$staging_root/bpdl}" \
-    "${local_staging:+$local_staging/bpdl}" \
-    "$REPO_ROOT/output/downloads/bpdl" \
-  )"
-
-  if [[ -z "$target" ]]; then
-    return 0
-  fi
-
-  if [[ "$configured_target" != "$target" ]]; then
-    python3 - "$cfg" "$target" <<'PY'
-from pathlib import Path
-import sys
-
-cfg = Path(sys.argv[1]).expanduser()
-target = sys.argv[2]
-text = cfg.read_text(encoding="utf-8")
-lines = text.splitlines()
-updated = False
-for idx, line in enumerate(lines):
-    if line.startswith("downloads_directory:"):
-        lines[idx] = f"downloads_directory: {target}"
-        updated = True
-        break
-if not updated:
-    lines.append(f"downloads_directory: {target}")
-cfg.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
-PY
-  fi
-
-  mkdir -p "$target" || err "Cannot create Beatport downloads_directory: $target"
-  [[ -d "$target" ]] || err "Beatport downloads_directory is not accessible: $target"
-}
-
-run_bpdl_batch() {
-  local url_list="$1"
-  local log_file="$2"
-  shift 2
-  local extra_args=("$@")
-  local bpdl_workdir="$REPO_ROOT"
-  # BeatportDL runs config/auth setup before parsing CLI flags, so probing with -h can block.
-  local supports_quit="${BPDL_ASSUME_Q:-0}"
-
-  ensure_bpdl_download_target
-  bpdl_workdir="$(bpdl_workdir_from_config)"
-
-  if [[ "$supports_quit" -eq 1 ]]; then
-    if [[ ${#extra_args[@]} -gt 0 ]]; then
-      run_cmd_in_dir "$bpdl_workdir" "$BPDL_BIN" -q "${extra_args[@]}" "$url_list"
-    else
-      run_cmd_in_dir "$bpdl_workdir" "$BPDL_BIN" -q "$url_list"
-    fi
-    return 0
-  fi
-
-  echo "bpdl compatibility mode: running without '-q' probe."
-  set +e
-  if [[ ${#extra_args[@]} -gt 0 ]]; then
-    printf '→ '
-    printf '%q ' "$BPDL_BIN" "${extra_args[@]}" "$url_list"
-    printf '\n'
-    env -C "$bpdl_workdir" "$BPDL_BIN" "${extra_args[@]}" "$url_list" < /dev/null 2>&1 | tee "$log_file"
-  else
-    printf '→ '
-    printf '%q ' "$BPDL_BIN" "$url_list"
-    printf '\n'
-    env -C "$bpdl_workdir" "$BPDL_BIN" "$url_list" < /dev/null 2>&1 | tee "$log_file"
-  fi
-  local bpdl_code=${PIPESTATUS[0]}
-  set -e
-
-  if [[ "$bpdl_code" -ne 0 ]]; then
-    if grep -q "Error reading input string: EOF" "$log_file"; then
-      echo "bpdl exited after EOF prompt in non-interactive mode; continuing."
-      return 0
-    fi
-    echo "bpdl failed (exit=$bpdl_code). See log: $log_file" >&2
-    return "$bpdl_code"
-  fi
-
-  return 0
-}
-
 infer_source() {
   local url="$1"
   case "$url" in
-    *beatport.com*) echo "bpdl" ;;
     *tidal.com*) echo "tidal" ;;
     *) echo "" ;;
   esac
@@ -954,7 +750,6 @@ infer_source() {
 
 download_step_label() {
   case "${SOURCE:-}" in
-    bpdl) echo "Download from Beatport" ;;
     tidal) echo "Download from Tidal" ;;
     *) echo "Download from provider" ;;
   esac
@@ -1196,6 +991,9 @@ if [[ -z "$SOURCE" && -n "$URL" ]]; then
   SOURCE="$(infer_source "$URL")"
 fi
 [[ -n "$SOURCE" ]] || SOURCE="ingest"
+if [[ "$SOURCE" == "bpdl" ]]; then
+  err "--source bpdl is no longer supported. Beatport is metadata-only."
+fi
 
 if [[ "$M3U_ONLY" -eq 0 && -n "$URL" && -z "$BATCH_ROOT" ]]; then
   BATCH_ROOT="$(default_batch_root || true)"
@@ -1234,7 +1032,6 @@ else
 fi
 
 [[ -x "$GET_BIN" ]] || err "Missing executable: $GET_BIN"
-[[ -x "$BPDL_BIN" ]] || err "Missing executable: $BPDL_BIN"
 [[ -x "$TIDDL_WRAPPER" ]] || err "Missing executable: $TIDDL_WRAPPER"
 [[ -f "$SCAN_SCRIPT" ]] || err "Missing script: $SCAN_SCRIPT"
 [[ -f "$AUDIT_SCRIPT" ]] || err "Missing script: $AUDIT_SCRIPT"
@@ -1339,10 +1136,6 @@ if [[ "$VERBOSE" -eq 1 ]]; then
 fi
 if [[ "$VERBOSE" -eq 1 && "$DOWNLOAD" -eq 1 ]]; then
   case "$SOURCE" in
-    bpdl)
-      echo "Downloader:   Beatport"
-      echo "Dl target:    $BATCH_ROOT"
-      ;;
     tidal)
       echo "Downloader:   Tidal"
       echo "Dl target:    $BATCH_ROOT"
@@ -1369,9 +1162,6 @@ if [[ "$M3U_ONLY" -eq 1 ]]; then
   if [[ -n "$URL" ]]; then
     M3U_NAME_HINT="$(playlist_label_from_url "$URL")"
     step "$STEP" "$TOTAL_STEPS" "Resolve M3U candidates from URL"
-    if [[ "$URL" != *"beatport.com"* ]]; then
-      err "--m3u-only URL mode currently supports Beatport URLs. Use --playlist-file for other sources."
-    fi
 
     run_cmd python "$PRE_DOWNLOAD_CHECK_SCRIPT" \
       --input "$URL" \
@@ -1388,21 +1178,12 @@ if [[ "$M3U_ONLY" -eq 1 ]]; then
       fi
     fi
 
-    FALLBACK_LOCAL_ROOTS=()
-    BPDL_DOWNLOAD_ROOT="$(bpdl_downloads_dir_from_config)"
-    if [[ -n "$BPDL_DOWNLOAD_ROOT" && -d "$BPDL_DOWNLOAD_ROOT" ]]; then
-      FALLBACK_LOCAL_ROOTS+=("$BPDL_DOWNLOAD_ROOT")
-    fi
-
     PREFILTER_RESOLVE_ARGS=(
       "$PREFILTER_DECISIONS_CSV"
       "$M3U_EXISTING_FILE"
       "$M3U_MISSING_URLS_FILE"
       "$M3U_MISSING_ITEMS_FILE"
     )
-    if [[ ${#FALLBACK_LOCAL_ROOTS[@]} -gt 0 ]]; then
-      PREFILTER_RESOLVE_ARGS+=("${FALLBACK_LOCAL_ROOTS[@]}")
-    fi
 
     python - "${PREFILTER_RESOLVE_ARGS[@]}" <<'PY'
 import csv
@@ -1694,7 +1475,6 @@ PY
   echo "Missing items: $MISSING_ITEM_COUNT ($M3U_MISSING_ITEMS_FILE)"
 
   maybe_download=0
-  BPDL_DOWNLOAD_ROOT="$(bpdl_downloads_dir_from_config)"
   case "$MISSING_POLICY" in
     skip)
       echo "Missing policy=skip; not downloading missing tracks."
@@ -1726,48 +1506,14 @@ PY
     DOWNLOAD_MARKER_FILE="$OUT_DIR/m3u_download_marker_$(date +%Y%m%d_%H%M%S)"
     : > "$DOWNLOAD_MARKER_FILE"
 
-    BPDL_ONLY_URLS_FILE="$OUT_DIR/m3u_missing_bpdl_urls_$(date +%Y%m%d_%H%M%S).txt"
-    OTHER_URLS_FILE="$OUT_DIR/m3u_missing_other_urls_$(date +%Y%m%d_%H%M%S).txt"
-    grep 'beatport.com' "$M3U_MISSING_URLS_FILE" > "$BPDL_ONLY_URLS_FILE" || true
-    grep -v 'beatport.com' "$M3U_MISSING_URLS_FILE" > "$OTHER_URLS_FILE" || true
-
-    BPDL_ONLY_COUNT="$(wc -l < "$BPDL_ONLY_URLS_FILE" | tr -d ' ')"
-    OTHER_URLS_COUNT="$(wc -l < "$OTHER_URLS_FILE" | tr -d ' ')"
-
-    if [[ "$BPDL_ONLY_COUNT" -gt 0 ]]; then
-      if [[ -z "$BATCH_ROOT" && -n "$BPDL_DOWNLOAD_ROOT" ]]; then
-        BATCH_ROOT="$BPDL_DOWNLOAD_ROOT"
-      fi
-      [[ -n "$BATCH_ROOT" ]] || BATCH_ROOT="${STAGING_ROOT:-/Volumes/MUSIC/CLEAN}"
-      mkdir -p "$BATCH_ROOT"
-      BPDL_LOG="$OUT_DIR/bpdl_m3u_missing_download_$(date +%Y%m%d_%H%M%S).log"
-      run_bpdl_batch "$BPDL_ONLY_URLS_FILE" "$BPDL_LOG"
-    fi
-
-    if [[ "$OTHER_URLS_COUNT" -gt 0 ]]; then
-      while IFS= read -r missing_url; do
-        [[ -n "$missing_url" ]] || continue
-        run_cmd "$GET_BIN" "$missing_url"
-      done < "$OTHER_URLS_FILE"
-    fi
+    while IFS= read -r missing_url; do
+      [[ -n "$missing_url" ]] || continue
+      run_cmd "$GET_BIN" "$missing_url"
+    done < "$M3U_MISSING_URLS_FILE"
 
     DOWNLOAD_SCAN_ROOTS=()
     if [[ -n "${BATCH_ROOT:-}" && -d "$BATCH_ROOT" ]]; then
       DOWNLOAD_SCAN_ROOTS+=("$BATCH_ROOT")
-    fi
-    if [[ -n "$BPDL_DOWNLOAD_ROOT" && -d "$BPDL_DOWNLOAD_ROOT" ]]; then
-      duplicate_root=0
-      if [[ ${#DOWNLOAD_SCAN_ROOTS[@]} -gt 0 ]]; then
-        for existing_root in "${DOWNLOAD_SCAN_ROOTS[@]}"; do
-          if [[ "$existing_root" == "$BPDL_DOWNLOAD_ROOT" ]]; then
-            duplicate_root=1
-            break
-          fi
-        done
-      fi
-      if [[ "$duplicate_root" -eq 0 ]]; then
-        DOWNLOAD_SCAN_ROOTS+=("$BPDL_DOWNLOAD_ROOT")
-      fi
     fi
 
     if [[ ${#DOWNLOAD_SCAN_ROOTS[@]} -gt 0 ]]; then
@@ -1807,7 +1553,7 @@ PY
 fi
 
 USE_DOWNLOAD_PRECHECK=0
-if [[ "$DOWNLOAD" -eq 1 && "$SKIP_PRECHECK" -eq 0 && ( "$SOURCE" == "bpdl" || "$SOURCE" == "tidal" ) ]]; then
+if [[ "$DOWNLOAD" -eq 1 && "$SKIP_PRECHECK" -eq 0 && "$SOURCE" == "tidal" ]]; then
   USE_DOWNLOAD_PRECHECK=1
 fi
 
@@ -2074,8 +1820,7 @@ PY
 		        echo "No new candidates to download and batch is empty; intake pipeline finished."
 		        exit 0
 		      fi
-		    else
-	      if [[ "$SOURCE" == "tidal" ]]; then
+          else
 	        if [[ "${PREFILTER_SKIP:-0}" -eq 0 && -n "$URL" ]]; then
 	          if [[ "$VERBOSE" -eq 1 ]]; then
 	            echo "  Tidal mode:         direct URL (no filtered skips)"
@@ -2127,65 +1872,8 @@ PY
             rm -f "$TIDDL_FAILED_URLS_FILE"
           fi
         fi
-	      else
-	        BPDL_LOG="$OUT_DIR/bpdl_prefilter_download_$(date +%Y%m%d_%H%M%S).log"
-	        # Beatport-origin runs may choose verified TIDAL URLs as the actual download
-	        # source (while keeping Beatport as metadata origin). The precheck keep-list
-	        # can therefore contain mixed providers.
-	        TIDAL_KEEP_URLS_TXT="$OUT_DIR/precheck_keep_tidal_urls_$(date +%Y%m%d_%H%M%S).txt"
-	        BPDL_KEEP_URLS_TXT="$OUT_DIR/precheck_keep_bpdl_urls_$(date +%Y%m%d_%H%M%S).txt"
-	        : > "$TIDAL_KEEP_URLS_TXT"
-	        : > "$BPDL_KEEP_URLS_TXT"
-	        grep 'tidal.com' "$KEEP_URLS_TXT" > "$TIDAL_KEEP_URLS_TXT" || true
-	        grep 'beatport.com' "$KEEP_URLS_TXT" > "$BPDL_KEEP_URLS_TXT" || true
-	        TIDAL_KEEP_COUNT="$(awk 'NF{c++} END{print c+0}' "$TIDAL_KEEP_URLS_TXT")"
-	        BPDL_KEEP_COUNT="$(awk 'NF{c++} END{print c+0}' "$BPDL_KEEP_URLS_TXT")"
-	        if [[ "$VERBOSE" -eq 1 ]]; then
-	          echo "  Beatport keep list: $KEEP_URLS_TXT"
-	          echo "  Beatport keep bpdl: $BPDL_KEEP_URLS_TXT ($BPDL_KEEP_COUNT)"
-	          echo "  Beatport keep tidal:$TIDAL_KEEP_URLS_TXT ($TIDAL_KEEP_COUNT)"
-	          echo "  Beatport log:       $BPDL_LOG"
-	        fi
-	        if [[ "$TIDAL_KEEP_COUNT" -gt 0 ]]; then
-	          echo "Cross-source download: $TIDAL_KEEP_COUNT verified match(es) will download from TIDAL."
-	          DONE=0
-	          TIDDL_FAILED_COUNT=0
-	          TIDDL_FAILED_URLS_FILE="$OUT_DIR/tiddl_failed_cross_source_urls_$(date +%Y%m%d_%H%M%S).txt"
-	          : > "$TIDDL_FAILED_URLS_FILE"
-	          while IFS= read -r keep_url; do
-	            [[ -n "$keep_url" ]] || continue
-	            DONE=$((DONE + 1))
-	            echo "[tidal $DONE/$TIDAL_KEEP_COUNT] $keep_url"
-	            # Do NOT forward Beatport downloader args into TIDAL downloads.
-	            if run_tiddl_download "$keep_url"; then
-	              :
-	            else
-	              TIDDL_FAILED_COUNT=$((TIDDL_FAILED_COUNT + 1))
-	              printf '%s\n' "$keep_url" >> "$TIDDL_FAILED_URLS_FILE"
-	              echo "WARNING: Tidal download failed for $keep_url; continuing."
-	            fi
-	          done < "$TIDAL_KEEP_URLS_TXT"
-	          if [[ "$TIDDL_FAILED_COUNT" -gt 0 ]]; then
-	            echo "Tidal cross-source download failures: $TIDDL_FAILED_COUNT (saved: $TIDDL_FAILED_URLS_FILE)"
-	            if [[ "$TIDDL_FAILED_COUNT" -eq "$TIDAL_KEEP_COUNT" ]]; then
-	              err "All $TIDAL_KEEP_COUNT cross-source Tidal downloads failed; aborting pipeline."
-	            fi
-	          else
-	            rm -f "$TIDDL_FAILED_URLS_FILE"
-	          fi
-	        fi
-	        if [[ "$BPDL_KEEP_COUNT" -gt 0 ]]; then
-	          if [[ ${#DOWNLOADER_ARGS[@]} -gt 0 ]]; then
-	            run_bpdl_batch "$BPDL_KEEP_URLS_TXT" "$BPDL_LOG" "${DOWNLOADER_ARGS[@]}"
-	          else
-	            run_bpdl_batch "$BPDL_KEEP_URLS_TXT" "$BPDL_LOG"
-	          fi
-	        else
-	          echo "No Beatport URLs selected for download."
-	        fi
-	      fi
-	    fi
-	  else
+      fi
+    else
     if [[ "$SOURCE" == "tidal" && "$URL" == *"tidal.com"* ]]; then
       if [[ "$VERBOSE" -eq 1 ]]; then
         echo "  Tidal download target: $BATCH_ROOT"
@@ -2197,19 +1885,6 @@ PY
       fi
       if [[ $? -ne 0 ]]; then
         err "Tidal download failed for $URL"
-      fi
-    elif [[ "$SOURCE" == "bpdl" && "$URL" == *"beatport.com"* ]]; then
-      RAW_URLS_TXT="$OUT_DIR/bpdl_raw_urls_$(date +%Y%m%d_%H%M%S).txt"
-      printf '%s\n' "$URL" > "$RAW_URLS_TXT"
-      BPDL_LOG="$OUT_DIR/bpdl_raw_download_$(date +%Y%m%d_%H%M%S).log"
-      if [[ "$VERBOSE" -eq 1 ]]; then
-        echo "  Beatport URL file:  $RAW_URLS_TXT"
-        echo "  Beatport log:       $BPDL_LOG"
-      fi
-      if [[ ${#DOWNLOADER_ARGS[@]} -gt 0 ]]; then
-        run_bpdl_batch "$RAW_URLS_TXT" "$BPDL_LOG" "${DOWNLOADER_ARGS[@]}"
-      else
-        run_bpdl_batch "$RAW_URLS_TXT" "$BPDL_LOG"
       fi
     elif [[ ${#DOWNLOADER_ARGS[@]} -gt 0 ]]; then
       run_cmd "$GET_BIN" "$URL" "${DOWNLOADER_ARGS[@]}"
@@ -2615,6 +2290,13 @@ if [[ "$RESUME_MODE" -eq 1 && "$PROMOTED_FLACS_COUNT" -eq 0 && -d "$BATCH_ROOT" 
   PROMOTED_FLACS_COUNT="$(wc -l < "$PROMOTED_FLACS_FILE" | tr -d ' ')"
   PROMOTED_AUDIO_COUNT="$(wc -l < "$PROMOTED_AUDIO_FILE" | tr -d ' ')"
   echo "Resume supplement: $PROMOTED_FLACS_COUNT FLAC(s) from batch root."
+fi
+
+if [[ "$EXECUTE" -eq 1 && "$DJ_MODE" -eq 0 && "$M3U_MODE" -eq 0 && "$PROMOTED_FLACS_COUNT" -eq 0 ]]; then
+  if [[ "$PROMOTED_AUDIO_COUNT" -gt 0 ]]; then
+    err "Promotion produced $PROMOTED_AUDIO_COUNT audio file(s) but zero FLAC masters. Aborting canonical intake."
+  fi
+  err "No FLAC files were promoted in this run. Aborting canonical intake."
 fi
 
 if [[ "$VERBOSE" -eq 1 ]]; then

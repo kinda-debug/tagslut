@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import pytest
+
 from tagslut.metadata.models.types import ProviderTrack
 from tagslut.metadata.source_selection import select_download_source_for_beatport_track
+
+
+pytestmark = pytest.mark.skip(reason="source_selection archived: Beatport retired as download source")
 
 
 def _tidal_track(
@@ -104,4 +109,3 @@ def test_beatport_isrc_multiple_verified_ties_are_ambiguous_and_retain_beatport(
     assert decision.ambiguous is True
     assert decision.winner == "beatport"
     assert decision.winner_reason == "tidal_ambiguous_verified_candidates"
-

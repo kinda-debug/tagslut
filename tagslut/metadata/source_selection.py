@@ -1,8 +1,14 @@
+# ARCHIVED: This module is no longer active.
+# Beatport was retired as an audio download source (2026-03-28).
+# Beatport remains a metadata provider only.
+# This file is kept for historical reference.
+# Do not import from this module in new code.
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 import re
-from typing import Iterable, Optional, Sequence
+from typing import Iterable, Sequence
 
 from tagslut.metadata.models.types import ProviderTrack
 
@@ -325,4 +331,3 @@ def select_download_source_for_beatport_track(
         tidal_match=best,
         ambiguous=False,
     )
-

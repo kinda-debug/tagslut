@@ -6,6 +6,14 @@ All notable changes to this project are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 Versioning: [Semantic Versioning](https://semver.org/)
 
+## [Unreleased] - 2026-03-29
+
+### Added - Auth
+- `tagslut auth logout <provider>` for authenticated providers. `tidal` performs a best-effort server-side logout before clearing local token state; `beatport` clears local token state only.
+
+### Changed - Auth
+- `tagslut auth login <provider>` now exits early when a valid non-expired token already exists and supports `--force` / `-f` to re-authenticate explicitly.
+
 ## [Unreleased] - 2026-03-26
 
 ### Fixed

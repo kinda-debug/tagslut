@@ -65,6 +65,44 @@ poetry run tagslut token-get tidal
 
 Tidal refresh remains managed through the existing `TokenManager` refresh path.
 
+## Auth Command Behavior
+
+### `tagslut auth login <provider>`
+
+Interactively authenticates with the given provider.
+
+- If a valid, non-expired token already exists, exits early with a message. Use `--force` / `-f` to re-authenticate anyway.
+- Supported providers: `tidal`, `beatport`.
+
+```bash
+# Normal login (skips if already authenticated)
+poetry run tagslut auth login tidal
+
+# Force re-authentication
+poetry run tagslut auth login tidal --force
+```
+
+### `tagslut auth logout <provider>`
+
+Clears stored credentials for a provider.
+
+- **tidal**: performs a best-effort server-side token revocation, then always clears local state.
+- **beatport**: clears local token state only (no server-side revocation).
+
+```bash
+poetry run tagslut auth logout tidal
+poetry run tagslut auth logout beatport
+```
+
+### `tagslut auth refresh <provider>`
+
+Refreshes the access token for a provider using the stored refresh token or client credentials.
+
+```bash
+poetry run tagslut auth refresh tidal
+poetry run tagslut auth refresh beatport
+```
+
 ## Precedence Rules
 
 Primary:

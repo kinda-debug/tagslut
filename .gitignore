@@ -301,3 +301,7 @@ postman/*.local.json
 postman/env.postman_environment.json
 env_exports.sh
 postman/environment.json
+
+# Nested repos / vendored tools (must not be committed as part of tagslut)
+Qobuz-AppID-Secret-Tool/
+tt/

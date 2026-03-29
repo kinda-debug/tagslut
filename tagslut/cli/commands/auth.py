@@ -184,24 +184,33 @@ def register_auth_group(cli: click.Group) -> None:
     @auth.command("login")
     @click.argument('provider')
     @click.option('--tokens-path', type=click.Path(), help='Path to tokens.json')
-    def auth_login(provider, tokens_path):  # type: ignore  # TODO: mypy-strict
+    @click.option('--force', '-f', is_flag=True, help='Re-authenticate even if already logged in.')
+    def auth_login(provider, tokens_path, force):  # type: ignore  # TODO: mypy-strict
         """
         Authenticate with a provider interactively.
 
         Supported providers:
         - tidal: Device authorization (opens browser)
         - beatport: Manual token from browser DevTools
+
+        Use --force to re-authenticate even when a valid token already exists.
         """
         from tagslut.metadata.auth import DEFAULT_TOKENS_PATH, TokenManager
+
+        if provider not in {"tidal", "beatport"}:
+            click.echo(f"Error: Unsupported provider '{provider}'. Use tidal or beatport.", err=True)
+            raise SystemExit(1)
 
         path = Path(tokens_path) if tokens_path else DEFAULT_TOKENS_PATH
         token_manager = TokenManager(path)
 
+        if not force:
+            token = token_manager.get_token(provider)
+            if token and token.access_token and not token.is_expired:
+                click.echo(f"Already logged in to {provider}. Use --force to re-authenticate.")
+                return
+
         if provider == 'tidal':
             _tidal_device_login(token_manager)
-
         elif provider == 'beatport':
             _beatport_token_input(token_manager)
-
-        else:
-            click.echo(f"Interactive login not supported for {provider}.")

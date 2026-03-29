@@ -249,6 +249,38 @@ class TokenManager:
             logger.error("Failed to refresh Tidal token: %s", e)
             return None
 
+    def logout_tidal(self) -> None:
+        """
+        Revoke the Tidal access token server-side, then clear locally.
+
+        Mirrors tiddl's logout behaviour. Best-effort: if the revocation
+        request fails (network error, already-expired token), we still
+        clear the local token so the user is not stuck.
+        """
+        access_token = (self._tokens.get("tidal") or {}).get("access_token")
+        if access_token:
+            try:
+                response = httpx.post(
+                    "https://api.tidal.com/v1/logout",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                    timeout=10.0,
+                )
+                if response.status_code not in (200, 204):
+                    logger.warning(
+                        "Tidal server-side logout returned %d; clearing locally anyway",
+                        response.status_code,
+                    )
+            except Exception as e:
+                logger.warning("Tidal server-side logout failed (%s); clearing locally", e)
+
+        # Always clear local token regardless of server result
+        if "tidal" in self._tokens:
+            self._tokens["tidal"].pop("access_token", None)
+            self._tokens["tidal"].pop("refresh_token", None)
+            self._tokens["tidal"].pop("expires_at", None)
+            self._save_tokens()
+        logger.info("Tidal token cleared")
+
     def sync_from_tiddl(self) -> Optional[TokenInfo]:
         """
         Import the current tiddl token from ~/.tiddl/auth.json.

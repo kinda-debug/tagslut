@@ -16,12 +16,9 @@ Start here:
 |------------|----------|----------------------|---------------------------------------------------|
 | Beatport   | Active   | Bearer token/scraping| BPM, key, genre, sub-genre, label, ISRC           |
 | TIDAL      | Active   | Device authorization | Hi-res indicators, lyrics availability            |
-| Qobuz      | Legacy   | Email/password       | Hi-res quality info, genre, label, composer       |
-| Spotify    | Legacy   | Client credentials   | Audio features (energy, danceability), BPM, key   |
-| Apple Music| Future   | Dynamic (auto)       | ISRC, composer, credits, lyrics, classical metadata|
-| iTunes     | Legacy   | None (public API)    | Basic metadata, genre, artwork                    |
+| Qobuz      | Scaffold | TBD (future)         | Metadata/evidence only (off by default)           |
 
-**Note:** Only Beatport and TIDAL are currently active and supported in the enrichment pipeline. Other providers are legacy, historical, or future/aspirational. Do not assume support for Qobuz, Spotify, Apple Music, or iTunes in the current runtime. See `tagslut/metadata/providers/__init__.py` for the active export surface.
+**Note:** Only Beatport and TIDAL are currently active and supported in the enrichment pipeline. Qobuz exists as a scaffold provider and is off by default. See `tagslut/metadata/providers/__init__.py` for the active export surface.
 
 <!-- Future agents: Do not treat legacy/future providers as active without explicit contract change. -->
 
@@ -69,7 +66,5 @@ See `docs/archive/ (historical — see docs/archive/)Beatport Genres and Sub-Gen
 - `auth.py` — token management
 - `providers/` — provider implementations:
   - `beatport.py` — Beatport V4 API + web scraping (returns genre/sub_genre)
-  - `qobuz.py` — Qobuz API
   - `tidal.py` — Tidal API
-  - `apple_music.py` — Apple Music API (dynamic token)
-  - `itunes.py` — iTunes Search API (public)
+  - `qobuz.py` — Qobuz scaffold (off by default)

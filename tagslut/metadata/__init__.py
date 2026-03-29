@@ -3,9 +3,9 @@
 Metadata enrichment package for tagslut.
 
 **Active providers:** Beatport, TIDAL
-**Legacy/future providers:** Qobuz, Spotify, Apple Music, iTunes
+**Scaffold providers (off by default):** Qobuz
 
-Only Beatport and TIDAL are currently active and supported in the enrichment pipeline. Other providers are legacy, historical, or future/aspirational. Do not treat them as active without explicit contract change.
+Only Beatport and TIDAL are currently active and supported in the enrichment pipeline. Qobuz is scaffold-only and off by default. Do not treat it as active without explicit contract change.
 
 This package provides functionality to:
 - Fetch metadata from external providers (Beatport, TIDAL)

@@ -786,7 +786,9 @@ DJ_M3U_DIR="${DJ_PLAYLIST_ROOT:-}"
 PLAYLIST_FILE=""
 MISSING_POLICY="report"
 DJ_ROOT="${DJ_MP3_ROOT:-${DJ_LIBRARY:-}}"
-ENRICH_PROVIDERS="beatport,tidal,deezer,traxsource,musicbrainz"  # Only beatport,tidal are active; others are future/aspirational
+# Metadata enrichment providers (order = priority).
+# Active defaults are Beatport + TIDAL. Qobuz exists as a scaffold provider but is off by default.
+ENRICH_PROVIDERS="beatport,tidal"
 ROON_PLAYLIST_PREFIX="${ROON_PLAYLIST_PREFIX:-}"
 ROON_PLAYLIST_SUFFIX="${ROON_PLAYLIST_SUFFIX:-}"
 DJ_PLAYLIST_PREFIX="${DJ_PLAYLIST_PREFIX:-dj-}"

@@ -1,5 +1,5 @@
-
 #!/bin/bash
+# LEGACY: replaced by tools/get and tools/get-intake. Do not use.
 # dj-download.sh  Download a single DJ track with --dj (enrich mode)
 #
 # LEGACY SCRIPT: Only Beatport and TIDAL are currently supported. Qobuz and Discogs are legacy/historical surfaces and not active.
@@ -78,26 +78,17 @@ echo ""
 
 # Build the tagslut command
 TAGSLUT_CMD="tagslut --dj --url '$URL'"
-
 if [ "$FORCE_DOWNLOAD" = true ]; then
-    echo -e "${YELLOW}[WARNING] --force-download: skipping truncation check${NC}"
-    TAGSLUT_CMD="$TAGSLUT_CMD --force-download"
+    TAGSLUT_CMD="$TAGSLUT_CMD --force"
 fi
 
 echo -e "${BLUE}Running:${NC} $TAGSLUT_CMD"
-echo ""
+eval "$TAGSLUT_CMD"
 
-# Run the download
-if eval "$TAGSLUT_CMD"; then
-    echo -e "${GREEN}✓ Download complete${NC}"
-    echo ""
-
-    # Show what was written to DJ_LIBRARY
-    echo -e "${BLUE}Recent files in $DJ_LIBRARY:${NC}"
-    ls -lhSr "$DJ_LIBRARY" | tail -5
-
-    exit 0
+if [ $? -eq 0 ]; then
+    echo -e "${GREEN}✓ Download and tagging complete${NC}"
 else
     echo -e "${RED}✗ Download failed${NC}"
     exit 1
 fi
+

@@ -374,8 +374,10 @@ def merge_group_by_repointing_assets(
 ) -> MergeResult:
     """Merge one duplicate identity group by repointing asset_link rows."""
     owns_transaction = not conn.in_transaction
-    if owns_transaction:
+    began_transaction = False
+    if owns_transaction and not dry_run:
         conn.execute("BEGIN IMMEDIATE")
+        began_transaction = True
 
     try:
         normalized_losers = _normalize_ids(loser_ids)
@@ -532,11 +534,11 @@ def merge_group_by_repointing_assets(
             rationale=rationale,
             dry_run=bool(dry_run),
         )
-        if owns_transaction:
+        if began_transaction:
             conn.commit()
         return result
     except Exception:
-        if owns_transaction:
+        if began_transaction:
             conn.rollback()
         raise
 

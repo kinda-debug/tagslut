@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import hashlib
 import json
 import sqlite3
@@ -1215,6 +1216,210 @@ def test_non_interactive_missing_out_root_exits_2(db_path: Path) -> None:
     )
     assert result.exit_code == 2
     assert "--out-root is required" in result.output
+
+
+@pytest.mark.integration
+def test_integration_transcode_path_plan_and_execute_artifacts(
+    tmp_path: Path,
+    db_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = open_db(db_path)
+    master_root = tmp_path / "MASTER"
+    source_path = master_root / "transcode_only.flac"
+    source_path.parent.mkdir(parents=True, exist_ok=True)
+    source_path.write_bytes(b"flac")
+
+    insert_track(
+        conn,
+        str(source_path),
+        is_dj_material=1,
+        identity_id=200,
+        artist="Tx Artist",
+        title="Tx Title",
+        genre="House",
+    )
+    conn.commit()
+    conn.close()
+
+    class _Snapshot:
+        bpm = 126.0
+        musical_key = "8A"
+        energy_1_10 = 7
+        bpm_source = "fixture"
+        key_source = "fixture"
+        energy_source = "fixture"
+
+        def as_dict(self) -> dict:
+            return {
+                "bpm": self.bpm,
+                "musical_key": self.musical_key,
+                "energy_1_10": self.energy_1_10,
+            }
+
+    def _fake_resolve_snapshot(
+        _conn: sqlite3.Connection,
+        identity_id: int,
+        run_essentia: bool,
+        dry_run: bool,
+    ) -> _Snapshot:
+        assert identity_id == 200
+        assert run_essentia is True
+        assert dry_run is False
+        return _Snapshot()
+
+    def _fake_transcode(
+        source: Path,
+        _cache_dir: Path,
+        _snapshot: _Snapshot,
+        *,
+        bitrate: int,
+        overwrite: bool,
+        ffmpeg_path: str | None,
+        dest_path: Path | None,
+    ) -> None:
+        assert source == source_path
+        assert bitrate == 320
+        assert overwrite is True
+        assert ffmpeg_path is None
+        assert dest_path is not None
+        dest_path.parent.mkdir(parents=True, exist_ok=True)
+        dest_path.write_bytes(b"mp3-transcoded")
+
+    monkeypatch.setattr(wizard, "resolve_dj_tag_snapshot", _fake_resolve_snapshot)
+    monkeypatch.setattr(wizard, "transcode_to_mp3_from_snapshot", _fake_transcode)
+
+    profile_path = tmp_path / "profile.json"
+    profile_path.write_text(
+        json.dumps(
+            {
+                "pool_name": "transcode-proof",
+                "pool_overwrite_policy": "always",
+                "cache_overwrite_policy": "always",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    plan_out = tmp_path / "plan_out"
+    plan_result = CliRunner().invoke(
+        dj_group,
+        [
+            "pool-wizard",
+            "--db",
+            str(db_path),
+            "--master-root",
+            str(master_root),
+            "--dj-cache-root",
+            str(tmp_path / "DJ"),
+            "--out-root",
+            str(plan_out),
+            "--non-interactive",
+            "--profile",
+            str(profile_path),
+        ],
+    )
+    assert plan_result.exit_code == 0
+    assert "transcode: 1" in plan_result.output
+
+    plan_run_dir = _run_dir(plan_out)
+    assert (plan_run_dir / "selected.csv").exists()
+    assert (plan_run_dir / "plan.csv").exists()
+    assert (plan_run_dir / "pool_manifest.json").exists()
+
+    with (plan_run_dir / "plan.csv").open("r", encoding="utf-8", newline="") as fh:
+        plan_rows = list(csv.DictReader(fh))
+    assert len(plan_rows) == 1
+    assert plan_rows[0]["identity_id"] == "200"
+    assert plan_rows[0]["selected"] == "True"
+    assert plan_rows[0]["cache_action"] == "transcode"
+    assert plan_rows[0]["pool_action"] == "copy_after_transcode"
+
+    exec_out = tmp_path / "exec_out"
+    exec_result = CliRunner().invoke(
+        dj_group,
+        [
+            "pool-wizard",
+            "--db",
+            str(db_path),
+            "--master-root",
+            str(master_root),
+            "--dj-cache-root",
+            str(tmp_path / "DJ"),
+            "--out-root",
+            str(exec_out),
+            "--execute",
+            "--non-interactive",
+            "--profile",
+            str(profile_path),
+        ],
+    )
+    assert exec_result.exit_code == 0
+    assert "executed=1" in exec_result.output
+    assert "failed=0" in exec_result.output
+
+    run_dir = _run_dir(exec_out)
+    for artifact in (
+        "selected.csv",
+        "plan.csv",
+        "pool_manifest.json",
+        "receipts.jsonl",
+        "failures.jsonl",
+    ):
+        assert (run_dir / artifact).exists()
+
+    receipts = [
+        json.loads(line)
+        for line in (run_dir / "receipts.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    failures = [
+        json.loads(line)
+        for line in (run_dir / "failures.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert failures == []
+    assert len(receipts) == 1
+    receipt = receipts[0]
+    assert receipt["cache_action"] == "transcode"
+    assert receipt["pool_action"] == "copy_after_transcode"
+    assert receipt["cache_source_type"] == "none"
+
+    final_dest = Path(receipt["final_dest_path"])
+    assert final_dest.exists()
+    assert final_dest == Path(receipt["final_dest_path"])
+    assert final_dest.is_relative_to(run_dir.resolve())
+    assert not final_dest.is_relative_to(master_root.resolve())
+    assert not final_dest.is_relative_to((tmp_path / "DJ").resolve())
+
+    manifest = json.loads((run_dir / "pool_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["execution_summary"]["selected"] == 1
+    assert manifest["execution_summary"]["executed"] == 1
+    assert manifest["execution_summary"]["failed"] == 0
+    assert len(manifest["rows"]) == 1
+    assert manifest["rows"][0]["status"] == "executed"
+    assert manifest["rows"][0]["final_dest_path"] == receipt["final_dest_path"]
+
+    conn = open_db(db_path)
+    file_row = conn.execute(
+        "SELECT dj_pool_path FROM files WHERE path = ?",
+        (str(source_path),),
+    ).fetchone()
+    event_row = conn.execute(
+        (
+            "SELECT COUNT(*) AS n FROM provenance_event "
+            "WHERE identity_id = ? "
+            "AND event_type = 'dj_export' "
+            "AND status = 'success'"
+        ),
+        (200,),
+    ).fetchone()
+    conn.close()
+
+    assert file_row is not None
+    assert file_row["dj_pool_path"] == receipt["cache_source_path"]
+    assert event_row is not None
+    assert int(event_row["n"]) == 1
 
 
 @pytest.mark.integration

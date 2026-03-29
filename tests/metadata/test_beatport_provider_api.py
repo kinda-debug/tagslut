@@ -8,6 +8,7 @@ from typing import Any
 import httpx
 import pytest
 
+from tagslut.metadata.auth import TokenInfo
 from tagslut.metadata.models.types import MatchConfidence
 from tagslut.metadata.providers.beatport import (
     BeatportAuthError,
@@ -69,6 +70,20 @@ class _StubClient:
         return route
 
 
+class _StubTokenManager:
+    def __init__(self, token: TokenInfo | None) -> None:
+        self._token = token
+        self._tokens: dict[str, dict[str, Any]] = {}
+
+    def ensure_valid_token(self, provider: str) -> TokenInfo | None:
+        assert provider == "beatport"
+        return self._token
+
+    def get_credentials(self, provider: str) -> dict[str, str]:
+        assert provider == "beatport"
+        return {}
+
+
 def _make_provider(
     monkeypatch: pytest.MonkeyPatch,
     routes: dict[tuple[str, str], Any],
@@ -84,6 +99,32 @@ def _make_provider(
     stub = _StubClient(routes)
     provider._client = stub  # type: ignore[assignment]
     return provider, stub
+
+
+def test_auth_config_prefers_token_manager_over_env(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+    monkeypatch.setenv("BEATPORT_ACCESS_TOKEN", "env-token")
+    provider = BeatportProvider(
+        token_manager=_StubTokenManager(
+            TokenInfo(access_token="manager-token", expires_at=4102444800.0)
+        )
+    )
+
+    with caplog.at_level("WARNING"):
+        auth = provider._api_client._auth_config()  # noqa: SLF001
+
+    assert auth.search_bearer_token == "manager-token"
+    assert "environment variable as fallback" not in caplog.text
+
+
+def test_auth_config_warns_when_env_fallback_used(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+    monkeypatch.setenv("BEATPORT_ACCESS_TOKEN", "env-token")
+    provider = BeatportProvider(token_manager=_StubTokenManager(None))
+
+    with caplog.at_level("WARNING"):
+        auth = provider._api_client._auth_config()  # noqa: SLF001
+
+    assert auth.search_bearer_token == "env-token"
+    assert "BEATPORT_ACCESS_TOKEN from environment variable as fallback" in caplog.text
 
 
 def test_search_track_by_isrc_returns_hydrated_tracks(monkeypatch: pytest.MonkeyPatch) -> None:

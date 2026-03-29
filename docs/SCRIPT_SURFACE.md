@@ -136,7 +136,7 @@ Retired in Phase 5 (not operator-facing):
 - tagslut metadata ...
 - tagslut recover ...
 
-Internal hidden commands (`_mgmt`, `_metadata`, `_recover`) may exist for
+Internal hidden commands (`_mgmt`, `_metadata`) may exist for
 code-organization compatibility only. They are implementation details, not
 operator-facing commands.
 
@@ -151,12 +151,8 @@ Use `tagslut intake/index/decide/execute/verify/report/auth/dj/gig/export/init` 
 ## Recovery Command Status
 
 - `tagslut.recovery` is decommissioned and intentionally non-importable.
-- Hidden compatibility shims still exist for old invocations:
-  - `tagslut recovery ...`
-  - `tagslut verify recovery ...`
-  - `tagslut report recovery ...`
-  - `tagslut _recover ...`
-- Those shims are not active recovery functionality. They exist only to fail clearly and point to `legacy/tagslut_recovery/`.
+- Hidden compatibility shims for old recovery invocations were removed from active CLI surface.
+- Recovery remains retired and archived at `legacy/tagslut_recovery/`.
 - Canonical operator path for end-to-end root processing:
   - `tagslut intake process-root --root <folder> [--db <db>]`
 - Current v3-safe `process-root` usage is `identify,enrich,art,promote,dj`; legacy scan phases are blocked when `--db` points at a v3 database.

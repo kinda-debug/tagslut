@@ -40,6 +40,7 @@ from tagslut.metadata.providers.base import (
     RateLimitConfig,
     classify_match_confidence,
 )
+from tagslut.metadata.capabilities import Capability
 
 logger = logging.getLogger("tagslut.metadata.providers.beatport")
 
@@ -436,6 +437,12 @@ class BeatportProvider(AbstractProvider):
 
     name = "beatport"
     supports_isrc_search = True  # Supported via /v4/catalog/tracks/?isrc=
+    capabilities = {
+        Capability.METADATA_FETCH_TRACK_BY_ID,
+        Capability.METADATA_SEARCH_BY_ISRC,
+        Capability.METADATA_SEARCH_BY_TEXT,
+        Capability.METADATA_FETCH_ARTWORK,
+    }
 
     rate_limit_config = RateLimitConfig(
         min_delay=0.5,

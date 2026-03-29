@@ -18,21 +18,30 @@ Primary source of truth: `TokenManager` backed by `~/.config/tagslut/tokens.json
 
 ## Provider Activation Policy (Optional)
 
-Metadata provider activation can be controlled via `~/.config/tagslut/providers.toml` (optional).
+Provider activation can be controlled via `~/.config/tagslut/providers.toml` (optional).
 
-- If the file is missing, defaults remain unchanged: Beatport + TIDAL are enabled.
-- If present, providers with `metadata_enabled = false` are filtered out before enrichment.
+Precedence (highest → lowest):
+- CLI override (future)
+- profile overlay (future)
+- `providers.toml`
+- built-in defaults
 
-Supported keys (Phase 1):
+Defaults when the file is missing:
+- Beatport: `metadata_enabled=true`, `download_enabled=false`
+- TIDAL: `metadata_enabled=true`, `download_enabled=true`
+
+Supported keys (Phase 1 scaffolding):
 
 ```toml
 [providers.beatport]
 metadata_enabled = true
-trust = "secondary" # "dj_primary" | "secondary" | "do_not_use_for_canonical"
+download_enabled = false
+trust = "dj_primary" # "dj_primary" | "secondary" | "do_not_use_for_canonical"
 
 [providers.tidal]
 metadata_enabled = true
-trust = "secondary"
+download_enabled = true
+trust = "dj_primary"
 ```
 
 ## Current Provider Scope

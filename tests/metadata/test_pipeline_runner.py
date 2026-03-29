@@ -32,6 +32,7 @@ def test_run_enrich_all_counts_stats_with_mocked_io() -> None:
             provider_getter=lambda _name: None,
             mode="recovery",
             dry_run=True,
+            router=None,
         )
 
     assert stats.total == 3
@@ -54,6 +55,7 @@ def test_run_enrich_all_logs_checkpoint_intervals() -> None:
                 provider_getter=lambda _name: None,
                 mode="recovery",
                 dry_run=True,
+                router=None,
                 checkpoint_interval=1,
             )
 
@@ -75,6 +77,7 @@ def test_run_enrich_all_handles_keyboard_interrupt_and_returns_partial() -> None
             provider_getter=lambda _name: None,
             mode="recovery",
             dry_run=True,
+            router=None,
         )
 
     assert stats.enriched == 1
@@ -90,6 +93,7 @@ def test_run_enrich_file_statuses_not_found_and_not_eligible() -> None:
             mode="recovery",
             dry_run=True,
             path="/missing.flac",
+            router=None,
         )
     assert result is None
     assert status == "not_found"
@@ -103,6 +107,7 @@ def test_run_enrich_file_statuses_not_found_and_not_eligible() -> None:
             mode="recovery",
             dry_run=True,
             path="/a.flac",
+            router=None,
         )
     assert result is None
     assert status == "not_eligible"
@@ -127,6 +132,7 @@ def test_run_enrich_file_statuses_no_match_and_enriched() -> None:
             mode="recovery",
             dry_run=True,
             path="/x.flac",
+            router=None,
         )
     assert result is not None
     assert status == "no_match"
@@ -145,6 +151,7 @@ def test_run_enrich_file_statuses_no_match_and_enriched() -> None:
             mode="recovery",
             dry_run=True,
             path="/x.flac",
+            router=None,
         )
     assert result is not None
     assert status == "enriched"

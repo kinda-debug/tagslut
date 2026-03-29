@@ -8,6 +8,7 @@ from tagslut.metadata.auth import TokenManager
 from tagslut.metadata.provider_registry import load_provider_activation_config
 from tagslut.metadata.provider_state import (
     format_provider_status_lines,
+    resolve_download_provider_statuses,
     resolve_metadata_provider_statuses,
 )
 
@@ -28,7 +29,7 @@ def register_provider_group(cli: click.Group) -> None:
     def provider_status(config_path: Path | None) -> None:
         activation = load_provider_activation_config(config_path)
         token_manager = TokenManager()
-        statuses = resolve_metadata_provider_statuses(activation=activation, token_manager=token_manager)
-        for line in format_provider_status_lines(statuses):
+        metadata_statuses = resolve_metadata_provider_statuses(activation=activation, token_manager=token_manager)
+        download_statuses = resolve_download_provider_statuses(activation=activation, token_manager=token_manager)
+        for line in format_provider_status_lines(metadata_statuses, download_statuses):
             click.echo(line)
-

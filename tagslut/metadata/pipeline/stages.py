@@ -25,6 +25,8 @@ from tagslut.metadata.models.precedence import (
     ARTWORK_PRECEDENCE,
 )
 from tagslut.metadata.providers.base import classify_match_confidence
+from tagslut.metadata.capabilities import Capability
+from tagslut.metadata.metadata_router import DEFAULT_ISRC_FALLBACK_POLICY, ISRCResolutionFallbackPolicy
 
 logger = logging.getLogger("tagslut.metadata.enricher")
 ISRC_PATTERN = re.compile(r"^[A-Z]{2}[A-Z0-9]{3}[0-9]{7}$")
@@ -59,6 +61,8 @@ def resolve_file(  # type: ignore  # TODO: mypy-strict
     provider_names: List[str],
     provider_getter,
     mode: str,
+    *,
+    router,
 ) -> EnrichmentResult:
     """
     Run the resolution state machine for a single file.
@@ -97,14 +101,15 @@ def resolve_file(  # type: ignore  # TODO: mypy-strict
                     beatport_id = candidate
 
     if beatport_id:
-        provider = provider_getter("beatport")
-        if provider and "beatport" in provider_names:
-            log(f"Trying Beatport track ID: {beatport_id}")
-            track = provider.fetch_by_id(beatport_id)
-            if track:
-                track.match_confidence = MatchConfidence.EXACT
-                matches.append(track)
-                log(f"  beatport: ID match -> {track.title} by {track.artist}")
+        if "beatport" in router.provider_names_for(Capability.METADATA_FETCH_TRACK_BY_ID, log=log):
+            provider = provider_getter("beatport")
+            if provider and "beatport" in provider_names:
+                log(f"Trying Beatport track ID: {beatport_id}")
+                track = provider.fetch_by_id(beatport_id)
+                if track:
+                    track.match_confidence = MatchConfidence.EXACT
+                    matches.append(track)
+                    log(f"  beatport: ID match -> {track.title} by {track.artist}")
 
     # Stage 0b: Beatport release ID/URL (from MP3Tag tags) if available
     if not matches:
@@ -122,24 +127,32 @@ def resolve_file(  # type: ignore  # TODO: mypy-strict
                         release_id = candidate
                         release_slug = parts[-2]
         if release_id:
-            provider = provider_getter("beatport")
-            if provider and "beatport" in provider_names:
-                log(f"Trying Beatport release ID: {release_id}")
-                release_tracks = provider.fetch_release_tracks(release_id, slug=release_slug)
-                if release_tracks and file_info.tag_title:
-                    wanted = normalize_title(file_info.tag_title)
-                    for t in release_tracks:
-                        if t.title and normalize_title(t.title) == wanted:
-                            t.match_confidence = MatchConfidence.EXACT
-                            matches.append(t)
-                            log(f"  beatport: release match -> {t.title} by {t.artist}")
-                            break
+            if "beatport" in router.provider_names_for(Capability.METADATA_FETCH_TRACK_BY_ID, log=log):
+                provider = provider_getter("beatport")
+                if provider and "beatport" in provider_names:
+                    log(f"Trying Beatport release ID: {release_id}")
+                    release_tracks = provider.fetch_release_tracks(release_id, slug=release_slug)
+                    if release_tracks and file_info.tag_title:
+                        wanted = normalize_title(file_info.tag_title)
+                        for t in release_tracks:
+                            if t.title and normalize_title(t.title) == wanted:
+                                t.match_confidence = MatchConfidence.EXACT
+                                matches.append(t)
+                                log(f"  beatport: release match -> {t.title} by {t.artist}")
+                                break
 
     # Stage 1: Try ISRC if available
     normalized_isrc = normalize_isrc(file_info.tag_isrc) if file_info.tag_isrc else None
     if normalized_isrc:
         log(f"Trying ISRC: {normalized_isrc}")
-        for provider_name in provider_names:
+        isrc_providers = router.provider_names_for(Capability.METADATA_SEARCH_BY_ISRC, log=log)
+        if not isrc_providers:
+            if DEFAULT_ISRC_FALLBACK_POLICY == ISRCResolutionFallbackPolicy.PROCEED_UNCERTAIN:
+                result.ingestion_confidence = "uncertain"
+                log("ISRC search unavailable across providers; proceeding with uncertain fallback")
+            else:
+                log("ISRC search unavailable across providers; skipping ISRC stage")
+        for provider_name in [p for p in provider_names if p in isrc_providers]:
             provider = provider_getter(provider_name)
             if provider is None:
                 continue
@@ -157,7 +170,8 @@ def resolve_file(  # type: ignore  # TODO: mypy-strict
         query = f"{file_info.tag_artist} {file_info.tag_title}"
         log(f"Trying text search: {query}")
 
-        for provider_name in provider_names:
+        text_providers = router.provider_names_for(Capability.METADATA_SEARCH_BY_TEXT, log=log)
+        for provider_name in [p for p in provider_names if p in text_providers]:
             provider = provider_getter(provider_name)
             if provider is None:
                 continue
@@ -180,7 +194,8 @@ def resolve_file(  # type: ignore  # TODO: mypy-strict
     # Stage 3: Title-only search as fallback
     if not matches and file_info.tag_title:
         log(f"Trying title-only search: {file_info.tag_title}")
-        for provider_name in provider_names:
+        text_providers = router.provider_names_for(Capability.METADATA_SEARCH_BY_TEXT, log=log)
+        for provider_name in [p for p in provider_names if p in text_providers]:
             provider = provider_getter(provider_name)
             if provider is None:
                 continue
@@ -213,6 +228,8 @@ def resolve_file(  # type: ignore  # TODO: mypy-strict
             query = f"{file_info.tag_artist} {file_info.tag_title}"
             log(f"Hoarding gap-fill: text search on {missing_providers}")
             for provider_name in missing_providers:
+                if provider_name not in router.provider_names_for(Capability.METADATA_SEARCH_BY_TEXT, log=log):
+                    continue
                 provider = provider_getter(provider_name)
                 if provider is None:
                     continue

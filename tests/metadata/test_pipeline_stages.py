@@ -8,6 +8,15 @@ from tagslut.metadata.pipeline import stages
 
 
 @dataclass
+class PassthroughRouter:
+    provider_names: List[str]
+
+    def provider_names_for(self, _capability, *, log=None):  # type: ignore[no-untyped-def]  # test stub
+        _ = log
+        return list(self.provider_names)
+
+
+@dataclass
 class FakeProvider:
     id_result: Optional[ProviderTrack] = None
     release_results: Optional[List[ProviderTrack]] = None
@@ -51,7 +60,13 @@ def test_resolve_file_stage0_beatport_track_id_match() -> None:
     providers = {"beatport": FakeProvider(id_result=beatport_track)}
 
     info = LocalFileInfo(path="/music/a.flac", beatport_id="123")
-    result = stages.resolve_file(info, ["beatport"], _provider_getter(providers), mode="recovery")
+    result = stages.resolve_file(
+        info,
+        ["beatport"],
+        _provider_getter(providers),
+        mode="recovery",
+        router=PassthroughRouter(["beatport"]),
+    )
 
     assert len(result.matches) == 1
     assert result.matches[0].service == "beatport"
@@ -70,7 +85,13 @@ def test_resolve_file_stage0b_release_id_title_matching() -> None:
         tag_title="My Song (Original Mix)",
     )
 
-    result = stages.resolve_file(info, ["beatport"], _provider_getter(providers), mode="recovery")
+    result = stages.resolve_file(
+        info,
+        ["beatport"],
+        _provider_getter(providers),
+        mode="recovery",
+        router=PassthroughRouter(["beatport"]),
+    )
 
     assert len(result.matches) == 1
     assert result.matches[0].service_track_id == "r2"
@@ -86,7 +107,13 @@ def test_resolve_file_stage1_isrc_across_providers() -> None:
     }
     info = LocalFileInfo(path="/music/c.flac", tag_isrc="USABC1234567")
 
-    result = stages.resolve_file(info, ["beatport", "tidal"], _provider_getter(providers), mode="recovery")
+    result = stages.resolve_file(
+        info,
+        ["beatport", "tidal"],
+        _provider_getter(providers),
+        mode="recovery",
+        router=PassthroughRouter(["beatport", "tidal"]),
+    )
 
     services = {m.service for m in result.matches}
     assert services == {"beatport", "tidal"}
@@ -97,7 +124,13 @@ def test_resolve_file_stage2_text_search_fallback(monkeypatch) -> None:
     info = LocalFileInfo(path="/music/d.flac", tag_artist="Artist", tag_title="Track", measured_duration_s=240.0)
     monkeypatch.setattr(stages, "classify_match_confidence", lambda *args, **kwargs: MatchConfidence.STRONG)
 
-    result = stages.resolve_file(info, ["deezer"], _provider_getter(providers), mode="recovery")
+    result = stages.resolve_file(
+        info,
+        ["deezer"],
+        _provider_getter(providers),
+        mode="recovery",
+        router=PassthroughRouter(["deezer"]),
+    )
 
     assert len(result.matches) == 1
     assert result.matches[0].service == "deezer"
@@ -109,7 +142,13 @@ def test_resolve_file_stage3_title_only_fallback(monkeypatch) -> None:
     info = LocalFileInfo(path="/music/e.flac", tag_title="Track", measured_duration_s=240.0)
     monkeypatch.setattr(stages, "classify_match_confidence", lambda *args, **kwargs: MatchConfidence.MEDIUM)
 
-    result = stages.resolve_file(info, ["traxsource"], _provider_getter(providers), mode="recovery")
+    result = stages.resolve_file(
+        info,
+        ["traxsource"],
+        _provider_getter(providers),
+        mode="recovery",
+        router=PassthroughRouter(["traxsource"]),
+    )
 
     assert len(result.matches) == 1
     assert result.matches[0].service_track_id == "tx1"

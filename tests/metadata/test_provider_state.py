@@ -9,7 +9,11 @@ from tagslut.metadata.provider_registry import (
     ProviderActivationConfig,
     ProviderPolicy,
 )
-from tagslut.metadata.provider_state import ProviderState, resolve_provider_status
+from tagslut.metadata.provider_state import (
+    ProviderState,
+    resolve_download_provider_status,
+    resolve_provider_status,
+)
 
 
 def _tm(tmp_path: Path, tokens: dict) -> TokenManager:
@@ -30,7 +34,7 @@ def test_beatport_enabled_degraded_public_only_when_no_token(tmp_path: Path) -> 
 
 def test_beatport_disabled_by_policy(tmp_path: Path) -> None:
     tm = _tm(tmp_path, {"beatport": {"access_token": "a1"}})
-    activation = ProviderActivationConfig(beatport=ProviderPolicy(metadata_enabled=False))
+    activation = ProviderActivationConfig(beatport=ProviderPolicy(metadata_enabled=False, download_enabled=False))
     status = resolve_provider_status("beatport", activation=activation, token_manager=tm)
 
     assert status.state == ProviderState.disabled
@@ -92,3 +96,11 @@ def test_subscription_inactive_is_not_emitted_without_probe(tmp_path: Path) -> N
 
     assert status.state != ProviderState.enabled_subscription_inactive
 
+
+def test_beatport_download_disabled_by_default(tmp_path: Path) -> None:
+    tm = _tm(tmp_path, {})
+    activation = ProviderActivationConfig()
+    status = resolve_download_provider_status("beatport", activation=activation, token_manager=tm)
+
+    assert status.state == ProviderState.disabled
+    assert status.download_usable is False

@@ -34,6 +34,7 @@ ProviderTrust = Literal["dj_primary", "secondary", "do_not_use_for_canonical"]
 @dataclass(frozen=True)
 class ProviderPolicy:
     metadata_enabled: bool = True
+    download_enabled: bool = False
     # Default trust for authoritative providers (beatport, tidal) is "dj_primary".
     # Use "secondary" or "do_not_use_for_canonical" explicitly in providers.toml for
     # non-authoritative providers (e.g. qobuz before corroboration is established).
@@ -42,8 +43,8 @@ class ProviderPolicy:
 
 @dataclass(frozen=True)
 class ProviderActivationConfig:
-    beatport: ProviderPolicy = ProviderPolicy()
-    tidal: ProviderPolicy = ProviderPolicy()
+    beatport: ProviderPolicy = ProviderPolicy(download_enabled=False)
+    tidal: ProviderPolicy = ProviderPolicy(download_enabled=True)
 
 
 DEFAULT_ACTIVE_PROVIDERS = ["beatport", "tidal"]
@@ -86,10 +87,12 @@ def load_provider_activation_config(path: Path | None = None) -> ProviderActivat
 
     beatport_policy = ProviderPolicy(
         metadata_enabled=bool(beatport_section.get("metadata_enabled", True)),
+        download_enabled=bool(beatport_section.get("download_enabled", False)),
         trust=_parse_trust(beatport_section.get("trust"), provider="beatport"),
     )
     tidal_policy = ProviderPolicy(
         metadata_enabled=bool(tidal_section.get("metadata_enabled", True)),
+        download_enabled=bool(tidal_section.get("download_enabled", True)),
         trust=_parse_trust(tidal_section.get("trust"), provider="tidal"),
     )
 
@@ -119,6 +122,31 @@ def resolve_active_metadata_providers(
     if cfg.beatport.metadata_enabled:
         enabled.add("beatport")
     if cfg.tidal.metadata_enabled:
+        enabled.add("tidal")
+
+    return [name for name in base if name in enabled]
+
+
+def resolve_active_download_providers(
+    requested: list[str] | None = None,
+    *,
+    config: ProviderActivationConfig | None = None,
+) -> list[str]:
+    """
+    Resolve the ordered list of download providers to use.
+
+    This is policy-only scaffolding for now (no download routing is implemented here).
+    """
+    base = requested or list(DEFAULT_ACTIVE_PROVIDERS)
+
+    for name in base:
+        get_provider_class(name)
+
+    cfg = config or ProviderActivationConfig()
+    enabled: set[str] = set()
+    if cfg.beatport.download_enabled:
+        enabled.add("beatport")
+    if cfg.tidal.download_enabled:
         enabled.add("tidal")
 
     return [name for name in base if name in enabled]

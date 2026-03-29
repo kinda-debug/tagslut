@@ -25,3 +25,5 @@ def test_provider_status_command_accepts_config_path(tmp_path: Path) -> None:
     assert result.exit_code == 0, result.output
     assert "beatport" in result.output
     assert "tidal" in result.output
+    assert "metadata_enabled=" in result.output
+    assert "download_enabled=" in result.output

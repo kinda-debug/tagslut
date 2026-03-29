@@ -35,6 +35,7 @@ from tagslut.metadata.models.types import (
     TidalSeedRow,
 )
 from tagslut.metadata.providers.base import AbstractProvider, RateLimitConfig, classify_match_confidence
+from tagslut.metadata.capabilities import Capability
 
 logger = logging.getLogger("tagslut.metadata.providers.tidal")
 
@@ -59,6 +60,13 @@ class TidalProvider(AbstractProvider):
 
     name = "tidal"
     supports_isrc_search = True
+    capabilities = {
+        Capability.METADATA_FETCH_TRACK_BY_ID,
+        Capability.METADATA_SEARCH_BY_ISRC,
+        Capability.METADATA_SEARCH_BY_TEXT,
+        Capability.METADATA_EXPORT_PLAYLIST_SEED,
+        Capability.METADATA_FETCH_ARTWORK,
+    }
 
     rate_limit_config = RateLimitConfig(
         min_delay=0.4,

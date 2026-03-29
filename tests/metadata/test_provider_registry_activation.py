@@ -11,6 +11,7 @@ from tagslut.metadata.provider_registry import (
     ProviderPolicy,
     load_provider_activation_config,
     resolve_active_metadata_providers,
+    resolve_active_download_providers,
 )
 
 
@@ -35,6 +36,7 @@ def test_disabled_provider_is_filtered_out(tmp_path: Path) -> None:
             [
                 "[providers.tidal]",
                 "metadata_enabled = false",
+                "download_enabled = false",
                 "",
             ]
         ),
@@ -47,10 +49,29 @@ def test_disabled_provider_is_filtered_out(tmp_path: Path) -> None:
 
 def test_requested_order_respected_after_filtering() -> None:
     cfg = ProviderActivationConfig(
-        beatport=ProviderPolicy(metadata_enabled=False),
-        tidal=ProviderPolicy(metadata_enabled=True),
+        beatport=ProviderPolicy(metadata_enabled=False, download_enabled=False),
+        tidal=ProviderPolicy(metadata_enabled=True, download_enabled=True),
     )
     assert resolve_active_metadata_providers(["tidal", "beatport"], config=cfg) == ["tidal"]
+
+
+def test_download_defaults_and_filtering(tmp_path: Path) -> None:
+    cfg = load_provider_activation_config(tmp_path / "missing.toml")
+    assert resolve_active_download_providers(config=cfg) == ["tidal"]
+
+    config_path = tmp_path / "providers.toml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "[providers.tidal]",
+                "download_enabled = false",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    cfg2 = load_provider_activation_config(config_path)
+    assert resolve_active_download_providers(config=cfg2) == []
 
 
 def test_enricher_filters_providers_via_config(tmp_path: Path) -> None:

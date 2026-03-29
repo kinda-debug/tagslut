@@ -43,6 +43,18 @@ class ProviderStatus:
     metadata_usable: bool
 
 
+@dataclass(frozen=True)
+class DownloadProviderStatus:
+    provider: str
+    download_enabled: bool
+    trust: ProviderTrust
+    state: ProviderState
+    has_access_token: bool
+    has_refresh_token: bool
+    is_expired: Optional[bool]
+    download_usable: bool
+
+
 def _get_raw_provider_data(token_manager: TokenManager, provider: str) -> dict[str, Any]:
     data = getattr(token_manager, "_tokens", {}).get(provider, {})
     return data if isinstance(data, dict) else {}
@@ -185,22 +197,144 @@ def resolve_metadata_provider_statuses(
     }
 
 
-def format_provider_status_lines(statuses: dict[str, ProviderStatus]) -> list[str]:
+def resolve_download_provider_status(
+    provider: str,
+    *,
+    activation: ProviderActivationConfig,
+    token_manager: TokenManager,
+) -> DownloadProviderStatus:
+    if provider == "beatport":
+        policy = activation.beatport
+    elif provider == "tidal":
+        policy = activation.tidal
+    else:
+        raise ValueError(f"Unknown provider: {provider}")
+
+    if not policy.download_enabled:
+        return DownloadProviderStatus(
+            provider=provider,
+            download_enabled=False,
+            trust=policy.trust,
+            state=ProviderState.disabled,
+            has_access_token=False,
+            has_refresh_token=False,
+            is_expired=None,
+            download_usable=False,
+        )
+
+    raw = _get_raw_provider_data(token_manager, provider)
+    has_refresh = bool(raw.get("refresh_token"))
+
+    token = _get_token(token_manager, provider)
+    has_access = bool(token and token.access_token)
+    is_expired = token.is_expired if token else None
+
+    if provider == "beatport":
+        return DownloadProviderStatus(
+            provider=provider,
+            download_enabled=True,
+            trust=policy.trust,
+            state=ProviderState.enabled_unconfigured,
+            has_access_token=has_access,
+            has_refresh_token=has_refresh,
+            is_expired=is_expired,
+            download_usable=True,
+        )
+
+    # tidal download is auth-gated
+    if has_access and not is_expired:
+        return DownloadProviderStatus(
+            provider=provider,
+            download_enabled=True,
+            trust=policy.trust,
+            state=ProviderState.enabled_authenticated,
+            has_access_token=True,
+            has_refresh_token=has_refresh,
+            is_expired=False,
+            download_usable=True,
+        )
+
+    if (has_access and is_expired) and has_refresh:
+        return DownloadProviderStatus(
+            provider=provider,
+            download_enabled=True,
+            trust=policy.trust,
+            state=ProviderState.enabled_expired_refreshable,
+            has_access_token=True,
+            has_refresh_token=True,
+            is_expired=True,
+            download_usable=True,
+        )
+
+    if has_refresh:
+        return DownloadProviderStatus(
+            provider=provider,
+            download_enabled=True,
+            trust=policy.trust,
+            state=ProviderState.enabled_configured_unauthenticated,
+            has_access_token=False,
+            has_refresh_token=True,
+            is_expired=None,
+            download_usable=True,
+        )
+
+    if has_access and is_expired:
+        return DownloadProviderStatus(
+            provider=provider,
+            download_enabled=True,
+            trust=policy.trust,
+            state=ProviderState.enabled_expired_unrefreshable,
+            has_access_token=True,
+            has_refresh_token=False,
+            is_expired=True,
+            download_usable=False,
+        )
+
+    return DownloadProviderStatus(
+        provider=provider,
+        download_enabled=True,
+        trust=policy.trust,
+        state=ProviderState.enabled_unconfigured,
+        has_access_token=False,
+        has_refresh_token=False,
+        is_expired=None,
+        download_usable=False,
+    )
+
+
+def resolve_download_provider_statuses(
+    *,
+    activation: ProviderActivationConfig,
+    token_manager: TokenManager,
+) -> dict[str, DownloadProviderStatus]:
+    return {
+        "beatport": resolve_download_provider_status("beatport", activation=activation, token_manager=token_manager),
+        "tidal": resolve_download_provider_status("tidal", activation=activation, token_manager=token_manager),
+    }
+
+
+def format_provider_status_lines(
+    metadata_statuses: dict[str, ProviderStatus],
+    download_statuses: dict[str, DownloadProviderStatus],
+) -> list[str]:
     lines: list[str] = []
     for name in ("beatport", "tidal"):
-        s = statuses[name]
+        s = metadata_statuses[name]
+        d = download_statuses[name]
         lines.append(
             " ".join(
                 [
                     f"{s.provider}",
-                    f"state={s.state.value}",
-                    f"enabled={str(s.metadata_enabled).lower()}",
+                    f"metadata_state={s.state.value}",
+                    f"metadata_enabled={str(s.metadata_enabled).lower()}",
+                    f"download_state={d.state.value}",
+                    f"download_enabled={str(d.download_enabled).lower()}",
                     f"trust={s.trust}",
                     f"access={'yes' if s.has_access_token else 'no'}",
                     f"refresh={'yes' if s.has_refresh_token else 'no'}",
-                    f"usable={'yes' if s.metadata_usable else 'no'}",
+                    f"metadata_usable={'yes' if s.metadata_usable else 'no'}",
+                    f"download_usable={'yes' if d.download_usable else 'no'}",
                 ]
             )
         )
     return lines
-

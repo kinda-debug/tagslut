@@ -37,12 +37,14 @@ from tagslut.metadata.models.types import (
 )
 from tagslut.metadata.auth import TokenManager
 from tagslut.metadata.providers.base import AbstractProvider as BaseProvider
+from tagslut.metadata.capabilities import Capability
 from tagslut.metadata.provider_registry import (
     DEFAULT_ACTIVE_PROVIDERS,
     get_provider_class,
     load_provider_activation_config,
     resolve_active_metadata_providers,
 )
+from tagslut.metadata.metadata_router import MetadataRouter
 from tagslut.metadata.pipeline import runner, stages
 from tagslut.metadata.store import db_reader, db_writer
 
@@ -84,10 +86,16 @@ class Enricher:
         self.db_path = db_path
         self.token_manager = token_manager or TokenManager()
         activation = load_provider_activation_config(providers_config_path)
+        self.provider_activation = activation
         requested = providers or DEFAULT_ACTIVE_PROVIDERS
         self.provider_names = resolve_active_metadata_providers(requested, config=activation)
         self.dry_run = dry_run
         self.mode = mode
+        self.router = MetadataRouter(
+            provider_names=self.provider_names,
+            activation=self.provider_activation,
+            token_manager=self.token_manager,
+        )
 
         # Initialize providers
         self._providers: Dict[str, BaseProvider] = {}
@@ -244,6 +252,8 @@ class Enricher:
 
     def export_tidal_seed_csv(self, playlist_url: str, output_csv: Path) -> TidalSeedExportStats:
         """Export one stable TIDAL playlist seed CSV."""
+        if "tidal" not in self.router.provider_names_for(Capability.METADATA_EXPORT_PLAYLIST_SEED):
+            raise RuntimeError("TIDAL playlist seed export unavailable (provider disabled or unauthenticated)")
         provider = self._get_provider("tidal")
         if provider is None or not hasattr(provider, "export_playlist_seed_rows"):
             raise RuntimeError("TIDAL provider is unavailable for playlist seed export")
@@ -418,6 +428,7 @@ class Enricher:
             self.provider_names,
             self._get_provider,
             self.mode,
+            router=self.router,
         )
 
     def update_database(self, result: EnrichmentResult) -> bool:
@@ -474,6 +485,7 @@ class Enricher:
             self._get_provider,
             self.mode,
             self.dry_run,
+            router=self.router,
             path_pattern=path_pattern,
             limit=limit,
             force=force,
@@ -503,6 +515,7 @@ class Enricher:
             self.mode,
             self.dry_run,
             path,
+            router=self.router,
             force=force,
             retry_no_match=retry_no_match,
         )

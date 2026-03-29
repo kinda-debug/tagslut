@@ -165,6 +165,9 @@ class EnrichmentResult:
     # Resolution log for debugging
     log: List[str] = field(default_factory=list)
 
+    # V3 identity ingestion confidence hint (optional)
+    ingestion_confidence: Optional[str] = None
+
 
 @dataclass
 class LocalFileInfo:

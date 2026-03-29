@@ -32,6 +32,8 @@ def run_enrich_all(  # type: ignore  # TODO: mypy-strict
     provider_getter,
     mode: str,
     dry_run: bool,
+    *,
+    router,
     path_pattern: Optional[str] = None,
     limit: Optional[int] = None,
     force: bool = False,
@@ -87,7 +89,7 @@ def run_enrich_all(  # type: ignore  # TODO: mypy-strict
 
             try:
                 # Resolve and enrich
-                result = stages.resolve_file(file_info, provider_names, provider_getter, mode)
+                result = stages.resolve_file(file_info, provider_names, provider_getter, mode, router=router)
 
                 if not result.matches:
                     stats.no_match += 1
@@ -143,6 +145,7 @@ def run_enrich_file(  # type: ignore  # TODO: mypy-strict
     dry_run: bool,
     path: str,
     *,
+    router,
     force: bool = False,
     retry_no_match: bool = False,
 ) -> tuple[Optional[EnrichmentResult], str]:
@@ -171,7 +174,7 @@ def run_enrich_file(  # type: ignore  # TODO: mypy-strict
                 return None, "not_eligible"
 
     file_info = db_reader.row_to_local_file_info(row)
-    result = stages.resolve_file(file_info, provider_names, provider_getter, mode)
+    result = stages.resolve_file(file_info, provider_names, provider_getter, mode, router=router)
 
     if not result.matches:
         db_writer.mark_no_match(db_path, file_info.path, dry_run)

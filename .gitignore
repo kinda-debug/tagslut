@@ -306,3 +306,5 @@ postman/environment.json
 Qobuz-AppID-Secret-Tool/
 tt/
 postman/tagslut-api.postman_collection.json
+sync_tokens_to_postman_env.sh
+postman/environment.json

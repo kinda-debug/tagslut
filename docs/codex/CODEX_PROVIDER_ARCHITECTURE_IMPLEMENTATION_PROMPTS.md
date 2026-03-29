@@ -49,10 +49,16 @@ Tasks:
    - future/provider-expansion aspirations
 3. Do not invent new architecture docs yet.
 4. Do not modify provider behavior, auth logic, CLI behavior, or DB schema.
-5. If dj-download.sh is clearly stale relative to current supported entrypoints, either:
+5. In `tools/get-intake`, locate the `ENRICH_PROVIDERS` default variable. If it lists provider
+   names that are not exported by `tagslut/metadata/providers/__init__.py`, add a comment marking
+   those names as future/aspirational so operators do not assume they are functional.
+6. In `tagslut/cli/commands/index.py`, find any help text that references Qobuz or other non-active
+   providers in a way that implies current support. Align those strings with contract scope by
+   labelling them explicitly as "future/optional" or removing the specific provider names.
+7. If dj-download.sh is clearly stale relative to current supported entrypoints, either:
    - rewrite its messaging to state it is legacy and unsupported, or
    - move it toward archival status with minimal safe edits
-6. Add concise notes where needed to prevent future agents from treating stale surfaces as normative.
+8. Add concise notes where needed to prevent future agents from treating stale surfaces as normative.
 
 Deliverables:
 - corrected docs/scripts only
@@ -114,7 +120,16 @@ Implement:
    - metadata only
    - no download role yet
    - only beatport and tidal entries
-5. Example activation semantics for this PR:
+5. Canonical key names for this PR (use these exactly — Prompt 5 extends them):
+   - `providers.beatport.metadata_enabled = true|false`
+   - `providers.tidal.metadata_enabled = true|false`
+   - `providers.beatport.trust = "dj_primary" | "secondary" | "do_not_use_for_canonical"`
+   - `providers.tidal.trust = "dj_primary" | "secondary" | "do_not_use_for_canonical"`
+   Note: `trust` is NOT a routing weight. It is the operator-declared signal that gates
+   whether a provider's ID may be promoted into `track_identity` identity keys. A provider
+   with `trust = "do_not_use_for_canonical"` must never contribute to identity key derivation
+   even if its credentials are valid and it is enabled for metadata.
+6. Example activation semantics for this PR:
    - if no providers.toml exists, both beatport and tidal are considered enabled
    - if config exists, disabled providers are filtered out before Enricher provider creation
    - --providers ordering still applies, but only across enabled providers
@@ -170,6 +185,15 @@ Context:
 The repo currently conflates “credentials exist” with “provider usable”.
 We need a stable state model layered above tokens.json.
 
+IMPORTANT pre-condition before writing the state machine:
+The provider matching contract (docs/contracts/provider_matching.md) describes TIDAL using OAuth 2.1
+Authorization Code + PKCE. The current TokenManager implementation uses a device-authorization style
+flow. Read both before implementing. Document the exact delta in a code comment at the top of
+provider_state.py. The state machine must reflect actual TokenManager behavior, not the contract's
+aspirations. If the two diverge in a way that affects enabled_expired_refreshable vs
+enabled_expired_unrefreshable transition logic, note it explicitly as a follow-up item — do not
+silently paper over it.
+
 Implement:
 1. New provider-state module, for example:
    - tagslut/metadata/provider_state.py
@@ -181,6 +205,9 @@ Implement:
    - enabled_expired_refreshable
    - enabled_expired_unrefreshable
    - enabled_degraded_public_only
+   - enabled_subscription_inactive  (token valid, but entitlement probe confirms subscription lapsed;
+     only emit this state when the provider has a validated entitlement probe — do NOT emit it
+     as a guess; fall back to enabled_authenticated if probe is unavailable or unvalidated)
 3. State resolution must combine:
    - activation config
    - TokenManager status
@@ -219,7 +246,8 @@ Tests required:
 3. valid token state
 4. expired token state
 5. Beatport no-token public-fallback state
-6. status output snapshot or deterministic assertions
+6. enabled_subscription_inactive NOT emitted when no entitlement probe is available
+7. status output snapshot or deterministic assertions
 
 Verification:
 Run targeted tests and manually exercise:
@@ -262,6 +290,12 @@ Minimum capabilities:
    - metadata.search_by_isrc
    - metadata.search_by_text
    - metadata.export_playlist_seed
+   - metadata.fetch_artwork
+   - auth.refresh
+   - auth.validate_credentials
+Note: fetch_artwork is currently invoked ad hoc inside provider internals and is not
+activation-gated. Declaring it as a named capability makes it routeable and enables
+the router to skip providers that are enabled but have no artwork access.
 2. Each provider must declare which capabilities it supports in principle.
 3. Availability must be resolved dynamically from provider state.
 Examples:
@@ -288,6 +322,18 @@ Do not:
 - modify DB schema
 - change track_identity rules
 
+IMPORTANT — define this before tests are written:
+When a pipeline stage requests search_by_isrc and no provider can satisfy it (e.g., Beatport is the
+only configured provider and it is in degraded/public mode), the router must emit a deterministic
+result from one of exactly three options:
+  a) block — raise an exception and halt the pipeline stage
+  b) proceed-with-uncertain — continue, set ingestion_confidence = 'uncertain' on the identity row
+  c) skip — skip this enrichment step, leave field unset, log reason
+Pick option (b) as the default for metadata-only ISRC resolution failures, consistent with the
+pipeline's existing behavior (missing tags should not block promotion). Implement this as a named
+policy constant (e.g., ISRCResolutionFallbackPolicy.PROCEED_UNCERTAIN) so it can be changed
+without editing routing logic.
+
 Tests required:
 1. Beatport search_by_text available in degraded/public mode
 2. Beatport search_by_isrc unavailable without auth
@@ -296,6 +342,7 @@ Tests required:
 5. router skips disabled provider
 6. deterministic failure when no provider can satisfy capability
 7. regression coverage that current default provider order still works
+8. ISRC resolution failure in degraded mode yields ingestion_confidence = 'uncertain', not exception
 
 Deliverables:
 - capability model
@@ -334,11 +381,16 @@ Read first:
 8. tagslut/metadata/enricher.py
 
 Implement:
-1. Extend providers.toml schema from metadata-only to per-role activation:
-   - providers.beatport.metadata_enabled
-   - providers.beatport.download_enabled
-   - providers.tidal.metadata_enabled
-   - providers.tidal.download_enabled
+1. Extend providers.toml schema from metadata-only to per-role activation.
+   Use these exact key names — they are the canonical names established in Prompt 2 and must be
+   consistent across all config parsing, status output, and test fixtures:
+   - providers.beatport.metadata_enabled = true|false
+   - providers.beatport.download_enabled = true|false
+   - providers.beatport.trust = "dj_primary" | "secondary" | "do_not_use_for_canonical"
+   - providers.tidal.metadata_enabled = true|false
+   - providers.tidal.download_enabled = true|false
+   - providers.tidal.trust = "dj_primary" | "secondary" | "do_not_use_for_canonical"
+   Do NOT use shortened forms (metadata/download without _enabled suffix) or alternate casing.
 2. Keep Qobuz out of runtime for now, but design schema so qobuz can be added later cleanly.
 3. Introduce role-aware registry concepts:
    - metadata provider activation
@@ -418,9 +470,16 @@ Minimum acceptable first-pass capabilities:
 Optional only if actually validated:
    - metadata.search_by_isrc
 4. Qobuz provider should be feature-flagged or activation-gated off by default.
-5. If any provenance/evidence write path exists for provider payloads, route Qobuz there first.
+5. Write all Qobuz metadata and evidence to library_track_sources using this exact write contract:
+     (identity_key, provider='qobuz', provider_track_id=<id>, source_url, raw_payload_json, metadata_json)
+   Do NOT create a new table or a parallel evidence store. library_track_sources is the designated
+   home for non-authoritative provider evidence.
 6. Do not write qobuz_id into track_identity as a default identity key mechanism.
-7. If you need a safe rule, only allow Qobuz ID promotion into identity-linked fields when corroborated by stronger evidence such as ISRC plus agreement with an authoritative provider.
+7. Only allow Qobuz ID promotion into track_identity.qobuz_id when ALL of the following are true:
+   - ISRC is present and matches between Qobuz and at least one authoritative provider
+   - The corroborating provider has trust != 'do_not_use_for_canonical'
+   - No existing qobuz_id conflict exists in track_identity (the column has a uniqueness constraint
+     for active rows — a duplicate write produces a hard constraint violation, not a soft conflict)
 8. Add explicit warnings/logging for tentative or unvalidated Qobuz capabilities.
 9. Update docs to state clearly:
    - Qobuz runtime scaffold exists
@@ -433,7 +492,16 @@ Tests required:
 2. Qobuz does not route when disabled
 3. enabling Qobuz metadata exposes only implemented capabilities
 4. identity service behavior unchanged for identical pre-existing Beatport/TIDAL cases
-5. Qobuz cannot become identity key source by accident
+5. Qobuz cannot become identity key source by accident:
+   a) attempt to write a qobuz_id to track_identity WITHOUT corroboration — assert it is rejected
+      at the application layer before the DB is touched
+   b) attempt to write a DUPLICATE qobuz_id to track_identity — assert the SQLite uniqueness
+      constraint fires and the error is caught and logged, not silently swallowed
+6. library_track_sources write: assert the correct fields are present and raw_payload_json is valid JSON
+7. Attempt to write a duplicate qobuz_id to track_identity directly (bypassing the
+   library_track_sources path) and assert the DB uniqueness constraint fires before any
+   application-level guard is reached. This test proves the schema is the last line of defense,
+   not just the application code.
 
 Commit message:
 feat(qobuz): add identity-safe provider scaffold off by default
@@ -449,5 +517,297 @@ feat(qobuz): add identity-safe provider scaffold off by default
 4. Prompt 4
 5. Prompt 5
 6. Prompt 6
+7. Prompt 7
+8. Prompt 8
 
-If you want the safest path, stop after Prompt 4, evaluate, then decide whether to land Prompt 5 and Prompt 6.
+If you want the safest path, stop after Prompt 4, evaluate, then decide whether to land Prompt 5 and 6.
+Stop again after Prompt 6. Prompts 7 and 8 require Qobuz to be operationally validated in staging
+before download integration proceeds.
+
+---
+
+## Prompt 7 — Qobuz and Beatport download provider adapters (Phase 5)
+
+```text
+You are an expert Python engineer working in the tagslut repository.
+
+Goal:
+Implement DownloadProvider adapters for Qobuz (primary) and optionally Beatport (secondary),
+activation-controlled, without replacing the existing TIDAL/tiddl acquisition path.
+
+Pre-requisites that must be confirmed complete before starting this prompt:
+- Prompt 6 (Qobuz scaffold) is merged and on dev
+- Qobuz metadata integration has been operationally validated in staging (at least one real
+  track enriched successfully via Qobuz metadata path)
+- Operator has confirmed Qobuz account purchase-download workflow is accessible
+
+Read first:
+1. docs/contracts/metadata_architecture.md
+2. docs/DOWNLOAD_STRATEGY.md
+3. tagslut/metadata/provider_registry.py
+4. tagslut/metadata/provider_state.py
+5. tools/get
+6. tools/get-intake
+7. tagslut/storage/v3/schema.py (specifically asset_file.download_source)
+
+Context:
+- Today TIDAL download is implemented as an external wrapper (tools/tiddl) called by tools/get-intake.
+- Beatport downloads are explicitly rejected in tools/get as retired.
+- Qobuz supports DRM-free purchased downloads via official store workflow.
+- asset_file.download_source already exists as the acquisition provider field.
+
+Implement:
+1. Define a DownloadProvider protocol/ABC:
+   - download_track(isrc: str, dest_dir: Path) -> DownloadResult
+   - download_release(release_id: str, dest_dir: Path) -> list[DownloadResult]
+   - DownloadResult must carry: file_path, provider, provider_track_id, format, download_source
+2. Implement QobuzDownloadProvider wrapping the official Qobuz purchase-download workflow.
+   - Must set asset_file.download_source = 'qobuz' on the resulting file row
+   - Must NOT touch track_identity.qobuz_id unless Prompt 6 corroboration rules are satisfied
+   - DRM-free formats only; reject DRM-encumbered responses with a clear error
+3. Implement BeatportDownloadProvider as a minimal stub (raise NotImplementedError with
+   a clear message) unless the Beatport store download workflow has been validated in the
+   current session. Do not implement a broken download path silently.
+4. Wire both adapters into the provider registry under the download role.
+5. Default activation:
+   - providers.qobuz.download_enabled = false (operator must explicitly enable)
+   - providers.beatport.download_enabled = false (unchanged from current)
+   - providers.tidal.download_enabled = true (existing wrapper behavior preserved)
+6. tools/get-intake download routing must consult providers.toml precedence before
+   dispatching a download. Do not rewrite the shell script; add a thin Python helper
+   (e.g., tagslut download route <url_or_id>) that the shell calls.
+7. Preserve existing TIDAL/tiddl path exactly — this is not a migration of TIDAL downloads.
+
+Do not:
+- Remove or modify the tiddl wrapper invocation in tools/get-intake
+- Write qobuz_id to track_identity without satisfying Prompt 6 corroboration contract
+- Mark Beatport download as implemented unless store workflow is validated end-to-end
+- Modify identity service
+
+Tests required:
+1. QobuzDownloadProvider.download_track returns DownloadResult with download_source = 'qobuz'
+2. download_source is written to asset_file row correctly
+3. Beatport stub raises NotImplementedError with explanatory message
+4. registry returns qobuz and beatport adapters when configured, but routes only enabled ones
+5. disabled download provider never receives a dispatch call
+6. TIDAL download path unaffected (existing integration test still passes)
+7. provider precedence in providers.toml determines dispatch order
+
+Commit message:
+feat(download): add Qobuz download adapter and download provider protocol
+```
+
+---
+
+## Prompt 8 — Stale surface archival and provider scope cleanup (Phase 6)
+
+```text
+You are an expert Python engineer working in the tagslut repository.
+
+Goal:
+Complete Phase 6: archive stale scripts, align all provider scope references with the
+post-Prompt-7 live runtime, and remove dead doc references. This is cleanup only —
+no new behavior, no schema changes.
+
+Pre-requisites:
+- Prompts 1–7 are all merged on dev
+- Operator has confirmed no active workflows depend on any of the files being archived
+
+Read first:
+1. docs/codex/CODEX_PROVIDER_ARCHITECTURE_IMPLEMENTATION_PROMPTS.md (this file — stale surfaces
+   list from Prompt 1 onwards)
+2. dj-download.sh
+3. tools/get-intake (ENRICH_PROVIDERS default)
+4. tagslut/cli/commands/index.py (help text)
+5. tagslut/metadata/README.md
+6. tagslut/metadata/__init__.py
+
+Tasks:
+1. Archive dj-download.sh:
+   - Move to docs/archive/ with a header comment: "Archived YYYY-MM-DD. Superseded by
+     tools/get-intake and tagslut intake url. Do not use."
+   - If a symlink or reference to it exists in any active script or Makefile, remove it.
+2. Align tools/get-intake ENRICH_PROVIDERS default:
+   - The default provider list must contain only names that are exported by
+     tagslut/metadata/providers/__init__.py and registered in provider_registry.py.
+   - Remove or comment out any name not in the active registry.
+3. Final pass on tagslut/cli/commands/index.py help strings:
+   - No provider name should appear in help text that is not in the live registry.
+   - If a capability or provider is labeled 'future/optional' from Prompt 1, confirm the
+     label is still accurate or remove entirely.
+4. Final pass on tagslut/metadata/README.md and tagslut/metadata/__init__.py:
+   - These were corrected in Prompt 1 but may have drifted. Re-verify against live exports.
+   - Provider list must match: beatport, tidal, qobuz (off by default).
+   - No mention of Spotify, Apple Music, or any other provider as active or planned.
+5. Remove any dead doc references to providers not in the registry from all docs under docs/.
+   Use grep to identify them. Limit scope to docs/ — do not touch contracts/ without operator
+   review.
+6. Confirm no test fixture, conftest, or factory references a provider name that no longer exists
+   in the registry. Update fixture names to match registry canonical names.
+
+Do not:
+- Modify tools/get or tools/get-intake download orchestration logic
+- Remove contracts/ files — those are normative references, not stale
+- Delete any file without moving it to docs/archive/ first
+- Touch DB schema or migrations
+
+Verification:
+- python -m compileall tagslut
+- poetry run pytest tests/metadata/ -v (all must pass)
+- grep -r 'qobuz\|beatport\|tidal\|spotify\|apple' tagslut/metadata/ --include='*.py' and
+  confirm every hit is either (a) a live provider module, (b) a test, or (c) an archived ref
+  with a clear label
+- tagslut provider status — output must list exactly: beatport (enabled), tidal (enabled),
+  qobuz (disabled by default)
+
+Deliverables:
+- archived dj-download.sh
+- corrected ENRICH_PROVIDERS in tools/get-intake
+- final-pass help text and README corrections
+- summary of every file touched and every dead reference removed
+
+Commit message:
+chore(cleanup): archive stale provider surfaces and align docs with live registry
+```
+
+---
+
+## Prompt 7 — Download provider adapters (Phase 5)
+
+```text
+You are an expert Python engineer working in the tagslut repository.
+
+Goal:
+Implement download provider adapters for TIDAL (wrapper-based) and Qobuz (purchase download),
+and introduce an optional Beatport download adapter stub. All three are activation-controlled
+via providers.toml. No existing acquisition workflows are broken.
+
+Read first:
+1. docs/contracts/metadata_architecture.md
+2. docs/DOWNLOAD_STRATEGY.md
+3. tools/get
+4. tools/get-intake
+5. tagslut/metadata/provider_registry.py
+6. tagslut/metadata/provider_state.py
+7. tagslut/storage/v3/schema.py  (asset_file.download_source column)
+
+Constraints:
+- tools/get and tools/get-intake CLI interfaces must not change.
+- Beatport downloads remain disabled by default (providers.beatport.download_enabled = false).
+- TIDAL download remains a wrapper-based adapter calling tools/tiddl; it does not become a direct
+  Python download implementation.
+- Qobuz download adapter targets the official purchase-download workflow only (DRM-free). It does
+  not scrape or reverse-engineer the streaming endpoint.
+- asset_file.download_source must be set consistently for all acquisition paths:
+    'tidal_wrapper' | 'qobuz_purchase' | 'beatport_store' | 'manual'
+- ingestion_method for downloaded files = 'provider_api'; ingestion_confidence follows the
+  five-tier model.
+
+Implement:
+1. Define a DownloadProvider abstract base class with:
+   - download_track(isrc: str, dest_dir: Path) -> DownloadResult
+   - download_release(release_id: str, dest_dir: Path) -> list[DownloadResult]
+   - declared capabilities (download.download_track, download.download_release)
+2. Implement TidalWrapperDownloadProvider:
+   - wraps the existing tools/tiddl call as a subprocess
+   - resolves activation state from providers.toml providers.tidal.download_enabled
+   - sets asset_file.download_source = 'tidal_wrapper'
+3. Implement QobuzPurchaseDownloadProvider:
+   - uses Qobuz purchase-download API (authenticated; requires providers.qobuz.download_enabled)
+   - sets asset_file.download_source = 'qobuz_purchase'
+   - capability advertised as download.download_track only for this PR (no bulk release download yet)
+4. Add BeatportStoreDownloadProvider as a disabled-by-default stub:
+   - raises NotImplementedError when called
+   - state always reports disabled unless providers.beatport.download_enabled = true in config
+   - stub must be wired into registry so activation can be toggled later without code changes
+5. Register all three in ProviderRegistry under the 'download' role.
+6. Do NOT wire download providers into tools/get-intake shell orchestration in this PR.
+   Add a TODO comment in get-intake at the point where a registry call would be inserted.
+
+Tests required:
+1. TidalWrapperDownloadProvider disabled when providers.tidal.download_enabled = false
+2. QobuzPurchaseDownloadProvider disabled when providers.qobuz.download_enabled = false
+3. BeatportStoreDownloadProvider always raises NotImplementedError when called (even if enabled)
+4. asset_file.download_source set correctly per provider
+5. DownloadResult fields present and consistent with asset_file schema
+6. registry returns correct download provider by precedence from providers.toml routing.download.precedence
+
+Commit message:
+feat(providers): add download provider adapters for TIDAL, Qobuz, Beatport stub
+```
+
+---
+
+## Prompt 8 — Phase 6: stale surface archival and final cleanup
+
+```text
+You are an expert Python engineer working in the tagslut repository.
+
+Goal:
+Archive or correct all stale provider-related docs and scripts identified in Phase 0 assessment
+that were deferred from Prompt 1. This is a cleanup-only PR — no behavior changes.
+
+Read first:
+1. docs/contracts/metadata_architecture.md  (normative; use as ground truth for what is active)
+2. tagslut/metadata/providers/__init__.py   (active provider exports; use as ground truth)
+3. tools/get-intake                          (ENRICH_PROVIDERS variable and default list)
+4. tagslut/cli/commands/index.py            (provider help text and narrative strings)
+5. dj-download.sh
+6. tagslut/metadata/README.md
+7. tagslut/metadata/__init__.py
+
+Tasks:
+1. tools/get-intake ENRICH_PROVIDERS:
+   - Align the default variable value to only list providers that exist in
+     tagslut/metadata/providers/__init__.py exports.
+   - If a provider name was previously listed as a future/aspirational comment (added in Prompt 1),
+     either remove it from the default value or confirm it is now real after Prompts 2-7.
+   - Do not change the variable interface or any other get-intake behavior.
+
+2. tagslut/cli/commands/index.py help text:
+   - Remove or relabel any provider names that are not yet active as real, routeable providers.
+   - Labels must be consistent with providers.toml and ProviderRegistry.
+
+3. dj-download.sh:
+   - Move to docs/archive/ as dj-download.sh.LEGACY
+   - Add a one-line header comment: "LEGACY: replaced by tools/get and tools/get-intake. Do not use."
+
+4. tagslut/metadata/README.md:
+   - Rewrite the active provider list section to reflect only Beatport + TIDAL as active metadata
+     providers and Qobuz as "scaffold, off by default."
+   - Move any stale provider sections (Spotify, Apple Music, etc.) to a Legacy section at the bottom.
+
+5. tagslut/metadata/__init__.py docstring:
+   - Remove Qobuz/Spotify/Apple Music claims from the active provider list.
+   - Replace with: "Active metadata providers: Beatport, TIDAL. Qobuz: scaffold, off by default."
+
+6. Confirm no runtime behavior changed:
+   - python -m compileall tagslut
+   - poetry run pytest tests/test_tidal_beatport_enrichment.py -v
+   - tagslut --help (confirm help text still renders without error)
+
+Do not:
+- touch schema, migrations, or DB files
+- modify any provider Python implementation
+- change tools/get interface
+- move or rename files other than dj-download.sh
+
+Commit message:
+chore(cleanup): archive stale provider docs and align active surfaces with contracts
+```
+
+---
+
+## Recommended execution order
+
+1. Prompt 1
+2. Prompt 2
+3. Prompt 3
+4. Prompt 4
+5. Prompt 5
+6. Prompt 6
+7. Prompt 7 (after Prompt 6 is verified stable)
+8. Prompt 8 (final cleanup; can run in parallel with Prompt 7 if scopes don't collide)
+
+Stop after Prompt 4 if any routing behavior deviates from current defaults.
+Evaluate before proceeding to Prompt 5 and beyond.

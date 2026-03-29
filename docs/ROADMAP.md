@@ -407,6 +407,47 @@ Do not implement until API key is confirmed available.
 
 ---
 
+## 23 — Provider architecture: capability registry + Qobuz + download adapters → **Codex** ⬅ QUEUED
+
+Full design: `docs/codex/CODEX_PROVIDER_ARCHITECTURE_IMPLEMENTATION_PROMPTS.md`
+Assessment: `tagslut_Provider_Architecture_Assessment_for_Qobuz__TIDAL__Beatport.md`
+
+**Architecture decision**: Option C (capability-registry). Verdict: incremental, staged.
+**Active providers at start**: Beatport + TIDAL only. Qobuz is off-by-default until Prompt 6.
+**Identity constraint**: Qobuz must not contribute to identity key derivation until corroboration
+rules (ISRC match + authoritative provider agreement) are satisfied. This is enforced at both
+application and schema levels.
+
+**8-prompt execution chain** (sequential, no skipping):
+
+| Prompt | Phase | Scope | Agent | Status |
+| --- | --- | --- | --- | --- |
+| Prompt 1 | 0 | Contract freeze + stale surface correction | Codex | Ready |
+| Prompt 2 | 1 | ProviderRegistry + `providers.toml` activation config | Codex | Ready |
+| Prompt 3 | 2a | Provider state model + `tagslut provider status` CLI | Codex | Ready |
+| Prompt 4 | 2b | Capability-aware metadata router | Codex | Ready |
+| Prompt 5 | 3 | Per-role activation model (metadata vs download) | Codex | Ready |
+| Prompt 6 | 4 | Qobuz scaffold, off by default, identity-safe | Codex | Ready |
+| Prompt 7 | 5 | Qobuz + Beatport download provider adapters | Codex | Blocked on Prompt 6 + staging validation |
+| Prompt 8 | 6 | Stale surface archival + provider scope cleanup | Codex | Blocked on Prompt 7 |
+
+**Gate rules:**
+- Stop after Prompt 4 and evaluate before proceeding to Prompt 5.
+- Stop after Prompt 6 and validate Qobuz metadata operationally in staging before starting Prompt 7.
+- Prompt 7 requires operator confirmation that Qobuz purchase-download workflow is accessible.
+- Prompt 8 requires operator confirmation that no active workflows depend on `dj-download.sh`.
+
+**Key config file**: `~/.config/tagslut/providers.toml` (new; created by Prompt 2)
+Canonical key names (do not deviate):
+- `providers.<name>.metadata_enabled`, `providers.<name>.download_enabled`
+- `providers.<name>.trust` = `"dj_primary"` | `"secondary"` | `"do_not_use_for_canonical"`
+
+**Dependency on §21**: The download strategy doc rewrite (§21) should be completed before or
+concurrently with Prompt 5, since Prompt 5 formalises the per-role activation model that §21
+describes at policy level.
+
+---
+
 ## Prompt files index
 
 | File | Task | Agent | Status |
@@ -420,8 +461,11 @@ Do not implement until API key is confirmed available.
 | `lexicon-reconcile.prompt.md` | Lexicon reconcile strategy | Codex | Ready |
 | `open-streams-post-0010.prompt.md` | Write DJ pipeline post | Codex | Ready |
 | `postman-api-optimize.prompt.md` | Beatport/TIDAL API collection | Postman | COMPLETE |
+| `CODEX_PROVIDER_ARCHITECTURE_IMPLEMENTATION_PROMPTS.md` | Provider architecture (8 prompts) | Codex | Ready (§23) |
 
 Prompts needed (author in Claude.ai before delegating):
-- `tiddl-token-bridge.prompt.md` — for §20
-- `download-strategy-rewrite.prompt.md` — for §21
 - `reccobeats-provider-stub.prompt.md` — for §22
+
+Prompts authored and ready:
+- `tiddl-token-bridge.prompt.md` — for §20 ← **give to Codex now**
+- `docs/DOWNLOAD_STRATEGY.md` — rewritten for §21 (no Codex prompt needed; doc only)

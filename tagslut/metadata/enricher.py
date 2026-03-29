@@ -37,7 +37,12 @@ from tagslut.metadata.models.types import (
 )
 from tagslut.metadata.auth import TokenManager
 from tagslut.metadata.providers.base import AbstractProvider as BaseProvider
-from tagslut.metadata.provider_registry import get_provider_class, DEFAULT_ACTIVE_PROVIDERS
+from tagslut.metadata.provider_registry import (
+    DEFAULT_ACTIVE_PROVIDERS,
+    get_provider_class,
+    load_provider_activation_config,
+    resolve_active_metadata_providers,
+)
 from tagslut.metadata.pipeline import runner, stages
 from tagslut.metadata.store import db_reader, db_writer
 
@@ -59,6 +64,7 @@ class Enricher:
         db_path: Path,
         token_manager: Optional[TokenManager] = None,
         providers: Optional[List[str]] = None,
+        providers_config_path: Optional[Path] = None,
         dry_run: bool = True,
         mode: str = "recovery",
     ):
@@ -77,7 +83,9 @@ class Enricher:
         """
         self.db_path = db_path
         self.token_manager = token_manager or TokenManager()
-        self.provider_names = providers or DEFAULT_ACTIVE_PROVIDERS
+        activation = load_provider_activation_config(providers_config_path)
+        requested = providers or DEFAULT_ACTIVE_PROVIDERS
+        self.provider_names = resolve_active_metadata_providers(requested, config=activation)
         self.dry_run = dry_run
         self.mode = mode
 

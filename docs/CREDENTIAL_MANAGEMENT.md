@@ -16,6 +16,25 @@ Primary source of truth: `TokenManager` backed by `~/.config/tagslut/tokens.json
 
 `tokens.json` wins over legacy environment variables in the active Beatport provider path.
 
+## Provider Activation Policy (Optional)
+
+Metadata provider activation can be controlled via `~/.config/tagslut/providers.toml` (optional).
+
+- If the file is missing, defaults remain unchanged: Beatport + TIDAL are enabled.
+- If present, providers with `metadata_enabled = false` are filtered out before enrichment.
+
+Supported keys (Phase 1):
+
+```toml
+[providers.beatport]
+metadata_enabled = true
+trust = "secondary" # "dj_primary" | "secondary" | "do_not_use_for_canonical"
+
+[providers.tidal]
+metadata_enabled = true
+trust = "secondary"
+```
+
 ## Current Provider Scope
 
 Current authenticated provider flows visible in repo code are:

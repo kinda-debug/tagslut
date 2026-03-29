@@ -33,6 +33,7 @@ from tagslut.cli.commands.misc import register_misc_commands
 from tagslut.cli.commands.lexicon import lexicon_group
 from tagslut.cli.commands.master import master_group
 from tagslut.cli.commands.postman import register_postman_group
+from tagslut.cli.commands.provider import register_provider_group
 from tagslut.cli.commands.v3 import register_v3_group
 
 # Add project root to path so we can import tools as modules if needed
@@ -86,6 +87,7 @@ register_ops_group(cli)
 register_library_group(cli)
 register_tag_group(cli)
 register_postman_group(cli)
+register_provider_group(cli)
 register_v3_group(cli)
 
 # Register DJ, export, gig, MP3, lexicon, and master groups

@@ -13,6 +13,7 @@ from tagslut.dj.admission import (
     validate_dj_library,
 )
 from tagslut.storage.schema import init_db
+from tests.conftest import PROV_COLS, PROV_VALS
 
 
 # ---------------------------------------------------------------------------
@@ -30,7 +31,8 @@ def _make_db(tmp_path: Path) -> sqlite3.Connection:
 
 def _insert_identity(conn: sqlite3.Connection, *, title: str, artist: str, isrc: str) -> int:
     cur = conn.execute(
-        "INSERT INTO track_identity (title_norm, artist_norm, isrc, identity_key) VALUES (?, ?, ?, ?)",
+        f"INSERT INTO track_identity (title_norm, artist_norm, isrc, identity_key{PROV_COLS})"
+        f" VALUES (?, ?, ?, ?{PROV_VALS})",
         (title, artist, isrc, isrc),
     )
     conn.commit()
@@ -81,6 +83,11 @@ def test_admit_track_creates_row(tmp_path: Path) -> None:
     row = conn.execute("SELECT id, status FROM dj_admission WHERE id = ?", (admission_id,)).fetchone()
     assert row is not None
     assert row[1] == "admitted"
+    track_row = conn.execute(
+        "SELECT rekordbox_track_id FROM dj_track_id_map WHERE dj_admission_id = ?",
+        (admission_id,),
+    ).fetchone()
+    assert track_row is not None
 
 
 def test_admit_track_raises_if_already_active(tmp_path: Path) -> None:
@@ -133,6 +140,8 @@ def test_backfill_admits_unlinked_mp3_assets(tmp_path: Path) -> None:
     assert skipped == 0
     count = conn.execute("SELECT COUNT(*) FROM dj_admission WHERE status = 'admitted'").fetchone()[0]
     assert count == 1
+    map_count = conn.execute("SELECT COUNT(*) FROM dj_track_id_map").fetchone()[0]
+    assert map_count == 1
 
 
 def test_backfill_skips_already_active(tmp_path: Path) -> None:
@@ -200,7 +209,8 @@ def test_validate_detects_missing_metadata(tmp_path: Path) -> None:
     conn = _make_db(tmp_path)
     # Insert identity with empty title
     cur = conn.execute(
-        "INSERT INTO track_identity (title_norm, artist_norm, isrc, identity_key) VALUES (?, ?, ?, ?)",
+        f"INSERT INTO track_identity (title_norm, artist_norm, isrc, identity_key{PROV_COLS})"
+        f" VALUES (?, ?, ?, ?{PROV_VALS})",
         ("", "Artist N", "ISRC-N", "ISRC-N"),
     )
     identity_id = cur.lastrowid

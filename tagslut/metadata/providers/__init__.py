@@ -8,10 +8,30 @@ track metadata from external services.
 from tagslut.metadata.providers.base import AbstractProvider, RateLimiter
 from tagslut.metadata.providers.beatport import BeatportProvider
 from tagslut.metadata.providers.tidal import TidalProvider
+from tagslut.metadata.providers.tagslut_api_client import (
+    TagslutApiClientConfig,
+    build_client,
+    get_client,
+    load_config_from_env,
+    reset_client_cache,
+)
+from tagslut.metadata.providers.tagslut_validation import (
+    lookup_isrc,
+    smoke_test,
+    validate_token,
+)
 
 __all__ = [
     "AbstractProvider",
     "RateLimiter",
     "BeatportProvider",
     "TidalProvider",
+    "TagslutApiClientConfig",
+    "load_config_from_env",
+    "build_client",
+    "get_client",
+    "reset_client_cache",
+    "validate_token",
+    "lookup_isrc",
+    "smoke_test",
 ]

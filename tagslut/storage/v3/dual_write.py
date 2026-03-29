@@ -27,6 +27,7 @@ from tagslut.utils.config import get_config
 
 _TRUTHY = {"1", "true", "yes", "y", "on"}
 _FALSY = {"0", "false", "no", "n", "off"}
+_TRACK_A_SOURCES = {"tidal", "bpdl", "beatport", "deezer", "qobuz", "traxsource"}
 
 
 def _norm_text(value: Any) -> str | None:
@@ -71,6 +72,40 @@ def _lookup_tag(metadata: dict[str, Any] | None, keys: list[str]) -> str | None:
         if key.lower() in lowered:
             return _norm_text(lowered[key.lower()])
     return None
+
+
+def classify_ingestion_track(
+    *,
+    isrc: str | None,
+    beatport_id: str | None,
+    tidal_id: str | None,
+    spotify_id: str | None,
+    qobuz_id: str | None,
+    download_source: str | None,
+) -> tuple[str, str]:
+    """Return the ingestion method and confidence for the incoming file."""
+
+    source = _norm_name(download_source)
+    if source in _TRACK_A_SOURCES:
+        return "provider_api", "high" if _norm_text(isrc) else "uncertain"
+
+    provider_ids = [
+        _norm_text(beatport_id),
+        _norm_text(tidal_id),
+        _norm_text(spotify_id),
+        _norm_text(qobuz_id),
+    ]
+    provider_count = sum(1 for provider_id in provider_ids if provider_id)
+    isrc_norm = _norm_text(isrc)
+
+    if provider_count > 0:
+        if not isrc_norm:
+            return "multi_provider_reconcile", "uncertain"
+        if provider_count >= 2:
+            return "multi_provider_reconcile", "corroborated"
+        return "multi_provider_reconcile", "high"
+
+    return "migration", "legacy"
 
 
 def dual_write_enabled() -> bool:
@@ -531,6 +566,9 @@ def identity_hints_from_metadata(metadata: dict[str, Any] | None) -> dict[str, s
         metadata,
         ["beatport_track_id", "bp_track_id", "beatport_id", "beatport track id"],
     )
+    tidal_id = _lookup_tag(metadata, ["tidal_id", "tidal track id"])
+    spotify_id = _lookup_tag(metadata, ["spotify_id", "spotify track id"])
+    qobuz_id = _lookup_tag(metadata, ["qobuz_id", "qobuz track id"])
     artist = _lookup_tag(metadata, ["artist", "albumartist", "canonical_artist"])
     title = _lookup_tag(metadata, ["title", "canonical_title"])
     bpm = _lookup_tag(metadata, ["bpm", "canonical_bpm"])
@@ -538,6 +576,9 @@ def identity_hints_from_metadata(metadata: dict[str, Any] | None) -> dict[str, s
     return {
         "isrc": isrc,
         "beatport_id": beatport_id,
+        "tidal_id": tidal_id,
+        "spotify_id": spotify_id,
+        "qobuz_id": qobuz_id,
         "artist": artist,
         "title": title,
         "bpm": bpm,
@@ -593,6 +634,14 @@ def dual_write_registered_file(
         )
 
         identity_hints = identity_hints_from_metadata(metadata)
+        ingestion_method, ingestion_confidence = classify_ingestion_track(
+            isrc=identity_hints["isrc"],
+            beatport_id=identity_hints["beatport_id"],
+            tidal_id=identity_hints["tidal_id"],
+            spotify_id=identity_hints["spotify_id"],
+            qobuz_id=identity_hints["qobuz_id"],
+            download_source=download_source,
+        )
         identity_id = upsert_track_identity(
             conn,
             isrc=identity_hints["isrc"],
@@ -603,9 +652,9 @@ def dual_write_registered_file(
             key=identity_hints["key"],
             duration_ref_ms=duration_ref_ms,
             ref_source=duration_ref_source or download_source,
-            ingestion_method="provider_api",
+            ingestion_method=ingestion_method,
             ingestion_source=download_source or "",
-            ingestion_confidence="high" if identity_hints["isrc"] else "uncertain",
+            ingestion_confidence=ingestion_confidence,
         )
         if identity_id is not None:
             upsert_asset_link(

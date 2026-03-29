@@ -9,7 +9,7 @@ import re
 from collections.abc import Mapping
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
-from typing import Any
+from typing import Any, cast
 
 __all__ = [
     "derive_identity_key",
@@ -80,7 +80,7 @@ def _lookup_value(mapping: Mapping[str, Any], *keys: str) -> str | None:
     return None
 
 
-def _row_value(row: sqlite3.Row, key: str) -> Any:
+def _row_value(row: sqlite3.Row | Mapping[str, Any], key: str) -> Any:
     try:
         return row[key]
     except (IndexError, KeyError):
@@ -547,12 +547,13 @@ def resolve_active_identity(conn: sqlite3.Connection, identity_id: int | str) ->
     seen_ids: set[int] = set()
 
     while True:
-        row = conn.execute(
+        row_any = conn.execute(
             "SELECT * FROM track_identity WHERE id = ?",
             (current_id,),
         ).fetchone()
-        if row is None:
+        if row_any is None:
             raise LookupError(f"identity not found: {current_id}")
+        row = cast(sqlite3.Row, row_any)
         if not has_merged_into:
             return row
 

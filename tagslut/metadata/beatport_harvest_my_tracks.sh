@@ -21,7 +21,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 # Get Beatport token from TokenManager (System B)
-if ! BEATPORT_ACCESS_TOKEN="$(tagslut auth token-get beatport 2>/dev/null)"; then
+if ! BEATPORT_ACCESS_TOKEN="$(tagslut token-get beatport 2>/dev/null)"; then
     echo "ERROR: No valid Beatport token." >&2
     echo "Run: tagslut auth login beatport" >&2
     exit 1

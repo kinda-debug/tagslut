@@ -1,4 +1,8 @@
 $kind: http-request
+description: Looks up catalog tracks by ISRC using the standard query parameter
+  format. Returns an array of matching track records. Used to cross-reference
+  library files against Beatport catalog data during the enrichment pipeline
+  phase.
 url: "{{base_url}}/v4/catalog/tracks/?isrc={{beatport_test_isrc}}"
 method: GET
 queryParams:

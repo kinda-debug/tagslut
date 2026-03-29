@@ -48,7 +48,7 @@ Notes:
 - `MASTER_LIBRARY` is the canonical master library stored as FLAC.
 - `PLAYLIST_ROOT` is the Roon-visible playlist folder inside the master library. `tools/get` writes relative-path M3Us there.
 - `DJ_LIBRARY` is the derived DJ library.
-- `DJ_PLAYLIST_ROOT` is the DJ playlist destination. If you invoke the deprecated legacy path `tools/get --dj`, it writes absolute-path M3Us there for Rekordbox/Lexicon. See `docs/DJ_WORKFLOW.md` for the canonical 4-stage pipeline.
+- `DJ_PLAYLIST_ROOT` is the DJ playlist destination. If you invoke the deprecated legacy path `tools/get --dj`, it writes absolute-path M3Us there for Rekordbox/Lexicon. See `docs/DJ_PIPELINE.md` for the canonical 4-stage pipeline.
 - work output is split:
   - `FIX_ROOT=/Volumes/MUSIC/_work/fix` for salvageable metadata/tag issues
   - `QUARANTINE_ROOT` / `VOLUME_QUARANTINE=/Volumes/MUSIC/_work/quarantine` for risky files only
@@ -88,15 +88,20 @@ The canonical approach to building a curated DJ library is a deterministic 4-sta
 Each stage writes explicit DB state and is safe to re-run.
 
 ```bash
-# Stage 1: register existing MP3s against canonical identities
+# Stage 1: intake or refresh canonical masters
+poetry run tagslut intake <provider-url>
+
+# Stage 2: register existing MP3s against canonical identities
 poetry run tagslut mp3 reconcile \
   --db "$TAGSLUT_DB" --mp3-root "$DJ_LIBRARY" --execute
 
-# Stage 2: admit registered MP3s into the DJ library
+# Stage 3: admit registered MP3s into the DJ library
 poetry run tagslut dj backfill --db "$TAGSLUT_DB"
 
 # Stage 3: validate DJ library state
 poetry run tagslut dj validate --db "$TAGSLUT_DB"
+
+# If DJ admissions/playlists changed after validation, rerun this before Stage 4.
 
 # Stage 4: emit deterministic Rekordbox XML
 poetry run tagslut dj xml emit --db "$TAGSLUT_DB" --out rekordbox.xml
@@ -105,7 +110,11 @@ poetry run tagslut dj xml emit --db "$TAGSLUT_DB" --out rekordbox.xml
 poetry run tagslut dj xml patch --db "$TAGSLUT_DB" --out rekordbox_v2.xml
 ```
 
-See `docs/DJ_WORKFLOW.md` for full per-stage documentation.
+See `docs/DJ_PIPELINE.md` for the concise pipeline reference and `docs/DJ_WORKFLOW.md` for full per-stage documentation.
+
+`dj xml emit` now checks for a passing `dj validate` record for the current DJ DB
+state before it writes XML. `--skip-validation` remains available only as an
+emergency bypass and prints a warning to stderr.
 
 ## V3 Staged-Root Processing
 

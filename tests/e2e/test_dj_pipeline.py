@@ -2,7 +2,7 @@
 
 Covers the five canonical E2E scenarios from the task specification:
 
-  E2E-1: intake → mp3 build (dry-run: FLAC not on disk, verify count reported)
+  E2E-1: intake → mp3 build (dry-run reports pending build count; execute writes file + row)
   E2E-2: existing inventory → mp3 reconcile (full reconcile flow)
   E2E-3: existing MP3 → dj admit / backfill (admit + validate passes)
   E2E-4: dj state → deterministic Rekordbox XML (byte-identical across two emits)
@@ -21,6 +21,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import pytest
+import tagslut.dj.xml_emit as xml_emit_module
 
 from tagslut.dj.admission import admit_track, backfill_admissions, validate_dj_library
 from tagslut.dj.xml_emit import emit_rekordbox_xml, patch_rekordbox_xml
@@ -133,6 +134,29 @@ def _create_playlist(
     return pl_id  # type: ignore[return-value]
 
 
+def _track_id_rows(conn: sqlite3.Connection) -> list[tuple[int, int]]:
+    return conn.execute(
+        "SELECT dj_admission_id, rekordbox_track_id FROM dj_track_id_map ORDER BY dj_admission_id ASC"
+    ).fetchall()
+
+
+def _xml_snapshot(path: Path) -> dict[str, object]:
+    root = ET.parse(str(path)).getroot()
+    return {
+        "tracks": [
+            tuple(sorted(track.attrib.items()))
+            for track in root.findall("COLLECTION/TRACK")
+        ],
+        "playlists": [
+            (
+                node.get("Name"),
+                [track.get("Key") for track in node.findall("TRACK")],
+            )
+            for node in root.findall("PLAYLISTS/NODE/NODE")
+        ],
+    }
+
+
 # ---------------------------------------------------------------------------
 # E2E-1: intake → mp3 build
 # ---------------------------------------------------------------------------
@@ -168,6 +192,47 @@ def test_e2e1_mp3_build_dry_run_reports_count(tmp_path: Path) -> None:
     count = conn.execute("SELECT COUNT(*) FROM mp3_asset").fetchone()[0]
     assert count == 0
     assert not any(dj_root.rglob("*.mp3")) if dj_root.exists() else True
+
+
+def test_e2e1_mp3_build_execute_writes_file_and_mp3_asset(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Executing Stage 2 build writes an MP3 file and a verified mp3_asset row."""
+    conn = _make_db(tmp_path)
+
+    flac = tmp_path / "library" / "execute_track.flac"
+    flac.parent.mkdir(parents=True, exist_ok=True)
+    flac.write_bytes(b"FLAC-stub")
+
+    identity_id = _insert_identity(
+        conn, title="Execute Track", artist="Artist", isrc="ISRC-E1-EXEC"
+    )
+    asset_id = _insert_asset_file(conn, path=str(flac))
+    _insert_asset_link(conn, identity_id=identity_id, asset_id=asset_id)
+
+    def fake_transcode_to_mp3(source_path: Path, dest_dir: Path) -> Path:
+        output_path = dest_dir / f"{source_path.stem}.mp3"
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_bytes(b"MP3-stub")
+        return output_path
+
+    monkeypatch.setattr(
+        "tagslut.exec.transcoder.transcode_to_mp3",
+        fake_transcode_to_mp3,
+    )
+
+    dj_root = tmp_path / "dj"
+    result = build_mp3_from_identity(conn, dj_root=dj_root, dry_run=False)
+
+    assert result.built == 1
+    row = conn.execute(
+        "SELECT path, status FROM mp3_asset WHERE identity_id = ?",
+        (identity_id,),
+    ).fetchone()
+    assert row is not None
+    assert row[1] == "verified"
+    assert Path(row[0]).exists()
 
 
 def test_e2e1_mp3_build_skips_missing_flac(tmp_path: Path) -> None:
@@ -256,7 +321,7 @@ def test_e2e2_reconcile_skips_already_registered(tmp_path: Path) -> None:
 
 def test_e2e3_backfill_then_validate_passes(tmp_path: Path) -> None:
     """Given mp3_asset rows with no dj_admission rows,
-    backfill creates admissions, dj_track_id_map is populated on first emit,
+    backfill creates admissions, dj_track_id_map is assigned at admission time,
     and validate_dj_library passes with no errors.
     """
     conn = _make_db(tmp_path)
@@ -288,6 +353,15 @@ def test_e2e3_backfill_then_validate_passes(tmp_path: Path) -> None:
     # validate must pass
     report = validate_dj_library(conn)
     assert report.ok, f"Expected validate to pass after backfill. Got: {report.summary()}"
+
+    xml_path = tmp_path / "e2e3.xml"
+    manifest_hash = emit_rekordbox_xml(conn, output_path=xml_path, skip_validation=True)
+
+    assert xml_path.exists()
+    assert manifest_hash == hashlib.sha256(xml_path.read_bytes()).hexdigest()
+    assert len(_track_id_rows(conn)) == 3
+    tree = ET.parse(str(xml_path))
+    assert len(tree.getroot().findall("COLLECTION/TRACK")) == 3
 
 
 def test_e2e3_backfill_idempotent(tmp_path: Path) -> None:
@@ -326,6 +400,7 @@ def test_e2e4_xml_byte_identical_across_two_emits(tmp_path: Path) -> None:
     conn = _make_db(tmp_path)
 
     # Set up 3 admitted tracks
+    admission_ids: list[int] = []
     for n in range(3):
         mp3 = tmp_path / f"track_{n}.mp3"
         mp3.write_bytes(b"")
@@ -336,21 +411,35 @@ def test_e2e4_xml_byte_identical_across_two_emits(tmp_path: Path) -> None:
         mp3_id = _insert_mp3_asset(
             conn, identity_id=identity_id, asset_id=asset_id, path=str(mp3)
         )
-        admit_track(conn, identity_id=identity_id, mp3_asset_id=mp3_id)
+        admission_ids.append(
+            admit_track(conn, identity_id=identity_id, mp3_asset_id=mp3_id)
+        )
+    _create_playlist(conn, name="E2E4 Playlist", admission_ids=admission_ids)
     conn.commit()
 
     # First emit
     xml1 = tmp_path / "v1.xml"
     emit_rekordbox_xml(conn, output_path=xml1, skip_validation=True)
+    track_ids_v1 = _track_id_rows(conn)
 
     # Second emit (TrackIDs already in dj_track_id_map)
     xml2 = tmp_path / "v2.xml"
     emit_rekordbox_xml(conn, output_path=xml2, skip_validation=True)
+    track_ids_v2 = _track_id_rows(conn)
 
     assert xml1.read_bytes() == xml2.read_bytes(), (
         "Two emits from the same DB state must produce byte-identical XML. "
         f"Sizes: {len(xml1.read_bytes())} vs {len(xml2.read_bytes())}"
     )
+    assert _xml_snapshot(xml1) == _xml_snapshot(xml2)
+    assert track_ids_v1 == track_ids_v2
+
+    export_rows = conn.execute(
+        "SELECT output_path, manifest_hash FROM dj_export_state WHERE kind = 'rekordbox_xml' ORDER BY id ASC"
+    ).fetchall()
+    assert len(export_rows) == 2
+    for output_path, manifest_hash in export_rows:
+        assert manifest_hash == hashlib.sha256(Path(output_path).read_bytes()).hexdigest()
 
 
 def test_e2e4_xml_contains_all_admitted_tracks(tmp_path: Path) -> None:
@@ -387,6 +476,48 @@ def test_e2e4_xml_contains_all_admitted_tracks(tmp_path: Path) -> None:
     )
 
 
+def test_e2e4_playlist_track_order_uses_ordinal_then_admission_id(tmp_path: Path) -> None:
+    """Playlist track ordering is stable when ordinals collide."""
+    conn = _make_db(tmp_path)
+
+    admission_ids: list[int] = []
+    for n in range(3):
+        mp3 = tmp_path / f"playlist_track_{n}.mp3"
+        mp3.write_bytes(b"")
+        identity_id = _insert_identity(
+            conn, title=f"Playlist Track {n}", artist="Artist", isrc=f"ISRC-ORDER-{n}"
+        )
+        asset_id = _insert_asset_file(conn, path=f"/lib/playlist_track_{n}.flac")
+        mp3_id = _insert_mp3_asset(
+            conn, identity_id=identity_id, asset_id=asset_id, path=str(mp3)
+        )
+        admission_ids.append(admit_track(conn, identity_id=identity_id, mp3_asset_id=mp3_id))
+
+    cur = conn.execute("INSERT INTO dj_playlist (name) VALUES ('Stable Order')")
+    playlist_id = cur.lastrowid
+    for admission_id in reversed(admission_ids):
+        conn.execute(
+            "INSERT INTO dj_playlist_track (playlist_id, dj_admission_id, ordinal) VALUES (?, ?, 0)",
+            (playlist_id, admission_id),
+        )
+    conn.commit()
+
+    xml_path = tmp_path / "stable_order.xml"
+    emit_rekordbox_xml(conn, output_path=xml_path, skip_validation=True)
+
+    expected_keys = [
+        str(track_id)
+        for _, track_id in conn.execute(
+            "SELECT dj_admission_id, rekordbox_track_id FROM dj_track_id_map ORDER BY dj_admission_id ASC"
+        ).fetchall()
+    ]
+    tree = ET.parse(str(xml_path))
+    playlist_node = tree.getroot().find("PLAYLISTS/NODE/NODE[@Name='Stable Order']")
+    assert playlist_node is not None
+    actual_keys = [track.get("Key") for track in playlist_node.findall("TRACK")]
+    assert actual_keys == expected_keys
+
+
 def test_e2e4_manifest_hash_matches_file(tmp_path: Path) -> None:
     """The manifest_hash stored in dj_export_state must match the SHA-256 of the emitted file."""
     conn = _make_db(tmp_path)
@@ -411,6 +542,34 @@ def test_e2e4_manifest_hash_matches_file(tmp_path: Path) -> None:
     assert returned_hash == stored_hash == file_hash, (
         f"Hash mismatch: returned={returned_hash[:8]}, stored={stored_hash[:8]}, file={file_hash[:8]}"
     )
+
+
+def test_e2e4_emit_fails_if_xml_changes_without_db_state_change(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A changed XML projection with the same DJ DB scope must fail loudly."""
+    conn = _make_db(tmp_path)
+
+    mp3 = tmp_path / "drift.mp3"
+    mp3.write_bytes(b"")
+    identity_id = _insert_identity(conn, title="Drift", artist="Artist", isrc="ISRC-DRIFT")
+    asset_id = _insert_asset_file(conn, path="/lib/drift.flac")
+    mp3_id = _insert_mp3_asset(conn, identity_id=identity_id, asset_id=asset_id, path=str(mp3))
+    admit_track(conn, identity_id=identity_id, mp3_asset_id=mp3_id)
+    conn.commit()
+
+    emit_rekordbox_xml(conn, output_path=tmp_path / "v1.xml", skip_validation=True)
+
+    original_path_to_location = xml_emit_module._path_to_location
+    monkeypatch.setattr(
+        xml_emit_module,
+        "_path_to_location",
+        lambda path: original_path_to_location(path) + "?drift=1",
+    )
+
+    with pytest.raises(ValueError, match="Determinism violation"):
+        emit_rekordbox_xml(conn, output_path=tmp_path / "v2.xml", skip_validation=True)
 
 
 # ---------------------------------------------------------------------------
@@ -485,7 +644,7 @@ def test_e2e5_patch_adds_new_playlist_track(tmp_path: Path) -> None:
     conn.commit()
 
     xml_v2 = tmp_path / "v2.xml"
-    patch_rekordbox_xml(conn, output_path=xml_v2, skip_validation=True)
+    manifest_hash = patch_rekordbox_xml(conn, output_path=xml_v2, skip_validation=True)
 
     # Patched XML must contain 3 tracks in the playlist
     tree = ET.parse(str(xml_v2))
@@ -510,6 +669,12 @@ def test_e2e5_patch_adds_new_playlist_track(tmp_path: Path) -> None:
             f"TrackID for admission {da_id} changed: {orig_track_id} → {current_id}"
         )
 
+    export_count = conn.execute(
+        "SELECT COUNT(*) FROM dj_export_state WHERE kind = 'rekordbox_xml'"
+    ).fetchone()[0]
+    assert export_count == 2
+    assert manifest_hash == hashlib.sha256(xml_v2.read_bytes()).hexdigest()
+
 
 def test_e2e5_patch_fails_on_tampered_xml(tmp_path: Path) -> None:
     """patch_rekordbox_xml fails loudly when the prior XML file has been modified."""
@@ -522,7 +687,7 @@ def test_e2e5_patch_fails_on_tampered_xml(tmp_path: Path) -> None:
     # Tamper: overwrite with different content
     xml_path.write_bytes(b"<tampered/>")
 
-    with pytest.raises(ValueError, match="does not match stored manifest hash"):
+    with pytest.raises(ValueError, match="stored manifest hash"):
         patch_rekordbox_xml(conn, output_path=tmp_path / "v2.xml", skip_validation=True)
 
 

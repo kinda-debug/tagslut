@@ -1,4 +1,8 @@
 $kind: http-request
+description: Validates and introspects an existing Bearer token against the
+  Beatport OAuth2 server. Returns token metadata including active status and
+  scopes. Useful for confirming a token is still valid before making batch
+  catalog or enrichment requests.
 url: "{{base_url}}/v4/auth/o/introspect/"
 method: GET
 auth:

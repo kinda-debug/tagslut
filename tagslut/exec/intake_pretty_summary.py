@@ -108,6 +108,16 @@ def _read_plan_summary(summary_json: Path) -> dict[str, Any]:
         return {}
 
 
+def _planned_count(payload: dict[str, Any], key: str) -> int:
+    planned = payload.get("planned")
+    if isinstance(planned, dict):
+        value = planned.get(key)
+        if value is not None:
+            return int(value)
+    value = payload.get(key, 0)
+    return int(value)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Pretty summary for tools/get-intake runs (reads artifacts).")
     ap.add_argument("--out-dir", default="artifacts/compare", help="Artifacts compare directory")
@@ -151,15 +161,24 @@ def main() -> int:
 
     if plan_summary:
         payload = _read_plan_summary(plan_summary)
-        promote = str(payload.get("promote", payload.get("promote_move", payload.get("promote_count", ""))))
-        stash = str(payload.get("stash", payload.get("stash_move", payload.get("stash_count", ""))))
-        quarantine = str(payload.get("quarantine", payload.get("quarantine_move", payload.get("quarantine_count", ""))))
+        promote = str(_planned_count(payload, "promote_move"))
+        stash = str(_planned_count(payload, "stash_move"))
+        quarantine = str(_planned_count(payload, "quarantine_move"))
         if promote == "0":
             promote = _c("0", "yellow")
         else:
             promote = _c(promote, "green")
         print(_b("Move Plan"))
-        print(_table([("Summary JSON", str(plan_summary)), ("Promote", promote), ("Stash", stash), ("Quarantine", quarantine)]))
+        print(
+            _table(
+                [
+                    ("Summary JSON", str(plan_summary)),
+                    ("Promote", promote),
+                    ("Stash", stash),
+                    ("Quarantine", quarantine),
+                ]
+            )
+        )
         print()
 
     if args.log:
@@ -179,4 +198,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

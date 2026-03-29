@@ -64,6 +64,12 @@ def test_migration_creates_dj_export_state_table(tmp_path: Path) -> None:
     conn.commit()
     assert "dj_export_state" in _table_names(conn)
 
+def test_migration_creates_dj_validation_state_table(tmp_path: Path) -> None:
+    conn = sqlite3.connect(str(tmp_path / "test.db"))
+    init_db(conn)
+    conn.commit()
+    assert "dj_validation_state" in _table_names(conn)
+
 
 def test_migration_creates_mp3_asset_indexes(tmp_path: Path) -> None:
     conn = sqlite3.connect(str(tmp_path / "test.db"))

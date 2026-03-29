@@ -6,6 +6,52 @@ All notable changes to this project are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 Versioning: [Semantic Versioning](https://semver.org/)
 
+## [Unreleased] - 2026-03-23
+
+### Added
+- `tagslut mp3 scan` — scan one or more MP3 root directories, collect ID3 tags + audio
+  metadata (bitrate, sample rate, duration, SHA-256), and write a stable manifest CSV.
+  Progress printed every 500 files; each file logged to `data/logs/reconcile_scan_<run_id>.jsonl`.
+- `tagslut mp3 reconcile-scan` — enhanced multi-tier reconcile that reads a manifest CSV
+  and matches each MP3 against `track_identity` via: Tier 1 filename pattern, Tier 2 ISRC,
+  Tier 3 ID3 title+artist, Tier 4 fuzzy (flag-only). Unmatched files become stubs.
+  All decisions written to `reconcile_log` and a JSONL audit log. Idempotent, transactional.
+- `tagslut mp3 missing-masters` — generate a GitHub-flavored Markdown report of orphaned
+  MP3s (Section A, HIGH/MEDIUM/LOW priority) and FLACs with no MP3 derivative (Section B).
+- `tagslut lexicon import` — import Lexicon DJ library track metadata into TAGSLUT_DB.
+  Matches by path, title/artist, or streaming ID. Writes only NULL fields by default
+  (`--prefer-lexicon` to overwrite). Hard rules: `dj_tags_json` is never touched;
+  the `set_role='peak'` profile row is never modified; no new `dj_track_profile` rows created.
+- `tagslut lexicon import-playlists` — import allow-listed Lexicon playlists into
+  `dj_playlist` / `dj_playlist_track`. Enforces skip-list precisely; `fucked` playlist
+  tracks → `dj_admission.status='needs_review'`; `Duplicate Tracks *` → `is_duplicate`
+  flag in notes. Ordinal from Lexicon position is preserved. Idempotent.
+- `tagslut master scan` — register FLACs from `MASTER_LIBRARY` into `asset_file` +
+  `asset_link`. Matches existing identities via ISRC then title/artist; creates stubs
+  for unmatched files. Progress every 1,000 files. Idempotent.
+- `reconcile_log` table DDL and migration 0010 (if not already applied).
+- New test files: `tests/exec/test_mp3_reconcile.py`, `tests/exec/test_master_scan.py`,
+  `tests/dj/test_lexicon_import.py`, `tests/dj/test_lexicon_playlists.py`,
+  `tests/storage/test_reconcile_migration.py` — 58 new tests, all passing.
+
+### Changed
+- `tagslut cli main.py` — registered `lexicon` and `master` command groups.
+
+## [Unreleased] - 2026-03-24
+
+### Changed - DJ Pipeline Discipline + XML Invariants
+- Docs now match the literal 4-stage curated-library pipeline commands (no `--master-root` on `tagslut mp3 build`), and DJ-adjacent docs explicitly point back to `docs/DJ_PIPELINE.md` as the operator source of truth.
+- `tagslut intake --mp3/--dj` is explicitly marked as a legacy convenience shortcut and emits a runtime warning pointing operators to the explicit 4-stage pipeline.
+- `tools/get --dj` help + runtime output are strengthened to an explicit `[LEGACY]` deprecation message with canonical pointers (`docs/DJ_PIPELINE.md`, `tagslut dj --help`).
+- `tagslut/dj/xml_emit.py` is hardened:
+  - deterministic track ordering is stable across initial emits and re-emits (no first-emit reordering drift),
+  - re-emit from identical DB state warns when output is identical to a prior export and fails loudly if bytes change without a DB-state change,
+  - `dj xml patch` requires the prior on-disk XML to exist and match its stored manifest hash before proceeding.
+- `tagslut/dj/admission.py` now assigns stable Rekordbox TrackIDs at Stage 3 admission time (`dj_track_id_map`), making TrackID stability independent of Stage 4.
+
+### Added
+- Migration `0011_harden_dj_xml_invariants.sql`: `dj_validation_state` table plus invariant triggers for immutable `dj_track_id_map` rows and required `dj_export_state` manifests.
+
 ## [Unreleased] - 2026-03-15
 
 ### Added
@@ -43,11 +89,11 @@ Versioning: [Semantic Versioning](https://semver.org/)
 - **Pipeline E2E tests** (`tests/dj/test_dj_pipeline_e2e.py`, `tests/e2e/test_dj_pipeline.py`): 28 tests covering all 5 E2E scenarios including byte-identical XML determinism, manifest hash integrity, stable TrackIDs across patch cycles, and loud failure on tampered XML.
 
 ### Changed
-- **`tools/get --dj`** is now a hard deprecation: the flag fails immediately with a terminal error that points operators to the canonical 4-stage DJ pipeline in `docs/DJ_WORKFLOW.md`. The legacy forwarding path to `tools/get-intake` has been removed.
-- **`docs/DJ_WORKFLOW.md`**: "Explicit 4-Stage Pipeline" section added at the top as the canonical workflow. `tools/get --dj` section clearly marked as legacy.
+- **`tools/get --dj`** remains a legacy wrapper path. It now emits an explicit runtime deprecation warning that points operators to the canonical 4-stage DJ pipeline in `docs/DJ_PIPELINE.md`, while the legacy forwarding path to `tools/get-intake` remains available for compatibility.
+- **`docs/DJ_PIPELINE.md`**: added as the concise canonical workflow reference. **`docs/DJ_WORKFLOW.md`** remains the extended operator guide and legacy-wrapper rationale.
 - **`docs/DB_V3_SCHEMA.md`**: new "DJ Pipeline Tables (migration 0010)" section documenting `mp3_asset`, `dj_admission`, `dj_track_id_map`, `dj_playlist`, `dj_playlist_track`, `dj_export_state`, `reconcile_log` with ownership rules and invariants.
 - **`AGENT.md`**: `tagslut mp3` added to canonical surface; new "DJ Pipeline (Canonical 4-Stage Workflow)" section replaces the former `tools/get --dj` shortcut.
-- **`README.md`**, **`docs/OPERATIONS.md`**, **`docs/WORKFLOWS.md`**, **`docs/SCRIPT_SURFACE.md`**: `tools/get --dj` marked as legacy, 4-stage pipeline added as the primary DJ workflow reference.
+- **`README.md`**, **`docs/OPERATIONS.md`**, **`docs/WORKFLOWS.md`**, **`docs/SCRIPT_SURFACE.md`**, **`docs/ARCHITECTURE.md`**, and **`docs/DJ_POOL.md`**: `tools/get --dj` marked as legacy, stage numbering aligned around intake -> mp3 -> dj -> xml, and `docs/DJ_PIPELINE.md` made the primary DJ workflow reference.
 
 ### Invariants enforced
 - One `dj_track_id_map` row per `dj_admission`; `rekordbox_track_id` is never reassigned.
@@ -56,7 +102,36 @@ Versioning: [Semantic Versioning](https://semver.org/)
 - `dj validate` is required before `dj xml emit` unless `--skip-validation` is passed explicitly.
 
 ### Removed
-- `tools/get --dj` legacy execution path; operators must run the explicit 4-stage DJ pipeline instead.
+- misleading documentation that treated wrapper-driven `tools/get --dj` behavior as the canonical curated-library workflow.
+
+## [Unreleased] - 2026-03-23
+
+### Changed - DJ Pipeline Contract
+
+- README, `AGENT.md`, `docs/DJ_PIPELINE.md`, `docs/ROADMAP.md`, and the `tagslut dj` / `tagslut mp3` help surface now present the same primary curated-library sequence: `tagslut intake` -> `tagslut mp3 build|reconcile` -> `tagslut dj backfill` -> `tagslut dj validate` -> `tagslut dj xml emit|patch`.
+- `tools/get --dj` and `tools/get-intake --dj` now print the same `[LEGACY] --dj is deprecated. Use the 4-stage pipeline. See: tagslut dj --help` warning in help text and at runtime.
+- `tagslut/dj/xml_emit.py` now refuses any attempt to reuse a `dj_admission` with a different existing `TrackID`, and it checks determinism against the latest prior export for the same DJ `state_hash`, not just the latest export row overall.
+- `tests/e2e/test_dj_pipeline.py` now proves the requested E2E-3/E2E-4/E2E-5 scenarios with DB assertions plus XML/manifest assertions.
+
+## [Unreleased] - 2026-03-22
+
+### Added - DJ Pipeline Hardening
+
+- `docs/DJ_PIPELINE.md`: concise canonical 4-stage DJ pipeline reference covering intake masters, MP3 build/reconcile, DJ admission/validation, and Rekordbox XML emit/patch.
+- `docs/audit/DJ_PIPELINE_DOC_TRIAGE.md`: active-doc DJ pipeline triage table for essential versus archived surfaces.
+- E2E proofs for an executing Stage 2 MP3 build, stable playlist ordering with ordinal collisions, and a determinism-regression guard when XML output changes without a DJ DB state change.
+- FFmpeg post-transcode MP3 validation in `tagslut/exec/transcoder.py`: successful ffmpeg exit is no longer accepted on its own. Stage 2/DJ-pool transcodes now fail fast if the output file is missing, suspiciously small, unreadable by mutagen, or shorter than 1 second.
+- Focused transcode failure coverage in `tests/exec/test_mp3_build_ffmpeg_errors.py`, including missing ffmpeg, non-zero ffmpeg exit, corrupt output detection, and DJ pool wizard failure surfacing.
+- `dj_validation_state` audit tracking plus `tests/exec/test_dj_xml_preflight_validation.py`: `dj validate` now records pass/fail state for the current DJ DB `state_hash`, and `dj xml emit` requires a matching passing validation before writing XML.
+
+### Changed - DJ Pipeline Hardening
+
+- README, AGENT, CLAUDE, `.claude/CLAUDE.md`, and active DJ docs now present the same canonical operator flow: `tagslut intake` -> `tagslut mp3 build|reconcile` -> `tagslut dj admit|backfill` -> `tagslut dj validate` -> `tagslut dj xml emit|patch`.
+- `tools/get --dj` help and runtime stderr now use an explicit `[LEGACY]` warning and point operators to `docs/DJ_PIPELINE.md` or `tagslut dj --help`.
+- `tools/get-intake --dj` help text now marks the wrapper-driven DJ path as legacy-only output.
+- `tagslut mp3 --help` and `tagslut dj --help` now align their stage numbering with the canonical 4-stage pipeline.
+- `tagslut/dj/xml_emit.py` now enforces deterministic playlist/member ordering and stores a DJ DB state hash in `dj_export_state.scope_json`, failing loudly if XML changes without a DB-state change.
+- Stage 4 XML emit now requires a prior passing `dj validate` run for the current `state_hash`; `--skip-validation` remains only as a warning-emitting emergency bypass.
 
 ## [Unreleased] - 2026-03-12
 ### Added

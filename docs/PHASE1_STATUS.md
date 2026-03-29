@@ -1,32 +1,22 @@
-<!-- Status: Active document. Synced 2026-03-09 after recent code/doc review. Historical or superseded material belongs in docs/archive/. -->
+<!-- Status: Historical checkpoint. -->
+<!-- This file is no longer a live control document. -->
+<!-- Use docs/ACTION_PLAN.md for current execution sequencing and docs/ROADMAP.md for historical task context. -->
 
-## Phase 1 PR Chain
+# Phase 1 Status
 
-| # | PR | Status | Branch | Depends On |
-|---|-----|--------|--------|------------|
-| 1 | script/layout | SKIP (no-op) | -- | -- |
-| 2 | retire dedupe alias | MERGED | -- | -- |
-| 3 | recovery tombstone | MERGED | -- | -- |
-| 4 | transcoder type/lint | MERGED | -- | -- |
-| 5 | flac_scan_prep fix | MERGED | -- | -- |
-| 6 | migration scaffold | MERGED | -- | -- |
-| 7 | zone/env rename | MERGED | -- | -- |
-| 8 | baseline snapshot | MERGED | -- | 2-7 |
-| 9 | migration 0006 | IN PROGRESS | fix/migration-0006 | 8 |
-| 10 | identity service | READY | fix/identity-service | 9 |
-| 11 | backfill command | READY | fix/backfill-v3 | 10 |
-| 12 | identity merge | NOT STARTED | -- | 10 |
-| 13 | DJ candidate export | NOT STARTED | -- | 11 |
-| 14 | docs/AGENT update | NOT STARTED | -- | 13 |
-| 15 | Phase 2 seam | NOT STARTED | -- | 14 |
+Phase 1 is complete.
 
-## Current Gate
-Stage 2: migration 0006 is the active blocker.
+This file is retained only as a checkpoint reference for the completed Phase 1 PR chain and should not be used to decide current priorities.
 
-Status note (2026-03-09):
-- `fix/migration-0006` contains `0007_v3_isrc_partial_unique.py` at commit `d853b0a`; the partial unique ISRC behavior was verified in a detached worktree before merge.
-- The 6-item action list covering `link_asset_to_identity`, race-safe identity creation, mirror visibility warnings, fuzzy prefiltering, and legacy `library_tracks` verification is complete.
-- PR 9 merge remains the gate before PRs 10 (`fix/identity-service`) and 11 (`fix/backfill-v3`) can land.
-- Use `tools/review/sync_phase1_prs.sh` to push the migration, identity, and DJ-enrichment worktrees without collapsing their PR scope boundaries.
+## Final Phase 1 outcome
 
-Update this as PRs merge. Codex can read it when needed, and you can reference it in prompts with "check docs/PHASE1_STATUS.md for current state."
+- PR chain complete through Phase 1 and Phase 2 seam preparation.
+- Identity-service, backfill, merge, and related schema-support work landed on `dev`.
+- Active queue ownership moved elsewhere after this checkpoint:
+  - `docs/ACTION_PLAN.md` → current execution queue
+  - `docs/REDESIGN_TRACKER.md` → open/closed stream ledger
+  - `docs/ROADMAP.md` → historical task contract
+
+## Note
+
+If this file needs more detail, retrieve it from Git history rather than turning it back into a live tracker.

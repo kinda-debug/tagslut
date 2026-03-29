@@ -6,7 +6,6 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 import click
 
@@ -19,17 +18,10 @@ from tagslut.cli.commands._enrich_helpers import (
     _print_enrichment_result,
 )
 from tagslut.cli.runtime import (
-    WRAPPER_CONTEXT,
     collect_flac_paths as _collect_flac_paths,
 )
 
 logger = logging.getLogger("tagslut")
-
-
-def _raise_recovery_retired() -> None:
-    raise click.ClickException(
-        "tagslut.recovery is archived. Use legacy/tagslut_recovery/ for the old recovery workflow."
-    )
 
 
 def _default_canon_rules_path() -> Path:
@@ -873,20 +865,3 @@ def register_misc_commands(cli: click.Group) -> None:
         click.echo("     tagslut decide plan --policy library_balanced --input candidates.json")
         click.echo("")
 
-    @cli.command(name="_recover", hidden=True, context_settings=WRAPPER_CONTEXT)
-    @click.argument("args", nargs=-1, type=click.UNPROCESSED)
-    def recover(args: Any) -> None:
-        """
-        Retired compatibility wrapper for the archived recovery workflow.
-        """
-        del args
-        _raise_recovery_retired()
-
-    @cli.command("recovery", hidden=True, context_settings=WRAPPER_CONTEXT)
-    @click.argument("args", nargs=-1, type=click.UNPROCESSED)
-    def recovery(args):  # type: ignore  # TODO: mypy-strict
-        """
-        Retired compatibility wrapper for the archived recovery workflow.
-        """
-        del args
-        _raise_recovery_retired()

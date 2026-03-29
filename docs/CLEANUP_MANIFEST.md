@@ -45,3 +45,7 @@ Deleted (no required-location references found):
 - `POSTMAN_AI_PROMPT.md`
 - `postman-fix-prompt.md`
 - `20260317_rekordbox.xml`
+
+### Phase B — duplicate `process_dedupe.py`
+
+- Removed root-level `process_dedupe.py` duplicate (no required-location references found); kept canonical `scripts/process_dedupe.py`.

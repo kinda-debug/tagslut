@@ -62,3 +62,17 @@ Deleted (no required-location references found):
 ### Phase D — security: `tidal_tokens.json`
 
 - `.gitignore` already includes `tidal_tokens.json`; `git log -- tidal_tokens.json` returned no history.
+
+### Phase E — structural issues (documented only)
+
+E1. `tagslut/storage/migrations/0007*`
+- Both `tagslut/storage/migrations/0007_isrc_primary_key.py` and `tagslut/storage/migrations/0007_v3_isrc_partial_unique.py` exist.
+- `tagslut/storage/migration_runner.py` applies migrations sorted by full filename and records applied migrations by filename; both `0007_*` files will be considered distinct migrations and run in lexical order.
+
+E2. `tagslut/metadata/models.py` vs `tagslut/metadata/models/`
+- Both exist: `tagslut/metadata/models.py` and the package `tagslut/metadata/models/` (with `__init__.py`).
+- Current imports in `tagslut/` and `tests/` use the package form (e.g. `from tagslut.metadata.models.types import ...`); no `from tagslut.metadata import models` import sites found.
+
+E3. `tagslut/cli/scan.py` + `tagslut/cli/track_hub_cli.py` vs `tagslut/cli/commands/*`
+- Both wrapper modules exist and re-export the canonical implementations from `tagslut/cli/commands/scan.py` and `tagslut/cli/commands/track_hub_cli.py`.
+- `tagslut/cli/main.py` registers command groups from `tagslut/cli/commands/*` and does not import `tagslut/cli/scan.py` or `tagslut/cli/track_hub_cli.py` directly.

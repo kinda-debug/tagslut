@@ -5,7 +5,7 @@
 ## Deprecation Notice
 
 `tools/get --dj` is deprecated. Use the canonical 4-stage DJ pipeline in
-`docs/DJ_WORKFLOW.md` instead.
+`docs/DJ_PIPELINE.md` instead.
 
 ## Purpose
 
@@ -179,11 +179,11 @@ Reference JSON:
 
 Canonical upstream path for curated DJ libraries:
 
-1. Follow `docs/DJ_WORKFLOW.md` and use Stage 1 (`tagslut mp3 reconcile` or `tagslut mp3 build`)
+1. Follow `docs/DJ_PIPELINE.md` and complete Stage 1 intake before Stage 2 (`tagslut mp3 reconcile` or `tagslut mp3 build`)
 
 Legacy or transitional upstream paths:
 
-1. `tools/get --dj` / `tools/get-intake --dj` remain deprecated wrapper-driven outputs after promote. See `docs/DJ_WORKFLOW.md` for the canonical 4-stage pipeline.
+1. `tools/get --dj` / `tools/get-intake --dj` remain deprecated wrapper-driven outputs after promote. See `docs/DJ_PIPELINE.md` for the canonical 4-stage pipeline.
 2. `tagslut intake process-root --phases dj` is staged-root DJ preparation, not the primary curated-library contract.
 
 The staged-root DJ phase can enrich FLAC BPM/key from v3 identity data and use Essentia as fallback before MP3 transcode. Use `--phases dj --dry-run` to preview that work.
@@ -228,6 +228,7 @@ It only produces a deterministic file set.
 
 Primary workflow references:
 - `docs/DJ_WORKFLOW.md`
+- `docs/DJ_PIPELINE.md`
 - `docs/OPERATIONS.md`
 - `AGENT.md`
 - `.claude/AGENT.md`

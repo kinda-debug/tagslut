@@ -1,7 +1,9 @@
 # tagslut — Agent Roadmap
 
 <!-- Status: Active. Update as tasks complete or delegate assignments change. -->
-<!-- Last updated: 2026-03-22 — cleanup follow-up synced -->
+<!-- Last updated: 2026-03-23 — §5 intake pipeline hardening verified already implemented on dev (no patch needed); §3.5 DJ admission backfill reclassified as pipeline-state-dependent (not a discrete task); §3.4 XML validation gate review complete -->
+<!-- Active action sequencing has moved to docs/ACTION_PLAN.md (generated 2026-03-23). -->
+<!-- This file remains the agent contract reference and historical record. -->
 
 This document maps all open work to the agent that should execute it.
 Update it when tasks complete or priorities shift.
@@ -13,11 +15,11 @@ Update it when tasks complete or priorities shift.
 ```text
 1. Resume/refresh fix (§1)              ← COMPLETE
 2. Ingestion provenance migration (§14) ← COMPLETE (commit bef5931)
-3. Migration 0013 — five-tier CHECK (§16) ← COMPLETE (included in 0012)
+3. Migration 0013 — five-tier CHECK (§16) ← COMPLETE (explicit SQLite migration)
 4. Fresh DB initialization (§10)        ← COMPLETE (db + env + settings + storage tests)
 5. Repo cleanup (§13)                   ← COMPLETE
-6. Phase 1 PR chain (§2)               ← NEXT (unblocked)
-7. DJ pipeline hardening (§3)          ← after Phase 1
+6. Phase 1 PR chain (§2)               ← COMPLETE (PRs 9-15, all done)
+7. DJ pipeline hardening (§3)          ← UNBLOCKED (Phase 1 complete)
 ```
 
 Items 6 and 7 must not be started until items 1–4 are confirmed complete.
@@ -91,30 +93,68 @@ Commits: 730d2b1, 2fb2a50, 3f3f37d, bf3df38
 | PR | Task | Branch | Status |
 | --- | --- | --- | --- |
 | 9 | Migration 0006 merge | `fix/migration-0006` | COMPLETE (commit 5995983) |
-| 10 | Identity service | `fix/identity-service` | IN PROGRESS — current gate |
-| 11 | Backfill command | `fix/backfill-v3` | READY — depends on 10 |
-| 12 | Identity merge | not started | Needs prompt |
-| 13 | DJ candidate export | not started | Needs prompt |
-| 14 | docs/AGENT update | not started | After 13 |
-| 15 | Phase 2 seam | not started | Needs design first |
+| 10 | Identity service | `fix/identity-service` | COMPLETE (commit 767df22) |
+| 11 | Backfill command | `fix/backfill-v3` | COMPLETE (commit 1e965b0) |
+| 12 | Identity merge | `fix/identity-merge` | COMPLETE (195efc7, delivered via fix/migration-0006) |
+| 13 | DJ candidate export | -- | COMPLETE (delivered in scripts/dj/export_candidates_v3.py, 8/8 tests) |
+| 14 | docs/AGENT update | -- | COMPLETE (commit 8a0b00d) |
+| 15 | Phase 2 seam | -- | COMPLETE (commit d992d20) |
 
-PRs 12–15 need prompts authored in Claude.ai before Codex can execute them.
+PRs 13–15 need prompts authored in Claude.ai before Codex can execute them.
+PR 12 prompt exists at `.github/prompts/phase1-pr12-identity-merge.prompt.md`.
 
 ---
 
-## 3 — DJ pipeline → **Codex** ⛔ BLOCKED until Phase 1 lands
+## 3 — DJ pipeline → **Codex**
 
-### 3.1 DJ pipeline hardening
+Base pipeline work is complete (`eab34d3`, `d52fe27`) and the workflow audit is complete (`16ee5ca`).
+The narrower hardening pass around Stage 2 transcode validation and Stage 4 validation-gate
+behavior is now complete.
 
-Prompt: `.github/prompts/dj-pipeline-hardening.prompt.md`
+### 3.1 DJ pipeline hardening ✅ COMPLETE
 
-### 3.2 DJ workflow audit
+Prompt: `.github/prompts/dj-pipeline-hardening.prompt.md` (retired; historical only)
+
+### 3.2 DJ workflow audit ✅ COMPLETE (commit 16ee5ca)
 
 Prompt: `.github/prompts/dj-workflow-audit.prompt.md`
 
-### 3.3 DJ admission backfill
+### 3.3 FFmpeg output validation ✅ COMPLETE (commit de59b4f)
 
-⚠ No-op against empty DB. Run only after first successful ingestion into fresh DB.
+Prompt: `.github/prompts/dj-ffmpeg-validation.prompt.md`
+
+Delivered:
+
+- post-transcode MP3 validation in `tagslut/exec/transcoder.py`
+- wizard failure surfacing in `tagslut/exec/dj_pool_wizard.py`
+- focused tests in `tests/exec/test_mp3_build_ffmpeg_errors.py`
+- follow-up cleanup commit `ea266a3` removed a duplicate helper definition
+- doc commits `d234572` and `2d48601` recorded the operator-facing behavior
+
+### 3.4 XML validation gate ⚠ REVIEW NEEDED
+
+A separate DJ validation-state / XML preflight gate feature landed during the same work window.
+It is broader than the FFmpeg-only prompt and should be treated as a separate review item before
+further DJ hardening continues.
+
+Affected files include:
+
+- `tagslut/cli/commands/dj.py`
+- `tagslut/dj/admission.py`
+- `tagslut/dj/xml_emit.py`
+- `tagslut/storage/v3/migrations/0014_dj_validation_state.py`
+- `tagslut/storage/v3/schema.py`
+- `tests/exec/test_dj_xml_preflight_validation.py`
+
+### 3.5 DJ admission backfill — pipeline-state-dependent, not a discrete task
+
+Not a one-time task. It follows the canonical curated-library pipeline:
+`tagslut intake` → `tagslut mp3 build|reconcile` → `tagslut dj backfill` → `tagslut dj validate` → `tagslut dj xml emit|patch`
+
+Current state (2026-03-23): `mp3 reconcile --dry-run` against DJ_LIBRARY returns 1 match
+against 170 fresh DB identities. The legacy DJ pool predates the fresh DB — backfill
+will grow naturally as Stage 1 and Stage 2 populate `track_identity` and `mp3_asset`.
+Remove from active queue. Re-run `dj backfill --dry-run` after any significant intake batch.
 
 ---
 
@@ -131,11 +171,15 @@ Prompt: `.github/prompts/lexicon-reconcile.prompt.md`
 
 ---
 
-## 5 — Intake pipeline hardening → **Codex** (after §1 merged)
+## 5 — Intake pipeline hardening: ✅ COMPLETE (2026-03-23, pre-existing on dev)
 
-- `precheck_inventory_dj` fallback for `--dj`-only runs without `--m3u`
-- `intake_pretty_summary` counter accuracy
-- Log redirect: `POST_MOVE_LOG` default path → epoch dir, not `artifacts/`
+All three fixes were already present on `dev` before the prompt was authored.
+Verified 2026-03-23: `bash -n tools/get-intake` → SYNTAX OK, 34 tests passing.
+No patch was needed. Prompt file retained for reference only.
+
+- Fix 1 (POST_MOVE_LOG → epoch dir): `tools/get-intake` lines 2871–2875
+- Fix 2 (planned.promote_move/stash_move/quarantine_move counters): `tagslut/exec/intake_pretty_summary.py` lines 111, 164–166
+- Fix 3 (DJ_ROOT/DJ_M3U_DIR guard before precheck-inventory fallback): `tools/get-intake` lines 1955, 1958
 
 ---
 
@@ -263,25 +307,27 @@ docstring restored. No behaviour changes. No further work needed.
 
 ---
 
-## 16 — Migration 0013: five-tier confidence CHECK → **Codex** ⛔ PREREQUISITE for §10
+## 16 — Migration 0013: five-tier confidence CHECK: COMPLETE (2026-03-24)
 
 Spec: `docs/MULTI_PROVIDER_ID_POLICY.md` §schema-implication
 
-Update `ingestion_confidence` CHECK constraint to allow five values:
+This landed as an explicit SQLite migration in
+`tagslut/storage/v3/migrations/0013_confidence_tier_update.py`; it was not included in
+migration `0012_ingestion_provenance.py`.
+
+`ingestion_confidence` CHECK constraint allows five values:
   `verified` | `corroborated` | `high` | `uncertain` | `legacy`
 
-Add `'multi_provider_reconcile'` to `ingestion_method` controlled vocabulary.
+`ingestion_method` controlled vocabulary includes `'multi_provider_reconcile'`.
 
-Must land after migration 0012 (§14) and before fresh DB initialization (§10).
+Verification:
 
-Codex task:
+1. `poetry run pytest tests/storage/v3/test_migration_0013.py tests/storage/v3/test_migration_runner_v3.py -q` -> `10 passed`
+2. FRESH DB migration chain `1-14` is complete
+3. `dj_validation_state` exists and `track_identity` enforces the documented SQLite CHECK vocabulary
 
-1. Write `tagslut/storage/v3/migrations/0013_confidence_tier_update.py`
-2. Update CHECK constraint in `tagslut/storage/v3/schema.py`
-3. Update `supabase/migrations/` with corresponding Postgres migration
-4. Update `docs/DB_V3_SCHEMA.md` — confidence and method vocabulary tables
-
-Commit: `feat(schema): five-tier ingestion_confidence CHECK + multi_provider_reconcile method`
+Root cause: migration `0012` added provenance columns but did not enforce the documented
+CHECK constraints. Migration `0013` closes that gap for upgraded SQLite DBs.
 
 ---
 
@@ -304,8 +350,9 @@ Prompt: `.github/prompts/postman-api-optimize.prompt.md` (status: COMPLETE)
 | File | Task | Agent | Status |
 | --- | --- | --- | --- |
 | `resume-refresh-fix.prompt.md` | Fix `--resume` in `tools/get-intake` | Codex | COMPLETE |
+| `intake-pipeline-hardening.prompt.md` | Intake pipeline 3-fix hardening | Codex | COMPLETE (pre-existing on dev, verified 2026-03-23) |
 | `repo-cleanup.prompt.md` | Archive dead scripts and stale docs | Codex | Ready |
-| `dj-pipeline-hardening.prompt.md` | DJ pipeline discipline | Codex | Blocked (Phase 1) |
+| `dj-pipeline-hardening.prompt.md` | DJ pipeline discipline | Codex | COMPLETE (retired execution prompt, 2026-03-24) |
 | `dj-workflow-audit.prompt.md` | DJ workflow audit | Codex | Blocked (Phase 1) |
 | `lexicon-reconcile.prompt.md` | Lexicon reconcile strategy | Codex | Ready |
 | `open-streams-post-0010.prompt.md` | Write DJ pipeline post | Codex | Ready |
@@ -319,7 +366,7 @@ Author in Claude.ai before delegating to Codex.
 ## 18 — Credential management consolidation → **Claude Code + Codex**
 
 Audit: `docs/CREDENTIAL_MANAGEMENT_AUDIT.md` (see full audit report)
-Target doc: `docs/CREDENTIAL_MANAGEMENT.md` (to be written)
+Target doc: `docs/CREDENTIAL_MANAGEMENT.md`
 
 ### Problem summary
 
@@ -332,9 +379,10 @@ Two credential systems operating in parallel with undocumented precedence:
 - **System C** (Postman): environment vars in Postman collection — integration
   testing only, not a source of truth
 
-Critical issue: `beatport.py` checks `os.getenv("BEATPORT_ACCESS_TOKEN")` FIRST,
-meaning a stale env var silently wins over a fresh token in tokens.json.
-No operator documentation of this precedence exists.
+Critical issue addressed in Phase 1: `beatport.py` had checked
+`os.getenv("BEATPORT_ACCESS_TOKEN")` first, meaning a stale env var could silently
+win over a fresh token in tokens.json. Operator documentation now exists in
+`docs/CREDENTIAL_MANAGEMENT.md`.
 
 ### Not on the critical path
 
@@ -342,13 +390,15 @@ This does not block migrations 0012/0013, fresh DB init, or Phase 1 PRs.
 The intake pipeline is functional with the existing setup.
 Do not start this until the migration chain is complete.
 
-### Phase 1 — Document + fix precedence → **Codex** (after §14 + §16 land)
+### Phase 1 — Document + fix precedence ✅ COMPLETE
 
-1. Write `docs/CREDENTIAL_MANAGEMENT.md` — tokens.json as single source of truth,
-   per-provider setup instructions, Postman sync note
-2. Fix precedence in `beatport.py` — tokens.json first, env var fallback with warning log
-3. Update `.env.example` to point at `~/.config/tagslut/tokens.json`
-4. Add `tagslut token-get <provider>` CLI command for shell script use
+Delivered:
+
+- `docs/CREDENTIAL_MANAGEMENT.md` written with `tokens.json` as the operator source of truth
+- Beatport provider path now prefers `TokenManager` / `tokens.json` before `BEATPORT_ACCESS_TOKEN`
+- `BEATPORT_ACCESS_TOKEN` remains fallback-only in Phase 1 and warns when used in the active provider path
+- `.env.example` now points operators to `~/.config/tagslut/tokens.json`
+- `tagslut token-get <provider>` added as the shell-facing token lookup command
 
 Commit: `feat(auth): establish tokens.json precedence, add token-get command`
 

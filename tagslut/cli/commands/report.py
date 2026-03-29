@@ -3,7 +3,7 @@ from __future__ import annotations
 import click
 
 from tagslut.cli.commands._index_helpers import run_audit_duration, run_report_m3u
-from tagslut.cli.runtime import run_python_script, run_tagslut_wrapper, WRAPPER_CONTEXT
+from tagslut.cli.runtime import run_python_script, WRAPPER_CONTEXT
 
 
 def register_report_group(cli: click.Group) -> None:
@@ -85,12 +85,6 @@ def register_report_group(cli: click.Group) -> None:
             since=since,
             inactive_exclude=inactive_exclude,
         )
-
-    @report.command("recovery", hidden=True, context_settings=WRAPPER_CONTEXT)
-    @click.argument("args", nargs=-1, type=click.UNPROCESSED)
-    def report_recovery(args):  # type: ignore  # TODO: mypy-strict
-        """Retired compatibility wrapper for the archived recovery workflow."""
-        run_tagslut_wrapper(["_recover", "--phase", "report", *list(args)])
 
     @report.command("plan-summary", context_settings=WRAPPER_CONTEXT)
     @click.argument("args", nargs=-1, type=click.UNPROCESSED)

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from tagslut.storage.schema import init_db
 from tagslut.storage.v3.backfill_identity import BackfillConfig, backfill_v3_identity_links
+from tests.conftest import PROV_COLS, PROV_VALS
 
 
 def test_backfill_reuses_existing_identity_by_identity_key(tmp_path: Path) -> None:
@@ -27,12 +28,12 @@ def test_backfill_reuses_existing_identity_by_identity_key(tmp_path: Path) -> No
         ),
     )
     conn.execute(
-        """
+        f"""
         INSERT INTO track_identity (
             identity_key,
             artist_norm,
-            title_norm
-        ) VALUES (?, ?, ?)
+            title_norm{PROV_COLS}
+        ) VALUES (?, ?, ?{PROV_VALS})
         """,
         (
             "text:johnny utah|nvrllyrlly",
@@ -102,14 +103,14 @@ def test_backfill_reuses_best_match_for_duplicate_isrc_rows(tmp_path: Path) -> N
         ),
     )
     conn.executemany(
-        """
+        f"""
         INSERT INTO track_identity (
             identity_key,
             isrc,
             artist_norm,
             title_norm,
-            duration_ref_ms
-        ) VALUES (?, ?, ?, ?, ?)
+            duration_ref_ms{PROV_COLS}
+        ) VALUES (?, ?, ?, ?, ?{PROV_VALS})
         """,
         [
             ("isrc:US38Y1113503", "US38Y1113503", None, None, None),
@@ -167,19 +168,23 @@ def test_backfill_reuses_exact_identity_over_equivalent_text_identity(tmp_path: 
         """,
         (
             "/music/dead-by-christmas-time.flac",
-            '{"artist":"I Can Lick Any Sonofabitch in the House","title":"Dead By Christmas Time","album":"Mayberry","isrc":"USCGJ1349317"}',
+            (
+                '{"artist":"I Can Lick Any Sonofabitch in the House",'
+                '"title":"Dead By Christmas Time","album":"Mayberry",'
+                '"isrc":"USCGJ1349317"}'
+            ),
             195827,
         ),
     )
     conn.executemany(
-        """
+        f"""
         INSERT INTO track_identity (
             identity_key,
             isrc,
             artist_norm,
             title_norm,
-            duration_ref_ms
-        ) VALUES (?, ?, ?, ?, ?)
+            duration_ref_ms{PROV_COLS}
+        ) VALUES (?, ?, ?, ?, ?{PROV_VALS})
         """,
         [
             (

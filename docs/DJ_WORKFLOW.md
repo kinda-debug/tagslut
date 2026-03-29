@@ -2,6 +2,8 @@
 
 # DJ Workflow
 
+Canonical summary: `docs/DJ_PIPELINE.md`.
+
 DJ pool contract: see `docs/DJ_POOL.md` for the downstream-only boundary and defaults.
 
 ## Deprecation Notice
@@ -9,9 +11,9 @@ DJ pool contract: see `docs/DJ_POOL.md` for the downstream-only boundary and def
 `tools/get --dj` is deprecated. Use the 4-stage DJ pipeline instead.
 
 For a curated DJ library, the only supported workflow is:
-`tagslut mp3 reconcile` or `tagslut mp3 build` -> `tagslut dj admit` or
-`tagslut dj backfill` -> `tagslut dj validate` -> `tagslut dj xml emit` or
-`tagslut dj xml patch`.
+`tagslut intake` -> `tagslut mp3 reconcile` or `tagslut mp3 build` ->
+`tagslut dj admit` or `tagslut dj backfill` -> `tagslut dj validate` ->
+`tagslut dj xml emit` or `tagslut dj xml patch`.
 
 Why this exists: `tools/get --dj` still follows legacy wrapper logic with two
 divergent runtime paths. For diagnosis and evidence, see
@@ -29,7 +31,19 @@ needing to read any other DJ doc first.
 The canonical DJ workflow is a linear, auditable pipeline. Each stage is safe to re-run
 and has explicit DB state as output. Run stages in order:
 
-### Stage 1 — MP3 Registration (`mp3 reconcile` or `mp3 build`)
+### Stage 1 — Intake Masters (`tagslut intake` current equivalent)
+
+Use the canonical CLI intake surface to ingest or refresh master FLAC state:
+
+```bash
+poetry run tagslut intake <provider-url>
+```
+
+This stage establishes canonical `track_identity`, `asset_file`, and provenance
+state. Legacy wrappers such as `tools/get --enrich` can still feed the same
+master library, but `tools/get --dj` is not the curated DJ workflow.
+
+### Stage 2 — MP3 Registration (`mp3 reconcile` or `mp3 build`)
 
 If you already have DJ MP3s on disk and want to register them against canonical
 identities without re-transcoding:
@@ -50,7 +64,6 @@ an existing MP3 library, use `mp3 build`:
 ```bash
 poetry run tagslut mp3 build \
   --db "$TAGSLUT_DB" \
-  --master-root "$MASTER_LIBRARY" \
   --dj-root "$DJ_LIBRARY" \
   --execute
 ```
@@ -58,7 +71,18 @@ poetry run tagslut mp3 build \
 Use `mp3 reconcile` when MP3 files already exist. Use `mp3 build` when the DJ MP3
 layer still needs to be created from canonical masters.
 
-### Stage 2 — DJ Admission (`dj backfill` or `dj admit`)
+Notes:
+- `mp3 build` discovers masters via DB `asset_file` + `asset_link` rows created during Stage 1.
+- Use `--identity-ids 1,2,3` to scope to a small set. Default is all identities missing verified MP3s.
+- `--dry-run` is the default; pass `--execute` to write files + DB rows.
+
+Transcode safety note:
+
+- ffmpeg success is not treated as sufficient proof of a good MP3.
+- Post-transcode validation rejects outputs that are missing, suspiciously small, unreadable by mutagen, or shorter than 1 second.
+- Validation failures surface as `TranscodeError`, so DJ-pool build flows record an explicit transcode failure instead of silently accepting a bad file.
+
+### Stage 3 — DJ Admission (`dj backfill` or `dj admit`)
 
 Promote all registered `mp3_asset` rows (`status=verified`) into the curated DJ admission table:
 
@@ -78,6 +102,10 @@ poetry run tagslut dj admit \
 
 Writes rows to `dj_admission`. Idempotent: already-admitted tracks are skipped.
 
+Stage 3 also assigns stable Rekordbox TrackIDs:
+- `dj admit` / `dj backfill` ensure a `dj_track_id_map` row exists per admitted `dj_admission`.
+- TrackIDs are immutable and reused across Stage 4 re-emits and patch cycles.
+
 ### Stage 3 — DJ Validation (`dj validate`)
 
 Before export, validate that admitted tracks still have the expected files and metadata:
@@ -90,6 +118,11 @@ poetry run tagslut dj validate \
 Use this stage after admission and before XML export. Validation is the contract check
 that keeps Stage 4 deterministic.
 
+On success, `dj validate` records a `dj_validation_state` row with the current DJ DB
+`state_hash`. `dj xml emit` checks for a passing row with that exact hash before it
+proceeds. If admissions or playlist membership change after validation, rerun
+`dj validate` before Stage 4.
+
 ### Stage 4 — Rekordbox Export (`dj xml emit` and `dj xml patch`)
 
 Use `dj xml emit` for a fresh deterministic export:
@@ -99,12 +132,14 @@ Write a deterministic Rekordbox-compatible XML from all admitted `dj_admission` 
 ```bash
 poetry run tagslut dj xml emit \
   --db "$TAGSLUT_DB" \
-  --output rekordbox.xml
+  --out rekordbox.xml
 ```
 
 - Assigns stable TrackIDs (persisted in `dj_track_id_map` so cue points survive re-imports)
 - Records a SHA-256 manifest hash in `dj_export_state`
-- Raises if validation finds missing MP3 files or empty metadata (use `--skip-validation` to override)
+- Refuses to proceed unless a prior passing `dj validate` run exists for the current DB `state_hash`
+- Still runs inline validation as a safety net for missing MP3 files and empty metadata
+- `--skip-validation` remains available for emergencies, but now prints a warning to stderr when used
 
 Use `dj xml patch` when the DJ library has changed and you need a fresh XML
 without resetting Rekordbox cue points:
@@ -112,7 +147,7 @@ without resetting Rekordbox cue points:
 ```bash
 poetry run tagslut dj xml patch \
   --db "$TAGSLUT_DB" \
-  --output rekordbox_v2.xml
+  --out rekordbox_v2.xml
 ```
 
 - Verifies the prior XML file's manifest hash before proceeding (fails loudly if tampered)
@@ -180,13 +215,16 @@ promote, and DJ MP3 export in a single flow. It has two divergent code paths dep
 whether tracks were newly promoted or already existed in inventory (precheck-hit).
 
 **Deprecated:** this path is not supported for building a final curated DJ library.
-See `docs/DJ_WORKFLOW.md` for the canonical 4-stage pipeline. Use `tools/get --dj`
+See `docs/DJ_PIPELINE.md` for the canonical 4-stage pipeline. Use `tools/get --dj`
 only for legacy ad-hoc intake where non-deterministic wrapper behavior is acceptable.
 
 To build DJ copies for already-promoted masters outside of a download flow, run:
 
 ```bash
-poetry run tagslut dj backfill --db "$TAGSLUT_DB"
+poetry run tagslut mp3 build --db "$TAGSLUT_DB" --dj-root "$DJ_LIBRARY" --execute
+poetry run tagslut dj backfill --db "$TAGSLUT_DB" --execute
+poetry run tagslut dj validate --db "$TAGSLUT_DB"
+poetry run tagslut dj xml emit --db "$TAGSLUT_DB" --out rekordbox.xml
 ```
 
 ## DJ Library Root

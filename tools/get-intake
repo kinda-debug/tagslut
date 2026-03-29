@@ -97,9 +97,9 @@ Options:
   --execute            Execute move plans (default: dry-run planning only)
   --m3u                Generate Roon-friendly merged M3U from promoted files
   --m3u-dir PATH       M3U output dir (default: $PLAYLIST_ROOT or library root)
-  --dj                 Transcode promoted FLACs to MP3 into DJ library root and write DJ playlists
-  --dj-root PATH       DJ MP3 root (default: $DJ_MP3_ROOT or $DJ_LIBRARY)
-  --dj-m3u-dir PATH    DJ playlist output dir (default: $DJ_PLAYLIST_ROOT or DJ root)
+  --dj                 [LEGACY] --dj is deprecated. Use the 4-stage pipeline. See: tagslut dj --help
+  --dj-root PATH       DJ MP3 root for legacy wrapper output (default: $DJ_MP3_ROOT or $DJ_LIBRARY)
+  --dj-m3u-dir PATH    DJ playlist output dir for legacy wrapper output (default: $DJ_PLAYLIST_ROOT or DJ root)
   --m3u-only           Only generate merged M3U (skip download/scan/move stages)
   --playlist-file PATH Build M3U from playlist file (.m3u/.m3u8/.txt/.csv/.json)
   --missing-policy MODE
@@ -342,6 +342,53 @@ count_audio_files() {
     -iname '*.aiff' -o \
     -iname '*.m4a' \
   \) | wc -l | tr -d ' '
+}
+
+write_audio_file_list() {
+  local root="${1:-}"
+  local out_path="${2:-}"
+  if [[ -z "$root" || ! -d "$root" || -z "$out_path" ]]; then
+    return 0
+  fi
+  mkdir -p "$(dirname "$out_path")"
+  find "$root" -type f \( \
+    -iname '*.flac' -o \
+    -iname '*.mp3' -o \
+    -iname '*.wav' -o \
+    -iname '*.aif' -o \
+    -iname '*.aiff' -o \
+    -iname '*.m4a' \
+  \) | sort > "$out_path"
+}
+
+emit_batch_leftovers_report() {
+  local root="${1:-}"
+  local report_path="${2:-}"
+  local leftover_count="0"
+
+  if [[ -z "$root" || ! -d "$root" ]]; then
+    echo "Batch leftovers: root unavailable"
+    return 0
+  fi
+
+  leftover_count="$(count_audio_files "$root")"
+  if [[ "$leftover_count" -eq 0 ]]; then
+    echo "Batch leftovers: none"
+    return 0
+  fi
+
+  if [[ -z "$report_path" ]]; then
+    report_path="${OUT_DIR:-$REPO_ROOT/artifacts/compare}/batch_leftovers_$(date +%Y%m%d_%H%M%S).txt"
+  fi
+
+  write_audio_file_list "$root" "$report_path"
+
+  echo "Batch leftovers: $leftover_count"
+  echo "  report: $report_path"
+  if [[ "${VERBOSE:-0}" -eq 1 ]]; then
+    echo "Batch leftovers preview:"
+    preview_file_lines "$report_path" 5
+  fi
 }
 
 preview_file_lines() {
@@ -1065,6 +1112,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     --dj)
       DJ_MODE=1
+      echo "[LEGACY] --dj is deprecated. Use the 4-stage pipeline. See: tagslut dj --help" >&2
       shift
       ;;
     --dj-root)
@@ -1904,6 +1952,12 @@ PY
 		        echo "  the precheck-inventory fallback path (link_precheck_inventory_to_dj), NOT the" >&2
 	        echo "  promotion-driven build_pool_v3 path. Results may differ from a first-time intake run." >&2
 	        echo "  For a deterministic DJ build from canonical state, use: tagslut dj pool-wizard" >&2
+          if [[ -z "${DJ_ROOT:-}" ]]; then
+            err "DJ mode requires --dj-root or DJ_MP3_ROOT / DJ_LIBRARY to be set"
+          fi
+          if [[ -z "${DJ_M3U_DIR:-}" ]]; then
+            err "DJ mode requires --dj-m3u-dir or DJ_PLAYLIST_ROOT to be set"
+          fi
 	        step "$((STEP + 1))" "$TOTAL_STEPS" "Link existing inventory to DJ"
 	        link_precheck_inventory_to_dj "$PRECHECK_DECISIONS_CSV" "$PRECHECK_PLAYLIST_TITLE"
 	        echo "No new candidates to download; intake pipeline finished (DJ mode)."
@@ -2815,8 +2869,11 @@ if [[ "$TAGGING_MODE" -eq 1 && "$EXECUTE" -eq 1 && "$DJ_MODE" -eq 0 ]]; then
   STEP=$((STEP + 1))
   step "$STEP" "$TOTAL_STEPS" "Launch background enrich + art"
 
-  POST_MOVE_LOG="$OUT_DIR/post_move_enrich_art_$(date +%Y%m%d_%H%M%S).log"
-  POST_MOVE_PID_FILE="$OUT_DIR/post_move_enrich_art_$(date +%Y%m%d_%H%M%S).pid"
+  LOG_EPOCH_DIR="$(dirname "$BATCH_ROOT")/logs"
+  mkdir -p "$LOG_EPOCH_DIR"
+  POST_MOVE_STAMP="$(date +%Y%m%d_%H%M%S)"
+  POST_MOVE_LOG="$LOG_EPOCH_DIR/post_move_enrich_art_${POST_MOVE_STAMP}.log"
+  POST_MOVE_PID_FILE="$LOG_EPOCH_DIR/post_move_enrich_art_${POST_MOVE_STAMP}.pid"
 
   if [[ ! -s "$PROMOTED_FLACS_FILE" ]]; then
     echo "No promoted files found for background enrich/art; skipping."
@@ -2874,6 +2931,8 @@ if [[ "$EXECUTE" -eq 1 ]]; then
   if [[ -n "$POST_MOVE_PID" ]]; then
     kv "Enrich/art" "pid=$POST_MOVE_PID log=$POST_MOVE_LOG"
   fi
+
+  emit_batch_leftovers_report "$BATCH_ROOT" "$OUT_DIR/batch_leftovers_$(date +%Y%m%d_%H%M%S).txt"
 
   if command -v poetry >/dev/null 2>&1; then
     run_cmd poetry run python -m tagslut.exec.intake_pretty_summary --out-dir "$OUT_DIR" || true

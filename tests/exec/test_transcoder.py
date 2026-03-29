@@ -65,7 +65,7 @@ def test_quality_parameter_mapping_sets_requested_bitrate(tmp_path: Path):
         "tagslut.exec.transcoder.FLAC", side_effect=Exception("no tags")
     ), patch("tagslut.exec.transcoder.subprocess.run", return_value=mock_result) as mock_run, patch(
         "tagslut.exec.transcoder._apply_id3_tags"
-    ):
+    ), patch("tagslut.exec.transcoder._validate_mp3_output"):
         transcode_to_mp3(src, dest_dir, bitrate=192, overwrite=True)
 
     cmd = mock_run.call_args.args[0]

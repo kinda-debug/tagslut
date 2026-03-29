@@ -152,14 +152,19 @@ def register_intake_group(cli: click.Group) -> None:
         "--mp3",
         is_flag=True,
         default=False,
-        help="Also build MP3 assets after promote (requires --mp3-root).",
+        help=(
+            "[LEGACY] Convenience shortcut. Prefer the explicit 4-stage DJ pipeline: "
+            "run `tagslut mp3 build` / `tagslut mp3 reconcile` as Stage 2. (Requires --mp3-root.)"
+        ),
     )
     @click.option(
         "--dj",
         is_flag=True,
         default=False,
         help=(
-            "Also build DJ copies after MP3 assets (implies --mp3; requires --mp3-root and --dj-root)."
+            "[LEGACY] Convenience shortcut. Prefer the explicit 4-stage DJ pipeline: "
+            "`tagslut mp3 ...` -> `tagslut dj ...` -> `tagslut dj xml ...`. "
+            "(Implies --mp3; requires --mp3-root and --dj-root.)"
         ),
     )
     @click.option(
@@ -230,6 +235,16 @@ def register_intake_group(cli: click.Group) -> None:
         """Precheck → download → promote → [mp3] → [dj] for a single provider URL."""
         if dj:
             mp3 = True
+        if mp3 or dj:
+            click.echo(
+                "WARNING: tagslut intake --mp3/--dj is a legacy convenience shortcut. "
+                "Canonical curated-library flow is the explicit 4-stage pipeline: "
+                "Stage 1 `tagslut intake`; Stage 2 `tagslut mp3 build` or `tagslut mp3 reconcile`; "
+                "Stage 3 `tagslut dj backfill`, then `tagslut dj validate`; "
+                "Stage 4 `tagslut dj xml emit` or `tagslut dj xml patch`. "
+                "See docs/DJ_PIPELINE.md.",
+                err=True,
+            )
 
         # Resolve DB path
         try:

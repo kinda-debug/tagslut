@@ -4,6 +4,10 @@
 
 Local web app to classify Artist / Album / Track as **OK** vs **Not OK**, with web review links and DB-backed decisions.
 
+Pipeline context:
+- This app is not a substitute for the curated DJ workflow.
+- Canonical curated-library flow: Stage 1 `tagslut intake`; Stage 2 `tagslut mp3 build` or `tagslut mp3 reconcile`; Stage 3 `tagslut dj backfill`, then `tagslut dj validate`; Stage 4 `tagslut dj xml emit` or `tagslut dj xml patch`. See `docs/DJ_PIPELINE.md`.
+
 ## Run
 
 ```bash

@@ -1,41 +1,9 @@
 $kind: http-request
-name: '6c - Run Notes'
-description: |-
-  **Validation Run — Reference**
-
-  ## How to run this validation
-
-  1. Ensure `tidal_access_token` is valid in the `tagslut` environment.
-  2. Ensure `beatport_access_token` is valid (run `Auth / Get Token` if needed).
-  3. Run this folder via **Collection Runner** in order: `6a → 6b → 5a → 5b → 5c`.
-     - 6a seeds `beatport_test_isrc` and `tidal_seed_isrc` from album `507881809`.
-     - 6b fetches the Beatport track record and seeds `beatport_last_isrc`.
-     - 5a performs the Beatport ISRC lookup and seeds `beatport_verified_isrc`.
-     - 5b performs the TIDAL ISRC cross-check → logs CORROBORATED or CONFLICT.
-     - 5c performs the Spotify ISRC cross-check → logs CORROBORATED or CONFLICT.
-
-  ## Pass criteria
-  - 6a: resolves ISRC from album `507881809` without WARNING.
-  - 6b: all nine canonical fields present, ISRC PRE-CHECK PASSED.
-  - 5a: `beatport_verified_isrc` set, results > 0.
-  - 5b: logs `CORROBORATED`.
-  - 5c: logs `CORROBORATED`.
-
-  ## Known seed
-  TIDAL album: https://tidal.com/album/507881809/u
-  This album was nominated as a clean validation seed. Until all five steps
-  pass, the cross-verification chain is theoretical.
-
-  ## Failure modes
-  | Step | Failure | Action |
-  |------|---------|--------|
-  | 6a | 401 | Refresh `tidal_access_token` |
-  | 6a | 0 tracks | Check album ID — may be region-locked |
-  | 6b | 404 | `beatport_test_track_id` not set — use `Tracks by ISRC` to find it |
-  | 5b | CONFLICT | ISRCs differ — flag track for manual review |
-  | 5c | CONFLICT | ISRCs differ — flag track for manual review |
-  | 5c | 401 | Refresh `spotify_access_token` |
-url: 'https://example.com'
+description: Placeholder request used to capture inline notes, run-specific
+  observations, and test findings during the validation workflow. Not a real API
+  call. Used to document step-by-step outcomes alongside the other validation
+  requests in this folder.
+url: https://example.com
 method: GET
 auth:
   type: noauth

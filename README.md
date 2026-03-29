@@ -92,34 +92,55 @@ Notes:
 `tools/get --dj` is deprecated. Use the 4-stage DJ pipeline instead.
 
 For a curated DJ library, the only supported workflow is:
-`tagslut mp3 reconcile` or `tagslut mp3 build` -> `tagslut dj admit` or
-`tagslut dj backfill` -> `tagslut dj validate` -> `tagslut dj xml emit` or
-`tagslut dj xml patch`. See `docs/DJ_WORKFLOW.md` for the canonical reference.
+`tagslut intake` -> `tagslut mp3 build` or `tagslut mp3 reconcile` ->
+`tagslut dj backfill` -> `tagslut dj validate` ->
+`tagslut dj xml emit` or `tagslut dj xml patch`. See `docs/DJ_PIPELINE.md`
+for the canonical reference.
 
 Building a curated DJ library follows a deterministic 4-stage pipeline.
 Each stage is safe to re-run and leaves explicit DB state as output.
 
 ```bash
-# Stage 1: register existing MP3s against canonical identities (no re-transcode)
+# Stage 1: intake or refresh canonical masters
+poetry run tagslut intake <provider-url>
+
+# Stage 2: register existing MP3s against canonical identities (no re-transcode)
 poetry run tagslut mp3 reconcile \
   --db "$TAGSLUT_DB" --mp3-root "$DJ_LIBRARY" --execute
 
-# Stage 2: admit registered MP3s into the curated DJ library
+# Stage 2 alternative: build DJ MP3s from canonical masters
+poetry run tagslut mp3 build \
+  --db "$TAGSLUT_DB" --dj-root "$DJ_LIBRARY" --execute
+
+# When building new MP3s from masters, tagslut validates the ffmpeg output
+# before accepting it: file must exist, be large enough, parse as MP3, and
+# report a duration greater than 1 second.
+
+# Stage 3: admit registered MP3s into the curated DJ library
 poetry run tagslut dj backfill --db "$TAGSLUT_DB"
+
+# Targeted one-off admission exists as `tagslut dj admit`, but it is not the primary Stage 3 path.
 
 # Stage 3: validate DJ library state (missing files, empty metadata)
 poetry run tagslut dj validate --db "$TAGSLUT_DB"
 
+# Stage 4 requires a passing validation record for the current DB state.
+# If admissions or playlists change after validation, rerun dj validate first.
+
 # Stage 4: emit deterministic Rekordbox XML (stable TrackIDs across re-emits)
 poetry run tagslut dj xml emit --db "$TAGSLUT_DB" --out rekordbox.xml
+
+# Emergency only: --skip-validation bypasses the gate and prints a warning to stderr.
 
 # After library changes: re-emit preserving Rekordbox cue points
 poetry run tagslut dj xml patch --db "$TAGSLUT_DB" --out rekordbox_v2.xml
 ```
 
-See `docs/DJ_WORKFLOW.md` for the full reference and per-stage details.
+See `docs/DJ_PIPELINE.md` for the concise reference and `docs/DJ_WORKFLOW.md`
+for the extended operator guide.
 
 ## Move Plan Execution
+
 Use the canonical executor for reviewed plan CSVs:
 
 ```bash
@@ -132,7 +153,12 @@ python -m tagslut execute move-plan \
 Execution writes receipts into the v3 move/provenance tables and also carries common per-track sidecars with the audio move.
 
 ## Maintainer PR Sync (Phase 1 stack)
-Use `tools/review/sync_phase1_prs.sh` to push the three immediate branch updates while preserving branch/PR scope boundaries.
+
+Phase 1 status has advanced: PRs 9, 10, and 11 are already merged into `dev`.
+The active gate is now PR 12 (identity merge).
+
+Use `tools/review/sync_phase1_prs.sh` only when you intentionally need to refresh
+legacy worktree branches for historical review workflows.
 
 ```bash
 # Optional: override worktree paths
@@ -142,29 +168,23 @@ BACKFILL_WT=/tmp/tagslut_wt_backfill \
 tools/review/sync_phase1_prs.sh
 ```
 
-The script pushes:
-- `fix/migration-0006` with `--force-with-lease` (PR #193)
-- `fix/identity-service` with `--force-with-lease` (PR #185)
-- `fix/backfill-v3` to remote branch `fix/dj-tag-enrichment` with `--force-with-lease`
+Current Phase 1 branch guidance:
 
-After pushing, open the DJ enrichment PR targeting `fix/identity-service`:
-
-```bash
-gh pr create --base fix/identity-service --head fix/dj-tag-enrichment \
-  --title "feat(dj): enrich FLAC DJ tags from v3 identity cache before transcode" \
-  --draft
-```
-
-This keeps DJ enrichment separate from `fix/v3-backfill-command` (PR #186).
+- PR 12: prompt ready at `.github/prompts/phase1-pr12-identity-merge.prompt.md`
+- PRs 13-15: prompts still required before execution
+- Stale local backfill branch history was archived under
+  `archive/fix-backfill-v3-stale-20260322`
 
 When you want to refresh the stack only when new commits exist, run `tools/review/auto_sync_phase1_prs.sh`. It uses the same `MIGRATION_WT`, `IDENTITY_WT`, and `BACKFILL_WT` overrides, checks each worktree against its upstream, and executes `sync_phase1_prs.sh` only when the local branch is ahead (or the remote is missing). The helper aborts with an error if a remote already contains commits that are not present locally so you can reconcile manually.
 
 ## Safety Gates
+
 - v3 doctor: schema and invariants
 - migration verification: aggregate preservation checks
 - promotion invariant guardrail: preferred-under-root must be selected when available
 
 Safe promotion sequence:
+
 ```bash
 make doctor-v3 V3=<V3_DB>
 make check-promote-invariant V3=<V3_DB> ROOT=<PROMOTE_ROOT> MINUTES=240 STRICT=1
@@ -173,6 +193,7 @@ make check-promote-invariant V3=<V3_DB> ROOT=<PROMOTE_ROOT> MINUTES=240 STRICT=1
 See [`docs/README.md`](docs/README.md) for the full documentation index.
 
 ## Repository Structure
+
 - `tagslut/`: runtime packages and CLI
 - `tools/`: operational wrappers and scripts
 - `scripts/db/`: DB verification, reporting, lifecycle and guardrail scripts

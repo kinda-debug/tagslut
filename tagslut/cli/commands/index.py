@@ -43,7 +43,7 @@ def register_index_group(cli: click.Group) -> None:
     @click.option('--limit', type=int, help='Only process first N files (useful for smoke tests)')
     @click.option('--dj-only', is_flag=True, help='Mark all registered files as DJ material')
     @click.option('--check-duration', is_flag=True, help='Measure duration and compute duration status')
-    @click.option('--prompt/--no-prompt', default=True, help='Prompt when similar files exist')
+    @click.option('--prompt/--no-prompt', default=False, help='Prompt when similar files exist (default: no-prompt)')
     @click.option('-v', '--verbose', is_flag=True, help='Verbose output')
     def index_register(  # type: ignore  # TODO: mypy-strict
         path,

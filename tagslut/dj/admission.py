@@ -22,6 +22,29 @@ class DjAdmissionError(Exception):
     pass
 
 
+def _ensure_track_id_map(conn: sqlite3.Connection, *, admission_id: int) -> None:
+    """Ensure a stable Rekordbox TrackID exists for an admitted dj_admission row."""
+    existing = conn.execute(
+        "SELECT rekordbox_track_id FROM dj_track_id_map WHERE dj_admission_id = ?",
+        (admission_id,),
+    ).fetchone()
+    if existing is not None:
+        return
+
+    next_id = int(
+        conn.execute(
+            "SELECT COALESCE(MAX(rekordbox_track_id), 0) + 1 FROM dj_track_id_map"
+        ).fetchone()[0]
+    )
+    conn.execute(
+        """
+        INSERT INTO dj_track_id_map (dj_admission_id, rekordbox_track_id, assigned_at)
+        VALUES (?, ?, ?)
+        """,
+        (admission_id, next_id, _now_iso()),
+    )
+
+
 def admit_track(
     conn: sqlite3.Connection,
     *,
@@ -63,6 +86,7 @@ def admit_track(
                 admission_id,
             ),
         )
+        _ensure_track_id_map(conn, admission_id=admission_id)
         return admission_id
 
     cur = conn.execute(
@@ -78,7 +102,9 @@ def admit_track(
             json.dumps(notes) if notes else None,
         ),
     )
-    return cur.lastrowid  # type: ignore[return-value]
+    admission_id = int(cur.lastrowid)  # type: ignore[arg-type]
+    _ensure_track_id_map(conn, admission_id=admission_id)
+    return admission_id
 
 
 def backfill_admissions(conn: sqlite3.Connection) -> tuple[int, int]:
@@ -175,7 +201,9 @@ def validate_dj_library(conn: sqlite3.Connection) -> DjValidationReport:
         WHERE da.status = 'admitted'
         """
     ).fetchall()
+    mp3_paths: dict[str, list[tuple[int, int, int]]] = {}
     for da_id, identity_id, ma_id, mp3_path, mp3_status in rows:
+        mp3_paths.setdefault(str(mp3_path), []).append((int(da_id), int(ma_id), int(identity_id)))
         if mp3_status != "verified":
             report.add(
                 "BAD_MP3_STATUS",
@@ -192,6 +220,19 @@ def validate_dj_library(conn: sqlite3.Connection) -> DjValidationReport:
                 mp3_asset_id=ma_id,
                 dj_admission_id=da_id,
             )
+
+    # 1b. MP3 path must not be shared across admitted admissions.
+    for mp3_path, refs in mp3_paths.items():
+        if len(refs) < 2:
+            continue
+        admission_ids = sorted({da_id for da_id, _ma_id, _identity_id in refs})
+        mp3_asset_ids = sorted({ma_id for _da_id, ma_id, _identity_id in refs})
+        identity_ids = sorted({identity_id for _da_id, _ma_id, identity_id in refs})
+        report.add(
+            "DUPLICATE_MP3_PATH",
+            "Multiple admitted tracks reference the same MP3 path "
+            f"({mp3_path}); dj_admission_ids={admission_ids}; mp3_asset_ids={mp3_asset_ids}; identity_ids={identity_ids}",
+        )
 
     # 2. Playlist members must be admitted admissions
     orphan_rows = conn.execute(
@@ -233,3 +274,29 @@ def validate_dj_library(conn: sqlite3.Connection) -> DjValidationReport:
         )
 
     return report
+
+
+def record_validation_state(
+    conn: sqlite3.Connection,
+    *,
+    state_hash: str,
+    issue_count: int,
+    passed: bool,
+    summary: str | None = None,
+) -> int:
+    """Insert a dj_validation_state row and return its id."""
+    cur = conn.execute(
+        """
+        INSERT INTO dj_validation_state
+          (validated_at, state_hash, issue_count, passed, summary)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            _now_iso(),
+            state_hash,
+            issue_count,
+            1 if passed else 0,
+            summary,
+        ),
+    )
+    return cur.lastrowid  # type: ignore[return-value]

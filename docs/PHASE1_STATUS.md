@@ -1,35 +1,22 @@
-<!-- Status: Active document. Synced 2026-03-09 after recent code/doc review. Historical or superseded material belongs in docs/archive/. -->
+<!-- Status: Historical checkpoint. -->
+<!-- This file is no longer a live control document. -->
+<!-- Use docs/ACTION_PLAN.md for current execution sequencing and docs/ROADMAP.md for historical task context. -->
 
-## Phase 1 PR Chain
+# Phase 1 Status
 
-| # | PR | Status | Branch | Depends On |
-|---|-----|--------|--------|------------|
-| 1 | script/layout | SKIP (no-op) | -- | -- |
-| 2 | retire dedupe alias | MERGED | -- | -- |
-| 3 | recovery tombstone | MERGED | -- | -- |
-| 4 | transcoder type/lint | MERGED | -- | -- |
-| 5 | flac_scan_prep fix | MERGED | -- | -- |
-| 6 | migration scaffold | MERGED | -- | -- |
-| 7 | zone/env rename | MERGED | -- | -- |
-| 8 | baseline snapshot | MERGED | -- | 2-7 |
-| 9 | migration 0006 | MERGED | fix/migration-0006 | 8 |
-| 10 | identity service | IN PROGRESS | fix/identity-service | 9 |
-| 11 | backfill command | READY | fix/backfill-v3 | 10 |
-| 12 | identity merge | NOT STARTED | -- | 10 |
-| 13 | DJ candidate export | NOT STARTED | -- | 11 |
-| 14 | docs/AGENT update | NOT STARTED | -- | 13 |
-| 15 | Phase 2 seam | NOT STARTED | -- | 14 |
+Phase 1 is complete.
 
-## Current Gate
+This file is retained only as a checkpoint reference for the completed Phase 1 PR chain and should not be used to decide current priorities.
 
-Stage 3: identity service is the active blocker.
+## Final Phase 1 outcome
 
-Status note (2026-03-22):
+- PR chain complete through Phase 1 and Phase 2 seam preparation.
+- Identity-service, backfill, merge, and related schema-support work landed on `dev`.
+- Active queue ownership moved elsewhere after this checkpoint:
+  - `docs/ACTION_PLAN.md` → current execution queue
+  - `docs/REDESIGN_TRACKER.md` → open/closed stream ledger
+  - `docs/ROADMAP.md` → historical task contract
 
-- PR 9 (migration 0006) merged into dev at commit 5995983.
-- PR 9 validation: 2/2 migration tests, 6/6 migration runner, 9/9 transaction boundary tests all passing.
-- PR 9 work included: merge-lineage assertions enforcement, legacy mirror sync on merge, ISRC copy-on-blank during merge.
-- PR 10 (`fix/identity-service`) is now the active gate. Branch synced clean from dev at commit f091b01.
-- Use `tools/review/sync_phase1_prs.sh` to push the migration, identity, and DJ-enrichment worktrees without collapsing their PR scope boundaries.
+## Note
 
-Update this as PRs merge. Codex can read it when needed, and you can reference it in prompts with "check docs/PHASE1_STATUS.md for current state."
+If this file needs more detail, retrieve it from Git history rather than turning it back into a live tracker.

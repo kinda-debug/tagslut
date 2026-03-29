@@ -23,6 +23,7 @@ from tagslut.storage.schema import (
 from tagslut.storage.v3.dual_write import upsert_asset_file
 from tagslut.storage.v3.identity_service import (
     link_asset_to_identity,
+    resolve_active_identity,
     resolve_or_create_identity,
 )
 from tagslut.utils import env_paths
@@ -438,6 +439,71 @@ def _identity_key_for_payload(payload: dict[str, Any]) -> str | None:
     return None
 
 
+def _is_blank(value: Any) -> bool:
+    return value is None or (isinstance(value, str) and value.strip() == "")
+
+
+def _merge_payload_into_identity_if_empty(
+    conn: sqlite3.Connection,
+    identity_id: int,
+    payload: dict[str, Any],
+) -> int:
+    identity_row = resolve_active_identity(conn, int(identity_id))
+    resolved_identity_id = int(identity_row["id"])
+    columns = _load_track_identity_columns(conn)
+
+    duration_ref_ms = payload.get("duration_ref_ms")
+    canonical_duration = None
+    if duration_ref_ms is not None:
+        canonical_duration = float(int(duration_ref_ms)) / 1000.0
+
+    candidate_updates = {
+        "isrc": _norm_text(payload.get("isrc")),
+        "artist_norm": _norm_text(payload.get("artist_norm")),
+        "title_norm": _norm_text(payload.get("title_norm")),
+        "album_norm": _norm_text(payload.get("album_norm")),
+        "canonical_title": _norm_text(payload.get("canonical_title")),
+        "canonical_artist": _norm_text(payload.get("canonical_artist")),
+        "canonical_album": _norm_text(payload.get("canonical_album")),
+        "canonical_genre": _norm_text(payload.get("canonical_genre")),
+        "canonical_sub_genre": _norm_text(payload.get("canonical_sub_genre")),
+        "canonical_label": _norm_text(payload.get("canonical_label")),
+        "canonical_catalog_number": _norm_text(payload.get("canonical_catalog_number")),
+        "canonical_mix_name": _norm_text(payload.get("canonical_mix_name")),
+        "canonical_release_date": _norm_text(payload.get("canonical_release_date")),
+        "canonical_key": _norm_text(payload.get("canonical_key")),
+        "canonical_bpm": payload.get("canonical_bpm"),
+        "canonical_year": payload.get("canonical_year"),
+        "duration_ref_ms": duration_ref_ms,
+        "canonical_duration": canonical_duration,
+        "ref_source": _norm_text(payload.get("ref_source")),
+    }
+    for provider_column, _ in _PROVIDER_COLUMNS:
+        candidate_updates[provider_column] = _norm_text(payload.get(provider_column))
+
+    updates: dict[str, Any] = {}
+    for column, value in candidate_updates.items():
+        if column not in columns or value is None:
+            continue
+        current_value = identity_row[column] if column in identity_row.keys() else None
+        if _is_blank(current_value):
+            updates[column] = value
+
+    if not updates:
+        return resolved_identity_id
+
+    assignments = ", ".join(f"{column} = ?" for column in updates)
+    params = [updates[column] for column in updates]
+    if "updated_at" in columns:
+        assignments = f"{assignments}, updated_at = CURRENT_TIMESTAMP"
+    params.append(resolved_identity_id)
+    conn.execute(
+        f"UPDATE {V3_TRACK_IDENTITY_TABLE} SET {assignments} WHERE id = ?",
+        params,
+    )
+    return resolved_identity_id
+
+
 def _resolve_active_identity_row(
     conn: sqlite3.Connection, identity_row: sqlite3.Row
 ) -> tuple[sqlite3.Row, bool]:
@@ -660,7 +726,6 @@ def _resolve_identity_via_service(
     )
 
 
-
 def _seed_legacy_fingerprint(conn, asset_id, file_row, file_columns):
     """Copy legacy files.fingerprint to asset_file.chromaprint_fingerprint if not yet set."""
     if "fingerprint" not in file_columns:
@@ -671,7 +736,11 @@ def _seed_legacy_fingerprint(conn, asset_id, file_row, file_columns):
     if not _column_exists(conn, V3_ASSET_FILE_TABLE, "chromaprint_fingerprint"):
         return
     conn.execute(
-        f"UPDATE {V3_ASSET_FILE_TABLE} SET chromaprint_fingerprint = ? WHERE id = ? AND chromaprint_fingerprint IS NULL",
+        (
+            f"UPDATE {V3_ASSET_FILE_TABLE} "
+            "SET chromaprint_fingerprint = ? "
+            "WHERE id = ? AND chromaprint_fingerprint IS NULL"
+        ),
         (fp, asset_id),
     )
 
@@ -871,7 +940,11 @@ def backfill_v3_identity_links(
                 )
             else:
                 if config.execute:
-                    resolved_identity_id = _resolve_identity_via_service(conn, row, asset_id, payload)
+                    resolved_identity_id = _merge_payload_into_identity_if_empty(
+                        conn,
+                        resolved_identity_id,
+                        payload,
+                    )
                 stats.reused += 1
                 _append_sample(
                     stats.samples,

@@ -8,6 +8,7 @@ from tagslut.storage.v3.db import open_db_v3
 from tagslut.storage.v3.doctor import doctor_v3
 from tagslut.storage.v3.migration_runner import run_pending_v3, verify_v3_migration
 from tagslut.storage.v3.dual_write import (
+    classify_ingestion_track,
     dual_write_enabled,
     dual_write_registered_file,
     ensure_move_plan,
@@ -20,7 +21,6 @@ from tagslut.storage.v3.dual_write import (
     upsert_asset_link,
     upsert_track_identity,
 )
-from tagslut.storage.v3.identity_service import resolve_active_identity
 from tagslut.storage.v3.identity_status import (
     IdentityStatusRow,
     compute_identity_statuses,
@@ -78,6 +78,7 @@ __all__ = [
     "get_profile",
     "list_profiles",
     "upsert_profile",
+    "classify_ingestion_track",
     "dual_write_enabled",
     "dual_write_registered_file",
     "ensure_move_plan",
@@ -86,7 +87,6 @@ __all__ = [
     "move_asset_path",
     "record_provenance_event",
     "resolve_asset_id_by_path",
-    "resolve_active_identity",
     "upsert_asset_file",
     "upsert_asset_link",
     "upsert_track_identity",

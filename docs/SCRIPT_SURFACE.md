@@ -35,12 +35,12 @@ Role: M3U and operational reports (duration, plan summaries).
 Role: Provider authentication and token lifecycle flows.
 
 8. `poetry run tagslut mp3 ...`
-Role: MP3 derivative asset management (Stage 2 of the 4-stage DJ pipeline).
+Role: MP3 derivative asset management (Stage 2 of the 4-stage DJ pipeline; prerequisite: Stage 1 intake).
 - `mp3 build` — transcode preferred FLAC master(s) to MP3 and register in `mp3_asset`
 - `mp3 reconcile` — scan an existing MP3 root and register files in `mp3_asset` without re-transcoding
 
 9. `poetry run tagslut dj ...`
-Role: DJ library curation, admission, validation, and Rekordbox XML export.
+Role: DJ library admission, validation, and Rekordbox XML export (Stages 3 and 4).
 - `dj admit` — admit a single identity into the DJ library (`dj_admission` row)
 - `dj backfill` — admit all `mp3_asset` rows not yet in `dj_admission`
 - `dj validate` — validate DJ library state (missing files, empty metadata)
@@ -79,7 +79,7 @@ stages.
 - Beatport URLs may download from TIDAL when a strict verified cross-match exists and TIDAL ranks higher by quality; Beatport remains the metadata origin for that URL.
 - default output is concise; `--verbose` enables internal paths, artifact files, and batch snapshots
 - high-level workflow flags: `--dj`, `--hoard`, `--no-hoard`, `--no-precheck`, `--force-download`, `--providers`, `--verbose`
-- `--dj` is deprecated legacy behavior. See `docs/DJ_WORKFLOW.md` for the canonical 4-stage DJ pipeline.
+- `--dj` is deprecated legacy behavior. See `docs/DJ_PIPELINE.md` for the canonical 4-stage DJ pipeline.
 - work roots are split by intent: `FIX_ROOT`, `QUARANTINE_ROOT`, `DISCARD_ROOT`
 - `--simple` keeps downloader-only behavior
 
@@ -136,7 +136,7 @@ Retired in Phase 5 (not operator-facing):
 - tagslut metadata ...
 - tagslut recover ...
 
-Internal hidden commands (`_mgmt`, `_metadata`, `_recover`) may exist for
+Internal hidden commands (`_mgmt`, `_metadata`) may exist for
 code-organization compatibility only. They are implementation details, not
 operator-facing commands.
 
@@ -151,12 +151,8 @@ Use `tagslut intake/index/decide/execute/verify/report/auth/dj/gig/export/init` 
 ## Recovery Command Status
 
 - `tagslut.recovery` is decommissioned and intentionally non-importable.
-- Hidden compatibility shims still exist for old invocations:
-  - `tagslut recovery ...`
-  - `tagslut verify recovery ...`
-  - `tagslut report recovery ...`
-  - `tagslut _recover ...`
-- Those shims are not active recovery functionality. They exist only to fail clearly and point to `legacy/tagslut_recovery/`.
+- Hidden compatibility shims for old recovery invocations were removed from active CLI surface.
+- Recovery remains retired and archived at `legacy/tagslut_recovery/`.
 - Canonical operator path for end-to-end root processing:
   - `tagslut intake process-root --root <folder> [--db <db>]`
 - Current v3-safe `process-root` usage is `identify,enrich,art,promote,dj`; legacy scan phases are blocked when `--db` points at a v3 database.

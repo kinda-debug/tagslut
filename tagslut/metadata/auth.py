@@ -339,6 +339,51 @@ class TokenManager:
         4. Copy the Bearer token from the Authorization header
         5. Paste it into tokens.json under beatport.access_token
         """
+        beatport_data = self._tokens.get("beatport", {})
+        refresh_token = beatport_data.get("refresh_token")
+
+        # First preference: refresh an existing user token if we have a refresh_token.
+        # This keeps the normal tagslut token-get / auth status flows self-healing
+        # instead of requiring a manual DevTools rescue whenever an access token expires.
+        if refresh_token:
+            try:
+                creds = self.get_credentials("beatport")
+                payload = {
+                    "grant_type": "refresh_token",
+                    "refresh_token": refresh_token,
+                    "client_id": creds.get("client_id") or BEATPORT_DJ_CLIENT_ID,
+                }
+                if creds.get("client_secret"):
+                    payload["client_secret"] = creds["client_secret"]
+
+                response = httpx.post(
+                    "https://api.beatport.com/v4/auth/o/token/",
+                    headers={
+                        "Content-Type": "application/x-www-form-urlencoded",
+                    },
+                    data=payload,
+                    timeout=30.0,
+                )
+                response.raise_for_status()
+
+                data = response.json()
+                expires_at = time.time() + data.get("expires_in", 3600)
+
+                self.set_token(
+                    "beatport",
+                    access_token=data["access_token"],
+                    refresh_token=data.get("refresh_token", refresh_token),
+                    expires_at=expires_at,
+                    token_type=data.get("token_type", "Bearer"),
+                )
+                logger.info(
+                    "Refreshed Beatport token via refresh_token flow (expires in %ds)",
+                    data.get("expires_in", 3600),
+                )
+                return self.get_token("beatport")
+            except httpx.HTTPError as e:
+                logger.warning("Beatport refresh_token flow failed: %s", e)
+
         # Try custom client credentials if configured (partner access)
         creds = self.get_credentials("beatport")
         if creds.get("client_id") and creds.get("client_secret"):

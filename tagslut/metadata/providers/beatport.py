@@ -221,12 +221,12 @@ class BeatportApiClient:
 
         creds = self.provider.token_manager.get_credentials("beatport") if self.provider.token_manager else {}
         _env_token = os.getenv("BEATPORT_ACCESS_TOKEN")
-        if _env_token:
+        _mgr_token = token.access_token if token else None
+        if _env_token and not _mgr_token:
             logger.warning(
-                "Using BEATPORT_ACCESS_TOKEN from environment variable. "
+                "Using BEATPORT_ACCESS_TOKEN from environment variable as fallback. "
                 "Consider moving credentials to tokens.json via 'tagslut auth login beatport'."
             )
-        _mgr_token = token.access_token if token else None
 
         _env_basic_username = os.getenv("BEATPORT_BASIC_AUTH_USERNAME") or os.getenv("BEATPORT_CLIENT_ID")
         if _env_basic_username:

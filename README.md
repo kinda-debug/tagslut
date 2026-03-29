@@ -27,8 +27,11 @@ It separates physical files from logical track identities, then applies determin
 
 2. **Learn the commands:**
    - [Command Guide](docs/COMMAND_GUIDE.md) - Which command to use when
+   - [Documentation Index](docs/README.md) - Canonical operator docs
    - [DJ Pipeline](docs/DJ_PIPELINE.md) - DJ workflow reference
    - [Download Strategy](docs/DOWNLOAD_STRATEGY.md) - Provider selection rules
+   - [Backfill Guide](docs/BACKFILL_GUIDE.md) - Backfill principles and patterns
+   - [Provenance Integration](docs/PROVENANCE_INTEGRATION.md) - Provenance tracking integration notes
 
 Manual setup (legacy/reference):
 

@@ -13,6 +13,8 @@ Active-doc policy:
 - [OPERATIONS.md](OPERATIONS.md) — day-to-day commands and recipes
 - [DJ_PIPELINE.md](DJ_PIPELINE.md) — canonical 4-stage DJ pipeline; `tools/get --dj` is deprecated legacy
 - [DJ_WORKFLOW.md](DJ_WORKFLOW.md) — extended DJ operator guide and legacy-wrapper rationale
+- [BACKFILL_GUIDE.md](BACKFILL_GUIDE.md) — backfill principles and lookup order
+- [PROVENANCE_INTEGRATION.md](PROVENANCE_INTEGRATION.md) — provenance tracker integration notes
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — known issues and fixes
 
 ## Architecture And Policy

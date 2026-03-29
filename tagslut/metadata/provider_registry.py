@@ -13,12 +13,14 @@ from typing import Dict, Literal, Type
 
 from tagslut.metadata.providers.base import AbstractProvider
 from tagslut.metadata.providers.beatport import BeatportProvider
+from tagslut.metadata.providers.qobuz import QobuzProvider
 from tagslut.metadata.providers.tidal import TidalProvider
 
 # Registry of available providers
 PROVIDER_REGISTRY: Dict[str, Type[AbstractProvider]] = {
     "beatport": BeatportProvider,
     "tidal": TidalProvider,
+    "qobuz": QobuzProvider,
 }
 
 
@@ -45,6 +47,11 @@ class ProviderPolicy:
 class ProviderActivationConfig:
     beatport: ProviderPolicy = ProviderPolicy(download_enabled=False)
     tidal: ProviderPolicy = ProviderPolicy(download_enabled=True)
+    qobuz: ProviderPolicy = ProviderPolicy(
+        metadata_enabled=False,
+        download_enabled=False,
+        trust="do_not_use_for_canonical",
+    )
 
 
 DEFAULT_ACTIVE_PROVIDERS = ["beatport", "tidal"]
@@ -55,9 +62,9 @@ DEFAULT_PROVIDERS_CONFIG_PATH = (
 )
 
 
-def _parse_trust(raw: object, *, provider: str) -> ProviderTrust:
+def _parse_trust(raw: object, *, provider: str, default: ProviderTrust) -> ProviderTrust:
     if raw is None:
-        return "secondary"
+        return default
     if isinstance(raw, str) and raw in ("dj_primary", "secondary", "do_not_use_for_canonical"):
         return raw  # type: ignore[return-value]  # Literal narrowing
     raise ValueError(f"Invalid trust for {provider}: {raw!r}")
@@ -84,19 +91,25 @@ def load_provider_activation_config(path: Path | None = None) -> ProviderActivat
 
     beatport_section = providers.get("beatport") if isinstance(providers.get("beatport"), dict) else {}
     tidal_section = providers.get("tidal") if isinstance(providers.get("tidal"), dict) else {}
+    qobuz_section = providers.get("qobuz") if isinstance(providers.get("qobuz"), dict) else {}
 
     beatport_policy = ProviderPolicy(
         metadata_enabled=bool(beatport_section.get("metadata_enabled", True)),
         download_enabled=bool(beatport_section.get("download_enabled", False)),
-        trust=_parse_trust(beatport_section.get("trust"), provider="beatport"),
+        trust=_parse_trust(beatport_section.get("trust"), provider="beatport", default="dj_primary"),
     )
     tidal_policy = ProviderPolicy(
         metadata_enabled=bool(tidal_section.get("metadata_enabled", True)),
         download_enabled=bool(tidal_section.get("download_enabled", True)),
-        trust=_parse_trust(tidal_section.get("trust"), provider="tidal"),
+        trust=_parse_trust(tidal_section.get("trust"), provider="tidal", default="dj_primary"),
+    )
+    qobuz_policy = ProviderPolicy(
+        metadata_enabled=bool(qobuz_section.get("metadata_enabled", False)),
+        download_enabled=bool(qobuz_section.get("download_enabled", False)),
+        trust=_parse_trust(qobuz_section.get("trust"), provider="qobuz", default="do_not_use_for_canonical"),
     )
 
-    return ProviderActivationConfig(beatport=beatport_policy, tidal=tidal_policy)
+    return ProviderActivationConfig(beatport=beatport_policy, tidal=tidal_policy, qobuz=qobuz_policy)
 
 
 def resolve_active_metadata_providers(

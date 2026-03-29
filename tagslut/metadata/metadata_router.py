@@ -93,6 +93,14 @@ def _capability_available_for_state(
                 return False, "no usable auth"
             return True, f"state={state.value}"
 
+    if provider == "qobuz":
+        if capability in (
+            Capability.METADATA_FETCH_TRACK_BY_ID,
+            Capability.METADATA_SEARCH_BY_TEXT,
+        ):
+            return True, "scaffold (unvalidated)"
+        return False, "not supported by scaffold"
+
     return False, "capability availability rule not defined"
 
 
@@ -147,4 +155,3 @@ class MetadataRouter:
         if not names:
             raise CapabilityUnavailableError(f"No provider can satisfy capability: {capability.value}")
         return names[0]
-

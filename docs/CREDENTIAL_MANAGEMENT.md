@@ -42,6 +42,11 @@ trust = "dj_primary" # "dj_primary" | "secondary" | "do_not_use_for_canonical"
 metadata_enabled = true
 download_enabled = true
 trust = "dj_primary"
+
+[providers.qobuz]
+metadata_enabled = false
+download_enabled = false
+trust = "do_not_use_for_canonical"
 ```
 
 ## Current Provider Scope

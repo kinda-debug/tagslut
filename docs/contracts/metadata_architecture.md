@@ -12,6 +12,8 @@ Strictly dual-provider: **TIDAL** and **Beatport** only.
 
 All other providers (Apple Music, iTunes, Spotify, Qobuz, MusicBrainz, Traxsource, Deezer) are explicitly out of scope. They are not used for identity resolution, uniqueness enforcement, or merge logic. This is an architectural decision, not a temporary reduction.
 
+Note: A Qobuz provider scaffold may exist in runtime code, but it is **off by default** and must remain **non-authoritative** for identity key derivation.
+
 Only two authoritative provider identifiers exist: `beatport_id` and `tidal_id`.
 
 ---

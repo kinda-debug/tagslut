@@ -77,6 +77,8 @@ def resolve_provider_status(
         policy = activation.beatport
     elif provider == "tidal":
         policy = activation.tidal
+    elif provider == "qobuz":
+        policy = activation.qobuz
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -133,6 +135,18 @@ def resolve_provider_status(
             has_access_token=True,
             has_refresh_token=has_refresh,
             is_expired=False,
+            metadata_usable=True,
+        )
+
+    if provider == "qobuz":
+        return ProviderStatus(
+            provider=provider,
+            metadata_enabled=True,
+            trust=policy.trust,
+            state=ProviderState.enabled_authenticated,
+            has_access_token=False,
+            has_refresh_token=False,
+            is_expired=None,
             metadata_usable=True,
         )
 
@@ -194,6 +208,7 @@ def resolve_metadata_provider_statuses(
     return {
         "beatport": resolve_provider_status("beatport", activation=activation, token_manager=token_manager),
         "tidal": resolve_provider_status("tidal", activation=activation, token_manager=token_manager),
+        "qobuz": resolve_provider_status("qobuz", activation=activation, token_manager=token_manager),
     }
 
 
@@ -207,6 +222,8 @@ def resolve_download_provider_status(
         policy = activation.beatport
     elif provider == "tidal":
         policy = activation.tidal
+    elif provider == "qobuz":
+        policy = activation.qobuz
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -239,6 +256,18 @@ def resolve_download_provider_status(
             has_refresh_token=has_refresh,
             is_expired=is_expired,
             download_usable=True,
+        )
+
+    if provider == "qobuz":
+        return DownloadProviderStatus(
+            provider=provider,
+            download_enabled=True,
+            trust=policy.trust,
+            state=ProviderState.enabled_unconfigured,
+            has_access_token=has_access,
+            has_refresh_token=has_refresh,
+            is_expired=is_expired,
+            download_usable=False,
         )
 
     # tidal download is auth-gated
@@ -310,6 +339,7 @@ def resolve_download_provider_statuses(
     return {
         "beatport": resolve_download_provider_status("beatport", activation=activation, token_manager=token_manager),
         "tidal": resolve_download_provider_status("tidal", activation=activation, token_manager=token_manager),
+        "qobuz": resolve_download_provider_status("qobuz", activation=activation, token_manager=token_manager),
     }
 
 
@@ -318,7 +348,7 @@ def format_provider_status_lines(
     download_statuses: dict[str, DownloadProviderStatus],
 ) -> list[str]:
     lines: list[str] = []
-    for name in ("beatport", "tidal"):
+    for name in ("beatport", "tidal", "qobuz"):
         s = metadata_statuses[name]
         d = download_statuses[name]
         lines.append(

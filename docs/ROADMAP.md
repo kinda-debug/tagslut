@@ -186,6 +186,13 @@ Never delegate. Full runbook: `docs/OPS_RUNBOOK.md` (to be written).
 
 ### 7.2 Script and docs cleanup: COMPLETE (2026-03-22)
 
+### 7.3 Supplement cleanup pass: COMPLETE (2026-03-29)
+
+Open items (targeted PRs required):
+- `tagslut/storage/migrations/0007*` numbering collision (multiple `0007_*.py` files; migration runner applies by full filename).
+- `tagslut/metadata/models.py` vs `tagslut/metadata/models/` package duplication.
+- `tagslut/cli/scan.py` + `tagslut/cli/track_hub_cli.py` wrappers vs `tagslut/cli/commands/*` canonical implementations.
+
 ---
 
 ## 8 — Copilot+ scope (editor only)

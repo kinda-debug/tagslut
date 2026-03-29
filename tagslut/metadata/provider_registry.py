@@ -55,6 +55,7 @@ class ProviderActivationConfig:
 
 
 DEFAULT_ACTIVE_PROVIDERS = ["beatport", "tidal"]
+DEFAULT_DOWNLOAD_PRECEDENCE = ["tidal", "qobuz", "beatport"]
 DEFAULT_PROVIDERS_CONFIG_PATH = (
     Path(os.getenv("XDG_CONFIG_HOME", str(Path.home() / ".config")))
     / "tagslut"
@@ -110,6 +111,74 @@ def load_provider_activation_config(path: Path | None = None) -> ProviderActivat
     )
 
     return ProviderActivationConfig(beatport=beatport_policy, tidal=tidal_policy, qobuz=qobuz_policy)
+
+
+def load_download_precedence(path: Path | None = None) -> list[str]:
+    """
+    Load download routing precedence from providers.toml.
+
+    Optional config:
+      [routing.download]
+      precedence = ["tidal", "qobuz", "beatport"]
+    """
+    config_path = path or DEFAULT_PROVIDERS_CONFIG_PATH
+    config_path = Path(os.path.expanduser(str(config_path)))
+    if not config_path.exists():
+        return list(DEFAULT_DOWNLOAD_PRECEDENCE)
+
+    import tomllib
+
+    with open(config_path, "rb") as f:
+        data = tomllib.load(f)
+
+    routing = data.get("routing") if isinstance(data, dict) else None
+    routing = routing if isinstance(routing, dict) else {}
+    download = routing.get("download") if isinstance(routing.get("download"), dict) else {}
+    precedence = download.get("precedence") if isinstance(download, dict) else None
+
+    if precedence is None:
+        return list(DEFAULT_DOWNLOAD_PRECEDENCE)
+    if isinstance(precedence, str):
+        parts = [p.strip() for p in precedence.split(",") if p.strip()]
+        return parts or list(DEFAULT_DOWNLOAD_PRECEDENCE)
+    if isinstance(precedence, list):
+        parts = [str(p).strip() for p in precedence if str(p).strip()]
+        return parts or list(DEFAULT_DOWNLOAD_PRECEDENCE)
+    return list(DEFAULT_DOWNLOAD_PRECEDENCE)
+
+
+def get_download_provider_factory(provider: str):
+    from tagslut.download.providers import (
+        BeatportStoreDownloadProvider,
+        QobuzPurchaseDownloadProvider,
+        TidalWrapperDownloadProvider,
+    )
+
+    if provider == "tidal":
+        return TidalWrapperDownloadProvider
+    if provider == "qobuz":
+        return QobuzPurchaseDownloadProvider
+    if provider == "beatport":
+        return BeatportStoreDownloadProvider
+    raise ValueError(f"Unknown download provider: {provider}")
+
+
+def resolve_download_dispatch_order(
+    *,
+    activation: ProviderActivationConfig,
+    precedence: list[str],
+) -> list[str]:
+    ordered: list[str] = []
+    for name in precedence:
+        if name == "tidal" and activation.tidal.download_enabled:
+            ordered.append("tidal")
+        elif name == "qobuz" and activation.qobuz.download_enabled:
+            ordered.append("qobuz")
+        elif name == "beatport" and activation.beatport.download_enabled:
+            ordered.append("beatport")
+        else:
+            continue
+    return ordered
 
 
 def resolve_active_metadata_providers(

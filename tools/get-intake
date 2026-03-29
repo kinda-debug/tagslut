@@ -1831,6 +1831,8 @@ PY
           else
             run_tiddl_download "$URL"
           fi
+          # TODO(prompt-7): consult providers.toml routing.download.precedence and dispatch via download adapters
+          # (TIDAL wrapper remains the default implementation; this is a future integration point).
           if [[ $? -ne 0 ]]; then
             err "Tidal download failed for $URL"
           fi

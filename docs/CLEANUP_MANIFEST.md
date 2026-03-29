@@ -58,3 +58,7 @@ Deleted (no required-location references found):
 - Archived `files/get-intake-refactored.py` -> `scripts/archive/get-intake-refactored.py` (partially absorbed / unclear).
 - Archived `files/provenance_tracker.py` -> `scripts/archive/provenance_tracker.py` (unreferenced).
 - Removed empty `files/` directory.
+
+### Phase D — security: `tidal_tokens.json`
+
+- `.gitignore` already includes `tidal_tokens.json`; `git log -- tidal_tokens.json` returned no history.

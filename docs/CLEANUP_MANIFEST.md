@@ -30,3 +30,18 @@
 - Confirmed active scripts retained: `scripts/backfill_v3_provenance_from_logs.py` (Makefile/tests references), `scripts/capture_post_release_snapshot.py` (tests reference).
 - Confirmed active tools retained: `tools/dj_review_app.py` (called by `tagslut/cli/commands/dj.py`), `tools/dj_usb_sync.py` (referenced by `tagslut/_web/review_app.py`).
 - Confirmed absent from this repository snapshot (already cleaned earlier): `post_task.sh`, `bp2tidal.py`, `build_playlist.py`, `inspect_music_db.py`, `tidal_oauth.py`, `tagslut_postgres_baseline.dump`, `Dual-SourceTIDALBeatportMetadataFlow.md`, `scripts/classify_tracks_sqlite_v2.patch`.
+
+## 2026-03-29 supplement cleanup pass
+
+### Phase A — root junk
+
+Deleted (no required-location references found):
+
+- `qqqq.txt`
+- `sdf.dc`
+- `claudebs.md`
+- `tagslut_DIRECTIVES_REVISED_2026-03-26.md`
+- `DJ_PIPELINE_FULL_REPAIR_CODEX.md`
+- `POSTMAN_AI_PROMPT.md`
+- `postman-fix-prompt.md`
+- `20260317_rekordbox.xml`

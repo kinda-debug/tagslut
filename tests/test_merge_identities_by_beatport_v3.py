@@ -35,6 +35,7 @@ def _create_case1_db(tmp_path: Path) -> Path:
     conn = sqlite3.connect(str(db))
     try:
         create_schema_v3(conn)
+        conn.execute("DROP INDEX IF EXISTS uq_track_identity_active_beatport_id")
         conn.executemany(
             "INSERT INTO asset_file (id, path) VALUES (?, ?)",
             [
@@ -84,6 +85,7 @@ def _create_tie_db(tmp_path: Path) -> Path:
     conn = sqlite3.connect(str(db))
     try:
         create_schema_v3(conn)
+        conn.execute("DROP INDEX IF EXISTS uq_track_identity_active_beatport_id")
         conn.executemany(
             "INSERT INTO asset_file (id, path) VALUES (?, ?)",
             [

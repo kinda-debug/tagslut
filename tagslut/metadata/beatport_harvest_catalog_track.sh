@@ -19,7 +19,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 # Get Beatport token from TokenManager (System B)
-if ! BEATPORT_ACCESS_TOKEN="$(tagslut auth token-get beatport 2>/dev/null)"; then
+if ! BEATPORT_ACCESS_TOKEN="$(tagslut token-get beatport 2>/dev/null)"; then
     echo "ERROR: No valid Beatport token." >&2
     echo "Run: tagslut auth login beatport" >&2
     exit 1
@@ -122,8 +122,8 @@ normalize_track() {
         label_name: (.release.label.name // .label.name // null),
         title: (.name // null),
         mix_name: (.mix_name // null),
-        artists: [.artists[]?.name] | if length == 0 then null else . end,
-        remixers: [.remixers[]?.name] | if length == 0 then null else . end,
+        artists: ([.artists[]?.name] | if length == 0 then null else . end),
+        remixers: ([.remixers[]?.name] | if length == 0 then null else . end),
         catalog_number: (.catalog_number // .release.catalog_number // null),
         publish_date: (.publish_date // .new_release_date // null),
         artwork_url: (.release.image.uri // .image.uri // null),

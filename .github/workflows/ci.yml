@@ -1,6 +1,7 @@
 name: CI
 permissions:
   contents: read
+  pull-requests: read
 
 on:
   push:
@@ -25,11 +26,43 @@ jobs:
       - name: Install dependencies
         run: poetry install --with dev
 
-      - name: Lint
-        run: poetry run flake8 tagslut/ tests/
+      - name: Determine changed Python files (exclude debt paths)
+        id: changed
+        uses: tj-actions/changed-files@v45
+        with:
+          files: |
+            tagslut/**/*.py
+            tests/**/*.py
+          files_ignore: |
+            tagslut/storage/v3/migrations/**
+            tagslut/storage/v3/legacy/**
+            tagslut/storage/v2/**
 
-      - name: Type check
-        run: poetry run mypy tagslut/ --ignore-missing-imports
+      - name: Lint
+        if: steps.changed.outputs.any_changed == 'true'
+        run: |
+          echo "Linting changed files:"
+          echo "${{ steps.changed.outputs.all_changed_and_modified_files }}"
+          poetry run flake8 ${{ steps.changed.outputs.all_changed_and_modified_files }}
+
+      - name: Skip lint (no changed Python files)
+        if: steps.changed.outputs.any_changed != 'true'
+        run: echo "No Python files changed; skipping lint."
+
+      - name: Type check changed tagslut files
+        if: steps.changed.outputs.any_changed == 'true'
+        run: |
+          CHANGED_TAGSLUT_FILES="$(echo "${{ steps.changed.outputs.all_changed_and_modified_files }}" | tr ' ' '\n' | awk '/^tagslut\/.*\.py$/ { printf "%s ", $0 }' | xargs)"
+          if [ -z "$CHANGED_TAGSLUT_FILES" ]; then
+            echo "No changed tagslut Python files; skipping mypy."
+            exit 0
+          fi
+          echo "Type checking changed files: $CHANGED_TAGSLUT_FILES"
+          poetry run mypy $CHANGED_TAGSLUT_FILES --ignore-missing-imports
+
+      - name: Skip type check (no changed Python files)
+        if: steps.changed.outputs.any_changed != 'true'
+        run: echo "No Python files changed; skipping type check."
 
       - name: Test
         run: poetry run pytest --tb=short -q

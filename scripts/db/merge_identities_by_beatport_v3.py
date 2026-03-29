@@ -24,7 +24,6 @@ from tagslut.storage.v3.merge_identities import (  # noqa: E402
     merge_group_by_repointing_assets,
     record_identity_merge_provenance,
 )
-from tagslut.storage.v3.schema import create_schema_v3  # noqa: E402
 
 DEFAULT_OUT = Path("output/merge_plan_beatport_v3.csv")
 PLAN_COLUMNS = [
@@ -174,10 +173,6 @@ def main(argv: list[str] | None = None) -> int:
     plan_rows: list[dict[str, str]] = []
 
     try:
-        if execute_mode:
-            # Applies additive, idempotent schema migrations for identity merge support.
-            create_schema_v3(conn)
-
         groups = find_duplicate_beatport_groups(conn)
         groups_found = len(groups)
 

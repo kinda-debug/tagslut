@@ -49,3 +49,12 @@ Deleted (no required-location references found):
 ### Phase B — duplicate `process_dedupe.py`
 
 - Removed root-level `process_dedupe.py` duplicate (no required-location references found); kept canonical `scripts/process_dedupe.py`.
+
+### Phase C — `files/` scratch directory
+
+- Moved `files/BACKFILL_GUIDE.md` -> `docs/BACKFILL_GUIDE.md`.
+- Moved `files/PROVENANCE_INTEGRATION.md` -> `docs/PROVENANCE_INTEGRATION.md`.
+- Moved `files/REFACTOR_PLAN.md` -> `docs/archive/REFACTOR_PLAN.md`.
+- Archived `files/get-intake-refactored.py` -> `scripts/archive/get-intake-refactored.py` (partially absorbed / unclear).
+- Archived `files/provenance_tracker.py` -> `scripts/archive/provenance_tracker.py` (unreferenced).
+- Removed empty `files/` directory.

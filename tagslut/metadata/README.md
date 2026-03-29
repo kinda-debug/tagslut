@@ -9,16 +9,21 @@ Start here:
 - `docs/SCRIPT_SURFACE.md` — canonical command surface and workflow ownership.
 - `docs/archive/ (historical — see docs/archive/)METADATA_WORKFLOW.md` — archived legacy metadata workflow notes.
 
+
 ## Supported Providers
 
-| Provider | Auth | Key Features |
-|----------|------|--------------|
-| Spotify | Client credentials | Audio features (energy, danceability), BPM, key |
-| Beatport | Bearer token or web scraping | BPM, key, genre, sub-genre, label, ISRC |
-| Qobuz | Email/password | Hi-res quality info, genre, label, composer |
-| Tidal | Device authorization | Hi-res indicators, lyrics availability |
-| Apple Music | Dynamic (auto-extracted) | ISRC, composer, credits, lyrics, classical metadata |
-| iTunes | None (public API) | Basic metadata, genre, artwork |
+| Provider   | Status   | Auth                 | Key Features                                      |
+|------------|----------|----------------------|---------------------------------------------------|
+| Beatport   | Active   | Bearer token/scraping| BPM, key, genre, sub-genre, label, ISRC           |
+| TIDAL      | Active   | Device authorization | Hi-res indicators, lyrics availability            |
+| Qobuz      | Legacy   | Email/password       | Hi-res quality info, genre, label, composer       |
+| Spotify    | Legacy   | Client credentials   | Audio features (energy, danceability), BPM, key   |
+| Apple Music| Future   | Dynamic (auto)       | ISRC, composer, credits, lyrics, classical metadata|
+| iTunes     | Legacy   | None (public API)    | Basic metadata, genre, artwork                    |
+
+**Note:** Only Beatport and TIDAL are currently active and supported in the enrichment pipeline. Other providers are legacy, historical, or future/aspirational. Do not assume support for Qobuz, Spotify, Apple Music, or iTunes in the current runtime. See `tagslut/metadata/providers/__init__.py` for the active export surface.
+
+<!-- Future agents: Do not treat legacy/future providers as active without explicit contract change. -->
 
 ## Genre Normalization
 

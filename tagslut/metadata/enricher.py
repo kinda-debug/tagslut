@@ -37,6 +37,7 @@ from tagslut.metadata.models.types import (
 )
 from tagslut.metadata.auth import TokenManager
 from tagslut.metadata.providers.base import AbstractProvider as BaseProvider
+from tagslut.metadata.provider_registry import get_provider_class, DEFAULT_ACTIVE_PROVIDERS
 from tagslut.metadata.pipeline import runner, stages
 from tagslut.metadata.store import db_reader, db_writer
 
@@ -76,7 +77,7 @@ class Enricher:
         """
         self.db_path = db_path
         self.token_manager = token_manager or TokenManager()
-        self.provider_names = providers or ["beatport"]
+        self.provider_names = providers or DEFAULT_ACTIVE_PROVIDERS
         self.dry_run = dry_run
         self.mode = mode
 
@@ -84,19 +85,13 @@ class Enricher:
         self._providers: Dict[str, BaseProvider] = {}
 
     def _get_provider(self, name: str) -> Optional[BaseProvider]:
-        """Get or create a provider instance."""
+        """Get or create a provider instance using the ProviderRegistry."""
         if name not in self._providers:
-            if name == "beatport":
-                from tagslut.metadata.providers.beatport import BeatportProvider
-                self._providers[name] = cast(
-                    BaseProvider,
-                    cast(Any, BeatportProvider)(self.token_manager),
-                )
-            elif name == "tidal":
-                from tagslut.metadata.providers.tidal import TidalProvider
-                self._providers[name] = TidalProvider(self.token_manager)
-            else:
-                logger.warning("Unknown provider: %s", name)
+            try:
+                provider_cls = get_provider_class(name)
+                self._providers[name] = provider_cls(self.token_manager)
+            except Exception as e:
+                logger.warning("Unknown or failed provider '%s': %s", name, e)
                 return None
         return self._providers.get(name)
 

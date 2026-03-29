@@ -63,7 +63,9 @@ def register_index_group(cli: click.Group) -> None:
         Scans directory for audio files, converts eligible non-FLAC lossless
         inputs to FLAC, computes checksums, and registers the resulting FLAC
         files in the database with source tracking. Used after downloading
-        from Beatport, Tidal, Qobuz, etc.
+        from Beatport, TIDAL (Qobuz: legacy/future), etc.
+
+        Note: Only Beatport and TIDAL are currently supported as active providers. Qobuz and others are legacy/future/aspirational.
 
         \b
         Examples:

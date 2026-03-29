@@ -1,6 +1,9 @@
+
 #!/bin/bash
-# dj-download.sh — Download a single DJ track with --dj (enrich mode)
-# 
+# dj-download.sh  Download a single DJ track with --dj (enrich mode)
+#
+# LEGACY SCRIPT: Only Beatport and TIDAL are currently supported. Qobuz and Discogs are legacy/historical surfaces and not active.
+#
 # Usage:
 #   ./dj-download.sh https://www.beatport.com/track/example/12345678
 #   ./dj-download.sh https://tidal.com/browse/track/123456789
@@ -8,7 +11,7 @@
 #
 # What it does:
 #   - Calls `tagslut --dj --enrich` (enrich is now default)
-#   - Fetches metadata from Beatport, TIDAL, Qobuz, Discogs
+#   - Fetches metadata from Beatport, TIDAL (Qobuz, Discogs: legacy only)
 #   - Verifies audio integrity (duration vs expected)
 #   - Writes MP3 to $DJ_LIBRARY with full metadata
 #   - Returns track identity and dedupe status
@@ -88,11 +91,11 @@ echo ""
 if eval "$TAGSLUT_CMD"; then
     echo -e "${GREEN}✓ Download complete${NC}"
     echo ""
-    
+
     # Show what was written to DJ_LIBRARY
     echo -e "${BLUE}Recent files in $DJ_LIBRARY:${NC}"
     ls -lhSr "$DJ_LIBRARY" | tail -5
-    
+
     exit 0
 else
     echo -e "${RED}✗ Download failed${NC}"

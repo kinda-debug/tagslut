@@ -13,6 +13,8 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
+from tagslut.cli._progress import ProgressCallback
+
 
 MP3_RECONCILE_SUCCESS_STATUS = "verified"
 DJ_COPY_PROFILES = ("dj_copy_320_cbr",)
@@ -70,7 +72,11 @@ def _ensure_track_id_map(conn: sqlite3.Connection, *, admission_id: int) -> None
     )
 
 
-def backfill_dj_admissions(conn: sqlite3.Connection) -> tuple[int, int]:
+def backfill_dj_admissions(
+    conn: sqlite3.Connection,
+    *,
+    progress_cb: ProgressCallback | None = None,
+) -> tuple[int, int]:
     """Backfill dj_admission + dj_track_id_map for reconciled MP3 assets.
 
     Returns (admitted_new, skipped_existing).
@@ -91,13 +97,20 @@ def backfill_dj_admissions(conn: sqlite3.Connection) -> tuple[int, int]:
 
     admitted = 0
     skipped = 0
-    seen_identities: set[int] = set()
 
+    selected: list[tuple[int, int]] = []
+    seen_identities: set[int] = set()
     for mp3_asset_id, identity_id, _profile in rows:
         identity_id_int = int(identity_id)
         if identity_id_int in seen_identities:
             continue
         seen_identities.add(identity_id_int)
+        selected.append((int(mp3_asset_id), identity_id_int))
+
+    total = len(selected)
+
+    for idx, (mp3_asset_id, identity_id_int) in enumerate(selected, start=1):
+        label = f"identity_id={identity_id_int}"
 
         existing = conn.execute(
             "SELECT id, status FROM dj_admission WHERE identity_id = ?",
@@ -106,6 +119,8 @@ def backfill_dj_admissions(conn: sqlite3.Connection) -> tuple[int, int]:
         if existing and existing[1] == "admitted":
             skipped += 1
             _ensure_track_id_map(conn, admission_id=int(existing[0]))
+            if progress_cb is not None:
+                progress_cb(label, idx, total)
             continue
 
         cur = conn.execute(
@@ -120,6 +135,8 @@ def backfill_dj_admissions(conn: sqlite3.Connection) -> tuple[int, int]:
             admitted += 1
             admission_id = int(cur.lastrowid)  # type: ignore[arg-type]
             _ensure_track_id_map(conn, admission_id=admission_id)
+            if progress_cb is not None:
+                progress_cb(label, idx, total)
             continue
 
         # Existing row but not admitted: re-admit in-place.
@@ -137,6 +154,8 @@ def backfill_dj_admissions(conn: sqlite3.Connection) -> tuple[int, int]:
             )
             admitted += 1
             _ensure_track_id_map(conn, admission_id=admission_id)
+            if progress_cb is not None:
+                progress_cb(label, idx, total)
             continue
 
         # A concurrent insert likely happened; treat as skipped if now admitted.
@@ -147,6 +166,8 @@ def backfill_dj_admissions(conn: sqlite3.Connection) -> tuple[int, int]:
         if existing and existing[1] == "admitted":
             skipped += 1
             _ensure_track_id_map(conn, admission_id=int(existing[0]))
+            if progress_cb is not None:
+                progress_cb(label, idx, total)
             continue
         raise RuntimeError(f"Failed to backfill dj_admission for identity_id={identity_id_int}.")
 

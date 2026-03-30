@@ -13,6 +13,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+from tagslut.cli._progress import ProgressCallback
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -182,7 +184,11 @@ class DjValidationReport:
         return "\n".join(lines)
 
 
-def validate_dj_library(conn: sqlite3.Connection) -> DjValidationReport:
+def validate_dj_library(
+    conn: sqlite3.Connection,
+    *,
+    progress_cb: ProgressCallback | None = None,
+) -> DjValidationReport:
     """Run consistency checks over dj_* and mp3_asset tables.
 
     Checks performed:
@@ -201,8 +207,9 @@ def validate_dj_library(conn: sqlite3.Connection) -> DjValidationReport:
         WHERE da.status = 'admitted'
         """
     ).fetchall()
+    total = len(rows)
     mp3_paths: dict[str, list[tuple[int, int, int]]] = {}
-    for da_id, identity_id, ma_id, mp3_path, mp3_status in rows:
+    for idx, (da_id, identity_id, ma_id, mp3_path, mp3_status) in enumerate(rows, start=1):
         mp3_paths.setdefault(str(mp3_path), []).append((int(da_id), int(ma_id), int(identity_id)))
         if mp3_status != "verified":
             report.add(
@@ -220,6 +227,8 @@ def validate_dj_library(conn: sqlite3.Connection) -> DjValidationReport:
                 mp3_asset_id=ma_id,
                 dj_admission_id=da_id,
             )
+        if progress_cb is not None:
+            progress_cb(f"identity_id={int(identity_id)}", idx, total)
 
     # 1b. MP3 path must not be shared across admitted admissions.
     for mp3_path, refs in mp3_paths.items():

@@ -19,11 +19,13 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+
 from tagslut.exec.mp3_reconcile import (
     normalize_artist_for_match,
     normalize_isrc,
     normalize_title_for_match,
 )
+from tagslut.cli._progress import ProgressCallback
 
 
 MP3_ASSET_PROFILE_FULL_TAGS = "mp3_asset_320_cbr_full"
@@ -275,6 +277,7 @@ def build_mp3_from_identity(
     identity_ids: list[int] | None = None,
     dj_root: Path,
     dry_run: bool = True,
+    progress_cb: "ProgressCallback | None" = None,
 ) -> Mp3BuildResult:
     """Transcode preferred FLAC master(s) to MP3 and register in mp3_asset.
 
@@ -312,16 +315,20 @@ def build_mp3_from_identity(
     else:
         rows = conn.execute(base_query).fetchall()
 
-    for identity_id, asset_id, flac_path in rows:
+    for idx, (identity_id, asset_id, flac_path) in enumerate(rows, 1):
         if not Path(flac_path).exists():
             result.failed += 1
             result.errors.append(
                 f"identity {identity_id}: FLAC not found on disk: {flac_path}"
             )
+            if progress_cb is not None:
+                progress_cb(Path(flac_path).name, idx, len(rows))
             continue
 
         if dry_run:
             result.built += 1
+            if progress_cb is not None:
+                progress_cb(Path(flac_path).name, idx, len(rows))
             continue
 
         try:
@@ -329,10 +336,14 @@ def build_mp3_from_identity(
         except Exception as exc:
             result.failed += 1
             result.errors.append(f"identity {identity_id}: transcode error: {exc}")
+            if progress_cb is not None:
+                progress_cb(Path(flac_path).name, idx, len(rows))
             continue
 
         if mp3_path is None:
             result.skipped += 1
+            if progress_cb is not None:
+                progress_cb(Path(flac_path).name, idx, len(rows))
             continue
 
         conn.execute(
@@ -345,6 +356,8 @@ def build_mp3_from_identity(
         )
         conn.commit()
         result.built += 1
+        if progress_cb is not None:
+            progress_cb(Path(flac_path).name, idx, len(rows))
 
     return result
 
@@ -369,6 +382,7 @@ def reconcile_mp3_library(
     *,
     mp3_root: Path,
     dry_run: bool = True,
+    progress_cb: ProgressCallback | None = None,
 ) -> Mp3ReconcileResult:
     """Scan mp3_root and register discovered MP3s in mp3_asset.
 
@@ -439,14 +453,20 @@ def reconcile_mp3_library(
         if a_key and t_key:
             norm_map.setdefault((a_key, t_key), []).append(int(iid))
 
-    for mp3_file in sorted(mp3_root.rglob("*.mp3")):
+    mp3_files = sorted(mp3_root.rglob("*.mp3"))
+    total = len(mp3_files)
+    for idx, mp3_file in enumerate(mp3_files, 1):
         try:
             tags = ID3(str(mp3_file))
         except ID3NoHeaderError:
             result.errors.append(f"No ID3 header: {mp3_file}")
+            if progress_cb is not None:
+                progress_cb(mp3_file.name, idx, total)
             continue
         except Exception as exc:
             result.errors.append(f"Cannot read tags ({exc}): {mp3_file}")
+            if progress_cb is not None:
+                progress_cb(mp3_file.name, idx, total)
             continue
 
         isrc_frame = tags.get("TSRC")
@@ -467,6 +487,8 @@ def reconcile_mp3_library(
                 result.errors.append(
                     f"ISRC conflict for {mp3_file.name} (isrc={isrc_raw!r}, candidates={candidates})"
                 )
+                if progress_cb is not None:
+                    progress_cb(mp3_file.name, idx, total)
                 continue
 
         if identity_id is None and title_raw and artist_raw:
@@ -479,6 +501,8 @@ def reconcile_mp3_library(
                 result.errors.append(
                     f"Title/artist conflict for {mp3_file.name} (title={title_raw!r}, artist={artist_raw!r}, candidates={candidates})"
                 )
+                if progress_cb is not None:
+                    progress_cb(mp3_file.name, idx, total)
                 continue
 
         if identity_id is None:
@@ -487,6 +511,8 @@ def reconcile_mp3_library(
                 f"No identity match for {mp3_file.name} "
                 f"(isrc={isrc_raw!r}, title={title_raw!r}, artist={artist_raw!r})"
             )
+            if progress_cb is not None:
+                progress_cb(mp3_file.name, idx, total)
             continue
 
         # Already registered?
@@ -495,10 +521,14 @@ def reconcile_mp3_library(
         ).fetchone()
         if existing:
             result.skipped_existing += 1
+            if progress_cb is not None:
+                progress_cb(mp3_file.name, idx, total)
             continue
 
         if dry_run:
             result.linked += 1
+            if progress_cb is not None:
+                progress_cb(mp3_file.name, idx, total)
             continue
 
         # Find the master asset for this identity
@@ -517,6 +547,8 @@ def reconcile_mp3_library(
                 f"identity {identity_id}: no master asset found for {mp3_file.name}"
             )
             result.unmatched += 1
+            if progress_cb is not None:
+                progress_cb(mp3_file.name, idx, total)
             continue
 
         conn.execute(
@@ -529,6 +561,8 @@ def reconcile_mp3_library(
         )
         conn.commit()
         result.linked += 1
+        if progress_cb is not None:
+            progress_cb(mp3_file.name, idx, total)
 
     return result
 
@@ -806,6 +840,7 @@ def reconcile_mp3_scan(
     log_dir: Path,
     out_json: Path,
     dry_run: bool = True,
+    progress_cb: ProgressCallback | None = None,
 ) -> dict:
     """Reconcile a scan CSV against the DB using multi-tier identity matching.
 
@@ -906,9 +941,11 @@ def reconcile_mp3_scan(
         if a_norm and t_norm:
             _norm_map.setdefault((a_norm, t_norm), []).append(iid)
 
+
+    total = len(rows)
     try:
         with open(jsonl_path, "a", encoding="utf-8") as jsonl_fh:
-            for row in rows:
+            for idx, row in enumerate(rows, 1):
                 path_str = row.get("path", "")
                 try:
                     _process_reconcile_row(
@@ -933,6 +970,8 @@ def reconcile_mp3_scan(
                             "details": {"error": str(exc)},
                         }) + "\n"
                     )
+                if progress_cb is not None:
+                    progress_cb(Path(path_str).name, idx, total)
             if not dry_run:
                 conn.commit()
     except Exception:

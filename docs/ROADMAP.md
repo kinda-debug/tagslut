@@ -267,31 +267,21 @@ Pass: `5b` + `5c` both log `CORROBORATED`.
 
 ---
 
-## 18 — Credential management consolidation → **Claude Code + Codex**
+## 18 — Credential management consolidation ✅ COMPLETE
 
 ### Phase 1 ✅ COMPLETE
-
 - `docs/CREDENTIAL_MANAGEMENT.md` written with `tokens.json` as operator source of truth
 - Beatport provider prefers `TokenManager` / `tokens.json` before `BEATPORT_ACCESS_TOKEN`
 - `tagslut token-get <provider>` added as shell-facing token lookup command
 
-### Phase 2 — Migrate shell scripts → **Codex** (after Phase 1)
+### Phase 2 ✅ COMPLETE (commit 1326d8e)
+- Both harvest scripts migrated to `tagslut token-get beatport`
+- `beatport_import_my_tracks.py` archived under `tools/archive/` (was not active)
 
-Replace env var reads in harvest scripts:
-
-```bash
-BEATPORT_ACCESS_TOKEN=$(tagslut token-get beatport)
-```
-
-Scripts to update:
-- `tagslut/metadata/beatport_harvest_catalog_track.sh`
-- `tagslut/metadata/beatport_harvest_my_tracks.sh`
-- `tools/beatport_import_my_tracks.py`
-
-### Phase 3 — Beatport token refresh → **Claude Code design + Codex impl**
-
-Beatport access tokens expire after 1 hour with no documented refresh grant.
-Research whether Beatport OAuth 2.0 supports refresh tokens before implementing.
+### Phase 3 ✅ COMPLETE
+- `TokenManager.refresh_beatport_token()` implemented in `auth.py`
+- Tries refresh_token flow first; falls back to client_credentials if configured
+- Falls through to manual DevTools paste instruction if neither works
 
 ---
 

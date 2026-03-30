@@ -299,10 +299,9 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             state_hash TEXT NOT NULL,
             passed INTEGER NOT NULL DEFAULT 0,
+            validated_at TEXT NOT NULL DEFAULT (datetime('now')) ,
             issue_count INTEGER NOT NULL DEFAULT 0,
-            summary TEXT,
-            created_at TEXT NOT NULL DEFAULT (datetime('now'))
-        );
+            summary TEXT);
 
         CREATE TABLE IF NOT EXISTS schema_migrations (
             id INTEGER PRIMARY KEY,

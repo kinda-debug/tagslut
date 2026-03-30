@@ -15,7 +15,7 @@ def up(conn: sqlite3.Connection) -> None:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             state_hash TEXT NOT NULL,
             passed INTEGER NOT NULL DEFAULT 0,
-            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            validated_at TEXT NOT NULL DEFAULT (datetime('now'))
         )
         """
     )

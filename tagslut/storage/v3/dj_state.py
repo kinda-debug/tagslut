@@ -67,9 +67,19 @@ def record_validation_state(
         passed: Whether validation passed
         summary: Optional text summary
     """
+    columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(dj_validation_state)").fetchall()}
+    if "validated_at" in columns:
+        timestamp_column = "validated_at"
+    elif "created_at" in columns:
+        timestamp_column = "created_at"
+    else:
+        raise sqlite3.OperationalError(
+            "dj_validation_state missing timestamp column (expected validated_at or created_at)"
+        )
+
     conn.execute(
-        """
-        INSERT INTO dj_validation_state (state_hash, passed, issue_count, summary, created_at)
+        f"""
+        INSERT INTO dj_validation_state (state_hash, passed, issue_count, summary, {timestamp_column})
         VALUES (?, ?, ?, ?, ?)
         """,
         (

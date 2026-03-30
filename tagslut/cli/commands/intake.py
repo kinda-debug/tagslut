@@ -208,6 +208,7 @@ def register_intake_group(cli: click.Group) -> None:
     )
     @click.option(
         "--verbose",
+        "-v",
         is_flag=True,
         default=False,
         help="Show a more detailed per-step summary (still path-free).",
@@ -351,8 +352,17 @@ def register_intake_group(cli: click.Group) -> None:
     @click.option("--input", "input_path", type=click.Path(), help="Input JSONL file (if manifest not provided)")
     @click.option("--url", help="URL to JSONL track metadata (if manifest not provided)")
     @click.option("--output", type=click.Path(), help="Manifest output path when building")
-    def intake_run(db_path, manifest_path, input_path, url, output):  # type: ignore  # TODO: mypy-strict
+    @click.option(
+        "--verbose",
+        "-v",
+        is_flag=True,
+        default=False,
+        help="Print per-item progress to stderr.",
+    )
+    def intake_run(db_path, manifest_path, input_path, url, output, verbose):  # type: ignore  # TODO: mypy-strict
         """Run intake plan: print downloader commands for NEW + UPGRADE manifest entries."""
+        from tagslut.cli._progress import make_progress_cb
+
         if manifest_path:
             manifest_data = json.loads(Path(manifest_path).expanduser().resolve().read_text(encoding="utf-8"))
             new_entries = list(manifest_data.get("new", []))
@@ -380,12 +390,19 @@ def register_intake_group(cli: click.Group) -> None:
             return
 
         click.echo("\nPlanned download commands:")
-        for entry in download_entries:
+        cb = make_progress_cb(bool(verbose))
+        total = len(download_entries)
+        for idx, entry in enumerate(download_entries, start=1):
             intent_dict = entry.get("track_intent", {})
             ref = _intent_reference(intent_dict)
             action = entry.get("action", "new").upper()
             click.echo(f"  # {action}")
             click.echo(f"  tools/get \"{ref}\"")
+            if cb is not None:
+                artist = (intent_dict.get("artist") or "").strip()
+                title = (intent_dict.get("title") or "").strip()
+                label = f"{artist} – {title}" if artist and title else ref
+                cb(label, idx, total)
 
     @intake.command("prefilter", context_settings=WRAPPER_CONTEXT)
     @click.argument("args", nargs=-1, type=click.UNPROCESSED)

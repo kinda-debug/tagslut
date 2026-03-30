@@ -1231,9 +1231,17 @@ def dj_admit(
     show_default=True,
     help="Dry-run reports what would be admitted without writing.",
 )
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    default=False,
+    help="Print per-item progress to stderr.",
+)
 def dj_backfill(
     db_path: str | None,
     dry_run: bool,
+    verbose: bool,
 ) -> None:
     """Auto-admit all mp3_asset rows with status='verified' that have no dj_admission yet.
 
@@ -1243,6 +1251,7 @@ def dj_backfill(
     import sqlite3
 
     from tagslut.exec.dj_backfill import MP3_RECONCILE_SUCCESS_STATUS, backfill_dj_admissions
+    from tagslut.cli._progress import make_progress_cb
     from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
 
     import os
@@ -1274,13 +1283,29 @@ def dj_backfill(
                 """,
                 (MP3_RECONCILE_SUCCESS_STATUS,),
             ).fetchone()[0]
-            conn.close()
+            cb = make_progress_cb(verbose)
+            if cb is not None:
+                identity_rows = conn.execute(
+                    """
+                    SELECT DISTINCT ma.identity_id
+                    FROM mp3_asset ma
+                    WHERE ma.status = ?
+                      AND ma.identity_id IS NOT NULL
+                    ORDER BY ma.identity_id ASC
+                    """,
+                    (MP3_RECONCILE_SUCCESS_STATUS,),
+                ).fetchall()
+                identity_ids = [int(r[0]) for r in identity_rows if r[0] is not None]
+                total = len(identity_ids)
+                for idx, identity_id in enumerate(identity_ids, start=1):
+                    cb(f"identity_id={identity_id}", idx, total)
             click.echo(f"Dry-run: {count} mp3_asset row(s) would be admitted.")
             if count > 0:
                 click.secho("Pass --execute to admit them.", fg="yellow")
             return
 
-        admitted, skipped = backfill_dj_admissions(conn)
+        cb = make_progress_cb(verbose)
+        admitted, skipped = backfill_dj_admissions(conn, progress_cb=cb)
         conn.commit()
     finally:
         conn.close()
@@ -1298,7 +1323,13 @@ def dj_backfill(
     help=f"Validate DJ library state. Primary Stage 3b of the 4-stage pipeline. {CANONICAL_DJ_PIPELINE_TEXT}",
 )
 @click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
-@click.option("--verbose", "-v", is_flag=True, default=False)
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    default=False,
+    help="Print per-item progress to stderr.",
+)
 def dj_validate(
     db_path: str | None,
     verbose: bool,
@@ -1315,8 +1346,8 @@ def dj_validate(
     import sqlite3
     import sys
 
-    from tagslut.dj.admission import record_validation_state, validate_dj_library
-    from tagslut.storage.v3.dj_state import compute_dj_state_hash
+    from tagslut.cli._progress import make_progress_cb
+    from tagslut.exec.dj_validate import validate_and_record_dj_state
     from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
 
     try:
@@ -1331,22 +1362,8 @@ def dj_validate(
     record_warning: str | None = None
     conn = sqlite3.connect(str(resolved_db))
     try:
-        report = validate_dj_library(conn)
-        try:
-            state_hash = compute_dj_state_hash(conn)
-            record_validation_state(
-                conn,
-                state_hash=state_hash,
-                issue_count=len(report.issues),
-                passed=report.ok,
-                summary=report.summary(),
-            )
-            conn.commit()
-        except sqlite3.OperationalError as exc:
-            record_warning = (
-                "WARNING: dj validation state was not recorded; "
-                f"{exc}"
-            )
+        cb = make_progress_cb(verbose)
+        report, state_hash, record_warning = validate_and_record_dj_state(conn, progress_cb=cb)
     finally:
         conn.close()
 
@@ -1406,11 +1423,19 @@ def dj_xml_group() -> None:
     default=False,
     help="Skip pre-emit validation (not recommended).",
 )
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    default=False,
+    help="Print per-item progress to stderr.",
+)
 def dj_xml_emit(
     db_path: str | None,
     output_path: str,
     playlist_ids: str | None,
     skip_validation: bool,
+    verbose: bool,
 ) -> None:
     """Emit a full Rekordbox-compatible XML from current dj_* DB state.
 
@@ -1424,7 +1449,9 @@ def dj_xml_emit(
     import sys
     from pathlib import Path
 
-    from tagslut.dj.xml_emit import DjValidationGateError, emit_rekordbox_xml
+    from tagslut.cli._progress import make_progress_cb
+    from tagslut.dj.xml_emit import DjValidationGateError
+    from tagslut.exec.dj_xml_emit import emit_xml
     from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
 
     try:
@@ -1443,11 +1470,13 @@ def dj_xml_emit(
 
     conn = sqlite3.connect(str(resolved_db))
     try:
-        manifest_hash = emit_rekordbox_xml(
+        cb = make_progress_cb(verbose)
+        manifest_hash = emit_xml(
             conn,
             output_path=Path(output_path),
             playlist_scope=scope,
             skip_validation=skip_validation,
+            progress_cb=cb,
         )
     except DjValidationGateError as exc:
         conn.close()
@@ -1492,12 +1521,20 @@ def dj_xml_emit(
     default=False,
     help="Skip pre-emit validation (not recommended).",
 )
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    default=False,
+    help="Print per-item progress to stderr.",
+)
 def dj_xml_patch(
     db_path: str | None,
     output_path: str,
     prior_export_id: int | None,
     playlist_ids: str | None,
     skip_validation: bool,
+    verbose: bool,
 ) -> None:
     """Patch a previously emitted Rekordbox XML with current dj_* DB state.
 
@@ -1511,7 +1548,9 @@ def dj_xml_patch(
     import sys
     from pathlib import Path
 
-    from tagslut.dj.xml_emit import DjValidationGateError, patch_rekordbox_xml
+    from tagslut.cli._progress import make_progress_cb
+    from tagslut.dj.xml_emit import DjValidationGateError
+    from tagslut.exec.dj_xml_emit import patch_xml
     from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
 
     try:
@@ -1530,12 +1569,14 @@ def dj_xml_patch(
 
     conn = sqlite3.connect(str(resolved_db))
     try:
-        manifest_hash = patch_rekordbox_xml(
+        cb = make_progress_cb(verbose)
+        manifest_hash = patch_xml(
             conn,
             output_path=Path(output_path),
             prior_export_id=prior_export_id,
             playlist_scope=scope,
             skip_validation=skip_validation,
+            progress_cb=cb,
         )
     except DjValidationGateError as exc:
         conn.close()

@@ -10,16 +10,19 @@ import sqlite3
 
 from tagslut.dj.admission import record_validation_state, validate_dj_library
 from tagslut.storage.v3.dj_state import compute_dj_state_hash
+from tagslut.cli._progress import ProgressCallback
 
 
 def validate_and_record_dj_state(
     conn: sqlite3.Connection,
+    *,
+    progress_cb: ProgressCallback | None = None,
 ) -> tuple[object, str | None, str | None]:
     """Validate the DJ library and attempt to record a dj_validation_state row.
 
     Returns: (report, state_hash|None, warning|None)
     """
-    report = validate_dj_library(conn)
+    report = validate_dj_library(conn, progress_cb=progress_cb)
     state_hash = compute_dj_state_hash(conn)
     try:
         record_validation_state(
@@ -33,4 +36,3 @@ def validate_and_record_dj_state(
         return report, state_hash, None
     except sqlite3.OperationalError as exc:
         return report, state_hash, f"WARNING: dj validation state was not recorded; {exc}"
-

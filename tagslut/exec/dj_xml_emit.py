@@ -11,6 +11,7 @@ from pathlib import Path
 
 from tagslut.dj.xml_emit import emit_rekordbox_xml, patch_rekordbox_xml
 from tagslut.storage.v3.dj_state import compute_dj_state_hash
+from tagslut.cli._progress import ProgressCallback
 
 
 def dj_state_hash(conn: sqlite3.Connection) -> str:
@@ -24,12 +25,14 @@ def emit_xml(
     output_path: Path,
     playlist_scope: list[int] | None = None,
     skip_validation: bool = False,
+    progress_cb: ProgressCallback | None = None,
 ) -> str:
     return emit_rekordbox_xml(
         conn,
         output_path=output_path,
         playlist_scope=playlist_scope,
         skip_validation=skip_validation,
+        progress_cb=progress_cb,
     )
 
 
@@ -40,6 +43,7 @@ def patch_xml(
     prior_export_id: int | None = None,
     playlist_scope: list[int] | None = None,
     skip_validation: bool = False,
+    progress_cb: ProgressCallback | None = None,
 ) -> str:
     return patch_rekordbox_xml(
         conn,
@@ -47,5 +51,5 @@ def patch_xml(
         prior_export_id=prior_export_id,
         playlist_scope=playlist_scope,
         skip_validation=skip_validation,
+        progress_cb=progress_cb,
     )
-

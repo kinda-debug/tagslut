@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
 
+from tagslut.cli._progress import ProgressCallback
 from tagslut.storage.v3.dj_state import compute_dj_state_hash
 
 
@@ -117,13 +118,14 @@ def _build_playlist_node(
 def _fetch_active_admissions(
     conn: sqlite3.Connection,
 ) -> list[tuple]:
-    """Return rows: (da_id, rekordbox_id|None, mp3_path, bitrate,
+    """Return rows: (da_id, rekordbox_id|None, identity_id, mp3_path, bitrate,
                      title, artist, album, bpm, key_camelot)"""
     return conn.execute(
         """
         SELECT
             da.id,
             dmap.rekordbox_track_id,
+            da.identity_id,
             ma.path,
             ma.bitrate,
             ti.title_norm,
@@ -361,6 +363,7 @@ def emit_rekordbox_xml(
     output_path: Path,
     playlist_scope: list[int] | None = None,
     skip_validation: bool = False,
+    progress_cb: ProgressCallback | None = None,
 ) -> str:
     """Emit a full Rekordbox-compatible XML from dj_* tables.
 
@@ -399,7 +402,10 @@ def emit_rekordbox_xml(
     })
 
     collection = ET.SubElement(root, "COLLECTION", {"Entries": str(len(rows))})
-    for da_id, _, path, bitrate, title, artist, album, bpm, key_camelot in rows:
+    total = len(rows)
+    for idx, (da_id, _, identity_id, path, bitrate, title, artist, album, bpm, key_camelot) in enumerate(
+        rows, start=1
+    ):
         collection.append(
             _build_track_element(
                 track_id=assigned[da_id],
@@ -412,6 +418,16 @@ def emit_rekordbox_xml(
                 bitrate=bitrate,
             )
         )
+        if progress_cb is not None:
+            label_title = (title or "").strip()
+            label_artist = (artist or "").strip()
+            if label_artist and label_title:
+                label = f"{label_artist} – {label_title}"
+            elif label_title:
+                label = label_title
+            else:
+                label = f"identity_id={int(identity_id)}"
+            progress_cb(label, idx, total)
 
     # Playlists
     playlists_root = ET.SubElement(root, "PLAYLISTS")
@@ -493,6 +509,7 @@ def patch_rekordbox_xml(
     prior_export_id: int | None = None,
     playlist_scope: list[int] | None = None,
     skip_validation: bool = False,
+    progress_cb: ProgressCallback | None = None,
 ) -> str:
     """Re-emit Rekordbox XML, verifying a prior export exists first.
 
@@ -549,4 +566,5 @@ def patch_rekordbox_xml(
         output_path=output_path,
         playlist_scope=playlist_scope,
         skip_validation=skip_validation,
+        progress_cb=progress_cb,
     )

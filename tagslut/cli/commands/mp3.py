@@ -75,11 +75,19 @@ def mp3_group() -> None:
     show_default=True,
     help="Dry-run counts what would be built without writing anything.",
 )
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    default=False,
+    help="Print per-item progress to stderr.",
+)
 def mp3_build(
     db_path: str | None,
     dj_root: str,
     identity_ids: str | None,
     dry_run: bool,
+    verbose: bool,
 ) -> None:
     """Transcode preferred FLAC masters to MP3 and register in mp3_asset.
 
@@ -90,6 +98,7 @@ def mp3_build(
     from pathlib import Path
 
     from tagslut.exec.mp3_build import build_mp3_from_identity
+    from tagslut.cli._progress import make_progress_cb
     from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
 
     try:
@@ -108,11 +117,13 @@ def mp3_build(
 
     conn = sqlite3.connect(str(resolved_db))
     try:
+        cb = make_progress_cb(verbose)
         result = build_mp3_from_identity(
             conn,
             identity_ids=ids,
             dj_root=Path(dj_root),
             dry_run=dry_run,
+            progress_cb=cb,
         )
     finally:
         conn.close()
@@ -152,7 +163,13 @@ def mp3_build(
     show_default=True,
     help="Dry-run counts what would be linked without writing anything.",
 )
-@click.option("--verbose", "-v", is_flag=True, default=False)
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    default=False,
+    help="Print per-item progress to stderr.",
+)
 def mp3_reconcile(
     db_path: str | None,
     mp3_root: str | None,
@@ -169,6 +186,7 @@ def mp3_reconcile(
     from pathlib import Path
 
     from tagslut.exec.mp3_build import reconcile_mp3_library
+    from tagslut.cli._progress import make_progress_cb
     from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
 
     try:
@@ -187,10 +205,12 @@ def mp3_reconcile(
 
     conn = sqlite3.connect(str(resolved_db))
     try:
+        cb = make_progress_cb(verbose)
         result = reconcile_mp3_library(
             conn,
             mp3_root=mp3_root_path,
             dry_run=dry_run,
+            progress_cb=cb,
         )
     finally:
         conn.close()

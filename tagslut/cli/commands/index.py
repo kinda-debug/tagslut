@@ -44,7 +44,7 @@ def register_index_group(cli: click.Group) -> None:
     @click.option('--dj-only', is_flag=True, help='Mark all registered files as DJ material')
     @click.option('--check-duration', is_flag=True, help='Measure duration and compute duration status')
     @click.option('--prompt/--no-prompt', default=False, help='Prompt when similar files exist (default: no-prompt)')
-    @click.option('-v', '--verbose', is_flag=True, help='Verbose output')
+    @click.option('-v', '--verbose', is_flag=True, help='Print per-item progress to stderr')
     def index_register(  # type: ignore  # TODO: mypy-strict
         path,
         source,
@@ -94,6 +94,7 @@ def register_index_group(cli: click.Group) -> None:
         from tagslut.utils.config import get_config
         from tagslut.utils.db import resolve_db_path
         from tagslut.utils.paths import list_files
+        from tagslut.cli._progress import make_progress_cb
 
         resolution = resolve_db_path(
             db,
@@ -116,6 +117,13 @@ def register_index_group(cli: click.Group) -> None:
             )
         if limit:
             input_iter = itertools.islice(input_iter, int(limit))
+
+        cb = make_progress_cb(bool(verbose))
+        total = 0
+        if cb is not None:
+            input_paths = list(input_iter)
+            input_iter = input_paths
+            total = len(input_paths)
 
         click.echo(f"Scanning: {path_obj}")
         click.echo(f"Source: {source}")
@@ -147,19 +155,17 @@ def register_index_group(cli: click.Group) -> None:
             ok_max_ms, warn_max_ms = duration_thresholds_from_config()
             duration_version = duration_check_version(ok_max_ms, warn_max_ms)
 
-            total = 0
             for i, input_path in enumerate(input_iter, start=1):
-                total = i
+                if cb is None:
+                    total = i
                 prepared = None
                 try:
                     mgmt_status_override = None
                     prepared = prepare_flac_scan_input(input_path, persist=bool(execute))
                     if prepared.scan_path is None:
-                        if verbose:
-                            click.echo(
-                                f"  [{i}] SKIP ({prepared.message or prepared.skip_reason}) {input_path.name}"
-                            )
                         skipped += 1
+                        if cb is not None:
+                            cb(input_path.name, i, total)
                         continue
 
                     file_path = prepared.scan_path
@@ -167,9 +173,9 @@ def register_index_group(cli: click.Group) -> None:
 
                     existing = get_file(conn, file_path)
                     if existing:
-                        if verbose:
-                            click.echo(f"  [{i}] SKIP (already registered) {file_path.name}")
                         skipped += 1
+                        if cb is not None:
+                            cb(input_path.name, i, total)
                         continue
 
                     audio = extract_metadata(
@@ -238,13 +244,11 @@ def register_index_group(cli: click.Group) -> None:
                         if action == "quit":
                             raise click.ClickException("User aborted")
                         if action == "skip":
-                            if verbose:
-                                click.echo(f"  [{i}] SKIP (duplicate) {file_path.name}")
                             skipped += 1
+                            if cb is not None:
+                                cb(input_path.name, i, total)
                             continue
                         if action == "replace":
-                            if verbose:
-                                click.echo(f"  [{i}] REPLACE (marked) {file_path.name}")
                             mgmt_status_override = "needs_review"
 
                     duration_measured_ms = None
@@ -411,16 +415,15 @@ def register_index_group(cli: click.Group) -> None:
                                 event_time=now_iso,
                             )
 
-                    if verbose or i % 50 == 0:
-                        if prepared.converted:
-                            click.echo(f"  [{i}] CONVERT {original_path.name} -> {file_path.name}")
-                        click.echo(f"  [{i}] {file_path.name}")
-
                     registered += 1
+                    if cb is not None:
+                        cb(input_path.name, i, total)
 
                 except Exception as e:
                     errors += 1
                     click.echo(f"  ERROR: {input_path.name}: {e}")
+                    if cb is not None:
+                        cb(input_path.name, i, total)
                 finally:
                     if prepared is not None:
                         cleanup_prepared_flac_input(prepared)
@@ -1010,7 +1013,7 @@ def register_index_group(cli: click.Group) -> None:
     @click.option('--execute', is_flag=True, help='Actually update database (default: dry-run)')
     @click.option('--recovery', is_flag=True, help='Recovery mode: focus on duration health validation')
     @click.option('--hoarding', is_flag=True, help='Hoarding mode: collect full metadata (BPM, key, genre, etc.)')
-    @click.option('-v', '--verbose', is_flag=True, help='Verbose output')
+    @click.option('-v', '--verbose', is_flag=True, help='Print per-item progress to stderr')
     @click.option('--standalone', is_flag=True, help='Run without a database (read tags directly)')
     def index_enrich(  # type: ignore[no-untyped-def]  # TODO: mypy-strict
         db,
@@ -1062,6 +1065,7 @@ def register_index_group(cli: click.Group) -> None:
         import sqlite3
         from datetime import datetime
 
+        from tagslut.cli._progress import make_progress_cb
         from tagslut.cli.runtime import collect_flac_paths as _collect_flac_paths
         from tagslut.metadata.auth import TokenManager
         from tagslut.metadata.enricher import Enricher
@@ -1240,25 +1244,12 @@ def register_index_group(cli: click.Group) -> None:
         click.echo("Resumable: Ctrl+C to pause, run again to continue")
         click.echo("")
 
-        term_width = shutil.get_terminal_size().columns
+        cb = make_progress_cb(bool(verbose))
 
         def progress(current, total, filepath):  # type: ignore  # TODO: mypy-strict
-            remaining = total - current
-            pct = (current / total) * 100 if total > 0 else 0
-
-            # Truncate filepath to fit terminal
-            max_path_len = term_width - 45
-            display_path = filepath
-            if len(filepath) > max_path_len:
-                display_path = "..." + filepath[-(max_path_len - 3):]
-
-            # Simple progress line that updates in place
-            status_line = f"\r[{current:>5}/{total}] {remaining:>5} left ({pct:5.1f}%) | {display_path}"
-            click.echo(status_line.ljust(term_width)[:term_width], nl=False)
-
-            # Print newline at end
-            if current == total:
-                click.echo("")
+            if cb is None:
+                return
+            cb(Path(filepath).name, int(current), int(total))
 
         with Enricher(
             db_path=db_path,
@@ -1274,7 +1265,7 @@ def register_index_group(cli: click.Group) -> None:
                 force=force,
                 retry_no_match=retry_no_match,
                 zones=zone_list,
-                progress_callback=progress,
+                progress_callback=progress if cb is not None else None,
             )
 
         click.echo("")

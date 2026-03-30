@@ -429,7 +429,7 @@ application and schema levels.
 | Prompt 5 | 3 | Per-role activation model (metadata vs download) | Codex | Ready |
 | Prompt 6 | 4 | Qobuz scaffold, off by default, identity-safe | Codex | Ready |
 | Prompt 7 | 5 | Qobuz + Beatport download provider adapters | Codex | Blocked on Prompt 6 + staging validation |
-| Prompt 8 | 6 | Stale surface archival + provider scope cleanup | Codex | Blocked on Prompt 7 |
+| Prompt 8 | 6 | Stale surface archival + provider scope cleanup | Codex | COMPLETE (8677a4d) |
 
 **Gate rules:**
 - Stop after Prompt 4 and evaluate before proceeding to Prompt 5.

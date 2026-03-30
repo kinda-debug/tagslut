@@ -122,18 +122,14 @@ Delivered:
 - wizard failure surfacing in `tagslut/exec/dj_pool_wizard.py`
 - focused tests in `tests/exec/test_mp3_build_ffmpeg_errors.py`
 
-### 3.4 XML validation gate ⚠ REVIEW NEEDED
+### 3.4 XML validation gate ✅ COMPLETE (b9576ab)
 
-A broader DJ validation-state / XML preflight gate feature landed and should be
-reviewed before further DJ hardening continues.
-
-Affected files:
-- `tagslut/cli/commands/dj.py`
-- `tagslut/dj/admission.py`
-- `tagslut/dj/xml_emit.py`
-- `tagslut/storage/v3/migrations/0014_dj_validation_state.py`
-- `tagslut/storage/v3/schema.py`
-- `tests/exec/test_dj_xml_preflight_validation.py`
+Three fixes applied:
+1. `compute_dj_state_hash` widened — joins `mp3_asset`, includes `path` + `status`
+2. Migration 0015: `issue_count` + `summary` added to `dj_validation_state`
+3. `DjValidationGateError` sentinel class; `EMIT_BLOCKING_ISSUE_KINDS` named constant
+   `INACTIVE_PLAYLIST_MEMBER` excluded by policy — playlists are advisory.
+19/19 tests passing.
 
 ### 3.5 DJ admission backfill — pipeline-state-dependent
 

@@ -43,7 +43,6 @@ packages = [{ include = "tagslut" }]
 
 [tool.poetry.dependencies]
 python = ">=3.11,<4.0"
-tagslut-api-sdk = { path = "postman/sdks/Collections SDKs/tagslut - API/python", develop = true }
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^9.0.2"

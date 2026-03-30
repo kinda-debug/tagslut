@@ -424,6 +424,25 @@ def apply_cascade(
                 elif m.service == "tidal":
                     result.tidal_id = m.service_track_id
 
+            # Audio features from ReccoBeats (lowest priority — fills never-populated fields only)
+            reccobeats_result = next((m for m in hoarding_usable if m.service == "reccobeats"), None)
+            if reccobeats_result:
+                if result.canonical_energy is None and reccobeats_result.energy is not None:
+                    result.canonical_energy = reccobeats_result.energy
+                if result.canonical_danceability is None and reccobeats_result.danceability is not None:
+                    result.canonical_danceability = reccobeats_result.danceability
+                if result.canonical_valence is None and reccobeats_result.valence is not None:
+                    result.canonical_valence = reccobeats_result.valence
+                if result.canonical_acousticness is None and reccobeats_result.acousticness is not None:
+                    result.canonical_acousticness = reccobeats_result.acousticness
+                if result.canonical_instrumentalness is None and reccobeats_result.instrumentalness is not None:
+                    result.canonical_instrumentalness = reccobeats_result.instrumentalness
+                if result.canonical_loudness is None and reccobeats_result.loudness is not None:
+                    result.canonical_loudness = reccobeats_result.loudness
+                # BPM: only use ReccoBeats tempo if no BPM from authoritative sources
+                if result.canonical_bpm is None and reccobeats_result.bpm is not None:
+                    result.canonical_bpm = reccobeats_result.bpm
+
     return result
 
 

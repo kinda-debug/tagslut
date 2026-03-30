@@ -67,6 +67,12 @@ class ProviderTrack:
     popularity: Optional[float] = None
     genre: Optional[str] = None
     sub_genre: Optional[str] = None           # Beatport sub-genre
+    acousticness: Optional[float] = None
+    danceability: Optional[float] = None
+    energy: Optional[float] = None
+    instrumentalness: Optional[float] = None
+    loudness: Optional[float] = None
+    valence: Optional[float] = None
 
     # Release info
     label: Optional[str] = None

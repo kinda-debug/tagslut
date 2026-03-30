@@ -101,6 +101,14 @@ def _capability_available_for_state(
             return True, "scaffold (unvalidated)"
         return False, "not supported by scaffold"
 
+    if provider == "reccobeats":
+        if capability in (
+            Capability.METADATA_FETCH_TRACK_BY_ID,
+            Capability.METADATA_SEARCH_BY_ISRC,
+        ):
+            return True, f"state={state.value}"
+        return False, "not supported by provider"
+
     return False, "capability availability rule not defined"
 
 

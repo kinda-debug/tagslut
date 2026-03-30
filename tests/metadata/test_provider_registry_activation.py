@@ -16,7 +16,7 @@ from tagslut.metadata.provider_registry import (
 
 
 def test_registry_defaults_to_beatport_and_tidal() -> None:
-    assert resolve_active_metadata_providers() == ["beatport", "tidal"]
+    assert resolve_active_metadata_providers() == ["beatport", "tidal", "reccobeats"]
 
 
 def test_unknown_provider_fails_deterministically() -> None:
@@ -26,7 +26,7 @@ def test_unknown_provider_fails_deterministically() -> None:
 
 def test_missing_config_preserves_defaults(tmp_path: Path) -> None:
     cfg = load_provider_activation_config(tmp_path / "missing.toml")
-    assert resolve_active_metadata_providers(config=cfg) == ["beatport", "tidal"]
+    assert resolve_active_metadata_providers(config=cfg) == ["beatport", "tidal", "reccobeats"]
 
 
 def test_disabled_provider_is_filtered_out(tmp_path: Path) -> None:
@@ -44,7 +44,7 @@ def test_disabled_provider_is_filtered_out(tmp_path: Path) -> None:
     )
     cfg = load_provider_activation_config(config_path)
 
-    assert resolve_active_metadata_providers(config=cfg) == ["beatport"]
+    assert resolve_active_metadata_providers(config=cfg) == ["beatport", "reccobeats"]
 
 
 def test_requested_order_respected_after_filtering() -> None:
@@ -94,4 +94,4 @@ def test_enricher_filters_providers_via_config(tmp_path: Path) -> None:
         providers_config_path=config_path,
     )
 
-    assert enricher.provider_names == ["beatport"]
+    assert enricher.provider_names == ["beatport", "reccobeats"]

@@ -79,6 +79,8 @@ def resolve_provider_status(
         policy = activation.tidal
     elif provider == "qobuz":
         policy = activation.qobuz
+    elif provider == "reccobeats":
+        policy = activation.reccobeats
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -150,6 +152,18 @@ def resolve_provider_status(
             metadata_usable=True,
         )
 
+    if provider == "reccobeats":
+        return ProviderStatus(
+            provider=provider,
+            metadata_enabled=True,
+            trust=policy.trust,
+            state=ProviderState.enabled_authenticated,
+            has_access_token=False,
+            has_refresh_token=False,
+            is_expired=None,
+            metadata_usable=True,
+        )
+
     # tidal
     if has_access:
         if is_expired:
@@ -209,6 +223,7 @@ def resolve_metadata_provider_statuses(
         "beatport": resolve_provider_status("beatport", activation=activation, token_manager=token_manager),
         "tidal": resolve_provider_status("tidal", activation=activation, token_manager=token_manager),
         "qobuz": resolve_provider_status("qobuz", activation=activation, token_manager=token_manager),
+        "reccobeats": resolve_provider_status("reccobeats", activation=activation, token_manager=token_manager),
     }
 
 
@@ -224,6 +239,8 @@ def resolve_download_provider_status(
         policy = activation.tidal
     elif provider == "qobuz":
         policy = activation.qobuz
+    elif provider == "reccobeats":
+        policy = activation.reccobeats
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -267,6 +284,18 @@ def resolve_download_provider_status(
             has_access_token=has_access,
             has_refresh_token=has_refresh,
             is_expired=is_expired,
+            download_usable=False,
+        )
+
+    if provider == "reccobeats":
+        return DownloadProviderStatus(
+            provider=provider,
+            download_enabled=True,
+            trust=policy.trust,
+            state=ProviderState.enabled_unconfigured,
+            has_access_token=False,
+            has_refresh_token=False,
+            is_expired=None,
             download_usable=False,
         )
 
@@ -340,6 +369,7 @@ def resolve_download_provider_statuses(
         "beatport": resolve_download_provider_status("beatport", activation=activation, token_manager=token_manager),
         "tidal": resolve_download_provider_status("tidal", activation=activation, token_manager=token_manager),
         "qobuz": resolve_download_provider_status("qobuz", activation=activation, token_manager=token_manager),
+        "reccobeats": resolve_download_provider_status("reccobeats", activation=activation, token_manager=token_manager),
     }
 
 
@@ -348,7 +378,7 @@ def format_provider_status_lines(
     download_statuses: dict[str, DownloadProviderStatus],
 ) -> list[str]:
     lines: list[str] = []
-    for name in ("beatport", "tidal", "qobuz"):
+    for name in ("beatport", "tidal", "qobuz", "reccobeats"):
         s = metadata_statuses[name]
         d = download_statuses[name]
         lines.append(

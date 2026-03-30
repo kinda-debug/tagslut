@@ -14,6 +14,7 @@ from typing import Dict, Literal, Type
 from tagslut.metadata.providers.base import AbstractProvider
 from tagslut.metadata.providers.beatport import BeatportProvider
 from tagslut.metadata.providers.qobuz import QobuzProvider
+from tagslut.metadata.providers.reccobeats import ReccoBeatsProvider
 from tagslut.metadata.providers.tidal import TidalProvider
 
 # Registry of available providers
@@ -21,6 +22,7 @@ PROVIDER_REGISTRY: Dict[str, Type[AbstractProvider]] = {
     "beatport": BeatportProvider,
     "tidal": TidalProvider,
     "qobuz": QobuzProvider,
+    "reccobeats": ReccoBeatsProvider,
 }
 
 
@@ -52,9 +54,14 @@ class ProviderActivationConfig:
         download_enabled=False,
         trust="do_not_use_for_canonical",
     )
+    reccobeats: ProviderPolicy = ProviderPolicy(
+        metadata_enabled=True,
+        download_enabled=False,
+        trust="secondary",
+    )
 
 
-DEFAULT_ACTIVE_PROVIDERS = ["beatport", "tidal"]
+DEFAULT_ACTIVE_PROVIDERS = ["beatport", "tidal", "reccobeats"]
 DEFAULT_DOWNLOAD_PRECEDENCE = ["tidal", "qobuz", "beatport"]
 DEFAULT_PROVIDERS_CONFIG_PATH = (
     Path(os.getenv("XDG_CONFIG_HOME", str(Path.home() / ".config")))
@@ -93,6 +100,7 @@ def load_provider_activation_config(path: Path | None = None) -> ProviderActivat
     beatport_section = providers.get("beatport") if isinstance(providers.get("beatport"), dict) else {}
     tidal_section = providers.get("tidal") if isinstance(providers.get("tidal"), dict) else {}
     qobuz_section = providers.get("qobuz") if isinstance(providers.get("qobuz"), dict) else {}
+    reccobeats_section = providers.get("reccobeats") if isinstance(providers.get("reccobeats"), dict) else {}
 
     beatport_policy = ProviderPolicy(
         metadata_enabled=bool(beatport_section.get("metadata_enabled", True)),
@@ -110,7 +118,18 @@ def load_provider_activation_config(path: Path | None = None) -> ProviderActivat
         trust=_parse_trust(qobuz_section.get("trust"), provider="qobuz", default="do_not_use_for_canonical"),
     )
 
-    return ProviderActivationConfig(beatport=beatport_policy, tidal=tidal_policy, qobuz=qobuz_policy)
+    reccobeats_policy = ProviderPolicy(
+        metadata_enabled=bool(reccobeats_section.get("metadata_enabled", True)),
+        download_enabled=bool(reccobeats_section.get("download_enabled", False)),
+        trust=_parse_trust(reccobeats_section.get("trust"), provider="reccobeats", default="secondary"),
+    )
+
+    return ProviderActivationConfig(
+        beatport=beatport_policy,
+        tidal=tidal_policy,
+        qobuz=qobuz_policy,
+        reccobeats=reccobeats_policy,
+    )
 
 
 def load_download_precedence(path: Path | None = None) -> list[str]:
@@ -205,6 +224,8 @@ def resolve_active_metadata_providers(
         enabled.add("beatport")
     if cfg.tidal.metadata_enabled:
         enabled.add("tidal")
+    if cfg.reccobeats.metadata_enabled:
+        enabled.add("reccobeats")
 
     return [name for name in base if name in enabled]
 

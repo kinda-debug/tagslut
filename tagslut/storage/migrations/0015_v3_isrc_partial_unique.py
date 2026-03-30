@@ -1,4 +1,4 @@
-"""Migration 0007: add partial UNIQUE index on track_identity.isrc (v3).
+"""Migration 0015: add partial UNIQUE index on track_identity.isrc (v3).
 
 Prevents duplicate non-empty ISRC values from being stored in the v3
 track_identity table. The index is partial so that rows with NULL or
@@ -12,6 +12,12 @@ causing the resolver to silently pick whichever row has the lowest id.
 from __future__ import annotations
 
 import sqlite3
+
+# Renamed from 0007_v3_isrc_partial_unique.py to avoid a shared numeric prefix with
+# 0007_isrc_primary_key.py. The legacy migration runner tracks applied migrations
+# by filename (migrations_applied.name), so this file declares its prior filename
+# as an alias for idempotency on databases where the old name was already applied.
+LEGACY_FILENAME_ALIAS = "0007_v3_isrc_partial_unique.py"
 
 INDEX_NAME = "idx_track_identity_isrc_unique"
 TABLE_NAME = "track_identity"

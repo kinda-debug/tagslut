@@ -66,8 +66,8 @@ Deleted (no required-location references found):
 ### Phase E — structural issues (documented only)
 
 E1. `tagslut/storage/migrations/0007*`
-- Both `tagslut/storage/migrations/0007_isrc_primary_key.py` and `tagslut/storage/migrations/0007_v3_isrc_partial_unique.py` exist.
-- `tagslut/storage/migration_runner.py` applies migrations sorted by full filename and records applied migrations by filename; both `0007_*` files will be considered distinct migrations and run in lexical order.
+- Both `tagslut/storage/migrations/0007_isrc_primary_key.py` and the later-added ISRC uniqueness migration existed under `0007_*` prefixes at one point.
+- `tagslut/storage/migration_runner.py` applies migrations sorted by full filename and records applied migrations by filename; the newer file was renamed to `tagslut/storage/migrations/0015_v3_isrc_partial_unique.py` to remove the shared prefix.
 
 E2. `tagslut/metadata/models.py` vs `tagslut/metadata/models/`
 - Both exist: `tagslut/metadata/models.py` and the package `tagslut/metadata/models/` (with `__init__.py`).

@@ -130,8 +130,13 @@ def _apply_sql_migration(conn: sqlite3.Connection, path: Path) -> None:
         conn.execute(statement.strip())
 
 
-def _apply_python_migration(conn: sqlite3.Connection, path: Path) -> None:
-    module = _load_python_migration(path)
+def _apply_python_migration(
+    conn: sqlite3.Connection,
+    path: Path,
+    *,
+    module: ModuleType | None = None,
+) -> None:
+    module = module or _load_python_migration(path)
     up = getattr(module, "up", None)
     if not callable(up):
         raise RuntimeError(f"Python migration must define up(conn): {path.name}")
@@ -162,10 +167,21 @@ def run_pending(db_path: str | Path, migrations_dir: Path | None = None) -> list
 
             logger.info("Applying migration: %s", name)
             with conn:
-                if migration_path.suffix == ".sql":
-                    _apply_sql_migration(conn, migration_path)
+                module: ModuleType | None = None
+                if migration_path.suffix == ".py":
+                    module = _load_python_migration(migration_path)
+                    alias = getattr(module, "LEGACY_FILENAME_ALIAS", None)
+                    aliases = [alias] if isinstance(alias, str) and alias else []
+                    if any(a in applied for a in aliases):
+                        logger.info(
+                            "Skipping migration %s (already applied as %s)",
+                            name,
+                            ", ".join(sorted(a for a in aliases if a in applied)),
+                        )
+                    else:
+                        _apply_python_migration(conn, migration_path, module=module)
                 else:
-                    _apply_python_migration(conn, migration_path)
+                    _apply_sql_migration(conn, migration_path)
                 conn.execute(
                     "INSERT INTO migrations_applied (name, applied_at) VALUES (?, ?)",
                     (name, now),

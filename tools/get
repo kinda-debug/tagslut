@@ -69,6 +69,7 @@ usage() {
     echo "  fix         salvageable metadata/tag issues (default: \$FIX_ROOT)"
     echo "  quarantine  risky files only (default: \$QUARANTINE_ROOT / \$VOLUME_QUARANTINE)"
     echo "  discard     deterministic duplicates like dest_exists (default: \$DISCARD_ROOT)"
+    echo "  qobuz.com   → streamrip (rip url) + auto-register"
     echo ""
     echo "Use tools/get-help for the tiny version of this help."
     exit 1
@@ -122,7 +123,7 @@ while [[ $# -gt 0 ]]; do
             RETURN_PLAYLIST=1
             shift
             ;;
-        http://*|https://*|*tidal.com*|*beatport.com*|*deezer.com*|*dzr.page.link*)
+        http://*|https://*|*tidal.com*|*beatport.com*|*deezer.com*|*dzr.page.link*|*qobuz.com*)
             URL="$1"
             shift
             break
@@ -440,6 +441,39 @@ elif [[ "$URL" == *"beatport.com"* ]]; then
     echo "Find the track on TIDAL and use that URL instead." >&2
     exit 1
 
+elif [[ "$URL" == *"qobuz.com"* ]]; then
+    # Route Qobuz URLs to streamrip
+    STREAMRIP_CMD="rip"
+    if ! command -v "$STREAMRIP_CMD" >/dev/null 2>&1; then
+        echo "Error: streamrip (rip) not found. Install with: pip install streamrip" >&2
+        exit 1
+    fi
+
+    cd "$REPO_ROOT"
+    echo "Downloading via streamrip: $URL"
+    "$STREAMRIP_CMD" url "$URL"
+
+    STREAMRIP_EXIT=$?
+    if [[ $STREAMRIP_EXIT -ne 0 ]]; then
+        echo "Error: streamrip exited with code $STREAMRIP_EXIT" >&2
+        exit $STREAMRIP_EXIT
+    fi
+
+    STREAMRIP_ROOT="/Volumes/MUSIC/mdl/StreamripDownloads"
+    echo "Registering downloads..."
+    poetry run python -m tagslut index register "$STREAMRIP_ROOT" --source qobuz --execute
+
+    if [[ "$MODE" == "enrich" ]]; then
+        echo "Enriching..."
+        poetry run python -m tagslut index enrich \
+            --db "$TAGSLUT_DB" \
+            --path "${STREAMRIP_ROOT}/%" \
+            --zones staging \
+            --execute
+    fi
+
+    exit 0
+
 elif [[ "$URL" == *"deezer.com"* || "$URL" == *"dzr.page.link"* ]]; then
     if [[ ! -x "$DEEMIX_WRAPPER" ]]; then
         echo "Error: deemix wrapper not found or not executable at: $DEEMIX_WRAPPER" >&2
@@ -450,6 +484,6 @@ elif [[ "$URL" == *"deezer.com"* || "$URL" == *"dzr.page.link"* ]]; then
 
 else
     echo "Error: Unrecognized URL domain: $URL" >&2
-    echo "Supported domains: tidal.com, beatport.com, deezer.com" >&2
+    echo "Supported domains: tidal.com, beatport.com, deezer.com, qobuz.com" >&2
     exit 1
 fi

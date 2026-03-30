@@ -370,7 +370,11 @@ def test_run_pending_v3_applies_0013_before_0014_for_v12_db() -> None:
 
         applied = run_pending_v3(conn)
 
-        assert applied == ["0013_confidence_tier_update.py", "0014_dj_validation_state.py"]
+        assert applied == [
+            "0013_confidence_tier_update.py",
+            "0014_dj_validation_state.py",
+            "0015_dj_validation_state_audit.py",
+        ]
         with pytest.raises(sqlite3.IntegrityError):
             conn.execute(
                 """

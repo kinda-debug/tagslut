@@ -21,6 +21,10 @@ def compute_dj_state_hash(conn: sqlite3.Connection) -> str:
     identical across runs, even if the database query returns rows in a
     different order.
 
+    Hash formula is implicit (no version column). Changing this function's
+    payload construction will invalidate all previously recorded
+    dj_validation_state.state_hash values, which is expected.
+
     Args:
         conn: Open SQLite connection to the v3 database.
 
@@ -28,15 +32,21 @@ def compute_dj_state_hash(conn: sqlite3.Connection) -> str:
         SHA256 hex digest of the sorted, concatenated identity IDs.
     """
     rows = conn.execute(
-        "SELECT identity_id FROM dj_admission WHERE status = 'admitted' ORDER BY identity_id ASC"
+        """
+        SELECT da.identity_id, ma.path, ma.status
+        FROM dj_admission da
+        JOIN mp3_asset ma ON ma.id = da.mp3_asset_id
+        WHERE da.status = 'admitted'
+        ORDER BY da.identity_id ASC
+        """
     ).fetchall()
 
     if not rows:
         return hashlib.sha256(b"").hexdigest()
 
-    # Flatten and sort to ensure determinism
-    identity_ids = sorted([int(row[0]) for row in rows])
-    payload = ",".join(str(id) for id in identity_ids)
+    # Sort by identity_id for determinism
+    sorted_rows = sorted(rows, key=lambda r: int(r[0]))
+    payload = ";".join(f"{r[0]}:{r[1]}:{r[2]}" for r in sorted_rows)
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
@@ -59,8 +69,14 @@ def record_validation_state(
     """
     conn.execute(
         """
-        INSERT INTO dj_validation_state (state_hash, passed, created_at)
-        VALUES (?, ?, ?)
+        INSERT INTO dj_validation_state (state_hash, passed, issue_count, summary, created_at)
+        VALUES (?, ?, ?, ?, ?)
         """,
-        (state_hash, int(passed), datetime.now(timezone.utc).isoformat()),
+        (
+            state_hash,
+            int(passed),
+            int(issue_count),
+            summary or None,
+            datetime.now(timezone.utc).isoformat(),
+        ),
     )

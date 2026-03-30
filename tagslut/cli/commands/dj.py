@@ -1424,7 +1424,7 @@ def dj_xml_emit(
     import sys
     from pathlib import Path
 
-    from tagslut.dj.xml_emit import emit_rekordbox_xml
+    from tagslut.dj.xml_emit import DjValidationGateError, emit_rekordbox_xml
     from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
 
     try:
@@ -1449,14 +1449,12 @@ def dj_xml_emit(
             playlist_scope=scope,
             skip_validation=skip_validation,
         )
+    except DjValidationGateError as exc:
+        conn.close()
+        click.echo(str(exc), err=True)
+        sys.exit(1)
     except ValueError as exc:
         conn.close()
-        if str(exc) == (
-            "ERROR: no passing dj validate record for current state.\n"
-            "Run `tagslut dj validate` first."
-        ):
-            click.echo(str(exc), err=True)
-            sys.exit(1)
         raise click.ClickException(str(exc)) from exc
     finally:
         conn.close()
@@ -1513,7 +1511,7 @@ def dj_xml_patch(
     import sys
     from pathlib import Path
 
-    from tagslut.dj.xml_emit import patch_rekordbox_xml
+    from tagslut.dj.xml_emit import DjValidationGateError, patch_rekordbox_xml
     from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
 
     try:
@@ -1539,14 +1537,12 @@ def dj_xml_patch(
             playlist_scope=scope,
             skip_validation=skip_validation,
         )
+    except DjValidationGateError as exc:
+        conn.close()
+        click.echo(str(exc), err=True)
+        sys.exit(1)
     except ValueError as exc:
         conn.close()
-        if str(exc) == (
-            "ERROR: no passing dj validate record for current state.\n"
-            "Run `tagslut dj validate` first."
-        ):
-            click.echo(str(exc), err=True)
-            sys.exit(1)
         raise click.ClickException(str(exc)) from exc
     finally:
         conn.close()

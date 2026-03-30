@@ -18,6 +18,29 @@ from urllib.parse import quote
 from tagslut.storage.v3.dj_state import compute_dj_state_hash
 
 
+class DjValidationGateError(ValueError):
+    """Raised when the DJ validation gate blocks XML emit.
+
+    Use this instead of ValueError so CLI callers can catch it specifically
+    without string-matching the error message.
+    """
+
+
+# Issue kinds that block XML emit.
+# INACTIVE_PLAYLIST_MEMBER is intentionally excluded: playlists are advisory,
+# not authoritative. A de-admitted track in a playlist does not block emit —
+# it simply won't appear in the exported playlist.
+# Change this constant (not the call site) if policy changes.
+EMIT_BLOCKING_ISSUE_KINDS: frozenset[str] = frozenset(
+    {
+        "BAD_MP3_STATUS",
+        "MISSING_MP3_FILE",
+        "DUPLICATE_MP3_PATH",
+        "MISSING_METADATA",
+    }
+)
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -296,9 +319,7 @@ def _run_inline_validation(conn: sqlite3.Connection) -> None:
     from tagslut.dj.admission import DjValidationReport, validate_dj_library
 
     report = validate_dj_library(conn)
-    blocking = [i for i in report.issues if i.kind in (
-        "BAD_MP3_STATUS", "MISSING_MP3_FILE", "DUPLICATE_MP3_PATH", "MISSING_METADATA"
-    )]
+    blocking = [i for i in report.issues if i.kind in EMIT_BLOCKING_ISSUE_KINDS]
     if blocking:
         partial = DjValidationReport(issues=blocking)
         raise ValueError(f"Pre-emit validation failed:\n{partial.summary()}")
@@ -326,8 +347,8 @@ def _run_pre_emit_validation(conn: sqlite3.Connection) -> None:
         (state_hash,),
     ).fetchone()
     if row is None:
-        raise ValueError(
-            "ERROR: no passing dj validate record for current state.\n"
+        raise DjValidationGateError(
+            "No passing dj validate record for current state. "
             "Run `tagslut dj validate` first."
         )
 

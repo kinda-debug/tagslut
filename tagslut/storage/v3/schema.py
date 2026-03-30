@@ -9,7 +9,7 @@ from __future__ import annotations
 import sqlite3
 
 V3_SCHEMA_NAME = "v3"
-V3_SCHEMA_VERSION = 14
+V3_SCHEMA_VERSION = 15
 V3_SCHEMA_VERSION_INITIAL = 1
 V3_SCHEMA_VERSION_IDENTITY_MERGE = 2
 V3_SCHEMA_VERSION_PREFERRED_ASSET = 3
@@ -24,6 +24,7 @@ V3_SCHEMA_VERSION_PROVIDER_UNIQUENESS_HARDENING = 11
 V3_SCHEMA_VERSION_INGESTION_PROVENANCE = 12
 V3_SCHEMA_VERSION_CONFIDENCE_TIER_CHECK = 13
 V3_SCHEMA_VERSION_DJ_VALIDATION_STATE = 14
+V3_SCHEMA_VERSION_DJ_VALIDATION_STATE_AUDIT = 15
 
 
 def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
@@ -298,6 +299,8 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             state_hash TEXT NOT NULL,
             passed INTEGER NOT NULL DEFAULT 0,
+            issue_count INTEGER NOT NULL DEFAULT 0,
+            summary TEXT,
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
 
@@ -687,6 +690,17 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
             V3_SCHEMA_NAME,
             V3_SCHEMA_VERSION_DJ_VALIDATION_STATE,
             "0014_dj_validation_state.py",
+        ),
+    )
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO schema_migrations (schema_name, version, note)
+        VALUES (?, ?, ?)
+        """,
+        (
+            V3_SCHEMA_NAME,
+            V3_SCHEMA_VERSION_DJ_VALIDATION_STATE_AUDIT,
+            "0015_dj_validation_state_audit.py",
         ),
     )
     conn.commit()

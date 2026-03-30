@@ -26,6 +26,7 @@ from tagslut.exec.mp3_reconcile import (
     normalize_title_for_match,
 )
 from tagslut.cli._progress import ProgressCallback
+from tagslut.utils.fs import normalize_path
 
 
 MP3_ASSET_PROFILE_FULL_TAGS = "mp3_asset_320_cbr_full"
@@ -123,30 +124,34 @@ def build_full_tag_mp3_assets_from_flac_paths(
 
     for flac_path in flac_paths:
         try:
-            flac_path = Path(flac_path)
-            if not flac_path.exists():
+            flac_path_db = Path(flac_path)
+            flac_path_fs = normalize_path(flac_path_db)
+            if not flac_path_fs.exists():
                 result.failed += 1
-                result.errors.append(f"FLAC not found on disk: {flac_path}")
+                result.errors.append(f"FLAC not found on disk: {flac_path_db}")
                 continue
 
-            identity_id, asset_id = _resolve_identity_and_asset_for_flac_path(conn, flac_path=flac_path)
+            identity_id, asset_id = _resolve_identity_and_asset_for_flac_path(
+                conn, flac_path=flac_path_db
+            )
             if asset_id is None:
                 result.failed += 1
-                result.errors.append(f"FLAC not registered in asset_file: {flac_path}")
+                result.errors.append(f"FLAC not registered in asset_file: {flac_path_db}")
                 continue
 
             dest_path = _mp3_asset_dest_for_flac_path(
-                flac_path=flac_path,
+                flac_path=flac_path_db,
                 mp3_root=mp3_root,
                 library_root=library_root,
             )
-            dest_path.parent.mkdir(parents=True, exist_ok=True)
+            dest_path_fs = normalize_path(dest_path)
+            dest_path_fs.parent.mkdir(parents=True, exist_ok=True)
 
             existing = conn.execute(
                 "SELECT id FROM mp3_asset WHERE path = ? LIMIT 1",
                 (str(dest_path),),
             ).fetchone()
-            if existing and dest_path.exists() and not overwrite:
+            if existing and dest_path_fs.exists() and not overwrite:
                 result.skipped += 1
                 continue
 
@@ -155,8 +160,8 @@ def build_full_tag_mp3_assets_from_flac_paths(
                 continue
 
             transcode_to_mp3_full_tags(
-                flac_path,
-                dest_path,
+                flac_path_fs,
+                dest_path_fs,
                 bitrate=320,
                 overwrite=overwrite,
                 ffmpeg_path=None,
@@ -195,16 +200,21 @@ def build_dj_copies_from_full_tag_mp3_assets(
     result = Mp3BuildResult()
     for flac_path in flac_paths:
         try:
-            flac_path = Path(flac_path)
-            if not flac_path.exists():
+            flac_path_db = Path(flac_path)
+            flac_path_fs = normalize_path(flac_path_db)
+            if not flac_path_fs.exists():
                 result.failed += 1
-                result.errors.append(f"FLAC not found on disk: {flac_path}")
+                result.errors.append(f"FLAC not found on disk: {flac_path_db}")
                 continue
 
-            identity_id, asset_id = _resolve_identity_and_asset_for_flac_path(conn, flac_path=flac_path)
+            identity_id, asset_id = _resolve_identity_and_asset_for_flac_path(
+                conn, flac_path=flac_path_db
+            )
             if identity_id is None or asset_id is None:
                 result.failed += 1
-                result.errors.append(f"FLAC not registered with an active identity: {flac_path}")
+                result.errors.append(
+                    f"FLAC not registered with an active identity: {flac_path_db}"
+                )
                 continue
 
             mp3_row = conn.execute(
@@ -222,25 +232,32 @@ def build_dj_copies_from_full_tag_mp3_assets(
             ).fetchone()
             if not mp3_row:
                 result.failed += 1
-                result.errors.append(f"No full-tag mp3_asset found for identity {identity_id} ({flac_path})")
+                result.errors.append(
+                    f"No full-tag mp3_asset found for identity {identity_id} ({flac_path_db})"
+                )
                 continue
 
-            src_mp3_path = Path(str(mp3_row[1]))
-            if not src_mp3_path.exists():
+            src_mp3_path_db = Path(str(mp3_row[1]))
+            src_mp3_path_fs = normalize_path(src_mp3_path_db)
+            if not src_mp3_path_fs.exists():
                 result.failed += 1
-                result.errors.append(f"Full-tag MP3 not found on disk: {src_mp3_path}")
+                result.errors.append(
+                    f"Full-tag MP3 not found on disk: {src_mp3_path_db}"
+                )
                 continue
 
-            dj_root.mkdir(parents=True, exist_ok=True)
-            dj_dest_path = (dj_root / build_dj_copy_filename(flac_path)).resolve()
-            if dj_dest_path == src_mp3_path.resolve():
+            dj_root_fs = normalize_path(dj_root)
+            dj_root_fs.mkdir(parents=True, exist_ok=True)
+            dj_dest_path = (dj_root / build_dj_copy_filename(flac_path_db)).resolve()
+            dj_dest_path_fs = normalize_path(dj_dest_path)
+            if dj_dest_path_fs.resolve() == src_mp3_path_fs.resolve():
                 raise RuntimeError("DJ copy path would equal mp3_asset path (roots or naming conflict)")
 
             existing = conn.execute(
                 "SELECT id FROM mp3_asset WHERE path = ? LIMIT 1",
                 (str(dj_dest_path),),
             ).fetchone()
-            if existing and dj_dest_path.exists() and not overwrite:
+            if existing and dj_dest_path_fs.exists() and not overwrite:
                 result.skipped += 1
                 continue
 
@@ -248,11 +265,11 @@ def build_dj_copies_from_full_tag_mp3_assets(
                 result.built += 1
                 continue
 
-            if not dj_dest_path.exists() or overwrite:
-                dj_dest_path.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(src_mp3_path, dj_dest_path)
+            if not dj_dest_path_fs.exists() or overwrite:
+                dj_dest_path_fs.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src_mp3_path_fs, dj_dest_path_fs)
 
-            tag_mp3_as_dj_copy(dj_dest_path, flac_path)
+            tag_mp3_as_dj_copy(dj_dest_path_fs, flac_path_fs)
 
             conn.execute(
                 """
@@ -289,6 +306,7 @@ def build_mp3_from_identity(
     from tagslut.exec.transcoder import transcode_to_mp3
 
     result = Mp3BuildResult()
+    dj_root_fs = normalize_path(dj_root)
 
     base_query = """
         SELECT
@@ -316,34 +334,36 @@ def build_mp3_from_identity(
         rows = conn.execute(base_query).fetchall()
 
     for idx, (identity_id, asset_id, flac_path) in enumerate(rows, 1):
-        if not Path(flac_path).exists():
+        flac_path_db = Path(flac_path)
+        flac_path_fs = normalize_path(flac_path_db)
+        if not flac_path_fs.exists():
             result.failed += 1
             result.errors.append(
                 f"identity {identity_id}: FLAC not found on disk: {flac_path}"
             )
             if progress_cb is not None:
-                progress_cb(Path(flac_path).name, idx, len(rows))
+                progress_cb(flac_path_db.name, idx, len(rows))
             continue
 
         if dry_run:
             result.built += 1
             if progress_cb is not None:
-                progress_cb(Path(flac_path).name, idx, len(rows))
+                progress_cb(flac_path_db.name, idx, len(rows))
             continue
 
         try:
-            mp3_path = transcode_to_mp3(Path(flac_path), dest_dir=dj_root)
+            mp3_path = transcode_to_mp3(flac_path_fs, dest_dir=dj_root_fs)
         except Exception as exc:
             result.failed += 1
             result.errors.append(f"identity {identity_id}: transcode error: {exc}")
             if progress_cb is not None:
-                progress_cb(Path(flac_path).name, idx, len(rows))
+                progress_cb(flac_path_db.name, idx, len(rows))
             continue
 
         if mp3_path is None:
             result.skipped += 1
             if progress_cb is not None:
-                progress_cb(Path(flac_path).name, idx, len(rows))
+                progress_cb(flac_path_db.name, idx, len(rows))
             continue
 
         conn.execute(
@@ -357,7 +377,7 @@ def build_mp3_from_identity(
         conn.commit()
         result.built += 1
         if progress_cb is not None:
-            progress_cb(Path(flac_path).name, idx, len(rows))
+            progress_cb(flac_path_db.name, idx, len(rows))
 
     return result
 
@@ -402,6 +422,7 @@ def reconcile_mp3_library(
         ) from exc
 
     result = Mp3ReconcileResult()
+    mp3_root_fs = normalize_path(mp3_root)
 
     # Preload identity maps for case-insensitive / whitespace-insensitive matching.
     def _column_exists(table: str, column: str) -> bool:
@@ -453,11 +474,12 @@ def reconcile_mp3_library(
         if a_key and t_key:
             norm_map.setdefault((a_key, t_key), []).append(int(iid))
 
-    mp3_files = sorted(mp3_root.rglob("*.mp3"))
+    mp3_files = sorted(mp3_root_fs.rglob("*.mp3"))
     total = len(mp3_files)
     for idx, mp3_file in enumerate(mp3_files, 1):
+        mp3_file_fs = normalize_path(mp3_file)
         try:
-            tags = ID3(str(mp3_file))
+            tags = ID3(str(mp3_file_fs))
         except ID3NoHeaderError:
             result.errors.append(f"No ID3 header: {mp3_file}")
             if progress_cb is not None:
@@ -584,6 +606,7 @@ def _compute_sha256(path: Path) -> str:
     import hashlib
 
     h = hashlib.sha256()
+    path = normalize_path(path)
     with open(path, "rb") as fh:
         for chunk in iter(lambda: fh.read(1 << 20), b""):
             h.update(chunk)
@@ -615,6 +638,7 @@ def _read_mp3_tags(path: Path) -> dict:
         "id3_comment": None,
     }
 
+    path = normalize_path(path)
     try:
         audio = MP3(str(path))
         info["bitrate"] = int(audio.info.bitrate) if audio.info.bitrate else None
@@ -689,7 +713,8 @@ def scan_mp3_roots(
     all_files: list[tuple[Path, str]] = []
     for root in roots:
         zone = root.name
-        for mp3 in sorted(root.rglob("*.mp3")):
+        root_fs = normalize_path(root)
+        for mp3 in sorted(root_fs.rglob("*.mp3")):
             if exclude_patterns:
                 skip = any(
                     re.search(pat, str(mp3)) for pat in exclude_patterns

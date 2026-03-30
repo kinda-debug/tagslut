@@ -146,60 +146,25 @@ class TokenManager:
 
         tidal_data = self._tokens.get("tidal", {})
         has_refresh = bool(tidal_data.get("refresh_token"))
-        if not has_refresh:
+        tok = self.get_token("tidal")
+        is_expired = tok.is_expired if tok else True
+        if not has_refresh or is_expired:
             self._try_import_tiddl_token()
 
     def _try_import_tiddl_token(self) -> None:
         """
-        Fallback: if tokens.json has no usable tidal refresh_token, attempt to
-        import one from ~/.tiddl/config.toml (or $TIDDL_CONFIG override).
+        Fallback: if tokens.json has no usable tidal token, import from
+        ~/.tiddl/auth.json (tiddl v3 stores auth there, not in config.toml).
 
-        Writes the imported token into tokens.json so future reads are self-healing.
+        Delegates to sync_from_tiddl() which reads the correct file.
         Does nothing and logs at DEBUG level on any failure — never raises.
         """
         try:
-            config_path = Path(os.getenv("TIDDL_CONFIG", "~/.tiddl/config.toml")).expanduser()
-            if not config_path.exists():
-                logger.debug("tiddl config not found at %s; skipping import", config_path)
-                return
-
-            import tomllib
-
-            with open(config_path, "rb") as f:
-                data = tomllib.load(f)
-
-            token_section = data.get("token")
-            if not isinstance(token_section, dict):
-                logger.debug("tiddl config missing [token] section; skipping import")
-                return
-
-            refresh_token = token_section.get("refresh_token")
-            if not refresh_token:
-                logger.debug("tiddl config token.refresh_token missing/empty; skipping import")
-                return
-
-            access_token = token_section.get("access_token") or ""
-
-            expires_at: Optional[float] = None
-            if token_section.get("expires_at") is not None:
-                try:
-                    expires_at = float(token_section["expires_at"])
-                except Exception:
-                    expires_at = None
-
-            token_type = token_section.get("token_type") or "Bearer"
-
-            self.set_token(
-                "tidal",
-                access_token=access_token,
-                refresh_token=str(refresh_token),
-                expires_at=expires_at,
-                token_type=str(token_type),
-            )
-            logger.info("Imported tidal refresh_token from tiddl config; tokens.json updated")
+            result = self.sync_from_tiddl()
+            if result is None:
+                logger.debug("tiddl auth import skipped (no valid token in ~/.tiddl/auth.json)")
         except Exception as e:
-            logger.debug("Failed to import tidal token from tiddl config: %s", e)
-            return
+            logger.debug("Failed to import tidal token from tiddl: %s", e)
 
     def _save_tokens(self) -> None:
         """Save tokens to file."""

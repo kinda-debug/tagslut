@@ -182,12 +182,14 @@ Never delegate. Full runbook: `docs/OPS_RUNBOOK.md` (to be written).
 
 ### 7.2 Script and docs cleanup: COMPLETE (2026-03-22)
 
-### 7.3 Supplement cleanup pass: COMPLETE (2026-03-29)
+### 7.3 Supplement cleanup pass: COMPLETE (2026-03-29 + 2026-03-30)
 
-Open items (targeted PRs required):
-- `tagslut/storage/migrations/0007*` numbering collision (multiple `0007_*.py` files; migration runner applies by full filename).
-- `tagslut/metadata/models.py` vs `tagslut/metadata/models/` package duplication.
-- `tagslut/cli/scan.py` + `tagslut/cli/track_hub_cli.py` wrappers vs `tagslut/cli/commands/*` canonical implementations.
+Structural audit (2026-03-30):
+- `models.py` vs `models/` package: not a conflict — intentional shim. No action needed.
+- `cli/scan.py` + `cli/track_hub_cli.py`: not a conflict — intentional shims. No action needed.
+- `migrations/0007*` prefix collision: ✅ FIXED (9dc3e0b) — renamed
+  `0007_v3_isrc_partial_unique.py` → `0015_v3_isrc_partial_unique.py`.
+  Runner updated with LEGACY_FILENAME_ALIAS for idempotency on existing DBs.
 
 ---
 

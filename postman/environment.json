@@ -271,6 +271,7 @@
       "value": "eyJraWQiOiJ2OU1GbFhqWSIsImFsZyI6IkVTMjU2In0.eyJ0eXBlIjoibzJfYWNjZXNzIiwidWlkIjoyMDc5NDEzMjcsInNjb3BlIjoicl91c3Igd19zdWIgd191c3IiLCJnVmVyIjowLCJzVmVyIjowLCJjaWQiOjEzMzE5LCJjYyI6IkZSIiwiYXQiOiJJTlRFUk5BTCIsImV4cCI6MTc3NDgyMTM2Miwic2lkIjoiMzhiMjg2MTUtYTczMy00ZjRhLTlmZjQtYzNmNDZiYTRmMWE2IiwiaXNzIjoiaHR0cHM6Ly9hdXRoLnRpZGFsLmNvbS92MSJ9.4kvD1XURdpm60ER7SXnWCcAICvNediJg-LnJjWFRlDhVCAMDAkznwXIXunEOPA4TpFWe8BySBH2VVf_yim0Xmw",
       "type": "default",
       "enabled": true
+      // TODO: This value is manually synced from ~/.tiddl/auth.json. Automate sync in future.
     },
     {
       "key": "beatport_access_token",

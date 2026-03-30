@@ -40,25 +40,23 @@ if [[ -f "$TIDAL_TOKENS_FILE" ]]; then
 fi
 
 # === Beatport API (METADATA enrichment only - NOT for downloads) ===
-BEATPORTDL_CREDS="/Users/georgeskhawam/Projects/beatportdl/beatportdl-credentials.json"
-if [[ -f "$BEATPORTDL_CREDS" ]]; then
-    BEATPORT_TOKEN=$(jq -r '.access_token' "$BEATPORTDL_CREDS" 2>/dev/null)
-    ISSUED_AT=$(jq -r '.issued_at' "$BEATPORTDL_CREDS" 2>/dev/null)
-    EXPIRES_IN=$(jq -r '.expires_in' "$BEATPORTDL_CREDS" 2>/dev/null)
-    
+TOKENS_FILE="${TAGSLUT_TOKENS_FILE:-$HOME/.config/tagslut/tokens.json}"
+if [[ -f "$TOKENS_FILE" ]]; then
+    BEATPORT_TOKEN=$(jq -r '.beatport.access_token // empty' "$TOKENS_FILE" 2>/dev/null)
+    EXPIRES_AT_F=$(jq -r '.beatport.expires_at // empty' "$TOKENS_FILE" 2>/dev/null)
+
     if [[ -n "$BEATPORT_TOKEN" && "$BEATPORT_TOKEN" != "null" ]]; then
         export base_url="https://api.beatport.com"
         export TAGSLUT_API_BASE_URL="$base_url"
         export access_token="$BEATPORT_TOKEN"
         export TAGSLUT_API_ACCESS_TOKEN="$BEATPORT_TOKEN"
-        
-        EXPIRES_AT=$((ISSUED_AT + EXPIRES_IN))
+
         NOW=$(date +%s)
-        SECONDS_LEFT=$((EXPIRES_AT - NOW))
-        
+        EXPIRES_AT_INT=$(python3 -c "import sys; print(int(float(sys.argv[1])))" "$EXPIRES_AT_F" 2>/dev/null || echo 0)
+        SECONDS_LEFT=$((EXPIRES_AT_INT - NOW))
+
         if [[ $SECONDS_LEFT -lt 300 ]]; then
-            echo "⚠️  Beatport token expires in $((SECONDS_LEFT / 60)) minutes"
-            echo "   Run: cd /Users/georgeskhawam/Projects/beatportdl && ./beatportdl-darwin-arm64 --help"
+            echo "⚠️  Beatport token expires in $((SECONDS_LEFT / 60)) minutes — run: tagslut auth refresh beatport"
         fi
     fi
 fi

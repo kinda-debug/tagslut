@@ -40,10 +40,6 @@ class QobuzProvider(AbstractProvider):
         if self._auth_permanently_failed:
             return False
 
-        import sys
-        if not sys.stdin.isatty():
-            return False
-
         import getpass
         import hashlib
 

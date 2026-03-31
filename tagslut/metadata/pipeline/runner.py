@@ -20,10 +20,29 @@ class EnrichmentStats:
     failed: int = 0
     no_match: int = 0
     no_match_files: List[str] = None  # type: ignore  # TODO: mypy-strict  # Paths of files with no match
+    # Hoarding field counters
+    bpm_filled: int = 0
+    key_filled: int = 0
+    genre_filled: int = 0
+    label_filled: int = 0
+    artwork_filled: int = 0
+    # Undertagged: enriched tracks missing one or more critical fields
+    # Each entry is a tuple: (display_name: str, missing_fields: list[str])
+    undertagged: List[tuple[str, List[str]]] = None  # type: ignore  # TODO: mypy-strict
 
     def __post_init__(self):  # type: ignore  # TODO: mypy-strict
         if self.no_match_files is None:
             self.no_match_files = []
+        if self.undertagged is None:
+            self.undertagged = []
+
+
+def _present(value: object) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    return True
 
 
 def run_enrich_all(  # type: ignore  # TODO: mypy-strict
@@ -114,6 +133,50 @@ def run_enrich_all(  # type: ignore  # TODO: mypy-strict
                                 best_match.title,
                                 best_match.service,
                                 result.enrichment_confidence.value if result.enrichment_confidence else "?")
+                    if hoarding_mode:
+                        bpm_ok = _present(getattr(result, "canonical_bpm", None)) or _present(getattr(result, "beatport_bpm", None))
+                        key_ok = _present(getattr(result, "canonical_key", None)) or _present(getattr(result, "beatport_key", None))
+                        genre_ok = _present(getattr(result, "canonical_genre", None)) or _present(getattr(result, "beatport_genre", None))
+                        label_ok = _present(getattr(result, "canonical_label", None)) or _present(getattr(result, "beatport_label", None))
+                        artwork_ok = _present(getattr(result, "canonical_album_art_url", None))
+
+                        if not bpm_ok:
+                            bpm_ok = any(_present(getattr(m, "bpm", None)) for m in (result.matches or []))
+                        if not key_ok:
+                            key_ok = any(_present(getattr(m, "key", None)) for m in (result.matches or []))
+                        if not genre_ok:
+                            genre_ok = any(_present(getattr(m, "genre", None)) for m in (result.matches or []))
+                        if not label_ok:
+                            label_ok = any(_present(getattr(m, "label", None)) for m in (result.matches or []))
+                        if not artwork_ok:
+                            artwork_ok = any(_present(getattr(m, "album_art_url", None)) for m in (result.matches or []))
+
+                        if bpm_ok:
+                            stats.bpm_filled += 1
+                        if key_ok:
+                            stats.key_filled += 1
+                        if genre_ok:
+                            stats.genre_filled += 1
+                        if label_ok:
+                            stats.label_filled += 1
+                        if artwork_ok:
+                            stats.artwork_filled += 1
+
+                        missing: List[str] = []
+                        if not bpm_ok:
+                            missing.append("BPM")
+                        if not key_ok:
+                            missing.append("key")
+                        if not genre_ok:
+                            missing.append("genre")
+                        if not label_ok:
+                            missing.append("label")
+
+                        if missing:
+                            artist = (getattr(result, "canonical_artist", None) or best_match.artist or file_info.tag_artist or "").strip()
+                            title = (getattr(result, "canonical_title", None) or best_match.title or file_info.tag_title or "").strip()
+                            name = f"{artist} - {title}".strip(" -") if (artist or title) else file_info.path
+                            stats.undertagged.append((name, missing))
                 else:
                     stats.failed += 1
                     logger.warning("FAILED to update: %s", file_info.path)

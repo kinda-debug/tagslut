@@ -1130,7 +1130,25 @@ def register_index_group(cli: click.Group) -> None:
             click.echo(f"  Providers:  {' → '.join(provider_list)}")
             click.echo("")
 
-            summary_stats = {"total": 0, "enriched": 0, "no_match": 0, "failed": 0}
+            def _present(value: object) -> bool:
+                if value is None:
+                    return False
+                if isinstance(value, str):
+                    return bool(value.strip())
+                return True
+
+            summary_stats = {
+                "total": 0,
+                "enriched": 0,
+                "no_match": 0,
+                "failed": 0,
+                "bpm_filled": 0,
+                "key_filled": 0,
+                "genre_filled": 0,
+                "label_filled": 0,
+                "artwork_filled": 0,
+                "undertagged": [],
+            }
 
             with Enricher(
                 db_path=Path("__standalone__"),
@@ -1146,6 +1164,54 @@ def register_index_group(cli: click.Group) -> None:
                         result = enricher.resolve_file(file_info)
                         if result.matches:
                             summary_stats["enriched"] += 1
+                            if mode in ("hoarding", "both"):
+                                bpm_ok = _present(getattr(result, "canonical_bpm", None)) or _present(getattr(result, "beatport_bpm", None))
+                                key_ok = _present(getattr(result, "canonical_key", None)) or _present(getattr(result, "beatport_key", None))
+                                genre_ok = _present(getattr(result, "canonical_genre", None)) or _present(getattr(result, "beatport_genre", None))
+                                label_ok = _present(getattr(result, "canonical_label", None)) or _present(getattr(result, "beatport_label", None))
+                                artwork_ok = _present(getattr(result, "canonical_album_art_url", None))
+
+                                if not bpm_ok:
+                                    bpm_ok = any(_present(getattr(m, "bpm", None)) for m in (result.matches or []))
+                                if not key_ok:
+                                    key_ok = any(_present(getattr(m, "key", None)) for m in (result.matches or []))
+                                if not genre_ok:
+                                    genre_ok = any(_present(getattr(m, "genre", None)) for m in (result.matches or []))
+                                if not label_ok:
+                                    label_ok = any(_present(getattr(m, "label", None)) for m in (result.matches or []))
+                                if not artwork_ok:
+                                    artwork_ok = any(_present(getattr(m, "album_art_url", None)) for m in (result.matches or []))
+
+                                if bpm_ok:
+                                    summary_stats["bpm_filled"] += 1
+                                if key_ok:
+                                    summary_stats["key_filled"] += 1
+                                if genre_ok:
+                                    summary_stats["genre_filled"] += 1
+                                if label_ok:
+                                    summary_stats["label_filled"] += 1
+                                if artwork_ok:
+                                    summary_stats["artwork_filled"] += 1
+
+                                missing = []
+                                if not bpm_ok:
+                                    missing.append("BPM")
+                                if not key_ok:
+                                    missing.append("key")
+                                if not genre_ok:
+                                    missing.append("genre")
+                                if not label_ok:
+                                    missing.append("label")
+
+                                if missing:
+                                    best = result.matches[0]
+                                    for match in result.matches[1:]:
+                                        if (match.match_confidence.value if match.match_confidence else 0) > (best.match_confidence.value if best.match_confidence else 0):
+                                            best = match
+                                    artist = (getattr(result, "canonical_artist", None) or getattr(best, "artist", None) or file_info.tag_artist or "").strip()
+                                    title = (getattr(result, "canonical_title", None) or getattr(best, "title", None) or file_info.tag_title or "").strip()
+                                    name = f"{artist} - {title}".strip(" -") if (artist or title) else str(file_path)
+                                    summary_stats["undertagged"].append((name, missing))
                         else:
                             summary_stats["no_match"] += 1
                         _print_enrichment_result(result)
@@ -1162,6 +1228,22 @@ def register_index_group(cli: click.Group) -> None:
             click.echo(f"  Enriched:   {summary_stats['enriched']:>6}  ✓")
             click.echo(f"  No match:   {summary_stats['no_match']:>6}")
             click.echo(f"  Failed:     {summary_stats['failed']:>6}")
+
+            if mode in ("hoarding", "both") and summary_stats["enriched"] > 0:
+                click.echo("")
+                click.echo(f"HOARDING FIELDS (of {summary_stats['enriched']} enriched):")
+                click.echo(f"  BPM:        {summary_stats['bpm_filled']:>6}")
+                click.echo(f"  Key:        {summary_stats['key_filled']:>6}")
+                click.echo(f"  Genre:      {summary_stats['genre_filled']:>6}")
+                click.echo(f"  Label:      {summary_stats['label_filled']:>6}")
+                click.echo(f"  Artwork:    {summary_stats['artwork_filled']:>6}")
+
+            if mode in ("hoarding", "both") and summary_stats["undertagged"]:
+                click.echo("")
+                click.echo("UNDERTAGGED (enriched but missing critical fields):")
+                for name, missing in summary_stats["undertagged"]:
+                    fields_str = ", ".join(f"no {f}" for f in missing)
+                    click.echo(f"  {name:<45}  {fields_str}")
             return
 
         # Set up logging to both file and console
@@ -1276,6 +1358,22 @@ def register_index_group(cli: click.Group) -> None:
         click.echo(f"  Enriched:   {stats.enriched:>6}  ✓")
         click.echo(f"  No match:   {stats.no_match:>6}")
         click.echo(f"  Failed:     {stats.failed:>6}  {'⚠' if stats.failed > 0 else ''}")
+
+        if mode in ("hoarding", "both") and stats.enriched > 0:
+            click.echo("")
+            click.echo(f"HOARDING FIELDS (of {stats.enriched} enriched):")
+            click.echo(f"  BPM:        {stats.bpm_filled:>6}")
+            click.echo(f"  Key:        {stats.key_filled:>6}")
+            click.echo(f"  Genre:      {stats.genre_filled:>6}")
+            click.echo(f"  Label:      {stats.label_filled:>6}")
+            click.echo(f"  Artwork:    {stats.artwork_filled:>6}")
+
+        if mode in ("hoarding", "both") and stats.undertagged:
+            click.echo("")
+            click.echo("UNDERTAGGED (enriched but missing critical fields):")
+            for name, missing in stats.undertagged:
+                fields_str = ", ".join(f"no {f}" for f in missing)
+                click.echo(f"  {name:<45}  {fields_str}")
 
         # Show sample of no-match files
         if stats.no_match_files:

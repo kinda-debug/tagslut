@@ -90,7 +90,7 @@ def get_eligible_files(
                 path, duration, metadata_json,
                 enriched_at, canonical_isrc, zone
             FROM files
-            WHERE flac_ok = 1
+            WHERE (flac_ok = 1 OR flac_ok IS NULL)
         """
         params: list[Any] = []
 

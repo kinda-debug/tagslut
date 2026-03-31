@@ -5,6 +5,7 @@
 #   tools/enrich              # enrich all unenriched/unmatched tracks
 #   tools/enrich --force      # re-enrich everything
 #   tools/enrich --limit N    # cap at N tracks
+#   tools/enrich --verbose    # show per-track debug output
 #
 # Reads TAGSLUT_DB from environment (set by env_exports.sh).
 # Providers: beatport → tidal → qobuz (in priority order).
@@ -42,4 +43,4 @@ if [[ $# -gt 0 ]]; then
     CMD+=("$@")
 fi
 
-exec "${CMD[@]}" 2>&1 | grep -v "^Warning:\|^DEBUG:\|^INFO:\|token expired\|Token expires\|Beatport token\|TIDAL staging\|PRIMARY download\|Metadata enrichment\|Beatport reference\|Beatport API Token\|tagslut environment\|DB: FRESH\|Library:"
+exec "${CMD[@]}"

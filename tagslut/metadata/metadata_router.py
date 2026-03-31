@@ -97,9 +97,11 @@ def _capability_available_for_state(
         if capability in (
             Capability.METADATA_FETCH_TRACK_BY_ID,
             Capability.METADATA_SEARCH_BY_TEXT,
+            Capability.METADATA_SEARCH_BY_ISRC,
+            Capability.METADATA_FETCH_ARTWORK,
         ):
-            return True, "scaffold (unvalidated)"
-        return False, "not supported by scaffold"
+            return True, f"state={state.value}"
+        return False, "not supported by provider"
 
     if provider == "reccobeats":
         if capability in (

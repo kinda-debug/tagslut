@@ -223,6 +223,105 @@ class TokenManager:
             "client_secret": data.get("client_secret", ""),
         }
 
+    def get_qobuz_app_credentials(self) -> tuple[Optional[str], Optional[str]]:
+        """Return (app_id, app_secret) from tokens.json qobuz section."""
+        data = self._tokens.get("qobuz", {})
+        if not isinstance(data, dict):
+            return (None, None)
+        app_id = data.get("app_id") or None
+        app_secret = data.get("app_secret") or None
+        return (str(app_id) if app_id else None, str(app_secret) if app_secret else None)
+
+    def set_qobuz_credentials(
+        self,
+        app_id: str,
+        app_secret: str,
+        user_auth_token: Optional[str] = None,
+        user_id: Optional[str] = None,
+    ) -> None:
+        """Store Qobuz credentials in tokens.json."""
+        if "qobuz" not in self._tokens or not isinstance(self._tokens.get("qobuz"), dict):
+            self._tokens["qobuz"] = {}
+
+        qobuz_data: Dict[str, Any] = self._tokens["qobuz"]  # type: ignore[assignment]
+        qobuz_data["app_id"] = app_id
+        qobuz_data["app_secret"] = app_secret
+        if user_auth_token is not None:
+            qobuz_data["user_auth_token"] = user_auth_token
+        if user_id is not None:
+            qobuz_data["user_id"] = user_id
+        self._save_tokens()
+
+    def login_qobuz(self, email: str, password_md5: str) -> Optional[str]:
+        """
+        Authenticate with Qobuz using email and MD5-hashed password.
+        Stores user_auth_token in tokens.json. Returns the token or None.
+
+        POST https://www.qobuz.com/api.json/0.2/user/login
+        params: app_id, email, password (MD5 hash)
+        response: {"user": {"auth_token": "...", "id": "..."}}
+        """
+        app_id, app_secret = self.get_qobuz_app_credentials()
+        if not app_id or not app_secret:
+            logger.error("Qobuz not configured (missing app_id/app_secret). Run 'tagslut auth login qobuz'.")
+            return None
+
+        try:
+            response = httpx.post(
+                "https://www.qobuz.com/api.json/0.2/user/login",
+                params={
+                    "app_id": app_id,
+                    "email": email,
+                    "password": password_md5,
+                },
+                timeout=30.0,
+            )
+        except Exception as e:
+            logger.error("Qobuz login request failed: %s", e)
+            return None
+
+        if response.status_code != 200:
+            body_hint = ""
+            try:
+                body_hint = response.text[:500]
+            except Exception:
+                body_hint = ""
+            logger.error("Qobuz login failed (%d): %s", response.status_code, body_hint or "(empty)")
+            return None
+
+        try:
+            data = response.json()
+        except Exception as e:
+            logger.error("Qobuz login returned invalid JSON: %s", e)
+            return None
+
+        user = data.get("user") if isinstance(data, dict) else None
+        user = user if isinstance(user, dict) else {}
+        token = user.get("auth_token") or None
+        user_id = user.get("id") or None
+        if not token:
+            logger.error("Qobuz login response missing user.auth_token")
+            return None
+
+        self.set_qobuz_credentials(
+            app_id=app_id,
+            app_secret=app_secret,
+            user_auth_token=str(token),
+            user_id=str(user_id) if user_id is not None else None,
+        )
+        return str(token)
+
+    def ensure_qobuz_token(self) -> Optional[str]:
+        """
+        Return valid Qobuz user_auth_token or None.
+        Does not auto-refresh (Qobuz tokens are long-lived).
+        """
+        data = self._tokens.get("qobuz", {})
+        if not isinstance(data, dict):
+            return None
+        tok = data.get("user_auth_token") or None
+        return str(tok) if tok else None
+
     def refresh_tidal_token(self) -> Optional[TokenInfo]:
         """
         Refresh Tidal access token using stored refresh_token.
@@ -564,12 +663,24 @@ class TokenManager:
 
     def status(self) -> Dict[str, Dict[str, Any]]:
         """Get status of all configured providers."""
-        all_providers = ["beatport", "tidal"]
+        all_providers = ["beatport", "tidal", "qobuz"]
         result = {}
 
         for provider in all_providers:
             configured = self.is_configured(provider)
             token = self.get_token(provider)
+
+            if provider == "qobuz":
+                app_id, app_secret = self.get_qobuz_app_credentials()
+                user_auth_token = self.ensure_qobuz_token()
+                result[provider] = {
+                    "configured": bool(app_id and app_secret),
+                    "has_token": bool(user_auth_token),
+                    "expired": None,
+                    "expires_at": None,
+                    "auth_type": "email_password",
+                }
+                continue
 
             if provider == "beatport":
                 # Beatport can work via web scraping OR authenticated API
@@ -647,5 +758,7 @@ class TokenManager:
 
         if provider == "tidal":
             return bool(data.get("refresh_token"))
+        if provider == "qobuz":
+            return bool(data.get("app_id") and data.get("app_secret"))
         else:
             return False

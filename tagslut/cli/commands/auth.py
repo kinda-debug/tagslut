@@ -113,6 +113,8 @@ def register_auth_group(cli: click.Group) -> None:
                 click.echo("            (paste token from dj.beatport.com DevTools)")
             if 'tidal' in unconfigured:
                 click.echo("  tidal:    Run 'tagslut auth login tidal'")
+            if 'qobuz' in unconfigured:
+                click.echo("  qobuz:    Run 'tagslut auth login qobuz --email EMAIL'")
 
     @auth.command("init")
     @click.option('--tokens-path', type=click.Path(), help='Path to tokens.json')
@@ -185,32 +187,66 @@ def register_auth_group(cli: click.Group) -> None:
     @click.argument('provider')
     @click.option('--tokens-path', type=click.Path(), help='Path to tokens.json')
     @click.option('--force', '-f', is_flag=True, help='Re-authenticate even if already logged in.')
-    def auth_login(provider, tokens_path, force):  # type: ignore  # TODO: mypy-strict
+    @click.option('--email', type=str, help='Qobuz email (for qobuz only)')
+    @click.option('--password', type=str, help='Qobuz password (for qobuz only; will prompt if omitted)')
+    def auth_login(provider, tokens_path, force, email, password):  # type: ignore  # TODO: mypy-strict
         """
         Authenticate with a provider interactively.
 
         Supported providers:
         - tidal: Device authorization (opens browser)
         - beatport: Manual token from browser DevTools
+        - qobuz: Email/password login (extracts app credentials automatically)
 
         Use --force to re-authenticate even when a valid token already exists.
         """
         from tagslut.metadata.auth import DEFAULT_TOKENS_PATH, TokenManager
 
-        if provider not in {"tidal", "beatport"}:
-            click.echo(f"Error: Unsupported provider '{provider}'. Use tidal or beatport.", err=True)
+        if provider not in {"tidal", "beatport", "qobuz"}:
+            click.echo(
+                f"Error: Unsupported provider '{provider}'. Use tidal, beatport, or qobuz.",
+                err=True,
+            )
             raise SystemExit(1)
 
         path = Path(tokens_path) if tokens_path else DEFAULT_TOKENS_PATH
         token_manager = TokenManager(path)
 
         if not force:
-            token = token_manager.get_token(provider)
-            if token and token.access_token and not token.is_expired:
-                click.echo(f"Already logged in to {provider}. Use --force to re-authenticate.")
-                return
+            if provider == "qobuz":
+                existing = token_manager.ensure_qobuz_token()
+                if existing:
+                    click.echo("Already logged in to qobuz. Use --force to re-authenticate.")
+                    return
+            else:
+                token = token_manager.get_token(provider)
+                if token and token.access_token and not token.is_expired:
+                    click.echo(f"Already logged in to {provider}. Use --force to re-authenticate.")
+                    return
 
         if provider == 'tidal':
             _tidal_device_login(token_manager)
         elif provider == 'beatport':
             _beatport_token_input(token_manager)
+        elif provider == "qobuz":
+            import hashlib
+
+            from tagslut.metadata.qobuz_credential_extractor import extract_qobuz_credentials
+
+            if not email:
+                click.echo("Error: --email is required for qobuz login.", err=True)
+                raise SystemExit(1)
+            if not password:
+                password = click.prompt("Qobuz password", hide_input=True, confirmation_prompt=False)
+
+            password_md5 = hashlib.md5(password.encode()).hexdigest()
+
+            click.echo("Extracting Qobuz app credentials from web player...")
+            creds = extract_qobuz_credentials()
+            token_manager.set_qobuz_credentials(creds["app_id"], creds["app_secret"])
+            click.echo("Logging in to Qobuz...")
+            token = token_manager.login_qobuz(email=email, password_md5=password_md5)
+            if not token:
+                click.echo("Qobuz login failed. See logs for details.", err=True)
+                raise SystemExit(1)
+            click.echo(f"Qobuz login OK (token={token[:8]}...)")

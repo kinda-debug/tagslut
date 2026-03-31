@@ -33,7 +33,7 @@ def test_qobuz_does_not_route_when_disabled(tmp_path: Path) -> None:
     assert router.provider_names_for(Capability.METADATA_SEARCH_BY_TEXT) == []
 
 
-def test_enabling_qobuz_exposes_only_scaffold_capabilities(tmp_path: Path) -> None:
+def test_enabling_qobuz_exposes_metadata_capabilities(tmp_path: Path) -> None:
     tm = _token_manager(tmp_path)
     activation = ProviderActivationConfig(
         qobuz=ProviderPolicy(
@@ -46,5 +46,4 @@ def test_enabling_qobuz_exposes_only_scaffold_capabilities(tmp_path: Path) -> No
 
     assert router.provider_names_for(Capability.METADATA_SEARCH_BY_TEXT) == ["qobuz"]
     assert router.provider_names_for(Capability.METADATA_FETCH_TRACK_BY_ID) == ["qobuz"]
-    assert router.provider_names_for(Capability.METADATA_SEARCH_BY_ISRC) == []
-
+    assert router.provider_names_for(Capability.METADATA_SEARCH_BY_ISRC) == ["qobuz"]

@@ -9,7 +9,7 @@ import requests
 
 QOBUZ_WEB_URL = "https://play.qobuz.com"
 _BUNDLE_URL_REGEX = r'src="([^"]+bundle\.js)"'
-_APP_ID_REGEX = r'["\']?app_id["\']?\s*:\s*["\'](\d+)["\']'
+_APP_ID_REGEX = r'app[_I][dD]["\']?\s*:\s*["\']?(\d{5,})'
 _SEED_TIMEZONE_REGEX = r'initialSeed\("([^"]+)",window\.utimezone\.([a-z_]+)\)'
 
 _UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0"
@@ -55,7 +55,8 @@ def extract_qobuz_credentials() -> Dict[str, str]:
 
     for seed, _timezone in pairs:
         try:
-            decoded = b64decode(seed.encode()).decode("utf-8")
+            padded = seed + "=" * (-len(seed) % 4)
+            decoded = b64decode(padded.encode()).decode("utf-8")
         except Exception:
             continue
         if decoded:

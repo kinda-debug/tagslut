@@ -336,6 +336,23 @@ class TokenManager:
         tok = data.get("user_auth_token") or None
         return str(tok) if tok else None
 
+    def refresh_qobuz_app_credentials(self) -> bool:
+        """
+        Re-extract app_id and app_secret from Qobuz bundle.js.
+        Called automatically before enrichment runs.
+        Does NOT require user interaction — only rotates app credentials.
+        Returns True if credentials were refreshed successfully.
+        """
+        try:
+            from tagslut.metadata.qobuz_credential_extractor import extract_qobuz_credentials
+            creds = extract_qobuz_credentials()
+            self.set_qobuz_credentials(creds["app_id"], creds["app_secret"])
+            logger.info("Qobuz app credentials refreshed (app_id=%s)", creds["app_id"])
+            return True
+        except Exception as e:
+            logger.warning("Qobuz app credential refresh failed: %s", e)
+            return False
+
     def refresh_tidal_token(self) -> Optional[TokenInfo]:
         """
         Refresh Tidal access token using stored refresh_token.

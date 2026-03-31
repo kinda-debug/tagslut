@@ -9,6 +9,7 @@
 #
 # Reads TAGSLUT_DB from environment (set by env_exports.sh).
 # Providers: beatport → tidal → qobuz (in priority order).
+# Qobuz app credentials are refreshed automatically before each run.
 
 set -euo pipefail
 
@@ -32,6 +33,9 @@ if [[ ! -f "$TAGSLUT_DB" ]]; then
 fi
 
 cd "$REPO_ROOT"
+
+# Silently refresh Qobuz app credentials (app_id/app_secret rotate with bundle deploys)
+poetry run python -m tagslut auth refresh qobuz 2>/dev/null || true
 
 CMD=(poetry run python -m tagslut index enrich \
     --db "$TAGSLUT_DB" \

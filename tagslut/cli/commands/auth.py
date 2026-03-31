@@ -168,6 +168,14 @@ def register_auth_group(cli: click.Group) -> None:
             else:
                 click.echo("Failed. Run 'tagslut auth login tidal' first.")
 
+        elif provider == 'qobuz':
+            ok = token_manager.refresh_qobuz_app_credentials()
+            if ok:
+                app_id, _ = token_manager.get_qobuz_app_credentials()
+                click.echo(f"Qobuz app credentials refreshed (app_id={app_id})")
+            else:
+                click.echo("Qobuz credential refresh failed. Check network connectivity.")
+
         else:
             click.echo(f"Unknown provider: {provider}")
 

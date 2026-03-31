@@ -274,6 +274,10 @@ class TokenManager:
                     "email": email,
                     "password": password_md5,
                 },
+                headers={
+                    "X-App-Id": app_id,
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0",
+                },
                 timeout=30.0,
             )
         except Exception as e:

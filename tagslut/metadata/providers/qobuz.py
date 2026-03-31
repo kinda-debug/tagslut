@@ -24,6 +24,53 @@ class QobuzProvider(AbstractProvider):
     rate_limit_config = RateLimitConfig(min_delay=0.5, max_retries=3)
     BASE_URL = "https://www.qobuz.com/api.json/0.2"
 
+    def _ensure_credentials(self) -> bool:
+        """
+        Ensure Qobuz credentials are present. Prompts interactively if missing.
+        Returns True if credentials are available, False otherwise.
+        """
+        if self.token_manager is None:
+            return False
+
+        app_id, app_secret = self.token_manager.get_qobuz_app_credentials()
+        user_auth_token = self.token_manager.ensure_qobuz_token()
+        if app_id and app_secret and user_auth_token:
+            return True
+
+        if self._auth_permanently_failed:
+            return False
+
+        import sys
+        if not sys.stdin.isatty():
+            return False
+
+        import getpass
+        import hashlib
+
+        from tagslut.metadata.qobuz_credential_extractor import extract_qobuz_credentials
+
+        print("Qobuz credentials not found. Enter credentials to enable Qobuz metadata.")
+        email = input("Qobuz email: ").strip()
+        password = getpass.getpass("Qobuz password: ")
+        password_md5 = hashlib.md5(password.encode()).hexdigest()
+
+        try:
+            creds = extract_qobuz_credentials()
+            self.token_manager.set_qobuz_credentials(creds["app_id"], creds["app_secret"])
+            token = self.token_manager.login_qobuz(email=email, password_md5=password_md5)
+        except Exception as e:
+            print(f"Qobuz: authentication failed ({e})")
+            self._auth_permanently_failed = True
+            return False
+
+        if not token:
+            print("Qobuz: authentication failed")
+            self._auth_permanently_failed = True
+            return False
+
+        print("Qobuz: authenticated OK")
+        return True
+
     def _get_default_headers(self) -> Dict[str, str]:
         headers: Dict[str, str] = {"Accept": "application/json"}
         if self.token_manager is None:
@@ -74,13 +121,9 @@ class QobuzProvider(AbstractProvider):
         return data if isinstance(data, dict) else None
 
     def fetch_by_id(self, track_id: str) -> Optional[ProviderTrack]:
+        if not self._ensure_credentials():
+            return None
         app_id, user_auth_token = self._get_app_id_and_token()
-        if not user_auth_token:
-            logger.warning("qobuz: missing user_auth_token; run 'tagslut auth login qobuz'")
-            return None
-        if not app_id:
-            logger.warning("qobuz: missing app_id; run 'tagslut auth login qobuz'")
-            return None
 
         data = self._request_json(
             "/track/get",
@@ -96,13 +139,9 @@ class QobuzProvider(AbstractProvider):
         return track
 
     def search_by_isrc(self, isrc: str) -> List[ProviderTrack]:
+        if not self._ensure_credentials():
+            return []
         app_id, user_auth_token = self._get_app_id_and_token()
-        if not user_auth_token:
-            logger.warning("qobuz: missing user_auth_token; run 'tagslut auth login qobuz'")
-            return []
-        if not app_id:
-            logger.warning("qobuz: missing app_id; run 'tagslut auth login qobuz'")
-            return []
 
         data = self._request_json(
             "/track/search",
@@ -132,13 +171,9 @@ class QobuzProvider(AbstractProvider):
         return out
 
     def search(self, query: str, limit: int = 10) -> List[ProviderTrack]:
+        if not self._ensure_credentials():
+            return []
         app_id, user_auth_token = self._get_app_id_and_token()
-        if not user_auth_token:
-            logger.warning("qobuz: missing user_auth_token; run 'tagslut auth login qobuz'")
-            return []
-        if not app_id:
-            logger.warning("qobuz: missing app_id; run 'tagslut auth login qobuz'")
-            return []
 
         data = self._request_json(
             "/track/search",

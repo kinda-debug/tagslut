@@ -9,13 +9,11 @@ export DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
 # === Volumes ===
 export MASTER_LIBRARY="/Volumes/MUSIC/MASTER_LIBRARY"
 export MP3_LIBRARY="/Volumes/MUSIC/MP3_LIBRARY"
-export DJ_LIBRARY="/Volumes/MUSIC/DJ_LIBRARY"
 export VOLUME_STAGING="/Volumes/MUSIC/mdl"
 export VOLUME_WORK="/Volumes/MUSIC/_work"
 
 # === Roots (derived from volumes) ===
 export LIBRARY_ROOT="$MASTER_LIBRARY"
-export DJ_MP3_ROOT="$DJ_LIBRARY"
 export ROOT_TD="$VOLUME_STAGING/tidal"      # PRIMARY: TIDAL downloads
 export ROOT_BP="$VOLUME_STAGING/bpdl"       # REFERENCE: Beatport metadata only
 export PLAYLIST_ROOT="$MASTER_LIBRARY/playlists"

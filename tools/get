@@ -56,7 +56,7 @@ usage() {
     echo ""
     echo "Common high-level options:"
     echo "  --mp3                Ensure cohort FLAC tags, then build MP3_LIBRARY copies (full tags)."
-    echo "  --dj                 Ensure cohort FLAC tags, then build MP3_LIBRARY (full tags) + DJ_LIBRARY (minimal DJ tags)."
+    echo "  --dj                 Build MP3_LIBRARY copies (full tags) and add tracks to DJ pool M3U playlists."
     echo "                       --dj implies --mp3."
     echo "  --no-precheck        skip duplicate-quality precheck"
     echo "  -f, --force          re-download even if already exists (provider-specific)"
@@ -313,7 +313,6 @@ if [[ -n "$URL" ]]; then
     WANTS_MP3=0
     WANTS_DJ=0
     MP3_ROOT_ARG=""
-    DJ_ROOT_ARG=""
     WRAPPER_VERBOSE=0
     INTAKE_URL_FORWARD=()
 
@@ -331,10 +330,6 @@ if [[ -n "$URL" ]]; then
             --mp3-root)
                 ((i++))
                 MP3_ROOT_ARG="${ORIG_ARGS[$i]:-}"
-                ;;
-            --dj-root)
-                ((i++))
-                DJ_ROOT_ARG="${ORIG_ARGS[$i]:-}"
                 ;;
             --sync|--synch|--simple|--enrich|--backfill|--re)
                 ;;
@@ -366,13 +361,10 @@ if [[ -n "$URL" ]]; then
         if [[ -z "$MP3_ROOT_ARG" ]]; then
             MP3_ROOT_ARG="${MP3_LIBRARY:-/Volumes/MUSIC/MP3_LIBRARY}"
         fi
-        if [[ "$WANTS_DJ" -eq 1 && -z "$DJ_ROOT_ARG" ]]; then
-            DJ_ROOT_ARG="${DJ_LIBRARY:-/Volumes/MUSIC/DJ_LIBRARY}"
-        fi
 
         INTAKE_URL_CMD=(poetry run python -m tagslut intake url "$URL")
         if [[ "$WANTS_DJ" -eq 1 ]]; then
-            INTAKE_URL_CMD+=(--dj --mp3-root "$MP3_ROOT_ARG" --dj-root "$DJ_ROOT_ARG")
+            INTAKE_URL_CMD+=(--dj --mp3-root "$MP3_ROOT_ARG")
         else
             INTAKE_URL_CMD+=(--mp3 --mp3-root "$MP3_ROOT_ARG")
         fi

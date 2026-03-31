@@ -12,6 +12,7 @@ import httpx
 from tagslut.cli.runtime import run_python_script, WRAPPER_CONTEXT
 from tagslut.core.download_manifest import DownloadManifest, build_manifest
 from tagslut.exec.intake_orchestrator import run_intake
+from tagslut.exec.dj_pool_m3u import write_dj_pool_m3u
 from tagslut.filters.identity_resolver import TrackIntent
 from tagslut.storage.schema import get_connection
 from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
@@ -162,9 +163,7 @@ def register_intake_group(cli: click.Group) -> None:
         is_flag=True,
         default=False,
         help=(
-            "[LEGACY] Convenience shortcut. Prefer the explicit 4-stage DJ pipeline: "
-            "`tagslut mp3 ...` -> `tagslut dj ...` -> `tagslut dj xml ...`. "
-            "(Implies --mp3; requires --mp3-root and --dj-root.)"
+            "Build MP3s into MP3_LIBRARY and add tracks to DJ pool M3U playlists."
         ),
     )
     @click.option(
@@ -172,15 +171,6 @@ def register_intake_group(cli: click.Group) -> None:
         default=None,
         type=click.Path(file_okay=False, writable=True),
         help="MP3 asset output root (required with --mp3).",
-    )
-    @click.option(
-        "--dj-root",
-        default=None,
-        type=click.Path(file_okay=False, writable=True),
-        help=(
-            "DJ output root (required with --dj). "
-            "Deprecated alias for --mp3-root in MP3-only mode when --mp3-root is omitted."
-        ),
     )
     @click.option(
         "--dry-run",
@@ -225,7 +215,6 @@ def register_intake_group(cli: click.Group) -> None:
         mp3: bool,
         dj: bool,
         mp3_root: str | None,
-        dj_root: str | None,
         dry_run: bool,
         no_precheck: bool,
         force_download: bool,
@@ -236,9 +225,9 @@ def register_intake_group(cli: click.Group) -> None:
         """Precheck → download → promote → [mp3] → [dj] for a single provider URL."""
         if dj:
             mp3 = True
-        if mp3 or dj:
+        if mp3 and not dj:
             click.echo(
-                "WARNING: tagslut intake --mp3/--dj is a legacy convenience shortcut. "
+                "WARNING: tagslut intake --mp3 is a legacy convenience shortcut. "
                 "Canonical curated-library flow is the explicit 4-stage pipeline: "
                 "Stage 1 `tagslut intake`; Stage 2 `tagslut mp3 build` or `tagslut mp3 reconcile`; "
                 "Stage 3 `tagslut dj backfill`, then `tagslut dj validate`; "
@@ -257,45 +246,16 @@ def register_intake_group(cli: click.Group) -> None:
 
         # Convert roots + enforce contract
         mp3_root_path = Path(mp3_root).expanduser().resolve() if mp3_root else None
-        dj_root_path = Path(dj_root).expanduser().resolve() if dj_root else None
-
-        if mp3 and not dj:
-            if mp3_root_path is None and dj_root_path is not None:
-                click.echo(
-                    "DEPRECATION: In MP3-only mode (--mp3 without --dj), --dj-root is deprecated as an alias "
-                    "for --mp3-root. Use --mp3-root. (--dj-root is DJ-output-only when --dj is active.)",
-                    err=True,
-                )
-                mp3_root_path = dj_root_path
-                dj_root_path = None
-
-            if mp3_root_path is None:
-                raise click.ClickException(
-                    "--mp3 requires --mp3-root.\n"
-                    "Example: tagslut intake <URL> --mp3 --mp3-root /path/to/mp3_assets"
-                )
-
-            if dj_root_path is not None:
-                raise click.ClickException(
-                    "--dj-root is DJ-output-only; do not pass it without --dj.\n"
-                    "Use --mp3-root for MP3 assets, or pass --dj to enable DJ output."
-                )
-
-        if dj:
-            if mp3_root_path is None:
+        if mp3_root_path is None and (mp3 or dj):
+            if dj:
                 raise click.ClickException(
                     "--dj implies --mp3 and requires --mp3-root.\n"
-                    "Example: tagslut intake <URL> --dj --mp3-root /path/to/mp3_assets --dj-root /path/to/dj_library"
+                    "Example: tagslut intake <URL> --dj --mp3-root /path/to/mp3_assets"
                 )
-            if dj_root_path is None:
-                raise click.ClickException(
-                    "--dj requires --dj-root.\n"
-                    "Example: tagslut intake <URL> --dj --mp3-root /path/to/mp3_assets --dj-root /path/to/dj_library"
-                )
-            if mp3_root_path == dj_root_path:
-                raise click.ClickException(
-                    "--mp3-root and --dj-root must be different when --dj is active."
-                )
+            raise click.ClickException(
+                "--mp3 requires --mp3-root.\n"
+                "Example: tagslut intake <URL> --mp3 --mp3-root /path/to/mp3_assets"
+            )
 
         artifact_dir_path = Path(artifact_dir).expanduser().resolve() if artifact_dir else None
 
@@ -304,16 +264,59 @@ def register_intake_group(cli: click.Group) -> None:
             url=url,
             db_path=resolved_db_path,
             mp3=mp3,
-            dj=dj,
+            dj=False,
             dry_run=dry_run,
             mp3_root=mp3_root_path,
-            dj_root=dj_root_path,
             artifact_dir=artifact_dir_path,
             verbose=verbose,
             debug_raw=debug_raw,
             no_precheck=no_precheck,
             force_download=force_download,
         )
+
+        if dj and not dry_run and mp3_root_path is not None:
+            mp3_stage = next((stage for stage in result.stages if stage.stage == "mp3"), None)
+            if mp3_stage and mp3_stage.status == "ok" and mp3_stage.artifact_path:
+                try:
+                    cohort = json.loads(mp3_stage.artifact_path.read_text(encoding="utf-8"))
+                except Exception as exc:
+                    raise click.ClickException(
+                        f"Failed to read MP3 cohort artifact: {mp3_stage.artifact_path} ({exc})"
+                    ) from exc
+
+                raw_paths = cohort.get("paths") if isinstance(cohort, dict) else None
+                if isinstance(raw_paths, list):
+                    try:
+                        from tagslut.exec.mp3_build import _mp3_asset_dest_for_flac_path
+                        from tagslut.utils.env_paths import get_volume
+                    except Exception as exc:
+                        raise click.ClickException(f"Failed to load MP3 path resolver: {exc}") from exc
+
+                    library_root = get_volume("library", required=False)
+                    seen: set[str] = set()
+                    mp3_paths: list[Path] = []
+                    for raw in raw_paths:
+                        if not isinstance(raw, str):
+                            continue
+                        flac_path = Path(raw).expanduser().resolve()
+                        dest = _mp3_asset_dest_for_flac_path(
+                            flac_path=flac_path,
+                            mp3_root=mp3_root_path,
+                            library_root=library_root,
+                        ).resolve()
+                        if not dest.exists():
+                            continue
+                        key = str(dest)
+                        if key in seen:
+                            continue
+                        seen.add(key)
+                        mp3_paths.append(dest)
+
+                    if mp3_paths:
+                        try:
+                            write_dj_pool_m3u(mp3_paths=mp3_paths, mp3_root=mp3_root_path)
+                        except Exception as exc:
+                            raise click.ClickException(f"Failed to write DJ pool M3U playlists: {exc}") from exc
 
         # Print summary
         click.echo(result.summary())

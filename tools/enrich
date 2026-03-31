@@ -35,6 +35,7 @@ cd "$REPO_ROOT"
 CMD=(poetry run python -m tagslut index enrich \
     --db "$TAGSLUT_DB" \
     --hoarding \
+    --retry-no-match \
     --execute)
 
 # Pass through any extra args (--force, --limit N, --verbose, etc.)

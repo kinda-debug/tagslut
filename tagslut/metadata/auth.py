@@ -299,12 +299,22 @@ class TokenManager:
             logger.error("Qobuz login returned invalid JSON: %s", e)
             return None
 
-        user = data.get("user") if isinstance(data, dict) else None
-        user = user if isinstance(user, dict) else {}
-        token = user.get("auth_token") or None
-        user_id = user.get("id") or None
+        # Handle both known Qobuz response structures
+        logger.debug("Qobuz login raw response: %s", str(data)[:500])
+        token = None
+        user_id = None
+        if isinstance(data, dict):
+            user = data.get("user")
+            if isinstance(user, dict):
+                token = user.get("auth_token") or user.get("user_auth_token")
+                user_id = user.get("id") or user.get("user_id")
+            if not token:
+                token = data.get("user_auth_token") or data.get("auth_token")
+            if not user_id:
+                user_id = data.get("user_id")
         if not token:
-            logger.error("Qobuz login response missing user.auth_token")
+            print(f"Qobuz login failed. Response: {str(data)[:500]}")
+            logger.error("Qobuz login response missing auth token. Full: %s", data)
             return None
 
         self.set_qobuz_credentials(

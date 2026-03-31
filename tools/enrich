@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# enrich — Run metadata hoarding enrichment against the active DB.
+#
+# Usage:
+#   tools/enrich              # enrich all unenriched tracks
+#   tools/enrich --force      # re-enrich everything
+#   tools/enrich --limit N    # cap at N tracks
+#
+# Reads TAGSLUT_DB from environment (set by env_exports.sh).
+# Providers: beatport → tidal → qobuz (in priority order).
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+ENV_LOADER="$SCRIPT_DIR/_load_env.sh"
+
+if [[ -f "$ENV_LOADER" ]]; then
+    source "$ENV_LOADER"
+    load_workspace_env "$REPO_ROOT"
+fi
+
+if [[ -z "${TAGSLUT_DB:-}" ]]; then
+    echo "Error: TAGSLUT_DB is not set. Run: source env_exports.sh" >&2
+    exit 1
+fi
+
+if [[ ! -f "$TAGSLUT_DB" ]]; then
+    echo "Error: DB not found: $TAGSLUT_DB" >&2
+    exit 1
+fi
+
+cd "$REPO_ROOT"
+
+CMD=(poetry run python -m tagslut index enrich \
+    --db "$TAGSLUT_DB" \
+    --hoarding \
+    --execute)
+
+# Pass through any extra args (--force, --limit N, --verbose, etc.)
+if [[ $# -gt 0 ]]; then
+    CMD+=("$@")
+fi
+
+exec "${CMD[@]}"

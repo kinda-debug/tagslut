@@ -443,9 +443,9 @@ elif [[ "$URL" == *"beatport.com"* ]]; then
 
 elif [[ "$URL" == *"qobuz.com"* ]]; then
     # Route Qobuz URLs to streamrip
-    STREAMRIP_CMD="rip"
-    if ! command -v "$STREAMRIP_CMD" >/dev/null 2>&1; then
-        echo "Error: streamrip (rip) not found. Install with: pip install streamrip" >&2
+    STREAMRIP_CMD="/Users/georgeskhawam/Projects/streamrip/.venv/bin/rip"
+    if [[ ! -x "$STREAMRIP_CMD" ]]; then
+        echo "Error: streamrip not found at $STREAMRIP_CMD" >&2
         exit 1
     fi
 

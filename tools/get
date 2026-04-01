@@ -437,9 +437,49 @@ if [[ "$URL" == *"tidal.com"* ]]; then
     exec "${INTAKE_CMD[@]}"
 
 elif [[ "$URL" == *"beatport.com"* ]]; then
-    echo "Error: Beatport downloads are retired. Beatport is metadata-only." >&2
-    echo "Find the track on TIDAL and use that URL instead." >&2
-    exit 1
+    # Beatport download via beatportdl — fallback for tracks only available on Beatport
+    BEATPORTDL_CMD="/Users/georgeskhawam/Projects/beatportdl/beatportdl-darwin-arm64"
+    if [[ ! -x "$BEATPORTDL_CMD" ]]; then
+        echo "Error: beatportdl not found at $BEATPORTDL_CMD" >&2
+        exit 1
+    fi
+
+    cd "$REPO_ROOT"
+
+    # Sync fresh token from beatportdl credentials before downloading
+    bash "$SCRIPT_DIR/auth" beatport 2>/dev/null
+
+    # Run beatportdl with URL as argument (accepts positional args, no interactive prompt needed)
+    cd /Users/georgeskhawam/Projects/beatportdl
+    "$BEATPORTDL_CMD" "$URL"
+    BEATPORT_EXIT=$?
+    cd "$REPO_ROOT"
+
+    if [[ $BEATPORT_EXIT -ne 0 ]]; then
+        echo "Error: beatportdl exited with code $BEATPORT_EXIT" >&2
+        exit $BEATPORT_EXIT
+    fi
+
+    # Register downloads and run enrich if requested
+    BEATPORT_ROOT="/Volumes/MUSIC/mdl/bpdl"
+    if [[ -d "$BEATPORT_ROOT" ]]; then
+        poetry run python -m tagslut index register "$BEATPORT_ROOT" --source beatport --execute
+    fi
+
+    if [[ "$WANTS_DJ" -eq 1 || "$WANTS_MP3" -eq 1 ]]; then
+        MP3_ROOT_ARG="${MP3_LIBRARY:-/Volumes/MUSIC/MP3_LIBRARY}"
+        INTAKE_URL_CMD=(poetry run python -m tagslut intake url "$URL")
+        if [[ "$WANTS_DJ" -eq 1 ]]; then
+            INTAKE_URL_CMD+=(--dj --mp3-root "$MP3_ROOT_ARG")
+        else
+            INTAKE_URL_CMD+=(--mp3 --mp3-root "$MP3_ROOT_ARG")
+        fi
+        "${INTAKE_URL_CMD[@]}"
+    fi
+
+    if [[ "$MODE" == "enrich" || "$MODE" == "auto" ]]; then
+        "$SCRIPT_DIR/enrich"
+    fi
 
 elif [[ "$URL" == *"qobuz.com"* ]]; then
     # Route Qobuz URLs to streamrip

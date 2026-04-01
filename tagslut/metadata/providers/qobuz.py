@@ -176,6 +176,14 @@ class QobuzProvider(AbstractProvider):
         album = raw.get("album") if isinstance(raw.get("album"), dict) else {}
         label = album.get("label") if isinstance(album.get("label"), dict) else {}
         image = album.get("image") if isinstance(album.get("image"), dict) else {}
+        # Genre lives on the album object: album.genre.name or album.genres_list[0]
+        album_genre_obj = album.get("genre") if isinstance(album.get("genre"), dict) else {}
+        album_genres_list = album.get("genres_list") if isinstance(album.get("genres_list"), list) else []
+        genre_name: Optional[str] = (
+            album_genre_obj.get("name")
+            or (album_genres_list[0] if album_genres_list else None)
+            or raw.get("genre")  # fallback: track-level genre if ever present
+        )
 
         duration = raw.get("duration")
         duration_ms: Optional[int] = None
@@ -202,6 +210,7 @@ class QobuzProvider(AbstractProvider):
             track_number=raw.get("track_number") if isinstance(raw.get("track_number"), int) else None,
             release_date=album.get("release_date_original"),
             label=label.get("name"),
+            genre=genre_name,
             version=raw.get("version"),
             explicit=explicit,
             album_art_url=image.get("large"),

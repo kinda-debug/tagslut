@@ -380,6 +380,14 @@ if [[ -n "$URL" ]]; then
     fi
 fi
 
+# Parse --dj / --mp3 flags globally for all providers
+WANTS_DJ=0
+WANTS_MP3=0
+for __garg in "$@"; do
+    [[ "$__garg" == "--dj" ]] && { WANTS_DJ=1; WANTS_MP3=1; }
+    [[ "$__garg" == "--mp3" ]] && WANTS_MP3=1
+done
+
 # Route based on domain
 if [[ "$URL" == *"tidal.com"* ]]; then
     if [[ ! -x "$GET_INTAKE" ]]; then
@@ -455,13 +463,23 @@ elif [[ "$URL" == *"qobuz.com"* ]]; then
     echo "Registering downloads..."
     poetry run python -m tagslut index register "$STREAMRIP_ROOT" --source qobuz --execute
 
-    if [[ "$MODE" == "enrich" ]]; then
-        echo "Enriching..."
-        poetry run python -m tagslut index enrich \
-            --db "$TAGSLUT_DB" \
-            --path "${STREAMRIP_ROOT}/%" \
-            --zones staging \
-            --execute
+    # Build MP3s and write DJ pool M3U if --dj or --mp3 requested
+    if [[ "$WANTS_DJ" -eq 1 || "$WANTS_MP3" -eq 1 ]]; then
+        MP3_ROOT_ARG="${MP3_LIBRARY:-/Volumes/MUSIC/MP3_LIBRARY}"
+        echo "Building MP3s..."
+        INTAKE_CMD=(poetry run python -m tagslut intake url "$URL")
+        if [[ "$WANTS_DJ" -eq 1 ]]; then
+            INTAKE_CMD+=(--dj --mp3-root "$MP3_ROOT_ARG")
+        else
+            INTAKE_CMD+=(--mp3 --mp3-root "$MP3_ROOT_ARG")
+        fi
+        "${INTAKE_CMD[@]}"
+    fi
+
+    # Enrich if --enrich requested or always after download
+    if [[ "$MODE" == "enrich" || "$MODE" == "auto" ]]; then
+        echo "Enriching metadata..."
+        "$SCRIPT_DIR/enrich"
     fi
 
     exit 0

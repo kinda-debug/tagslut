@@ -23,7 +23,7 @@ cd "$REPO_ROOT"
 
 PROVIDER="${1:-all}"
 
-STREAMRIP_CONFIG="$HOME/Library/Application Support/streamrip/config.toml"
+STREAMRIP_CONFIG="/Users/georgeskhawam/Projects/streamrip/dev_config.toml"
 TOKENS_FILE="$HOME/.config/tagslut/tokens.json"
 
 sync_qobuz_to_streamrip() {
@@ -34,18 +34,14 @@ import json, re, sys
 cfg_path, tok_path = sys.argv[1], sys.argv[2]
 tokens = json.load(open(tok_path))
 q = tokens.get("qobuz", {})
-app_id = q.get("app_id", "")
-app_secret = q.get("app_secret", "")
 user_token = q.get("user_auth_token", "")
 user_id = q.get("user_id", "")
-if not (app_id and user_token):
+if not (user_token and user_id):
     sys.exit(0)
 cfg = open(cfg_path).read()
 cfg = re.sub(r'use_auth_token = \w+', 'use_auth_token = true', cfg)
 cfg = re.sub(r'email_or_userid = ".*?"', f'email_or_userid = "{user_id}"', cfg)
 cfg = re.sub(r'password_or_token = ".*?"', f'password_or_token = "{user_token}"', cfg)
-cfg = re.sub(r'app_id = ".*?"', f'app_id = "{app_id}"', cfg)
-cfg = re.sub(r'secrets = \[.*?\]', f'secrets = ["{app_secret}"]', cfg)
 open(cfg_path, "w").write(cfg)
 PYEOF
 }

@@ -449,8 +449,11 @@ elif [[ "$URL" == *"qobuz.com"* ]]; then
         exit 1
     fi
 
+    STREAMRIP_CONFIG="/Users/georgeskhawam/Projects/streamrip/dev_config.toml"
+    STREAMRIP_ROOT="/Volumes/MUSIC/mdldev/StreamripDownloads"
+
     cd "$REPO_ROOT"
-    "$STREAMRIP_CMD" url "$URL"
+    "$STREAMRIP_CMD" --config "$STREAMRIP_CONFIG" url "$URL"
 
     STREAMRIP_EXIT=$?
     if [[ $STREAMRIP_EXIT -ne 0 ]]; then
@@ -458,7 +461,6 @@ elif [[ "$URL" == *"qobuz.com"* ]]; then
         exit $STREAMRIP_EXIT
     fi
 
-    STREAMRIP_ROOT="/Volumes/MUSIC/mdl/StreamripDownloads"
     poetry run python -m tagslut index register "$STREAMRIP_ROOT" --source qobuz --execute
 
     # Build MP3s and write DJ pool M3U if --dj or --mp3 requested

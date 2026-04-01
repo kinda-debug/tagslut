@@ -1055,6 +1055,16 @@ if [[ "$M3U_ONLY" -eq 0 ]]; then
   fi
   BATCH_ROOT="$(resolve_path "$BATCH_ROOT")"
   BATCH_AUDIO_START="$(count_audio_files "$BATCH_ROOT")"
+
+  # Pre-scan: enrich missing tags from filenames before planning (no-download mode only)
+  if [[ "$DOWNLOAD" -eq 0 && -d "$BATCH_ROOT" ]]; then
+    echo "Pre-scan: checking for missing tags in batch root..."
+    if [[ "$EXECUTE" -eq 1 ]]; then
+      run_cmd poetry run python -m tagslut.exec.prescan_tag_completion --batch-root "$BATCH_ROOT" --db "$DB_PATH" --execute
+    else
+      run_cmd poetry run python -m tagslut.exec.prescan_tag_completion --batch-root "$BATCH_ROOT" --db "$DB_PATH"
+    fi
+  fi
 else
   BATCH_ROOT=""
 fi

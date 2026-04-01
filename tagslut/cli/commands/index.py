@@ -1013,7 +1013,7 @@ def register_index_group(cli: click.Group) -> None:
     @click.option('--execute', is_flag=True, help='Actually update database (default: dry-run)')
     @click.option('--recovery', is_flag=True, help='Recovery mode: focus on duration health validation')
     @click.option('--hoarding', is_flag=True, help='Hoarding mode: collect full metadata (BPM, key, genre, etc.)')
-    @click.option('-v', '--verbose', is_flag=True, help='Print per-item progress to stderr')
+    @click.option('-v', '--verbose', is_flag=True, help='Enable verbose DEBUG logging')
     @click.option('--standalone', is_flag=True, help='Run without a database (read tags directly)')
     def index_enrich(  # type: ignore[no-untyped-def]  # TODO: mypy-strict
         db,
@@ -1065,7 +1065,6 @@ def register_index_group(cli: click.Group) -> None:
         import sqlite3
         from datetime import datetime
 
-        from tagslut.cli._progress import make_progress_cb
         from tagslut.cli.runtime import collect_flac_paths as _collect_flac_paths
         from tagslut.metadata.auth import TokenManager
         from tagslut.metadata.enricher import Enricher
@@ -1326,13 +1325,6 @@ def register_index_group(cli: click.Group) -> None:
         click.echo("Resumable: Ctrl+C to pause, run again to continue")
         click.echo("")
 
-        cb = make_progress_cb(bool(verbose))
-
-        def progress(current, total, filepath):  # type: ignore  # TODO: mypy-strict
-            if cb is None:
-                return
-            cb(Path(filepath).name, int(current), int(total))
-
         with Enricher(
             db_path=db_path,
             token_manager=token_manager,
@@ -1347,7 +1339,6 @@ def register_index_group(cli: click.Group) -> None:
                 force=force,
                 retry_no_match=retry_no_match,
                 zones=zone_list,
-                progress_callback=progress if cb is not None else None,
             )
 
         click.echo("")

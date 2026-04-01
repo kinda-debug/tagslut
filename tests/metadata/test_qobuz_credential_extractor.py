@@ -19,18 +19,16 @@ class _Resp:
 
 def test_extract_qobuz_credentials_parses_html_and_js() -> None:
     html = '<html><script src="/static/js/app.bundle.js"></script></html>'
-    js = (
-        'var cfg={app_id:"12345"};'
-        'initialSeed("c2VjcmV0",window.utimezone.europe_beirut);'
-    )
+    # Use direct extraction format (production:{api:{appId:"...",appSecret:"..."}})
+    js = 'production:{api:{appId:"123456789",appSecret:"abcdef1234567890abcdef1234567890"}'
 
     get_mock = Mock(side_effect=[_Resp(text=html), _Resp(text=js)])
     with patch("tagslut.metadata.qobuz_credential_extractor.requests.get", get_mock):
         creds = extract_qobuz_credentials()
 
-    assert creds["app_id"] == "12345"
-    assert creds["app_secret"] == "secret"
-    assert get_mock.call_args_list[0].args[0] == "https://play.qobuz.com"
+    assert creds["app_id"] == "123456789"
+    assert creds["app_secret"] == "abcdef1234567890abcdef1234567890"
+    assert get_mock.call_args_list[0].args[0] == "https://play.qobuz.com/login"
     assert get_mock.call_args_list[1].args[0].endswith("/static/js/app.bundle.js")
 
 

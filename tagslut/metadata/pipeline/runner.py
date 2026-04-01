@@ -2,9 +2,10 @@
 
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 from typing import List, Optional
 
-from tagslut.metadata.models.types import EnrichmentResult, LocalFileInfo
+from tagslut.metadata.models.types import EnrichmentResult, LocalFileInfo, MatchConfidence
 from tagslut.metadata.store import db_reader, db_writer
 from tagslut.metadata.pipeline import stages
 
@@ -43,6 +44,61 @@ def _present(value: object) -> bool:
     if isinstance(value, str):
         return bool(value.strip())
     return True
+
+
+def _display_name(file_info: LocalFileInfo) -> str:
+    artist = (file_info.tag_artist or "").strip()
+    title = (file_info.tag_title or "").strip()
+    if artist and title:
+        return f"{artist} - {title}"[:45]
+    return Path(file_info.path).stem[:45]
+
+
+def _format_track_line(
+    index: int,
+    total: int,
+    file_info: LocalFileInfo,
+    result: Optional[EnrichmentResult],
+    *,
+    failed: bool,
+    mode: str,
+) -> str:
+    name = _display_name(file_info)
+
+    if failed:
+        status = "✗"
+        detail = "failed"
+    elif result is None or result.enrichment_confidence == MatchConfidence.NONE:
+        status = "✗"
+        detail = "no match"
+    else:
+        status = "✓"
+        provider = result.matches[0].service if result.matches else "?"
+        confidence = result.enrichment_confidence.value if result.enrichment_confidence else ""
+        detail = f"{provider} ({confidence})"
+
+        if mode in ("hoarding", "both"):
+            missing: List[str] = []
+            if not _present(getattr(result, "canonical_bpm", None)):
+                missing.append("BPM")
+            if not _present(getattr(result, "canonical_key", None)):
+                missing.append("key")
+            if not _present(getattr(result, "canonical_genre", None)):
+                missing.append("genre")
+            if not _present(getattr(result, "canonical_label", None)):
+                missing.append("label")
+
+            status = "~" if missing else "✓"
+
+            if _present(getattr(result, "canonical_bpm", None)):
+                detail += f"  BPM:{int(result.canonical_bpm)}"
+            if _present(getattr(result, "canonical_key", None)):
+                detail += f" Key:{result.canonical_key}"
+            if missing:
+                detail += f"  no {', '.join(missing)}"
+
+    counter = f"[{index}/{total}]"
+    return f"{counter:<8} {name:<45} {status}  {detail}"
 
 
 def run_enrich_all(  # type: ignore  # TODO: mypy-strict
@@ -96,9 +152,6 @@ def run_enrich_all(  # type: ignore  # TODO: mypy-strict
 
     try:
         for i, file_info in enumerate(files):
-            if progress_callback:
-                progress_callback(i + 1, stats.total, file_info.path)
-
             # Checkpoint logging (quieter - only to log file)
             if (i + 1) % checkpoint_interval == 0:
                 logger.debug(
@@ -119,6 +172,10 @@ def run_enrich_all(  # type: ignore  # TODO: mypy-strict
                                 file_info.path,
                                 file_info.tag_artist or "?",
                                 file_info.tag_title or "?")
+                    print(
+                        _format_track_line(i + 1, stats.total, file_info, result, failed=False, mode=mode),
+                        flush=True,
+                    )
                     continue
 
                 # Update database
@@ -177,15 +234,27 @@ def run_enrich_all(  # type: ignore  # TODO: mypy-strict
                             title = (getattr(result, "canonical_title", None) or best_match.title or file_info.tag_title or "").strip()
                             name = f"{artist} - {title}".strip(" -") if (artist or title) else file_info.path
                             stats.undertagged.append((name, missing))
+                    print(
+                        _format_track_line(i + 1, stats.total, file_info, result, failed=False, mode=mode),
+                        flush=True,
+                    )
                 else:
                     stats.failed += 1
                     logger.warning("FAILED to update: %s", file_info.path)
+                    print(
+                        _format_track_line(i + 1, stats.total, file_info, result, failed=True, mode=mode),
+                        flush=True,
+                    )
 
             except KeyboardInterrupt:
                 raise  # Re-raise to outer handler
             except Exception as e:
                 logger.warning("Error processing %s: %s", file_info.path, e)
                 stats.failed += 1
+                print(
+                    _format_track_line(i + 1, stats.total, file_info, None, failed=True, mode=mode),
+                    flush=True,
+                )
                 # Continue to next file instead of stopping
 
     except KeyboardInterrupt:

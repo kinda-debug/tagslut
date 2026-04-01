@@ -26,25 +26,51 @@ PROVIDER="${1:-all}"
 STREAMRIP_CONFIG="/Users/georgeskhawam/Projects/streamrip/dev_config.toml"
 TOKENS_FILE="$HOME/.config/tagslut/tokens.json"
 
-sync_qobuz_to_streamrip() {
+sync_qobuz_tokens() {
+    # Bidirectional: whichever side has a valid token wins.
+    # If streamrip config has a token that tagslut doesn't (or tagslut's is older), pull from streamrip.
+    # Then always write tagslut's current token back to streamrip so both stay in sync.
     [[ -f "$STREAMRIP_CONFIG" ]] || return 0
     [[ -f "$TOKENS_FILE" ]] || return 0
     python3 - "$STREAMRIP_CONFIG" "$TOKENS_FILE" << 'PYEOF'
 import json, re, sys
+from pathlib import Path
+
 cfg_path, tok_path = sys.argv[1], sys.argv[2]
-tokens = json.load(open(tok_path))
+tokens = json.loads(Path(tok_path).read_text())
 q = tokens.get("qobuz", {})
+
+import tomllib
+cfg_text = Path(cfg_path).read_text()
+cfg_data = tomllib.loads(cfg_text)
+sr_qobuz = cfg_data.get("qobuz", {})
+
+# Pull from streamrip if tagslut token is missing/expired
+sr_token = str(sr_qobuz.get("password_or_token", ""))
+sr_user_id = str(sr_qobuz.get("email_or_userid", ""))
+tagslut_token = q.get("user_auth_token", "")
+
+if sr_token and sr_token != tagslut_token and len(sr_token) > 20:
+    q["user_auth_token"] = sr_token
+    if sr_user_id and sr_user_id.isdigit():
+        q["user_id"] = sr_user_id
+    tokens["qobuz"] = q
+    Path(tok_path).write_text(json.dumps(tokens, indent=2))
+
+# Write current (possibly just-updated) token back to streamrip
 user_token = q.get("user_auth_token", "")
 user_id = q.get("user_id", "")
 if not (user_token and user_id):
     sys.exit(0)
-cfg = open(cfg_path).read()
-cfg = re.sub(r'use_auth_token = \w+', 'use_auth_token = true', cfg)
-cfg = re.sub(r'email_or_userid = ".*?"', f'email_or_userid = "{user_id}"', cfg)
-cfg = re.sub(r'password_or_token = ".*?"', f'password_or_token = "{user_token}"', cfg)
-open(cfg_path, "w").write(cfg)
+cfg_text = re.sub(r'use_auth_token = \w+', 'use_auth_token = true', cfg_text)
+cfg_text = re.sub(r'email_or_userid = ".*?"', f'email_or_userid = "{user_id}"', cfg_text)
+cfg_text = re.sub(r'password_or_token = ".*?"', f'password_or_token = "{user_token}"', cfg_text)
+Path(cfg_path).write_text(cfg_text)
 PYEOF
 }
+
+# Keep old name as alias for compatibility
+sync_qobuz_to_streamrip() { sync_qobuz_tokens; }
 
 refresh_tidal() {
     echo -n "TIDAL... "

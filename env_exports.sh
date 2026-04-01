@@ -78,9 +78,3 @@ else
     echo "  Beatport API Token: ⚠️  NOT SET"
 fi
 
-# tagslut shortcuts
-alias ts='cd /Users/georgeskhawam/Projects/tagslut && poetry run python -m tagslut'
-alias ts-enrich='tools/enrich'
-alias ts-auth-qobuz='poetry run python -m tagslut auth login qobuz --force'
-alias ts-auth-tidal='tiddl auth refresh'
-alias ts-auth-beatport='poetry run python -m tagslut auth refresh beatport'

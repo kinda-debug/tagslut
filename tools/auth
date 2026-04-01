@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# auth — Refresh all provider tokens.
+#
+# Usage:
+#   tools/auth           # refresh all (tidal, beatport, qobuz)
+#   tools/auth tidal     # refresh TIDAL only
+#   tools/auth beatport  # refresh Beatport only
+#   tools/auth qobuz     # refresh Qobuz app credentials only
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+ENV_LOADER="$SCRIPT_DIR/_load_env.sh"
+
+if [[ -f "$ENV_LOADER" ]]; then
+    source "$ENV_LOADER" 2>/dev/null
+    load_workspace_env "$REPO_ROOT" 2>/dev/null
+fi
+
+cd "$REPO_ROOT"
+
+PROVIDER="${1:-all}"
+
+refresh_tidal() {
+    echo -n "TIDAL... "
+    tiddl auth refresh 2>/dev/null && echo "OK" || echo "FAILED"
+}
+
+refresh_beatport() {
+    echo -n "Beatport... "
+    poetry run python -m tagslut auth refresh beatport 2>/dev/null && echo "OK" || echo "FAILED"
+}
+
+refresh_qobuz() {
+    echo -n "Qobuz... "
+    poetry run python -m tagslut auth refresh qobuz 2>/dev/null && echo "OK" || echo "FAILED"
+}
+
+case "$PROVIDER" in
+    all)
+        refresh_tidal
+        refresh_beatport
+        refresh_qobuz
+        ;;
+    tidal)   refresh_tidal ;;
+    beatport) refresh_beatport ;;
+    qobuz)   refresh_qobuz ;;
+    *)
+        echo "Unknown provider: $PROVIDER" >&2
+        echo "Usage: tools/auth [all|tidal|beatport|qobuz]" >&2
+        exit 1
+        ;;
+esac

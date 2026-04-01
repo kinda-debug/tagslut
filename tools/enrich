@@ -35,9 +35,7 @@ fi
 cd "$REPO_ROOT"
 
 # Auto-refresh all provider tokens before running
-tiddl auth refresh 2>/dev/null || true
-poetry run python -m tagslut auth refresh beatport 2>/dev/null || true
-poetry run python -m tagslut auth refresh qobuz 2>/dev/null || true
+"$SCRIPT_DIR/auth" all 2>/dev/null || true
 
 CMD=(poetry run python -m tagslut index enrich \
     --db "$TAGSLUT_DB" \

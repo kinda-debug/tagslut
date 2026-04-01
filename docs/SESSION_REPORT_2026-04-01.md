@@ -116,6 +116,73 @@ Fix: add a `--read-tags-from-files` mode to `tagslut index register` that reads 
 
 ---
 
+---
+
+## Plan — next 2 days
+
+### Context
+
+The DB has 1,212 files across `accepted` (625), `suspect` (555), `staging` (32). Of those, 154 accepted and 103 suspect are missing genre. The 7 FLACs already downloaded at `/Volumes/MUSIC/mdldev/StreamripDownloads` have genre tags embedded by streamrip but those tags aren't in the DB yet. The enrichment pipeline is now fully wired (Beatport + TIDAL + Qobuz all working) but the 450 unenriched files and ~260 genre-missing files need to be processed.
+
+---
+
+### Day 1 — Clear the enrichment backlog
+
+**Step 1 — Register streamrip downloads** *(manual, 5 min)*
+```bash
+cd ~/Projects/tagslut
+source env_exports.sh
+poetry run python -m tagslut index register /Volumes/MUSIC/mdldev/StreamripDownloads --source qobuz --execute
+```
+This writes the 7 existing Qobuz downloads into the DB. Their genre/label tags are already in the files — register reads them directly.
+
+**Step 2 — Run full enrichment** *(ts-enrich, ~20 min)*
+```bash
+ts-enrich
+```
+With Beatport token synced from beatportdl, Qobuz freshly authenticated, and the genre fix (`31d3fec`) now in place, this pass should fill genre+label for most of the 260 undertagged tracks. Run twice if rate-limited (it's resumable).
+
+**Step 3 — Check results**
+```bash
+sqlite3 "$TAGSLUT_DB" "SELECT COUNT(*), SUM(CASE WHEN canonical_genre IS NOT NULL THEN 1 ELSE 0 END) FROM track_identity;"
+```
+Target: genre coverage > 80% of enriched tracks.
+
+**Step 4 — Hand `beatport-circuit-breaker.prompt.md` to Codex** *(already written)*
+The prompt is at `.github/prompts/beatport-circuit-breaker.prompt.md`. Delivers: `_session_dead` flag on BeatportProvider so a dead token produces 1 WARNING instead of retry spam.
+
+---
+
+### Day 2 — Intake pipeline and download UX
+
+**Problem:** `ts-get <qobuz_url>` is untested end-to-end since the `dev_config.toml` and download root fixes. The full flow (download → register → MP3 build → dj_pool.m3u) needs a real test run.
+
+**Step 1 — Test `ts-get` with a Qobuz album**
+```bash
+ts-get https://open.qobuz.com/album/btjlqvi1808fc --dj
+```
+Expected: FLAC lands in `/Volumes/MUSIC/mdldev/StreamripDownloads`, gets registered, MP3 built in `MP3_LIBRARY`, `dj_pool.m3u` updated. Verify each step.
+
+**Step 2 — Write `enrich-provider-filter.prompt.md`** for Codex
+Adds `--provider tidal|beatport|qobuz` flag to `tagslut index enrich` and `tools/enrich`. Allows targeted single-provider passes (e.g. "just run Qobuz against the 260 genre-missing tracks") without hitting all three providers for all eligible files. This also fixes the "starts over" problem — a dedicated Qobuz-only pass runs only against tracks missing genre/label, not the full 450 unenriched set.
+
+**Step 3 — Qobuz token auto-relogin**
+Add token validity check to `tools/auth qobuz`: if `user/get` returns 401, print a clear one-liner with the re-login command rather than silently continuing. Goal: make the failure loud instead of invisible (Genre: 0 in results with no warning).
+
+**Step 4 — Streamrip tag passthrough** *(Codex prompt)*
+Files downloaded via `ts-get <qobuz_url>` already have genre/label/BPM embedded by streamrip. The register step should read those tags and write them directly to `track_identity` columns without queuing for API enrichment. Write `streamrip-tag-passthrough.prompt.md`: extend `tagslut index register --source qobuz` to read Vorbis tags (GENRE, LABEL, BPM, KEY, ISRC) from each FLAC and populate `canonical_*` columns at registration time.
+
+---
+
+### Backlog (not this week)
+
+- `no such column: service` in db_writer source snapshots — non-fatal, fix when convenient
+- `repo-cleanup-supplement.prompt.md` — operator-only, five phases, not delegated
+- `dj-pipeline-hardening.prompt.md` — blocked until Phase 1 PRs merge
+- Rekordbox: delete the 75 missing entries from the collection (manual, in Rekordbox Missing File Manager → select all → Delete)
+
+---
+
 ## Commands reference
 
 ```bash

@@ -61,7 +61,7 @@ class ProviderActivationConfig:
     )
 
 
-DEFAULT_ACTIVE_PROVIDERS = ["beatport", "tidal", "reccobeats"]
+DEFAULT_ACTIVE_PROVIDERS = ["beatport", "tidal", "qobuz", "reccobeats"]
 DEFAULT_DOWNLOAD_PRECEDENCE = ["tidal", "qobuz", "beatport"]
 DEFAULT_PROVIDERS_CONFIG_PATH = (
     Path(os.getenv("XDG_CONFIG_HOME", str(Path.home() / ".config")))
@@ -224,6 +224,8 @@ def resolve_active_metadata_providers(
         enabled.add("beatport")
     if cfg.tidal.metadata_enabled:
         enabled.add("tidal")
+    if cfg.qobuz.metadata_enabled:
+        enabled.add("qobuz")
     if cfg.reccobeats.metadata_enabled:
         enabled.add("reccobeats")
 

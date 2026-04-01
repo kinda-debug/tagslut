@@ -90,6 +90,12 @@ Fix: add a `--read-tags-from-files` mode to `tagslut index register` that reads 
 
 `.github/prompts/repo-cleanup-supplement.prompt.md` — five-phase cleanup (safe deletions, deduplication, `files/` directory, gitignore, structural bug docs). Operator-only, not delegated to Codex. Not started.
 
+### beatportdl rebuild pending
+The beatportdl source was patched (`interactions.go`: exit on empty input) to fix
+the interactive prompt loop after non-interactive use. The build requires taglib arm64
+(`arch -arm64 brew install taglib` then rebuild). Until rebuilt, `ts-get <beatport_url>`
+will complete the download but hang at the "Enter url" prompt — Ctrl+C to exit.
+
 ---
 
 ## Active prompt files (ready for Codex)

@@ -24,7 +24,10 @@ Update it when tasks complete or priorities shift.
 7. TIDAL provider migration (§19)       ← COMPLETE (commit 50062ea)
 8. Intake pipeline hardening (§5)       ← COMPLETE (commits 8590e75, d0c42e6)
 9. DJ pipeline hardening (§3)          ← UNBLOCKED (open review items remain)
-10. Token bridge + download strategy (§20, §21) ← NEXT
+10. Token bridge + download strategy (§20, §21) ← COMPLETE (2026-04-01)
+11. Provider architecture + Qobuz metadata (§23)  ← COMPLETE (2026-04-01)
+12. DJ pool M3U model — replace 4-stage pipeline  ← COMPLETE (2026-04-01)
+13. beatportdl restore as explicit download path  ← COMPLETE (2026-04-01)
 ```
 
 Items must not be skipped; each depends on the prior gate being confirmed complete.
@@ -313,7 +316,9 @@ Notes:
 
 ---
 
-## 20 — tiddl → tokens.json bridge → **Codex** ⬅ NEXT
+## 20 — tiddl → tokens.json bridge → **Codex** ⬅ COMPLETE (2026-04-01)
+
+Implemented in commit `5f04481` and earlier.
 
 ### Problem
 
@@ -346,7 +351,9 @@ has a valid session.
 
 ---
 
-## 21 — Download strategy rewrite → **Claude Code** ⬅ NEXT
+## 21 — Download strategy rewrite → **Claude Code** ⬅ COMPLETE (2026-04-01)
+
+`docs/DOWNLOAD_STRATEGY.md` updated; Beatport downloads are explicit (not automatic fallback) and beatportdl is active.
 
 ### Problem
 
@@ -395,7 +402,9 @@ Do not implement until API key is confirmed available.
 
 ---
 
-## 23 — Provider architecture: capability registry + Qobuz + download adapters → **Codex** ⬅ QUEUED
+## 23 — Provider architecture: capability registry + Qobuz + download adapters → **Codex** ⬅ COMPLETE (2026-04-01)
+
+Operational Qobuz metadata is live as of 2026-04-01.
 
 Full design: `docs/codex/CODEX_PROVIDER_ARCHITECTURE_IMPLEMENTATION_PROMPTS.md`
 Assessment: `tagslut_Provider_Architecture_Assessment_for_Qobuz__TIDAL__Beatport.md`
@@ -410,13 +419,13 @@ application and schema levels.
 
 | Prompt | Phase | Scope | Agent | Status |
 | --- | --- | --- | --- | --- |
-| Prompt 1 | 0 | Contract freeze + stale surface correction | Codex | Ready |
-| Prompt 2 | 1 | ProviderRegistry + `providers.toml` activation config | Codex | Ready |
-| Prompt 3 | 2a | Provider state model + `tagslut provider status` CLI | Codex | Ready |
-| Prompt 4 | 2b | Capability-aware metadata router | Codex | Ready |
-| Prompt 5 | 3 | Per-role activation model (metadata vs download) | Codex | Ready |
-| Prompt 6 | 4 | Qobuz scaffold, off by default, identity-safe | Codex | Ready |
-| Prompt 7 | 5 | Qobuz + Beatport download provider adapters | Codex | Blocked on Prompt 6 + staging validation |
+| Prompt 1 | 0 | Contract freeze + stale surface correction | Codex | COMPLETE (2026-04-01) |
+| Prompt 2 | 1 | ProviderRegistry + `providers.toml` activation config | Codex | COMPLETE (2026-04-01) |
+| Prompt 3 | 2a | Provider state model + `tagslut provider status` CLI | Codex | COMPLETE (2026-04-01) |
+| Prompt 4 | 2b | Capability-aware metadata router | Codex | COMPLETE (2026-04-01) |
+| Prompt 5 | 3 | Per-role activation model (metadata vs download) | Codex | COMPLETE (2026-04-01) |
+| Prompt 6 | 4 | Qobuz scaffold, off by default, identity-safe | Codex | COMPLETE (2026-04-01) |
+| Prompt 7 | 5 | Qobuz + Beatport download provider adapters | Codex | COMPLETE (2026-04-01) |
 | Prompt 8 | 6 | Stale surface archival + provider scope cleanup | Codex | COMPLETE (8677a4d) |
 
 **Gate rules:**

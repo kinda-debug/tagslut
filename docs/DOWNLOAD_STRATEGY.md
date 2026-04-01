@@ -125,7 +125,16 @@ use providers.toml.
 | **BeatportDownloadProvider** | Beatport purchase-download | ✅ explicit only | N/A |
 | **tagslut** | Orchestration, DB, enrichment | — | ✅ enrichment pass |
 
-`beatportdl` is permanently retired. Do not reference it.
+## beatportdl
+
+beatportdl is the download tool for Beatport-only tracks. It is not retired.
+Use `ts-get <beatport_url>` to route Beatport URLs through beatportdl automatically.
+beatportdl's credentials file is at `~/Projects/beatportdl/beatportdl-credentials.json`
+and is synced into tagslut's `tokens.json` by `ts-auth beatport`.
+
+The prior note about beatportdl being "permanently retired" applied only to the
+automatic TIDAL→Beatport fallback within tools/get-intake. beatportdl as an explicit
+acquisition tool remains active.
 
 ---
 
@@ -187,10 +196,10 @@ metadata_enabled = true
 download_enabled = false  # set true to enable Beatport purchase-download
 trust = "dj_primary"
 
-# [providers.qobuz]      # scaffold exists, off by default until §23 Prompt 6+
-# metadata_enabled = false
-# download_enabled = false
-# trust = "do_not_use_for_canonical"
+[providers.qobuz]
+metadata_enabled = true
+download_enabled = false
+trust = "secondary"
 ```
 
 ### Legacy env vars (retired)

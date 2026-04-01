@@ -7,7 +7,6 @@ import click
 
 from tagslut.cli.commands._auth_helpers import (
     _beatport_token_input,
-    _tidal_device_login,
 )
 
 
@@ -161,12 +160,17 @@ def register_auth_group(cli: click.Group) -> None:
                 click.echo("Run 'tagslut auth login beatport' to set a new token.")
 
         elif provider == 'tidal':
-            click.echo("Refreshing Tidal token...")
-            token = token_manager.refresh_tidal_token()
+            import subprocess
+
+            result = subprocess.run(["tiddl", "auth", "refresh"], check=False)
+            if result.returncode != 0:
+                click.echo("tiddl auth refresh failed.", err=True)
+                raise SystemExit(1)
+            token = token_manager.sync_from_tiddl()
             if token:
-                click.echo(f"Success! Token expires at: {time.ctime(token.expires_at)}")
+                click.echo(f"TIDAL token refreshed and synced (expires: {time.ctime(token.expires_at)})")
             else:
-                click.echo("Failed. Run 'tagslut auth login tidal' first.")
+                click.echo("Warning: refresh succeeded but sync failed.", err=True)
 
         elif provider == 'qobuz':
             ok = token_manager.refresh_qobuz_app_credentials()
@@ -233,7 +237,21 @@ def register_auth_group(cli: click.Group) -> None:
                     return
 
         if provider == 'tidal':
-            _tidal_device_login(token_manager)
+            import subprocess
+
+            click.echo("Delegating to tiddl for TIDAL authentication...")
+            result = subprocess.run(["tiddl", "auth", "login"], check=False)
+            if result.returncode != 0:
+                click.echo("tiddl auth login failed. Is tiddl installed and configured?", err=True)
+                raise SystemExit(1)
+            token = token_manager.sync_from_tiddl()
+            if token:
+                click.echo("TIDAL token synced from tiddl successfully.")
+            else:
+                click.echo(
+                    "Warning: tiddl login succeeded but token sync failed. Check ~/.tiddl/auth.json",
+                    err=True,
+                )
         elif provider == 'beatport':
             _beatport_token_input(token_manager)
         elif provider == "qobuz":

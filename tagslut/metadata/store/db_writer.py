@@ -26,6 +26,23 @@ from tagslut.metadata.models.types import EnrichmentResult, ProviderTrack
 logger = logging.getLogger("tagslut.metadata.enricher")
 
 
+def _table_has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    try:
+        rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    except sqlite3.Error:
+        return False
+    return any(str(row[1]) == column for row in rows)
+
+
+def _resolve_track_hub_key_column(conn: sqlite3.Connection, table: str) -> str:
+    # Prefer the current schema (library_track_key), fall back to legacy (identity_key).
+    if _table_has_column(conn, table, "library_track_key"):
+        return "library_track_key"
+    if _table_has_column(conn, table, "identity_key"):
+        return "identity_key"
+    return "library_track_key"
+
+
 def _normalize_key_component(value: str) -> str:
     """Normalize a string for use in a deterministic key.
 
@@ -122,8 +139,15 @@ def _derive_library_track_key(result: EnrichmentResult) -> str:
     return f"path:{digest}"
 
 
-def _upsert_library_track(conn: sqlite3.Connection, key: str, result: EnrichmentResult) -> None:
+def _upsert_library_track(
+    conn: sqlite3.Connection,
+    key_column: str,
+    key: str,
+    result: EnrichmentResult,
+) -> None:
     """Upsert canonical track row (library_tracks) with null-safe updates."""
+    if key_column not in ("library_track_key", "identity_key"):
+        raise ValueError(f"Unexpected key column: {key_column!r}")
     # Map enrichment canonical fields to library_tracks columns.
     # In recovery-only runs, canonical identity fields may not be set; fall back
     # to the best available provider match to keep the hub usable.
@@ -162,9 +186,9 @@ def _upsert_library_track(conn: sqlite3.Connection, key: str, result: Enrichment
         duration_ms = int(best.duration_ms)
 
     conn.execute(
-        """
+        f"""
         INSERT INTO library_tracks (
-            library_track_key,
+            {key_column},
             title,
             artist,
             album,
@@ -179,7 +203,7 @@ def _upsert_library_track(conn: sqlite3.Connection, key: str, result: Enrichment
             label,
             updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        ON CONFLICT(library_track_key) DO UPDATE SET
+        ON CONFLICT({key_column}) DO UPDATE SET
             title = COALESCE(excluded.title, library_tracks.title),
             artist = COALESCE(excluded.artist, library_tracks.artist),
             album = COALESCE(excluded.album, library_tracks.album),
@@ -215,25 +239,28 @@ def _upsert_library_track(conn: sqlite3.Connection, key: str, result: Enrichment
 
 def _upsert_library_track_source(
     conn: sqlite3.Connection,
+    key_column: str,
     key: str,
     match: ProviderTrack,
 ) -> None:
     """Insert (or replace) a provider snapshot row for a track."""
+    if key_column not in ("library_track_key", "identity_key"):
+        raise ValueError(f"Unexpected key column: {key_column!r}")
 
     # Avoid duplicates without requiring a unique constraint:
     # delete existing row for (key, service, service_track_id) then insert.
     conn.execute(
-        """
+        f"""
         DELETE FROM library_track_sources
-        WHERE library_track_key = ? AND service = ? AND service_track_id = ?
+        WHERE {key_column} = ? AND service = ? AND service_track_id = ?
         """,
         (key, match.service, match.service_track_id),
     )
 
     conn.execute(
-        """
+        f"""
         INSERT INTO library_track_sources (
-            library_track_key,
+            {key_column},
             service,
             service_track_id,
             url,
@@ -297,14 +324,16 @@ def update_database(  # type: ignore  # TODO: mypy-strict
 
         # Derive or reuse a track-hub key and persist the hub/sources.
         library_track_key = _derive_library_track_key(result)
+        library_tracks_key_column = _resolve_track_hub_key_column(conn, "library_tracks")
+        library_track_sources_key_column = _resolve_track_hub_key_column(conn, "library_track_sources")
 
         # Ensure canonical track hub and provenance snapshots exist.
         # This is safe to call even if mode is "recovery" because it doesn't
         # require DJ metadata; it will only fill what we have.
-        _upsert_library_track(conn, library_track_key, result)
+        _upsert_library_track(conn, library_tracks_key_column, library_track_key, result)
         for match in (result.matches or []):
             try:
-                _upsert_library_track_source(conn, library_track_key, match)
+                _upsert_library_track_source(conn, library_track_sources_key_column, library_track_key, match)
             except sqlite3.Error as e:
                 logger.debug(
                     "Failed to upsert source snapshot (service=%s id=%s): %s",

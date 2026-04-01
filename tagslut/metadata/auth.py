@@ -17,44 +17,13 @@ import os
 import time
 import base64
 from pathlib import Path
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Dict, Any
 from dataclasses import dataclass
 import httpx
 
 logger = logging.getLogger("tagslut.metadata.auth")
 
 DEFAULT_TOKENS_PATH = Path.home() / ".config" / "tagslut" / "tokens.json"
-
-# =============================================================================
-# Public App Credentials Configuration
-# =============================================================================
-# These credentials are PUBLIC/WELL-KNOWN values extracted from official client
-# applications. They are NOT secrets - they are embedded in publicly distributed
-# apps and are safe to include in source code. Many open-source projects use
-# these same credentials.
-#
-# Environment variables can override these defaults if needed (e.g., for testing
-# with different client IDs or if the defaults become invalid).
-# =============================================================================
-
-
-def _get_tidal_credentials() -> Tuple[str, str]:
-    """
-    Get Tidal client credentials.
-
-    These are PUBLIC credentials from the official Tidal Android/mobile app,
-    widely used by open-source projects (tidal-dl, orpheus, tiddl, etc.).
-    They are NOT secrets and are safe to include in source.
-    Override via TIDAL_CLIENT_ID and TIDAL_CLIENT_SECRET env vars if needed.
-    """
-    # Default: Tidal Android app public credentials (well-known, widely used)
-    default_id = "zU4XHVVkc2tDPo4t"
-    default_secret = "VJKhDFqJPqvsPVNBV6ukXTJmVvxvvbssk55ZTPOrs"
-
-    client_id = os.getenv("TIDAL_CLIENT_ID", default_id)
-    client_secret = os.getenv("TIDAL_CLIENT_SECRET", default_secret)
-    return client_id, client_secret
-
 
 def _get_beatport_client_id() -> str:
     """
@@ -68,9 +37,6 @@ def _get_beatport_client_id() -> str:
     return os.getenv("BEATPORT_DJ_CLIENT_ID", default_id)
 
 
-# Initialize credentials (can be overridden by environment variables)
-# These are PUBLIC app credentials, not secrets - see docstrings above
-TIDAL_CLIENT_ID, TIDAL_CLIENT_SECRET = _get_tidal_credentials()
 BEATPORT_DJ_CLIENT_ID = _get_beatport_client_id()
 
 
@@ -369,15 +335,18 @@ class TokenManager:
             return None
 
         try:
+            client_id = os.getenv("TIDAL_CLIENT_ID", "zU4XHVVkc2tDPo4t")
+            client_secret = os.getenv("TIDAL_CLIENT_SECRET", "VJKhDFqJPqvsPVNBV6ukXTJmVvxvvbssk55ZTPOrs")
+
             response = httpx.post(
                 "https://auth.tidal.com/v1/oauth2/token",
                 data={
-                    "client_id": TIDAL_CLIENT_ID,
+                    "client_id": client_id,
                     "refresh_token": refresh_token,
                     "grant_type": "refresh_token",
                     "scope": "r_usr+w_usr+w_sub",
                 },
-                auth=(TIDAL_CLIENT_ID, TIDAL_CLIENT_SECRET),
+                auth=(client_id, client_secret),
                 timeout=30.0,
             )
             response.raise_for_status()
@@ -468,83 +437,6 @@ class TokenManager:
             return self.get_token("tidal")
         except Exception as e:
             logger.warning("Failed to read tiddl auth.json: %s", e)
-            return None
-
-    def start_tidal_device_auth(self) -> Optional[Dict[str, Any]]:
-        """
-        Start Tidal device authorization flow.
-
-        Returns dict with:
-        - device_code: Code to poll with
-        - user_code: Code for user to enter
-        - verification_uri: URL for user to visit
-        - expires_in: Seconds until codes expire
-        - interval: Polling interval in seconds
-        """
-        try:
-            response = httpx.post(
-                "https://auth.tidal.com/v1/oauth2/device_authorization",
-                data={
-                    "client_id": TIDAL_CLIENT_ID,
-                    "scope": "r_usr+w_usr+w_sub",
-                },
-                timeout=30.0,
-            )
-            response.raise_for_status()
-            return response.json()  # type: ignore  # TODO: mypy-strict
-
-        except httpx.HTTPError as e:
-            logger.error("Failed to start Tidal device auth: %s", e)
-            return None
-
-    def complete_tidal_device_auth(self, device_code: str) -> Optional[TokenInfo]:
-        """
-        Complete Tidal device authorization by polling for token.
-
-        Call this after user has authorized at the verification_uri.
-        Returns None if authorization is still pending.
-        Raises exception if authorization failed/expired.
-        """
-        try:
-            response = httpx.post(
-                "https://auth.tidal.com/v1/oauth2/token",
-                data={
-                    "client_id": TIDAL_CLIENT_ID,
-                    "device_code": device_code,
-                    "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
-                    "scope": "r_usr+w_usr+w_sub",
-                },
-                auth=(TIDAL_CLIENT_ID, TIDAL_CLIENT_SECRET),
-                timeout=30.0,
-            )
-
-            data = response.json()
-
-            if response.status_code != 200:
-                error = data.get("error", "unknown")
-                if error == "authorization_pending":
-                    return None  # Still waiting for user
-                elif error == "slow_down":
-                    return None  # Need to slow down polling
-                else:
-                    raise Exception(
-                        f"Tidal auth failed: {error} - {data.get('error_description', '')}")
-
-            expires_at = time.time() + data.get("expires_in", 86400)
-
-            self.set_token(
-                "tidal",
-                access_token=data["access_token"],
-                refresh_token=data.get("refresh_token"),
-                expires_at=expires_at,
-                token_type=data.get("token_type", "Bearer"),
-            )
-
-            logger.info("Tidal authentication successful")
-            return self.get_token("tidal")
-
-        except httpx.HTTPError as e:
-            logger.error("Failed to complete Tidal auth: %s", e)
             return None
 
     def refresh_beatport_token(self) -> Optional[TokenInfo]:

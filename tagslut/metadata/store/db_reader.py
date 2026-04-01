@@ -1,11 +1,34 @@
 """Database read helpers for metadata enrichment."""
 
 import json
+import re
 import sqlite3
 from pathlib import Path
 from typing import Any, Iterator, Optional, Sequence, cast
 
 from tagslut.metadata.models.types import LocalFileInfo
+
+
+_ISRC_FROM_FILENAME = re.compile(r"\[([A-Z]{2}[A-Z0-9]{3}\d{7})\]", re.IGNORECASE)
+_ARTIST_TITLE_FROM_FILENAME = re.compile(
+    r"^\d+\.\s+(.+?)\s+-\s+(.+?)(?:\s+\[.*\])?$"
+)
+
+
+def _extract_isrc_from_path(path: str) -> Optional[str]:
+    m = _ISRC_FROM_FILENAME.search(Path(path).stem)
+    return m.group(1).upper() if m else None
+
+
+def _extract_artist_title_from_path(path: str) -> Optional[tuple[str, str]]:
+    m = _ARTIST_TITLE_FROM_FILENAME.match(Path(path).stem)
+    if not m:
+        return None
+    artist = m.group(1).strip()
+    title = m.group(2).strip()
+    if not artist or not title:
+        return None
+    return (artist, title)
 
 
 def row_to_local_file_info(row: sqlite3.Row) -> LocalFileInfo:
@@ -129,7 +152,17 @@ def get_eligible_files(
         cursor = conn.execute(query, params)
 
         for row in cursor:
-            yield row_to_local_file_info(row)
+            info = row_to_local_file_info(row)
+
+            if not info.tag_isrc:
+                info.tag_isrc = _extract_isrc_from_path(info.path)
+
+            if not info.tag_artist and not info.tag_title:
+                parsed = _extract_artist_title_from_path(info.path)
+                if parsed:
+                    info.tag_artist, info.tag_title = parsed
+
+            yield info
 
     finally:
         conn.close()

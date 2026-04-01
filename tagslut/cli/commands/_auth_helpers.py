@@ -8,42 +8,25 @@ import click
 
 
 def _tidal_device_login(token_manager) -> None:  # type: ignore  # TODO: mypy-strict
-    """Handle Tidal device authorization flow."""
-    click.echo("Starting Tidal device authorization...")
+    """Delegate Tidal authentication to tiddl and sync token."""
+    import subprocess
 
-    device_auth = token_manager.start_tidal_device_auth()
-    if not device_auth:
-        click.echo("Failed to start device authorization.")
+    click.echo("Delegating to tiddl for TIDAL authentication...")
+    result = subprocess.run(["tiddl", "auth", "login"], check=False)
+    if result.returncode != 0:
+        click.echo("tiddl auth login failed. Is tiddl installed and configured?", err=True)
         return
 
-    user_code = device_auth.get("userCode")
-    verification_uri = device_auth.get("verificationUriComplete") or device_auth.get("verificationUri")
-    device_code = device_auth.get("deviceCode")
-    expires_in = device_auth.get("expiresIn", 300)
-    interval = device_auth.get("interval", 5)
-
-    click.echo(f"\n1. Go to: {verification_uri}")
-    if user_code:
-        click.echo(f"2. Enter code: {user_code}")
-    click.echo(f"\nWaiting for authorization (expires in {expires_in}s)...")
-
-    # Poll for completion
-    start_time = time.time()
-    while time.time() - start_time < expires_in:
-        time.sleep(interval)
-
-        token = token_manager.complete_tidal_device_auth(device_code)
-        if token:
-            click.echo("\nTidal authentication successful!")
+    token = token_manager.sync_from_tiddl()
+    if token:
+        click.echo("TIDAL token synced from tiddl successfully.")
+        if token.expires_at:
             click.echo(f"Token expires at: {time.ctime(token.expires_at)}")
-            return
-
-        # Show progress
-        elapsed = int(time.time() - start_time)
-        click.echo(f"  Waiting... ({elapsed}s)", nl=False)
-        click.echo("\r", nl=False)
-
-    click.echo("\nAuthorization timed out. Please try again.")
+    else:
+        click.echo(
+            "Warning: tiddl login succeeded but token sync failed. Check ~/.tiddl/auth.json",
+            err=True,
+        )
 
 
 def _beatport_token_input(token_manager) -> None:  # type: ignore  # TODO: mypy-strict

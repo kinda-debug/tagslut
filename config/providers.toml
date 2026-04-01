@@ -1,0 +1,14 @@
+[providers.qobuz]
+metadata_enabled = true
+download_enabled = false
+trust = "secondary"
+
+[providers.beatport]
+metadata_enabled = true
+download_enabled = false
+trust = "dj_primary"
+
+[providers.tidal]
+metadata_enabled = true
+download_enabled = true
+trust = "secondary"

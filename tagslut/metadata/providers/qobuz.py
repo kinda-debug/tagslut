@@ -26,7 +26,7 @@ class QobuzProvider(AbstractProvider):
 
     def _ensure_credentials(self) -> bool:
         """
-        Ensure Qobuz credentials are present. Prompts interactively if missing.
+        Ensure Qobuz credentials are present.
         Returns True if credentials are available, False otherwise.
         """
         if self.token_manager is None:
@@ -37,35 +37,7 @@ class QobuzProvider(AbstractProvider):
         if app_id and app_secret and user_auth_token:
             return True
 
-        if self._auth_permanently_failed:
-            return False
-
-        import getpass
-        import hashlib
-
-        from tagslut.metadata.qobuz_credential_extractor import extract_qobuz_credentials
-
-        print("Qobuz credentials not found. Enter credentials to enable Qobuz metadata.")
-        email = input("Qobuz email: ").strip()
-        password = getpass.getpass("Qobuz password: ")
-        password_md5 = hashlib.md5(password.encode()).hexdigest()
-
-        try:
-            creds = extract_qobuz_credentials()
-            self.token_manager.set_qobuz_credentials(creds["app_id"], creds["app_secret"])
-            token = self.token_manager.login_qobuz(email=email, password_md5=password_md5)
-        except Exception as e:
-            print(f"Qobuz: authentication failed ({e})")
-            self._auth_permanently_failed = True
-            return False
-
-        if not token:
-            print("Qobuz: authentication failed")
-            self._auth_permanently_failed = True
-            return False
-
-        print("Qobuz: authenticated OK")
-        return True
+        return False
 
     def _get_default_headers(self) -> Dict[str, str]:
         headers: Dict[str, str] = {"Accept": "application/json"}

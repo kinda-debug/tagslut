@@ -357,6 +357,22 @@ def test_search_tracks_raises_auth_error_on_401(monkeypatch: pytest.MonkeyPatch)
         provider._api_client.search_tracks({"q": "Warehouse Cut"})  # noqa: SLF001
 
 
+def test_provider_trips_circuit_breaker_after_401(monkeypatch: pytest.MonkeyPatch) -> None:
+    provider, stub = _make_provider(
+        monkeypatch,
+        {
+            ("GET", "https://api.beatport.com/v4/catalog/tracks/"): _json_response(401, {"detail": "unauthorized"}),
+        },
+    )
+
+    assert provider.search_track_by_isrc("GBEXH2400001") == []
+    assert provider._session_dead is True  # noqa: SLF001
+    assert len(stub.calls) == 1
+
+    assert provider.search_track_by_isrc("GBEXH2400001") == []
+    assert len(stub.calls) == 1
+
+
 def test_search_tracks_retries_once_on_429(monkeypatch: pytest.MonkeyPatch) -> None:
     provider, stub = _make_provider(
         monkeypatch,

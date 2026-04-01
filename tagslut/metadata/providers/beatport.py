@@ -316,6 +316,7 @@ class BeatportApiClient:
 
             if response.status_code in (401, 403):
                 self.provider.rate_limiter.record_error()
+                self.provider.trip_session_dead()
                 raise BeatportAuthError(f"Beatport auth failed for {url} ({response.status_code})")
 
             if response.status_code == 404:
@@ -459,6 +460,16 @@ class BeatportProvider(AbstractProvider):
         self._auth_available: bool | None = None
         self._build_id: str | None = None  # Next.js build ID cache
         self._api_client = BeatportApiClient(self)
+        self._session_dead = False
+
+    def trip_session_dead(self) -> None:
+        if self._session_dead:
+            return
+        self._session_dead = True
+        logger.warning(
+            "beatport: token expired — skipping all further requests this session.\n"
+            "         Run 'tagslut auth refresh beatport' or get a fresh token from dj.beatport.com DevTools."
+        )
 
     def _has_auth(self) -> bool:
         """Check if we have valid authentication."""
@@ -1274,9 +1285,13 @@ class BeatportProvider(AbstractProvider):
 
     def search_track_by_isrc(self, isrc: str) -> List[ProviderTrack]:
         """Official catalog exact-match lookup by ISRC."""
+        if self._session_dead:
+            return []
         try:
             payload = self._api_client.catalog_list_tracks({"isrc": isrc, "per_page": 10})
         except BeatportAuthError as exc:
+            if self._session_dead:
+                return []
             logger.warning("Beatport catalog auth unavailable for ISRC search: %s", exc)
             return []
         except BeatportClientError as exc:
@@ -1321,6 +1336,8 @@ class BeatportProvider(AbstractProvider):
         **filters: Any,
     ) -> List[ProviderTrack]:
         """Official search-service candidate generation with catalog hydration."""
+        if self._session_dead:
+            return []
         mix_name = filters.get("mix_name")
         count = int(filters.get("count") or 10)
         fallback_limit = min(max(count, 1), 50)
@@ -1337,6 +1354,8 @@ class BeatportProvider(AbstractProvider):
         try:
             payload = self._api_client.search_tracks(params)
         except BeatportAuthError as exc:
+            if self._session_dead:
+                return []
             logger.warning("Beatport search auth unavailable for text search: %s", exc)
             return self._legacy_text_search(
                 title=title,

@@ -33,7 +33,7 @@ def _get_beatport_client_id() -> str:
     and is safe to include in source code.
     Override via BEATPORT_DJ_CLIENT_ID env var if needed.
     """
-    default_id = "pz8kb0BFOrRhct2Wlq5mVoPdZnOa0hcsARuVjJbm"
+    default_id = "ryZ8LuyQVPqbK2mBX2Hwt4qSMtnWuTYSqBPO92yQ"  # beatportdl client_id
     return os.getenv("BEATPORT_DJ_CLIENT_ID", default_id)
 
 

@@ -51,9 +51,40 @@ refresh_tidal() {
     tiddl auth refresh 2>/dev/null && echo "OK" || echo "FAILED"
 }
 
+BEATPORTDL_CREDS="$HOME/Projects/beatportdl/beatportdl-credentials.json"
+
+sync_beatport_from_beatportdl() {
+    [[ -f "$BEATPORTDL_CREDS" ]] || return 1
+    python3 - "$BEATPORTDL_CREDS" << 'PYEOF'
+import json, sys, os, time
+from pathlib import Path
+
+creds_path = sys.argv[1]
+creds = json.load(open(creds_path))
+
+tokens_path = Path.home() / ".config/tagslut/tokens.json"
+tokens = json.loads(tokens_path.read_text()) if tokens_path.exists() else {}
+
+if "beatport" not in tokens or not isinstance(tokens.get("beatport"), dict):
+    tokens["beatport"] = {}
+
+expires_at = int(creds.get("issued_at", 0)) + int(creds.get("expires_in", 36000))
+tokens["beatport"]["access_token"] = creds["access_token"]
+tokens["beatport"]["refresh_token"] = creds["refresh_token"]
+tokens["beatport"]["expires_at"] = expires_at
+tokens["beatport"]["client_id"] = "ryZ8LuyQVPqbK2mBX2Hwt4qSMtnWuTYSqBPO92yQ"
+
+tokens_path.write_text(json.dumps(tokens, indent=2))
+PYEOF
+}
+
 refresh_beatport() {
     echo -n "Beatport... "
-    poetry run python -m tagslut auth refresh beatport 2>/dev/null && echo "OK" || echo "FAILED"
+    if sync_beatport_from_beatportdl; then
+        echo "OK (synced from beatportdl)"
+    else
+        poetry run python -m tagslut auth refresh beatport 2>/dev/null && echo "OK" || echo "FAILED"
+    fi
 }
 
 refresh_qobuz() {

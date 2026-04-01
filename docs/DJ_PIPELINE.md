@@ -32,6 +32,11 @@ Legacy compatibility note:
 
 ### Stage 2 — Build Or Reconcile MP3 Library
 
+Canonical MP3 asset root policy:
+- `MP3_LIBRARY` is the single canonical active MP3 asset root.
+- `DJ_LIBRARY` is an alias to `MP3_LIBRARY` for compatibility, not a second root.
+- Source/staging folders (for example `mdl/Apple`, `mdl/Apple Music`, `_work`) are provenance-only inputs and must not be treated as active reconcile roots.
+
 Build MP3s from canonical masters when the DJ MP3 layer does not exist yet:
 
 ```bash
@@ -46,16 +51,37 @@ Register an existing MP3 root without re-transcoding:
 ```bash
 poetry run tagslut mp3 reconcile \
   --db "$TAGSLUT_DB" \
-  --mp3-root "$DJ_LIBRARY" \
+  --mp3-root "$MP3_LIBRARY" \
   --execute
 ```
 
 Notes:
 - Default is `--dry-run` (no DB writes); pass `--execute` to register rows.
-- If `--mp3-root` is omitted, `tagslut mp3 reconcile` falls back to `$DJ_LIBRARY` (must be exported).
+- If `--mp3-root` is omitted, `tagslut mp3 reconcile` resolves in order: `$DJ_LIBRARY`, then `$MP3_LIBRARY`.
 
 Outputs:
 - `mp3_asset` rows linked to canonical identities and master assets
+- `mp3_asset` provenance fields for source/copy tracking (`source_root`, `source_path`, `ingest_session`, `ingest_at`) when available
+
+### Stage 2 Source Import Workflow (provenance-only sources preserved)
+
+Use this flow to import from preserved source folders without promoting them to active roots:
+
+```bash
+# 1) Copy from preserved source to canonical MP3 root (skip existing files)
+rsync -av --ignore-existing \
+  /Volumes/MUSIC/mdl/Apple/ \
+  /Volumes/MUSIC/MP3_LIBRARY/
+
+# 2) Reconcile canonical MP3 root only
+poetry run tagslut mp3 reconcile --db "$TAGSLUT_DB" --mp3-root "$MP3_LIBRARY" --execute
+
+# 3) Admit and validate from canonical root state
+poetry run tagslut dj backfill --db "$TAGSLUT_DB"
+poetry run tagslut dj validate --db "$TAGSLUT_DB"
+```
+
+The source folder remains untouched and continues to serve as provenance/reference input only.
 
 Stage 2 transcode safety:
 

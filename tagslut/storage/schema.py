@@ -1429,6 +1429,10 @@ def _ensure_mp3_dj_tables(conn: sqlite3.Connection) -> None:
                              CHECK(status IN ('unverified','verified','missing','superseded')),
           source           TEXT    NOT NULL DEFAULT 'unknown',
           zone             TEXT,
+          source_root      TEXT,
+          source_path      TEXT,
+          ingest_session   TEXT,
+          ingest_at        TEXT,
           transcoded_at    TEXT,
           reconciled_at    TEXT,
           lexicon_track_id INTEGER,
@@ -1440,6 +1444,8 @@ def _ensure_mp3_dj_tables(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_mp3_asset_identity ON mp3_asset(identity_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_mp3_asset_zone     ON mp3_asset(zone)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_mp3_asset_lexicon  ON mp3_asset(lexicon_track_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_mp3_asset_source_root ON mp3_asset(source_root)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_mp3_asset_ingest_session ON mp3_asset(ingest_session)")
 
     conn.execute(
         """

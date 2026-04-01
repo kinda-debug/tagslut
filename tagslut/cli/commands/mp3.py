@@ -154,7 +154,12 @@ def mp3_build(
     "--mp3-root",
     required=False,
     default=None,
-    help="Root directory of existing MP3 files to reconcile (defaults to $DJ_LIBRARY).",
+    help=(
+        "Canonical MP3 asset root to reconcile. Defaults to "
+        "$DJ_LIBRARY, then $MP3_LIBRARY. Preserved source/staging folders "
+        "(for example /Volumes/MUSIC/mdl or /Volumes/MUSIC/_work) stay "
+        "reference-only and are not active roots."
+    ),
     type=click.Path(exists=True, file_okay=False),
 )
 @click.option(
@@ -178,8 +183,10 @@ def mp3_reconcile(
 ) -> None:
     """Scan an existing MP3 root and link files to canonical identities in mp3_asset.
 
-    Matches via ISRC tag first, then title+artist. Files that already have an
-    mp3_asset row are skipped. Safe to re-run (idempotent).
+    Uses one active MP3 asset root (DJ_LIBRARY aliasing MP3_LIBRARY).
+    Source/staging folders remain provenance-only inputs. Matches via ISRC tag
+    first, then title+artist. Files that already have an mp3_asset row are
+    skipped. Safe to re-run (idempotent).
     """
     import os
     import sqlite3
@@ -196,9 +203,16 @@ def mp3_reconcile(
     except DbResolutionError as exc:
         raise click.ClickException(str(exc)) from exc
 
-    resolved_mp3_root = mp3_root or os.environ.get("DJ_LIBRARY") or ""
+    resolved_mp3_root = (
+        mp3_root
+        or os.environ.get("DJ_LIBRARY")
+        or os.environ.get("MP3_LIBRARY")
+        or ""
+    )
     if not resolved_mp3_root:
-        raise click.ClickException("Missing --mp3-root (or set DJ_LIBRARY).")
+        raise click.ClickException(
+            "Missing --mp3-root (or set DJ_LIBRARY / MP3_LIBRARY)."
+        )
     mp3_root_path = Path(resolved_mp3_root).expanduser()
     if not mp3_root_path.exists() or not mp3_root_path.is_dir():
         raise click.ClickException(f"MP3 root does not exist or is not a directory: {mp3_root_path}")

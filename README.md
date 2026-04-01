@@ -113,6 +113,11 @@ For a curated DJ library, the only supported workflow is:
 `tagslut dj xml emit` or `tagslut dj xml patch`. See `docs/DJ_PIPELINE.md`
 for the canonical reference.
 
+`MP3_LIBRARY` is the single canonical active MP3 asset root. `DJ_LIBRARY`
+is a compatibility alias to the same root, not a separate operational library.
+Preserved source/staging folders (for example `/Volumes/MUSIC/mdl/Apple`,
+`/Volumes/MUSIC/mdl/Apple Music`, `/Volumes/MUSIC/_work`) are provenance-only.
+
 Building a curated DJ library follows a deterministic 4-stage pipeline.
 Each stage is safe to re-run and leaves explicit DB state as output.
 
@@ -122,11 +127,11 @@ poetry run tagslut intake <provider-url>
 
 # Stage 2: register existing MP3s against canonical identities (no re-transcode)
 poetry run tagslut mp3 reconcile \
-  --db "$TAGSLUT_DB" --mp3-root "$DJ_LIBRARY" --execute
+  --db "$TAGSLUT_DB" --mp3-root "$MP3_LIBRARY" --execute
 
 # Stage 2 alternative: build DJ MP3s from canonical masters
 poetry run tagslut mp3 build \
-  --db "$TAGSLUT_DB" --dj-root "$DJ_LIBRARY" --execute
+  --db "$TAGSLUT_DB" --dj-root "$MP3_LIBRARY" --execute
 
 # When building new MP3s from masters, tagslut validates the ffmpeg output
 # before accepting it: file must exist, be large enough, parse as MP3, and

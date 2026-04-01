@@ -9,6 +9,7 @@ export DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
 # === Volumes ===
 export MASTER_LIBRARY="/Volumes/MUSIC/MASTER_LIBRARY"
 export MP3_LIBRARY="/Volumes/MUSIC/MP3_LIBRARY"
+export DJ_LIBRARY="$MP3_LIBRARY"
 export VOLUME_STAGING="/Volumes/MUSIC/mdl"
 export VOLUME_WORK="/Volumes/MUSIC/_work"
 
@@ -77,4 +78,3 @@ if [[ -n "$TAGSLUT_API_ACCESS_TOKEN" ]]; then
 else
     echo "  Beatport API Token: ⚠️  NOT SET"
 fi
-

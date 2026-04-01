@@ -31,15 +31,29 @@ def _table_has_column(conn: sqlite3.Connection, table: str, column: str) -> bool
         rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
     except sqlite3.Error:
         return False
-    return any(str(row[1]) == column for row in rows)
+    target = column.lower()
+    for row in rows:
+        name = None
+        if isinstance(row, sqlite3.Row):
+            try:
+                name = row["name"]
+            except (KeyError, IndexError, TypeError):
+                name = None
+        if name is None:
+            try:
+                name = row[1]
+            except (TypeError, IndexError):
+                name = None
+        if name is not None and str(name).lower() == target:
+            return True
+    return False
 
 
 def _resolve_track_hub_key_column(conn: sqlite3.Connection, table: str) -> str:
-    # Prefer the current schema (library_track_key), fall back to legacy (identity_key).
-    if _table_has_column(conn, table, "library_track_key"):
-        return "library_track_key"
     if _table_has_column(conn, table, "identity_key"):
         return "identity_key"
+    if _table_has_column(conn, table, "library_track_key"):
+        return "library_track_key"
     return "library_track_key"
 
 
@@ -351,14 +365,16 @@ def update_database(  # type: ignore  # TODO: mypy-strict
             "enriched_at = ?",
             "enrichment_providers = ?",
             "enrichment_confidence = ?",
-            "library_track_key = ?",
         ])
         values.extend([
             datetime.now(timezone.utc).isoformat(),
             json.dumps(result.enrichment_providers) if result.enrichment_providers else None,
             result.enrichment_confidence.value if result.enrichment_confidence else None,
-            library_track_key,
         ])
+        files_key_column = _resolve_track_hub_key_column(conn, "files")
+        if _table_has_column(conn, "files", files_key_column):
+            fields.append(f"{files_key_column} = ?")
+            values.append(library_track_key)
 
         # Always write provider IDs (identity linkage, not hoarding-only metadata)
         provider_id_fields: list[tuple[str, str | None]] = [

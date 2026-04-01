@@ -15,7 +15,7 @@ from dataclasses import asdict
 import logging
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Callable, Dict, Iterator, List, Optional, cast
+from typing import Any, Dict, Iterator, List, Optional, cast
 
 from tagslut.metadata.models.types import (
     BEATPORT_SEED_COLUMNS,
@@ -459,7 +459,6 @@ class Enricher:
         force: bool = False,
         retry_no_match: bool = False,
         zones: Optional[List[str]] = None,
-        progress_callback: Optional[Callable[[int, int, str], None]] = None,
         checkpoint_interval: int = 50,
     ) -> EnrichmentStats:
         """
@@ -473,7 +472,6 @@ class Enricher:
             limit: Maximum files to process
             force: If True, re-enrich ALL already-enriched files
             retry_no_match: If True, retry files that previously had no match
-            progress_callback: Optional callback(current, total, path) for progress
             checkpoint_interval: Log progress every N files
 
         Returns:
@@ -491,7 +489,6 @@ class Enricher:
             force=force,
             retry_no_match=retry_no_match,
             zones=zones,
-            progress_callback=progress_callback,
             checkpoint_interval=checkpoint_interval,
         )
 

@@ -114,7 +114,6 @@ def run_enrich_all(  # type: ignore  # TODO: mypy-strict
     force: bool = False,
     retry_no_match: bool = False,
     zones: Optional[List[str]] = None,
-    progress_callback=None,
     checkpoint_interval: int = 50,
 ) -> EnrichmentStats:
     """
@@ -128,7 +127,6 @@ def run_enrich_all(  # type: ignore  # TODO: mypy-strict
         limit: Maximum files to process
         force: If True, re-enrich ALL already-enriched files
         retry_no_match: If True, retry files that previously had no match
-        progress_callback: Optional callback(current, total, path) for progress
         checkpoint_interval: Log progress every N files
 
     Returns:

@@ -209,7 +209,7 @@ def sync_v3_from_track_db(
     conn: sqlite3.Connection,
     donor_conn: sqlite3.Connection,
     *,
-    donor_location_like: str = "/Volumes/MUSIC/DJ_LIBRARY/%",
+    donor_location_like: str = "/Volumes/MUSIC/MP3_LIBRARY/%",
     match_field: str = "dj_pool_path",
     match_mode: str = "exact_path",
     provider_name: str = PROVIDER_NAME,

@@ -642,7 +642,7 @@ def register_index_group(cli: click.Group) -> None:
                 click.echo(f"  ... and {len(replacements) - 10} more replacements")
 
     @index.command("register-mp3")
-    @click.option("--root", default="/Volumes/MUSIC/DJ_LIBRARY", show_default=True, help="Directory to scan for MP3 files")
+    @click.option("--root", default="/Volumes/MUSIC/MP3_LIBRARY", show_default=True, help="Directory to scan for MP3 files")
     @click.option("--db", "db_path", envvar="TAGSLUT_DB", required=False, help="Database path (auto-reads $TAGSLUT_DB)")
     @click.option("--source", default="legacy_mp3", show_default=True)
     @click.option("--zone", default="accepted", show_default=True)

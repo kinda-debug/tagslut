@@ -641,6 +641,27 @@ def register_index_group(cli: click.Group) -> None:
             if len(replacements) > 10:
                 click.echo(f"  ... and {len(replacements) - 10} more replacements")
 
+    @index.command("register-mp3")
+    @click.option("--root", default="/Volumes/MUSIC/DJ_LIBRARY", show_default=True, help="Directory to scan for MP3 files")
+    @click.option("--db", "db_path", envvar="TAGSLUT_DB", required=False, help="Database path (auto-reads $TAGSLUT_DB)")
+    @click.option("--source", default="legacy_mp3", show_default=True)
+    @click.option("--zone", default="accepted", show_default=True)
+    @click.option("--execute", is_flag=True, help="Actually insert (default: dry-run)")
+    @click.option("--verbose", "-v", is_flag=True)
+    def index_register_mp3(root, db_path, source, zone, execute, verbose):  # type: ignore  # TODO: mypy-strict
+        """Register MP3-only DJ files (no FLAC master) into the inventory."""
+
+        from tagslut.exec.register_mp3_only import register_mp3_only
+
+        register_mp3_only(
+            root=Path(root),
+            db_path=Path(db_path) if db_path else None,
+            source=source,
+            zone=zone,
+            execute=execute,
+            verbose=verbose,
+        )
+
     @index.command("duration-check")
     @click.argument("path", type=click.Path(exists=True))
     @click.option("--db", type=click.Path(), help="Database path (auto-detect from env if not provided)")

@@ -50,9 +50,13 @@ DEFAULT_ONETAGGER_BIN = Path(
 DEFAULT_CONFIG_PATH = Path.home() / ".config/onetagger/config.tagslut-missing-isrc.json"
 DEFAULT_BASE_CONFIG_PATH = Path.home() / ".config/onetagger/config.json"
 DEFAULT_RUNS_DIR = Path.home() / "Library/Preferences/com.OneTagger.OneTagger/runs"
-DEFAULT_AUDIOFEATURES_PATH = Path(os.environ.get("DJ_LIBRARY") or os.environ.get("DJ_MP3_ROOT", "./dj_library_mp3"))
+DEFAULT_AUDIOFEATURES_PATH = Path(
+    os.environ.get("DJ_MP3_ROOT") or os.environ.get("MP3_LIBRARY", "./dj_library_mp3")
+)
 DEFAULT_AUDIOFEATURES_CONFIG_PATH = Path.home() / ".config/onetagger/audiofeatures.json"
-DEFAULT_METADATA_PATH = Path(os.environ.get("DJ_LIBRARY") or os.environ.get("DJ_MP3_ROOT", "./dj_library_mp3"))
+DEFAULT_METADATA_PATH = Path(
+    os.environ.get("DJ_MP3_ROOT") or os.environ.get("MP3_LIBRARY", "./dj_library_mp3")
+)
 DEFAULT_METADATA_CONFIG_PATH = Path.home() / ".config/onetagger/config.tagslut-metadata.json"
 DEFAULT_METADATA_TAGS = "genre,style,bpm,key,remixer,label,releaseDate,version,isrc"
 DEFAULT_METADATA_PLATFORMS = "beatport,tidal,traxsource,deezer"

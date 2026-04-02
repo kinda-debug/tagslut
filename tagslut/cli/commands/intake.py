@@ -151,6 +151,12 @@ def register_intake_group(cli: click.Group) -> None:
     @click.option("--db", "db_path", default=None, help="Path to tagslut DB (or set TAGSLUT_DB)")
     @click.option("--playlist-name", default=None, help="Name for the batch DJ pool M3U file")
     @click.option(
+        "--tag",
+        is_flag=True,
+        default=False,
+        help="Fully enrich and write back promoted FLACs in MASTER_LIBRARY before any optional MP3/DJ stages.",
+    )
+    @click.option(
         "--mp3",
         is_flag=True,
         default=False,
@@ -214,6 +220,7 @@ def register_intake_group(cli: click.Group) -> None:
         url: str,
         db_path: str | None,
         playlist_name: str | None,
+        tag: bool,
         mp3: bool,
         dj: bool,
         mp3_root: str | None,
@@ -224,7 +231,7 @@ def register_intake_group(cli: click.Group) -> None:
         verbose: bool,
         debug_raw: bool,
     ):  # type: ignore  # TODO: mypy-strict
-        """Precheck → download → promote → [mp3] → [dj] for a single provider URL."""
+        """Precheck → download → promote → [tag] → [mp3] → [dj] for a single provider URL."""
         if dj:
             mp3 = True
         if mp3 and not dj:
@@ -265,6 +272,7 @@ def register_intake_group(cli: click.Group) -> None:
         result = run_intake(
             url=url,
             db_path=resolved_db_path,
+            tag=tag,
             mp3=mp3,
             dj=False,
             dry_run=dry_run,

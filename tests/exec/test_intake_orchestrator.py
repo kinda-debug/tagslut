@@ -14,6 +14,7 @@ from click.testing import CliRunner
 from tagslut.cli.commands.intake import register_intake_group
 from tagslut.exec.intake_orchestrator import (
     IntakeResult,
+    IntakeStageResult,
     _GetIntakeHumanSummarizer,
     _parse_precheck_csv,
     run_intake,
@@ -552,6 +553,45 @@ def test_mp3_without_dj_root_raises_click_exception(
     assert "--mp3 requires --mp3-root" in result.output
 
 
+def test_tag_flag_is_accepted_without_mp3_root(temp_db: Path) -> None:
+    import click
+
+    runner = CliRunner()
+
+    @click.group()
+    def cli():
+        pass
+
+    register_intake_group(cli)
+
+    fake_result = IntakeResult(
+        url="https://www.beatport.com/release/test/123",
+        stages=[IntakeStageResult(stage="enrich", status="ok")],
+        disposition="completed",
+        precheck_summary={"total": 0, "new": 0, "upgrade": 0, "blocked": 0},
+        precheck_csv=None,
+        artifact_path=None,
+    )
+
+    with patch("tagslut.cli.commands.intake.run_intake", return_value=fake_result) as mock_run:
+        result = runner.invoke(
+            cli,
+            [
+                "intake",
+                "url",
+                "https://www.beatport.com/release/test/123",
+                "--db",
+                str(temp_db),
+                "--tag",
+            ],
+        )
+
+    assert result.exit_code == 0
+    assert mock_run.call_count == 1
+    assert mock_run.call_args.kwargs["tag"] is True
+    assert mock_run.call_args.kwargs["mp3"] is False
+
+
 def test_mp3_placeholder_falls_back_to_precheck_skip_db_paths_when_no_promoted_file(
     temp_db: Path, tmp_path: Path, mock_precheck_csv: Path
 ) -> None:
@@ -630,6 +670,60 @@ def test_mp3_placeholder_falls_back_to_precheck_skip_db_paths_when_no_promoted_f
     ).fetchone()
     conn.close()
     assert row == (identity_id, asset_id, "mp3_asset_320_cbr_full", "verified")
+
+
+def test_tag_runs_enrich_without_mp3(
+    temp_db: Path, tmp_path: Path, mock_precheck_csv_new: Path
+) -> None:
+    flac_path = tmp_path / "promoted.flac"
+    flac_path.write_text("fake flac bytes", encoding="utf-8")
+
+    promoted_txt = tmp_path / "artifacts" / "compare" / "promoted_flacs_20260315_150001.txt"
+    promoted_txt.parent.mkdir(parents=True, exist_ok=True)
+    promoted_txt.write_text(f"{flac_path}\n", encoding="utf-8")
+
+    fresh_mtime = time.time() + 5
+    os.utime(mock_precheck_csv_new, (fresh_mtime, fresh_mtime))
+    os.utime(promoted_txt, (fresh_mtime, fresh_mtime))
+
+    with patch("tagslut.exec.intake_orchestrator._run_tools_get") as mock_get:
+        mock_get.return_value = None
+
+        with patch("tagslut.exec.intake_orchestrator._find_latest_precheck_csv") as mock_find:
+            mock_find.return_value = mock_precheck_csv_new
+
+            with patch(
+                "tagslut.exec.intake_orchestrator._find_latest_promoted_flacs_txt"
+            ) as mock_find_promoted:
+                mock_find_promoted.return_value = promoted_txt
+
+                with patch("tagslut.exec.intake_orchestrator.subprocess.run") as mock_run:
+                    mock_run.return_value = Mock(returncode=0, stdout="", stderr="")
+
+                    result = run_intake(
+                        url="https://www.beatport.com/release/test/123",
+                        db_path=temp_db,
+                        tag=True,
+                        mp3=False,
+                        dry_run=False,
+                        artifact_dir=tmp_path / "artifacts",
+                    )
+
+    enrich_stage = next((s for s in result.stages if s.stage == "enrich"), None)
+    mp3_stage = next((s for s in result.stages if s.stage == "mp3"), None)
+
+    assert result.disposition == "completed"
+    assert enrich_stage is not None
+    assert enrich_stage.status == "ok"
+    assert enrich_stage.artifact_path is not None
+    assert enrich_stage.artifact_path.read_text(encoding="utf-8").strip() == str(flac_path.resolve())
+    assert mp3_stage is not None
+    assert mp3_stage.status == "skipped"
+    assert "--mp3 not passed" in (mp3_stage.detail or "")
+    assert mock_run.call_count == 1
+    enrich_cmd = mock_run.call_args.args[0]
+    assert "post_move_enrich_art.py" in " ".join(str(part) for part in enrich_cmd)
+    assert "--providers" in enrich_cmd
 
 
 def test_dj_build_registers_separate_profile_and_path(

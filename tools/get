@@ -39,39 +39,34 @@ if [[ -f "$ENV_LOADER" ]]; then
 fi
 
 usage() {
-    echo "Primary workflow:"
-    echo "  tools/get <provider-url>           provider-native download behavior"
-    echo "  tools/get --enrich <provider-url>  precheck + download + tag + promote + m3u"
-    echo "  tools/get --backfill <provider-url>"
-    echo "    Download only missing tracks, then register + enrich (with DJ tags) + promote."
-    echo "    Existing files in the batch root are NOT re-downloaded."
-    echo "    Use this when you already have most tracks and just want them tagged and promoted."
+    echo "Unified download wrapper for provider URLs."
+    echo "Supports TIDAL, Beatport, Qobuz, and Deezer."
+    echo "Operator note: \`ts-get\` may exist as a local shell wrapper for \`tools/get\`."
     echo ""
-    echo "General usage: tools/get [--sync|--synch|--simple|--enrich|--backfill] <url|playlist|dir> [extra-args...]"
-    echo "  --sync/--synch: intake workflow"
-    echo "  --simple: downloader-only behavior"
-    echo "  --enrich: intake + hoarding/enrich/art workflow"
-    echo "  --backfill: download missing + register + enrich (DJ tags always included) + promote"
-    echo "  --re: return playlist (forces intake pipeline; implies --m3u)"
+    echo "Common usage:"
+    echo "  tools/get <url>            download and process one provider URL"
+    echo "  tools/get <url> --tag      fully enrich promoted FLACs in MASTER_LIBRARY"
+    echo "  tools/get <url> --dj       build MP3 copies and add DJ pool playlists"
+    echo "  tools/get --enrich <url>   run intake plus metadata/art enrichment"
+    echo "  tools/get --backfill <url> download only missing tracks, then finish intake"
     echo ""
-    echo "Common high-level options:"
-    echo "  --mp3                Ensure cohort FLAC tags, then build MP3_LIBRARY copies (full tags)."
-    echo "  --dj                 Build MP3_LIBRARY copies (full tags) and add tracks to DJ pool M3U playlists."
+    echo "Common flags:"
+    echo "  --tag                fully enrich promoted FLACs in MASTER_LIBRARY"
+    echo "  --dj                 build MP3_LIBRARY copies and DJ pool playlists"
     echo "                       --dj implies --mp3."
+    echo "  --mp3                build MP3_LIBRARY copies"
     echo "  --no-precheck        skip duplicate-quality precheck"
-    echo "  -f, --force          re-download even if already exists (provider-specific)"
-    echo "  --force-download     keep matched tracks anyway"
-    echo "  --providers LIST     metadata providers for enrich step"
-    echo "  --resume             resume: avoid re-downloading if already staged"
-    echo "  --verbose            show internal paths, logs, and batch snapshots"
+    echo "  --force-download     keep matched tracks anyway during precheck"
+    echo "  --resume             reuse staged downloads when supported"
+    echo "  --verbose            show detailed stage output and internal paths"
     echo ""
-    echo "Routing roots:"
-    echo "  fix         salvageable metadata/tag issues (default: \$FIX_ROOT)"
-    echo "  quarantine  risky files only (default: \$QUARANTINE_ROOT / \$VOLUME_QUARANTINE)"
-    echo "  discard     deterministic duplicates like dest_exists (default: \$DISCARD_ROOT)"
-    echo "  qobuz.com   → streamrip (rip url) + auto-register"
-    echo ""
-    echo "Use tools/get-help for the tiny version of this help."
+    echo "Compatibility / advanced:"
+    echo "  --simple             downloader-only behavior"
+    echo "  --re                 return playlist path from the intake flow"
+    echo "  Routing:"
+    echo "    TIDAL and Beatport use intake by default; --simple uses provider-native download."
+    echo "    Qobuz uses streamrip + auto-register. Deezer uses deemix + auto-register."
+    echo "  Use tools/get-help for the compact version of this help."
     exit 1
 }
 
@@ -310,6 +305,7 @@ fi
 # MP3/DJ routing: canonical intake owner.
 if [[ -n "$URL" ]]; then
     ORIG_ARGS=("$@")
+    WANTS_TAG=0
     WANTS_MP3=0
     WANTS_DJ=0
     MP3_ROOT_ARG=""
@@ -320,6 +316,9 @@ if [[ -n "$URL" ]]; then
     while [[ $i -lt ${#ORIG_ARGS[@]} ]]; do
         arg="${ORIG_ARGS[$i]}"
         case "$arg" in
+            --tag)
+                WANTS_TAG=1
+                ;;
             --mp3)
                 WANTS_MP3=1
                 ;;
@@ -355,17 +354,20 @@ if [[ -n "$URL" ]]; then
         ((i++))
     done
 
-    if [[ "$WANTS_MP3" -eq 1 || "$WANTS_DJ" -eq 1 ]]; then
+    if [[ "$WANTS_TAG" -eq 1 || "$WANTS_MP3" -eq 1 || "$WANTS_DJ" -eq 1 ]]; then
         cd "$REPO_ROOT"
 
-        if [[ -z "$MP3_ROOT_ARG" ]]; then
+        if [[ -z "$MP3_ROOT_ARG" && ( "$WANTS_MP3" -eq 1 || "$WANTS_DJ" -eq 1 ) ]]; then
             MP3_ROOT_ARG="${MP3_LIBRARY:-/Volumes/MUSIC/MP3_LIBRARY}"
         fi
 
         INTAKE_URL_CMD=(poetry run python -m tagslut intake url "$URL")
+        if [[ "$WANTS_TAG" -eq 1 ]]; then
+            INTAKE_URL_CMD+=(--tag)
+        fi
         if [[ "$WANTS_DJ" -eq 1 ]]; then
             INTAKE_URL_CMD+=(--dj --mp3-root "$MP3_ROOT_ARG")
-        else
+        elif [[ "$WANTS_MP3" -eq 1 ]]; then
             INTAKE_URL_CMD+=(--mp3 --mp3-root "$MP3_ROOT_ARG")
         fi
 

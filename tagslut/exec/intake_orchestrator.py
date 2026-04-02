@@ -1144,6 +1144,7 @@ def run_intake(
     url: str,
     *,
     db_path: Path,
+    tag: bool = False,
     mp3: bool = False,
     dj: bool = False,
     dry_run: bool = False,
@@ -1155,11 +1156,12 @@ def run_intake(
     no_precheck: bool = False,
     force_download: bool = False,
 ) -> IntakeResult:
-    """Run intake orchestration: precheck → download → promote → [enrich] → [mp3] → [dj].
+    """Run intake orchestration: precheck → download → promote → [tag] → [mp3] → [dj].
 
     Args:
         url: Provider URL (Beatport, Tidal, Deezer)
         db_path: Path to tagslut database
+        tag: If True, run FLAC enrich/writeback after promote
         mp3: If True, run MP3 stage after promote
         dj: If True, run DJ stage after MP3 stage (implies mp3)
         dry_run: If True, precheck only (no download, no writes)
@@ -1174,6 +1176,7 @@ def run_intake(
     """
     if dj:
         mp3 = True
+    enrich_requested = tag or mp3
 
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     stages: list[IntakeStageResult] = []
@@ -1423,7 +1426,7 @@ def run_intake(
             )
 
     # ────────────────────────────────────────────────────────────────────
-    # Stage 3.5: Enrich + canonical writeback (single pass; required for --mp3/--dj)
+    # Stage 3.5: Enrich + canonical writeback (single pass; used by --tag/--mp3/--dj)
     # ────────────────────────────────────────────────────────────────────
     mp3_inputs: list[str] = []
     mp3_inputs_source: str | None = None
@@ -1459,15 +1462,15 @@ def run_intake(
             IntakeStageResult(
                 stage="enrich",
                 status="skipped",
-                detail="--dry-run passed" if mp3 else "--mp3 not passed",
+                detail="--dry-run passed" if enrich_requested else "--tag/--mp3 not passed",
             )
         )
-    elif not mp3:
+    elif not enrich_requested:
         stages.append(
             IntakeStageResult(
                 stage="enrich",
                 status="skipped",
-                detail="--mp3 not passed",
+                detail="--tag/--mp3 not passed",
             )
         )
     elif disposition == "failed":

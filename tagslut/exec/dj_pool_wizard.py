@@ -1854,10 +1854,10 @@ def validate_wizard_environment(
         raise ValueError("out-root must not be inside MASTER_LIBRARY")
 
     if out_root == dj_cache_root:
-        raise ValueError("out-root must not be DJ_LIBRARY")
+        raise ValueError("out-root must not match --mp3-root")
 
     if dj_cache_root in out_root.parents:
-        raise ValueError("out-root must not be inside DJ_LIBRARY")
+        raise ValueError("out-root must not be inside --mp3-root")
 
     if out_root == db_path.parent:
         raise ValueError("out-root must not be the DB parent directory")

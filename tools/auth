@@ -27,41 +27,22 @@ STREAMRIP_CONFIG="/Users/georgeskhawam/Projects/streamrip/dev_config.toml"
 TOKENS_FILE="$HOME/.config/tagslut/tokens.json"
 
 sync_qobuz_tokens() {
-    # Bidirectional: whichever side has a valid token wins.
-    # If streamrip config has a token that tagslut doesn't (or tagslut's is older), pull from streamrip.
-    # Then always write tagslut's current token back to streamrip so both stay in sync.
+    # One-way: push tagslut tokens.json → streamrip dev_config.toml
+    # tagslut is the authoritative source; never pull from streamrip
     [[ -f "$STREAMRIP_CONFIG" ]] || return 0
     [[ -f "$TOKENS_FILE" ]] || return 0
     python3 - "$STREAMRIP_CONFIG" "$TOKENS_FILE" << 'PYEOF'
-import json, re, sys
+import json, re, sys, tomllib
 from pathlib import Path
 
 cfg_path, tok_path = sys.argv[1], sys.argv[2]
 tokens = json.loads(Path(tok_path).read_text())
 q = tokens.get("qobuz", {})
-
-import tomllib
-cfg_text = Path(cfg_path).read_text()
-cfg_data = tomllib.loads(cfg_text)
-sr_qobuz = cfg_data.get("qobuz", {})
-
-# Pull from streamrip if tagslut token is missing/expired
-sr_token = str(sr_qobuz.get("password_or_token", ""))
-sr_user_id = str(sr_qobuz.get("email_or_userid", ""))
-tagslut_token = q.get("user_auth_token", "")
-
-if sr_token and sr_token != tagslut_token and len(sr_token) > 20:
-    q["user_auth_token"] = sr_token
-    if sr_user_id and sr_user_id.isdigit():
-        q["user_id"] = sr_user_id
-    tokens["qobuz"] = q
-    Path(tok_path).write_text(json.dumps(tokens, indent=2))
-
-# Write current (possibly just-updated) token back to streamrip
 user_token = q.get("user_auth_token", "")
 user_id = q.get("user_id", "")
 if not (user_token and user_id):
     sys.exit(0)
+cfg_text = Path(cfg_path).read_text()
 cfg_text = re.sub(r'use_auth_token = \w+', 'use_auth_token = true', cfg_text)
 cfg_text = re.sub(r'email_or_userid = ".*?"', f'email_or_userid = "{user_id}"', cfg_text)
 cfg_text = re.sub(r'password_or_token = ".*?"', f'password_or_token = "{user_token}"', cfg_text)
@@ -143,36 +124,39 @@ refresh_beatport() {
 
 refresh_qobuz() {
     echo -n "Qobuz... "
-    poetry run python -m tagslut auth refresh qobuz 2>/dev/null \
-        && sync_qobuz_tokens \
-        && {
-            # Verify the session is actually valid — token may be expired
-            python3 - << 'PYEOF'
-import sys, json, urllib.request
+    # Refresh app credentials (app_id/app_secret) — never overwrites user_auth_token
+    poetry run python -m tagslut auth refresh qobuz 2>/dev/null
+    # Push current tokens.json → streamrip (one-way; tagslut is authoritative)
+    sync_qobuz_tokens
+    # Verify session is actually valid
+    local valid
+    valid=$(cd "$REPO_ROOT" && poetry run python3 -c "
+import sys, json, requests
 from pathlib import Path
 try:
-    tokens = json.loads((Path.home() / ".config/tagslut/tokens.json").read_text())
-    q = tokens.get("qobuz", {})
-    app_id = q.get("app_id", "")
-    tok = q.get("user_auth_token", "")
-    user_id = q.get("user_id", "")
+    tokens = json.loads((Path.home() / '.config/tagslut/tokens.json').read_text())
+    q = tokens.get('qobuz', {})
+    app_id = q.get('app_id', '')
+    tok = q.get('user_auth_token', '')
+    user_id = q.get('user_id', '')
     if not (app_id and tok):
-        sys.exit(1)
-    url = f"https://www.qobuz.com/api.json/0.2/user/get?app_id={app_id}&user_id={user_id}"
-    req = urllib.request.Request(url, headers={"X-App-Id": app_id, "X-User-Auth-Token": tok})
-    resp = urllib.request.urlopen(req, timeout=8)
-    sys.exit(0 if resp.status == 200 else 1)
+        print('0'); sys.exit(0)
+    r = requests.get(
+        'https://www.qobuz.com/api.json/0.2/user/get',
+        params={'app_id': app_id, 'user_id': user_id},
+        headers={'X-App-Id': app_id, 'X-User-Auth-Token': tok},
+        timeout=8,
+    )
+    print('1' if r.status_code == 200 else '0')
 except Exception:
-    sys.exit(1)
-PYEOF
-            if [[ $? -ne 0 ]]; then
-                echo "session expired — re-login required:"
-                echo "  poetry run python -m tagslut auth login qobuz --email YOUR_EMAIL --force"
-            else
-                echo "OK"
-            fi
-        } \
-        || echo "FAILED"
+    print('0')
+" 2>/dev/null)
+    if [[ "$valid" == "1" ]]; then
+        echo "OK"
+    else
+        echo "session expired — re-login required:"
+        echo "  poetry run python -m tagslut auth login qobuz --email YOUR_EMAIL --force"
+    fi
 }
 
 case "$PROVIDER" in

@@ -1,46 +1,26 @@
-<!-- Status: Active document. Synced 2026-03-09 after recent code/doc review. Historical or superseded material belongs in docs/archive/. -->
+<!-- Status: Active index. Updated 2026-04-02 for ts-get/ts-enrich/ts-auth + M3U model. -->
 
 # Documentation Index
 
-Active-doc policy:
-- Files in `docs/` root are the maintained operator/developer docs.
-- Historical prompts, one-off audits, handover notes, and superseded specs belong in `docs/archive/`.
-- If a Markdown file stops being authoritative, archive it instead of leaving it in the active surface.
+**Doc chooser**
+- Running daily workflows? Read **OPERATOR_QUICK_START.md**.
+- Need the flow + command surface? Read **WORKFLOWS.md**.
+- Want system shape and providers? Read **ARCHITECTURE.md**.
+- Need source-selection policy? Read **DOWNLOAD_STRATEGY.md**.
 
-## Operator Docs (start here)
+## Active docs (concise)
+- [OPERATOR_QUICK_START.md](OPERATOR_QUICK_START.md) — daily commands, tokens, DJ pool, DB stats
+- [WORKFLOWS.md](WORKFLOWS.md) — current daily workflow + command surface; legacy pipeline note
+- [ARCHITECTURE.md](ARCHITECTURE.md) — system shape, provider set, legacy disclaimers
+- [DOWNLOAD_STRATEGY.md](DOWNLOAD_STRATEGY.md) — best-available-source and provider roles
 
-- [WORKFLOWS.md](WORKFLOWS.md) — end-to-end operating procedures
-- [OPERATIONS.md](OPERATIONS.md) — day-to-day commands and recipes
-- [DJ_PIPELINE.md](DJ_PIPELINE.md) — canonical 4-stage DJ pipeline; `tools/get --dj` is deprecated legacy
-- [DJ_WORKFLOW.md](DJ_WORKFLOW.md) — extended DJ operator guide and legacy-wrapper rationale
-- [BACKFILL_GUIDE.md](BACKFILL_GUIDE.md) — backfill principles and lookup order
-- [PROVENANCE_INTEGRATION.md](PROVENANCE_INTEGRATION.md) — provenance tracker integration notes
-- [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — known issues and fixes
+## Reference (normative specs)
+- [CORE_MODEL.md](CORE_MODEL.md)
+- [DB_V3_SCHEMA.md](DB_V3_SCHEMA.md)
+- [INGESTION_PROVENANCE.md](INGESTION_PROVENANCE.md)
+- [SURFACE_POLICY.md](SURFACE_POLICY.md)
+- [ZONES.md](ZONES.md)
+- [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
 
-## Architecture And Policy
-
-- [ARCHITECTURE.md](ARCHITECTURE.md) — system design and data flow
-- [CORE_MODEL.md](CORE_MODEL.md) — authoritative data ownership model
-- [DB_V3_SCHEMA.md](DB_V3_SCHEMA.md) — v3 schema reference
-- [SCRIPT_SURFACE.md](SCRIPT_SURFACE.md) — canonical command map
-- [SURFACE_POLICY.md](SURFACE_POLICY.md) — surface governance rules
-- [ZONES.md](ZONES.md) — zone semantics and path mapping
-
-## Project Status
-
-- [PROJECT.md](PROJECT.md) — project overview and goals
-- [PROGRESS_REPORT.md](PROGRESS_REPORT.md) — current state and pending work
-- [PHASE1_STATUS.md](PHASE1_STATUS.md) — current Phase 1 branch-stack note
-- [REDESIGN_TRACKER.md](REDESIGN_TRACKER.md) — v3 program status and decisions log
-- [PHASE5_LEGACY_DECOMMISSION.md](PHASE5_LEGACY_DECOMMISSION.md) — Phase 5 runbook
-
-## DJ Tools
-
-- [DJ_REVIEW_APP.md](DJ_REVIEW_APP.md) — local DJ review web app
-- [DJ_POOL.md](DJ_POOL.md) — deterministic DJ pool contract and rules
-
-## Archived Reference
-
-- [Archive index](archive/README.md) — complete history buckets
-- [legacy-root-docs-2026-03-06-md-cleanup](archive/legacy-root-docs-2026-03-06-md-cleanup/) — superseded plans/history/prompts moved from `docs/` root
-- [legacy-root-docs-2026-03-04](archive/legacy-root-docs-2026-03-04/) — prior active-doc snapshot bucket
+## Archive
+- Everything else, including legacy pipeline docs, lives under [archive/](archive/).

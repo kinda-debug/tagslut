@@ -261,7 +261,10 @@ def dj_group() -> None:
 dj_group.add_command(role_group, name="role")
 
 
-@dj_group.command("curate", help=f"Preview DJ curation results from an XLSX manifest. Outside the canonical 4-stage curated-library flow. {CANONICAL_DJ_PIPELINE_TEXT}")
+@dj_group.command(
+    "curate",
+    help=f"Preview DJ curation results from an XLSX manifest. {CANONICAL_DJ_PIPELINE_TEXT}",
+)
 @click.option(
     "--input-xlsx",
     type=click.Path(exists=True),
@@ -321,7 +324,10 @@ def curate(
         click.echo(f"Missing on disk:     {result['dropped_missing_on_disk']}")
 
 
-@dj_group.command("export", help=f"Curate and transcode DJ library output from an XLSX manifest. Outside the canonical 4-stage curated-library flow. {CANONICAL_DJ_PIPELINE_TEXT}")
+@dj_group.command(
+    "export",
+    help=f"Curate and transcode DJ output from an XLSX manifest. {CANONICAL_DJ_PIPELINE_TEXT}",
+)
 @click.option(
     "--input-xlsx",
     type=click.Path(exists=True),
@@ -448,7 +454,10 @@ def export(
         click.echo(f"Exported {len(deduped)} tracks. {skipped} skipped (not yet classified).")
 
 
-@dj_group.command("prep-rekordbox", help=f"Prepare a curated folder for Rekordbox. Outside the canonical 4-stage curated-library flow. {CANONICAL_DJ_PIPELINE_TEXT}")
+@dj_group.command(
+    "prep-rekordbox",
+    help=f"Prepare a curated folder for Rekordbox handoff. {CANONICAL_DJ_PIPELINE_TEXT}",
+)
 @click.option(
     "--root",
     "root_path",
@@ -618,7 +627,10 @@ def lexicon_push(dry_run: bool, only_high_confidence: bool, output_root: str) ->
         f"Pushed: {result['pushed']} | Skipped: {result['skipped']} | Failed: {result['failed']}")
 
 
-@dj_group.command("classify", help=f"Score tracks into safe/block/review buckets. Outside the canonical 4-stage curated-library flow. {CANONICAL_DJ_PIPELINE_TEXT}")
+@dj_group.command(
+    "classify",
+    help=f"Score tracks into safe/block/review buckets for DJ curation. {CANONICAL_DJ_PIPELINE_TEXT}",
+)
 @click.option("--input", "input_path", required=True, type=click.Path(), help="Input XLSX, folder, or M3U")
 @click.option(
     "--policy",
@@ -682,7 +694,10 @@ def dj_classify(
         click.echo(f"Promoted to DJUSB: {ok} ok, {skipped} skipped, {failed} failed")
 
 
-@dj_group.command("review-app", help=f"Launch the DJ review web app. Outside the canonical 4-stage curated-library flow. {CANONICAL_DJ_PIPELINE_TEXT}")
+@dj_group.command(
+    "review-app",
+    help=f"Launch the DJ review web app for curation decisions. {CANONICAL_DJ_PIPELINE_TEXT}",
+)
 @click.option("--db", "db_path", type=click.Path(), default=None, help="SQLite DB path")
 @click.option("--library-prefix", default=None, help="Filter files by path prefix")
 @click.option("--host", default=None, help="Host to bind (default: 127.0.0.1)")
@@ -710,7 +725,10 @@ def review_app(
     run_python_script("tools/dj_review_app.py", tuple(args))
 
 
-@dj_group.command("gig-prep", help=f"Prepare a gig-focused DJ selection export. Outside the canonical 4-stage curated-library flow. {CANONICAL_DJ_PIPELINE_TEXT}")
+@dj_group.command(
+    "gig-prep",
+    help=f"Prepare a gig-focused DJ selection export. {CANONICAL_DJ_PIPELINE_TEXT}",
+)
 @click.option(
     "--date",
     "gig_date",
@@ -1039,7 +1057,10 @@ def crates_export(
     click.echo(f"Skipped (unclassified): {skipped}")
 
 
-@dj_group.command("pool-wizard", help=f"Plan or build a DJ pool from curated library state. Outside the canonical 4-stage curated-library flow. {CANONICAL_DJ_PIPELINE_TEXT}")
+@dj_group.command(
+    "pool-wizard",
+    help=f"Plan or build a DJ pool from curated library state. {CANONICAL_DJ_PIPELINE_TEXT}",
+)
 @click.option(
     "--db",
     "db_path",
@@ -1130,7 +1151,7 @@ def pool_wizard(
 
 @dj_group.command(
     "admit",
-    help=f"Admit one track into the DJ library. Stage 3a of the 4-stage pipeline, but `dj backfill` is the primary Stage 3 path. {CANONICAL_DJ_PIPELINE_TEXT}",
+    help=f"Admit one track into DJ pool state. {CANONICAL_DJ_PIPELINE_TEXT}",
 )
 @click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
 @click.option(
@@ -1199,7 +1220,7 @@ def dj_admit(
 
 @dj_group.command(
     "backfill",
-    help=f"Auto-admit all verified MP3s to the DJ library. Primary Stage 3a of the 4-stage pipeline. {CANONICAL_DJ_PIPELINE_TEXT}",
+    help=f"Auto-admit all verified MP3s to DJ pool state. {CANONICAL_DJ_PIPELINE_TEXT}",
 )
 @click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
 @click.option(
@@ -1297,7 +1318,7 @@ def dj_backfill(
 
 @dj_group.command(
     "validate",
-    help=f"Validate DJ library state. Primary Stage 3b of the 4-stage pipeline. {CANONICAL_DJ_PIPELINE_TEXT}",
+    help=f"Validate DJ pool state before playlist or Rekordbox export. {CANONICAL_DJ_PIPELINE_TEXT}",
 )
 @click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
 @click.option(
@@ -1371,7 +1392,7 @@ def dj_validate(
 
 @dj_group.group(
     "xml",
-    help=f"Stage 4 Rekordbox XML commands: emit and patch. Primary flow: `tagslut dj backfill`, then `tagslut dj validate`, then `tagslut dj xml emit` or `tagslut dj xml patch`. {CANONICAL_DJ_PIPELINE_TEXT}",
+    help=f"Rekordbox XML compatibility commands: emit and patch. {CANONICAL_DJ_PIPELINE_TEXT}",
 )
 def dj_xml_group() -> None:
     """Rekordbox XML emit and patch commands."""
@@ -1379,7 +1400,7 @@ def dj_xml_group() -> None:
 
 @dj_xml_group.command(
     "emit",
-    help=f"Emit Rekordbox XML from admitted tracks. Primary Stage 4a of the 4-stage pipeline. {CANONICAL_DJ_PIPELINE_TEXT}",
+    help=f"Emit Rekordbox XML from admitted tracks for compatibility workflows. {CANONICAL_DJ_PIPELINE_TEXT}",
 )
 @click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
 @click.option(
@@ -1471,7 +1492,7 @@ def dj_xml_emit(
 
 @dj_xml_group.command(
     "patch",
-    help=f"Patch a prior Rekordbox XML export while preserving TrackIDs. Primary Stage 4b of the 4-stage pipeline. {CANONICAL_DJ_PIPELINE_TEXT}",
+    help=f"Patch a prior Rekordbox XML export while preserving TrackIDs for compatibility workflows. {CANONICAL_DJ_PIPELINE_TEXT}",
 )
 @click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
 @click.option(

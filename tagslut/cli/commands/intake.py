@@ -161,8 +161,8 @@ def register_intake_group(cli: click.Group) -> None:
         is_flag=True,
         default=False,
         help=(
-            "[LEGACY] Convenience shortcut. Prefer the explicit 4-stage DJ pipeline: "
-            "run `tagslut mp3 build` / `tagslut mp3 reconcile` as Stage 2. (Requires --mp3-root.)"
+            "Convenience shortcut. Build MP3_LIBRARY copies during intake. "
+            "(Requires --mp3-root.)"
         ),
     )
     @click.option(
@@ -237,11 +237,8 @@ def register_intake_group(cli: click.Group) -> None:
         if mp3 and not dj:
             click.echo(
                 "WARNING: tagslut intake --mp3 is a legacy convenience shortcut. "
-                "Canonical curated-library flow is the explicit 4-stage pipeline: "
-                "Stage 1 `tagslut intake`; Stage 2 `tagslut mp3 build` or `tagslut mp3 reconcile`; "
-                "Stage 3 `tagslut dj backfill`, then `tagslut dj validate`; "
-                "Stage 4 `tagslut dj xml emit` or `tagslut dj xml patch`. "
-                "See docs/DJ_PIPELINE.md.",
+                "Use the dedicated MP3 commands when you want to build or reconcile "
+                "MP3 derivatives outside intake.",
                 err=True,
             )
 

@@ -94,9 +94,8 @@ Options:
   --execute            Execute move plans (default: dry-run planning only)
   --m3u                Generate Roon-friendly merged M3U from promoted files
   --m3u-dir PATH       M3U output dir (default: $PLAYLIST_ROOT or library root)
-  --dj                 [LEGACY] --dj is deprecated. Use the 4-stage pipeline. See: tagslut dj --help
-  --dj-root PATH       DJ MP3 root for legacy wrapper output (default: $DJ_MP3_ROOT or $DJ_LIBRARY)
-  --dj-m3u-dir PATH    DJ playlist output dir for legacy wrapper output (default: $DJ_PLAYLIST_ROOT or DJ root)
+  --dj                 Build MP3_LIBRARY copies and DJ pool M3U playlists
+  --dj-m3u-dir PATH    DJ playlist output dir (default: $DJ_PLAYLIST_ROOT or MP3 root)
   --m3u-only           Only generate merged M3U (skip download/scan/move stages)
   --playlist-file PATH Build M3U from playlist file (.m3u/.m3u8/.txt/.csv/.json)
   --missing-policy MODE
@@ -697,13 +696,13 @@ default_dj_m3u_dir() {
     "${DJ_PLAYLIST_ROOT:-}" \
     "${DJ_ROOT:-}" \
     "${DJ_MP3_ROOT:-}" \
-    "${DJ_LIBRARY:-}"
+    "${MP3_LIBRARY:-}"
 }
 
 default_dj_root() {
   first_nonempty \
     "${DJ_MP3_ROOT:-}" \
-    "${DJ_LIBRARY:-}"
+    "${MP3_LIBRARY:-}"
 }
 
 autodetect_db_path() {
@@ -785,7 +784,7 @@ M3U_DIR=""
 DJ_M3U_DIR="${DJ_PLAYLIST_ROOT:-}"
 PLAYLIST_FILE=""
 MISSING_POLICY="report"
-DJ_ROOT="${DJ_MP3_ROOT:-${DJ_LIBRARY:-}}"
+DJ_ROOT="${DJ_MP3_ROOT:-}"
 # Metadata enrichment providers (order = priority).
 # Active defaults are Beatport + TIDAL. Qobuz exists as a scaffold provider but is off by default.
 ENRICH_PROVIDERS="beatport,tidal"
@@ -910,7 +909,6 @@ while [[ $# -gt 0 ]]; do
       ;;
     --dj)
       DJ_MODE=1
-      echo "[LEGACY] --dj is deprecated. Use the 4-stage pipeline. See: tagslut dj --help" >&2
       shift
       ;;
     --dj-root)
@@ -1098,11 +1096,11 @@ if [[ "$M3U_MODE" -eq 1 ]]; then
 fi
 if [[ "$DJ_MODE" -eq 1 ]]; then
   DJ_ROOT="${DJ_ROOT:-$(default_dj_root || true)}"
-  [[ -n "$DJ_ROOT" ]] || err "Missing DJ root. Set --dj-root, DJ_MP3_ROOT, or DJ_LIBRARY."
+  [[ -n "$DJ_ROOT" ]] || err "Missing DJ root. Set --dj-root, DJ_MP3_ROOT, or MP3_LIBRARY."
   mkdir -p "$DJ_ROOT"
   DJ_ROOT="$(resolve_path "$DJ_ROOT")"
   DJ_M3U_DIR="${DJ_M3U_DIR:-$(default_dj_m3u_dir || true)}"
-  [[ -n "$DJ_M3U_DIR" ]] || err "Missing DJ playlist dir. Set --dj-m3u-dir, DJ_PLAYLIST_ROOT, or DJ_LIBRARY."
+  [[ -n "$DJ_M3U_DIR" ]] || err "Missing DJ playlist dir. Set --dj-m3u-dir, DJ_PLAYLIST_ROOT, or MP3_LIBRARY."
   mkdir -p "$DJ_M3U_DIR"
   DJ_M3U_DIR="$(resolve_path "$DJ_M3U_DIR")"
 fi
@@ -1752,7 +1750,7 @@ PY
 	        echo "  promotion-driven build_pool_v3 path. Results may differ from a first-time intake run." >&2
 	        echo "  For a deterministic DJ build from canonical state, use: tagslut dj pool-wizard" >&2
           if [[ -z "${DJ_ROOT:-}" ]]; then
-            err "DJ mode requires --dj-root or DJ_MP3_ROOT / DJ_LIBRARY to be set"
+            err "DJ mode requires --dj-root or DJ_MP3_ROOT / MP3_LIBRARY to be set"
           fi
           if [[ -z "${DJ_M3U_DIR:-}" ]]; then
             err "DJ mode requires --dj-m3u-dir or DJ_PLAYLIST_ROOT to be set"

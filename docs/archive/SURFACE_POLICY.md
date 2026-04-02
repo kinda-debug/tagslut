@@ -1,4 +1,6 @@
-# Surface Policy - tagslut (2026-02-09)
+<!-- Status: Active document. Synced 2026-03-09 after recent code/doc review. Historical or superseded material belongs in docs/archive/. -->
+
+# Surface Policy - tagslut (2026-03-09)
 
 ## Purpose
 
@@ -6,20 +8,26 @@ Define the supported command/script surface during v3 migration so operators and
 
 ## Canonical Surface (Use For New Work)
 
-1. `poetry run tagslut intake ...`
-2. `poetry run tagslut index ...`
-3. `poetry run tagslut decide ...`
-4. `poetry run tagslut execute ...`
-5. `poetry run tagslut verify ...`
-6. `poetry run tagslut report ...`
-7. `poetry run tagslut auth ...`
+1. `poetry run tagslut intake ...` - pre-check + download orchestration
+2. `poetry run tagslut index ...` - inventory management
+3. `poetry run tagslut decide ...` - quality-based planning
+4. `poetry run tagslut execute ...` - move-only plan execution
+5. `poetry run tagslut verify ...` - receipt and parity checks
+6. `poetry run tagslut report ...` - M3U, duration, and DJ pool diff reports
+7. `poetry run tagslut auth ...` - provider credential management
+8. `poetry run tagslut dj ...` - DJ library workflows; `tagslut dj pool-wizard` is the canonical pool-build entrypoint
+9. `poetry run tagslut gig ...` - gig set build and management
+10. `poetry run tagslut export ...` - USB / DJ pool export
+11. `poetry run tagslut init ...` - first-run initialization wizard
 
 Reference map:
 - `docs/SCRIPT_SURFACE.md`
+- `docs/archive/legacy-root-docs-2026-03-06-md-cleanup/MOVE_EXECUTOR_COMPAT.md` (archived compatibility contract)
 
 Branding note:
 - `tagslut` is the preferred CLI brand.
-- No legacy aliases are supported during migration.
+- `dedupe` has been retired and is no longer shipped as a console script.
+- Replace any remaining `dedupe [args]` usage with `tagslut [args]`.
 
 ## Transitional Surface
 
@@ -35,11 +43,103 @@ Retired in Phase 5:
 7. `tagslut metadata ...`
 8. `tagslut recover ...`
 
+Top-level commands hidden by policy until promoted:
+1. `tagslut canonize ...`
+2. `tagslut enrich-file ...`
+3. `tagslut explain-keeper ...`
+4. `tagslut show-zone ...`
+
+Compatibility scripts still allowed, but not canonical:
+1. `tools/review/move_from_plan.py`
+2. `tools/review/quarantine_from_plan.py`
+3. `tools/review/promote_by_tags.py`
+
+Retired hidden compatibility shims removed:
+1. `tagslut recovery ...`
+2. `tagslut verify recovery ...`
+3. `tagslut report recovery ...`
+4. `tagslut _recover ...`
+
+Current rule for `tagslut intake process-root`:
+- on a v3 DB, use only `identify,enrich,art,promote,dj`
+- `register`, `integrity`, and `hash` are legacy-scan phases and must not be documented as the normal v3 path
+
 ## Removal Horizon
 
 - Warning period starts: February 9, 2026
 - Target archival/removal window: June-July 2026 (aligned to `docs/archive/REDESIGN_TRACKER.md` Phase 5)
 - Dated decommission plan: `docs/archive/phase-specs-2026-02-09/PHASE5_LEGACY_DECOMMISSION.md`
+
+## Legacy Wrapper Family Audit (2026-03-25)
+
+This section scopes hard removal by wrapper family so deletion PRs stay narrow and reversible.
+
+### Family A: intake shell wrappers (`tools/get*`)
+
+- Wrappers still present:
+  - `tools/get`
+  - `tools/get-intake`
+  - `tools/get-sync`
+  - `tools/get-report`
+  - `tools/get-help`
+  - `tools/get-auto`
+  - `tools/get-all`
+- Internal callers still depending on this family:
+  - `tagslut/exec/intake_orchestrator.py` calls `tools/get` for stage 2 download.
+  - `tools/playlist-sync` shells out to `tools/get`.
+  - `tools/get-auto` shells out to `tools/get`.
+  - `tools/get-report` shells out to `tools/get-intake`.
+  - `scripts/check_cli_docs_consistency.py` enforces active docs examples that include `tools/get`, `tools/get-intake`, `tools/get-sync`, and `tools/get-report`.
+- Canonical replacement:
+  - Operator path: `poetry run tagslut intake <provider-url>`.
+  - Existing-root orchestration: `python -m tagslut intake process-root ...` (v3-safe phases only).
+- Delete-now vs hold-temporarily:
+  - Hold temporarily: `tools/get`, `tools/get-intake` (active internal/runtime dependency).
+  - Candidate to remove after caller/doc rewrite: `tools/get-sync`, `tools/get-report`, `tools/get-help`, `tools/get-auto`, `tools/get-all`.
+
+### Family B: legacy move/quarantine executors (`tools/review/*` wrappers)
+
+- Wrappers still present:
+  - `tools/review/promote_by_tags.py`
+  - `tools/review/quarantine_from_plan.py`
+  - `tools/review/move_from_plan.py`
+- Internal callers still depending on this family:
+  - `tagslut/cli/commands/execute.py` delegates `execute promote-tags` to `tools/review/promote_by_tags.py`.
+  - `tagslut/cli/commands/execute.py` delegates `execute quarantine-plan` to `tools/review/quarantine_from_plan.py`.
+  - `Makefile` targets `promote-dry` and `promote` call `tools/review/promote_by_tags.py`.
+  - `tools/review/recommend_plan_to_moves.py` usage text still points to `tools/review/quarantine_from_plan.py`.
+- Canonical replacement:
+  - `poetry run tagslut execute move-plan ...`.
+  - Native `tagslut execute promote-tags` and `tagslut execute quarantine-plan` implementations that no longer shell to `tools/review/*`.
+- Delete-now vs hold-temporarily:
+  - Hold temporarily: `promote_by_tags.py`, `quarantine_from_plan.py` (direct runtime dependency through `tagslut execute`).
+  - Candidate to remove in a focused cleanup: `move_from_plan.py` (already marked deprecated; no active runtime delegation from `tagslut execute`).
+
+### Family C: hidden retired compatibility commands
+
+- Wrappers still present:
+  - None.
+- Internal callers still depending on this family:
+  - None in active runtime flow.
+- Canonical replacement:
+  - None. Recovery workflow is retired and archived under `legacy/tagslut_recovery/`.
+- Delete-now vs hold-temporarily:
+  - Removed in focused family cleanup.
+
+### Family-ordered PR sequence (no mass deletion)
+
+- Intake-wrapper decoupling PRs: move internal callers off `tools/get*` (`intake_orchestrator`, `playlist-sync`, `get-auto`) and update `scripts/check_cli_docs_consistency.py` expectations to canonical surfaces.
+- Intake-wrapper removal PRs: remove leaf aliases first (`get-sync`, `get-report`, `get-help`), then `get-auto`/`get-all`, then `get`/`get-intake` last.
+- Review-wrapper decoupling PRs: replace `tagslut execute promote-tags` and `tagslut execute quarantine-plan` shell delegation with native command implementations, then remove Makefile dependence on `tools/review/promote_by_tags.py`.
+- Review-wrapper removal PRs: remove `move_from_plan.py` first, then remove `promote_by_tags.py` and `quarantine_from_plan.py` after decoupling lands.
+- Hidden-retired command cleanup PR: complete.
+
+### Exit criteria for hard-removal stream
+
+- No runtime command path in `tagslut/cli` shells to legacy wrappers.
+- No operational helper scripts shell to legacy wrappers.
+- Docs and consistency checks no longer require legacy wrapper examples.
+- Wrapper-family removal PRs are merged in the sequence above with focused rollback scope.
 
 ## Phase 5 Decommission Gates
 
@@ -63,6 +163,27 @@ Compatibility wrappers were removed after satisfying these gates:
 2. Do not introduce new top-level CLI wrappers that bypass canonical surfaces.
 3. Keep runtime artifacts out of repo root; write to `artifacts/`.
 4. Keep docs synchronized with live CLI help and script surface map.
+5. Do not write to `track_identity` ad hoc outside the v3 identity service path.
+6. Do not chase `merged_into_id` outside the identity service.
+7. Do not perform per-file `library_track_sources` lookups in loops when a bulk preload is practical.
+8. Do not use filesystem-based DJ candidate discovery after the Phase 1 gate closes.
+
+## Operational Gates
+
+Before opening a focused PR during the migration period:
+
+```bash
+git fetch origin
+git log --oneline --decorate --graph --max-count=20 origin/dev..HEAD
+git log --oneline --decorate --graph --max-count=20 HEAD..origin/dev
+git diff --name-only origin/dev...HEAD
+git diff --stat origin/dev...HEAD
+```
+
+Interpretation:
+- empty diff both ways means the branch is redundant
+- non-empty diff with a clean working tree means the branch is reviewable
+- missing expected changes means you must locate them before continuing
 
 ## Validation Hooks
 
@@ -76,11 +197,16 @@ Compatibility wrappers were removed after satisfying these gates:
 8. `poetry run tagslut verify --help`
 9. `poetry run tagslut report --help`
 10. `poetry run tagslut auth --help`
-11. `poetry run tagslut --help` (compatibility alias)
-12. Move executor contract doc: `docs/MOVE_EXECUTOR_COMPAT.md`
-13. V3 parity validator: `python scripts/validate_v3_dual_write_parity.py --db <db> --strict`
-14. Policy profile lint: `python scripts/lint_policy_profiles.py`
-15. Phase 3 executor tests: `pytest -q tests/test_exec_engine_phase3.py tests/test_exec_receipts_phase3.py`
+11. `poetry run tagslut dj --help`
+12. `poetry run tagslut gig --help`
+13. `poetry run tagslut export --help`
+14. `poetry run tagslut init --help`
+15. Move executor contract doc: `docs/archive/legacy-root-docs-2026-03-06-md-cleanup/MOVE_EXECUTOR_COMPAT.md`
+16. V3 parity validator: `python scripts/validate_v3_dual_write_parity.py --db <db> --strict`
+17. Policy profile lint: `python scripts/lint_policy_profiles.py`
+18. Phase 3 executor tests: `pytest -q tests/test_exec_engine_phase3.py tests/test_exec_receipts_phase3.py`
+19. `python -m tagslut intake process-root --help`
+20. `python -m tagslut execute move-plan --help`
 
 CI integration:
 - `.github/workflows/test.yml` runs `scripts/audit_repo_layout.py` on push/PR.
@@ -90,6 +216,6 @@ CI integration:
 Any change to canonical or transitional surface must update all of:
 - `docs/SCRIPT_SURFACE.md`
 - `docs/SURFACE_POLICY.md`
-- `docs/MOVE_EXECUTOR_COMPAT.md` (if move execution contract changes)
+- `docs/archive/legacy-root-docs-2026-03-06-md-cleanup/MOVE_EXECUTOR_COMPAT.md` (if move execution contract changes)
 - `docs/archive/phase-specs-2026-02-09/` (if phase runbook or decommission contract changes)
 - `docs/archive/REDESIGN_TRACKER.md` (if milestone impact)

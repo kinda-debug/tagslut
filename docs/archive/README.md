@@ -1,27 +1,26 @@
-# Archive Index
+<!-- Status: Active index. Updated 2026-04-02 for ts-get/ts-enrich/ts-auth + M3U model. -->
 
-This directory contains documents and assets that are preserved for history/reference but are not part of the active operator workflow.
+# Documentation Index
 
-Archive policy:
-- Material here is historical, superseded, or one-off reference only.
-- Do not treat archive content as the current source of truth when an active doc exists in `docs/` root, `AGENT.md`, or the repo root docs.
-- Prompts, audit drafts, handover notes, and superseded plans should be moved here rather than kept in the active doc surface.
+**Doc chooser**
+- Running daily workflows? Read **OPERATOR_QUICK_START.md**.
+- Need the flow + command surface? Read **WORKFLOWS.md**.
+- Want system shape and providers? Read **ARCHITECTURE.md**.
+- Need source-selection policy? Read **DOWNLOAD_STRATEGY.md**.
 
-## Active Surface
+## Active docs (concise)
+- [OPERATOR_QUICK_START.md](OPERATOR_QUICK_START.md) — daily commands, tokens, DJ pool, DB stats
+- [WORKFLOWS.md](WORKFLOWS.md) — current daily workflow + command surface; legacy pipeline note
+- [ARCHITECTURE.md](ARCHITECTURE.md) — system shape, provider set, legacy disclaimers
+- [DOWNLOAD_STRATEGY.md](DOWNLOAD_STRATEGY.md) — best-available-source and provider roles
 
-Use these docs for current operations:
-- `docs/README.md`
-- `docs/WORKFLOWS.md`
-- `docs/OPERATIONS.md`
-- `docs/SCRIPT_SURFACE.md`
-- `docs/SURFACE_POLICY.md`
-- `docs/REDESIGN_TRACKER.md`
-- `docs/PHASE5_LEGACY_DECOMMISSION.md`
+## Reference (normative specs)
+- [CORE_MODEL.md](CORE_MODEL.md)
+- [DB_V3_SCHEMA.md](DB_V3_SCHEMA.md)
+- [INGESTION_PROVENANCE.md](INGESTION_PROVENANCE.md)
+- [SURFACE_POLICY.md](SURFACE_POLICY.md)
+- [ZONES.md](ZONES.md)
+- [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
 
-## Archive Buckets
-
-- `legacy-root-docs-2026-03-06-md-cleanup/`: superseded docs root plans/history/prompts archived during relevance cleanup.
-- `legacy-workflows-2026-02-09/`: retired mgmt/metadata/recovery era docs.
-- `inactive-docs-2026-02-09/`: docs moved out of active `docs/` root.
-- `inactive-root-docs-2026-02-09/`: root-level planning/handover docs moved under docs.
-- `inactive-assets-2026-02-09/`: inactive PDFs, exports, patches, and reports.
+## Archive
+- Everything else, including legacy pipeline docs, lives under [archive/](archive/).

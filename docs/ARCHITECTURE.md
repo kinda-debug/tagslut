@@ -16,6 +16,12 @@
 
 The active code lives in `tagslut/`, `tools/`, and `scripts/`. Historical code and superseded plans live in `legacy/` and `docs/archive/`.
 
+## Source selection (summary)
+- TIDAL via tiddl is the primary source when available.
+- Beatport-only tracks download via beatportdl (explicit, not fallback).
+- Qobuz downloads via streamrip when a Qobuz URL is provided.
+- Metadata providers: beatport → tidal → qobuz → reccobeats (audio features).
+
 ## Intake Layer
 
 ### Normal operator path

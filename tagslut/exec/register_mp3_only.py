@@ -254,7 +254,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--root",
         type=Path,
-        default=Path("/Volumes/MUSIC/DJ_LIBRARY"),
+        default=Path("/Volumes/MUSIC/MP3_LIBRARY"),
         help="directory to scan recursively",
     )
     parser.add_argument(

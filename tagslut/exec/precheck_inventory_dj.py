@@ -563,7 +563,7 @@ def link_precheck_inventory_to_dj(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Link precheck skip matches to DJ_LIBRARY MP3s.")
+    parser = argparse.ArgumentParser(description="Link precheck skip matches to MP3_LIBRARY MP3s.")
     parser.add_argument("--db", required=True, help="SQLite DB path")
     parser.add_argument("--decisions-csv", required=True, help="precheck_decisions CSV path")
     parser.add_argument("--dj-root", required=True, help="DJ MP3 root")

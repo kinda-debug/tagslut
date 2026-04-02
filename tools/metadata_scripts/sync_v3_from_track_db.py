@@ -29,7 +29,7 @@ def main() -> int:
     parser.add_argument("--donor-db", required=True, help="Path to external SQLite DB with Track table")
     parser.add_argument(
         "--donor-location-like",
-        default="/Volumes/MUSIC/DJ_LIBRARY/%",
+        default="/Volumes/MUSIC/MP3_LIBRARY/%",
         help="SQL LIKE filter for donor Track.location rows",
     )
     parser.add_argument(

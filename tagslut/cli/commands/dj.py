@@ -47,10 +47,7 @@ DEFAULT_INPUT = os.environ.get("DJ_XLSX", "./input/DJ_YES.xlsx")
 DEFAULT_DJUSB = os.environ.get("DJ_USB_ROOT", "./output/dj_usb")
 TRACK_OVERRIDES_PATH = Path("config/dj/track_overrides.csv")
 CANONICAL_DJ_PIPELINE_TEXT = (
-    "Canonical curated-library flow: Stage 1 `tagslut intake`; "
-    "Stage 2 `tagslut mp3 build` or `tagslut mp3 reconcile`; "
-    "Stage 3 `tagslut dj backfill`, then `tagslut dj validate`; "
-    "Stage 4 `tagslut dj xml emit` or `tagslut dj xml patch`."
+    "Current DJ workflow: curate → transcode → M3U → Rekordbox."
 )
 
 
@@ -244,37 +241,17 @@ def _lexicon_tracks(output_root: Path) -> list[dict]:  # type: ignore  # TODO: m
     "dj",
     help="""
 \b
-DJ library operations (Stages 3 and 4 of the 4-stage pipeline).
-
-Stages:
-    Stage 1: intake     → Refresh canonical masters via tagslut intake
-    Stage 2: mp3        → Build or reconcile MP3 derivatives
-    Stage 3: backfill   → Admit verified MP3s into DJ state
-                     validate   → Verify DJ library state before XML export
-                     admit      → One-off manual admission when backfill is not the right tool
-    Stage 4: xml emit  → Generate Rekordbox XML
-                     xml patch → Update prior XML after changes
-
-Common subcommands:
-  admit, backfill, validate, xml emit, xml patch
-
-Primary workflow: Stage 1 `tagslut intake`, Stage 2 `tagslut mp3 build` or `tagslut mp3 reconcile`, Stage 3 `tagslut dj backfill` then `tagslut dj validate`, Stage 4 `tagslut dj xml emit` or `tagslut dj xml patch`
-
-See: docs/DJ_PIPELINE.md
+DJ workflow commands for curate → transcode → M3U → Rekordbox.
 """,
     epilog="""
 \b
 Example workflow:
-    1. tagslut intake <provider-url>
-    2. tagslut mp3 build --db <path> --dj-root <path> --execute
-    3. tagslut dj backfill --db <path>
-    4. tagslut dj validate --db <path>
-    5. tagslut dj xml emit --db <path> --out rekordbox.xml
+    1. tagslut dj curate --input-xlsx <path>
+    2. tagslut dj export --input-xlsx <path> --output-root <path>
+    3. Import the generated M3U playlists into Rekordbox
 
 Quick example:
   tagslut dj backfill --db <path>
-
-Docs: docs/DJ_PIPELINE.md
 """,
 )
 def dj_group() -> None:
@@ -1077,10 +1054,10 @@ def crates_export(
     help="MASTER_LIBRARY root path",
 )
 @click.option(
-    "--dj-cache-root",
+    "--mp3-root",
     required=True,
     type=click.Path(),
-    help="DJ_LIBRARY cache root path",
+    help="MP3_LIBRARY root path",
 )
 @click.option(
     "--out-root",

@@ -531,7 +531,7 @@ elif [[ "$URL" == *"qobuz.com"* ]]; then
     STREAMRIP_ROOT="/Volumes/MUSIC/mdldev/StreamripDownloads"
 
     cd "$REPO_ROOT"
-    "$STREAMRIP_CMD" --config-path "$STREAMRIP_CONFIG" url "$URL"
+    "$STREAMRIP_CMD" --config-path "$STREAMRIP_CONFIG" --no-db url "$URL"
 
     STREAMRIP_EXIT=$?
     if [[ $STREAMRIP_EXIT -ne 0 ]]; then

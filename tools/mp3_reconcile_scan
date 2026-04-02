@@ -17,7 +17,7 @@ Usage:
                             [--no-flac-scan] [--verbose]
 
 Defaults:
-  roots: MP3_LIBRARY  DJ_LIBRARY  DJ_POOL_MANUAL_MP3
+  roots: MP3_LIBRARY
   flac_root: MASTER_LIBRARY  (skip with --no-flac-scan)
   out_dir: $TAGSLUT_ARTIFACTS/compare/  or ./artifacts/compare/
   match_mode: both  (try ISRC first, fall back to normalised title match)
@@ -48,8 +48,6 @@ except ImportError:
 # ── Volume layout (matches project directives) ────────────────────────────────
 DEFAULT_MP3_ROOTS = [
     "/Volumes/MUSIC/MP3_LIBRARY",
-    "/Volumes/MUSIC/DJ_LIBRARY",
-    "/Volumes/MUSIC/DJ_POOL_MANUAL_MP3",
 ]
 DEFAULT_FLAC_ROOT = "/Volumes/MUSIC/MASTER_LIBRARY"
 
@@ -231,7 +229,7 @@ def _scan_root(
         # If tags are empty, parse from filename as fallback
         if not artist and not title:
             stem = path.stem
-            # DJ_LIBRARY format: "Artist – (YYYY) Album – NN Title"
+            # MP3_LIBRARY format: "Artist – (YYYY) Album – NN Title"
             m = re.match(r"^(.+?)\s+–\s+(?:\(\d{4}\)\s+.+?\s+–\s+\d+\s+)?(.+)$", stem)
             if m:
                 artist = m.group(1).strip()
@@ -490,7 +488,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--roots", nargs="+", default=DEFAULT_MP3_ROOTS,
         metavar="ROOT",
-        help="MP3 root directories to scan (default: MP3_LIBRARY DJ_LIBRARY DJ_POOL_MANUAL_MP3)",
+        help="MP3 root directories to scan (default: MP3_LIBRARY)",
     )
     ap.add_argument(
         "--flac-root", default=DEFAULT_FLAC_ROOT,

@@ -25,7 +25,6 @@
   - `docs/archive/reference/Technical Whitepaper Personal Qobuz Metadata Tagger.md`
 - Key audited absences:
   - `tagslut/providers/` — ABSENT
-  - `docs/archive/reference/tagslut_Provider_Architecture_Assessment_for_Qobuz__TIDAL__Beatport.md` — ABSENT
   - `tagslut/api/` — ABSENT
   - `alembic/versions/` — ABSENT
   - `dj-download.sh` — ABSENT
@@ -419,26 +418,6 @@ b27b2a6 docs: add 2-day plan to session report
 | Genre contribution documented as not yet wired | CONTRADICTS CODE | Genre is wired at `tagslut/metadata/providers/qobuz.py:179-185` and `:213`. |
 | Auto-refresh before every enrich run | PARTIAL | `tools/enrich` refreshes auth first; direct enrich entrypoints do not. |
 
-### 10.4 Provider Architecture Assessment
-- Assessment document file: ABSENT. This section is checklist-only because there is no authoritative in-repo document to compare against.
-- `config/providers.toml` key coverage:
-  - `metadata_enabled`: YES
-  - `download_enabled`: YES
-  - `trust`: YES
-  - `metadata_precedence_weight`: NO
-  - `routing.metadata.precedence`: NO
-  - `routing.download.precedence`: ABSENT from `config/providers.toml`
-- `provider_registry.py` replaces hard-coded `Enricher` mapping: YES
-- `provider_state.py` implements the eight activation states: PARTIAL
-- `provider status` CLI command exists: YES (`tagslut/cli/commands/provider.py:21`)
-- Stale surfaces listed in the prompt:
-  - `tagslut/metadata/README.md`: STALE. It still says only Beatport and TIDAL are active and Qobuz is scaffold-only.
-  - `tagslut/metadata/__init__.py` docstring: STALE. It still says Qobuz is scaffold-only and off by default.
-  - `dj-download.sh`: ABSENT
-  - `tools/get-intake` default `ENRICH_PROVIDERS`: STALE. `tools/get-intake:791` still defaults to `beatport,tidal`.
-  - `tagslut/cli/commands/index.py` help text: STALE. `tagslut/cli/commands/index.py:66-68` still describes Qobuz as legacy/future.
-- Current provider migration phase `0`–`6`: ABSENT AS DOCUMENTED. There is no authoritative phase marker in the repo because the assessment document itself is absent.
-
 ## 11. Immediate Action Items (≤1 week)
 1. Fix `intake --dj` orchestration wiring — the CLI advertises DJ-stage behavior but passes `dj=False` into `run_intake()` — `tagslut/cli/commands/intake.py`
 2. Remove live `DJ_LIBRARY` / `DJ_POOL_MANUAL_MP3` / `--dj-cache-root` language from active code paths — operator-visible surfaces still advertise retired roots and flags — `tagslut/cli/commands/dj.py`
@@ -449,15 +428,13 @@ b27b2a6 docs: add 2-day plan to session report
 
 ## 12. Short-Term Plan (1–4 weeks)
 1. Collapse the active DJ contract onto the M3U model — depends on fixing `intake --dj` and removing live legacy flags — expected outcome: one operator-visible DJ path
-2. Normalize provider activation/configuration — depends on deciding the authoritative provider architecture and phase target — expected outcome: config, registry, docs, and CLI all agree
+2. Normalize provider activation/configuration — depends on deciding the authoritative provider contract — expected outcome: config, registry, docs, and CLI all agree
 3. Audit and either retire or test wrapper scripts — depends on deciding whether `tools/get-intake` remains supported — expected outcome: no ambiguous wrapper behavior
 4. Reconcile active docs with code — depends on locking the real MP3/DJ/Rekordbox contract — expected outcome: `README.md`, `docs/WORKFLOWS.md`, and `docs/ARCHITECTURE.md` stop contradicting each other
 
 ## 13. Long-Term Plan (1–3 months)
-1. Finalize a single provider architecture contract — prerequisite: replace missing provider-assessment document or formally retire it — risk: continued drift across config, registry, docs, and CLI
+1. Finalize a single provider architecture contract — prerequisite: align config, registry, docs, and CLI on one active model — risk: continued drift across config, registry, docs, and CLI
 2. Keep `schema.py` baseline DDL and migrations `0006`–`0015` in lockstep — prerequisite: `schema.py` remains the authoritative creation source — risk: fresh-init safety regresses if bootstrap and incremental migrations diverge
 
 ## 14. Open Questions Requiring Operator Decision
-1. Current provider migration phase and next concrete action — decide whether the repo is in a named provider-architecture phase or whether that phase model is retired.
-2. `--tag` alone vs `--tag + --dj` — decide whether `--tag` is intentionally an enrich-only intermediate step or whether DJ admission/M3U output should be coupled to it.
-3. Legacy DJ/XML surface — decide whether active code should still expose the 4-stage pipeline, `DJ_LIBRARY`, and `--dj-cache-root`, or whether those surfaces must be removed now.
+1. `--tag` alone vs `--tag + --dj` — decide whether `--tag` is intentionally an enrich-only intermediate step or whether DJ admission/M3U output should be coupled to it.

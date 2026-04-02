@@ -1339,7 +1339,7 @@ def register_index_group(cli: click.Group) -> None:
         if force:
             click.echo("  Mode:       Force (re-process ALL)")
         elif retry_no_match:
-            click.echo("  Mode:       Retry (files with no previous match)")
+            click.echo("  Mode:       Fill gaps (unenriched + previous no-match)")
 
         click.echo(f"  Log file:   {log_file}")
         click.echo("")

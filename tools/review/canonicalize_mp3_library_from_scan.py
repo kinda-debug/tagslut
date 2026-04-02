@@ -4,7 +4,7 @@ Make MP3_LIBRARY the canonical MP3 library from an mp3 scan CSV.
 
 This script does two things:
 1) Plans deduplication inside MP3_LIBRARY by audio hash.
-2) Plans importing DJ_LIBRARY-only tracks into MP3_LIBRARY.
+2) Plans importing source-only tracks into MP3_LIBRARY.
 
 Default mode is dry-run planner only. Execution flags are opt-in.
 """
@@ -115,7 +115,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Plan/execute MP3_LIBRARY canonicalization from scan CSV")
     parser.add_argument("--scan-csv", type=Path, default=Path("data/mp3_scan_volumes_music.csv"))
     parser.add_argument("--mp3-prefix", default="/Volumes/MUSIC/MP3_LIBRARY/")
-    parser.add_argument("--dj-prefix", default="/Volumes/MUSIC/DJ_LIBRARY/")
+    parser.add_argument("--dj-prefix", default="/Volumes/MUSIC/MP3_IMPORT_SOURCE/")
     parser.add_argument("--out-dir", type=Path, default=Path("data"))
     parser.add_argument(
         "--import-subdir",
@@ -176,7 +176,7 @@ def main() -> int:
             continue
         for row in rows:
             target = build_unique_target(import_root, row.path)
-            reason = "sha256 present in DJ_LIBRARY but absent from MP3_LIBRARY"
+            reason = "sha256 present in source MP3 root but absent from MP3_LIBRARY"
             dj_import_plan.append((sha, row.path, target, reason))
 
     dedupe_csv = out_dir / "mp3_library_dedupe_plan.csv"

@@ -243,10 +243,8 @@ def _apply_selected_tags_from_snapshot(
 
 
 def main() -> int:
-    default_mp3_root = Path(os.environ.get("DJ_LIBRARY") or os.environ.get("DJ_MP3_ROOT", ".")).expanduser()
-    default_flac_root = Path(
-        os.environ.get("MASTER_LIBRARY") or os.environ.get("DJ_LIBRARY_ROOT") or os.environ.get("LIBRARY_ROOT", ".")
-    ).expanduser()
+    default_mp3_root = Path(os.environ.get("DJ_MP3_ROOT") or os.environ.get("MP3_LIBRARY", ".")).expanduser()
+    default_flac_root = Path(os.environ.get("MASTER_LIBRARY") or os.environ.get("LIBRARY_ROOT", ".")).expanduser()
 
     ap = argparse.ArgumentParser(description="Sync MP3 tags from master FLAC library.")
     ap.add_argument("--db", help="SQLite DB path (used for db_dj_pool_path matching)")
@@ -254,13 +252,13 @@ def main() -> int:
         "--mp3-root",
         type=Path,
         default=default_mp3_root,
-        help="MP3 library root (default: DJ_LIBRARY or DJ_MP3_ROOT)",
+        help="MP3 library root (default: DJ_MP3_ROOT or MP3_LIBRARY)",
     )
     ap.add_argument(
         "--flac-root",
         type=Path,
         default=default_flac_root,
-        help="FLAC master library root (default: MASTER_LIBRARY, DJ_LIBRARY_ROOT, or LIBRARY_ROOT)",
+        help="FLAC master library root (default: MASTER_LIBRARY or LIBRARY_ROOT)",
     )
     ap.add_argument("--mp3-report", type=Path, help="Optional repair/report CSV")
     ap.add_argument(

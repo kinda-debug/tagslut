@@ -82,24 +82,52 @@ BEATPORTDL_CREDS="$HOME/Projects/beatportdl/beatportdl-credentials.json"
 sync_beatport_from_beatportdl() {
     [[ -f "$BEATPORTDL_CREDS" ]] || return 1
     python3 - "$BEATPORTDL_CREDS" << 'PYEOF'
-import json, sys, os, time
+import json, sys, time, urllib.request, urllib.parse
 from pathlib import Path
 
 creds_path = sys.argv[1]
 creds = json.load(open(creds_path))
 
+CLIENT_ID = "ryZ8LuyQVPqbK2mBX2Hwt4qSMtnWuTYSqBPO92yQ"
+refresh_token = creds.get("refresh_token", "")
+issued_at = int(creds.get("issued_at", 0))
+expires_in = int(creds.get("expires_in", 36000))
+is_expired = (issued_at + expires_in) < time.time()
+
+# Attempt refresh if token is expired or expiring within 30 minutes
+if is_expired or (issued_at + expires_in - time.time()) < 1800:
+    try:
+        data = urllib.parse.urlencode({
+            "client_id": CLIENT_ID,
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+        }).encode()
+        req = urllib.request.Request(
+            "https://api.beatport.com/v4/auth/o/token/",
+            data=data,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            new_tokens = json.loads(resp.read())
+        creds["access_token"] = new_tokens["access_token"]
+        creds["refresh_token"] = new_tokens.get("refresh_token", refresh_token)
+        creds["expires_in"] = new_tokens.get("expires_in", 36000)
+        creds["issued_at"] = int(time.time())
+        open(creds_path, "w").write(json.dumps(creds, indent=1))
+    except Exception as e:
+        # Refresh failed — proceed with existing token, warn
+        sys.stderr.write(f"Beatport token refresh failed: {e}\n")
+
+# Sync into tokens.json regardless
 tokens_path = Path.home() / ".config/tagslut/tokens.json"
 tokens = json.loads(tokens_path.read_text()) if tokens_path.exists() else {}
-
 if "beatport" not in tokens or not isinstance(tokens.get("beatport"), dict):
     tokens["beatport"] = {}
-
 expires_at = int(creds.get("issued_at", 0)) + int(creds.get("expires_in", 36000))
 tokens["beatport"]["access_token"] = creds["access_token"]
 tokens["beatport"]["refresh_token"] = creds["refresh_token"]
 tokens["beatport"]["expires_at"] = expires_at
-tokens["beatport"]["client_id"] = "ryZ8LuyQVPqbK2mBX2Hwt4qSMtnWuTYSqBPO92yQ"
-
+tokens["beatport"]["client_id"] = CLIENT_ID
 tokens_path.write_text(json.dumps(tokens, indent=2))
 PYEOF
 }

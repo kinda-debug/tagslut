@@ -79,7 +79,7 @@ stages.
 - Beatport URLs may download from TIDAL when a strict verified cross-match exists and TIDAL ranks higher by quality; Beatport remains the metadata origin for that URL.
 - default output is concise; `--verbose` enables internal paths, artifact files, and batch snapshots
 - high-level workflow flags: `--dj`, `--hoard`, `--no-hoard`, `--no-precheck`, `--force-download`, `--providers`, `--verbose`
-- `--dj` is deprecated legacy behavior. See `docs/DJ_PIPELINE.md` for the canonical 4-stage DJ pipeline.
+- `--dj` writes DJ pool M3U files (per-batch and global dj_pool.m3u at MP3_LIBRARY root).
 - work roots are split by intent: `FIX_ROOT`, `QUARANTINE_ROOT`, `DISCARD_ROOT`
 - `--simple` keeps downloader-only behavior
 
@@ -99,16 +99,34 @@ Role: Deprecated compatibility alias for `tools/get <beatport-url>`.
 5. `tools/tagslut [args...]`
 Role: Local wrapper for `python -m tagslut`.
 
-6. `tools/tag-build [options]`
+6. `ts-get <url> [--dj] [--enrich]` (shell function in ~/.zshrc)
+Role: Primary download entry point. Routes to tiddl (TIDAL), streamrip (Qobuz), or beatportdl (Beatport) based on URL domain. `--dj` writes DJ pool M3U files.
+
+7. `ts-enrich` (shell function in ~/.zshrc)
+Role: Run metadata hoarding enrichment. Reads $TAGSLUT_DB, hits beatport → tidal → qobuz → reccobeats, fills BPM/key/genre/label. Resumable.
+
+8. `ts-auth [tidal|beatport|qobuz|all]` (shell function in ~/.zshrc)
+Role: Refresh all provider tokens. Validates Qobuz session. Syncs beatportdl credentials. Wraps `tools/auth`.
+
+9. `tools/auth [tidal|beatport|qobuz|all]`
+Role: Token refresh implementation. Called by ts-auth. Handles:
+- TIDAL: delegates to `tiddl auth refresh`
+- Beatport: attempts API refresh of stored token; syncs from beatportdl credentials
+- Qobuz: refreshes app credentials from bundle.js; validates session; pushes to streamrip dev_config.toml
+
+10. `tools/enrich`
+Role: Zero-config enrichment wrapper. Reads $TAGSLUT_DB from environment. Called by ts-enrich.
+
+11. `tools/tag-build [options]`
 Role: Build M3U from DB for library FLAC files missing ISRC.
 
-7. `tools/tag-run --m3u <path> [options]`
+12. `tools/tag-run --m3u <path> [options]`
 Role: Run `onetagger-cli` on a symlink batch from M3U and emit summary artifacts.
 
-8. `tools/tag [options]`
+13. `tools/tag [options]`
 Role: Combined build + run OneTagger workflow with defaults.
 
-9. `tools/review/sync_phase1_prs.sh`
+14. `tools/review/sync_phase1_prs.sh`
 Role: Maintainer-only helper for pushing the active Phase 1 branch stack with preserved PR scope boundaries.
 
 ## Canonical DJ Pool Builder

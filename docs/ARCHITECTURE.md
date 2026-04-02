@@ -1,4 +1,7 @@
-<!-- Status: Active document. Synced 2026-03-14 after migration 0010 (DJ pipeline tables). Historical or superseded material belongs in docs/archive/. -->
+<!-- Status: Active document. Last major sync 2026-03-14. Note: sections describing
+     the 4-stage DJ pipeline (backfill/validate/XML) and DJ_LIBRARY as a distinct
+     folder reflect the pre-April 2026 architecture. Current model uses M3U-based
+     DJ pool. See docs/DJ_POOL.md and docs/OPERATOR_QUICK_START.md for current state. -->
 
 # Architecture
 

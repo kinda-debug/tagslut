@@ -96,7 +96,7 @@ def import_lexicon_metadata(
 ) -> dict:
     """Import Lexicon DJ library metadata into TAGSLUT_DB.
 
-    For each active Lexicon track in DJ_LIBRARY or DJ_POOL_MANUAL_MP3:
+    For each active Lexicon track in MP3_LIBRARY:
     - Match to a track_identity (via mp3_asset.path, title+artist, or streamingId).
     - Write NULL fields in track_identity and dj_track_profile (or overwrite if
       prefer_lexicon=True).
@@ -129,8 +129,7 @@ def import_lexicon_metadata(
                streamingId, archived, incoming
         FROM lex.Track
         WHERE archived = 0 AND incoming = 0
-          AND (location LIKE '/Volumes/MUSIC/DJ_LIBRARY/%'
-               OR location LIKE '/Volumes/MUSIC/DJ_POOL_MANUAL_MP3/%')
+          AND location LIKE '/Volumes/MUSIC/MP3_LIBRARY/%'
         """
     ).fetchall()
 

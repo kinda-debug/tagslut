@@ -154,7 +154,7 @@ def register_intake_group(cli: click.Group) -> None:
         "--tag",
         is_flag=True,
         default=False,
-        help="Fully enrich and write back promoted FLACs in MASTER_LIBRARY before any optional MP3/DJ stages.",
+        help="Fully enrich and write back promoted FLACs in MASTER_LIBRARY before any optional MP3/DJ stages. DJ pool admission requires a separate --dj pass.",
     )
     @click.option(
         "--mp3",

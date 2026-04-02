@@ -149,6 +149,7 @@ def register_intake_group(cli: click.Group) -> None:
     @intake.command("url")
     @click.argument("url")
     @click.option("--db", "db_path", default=None, help="Path to tagslut DB (or set TAGSLUT_DB)")
+    @click.option("--playlist-name", default=None, help="Name for the batch DJ pool M3U file")
     @click.option(
         "--mp3",
         is_flag=True,
@@ -212,6 +213,7 @@ def register_intake_group(cli: click.Group) -> None:
     def intake_url(
         url: str,
         db_path: str | None,
+        playlist_name: str | None,
         mp3: bool,
         dj: bool,
         mp3_root: str | None,
@@ -314,7 +316,11 @@ def register_intake_group(cli: click.Group) -> None:
 
                     if mp3_paths:
                         try:
-                            write_dj_pool_m3u(mp3_paths=mp3_paths, mp3_root=mp3_root_path)
+                            write_dj_pool_m3u(
+                                mp3_paths=mp3_paths,
+                                mp3_root=mp3_root_path,
+                                playlist_name=playlist_name,
+                            )
                         except Exception as exc:
                             raise click.ClickException(f"Failed to write DJ pool M3U playlists: {exc}") from exc
 

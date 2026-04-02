@@ -49,6 +49,70 @@ def test_batch_m3u_written_to_common_parent(tmp_path: Path, monkeypatch) -> None
     assert global_path == (mp3_root / "dj_pool.m3u").resolve()
 
 
+def test_batch_m3u_named_from_playlist(tmp_path: Path, monkeypatch) -> None:
+    mp3_root = tmp_path / "MP3_LIBRARY"
+    album_dir = mp3_root / "Various Artists" / "(2024) Balearic Summer"
+    album_dir.mkdir(parents=True, exist_ok=True)
+
+    mp3_a = album_dir / "01 Track.mp3"
+    mp3_b = album_dir / "02 Track.mp3"
+    mp3_a.write_bytes(b"")
+    mp3_b.write_bytes(b"")
+
+    monkeypatch.setattr("mutagen.mp3.MP3", _FakeMP3)
+    monkeypatch.setattr("mutagen.id3.ID3", _FakeID3)
+
+    batch_path, _ = write_dj_pool_m3u([mp3_a, mp3_b], mp3_root, playlist_name="Balearic Summer")
+    assert batch_path == (album_dir / "Balearic Summer.m3u").resolve()
+
+
+def test_batch_m3u_default_name_when_playlist_missing(tmp_path: Path, monkeypatch) -> None:
+    mp3_root = tmp_path / "MP3_LIBRARY"
+    album_dir = mp3_root / "Artist" / "Album"
+    album_dir.mkdir(parents=True, exist_ok=True)
+
+    mp3_a = album_dir / "01 Track.mp3"
+    mp3_a.write_bytes(b"")
+
+    monkeypatch.setattr("mutagen.mp3.MP3", _FakeMP3)
+    monkeypatch.setattr("mutagen.id3.ID3", _FakeID3)
+
+    batch_path, _ = write_dj_pool_m3u([mp3_a], mp3_root)
+    assert batch_path.name == "dj_pool.m3u"
+
+
+def test_playlist_name_sanitized(tmp_path: Path, monkeypatch) -> None:
+    mp3_root = tmp_path / "MP3_LIBRARY"
+    album_dir = mp3_root / "Artist" / "Album"
+    album_dir.mkdir(parents=True, exist_ok=True)
+
+    mp3_a = album_dir / "01 Track.mp3"
+    mp3_a.write_bytes(b"")
+
+    monkeypatch.setattr("mutagen.mp3.MP3", _FakeMP3)
+    monkeypatch.setattr("mutagen.id3.ID3", _FakeID3)
+
+    batch_path, _ = write_dj_pool_m3u([mp3_a], mp3_root, playlist_name="  bad/na\\me:*?\"<>|  mix  ")
+    assert batch_path.name == "bad_na_me_______ mix.m3u"
+
+
+def test_playlist_name_truncated(tmp_path: Path, monkeypatch) -> None:
+    mp3_root = tmp_path / "MP3_LIBRARY"
+    album_dir = mp3_root / "Artist" / "Album"
+    album_dir.mkdir(parents=True, exist_ok=True)
+
+    mp3_a = album_dir / "01 Track.mp3"
+    mp3_a.write_bytes(b"")
+
+    long_name = "A" * 120
+
+    monkeypatch.setattr("mutagen.mp3.MP3", _FakeMP3)
+    monkeypatch.setattr("mutagen.id3.ID3", _FakeID3)
+
+    batch_path, _ = write_dj_pool_m3u([mp3_a], mp3_root, playlist_name=long_name)
+    assert len(batch_path.stem) == 100
+
+
 def test_global_m3u_appends_and_skips_duplicates(tmp_path: Path, monkeypatch) -> None:
     mp3_root = tmp_path / "MP3_LIBRARY"
     album_dir = mp3_root / "Fouk" / "(2024) Sundays EP"
@@ -91,4 +155,3 @@ def test_extinf_format_duration_artist_title(tmp_path: Path, monkeypatch) -> Non
     assert content.splitlines()[0].strip() == "#EXTM3U"
     assert "#EXTINF:214,Fouk - Sunday" in content
     assert str(mp3_a.resolve()) in content
-

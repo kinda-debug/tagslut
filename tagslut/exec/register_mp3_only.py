@@ -7,7 +7,7 @@ import re
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, Optional
+from typing import Dict, Iterable, Optional, Sequence
 
 from mutagen import id3, mp3
 
@@ -140,6 +140,25 @@ def _load_existing_paths(conn: sqlite3.Connection) -> set[str]:
     return {str(row[0]) for row in rows}
 
 
+def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    return {str(row[1]) for row in rows}
+
+
+def _insert_row(conn: sqlite3.Connection, table: str, row: Dict[str, object], available_cols: set[str]) -> bool:
+    cols: Sequence[str] = [col for col in row.keys() if col in available_cols]
+    if not cols:
+        return False
+    placeholders = ", ".join(["?"] * len(cols))
+    col_list = ", ".join(cols)
+    before = conn.total_changes
+    conn.execute(
+        f"INSERT OR IGNORE INTO {table} ({col_list}) VALUES ({placeholders})",
+        tuple(row[col] for col in cols),
+    )
+    return (conn.total_changes - before) > 0
+
+
 def _iter_mp3(root: Path) -> Iterable[Path]:
     for path in root.rglob("*"):
         if path.is_file() and path.suffix.lower() == ".mp3":
@@ -169,6 +188,7 @@ def register_mp3_only(
 
     try:
         existing_paths = _load_existing_paths(conn)
+        available_cols = _table_columns(conn, "files")
 
         for path in _iter_mp3(root):
             stats.scanned += 1
@@ -195,27 +215,20 @@ def register_mp3_only(
 
                 metadata_json = json.dumps(metadata, ensure_ascii=False, sort_keys=True)
 
-                before_changes = conn.total_changes
-                conn.execute(
-                    """
-                    INSERT OR IGNORE INTO files (
-                        path, zone, download_source, flac_ok, duration, metadata_json,
-                        canonical_isrc, ingestion_method, ingestion_source, ingestion_confidence
-                    ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        path_str,
-                        zone,
-                        source,
-                        duration,
-                        metadata_json,
-                        isrc_value,
-                        "legacy_mp3_register",
-                        path_str,
-                        "uncertain",
-                    ),
-                )
-                stats.inserted += int(conn.total_changes - before_changes > 0)
+                row = {
+                    "path": path_str,
+                    "zone": zone,
+                    "download_source": source,
+                    "flac_ok": None,
+                    "duration": duration,
+                    "metadata_json": metadata_json,
+                    "canonical_isrc": isrc_value,
+                    "ingestion_method": "legacy_mp3_register",
+                    "ingestion_source": path_str,
+                    "ingestion_confidence": "uncertain",
+                }
+                inserted = _insert_row(conn, "files", row, available_cols)
+                stats.inserted += int(inserted)
                 existing_paths.add(path_str)
                 if verbose:
                     print(f"[insert] {path_str}")

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 
@@ -94,7 +95,22 @@ def _read_existing_m3u_paths(path: Path) -> set[str]:
     return out
 
 
-def write_dj_pool_m3u(mp3_paths: list[Path], mp3_root: Path) -> tuple[Path, Path]:
+def _sanitize_playlist_name(value: str | None) -> str:
+    if value is None:
+        return ""
+    sanitized = (value or "").strip()
+    if not sanitized:
+        return ""
+    sanitized = re.sub(r"[\\\\/\\:*?\"<>|]", "_", sanitized)
+    sanitized = re.sub(r"\s+", " ", sanitized)
+    return sanitized[:100]
+
+
+def write_dj_pool_m3u(
+    mp3_paths: list[Path],
+    mp3_root: Path,
+    playlist_name: str | None = None,
+) -> tuple[Path, Path]:
     """
     Write batch and global dj_pool.m3u files.
 
@@ -112,7 +128,13 @@ def write_dj_pool_m3u(mp3_paths: list[Path], mp3_root: Path) -> tuple[Path, Path
     resolved_mp3_paths = sorted(resolved_mp3_paths, key=lambda p: str(p))
 
     batch_dir = _common_parent_dir(resolved_mp3_paths)
-    batch_m3u_path = (batch_dir / "dj_pool.m3u").resolve()
+
+    filename = "dj_pool.m3u"
+    sanitized_playlist = _sanitize_playlist_name(playlist_name)
+    if sanitized_playlist:
+        filename = f"{sanitized_playlist}.m3u"
+
+    batch_m3u_path = (batch_dir / filename).resolve()
     batch_m3u_path.write_text("\n".join(_render_m3u_lines(resolved_mp3_paths)) + "\n", encoding="utf-8")
 
     global_m3u_path = (Path(mp3_root).expanduser().resolve() / "dj_pool.m3u").resolve()

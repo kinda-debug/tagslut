@@ -433,7 +433,45 @@ if [[ "$URL" == *"tidal.com"* ]]; then
             exec "$TIDDL_WRAPPER" "$URL" "${FORWARD_ARGS[@]+"${FORWARD_ARGS[@]}"}"
         fi
     fi
-    build_intake_cmd "tidal" "$URL" "$@"
+    PLAYLIST_NAME=""
+    if [[ "$URL" == *"/playlist/"* ]]; then
+        TIDAL_ID="${URL##*/playlist/}"
+        PLAYLIST_NAME="$(cd "$REPO_ROOT" && poetry run python3 -c "
+from tagslut.metadata.auth import TokenManager
+import requests, json
+from pathlib import Path
+tm = TokenManager(Path.home() / '.config/tagslut/tokens.json')
+tok = tm.get_token('tidal')
+access = tok.access_token if tok else ''
+if not access:
+    raise SystemExit
+r = requests.get(f'https://openapi.tidal.com/v2/playlists/${TIDAL_ID}',
+    headers={'Authorization': f'Bearer {access}', 'Accept': 'application/vnd.api+json'}, timeout=8)
+d = r.json()
+print((d.get('data') or {}).get('attributes', {}).get('name', ''))
+" 2>/dev/null)"
+    elif [[ "$URL" == *"/album/"* ]]; then
+        TIDAL_ID="${URL##*/album/}"
+        PLAYLIST_NAME="$(cd "$REPO_ROOT" && poetry run python3 -c "
+from tagslut.metadata.auth import TokenManager
+import requests
+from pathlib import Path
+tm = TokenManager(Path.home() / '.config/tagslut/tokens.json')
+tok = tm.get_token('tidal')
+access = tok.access_token if tok else ''
+if not access:
+    raise SystemExit
+r = requests.get(f'https://openapi.tidal.com/v2/albums/${TIDAL_ID}',
+    headers={'Authorization': f'Bearer {access}', 'Accept': 'application/vnd.api+json'}, timeout=8)
+print((r.json().get('data') or {}).get('attributes', {}).get('title', ''))
+" 2>/dev/null)"
+    fi
+
+    if [[ -n "$PLAYLIST_NAME" ]]; then
+        build_intake_cmd "tidal" "$URL" "$@" --playlist-name "$PLAYLIST_NAME"
+    else
+        build_intake_cmd "tidal" "$URL" "$@"
+    fi
     exec "${INTAKE_CMD[@]}"
 
 elif [[ "$URL" == *"beatport.com"* ]]; then
@@ -503,6 +541,38 @@ elif [[ "$URL" == *"qobuz.com"* ]]; then
 
     poetry run python -m tagslut index register "$STREAMRIP_ROOT" --source qobuz --execute
 
+    PLAYLIST_NAME=""
+    if [[ "$URL" == *"/playlist/"* ]]; then
+        PLAYLIST_ID="${URL##*/playlist/}"
+        PLAYLIST_NAME="$(cd "$REPO_ROOT" && poetry run python3 -c "
+from tagslut.metadata.auth import TokenManager
+import requests, json
+from pathlib import Path
+tm = TokenManager(Path.home() / '.config/tagslut/tokens.json')
+app_id, _ = tm.get_qobuz_app_credentials()
+tok = tm.ensure_qobuz_token()
+r = requests.get('https://www.qobuz.com/api.json/0.2/playlist/get',
+    params={'playlist_id': '${PLAYLIST_ID}', 'app_id': app_id},
+    headers={'X-App-Id': app_id, 'X-User-Auth-Token': tok}, timeout=8)
+d = r.json()
+print(d.get('name', '') or d.get('title', ''))
+" 2>/dev/null)"
+    elif [[ "$URL" == *"/album/"* ]]; then
+        ALBUM_ID="${URL##*/album/}"
+        PLAYLIST_NAME="$(cd "$REPO_ROOT" && poetry run python3 -c "
+from tagslut.metadata.auth import TokenManager
+import requests
+from pathlib import Path
+tm = TokenManager(Path.home() / '.config/tagslut/tokens.json')
+app_id, _ = tm.get_qobuz_app_credentials()
+tok = tm.ensure_qobuz_token()
+r = requests.get('https://www.qobuz.com/api.json/0.2/album/get',
+    params={'album_id': '${ALBUM_ID}', 'app_id': app_id},
+    headers={'X-App-Id': app_id, 'X-User-Auth-Token': tok}, timeout=8)
+print(r.json().get('title', ''))
+" 2>/dev/null)"
+    fi
+
     # Build MP3s and write DJ pool M3U if --dj or --mp3 requested
     if [[ "$WANTS_DJ" -eq 1 || "$WANTS_MP3" -eq 1 ]]; then
         MP3_ROOT_ARG="${MP3_LIBRARY:-/Volumes/MUSIC/MP3_LIBRARY}"
@@ -511,6 +581,9 @@ elif [[ "$URL" == *"qobuz.com"* ]]; then
             INTAKE_CMD+=(--dj --mp3-root "$MP3_ROOT_ARG")
         else
             INTAKE_CMD+=(--mp3 --mp3-root "$MP3_ROOT_ARG")
+        fi
+        if [[ -n "$PLAYLIST_NAME" ]]; then
+            INTAKE_CMD+=(--playlist-name "$PLAYLIST_NAME")
         fi
         "${INTAKE_CMD[@]}"
     fi

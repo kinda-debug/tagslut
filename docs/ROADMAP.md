@@ -1,10 +1,8 @@
 # tagslut — Agent Roadmap
 
 <!-- Status: Active. Update as tasks complete or delegate assignments change. -->
-<!-- Last updated: 2026-03-26 — All Phase 1 and TIDAL migration work complete through commit 50062ea.
-     Next work: token bridge (tiddl → tokens.json), download strategy rewrite (best-available-source),
-     ReccoBeats provider stub, credential management phase 2/3, DJ pipeline review items. -->
-<!-- Active action sequencing has moved to docs/ACTION_PLAN.md -->
+<!-- Last updated: 2026-04-02 — §20/§21/§23 COMPLETE; Qobuz metadata and ReccoBeats audio features live; DJ pool M3U model active. -->
+<!-- Active action sequencing has moved to docs/archive/ACTION_PLAN.md -->
 <!-- This file remains the agent contract reference and historical record. -->
 
 This document maps all open work to the agent that should execute it.
@@ -28,6 +26,7 @@ Update it when tasks complete or priorities shift.
 11. Provider architecture + Qobuz metadata (§23)  ← COMPLETE (2026-04-01)
 12. DJ pool M3U model — replace 4-stage pipeline  ← COMPLETE (2026-04-01)
 13. beatportdl restore as explicit download path  ← COMPLETE (2026-04-01)
+14. ReccoBeats audio-features provider activation  ← COMPLETE (2026-04-02)
 ```
 
 Items must not be skipped; each depends on the prior gate being confirmed complete.
@@ -404,7 +403,7 @@ Do not implement until API key is confirmed available.
 
 ## 23 — Provider architecture: capability registry + Qobuz + download adapters → **Codex** ⬅ COMPLETE (2026-04-01)
 
-Operational Qobuz metadata is live as of 2026-04-01.
+Operational Qobuz metadata is live as of 2026-04-01; ReccoBeats audio-features provider (energy/danceability/valence) live as of 2026-04-02.
 
 Full design: `docs/codex/CODEX_PROVIDER_ARCHITECTURE_IMPLEMENTATION_PROMPTS.md`
 Assessment: `tagslut_Provider_Architecture_Assessment_for_Qobuz__TIDAL__Beatport.md`

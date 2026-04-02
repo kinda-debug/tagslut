@@ -181,6 +181,8 @@ The existing `poetry run tagslut auth token-get <provider>` command remains avai
 - After this patch, the active Beatport provider path prefers `tokens.json`, but legacy env vars
   can still affect older scripts that have not yet been migrated.
 - Keep `tokens.json` current, then pull tokens into shell consumers explicitly with `token-get`.
+- Qobuz `user_auth_token` expires and has no refresh token; when `ts-auth` reports expiry, re-login:
+  `poetry run python -m tagslut auth login qobuz --email EMAIL --force`.
 
 ## Current Limitations
 

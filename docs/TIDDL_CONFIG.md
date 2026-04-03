@@ -278,7 +278,8 @@ COPYRIGHT, ISRC, COMMENT, BPM (if non-null in API response), cover art (embedded
 - **Label** — available via album API but not written to tags by tiddl
 - **Catalog number** — same
 
-These fields are populated by tagslut's enrichment pass via the Beatport API
-(`tools/get --enrich <url>`). A freshly downloaded FLAC before enrichment
-will be missing genre, key, and often BPM. This is expected and correct.
-The enrichment pass fills them in.
+These fields are populated by tagslut's enrichment pass (primarily via Beatport).
+Separately, tagslut also captures TIDAL-native DJ fields (when present in the
+TIDAL provider payload) into v3 `track_identity` for auditing/identity use:
+`tidal_bpm`, `tidal_key`, `tidal_key_scale`, `tidal_camelot`, `replay_gain_*`,
+`tidal_dj_ready`, `tidal_stem_ready`.

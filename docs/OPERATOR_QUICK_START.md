@@ -49,4 +49,5 @@ ts-enrich              # BPM, key, genre, label for all unenriched tracks
 ```bash
 sqlite3 "$TAGSLUT_DB" "SELECT COUNT(*) FROM files;"
 sqlite3 "$TAGSLUT_DB" "SELECT COUNT(*), SUM(CASE WHEN canonical_genre IS NOT NULL THEN 1 ELSE 0 END) FROM track_identity;"
+sqlite3 "$TAGSLUT_DB" "SELECT COUNT(*), SUM(CASE WHEN tidal_bpm IS NOT NULL THEN 1 ELSE 0 END) FROM track_identity;"
 ```

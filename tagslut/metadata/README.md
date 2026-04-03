@@ -15,7 +15,7 @@ Start here:
 | Provider   | Status   | Auth                 | Key Features                                      |
 |------------|----------|----------------------|---------------------------------------------------|
 | Beatport   | Active   | Bearer token/scraping| BPM, key, genre, sub-genre, label, ISRC           |
-| TIDAL      | Active   | Device authorization | Hi-res indicators, lyrics availability            |
+| TIDAL      | Active   | Device authorization | ISRC, hi-res indicators, lyrics availability, native BPM/key/replayGain/readiness |
 | Qobuz      | Scaffold | TBD (future)         | Metadata/evidence only (off by default)           |
 
 **Note:** Only Beatport and TIDAL are currently active and supported in the enrichment pipeline. Qobuz exists as a scaffold provider and is off by default. See `tagslut/metadata/providers/__init__.py` for the active export surface.

@@ -20,11 +20,13 @@ from datetime import datetime, timezone
 import logging
 import os
 import re
+import time
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote, urlparse
 
 import httpx
 
+from tagslut.enrichment.camelot import to_camelot
 from tagslut.metadata.models.types import (
     BeatportSeedRow,
     BeatportTidalMergedRow,
@@ -126,6 +128,58 @@ class TidalProvider(AbstractProvider):
             if preferred in tags:
                 return preferred
         return ",".join(tags)
+
+    @staticmethod
+    def _coerce_float(value: Any) -> float | None:
+        if value is None:
+            return None
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, str):
+            try:
+                return float(value.strip())
+            except ValueError:
+                return None
+        return None
+
+    @staticmethod
+    def _coerce_text(value: Any) -> str | None:
+        if not isinstance(value, str):
+            return None
+        text = value.strip()
+        return text or None
+
+    @staticmethod
+    def _coerce_int_bool(value: Any) -> int | None:
+        if value is None:
+            return None
+        if isinstance(value, bool):
+            return 1 if value else 0
+        if isinstance(value, (int, float)):
+            return 1 if int(value) != 0 else 0
+        if isinstance(value, str):
+            text = value.strip().lower()
+            if text in {"1", "true", "yes", "y"}:
+                return 1
+            if text in {"0", "false", "no", "n"}:
+                return 0
+        return None
+
+    @classmethod
+    def _extract_replay_gain(cls, value: Any) -> tuple[float | None, float | None]:
+        if value is None:
+            return None, None
+        if isinstance(value, (int, float, str)):
+            return cls._coerce_float(value), None
+        if not isinstance(value, dict):
+            return None, None
+
+        def parse_leaf(item: Any) -> float | None:
+            if isinstance(item, dict):
+                return cls._coerce_float(item.get("value"))
+            return cls._coerce_float(item)
+
+        return parse_leaf(value.get("track")), parse_leaf(value.get("album"))
 
     def _get_default_headers(self) -> Dict[str, str]:
         token = self._get_token()
@@ -308,6 +362,60 @@ class TidalProvider(AbstractProvider):
         duration_ms = self._parse_duration_ms(attributes.get("duration"))
         track_url = f"https://tidal.com/browse/track/{track_id}"
 
+        tidal_bpm = self._coerce_float(attributes.get("bpm"))
+        tidal_key = self._coerce_text(attributes.get("key"))
+        tidal_key_scale = self._coerce_text(attributes.get("keyScale"))
+        tidal_dj_ready = self._coerce_int_bool(attributes.get("djReady"))
+        tidal_stem_ready = self._coerce_int_bool(attributes.get("stemReady"))
+        replay_gain_track, replay_gain_album = self._extract_replay_gain(attributes.get("replayGain"))
+        if replay_gain_track is None:
+            replay_gain_track = self._coerce_float(attributes.get("replayGainTrack"))
+        if replay_gain_album is None:
+            replay_gain_album = self._coerce_float(attributes.get("replayGainAlbum"))
+
+        needs_v1_fallback = any(
+            value is None
+            for value in (
+                tidal_bpm,
+                tidal_key,
+                tidal_key_scale,
+                tidal_dj_ready,
+                tidal_stem_ready,
+            )
+        ) or (replay_gain_track is None and replay_gain_album is None)
+        if needs_v1_fallback:
+            response = self._make_request(
+                "GET",
+                f"{self.V1_BASE_URL}/tracks/{quote(str(track_id), safe='')}",
+            )
+            time.sleep(0.2)
+            if response is not None and response.status_code == 200:
+                try:
+                    payload = response.json()
+                except Exception:
+                    payload = None
+                if isinstance(payload, dict):
+                    if tidal_bpm is None:
+                        tidal_bpm = self._coerce_float(payload.get("bpm"))
+                    if tidal_key is None:
+                        tidal_key = self._coerce_text(payload.get("key"))
+                    if tidal_key_scale is None:
+                        tidal_key_scale = self._coerce_text(payload.get("keyScale"))
+                    if tidal_dj_ready is None:
+                        tidal_dj_ready = self._coerce_int_bool(payload.get("djReady"))
+                    if tidal_stem_ready is None:
+                        tidal_stem_ready = self._coerce_int_bool(payload.get("stemReady"))
+                    if replay_gain_track is None and replay_gain_album is None:
+                        replay_gain_track, replay_gain_album = self._extract_replay_gain(
+                            payload.get("replayGain")
+                        )
+                        if replay_gain_track is None:
+                            replay_gain_track = self._coerce_float(payload.get("replayGainTrack"))
+                        if replay_gain_album is None:
+                            replay_gain_album = self._coerce_float(payload.get("replayGainAlbum"))
+
+        tidal_camelot = to_camelot(tidal_key, tidal_key_scale) if tidal_key and tidal_key_scale else None
+
         return ProviderTrack(
             service="tidal",
             service_track_id=track_id,
@@ -321,6 +429,14 @@ class TidalProvider(AbstractProvider):
             bpm=attributes.get("bpm"),
             key=attributes.get("key"),
             key_scale=attributes.get("keyScale"),
+            tidal_bpm=tidal_bpm,
+            tidal_key=tidal_key,
+            tidal_key_scale=tidal_key_scale,
+            tidal_camelot=tidal_camelot,
+            replay_gain_track=replay_gain_track,
+            replay_gain_album=replay_gain_album,
+            tidal_dj_ready=tidal_dj_ready,
+            tidal_stem_ready=tidal_stem_ready,
             tone_tags=attributes.get("toneTags"),
             popularity=attributes.get("popularity"),
             explicit=attributes.get("explicit"),

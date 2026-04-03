@@ -63,6 +63,14 @@ class ProviderTrack:
     bpm: Optional[float] = None
     key: Optional[str] = None                 # Musical key (e.g. "F# min")
     key_scale: Optional[str] = None
+    tidal_bpm: Optional[float] = None
+    tidal_key: Optional[str] = None
+    tidal_key_scale: Optional[str] = None
+    tidal_camelot: Optional[str] = None
+    replay_gain_track: Optional[float] = None
+    replay_gain_album: Optional[float] = None
+    tidal_dj_ready: Optional[int] = None
+    tidal_stem_ready: Optional[int] = None
     tone_tags: Optional[List[str]] = None
     popularity: Optional[float] = None
     genre: Optional[str] = None

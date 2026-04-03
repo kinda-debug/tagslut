@@ -1,124 +1,109 @@
-# Capture TIDAL native audio fields (BPM/key/replayGain/readiness) into v3 `track_identity`
+# Implement: TIDAL native fields → v3 `track_identity`
 
 ## Do not recreate existing files. Do not modify schema.py directly.
 
 ## Summary
 
-- Add new nullable v3 columns on `track_identity` for TIDAL-native audio fields.
-- Extract + normalize those fields from the TIDAL provider response (with Camelot mapping).
-- Skip ReccoBeats ISRC calls when a TIDAL match already provides BPM.
-- Persist extracted TIDAL-native fields onto the linked v3 `track_identity` row during
-  enrichment writes (best-effort; no behavior change if v3 tables/columns aren't present).
+- Add v3 migration `0016` with nullable `track_identity` columns for TIDAL-native
+  BPM/key/Camelot/replayGain/readiness.
+- Add Camelot mapping utility (`to_camelot`) and wire into TIDAL normalization.
+- Extend `ProviderTrack` to carry the new native fields and persist them (best-effort)
+  to v3 identity rows during `update_database()`.
+- Skip ReccoBeats ISRC lookup when a TIDAL ISRC match already provides BPM.
 
-## Step 1 — V3 migration 0016
+## Step 1 — V3 migration `0016`
 
-File: `tagslut/storage/v3/migrations/0016_tidal_audio_fields.sql`
-(Note: `0015_*` already exists in this repo — use 0016.)
-
-```sql
-ALTER TABLE track_identity ADD COLUMN tidal_bpm REAL;
-ALTER TABLE track_identity ADD COLUMN tidal_key TEXT;
-ALTER TABLE track_identity ADD COLUMN tidal_key_scale TEXT;
-ALTER TABLE track_identity ADD COLUMN tidal_camelot TEXT;
-ALTER TABLE track_identity ADD COLUMN replay_gain_track REAL;
-ALTER TABLE track_identity ADD COLUMN replay_gain_album REAL;
-ALTER TABLE track_identity ADD COLUMN tidal_dj_ready INTEGER;
-ALTER TABLE track_identity ADD COLUMN tidal_stem_ready INTEGER;
-INSERT OR IGNORE INTO schema_migrations (schema_name, version, note)
-  VALUES ('v3', 16, '0016_tidal_audio_fields.sql');
-```
+Create `tagslut/storage/v3/migrations/0016_tidal_audio_fields.sql`:
+- Add nullable columns: `tidal_bpm`, `tidal_key`, `tidal_key_scale`, `tidal_camelot`,
+  `replay_gain_track`, `replay_gain_album`, `tidal_dj_ready`, `tidal_stem_ready`
+- Record migration: `schema_migrations (schema_name='v3', version=16,
+  note='0016_tidal_audio_fields.sql')`
 
 ## Step 2 — Camelot mapping
 
-Create `tagslut/enrichment/__init__.py` (empty, marks package).
-Create `tagslut/enrichment/camelot.py` with pure function:
+Create `tagslut/enrichment/__init__.py` (empty).
+Create `tagslut/enrichment/camelot.py`:
+- `to_camelot(key: str, scale: str) -> str | None`
+- Case-insensitive normalization; return `None` for unknowns without raising
+- Full 24-entry mapping with enharmonic equivalence:
+  - C/MAJOR=8B, G/MAJOR=9B, D/MAJOR=10B, A/MAJOR=11B, E/MAJOR=12B, B/MAJOR=1B
+  - FSharp/MAJOR=Gb/MAJOR=2B, Db/MAJOR=CSharp/MAJOR=3B, Ab/MAJOR=GSharp/MAJOR=4B
+  - Eb/MAJOR=DSharp/MAJOR=5B, Bb/MAJOR=ASharp/MAJOR=6B, F/MAJOR=7B
+  - A/MINOR=8A, E/MINOR=9A, B/MINOR=10A, FSharp/MINOR=Gb/MINOR=11A
+  - Db/MINOR=CSharp/MINOR=12A, Ab/MINOR=GSharp/MINOR=1A, Eb/MINOR=DSharp/MINOR=2A
+  - Bb/MINOR=ASharp/MINOR=3A, F/MINOR=4A, C/MINOR=5A, G/MINOR=6A, D/MINOR=7A
 
-```python
-def to_camelot(key: str, scale: str) -> str | None:
-    """
-    Convert TIDAL key/keyScale to Camelot notation.
-    Case-insensitive. Returns None for unknown inputs without raising.
-    """
-```
+## Step 3 — ProviderTrack model
 
-Full 24-entry mapping. Enharmonic pairs map to the same slot. Major = B suffix,
-minor = A suffix.
-
-- C/MAJOR=8B, G/MAJOR=9B, D/MAJOR=10B, A/MAJOR=11B, E/MAJOR=12B, B/MAJOR=1B
-- FSharp/MAJOR=Gb/MAJOR=2B, Db/MAJOR=CSharp/MAJOR=3B, Ab/MAJOR=GSharp/MAJOR=4B
-- Eb/MAJOR=DSharp/MAJOR=5B, Bb/MAJOR=ASharp/MAJOR=6B, F/MAJOR=7B
-- A/MINOR=8A, E/MINOR=9A, B/MINOR=10A, FSharp/MINOR=Gb/MINOR=11A
-- Db/MINOR=CSharp/MINOR=12A, Ab/MINOR=GSharp/MINOR=1A, Eb/MINOR=DSharp/MINOR=2A
-- Bb/MINOR=ASharp/MINOR=3A, F/MINOR=4A, C/MINOR=5A, G/MINOR=6A, D/MINOR=7A
-
-## Step 3 — Provider model + TIDAL extraction
-
-Extend `tagslut/metadata/models/types.py:ProviderTrack` with new optional fields
-(all default `None`):
+Update `tagslut/metadata/models/types.py:ProviderTrack` to add optional fields
+(default `None`):
 - `tidal_bpm`, `tidal_key`, `tidal_key_scale`, `tidal_camelot`
 - `replay_gain_track`, `replay_gain_album`
 - `tidal_dj_ready`, `tidal_stem_ready`
 
-Update `tagslut/metadata/providers/tidal.py` in `_normalize_track()` to populate:
-- `tidal_bpm` from `attributes["bpm"]` (float coercion); keep existing `bpm` intact
-- `tidal_key` from `attributes["key"]`
-- `tidal_key_scale` from `attributes["keyScale"]`
-- `tidal_camelot` via `to_camelot(tidal_key, tidal_key_scale)` when both present
-- `tidal_dj_ready` / `tidal_stem_ready` from `attributes["djReady"]` /
-  `attributes["stemReady"]` (store as `0/1` int when present)
-- `replay_gain_track` / `replay_gain_album` by best-effort extraction from track
-  payload (handle float-or-dict shapes; keep `None` if absent)
-- Only add a fallback `GET https://api.tidal.com/v1/tracks/{id}` call if the v2
-  payload lacks required fields; reuse `_make_request()` + existing token loading;
-  include `time.sleep(0.2)` after the fallback call.
+## Step 4 — TIDAL normalization + extraction
 
-## Step 4 — Enrichment routing: skip ReccoBeats when TIDAL BPM exists
+Update `tagslut/metadata/providers/tidal.py`:
+- Import `time` and `to_camelot`.
+- In `_normalize_track()` populate the new fields from v2 `attributes` with safe
+  coercions and best-effort replayGain parsing.
+- If v2 is missing at least one of `bpm`, `key`, `keyScale`, `djReady`, `stemReady`,
+  `replayGain`, do a conditional v1 fallback:
+  - `GET {V1_BASE_URL}/tracks/{id}` via `_make_request()`, then `time.sleep(0.2)`
+  - Merge any found values into native fields; never raise on unexpected shapes.
 
-Update `tagslut/metadata/pipeline/stages.py` Stage 1 (ISRC loop):
-- Before calling provider `reccobeats`, check whether `matches` already contains
-  a `tidal` match with non-null BPM (`m.tidal_bpm` or `m.bpm`).
-- If so, log a skip and do not call ReccoBeats for that file.
+## Step 5 — Pipeline: skip ReccoBeats when TIDAL BPM exists
 
-## Step 5 — Persist new fields to v3 `track_identity` on write
+Update `tagslut/metadata/pipeline/stages.py` Stage 1 ISRC loop:
+- Before calling `reccobeats.search_by_isrc()`, if `matches` already includes a
+  `tidal` match with BPM present (`getattr(m, "tidal_bpm", None)` or `m.bpm`),
+  log a skip and `continue`.
+
+## Step 6 — Persist native fields to v3 identity on write
 
 Update `tagslut/metadata/store/db_writer.py:update_database()`:
+- After the `files` update, attempt v3 identity update (best-effort).
+- If any of `asset_file`, `asset_link`, `track_identity` missing: return without error.
+- Resolve identity id via `asset_file(path) → asset_link (active=1 if column exists)
+  → track_identity(id)`.
+- Pick best TIDAL match from `result.matches` (prefer `EXACT`, then `STRONG`, else
+  first TIDAL).
 
-- After updating `files`, attempt to resolve a linked v3 identity for `result.path`:
-  `asset_file(path) → asset_link(active=1) → track_identity(id)`
-- Select the "best" TIDAL match from `result.matches` (prefer `EXACT` then `STRONG`,
-  otherwise first TIDAL match).
-- Build an UPDATE that:
-  - Writes only non-`None` values.
-  - Uses `col = COALESCE(col, ?)` (fill-if-null) for all new columns to avoid
-    clobbering existing values.
-  - Updates `track_identity.updated_at` (and `enriched_at` if that's the repo's
-    marker for identity-level enrichment) only when an identity row is found.
-- If v3 tables or the new columns don't exist, skip silently (preserves current
-  behavior outside v3-enabled DBs).
+- Build dynamic `UPDATE track_identity ... WHERE id = ?`:
+  - Only non-`None` inputs and only if the column exists.
+  - Use `col = COALESCE(col, ?)` for each native field (fill-if-null).
+  - If writing at least one native field:
+    - Set `updated_at = CURRENT_TIMESTAMP` when column present.
+    - Set `enriched_at = COALESCE(enriched_at, CURRENT_TIMESTAMP)` when column present.
+- Wrap the v3 block in `try/except sqlite3.Error` — skip silently on any error.
 
-## Test plan
+## Test plan (targeted pytest)
 
-`tests/metadata/test_tidal_camelot.py`:
-- All 24 combos map correctly
-- Enharmonic pairs map to same Camelot slot
-- Unknown inputs return `None` without raising
+- Add `tests/metadata/test_tidal_camelot.py` (24 mappings, enharmonics, unknown→None).
+- Add `tests/metadata/test_tidal_native_fields.py` (monkeypatch `_make_request` for
+  v2-only + v2-missing/v1-missing cases).
+- Update `tests/test_enrichment_cascade.py` (Fake `reccobeats`; assert ISRC call
+  skipped when TIDAL BPM present).
+- Add `tests/storage/v3/test_migration_0016.py` (run v3 schema + pending migrations;
+  assert new columns exist).
+- Update `tests/test_db_writer.py` (fixture DB with v2 `files` + v3 tables + linked
+  identity; run v3 migrations; call `update_database()`; assert populate + no
+  overwrite of existing non-null values).
 
-`tests/metadata/test_tidal_native_fields.py` — monkeypatch `TidalProvider._make_request`:
-- Payload includes bpm/key/keyScale/readiness/replayGain → all new fields populated,
-  `tidal_camelot` correct
-- Fields missing → all new fields `None`, no exception
+Run:
+```
+pytest tests/metadata/test_tidal_camelot.py \
+       tests/metadata/test_tidal_native_fields.py \
+       tests/test_enrichment_cascade.py \
+       tests/storage/v3/test_migration_0016.py \
+       tests/test_db_writer.py
+```
 
-`tests/test_enrichment_cascade.py` — extend with FakeProvider for `reccobeats`:
-- When TIDAL ISRC match includes BPM, `reccobeats.search_by_isrc()` never called
+## Assumptions
 
-`tests/storage/v3/test_migration_0016.py`:
-- `create_schema_v3(conn)` then `run_pending_v3(conn)` → assert new columns exist
-  on `track_identity`
-
-`tests/test_db_writer.py` — extend with fixture DB containing v2 + v3 tables +
-linked identity, run v3 migrations, call `update_database()` with TIDAL result:
-- New `track_identity` columns populated
-- Pre-existing non-null values not overwritten
+- v3 tables live in the same SQLite DB file passed to `update_database()`.
+- `track_identity.enriched_at` is the identity-level enrichment marker; fill only if
+  null and only when writing at least one native field.
 
 ## Commit
 

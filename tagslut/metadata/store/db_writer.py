@@ -21,9 +21,105 @@ import unicodedata
 from datetime import datetime, timezone
 # from pathlib import Path  # unused
 
-from tagslut.metadata.models.types import EnrichmentResult, ProviderTrack
+from tagslut.metadata.models.types import EnrichmentResult, MatchConfidence, ProviderTrack
 
 logger = logging.getLogger("tagslut.metadata.enricher")
+
+
+def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?",
+            (table,),
+        ).fetchone()
+    except sqlite3.Error:
+        return False
+    return row is not None
+
+
+def _best_tidal_match(matches: list[ProviderTrack]) -> ProviderTrack | None:
+    tidal_matches = [m for m in matches if getattr(m, "service", None) == "tidal"]
+    if not tidal_matches:
+        return None
+    for preferred in (MatchConfidence.EXACT, MatchConfidence.STRONG):
+        hit = next((m for m in tidal_matches if getattr(m, "match_confidence", None) == preferred), None)
+        if hit is not None:
+            return hit
+    return tidal_matches[0]
+
+
+def _try_update_v3_identity_native_fields(conn: sqlite3.Connection, result: EnrichmentResult) -> None:
+    if not (_table_exists(conn, "asset_file") and _table_exists(conn, "asset_link") and _table_exists(conn, "track_identity")):
+        return
+
+    tidal_match = _best_tidal_match(result.matches or [])
+    if tidal_match is None:
+        return
+
+    active_where = "AND al.active = 1" if _table_has_column(conn, "asset_link", "active") else ""
+    identity_row = conn.execute(
+        f"""
+        SELECT ti.id
+        FROM asset_file af
+        JOIN asset_link al ON al.asset_id = af.id
+        JOIN track_identity ti ON ti.id = al.identity_id
+        WHERE af.path = ?
+        {active_where}
+        LIMIT 1
+        """,
+        (result.path,),
+    ).fetchone()
+    if identity_row is None:
+        return
+
+    identity_id = identity_row[0] if not isinstance(identity_row, sqlite3.Row) else identity_row["id"]
+    if identity_id is None:
+        return
+
+    tidal_bpm = getattr(tidal_match, "tidal_bpm", None)
+    if tidal_bpm is None:
+        tidal_bpm = getattr(tidal_match, "bpm", None)
+    tidal_key = getattr(tidal_match, "tidal_key", None)
+    if tidal_key is None:
+        tidal_key = getattr(tidal_match, "key", None)
+    tidal_key_scale = getattr(tidal_match, "tidal_key_scale", None)
+    if tidal_key_scale is None:
+        tidal_key_scale = getattr(tidal_match, "key_scale", None)
+
+    candidate_fields: dict[str, object] = {
+        "tidal_bpm": tidal_bpm,
+        "tidal_key": tidal_key,
+        "tidal_key_scale": tidal_key_scale,
+        "tidal_camelot": getattr(tidal_match, "tidal_camelot", None),
+        "replay_gain_track": getattr(tidal_match, "replay_gain_track", None),
+        "replay_gain_album": getattr(tidal_match, "replay_gain_album", None),
+        "tidal_dj_ready": getattr(tidal_match, "tidal_dj_ready", None),
+        "tidal_stem_ready": getattr(tidal_match, "tidal_stem_ready", None),
+    }
+
+    assignments: list[str] = []
+    params: list[object] = []
+    for column, value in candidate_fields.items():
+        if value is None:
+            continue
+        if not _table_has_column(conn, "track_identity", column):
+            continue
+        assignments.append(f"{column} = COALESCE({column}, ?)")
+        params.append(value)
+
+    if not assignments:
+        return
+
+    if _table_has_column(conn, "track_identity", "updated_at"):
+        assignments.append("updated_at = CURRENT_TIMESTAMP")
+    if _table_has_column(conn, "track_identity", "enriched_at"):
+        assignments.append("enriched_at = COALESCE(enriched_at, CURRENT_TIMESTAMP)")
+
+    params.append(identity_id)
+    conn.execute(
+        f"UPDATE track_identity SET {', '.join(assignments)} WHERE id = ?",
+        params,
+    )
 
 
 def _table_has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
@@ -456,7 +552,14 @@ def update_database(  # type: ignore  # TODO: mypy-strict
         query = f"UPDATE files SET {', '.join(fields)} WHERE path = ?"
         cursor.execute(query, values)
         conn.commit()
-        return cursor.rowcount > 0
+        updated = cursor.rowcount > 0
+        if updated:
+            try:
+                _try_update_v3_identity_native_fields(conn, result)
+                conn.commit()
+            except sqlite3.Error:
+                pass
+        return updated
     except sqlite3.Error as e:
         logger.error("Database update failed: %s", e)
         return False

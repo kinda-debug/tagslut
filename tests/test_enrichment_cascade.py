@@ -19,6 +19,14 @@ from tagslut.metadata.pipeline.stages import resolve_file, apply_cascade
 # Helpers
 # ---------------------------------------------------------------------------
 
+class FakeRouter:
+    def __init__(self, provider_names: list[str]):
+        self._provider_names = list(provider_names)
+
+    def provider_names_for(self, capability, *, log=None):  # noqa: ANN001
+        return list(self._provider_names)
+
+
 def _make_track(
     service: str,
     *,
@@ -130,6 +138,7 @@ class TestHoardingGapFill:
             ["beatport", "tidal"],
             _make_provider_getter(providers),
             mode="hoarding",
+            router=FakeRouter(["beatport", "tidal"]),
         )
 
         # Tidal should have been text-searched in gap-fill
@@ -155,6 +164,7 @@ class TestHoardingGapFill:
             ["beatport", "tidal"],
             _make_provider_getter(providers),
             mode="recovery",
+            router=FakeRouter(["beatport", "tidal"]),
         )
 
         # Tidal should NOT have been text-searched
@@ -176,6 +186,7 @@ class TestHoardingGapFill:
             ["beatport", "tidal"],
             _make_provider_getter(providers),
             mode="hoarding",
+            router=FakeRouter(["beatport", "tidal"]),
         )
 
         # Both matched via ISRC, no gap-fill search needed
@@ -197,6 +208,7 @@ class TestHoardingGapFill:
             ["beatport", "tidal"],
             _make_provider_getter(providers),
             mode="hoarding",
+            router=FakeRouter(["beatport", "tidal"]),
         )
 
         # No text search without artist+title
@@ -221,11 +233,33 @@ class TestHoardingGapFill:
             ["beatport", "tidal"],
             _make_provider_getter(providers),
             mode="both",
+            router=FakeRouter(["beatport", "tidal"]),
         )
 
         assert len(providers["tidal"].search_calls) == 1
         services = {m.service for m in result.matches}
         assert "tidal" in services
+
+
+def test_reccobeats_isrc_skipped_when_tidal_bpm_present() -> None:
+    tidal_track = _make_track("tidal", bpm=128.0)
+    reccobeats_track = _make_track("reccobeats", bpm=127.0)
+
+    providers = {
+        "tidal": FakeProvider("tidal", isrc_results=[tidal_track]),
+        "reccobeats": FakeProvider("reccobeats", isrc_results=[reccobeats_track]),
+    }
+
+    file_info = _make_file_info(tag_isrc="USRC12345678")
+    resolve_file(
+        file_info,
+        ["tidal", "reccobeats"],
+        _make_provider_getter(providers),
+        mode="hoarding",
+        router=FakeRouter(["tidal", "reccobeats"]),
+    )
+
+    assert len(providers["reccobeats"].isrc_calls) == 0
 
 
 # ===========================================================================

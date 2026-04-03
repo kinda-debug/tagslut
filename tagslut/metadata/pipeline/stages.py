@@ -157,6 +157,16 @@ def resolve_file(  # type: ignore  # TODO: mypy-strict
             if provider is None:
                 continue
 
+            if provider_name == "reccobeats":
+                tidal_bpm_present = any(
+                    (m.service == "tidal")
+                    and (getattr(m, "tidal_bpm", None) is not None or getattr(m, "bpm", None) is not None)
+                    for m in matches
+                )
+                if tidal_bpm_present:
+                    log("  reccobeats: skipping ISRC lookup (TIDAL already provides BPM)")
+                    continue
+
             isrc_matches = provider.search_by_isrc(normalized_isrc)
             for m in isrc_matches:
                 m.match_confidence = MatchConfidence.EXACT

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pre-download DB check for Beatport/Tidal links.
+"""Pre-download DB check for Beatport/Tidal/Spotify links.
 
 Flow:
 1) Extract tracklists from links (using scripts/extract_tracklists_from_links.py)
@@ -9,13 +9,14 @@ Flow:
 
 Match strategy (in priority order):
 Phase 1 — previously-downloaded source match (skips re-download regardless of quality):
-  - provider + track_id match in track_identity (beatport_id / tidal_id)
+  - provider + track_id match in track_identity (beatport_id / tidal_id / spotify_id)
   - ISRC match in track_identity with an associated asset_file
 
 Phase 2 — canonical/final-library quality-rank match (skips if equal-or-better exists):
   - ISRC match in files (confidence: high)
   - Beatport track ID match in files (confidence: high, Beatport only)
   - Tidal track ID match in files (confidence: high, Tidal only)
+  - Spotify track ID match in files (confidence: high, Spotify only)
   - Normalized title + artist + album (confidence: medium)
   - Normalized title + artist (confidence: low)
 
@@ -66,6 +67,7 @@ CONFIDENCE_LEVELS = {
     "isrc": "high",
     "beatport_id": "high",
     "tidal_id": "high",
+    "spotify_id": "high",
     "exact_title_artist_album": "medium",
     "exact_title_artist": "low",
 }
@@ -131,6 +133,7 @@ class DbRow:
     isrc: str
     beatport_id: str
     tidal_id: str
+    spotify_id: str
     title: str
     artist: str
     album: str
@@ -207,7 +210,7 @@ def infer_quality_rank(
 
 def load_downloaded_track_ids(
     db_path: Path,
-) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
+) -> tuple[dict[str, str], dict[str, str], dict[str, str], dict[str, str]]:
     """Return dicts mapping previously-downloaded provider IDs to a representative path.
 
     Queries track_identity joined with asset_link + asset_file to find every
@@ -217,10 +220,12 @@ def load_downloaded_track_ids(
     Returns:
         by_beatport_id  — beatport_id  → asset_file.path
         by_tidal_id     — tidal_id     → asset_file.path
+        by_spotify_id   — spotify_id   → asset_file.path
         by_isrc         — isrc         → asset_file.path
     """
     by_beatport_id: dict[str, str] = {}
     by_tidal_id: dict[str, str] = {}
+    by_spotify_id: dict[str, str] = {}
     by_isrc: dict[str, str] = {}
 
     try:
@@ -231,6 +236,7 @@ def load_downloaded_track_ids(
             SELECT
                 ti.beatport_id,
                 ti.tidal_id,
+                ti.spotify_id,
                 ti.isrc,
                 af.path
             FROM track_identity ti
@@ -240,6 +246,7 @@ def load_downloaded_track_ids(
             INNER JOIN asset_file af ON af.id = al.asset_id
             WHERE (ti.beatport_id IS NOT NULL AND ti.beatport_id != '')
                OR (ti.tidal_id   IS NOT NULL AND ti.tidal_id   != '')
+               OR (ti.spotify_id IS NOT NULL AND ti.spotify_id != '')
                OR (ti.isrc       IS NOT NULL AND ti.isrc       != '')
             ORDER BY al.confidence DESC, al.id ASC
             """
@@ -247,11 +254,12 @@ def load_downloaded_track_ids(
         conn.close()
     except sqlite3.OperationalError:
         # track_identity / asset_link / asset_file tables may not exist on old DBs.
-        return by_beatport_id, by_tidal_id, by_isrc
+        return by_beatport_id, by_tidal_id, by_spotify_id, by_isrc
 
     for r in rows:
         bp_id = (r["beatport_id"] or "").strip()
         td_id = (r["tidal_id"] or "").strip()
+        sp_id = (r["spotify_id"] or "").strip()
         isrc  = (r["isrc"] or "").strip()
         path  = r["path"] or ""
         # First row per identity (highest confidence) wins; subsequent rows ignored.
@@ -259,10 +267,12 @@ def load_downloaded_track_ids(
             by_beatport_id[bp_id] = path
         if td_id and td_id not in by_tidal_id:
             by_tidal_id[td_id] = path
+        if sp_id and sp_id not in by_spotify_id:
+            by_spotify_id[sp_id] = path
         if isrc and isrc not in by_isrc:
             by_isrc[isrc] = path
 
-    return by_beatport_id, by_tidal_id, by_isrc
+    return by_beatport_id, by_tidal_id, by_spotify_id, by_isrc
 
 
 # ---------------------------------------------------------------------------
@@ -277,6 +287,7 @@ def load_db_rows(
     dict[str, list[DbRow]],
     dict[str, list[DbRow]],
     dict[str, list[DbRow]],
+    dict[str, list[DbRow]],
 ]:
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
@@ -285,6 +296,7 @@ def load_db_rows(
     by_isrc: dict[str, list[DbRow]] = defaultdict(list)
     by_beatport: dict[str, list[DbRow]] = defaultdict(list)
     by_tidal: dict[str, list[DbRow]] = defaultdict(list)
+    by_spotify: dict[str, list[DbRow]] = defaultdict(list)
     by_exact3: dict[str, list[DbRow]] = defaultdict(list)
     by_exact2: dict[str, list[DbRow]] = defaultdict(list)
 
@@ -296,6 +308,7 @@ def load_db_rows(
                 ti.isrc                 AS canonical_isrc,
                 ti.beatport_id,
                 ti.tidal_id,
+                ti.spotify_id,
                 ti.canonical_title,
                 ti.canonical_artist,
                 ti.canonical_album,
@@ -321,6 +334,7 @@ def load_db_rows(
                     canonical_isrc,
                     beatport_id,
                     tidal_id,
+                    spotify_id,
                     canonical_title,
                     canonical_artist,
                     canonical_album,
@@ -335,7 +349,7 @@ def load_db_rows(
             )
         except sqlite3.OperationalError:
             conn.close()
-            return by_isrc, by_beatport, by_tidal, by_exact3, by_exact2
+            return by_isrc, by_beatport, by_tidal, by_spotify, by_exact3, by_exact2
 
     for r in cur.fetchall():
         meta = parse_json(r["metadata_json"])
@@ -343,6 +357,7 @@ def load_db_rows(
         isrc = (r["canonical_isrc"] or first_meta(meta, ["isrc", "ISRC", "TSRC"])).strip()
         beatport_id = (str(r["beatport_id"]) if r["beatport_id"] else first_meta(meta, ["beatport_id", "beatport_track_id", "BP_TRACK_ID"]))
         tidal_id = (str(r["tidal_id"]) if r["tidal_id"] else first_meta(meta, ["tidal_id", "tidal_track_id", "TD_TRACK_ID"]))
+        spotify_id = (str(r["spotify_id"]) if r["spotify_id"] else first_meta(meta, ["spotify_id", "spotify_track_id", "SPOTIFY_ID"]))
         title = (r["canonical_title"] or first_meta(meta, ["title", "TITLE", "track_title", "name"])).strip()
         artist = (r["canonical_artist"] or first_meta(meta, ["artist", "ARTIST", "albumartist", "ALBUMARTIST"])).strip()
         album = (r["canonical_album"] or first_meta(meta, ["album", "ALBUM", "release"])).strip()
@@ -352,6 +367,7 @@ def load_db_rows(
             isrc=isrc,
             beatport_id=str(beatport_id).strip(),
             tidal_id=str(tidal_id).strip(),
+            spotify_id=str(spotify_id).strip(),
             title=title,
             artist=artist,
             album=album,
@@ -371,6 +387,8 @@ def load_db_rows(
             by_beatport[row.beatport_id].append(row)
         if row.tidal_id:
             by_tidal[row.tidal_id].append(row)
+        if row.spotify_id:
+            by_spotify[row.spotify_id].append(row)
 
         k3 = "|".join([norm_text(row.title), norm_text(row.artist), norm_text(row.album)])
         if k3.strip("|"):
@@ -381,7 +399,7 @@ def load_db_rows(
             by_exact2[k2].append(row)
 
     conn.close()
-    return by_isrc, by_beatport, by_tidal, by_exact3, by_exact2
+    return by_isrc, by_beatport, by_tidal, by_spotify, by_exact3, by_exact2
 
 
 def build_keep_track_url(domain: str, track_id: str) -> str:
@@ -392,6 +410,8 @@ def build_keep_track_url(domain: str, track_id: str) -> str:
         return f"https://www.beatport.com/track/-/{tid}"
     if domain == "tidal":
         return f"https://tidal.com/browse/track/{tid}"
+    if domain == "spotify":
+        return f"https://open.spotify.com/track/{tid}"
     return ""
 
 
@@ -452,7 +472,7 @@ def main() -> int:
     default_extract_script = repo_root / "scripts" / "extract_tracklists_from_links.py"
 
     ap = argparse.ArgumentParser(
-        description="Check Beatport/Tidal links against DB before download",
+        description="Check Beatport/Tidal/Spotify links against DB before download",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -569,10 +589,10 @@ Match Methods (in priority order):
     # These are tracks the DB already knows about via the new-schema tables
     # (asset_file / asset_link / track_identity), regardless of whether the
     # downloaded file was later promoted, stashed, or is still in staging.
-    ti_by_beatport, ti_by_tidal, ti_by_isrc = load_downloaded_track_ids(db_path)
+    ti_by_beatport, ti_by_tidal, ti_by_spotify, ti_by_isrc = load_downloaded_track_ids(db_path)
 
     # ── Phase 2: load files-table rows for quality-rank comparison ───────────
-    by_isrc, by_beatport, by_tidal, by_exact3, by_exact2 = load_db_rows(db_path)
+    by_isrc, by_beatport, by_tidal, by_spotify, by_exact3, by_exact2 = load_db_rows(db_path)
 
     existing_isrc_to_path: dict[str, str] = {}
     if existing_root is not None and not args.force_keep_matched:
@@ -680,6 +700,9 @@ Match Methods (in priority order):
                 elif domain == "tidal" and track_id and track_id in ti_by_tidal:
                     phase1_asset_path = ti_by_tidal[track_id]
                     phase1_match_kind = "tidal_id"
+                elif domain == "spotify" and track_id and track_id in ti_by_spotify:
+                    phase1_asset_path = ti_by_spotify[track_id]
+                    phase1_match_kind = "spotify_id"
                 elif isrc and isrc in ti_by_isrc:
                     phase1_asset_path = ti_by_isrc[isrc]
                     phase1_match_kind = "isrc"
@@ -713,6 +736,9 @@ Match Methods (in priority order):
                 elif domain == "tidal" and track_id and track_id in by_tidal:
                     matched = choose_best_match(by_tidal[track_id])
                     method = "tidal_id"
+                elif domain == "spotify" and track_id and track_id in by_spotify:
+                    matched = choose_best_match(by_spotify[track_id])
+                    method = "spotify_id"
                 else:
                     k3 = "|".join([norm_text(title), norm_text(artist), norm_text(album)])
                     if k3 in by_exact3:

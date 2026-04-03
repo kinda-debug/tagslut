@@ -86,6 +86,8 @@ def classify_ingestion_track(
     """Return the ingestion method and confidence for the incoming file."""
 
     source = _norm_name(download_source)
+    if source and source.startswith("spotiflac"):
+        return "spotify_intake", "high" if _norm_text(isrc) else "uncertain"
     if source in _TRACK_A_SOURCES:
         return "provider_api", "high" if _norm_text(isrc) else "uncertain"
 
@@ -289,6 +291,9 @@ def upsert_track_identity(
     *,
     isrc: str | None,
     beatport_id: str | None,
+    tidal_id: str | None,
+    spotify_id: str | None,
+    qobuz_id: str | None,
     artist: str | None,
     title: str | None,
     bpm: str | None = None,
@@ -302,6 +307,9 @@ def upsert_track_identity(
 ) -> int | None:
     isrc_norm = _norm_text(isrc)
     beatport_norm = _norm_text(beatport_id)
+    tidal_norm = _norm_text(tidal_id)
+    spotify_norm = _norm_text(spotify_id)
+    qobuz_norm = _norm_text(qobuz_id)
     artist_norm = _norm_name(artist)
     title_norm = _norm_name(title)
     bpm_norm = _norm_text(bpm)
@@ -312,6 +320,9 @@ def upsert_track_identity(
             {
                 "isrc": isrc_norm,
                 "beatport_id": beatport_norm,
+                "tidal_id": tidal_norm,
+                "spotify_id": spotify_norm,
+                "qobuz_id": qobuz_norm,
                 "artist_norm": artist_norm,
                 "title_norm": title_norm,
             },
@@ -334,6 +345,15 @@ def upsert_track_identity(
         artist_norm,
         title_norm,
     ]
+    provider_optional_values = {
+        "tidal_id": tidal_norm,
+        "spotify_id": spotify_norm,
+        "qobuz_id": qobuz_norm,
+    }
+    for column, value in provider_optional_values.items():
+        if _column_exists(conn, V3_TRACK_IDENTITY_TABLE, column):
+            columns.append(column)
+            params.append(value)
 
     optional_values = {
         "canonical_bpm": bpm_norm,
@@ -356,6 +376,9 @@ def upsert_track_identity(
         "artist_norm = COALESCE(excluded.artist_norm, artist_norm)",
         "title_norm = COALESCE(excluded.title_norm, title_norm)",
     ]
+    for column in provider_optional_values:
+        if column in columns:
+            update_assignments.append(f"{column} = COALESCE(excluded.{column}, {column})")
     _PROVENANCE_COLS = {"ingested_at", "ingestion_method", "ingestion_source", "ingestion_confidence"}
     for column in optional_values:
         if column in columns and column not in _PROVENANCE_COLS:
@@ -617,12 +640,18 @@ def dual_write_registered_file(
     duration_ref_ms: int | None,
     duration_ref_source: str | None,
     event_time: str | None = None,
+    download_source_override: str | None = None,
+    ingestion_method_override: str | None = None,
+    ingestion_source_override: str | None = None,
+    ingestion_confidence_override: str | None = None,
+    provider_id_hints: dict[str, Any] | None = None,
 ) -> tuple[int, int | None]:
     owns_transaction = not conn.in_transaction
     if owns_transaction:
         conn.execute("BEGIN IMMEDIATE")
 
     try:
+        effective_download_source = _norm_text(download_source_override) or _norm_text(download_source)
         asset_id = upsert_asset_file(
             conn,
             path=path,
@@ -637,33 +666,46 @@ def dual_write_registered_file(
             bitrate=bitrate,
             library=library,
             zone=zone,
-            download_source=download_source,
+            download_source=effective_download_source,
             download_date=download_date,
             mgmt_status=mgmt_status,
         )
 
         identity_hints = identity_hints_from_metadata(metadata)
+        if provider_id_hints:
+            for key, value in provider_id_hints.items():
+                normalized = _norm_text(value)
+                if normalized:
+                    identity_hints[key] = normalized
         ingestion_method, ingestion_confidence = classify_ingestion_track(
             isrc=identity_hints["isrc"],
             beatport_id=identity_hints["beatport_id"],
             tidal_id=identity_hints["tidal_id"],
             spotify_id=identity_hints["spotify_id"],
             qobuz_id=identity_hints["qobuz_id"],
-            download_source=download_source,
+            download_source=effective_download_source,
+        )
+        effective_ingestion_method = _norm_text(ingestion_method_override) or ingestion_method
+        effective_ingestion_source = _norm_text(ingestion_source_override) or effective_download_source or ""
+        effective_ingestion_confidence = (
+            _norm_text(ingestion_confidence_override) or ingestion_confidence
         )
         identity_id = upsert_track_identity(
             conn,
             isrc=identity_hints["isrc"],
             beatport_id=identity_hints["beatport_id"],
+            tidal_id=identity_hints["tidal_id"],
+            spotify_id=identity_hints["spotify_id"],
+            qobuz_id=identity_hints["qobuz_id"],
             artist=identity_hints["artist"],
             title=identity_hints["title"],
             bpm=identity_hints["bpm"],
             key=identity_hints["key"],
             duration_ref_ms=duration_ref_ms,
-            ref_source=duration_ref_source or download_source,
-            ingestion_method=ingestion_method,
-            ingestion_source=download_source or "",
-            ingestion_confidence=ingestion_confidence,
+            ref_source=duration_ref_source or effective_download_source,
+            ingestion_method=effective_ingestion_method,
+            ingestion_source=effective_ingestion_source,
+            ingestion_confidence=effective_ingestion_confidence,
         )
         if identity_id is not None:
             upsert_asset_link(
@@ -681,7 +723,7 @@ def dual_write_registered_file(
             asset_id=asset_id,
             identity_id=identity_id,
             source_path=str(path),
-            details={"source": download_source},
+            details={"source": effective_download_source},
             event_time=event_time,
         )
         if owns_transaction:

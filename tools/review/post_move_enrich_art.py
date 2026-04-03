@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sqlite3
 import subprocess
@@ -24,6 +25,7 @@ def parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(description="Run enrichment and cover-art embedding for exact promoted paths")
     ap.add_argument("--db", required=True, help="SQLite DB path")
     ap.add_argument("--paths-file", required=True, help="Text file with one absolute promoted path per line")
+    ap.add_argument("--intake-context", default=None, help="Optional intake acquisition manifest")
     ap.add_argument("--providers", default="beatport,tidal,deezer,traxsource,musicbrainz")
     ap.add_argument("--force", action="store_true", help="Force re-enrichment")
     ap.add_argument("--retry-no-match", action="store_true", help="Retry files previously marked no_match")
@@ -50,10 +52,80 @@ def load_paths(paths_file: Path) -> list[Path]:
     return out
 
 
+def load_intake_context(path: Path | None) -> dict[str, object]:
+    if path is None or not path.exists():
+        return {}
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        return {}
+    records = payload.get("records")
+    if not isinstance(records, list):
+        return {}
+
+    by_spotify_id: dict[str, dict[str, object]] = {}
+    by_isrc: dict[str, dict[str, object]] = {}
+    for item in records:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("status") or "").strip().lower() != "downloaded":
+            continue
+        spotify_id = str(item.get("spotify_id") or "").strip()
+        isrc = str(item.get("isrc") or "").strip()
+        if spotify_id and spotify_id not in by_spotify_id:
+            by_spotify_id[spotify_id] = item
+        if isrc and isrc not in by_isrc:
+            by_isrc[isrc] = item
+    payload["records_by_spotify_id"] = by_spotify_id
+    payload["records_by_isrc"] = by_isrc
+    return payload
+
+
+def _normalize_tag_map(tags: object) -> dict[str, object]:
+    items = getattr(tags, "items", None)
+    if not callable(items):
+        return {}
+    return {str(key).lower(): value for key, value in items()}
+
+
+def _first_tag(tag_map: dict[str, object], *keys: str) -> str | None:
+    for key in keys:
+        value = tag_map.get(key.lower())
+        if isinstance(value, list):
+            for item in value:
+                text = str(item).strip()
+                if text:
+                    return text
+        elif value is not None:
+            text = str(value).strip()
+            if text:
+                return text
+    return None
+
+
+def _lookup_spotify_record(
+    intake_context: dict[str, object],
+    *,
+    spotify_id: str | None,
+    isrc: str | None,
+) -> dict[str, object] | None:
+    by_spotify_id = intake_context.get("records_by_spotify_id")
+    if spotify_id and isinstance(by_spotify_id, dict):
+        record = by_spotify_id.get(spotify_id)
+        if isinstance(record, dict):
+            return record
+    by_isrc = intake_context.get("records_by_isrc")
+    if isrc and isinstance(by_isrc, dict):
+        record = by_isrc.get(isrc)
+        if isinstance(record, dict):
+            return record
+    return None
+
+
 def main() -> int:
     args = parse_args()
     db_path = Path(args.db).expanduser().resolve()
     paths_file = Path(args.paths_file).expanduser().resolve()
+    intake_context_path = Path(args.intake_context).expanduser().resolve() if args.intake_context else None
     providers = [item.strip() for item in args.providers.split(",") if item.strip()]
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
@@ -64,6 +136,7 @@ def main() -> int:
         raise SystemExit(f"Paths file not found: {paths_file}")
 
     file_paths = load_paths(paths_file)
+    intake_context = load_intake_context(intake_context_path)
     total = len(file_paths)
     print(f"Post-move enrichment start: files={total} db={db_path}")
     if not file_paths:
@@ -176,7 +249,52 @@ def main() -> int:
                             continue
                         try:
                             tags = MutagenFLAC(str(path))
-                            def _tag(k): v=tags.get(k,[]); return v[0].strip() if v else None
+                            tag_map = _normalize_tag_map(tags)
+                            metadata = {
+                                "isrc": _first_tag(tag_map, "isrc", "tsrc"),
+                                "artist": _first_tag(tag_map, "artist", "albumartist"),
+                                "title": _first_tag(tag_map, "title"),
+                                "album": _first_tag(tag_map, "album"),
+                                "bpm": _first_tag(tag_map, "bpm", "tempo"),
+                                "spotify_id": _first_tag(tag_map, "spotify_id"),
+                            }
+                            spotify_record = _lookup_spotify_record(
+                                intake_context,
+                                spotify_id=metadata["spotify_id"],
+                                isrc=metadata["isrc"],
+                            )
+                            download_source_override = None
+                            ingestion_method_override = None
+                            ingestion_source_override = None
+                            ingestion_confidence_override = None
+                            provider_id_hints = None
+                            duration_ref_source = "tidal"
+                            if spotify_record is not None:
+                                service = str(spotify_record.get("service") or "").strip().lower()
+                                spotify_url = str(
+                                    spotify_record.get("spotify_url")
+                                    or intake_context.get("source_url")
+                                    or ""
+                                ).strip()
+                                provider_track_id = str(spotify_record.get("provider_track_id") or "").strip()
+                                download_source_override = f"spotiflac_{service}" if service else "spotiflac"
+                                ingestion_method_override = "spotify_intake"
+                                if spotify_url:
+                                    ingestion_source_override = (
+                                        f"spotiflac:{spotify_url}|service:{service}"
+                                        if service
+                                        else f"spotiflac:{spotify_url}"
+                                    )
+                                ingestion_confidence_override = "high"
+                                duration_ref_source = "spotify"
+                                provider_id_hints = {
+                                    "spotify_id": metadata["spotify_id"] or spotify_record.get("spotify_id"),
+                                    "isrc": metadata["isrc"] or spotify_record.get("isrc"),
+                                }
+                                if service == "tidal" and provider_track_id:
+                                    provider_id_hints["tidal_id"] = provider_track_id
+                                elif service == "qobuz" and provider_track_id:
+                                    provider_id_hints["qobuz_id"] = provider_track_id
                             stat = path.stat()
                             dual_write_registered_file(
                                 dw_conn,
@@ -190,14 +308,14 @@ def main() -> int:
                                 library="MASTER_LIBRARY", zone="accepted",
                                 download_source="tidal", download_date=None,
                                 mgmt_status="promoted_to_final_library",
-                                metadata={
-                                    "isrc": _tag("isrc"),
-                                    "artist": _tag("artist") or _tag("albumartist"),
-                                    "title": _tag("title"),
-                                    "bpm": _tag("bpm") or _tag("tempo"),
-                                },
+                                metadata=metadata,
                                 duration_ref_ms=int(tags.info.length*1000) if tags.info else None,
-                                duration_ref_source="tidal",
+                                duration_ref_source=duration_ref_source,
+                                download_source_override=download_source_override,
+                                ingestion_method_override=ingestion_method_override,
+                                ingestion_source_override=ingestion_source_override,
+                                ingestion_confidence_override=ingestion_confidence_override,
+                                provider_id_hints=provider_id_hints,
                             )
                             registered += 1
                         except Exception as e:

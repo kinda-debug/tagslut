@@ -80,6 +80,9 @@ For day-to-day downloads, use the umbrella wrapper instead of stitching phases t
 # Default: precheck + download + local tag prep + promote + merged M3U
 tools/get <provider-url>
 
+# Spotify collection intake is supported too
+tools/get "https://open.spotify.com/playlist/..."
+
 # Skip tagging/enrich/art when intentionally doing a lighter run
 tools/get <provider-url> --no-hoard
 
@@ -88,10 +91,11 @@ tools/get <provider-url> --verbose
 ```
 
 Notes:
-- `tools/get` is the primary user-facing downloader for Beatport and Tidal.
+- `tools/get` is the primary user-facing downloader for Spotify, Beatport, and Tidal.
 - default output is concise; use `--verbose` for internal paths, artifact files, and batch snapshots
 - local identify/tag prep runs before promote; external enrich + cover art now launch in the background after promote
 - `tools/get --m3u` writes Roon-style playlists inside `PLAYLIST_ROOT` using relative paths.
+- Spotify URLs are expanded before precheck, then acquired through the internal Spotify intake adapter with per-track service fallback (`qobuz -> tidal -> amazon`) and SpotiFLAC-style batch artifacts (log, failed report, manifest, and `.m3u8` for collections).
 - if a run reports precheck/download zeros (`keep=0 skip=0 total=0`, `selected=0`), verify link extraction status before assuming duplicate suppression: check `artifacts/compare/precheck_links_extracted_*.csv` and `artifacts/compare/precheck_extracted_report_*.md` for notes such as `tidal_token_missing`
 - work output is split by intent:
   - `FIX_ROOT` for salvageable metadata/tag issues (default: `/Volumes/MUSIC/_work/fix`)
@@ -99,7 +103,7 @@ Notes:
   - `DISCARD_ROOT` for deterministic duplicates like `dest_exists` (default: `/Volumes/MUSIC/_work/discard`)
 - expired quarantine can be reviewed or purged with `python tools/review/quarantine_gc.py --root "$QUARANTINE_ROOT" --days "$QUARANTINE_RETENTION_DAYS"`
 - `--force-download` bypasses the pre-download skip so matched URLs are still fetched, but equal-or-better library files still win at promote time unless you run an explicit replacement workflow
-- `tools/get-intake` is the advanced/backend command for existing batch roots, `--m3u-only`, and direct pipeline control.
+- `tools/get-intake` is the advanced/backend command for existing batch roots, Spotify/Tidal direct intake, `--m3u-only`, and direct pipeline control.
 - `tools/get-sync` is a deprecated Beatport compatibility alias.
 - `tools/get --mp3` / `tools/get --dj` route to the canonical `tagslut intake url` orchestration to ensure the FLAC cohort is fully tagged once before writing MP3 derivatives.
 

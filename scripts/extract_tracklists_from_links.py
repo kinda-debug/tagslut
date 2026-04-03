@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Extract Beatport/Tidal tracklists from a list of URLs.
+"""Extract Beatport/Tidal/Spotify tracklists from a list of URLs.
 
 Input:
   - text file with one URL per line
@@ -23,6 +23,12 @@ from urllib.parse import parse_qs, urlparse
 
 import httpx
 
+from tagslut.intake.spotify import (
+    SpotifyIntakeError,
+    SpotifyMetadataClient,
+    is_spotify_url,
+    parse_spotify_url,
+)
 from tagslut.metadata.auth import TokenManager
 from tagslut.metadata.providers.beatport import BeatportProvider
 
@@ -64,7 +70,7 @@ class LinkSummary:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Extract tracklists from Beatport/Tidal links."
+        description="Extract tracklists from Beatport/Tidal/Spotify links."
     )
     parser.add_argument("--input", type=Path, required=True, help="Text file with links.")
     parser.add_argument(
@@ -113,6 +119,30 @@ def is_tidal(url: str) -> bool:
 def is_beatport(url: str) -> bool:
     host = urlparse(url).netloc.lower()
     return "beatport.com" in host
+
+
+def _spotify_track_rows(link: str, collection) -> tuple[str, str, list[TrackRow], str]:
+    rows: list[TrackRow] = []
+    for index, track in enumerate(collection.tracks, start=1):
+        rows.append(
+            TrackRow(
+                source_link=link,
+                normalized_link=link,
+                domain="spotify",
+                link_type=collection.kind,
+                link_title=collection.title,
+                track_index=index,
+                track_id=track.spotify_id,
+                title=track.title,
+                artist=track.artist,
+                album=track.album,
+                isrc=track.isrc,
+                duration_ms=str(track.duration_ms or ""),
+                status="ok",
+                note="",
+            )
+        )
+    return "spotify", collection.kind, rows, ""
 
 
 def _join_names(items: Any) -> str:
@@ -665,6 +695,21 @@ def extract_from_beatport(
     return "beatport", parts[0], tracks, "unsupported_beatport_kind"
 
 
+def extract_from_spotify(
+    link: str,
+    spotify_client: SpotifyMetadataClient,
+) -> tuple[str, str, list[TrackRow], str]:
+    try:
+        info = parse_spotify_url(link)
+    except SpotifyIntakeError as exc:
+        return "spotify", "unknown", [], str(exc)
+    try:
+        collection = spotify_client.fetch_collection(link)
+    except SpotifyIntakeError as exc:
+        return "spotify", info["type"], [], str(exc)
+    return _spotify_track_rows(link, collection)
+
+
 def write_tracks_csv(path: Path, rows: list[TrackRow]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as handle:
@@ -801,6 +846,7 @@ def main() -> int:
 
     client = httpx.Client(timeout=args.timeout, follow_redirects=True)
     beatport = BeatportProvider(tm)
+    spotify = SpotifyMetadataClient(timeout=args.timeout)
     try:
         for idx, link in enumerate(links, start=1):
             print(f"[{idx}/{len(links)}] {link}")
@@ -817,6 +863,11 @@ def main() -> int:
                         client=client,
                         token=tidal_token_value,
                         country_code=tidal_country,
+                    )
+                elif is_spotify_url(link):
+                    domain, link_type, extracted, note = extract_from_spotify(
+                        link=link,
+                        spotify_client=spotify,
                     )
                 elif is_beatport(link):
                     domain, link_type, extracted, note = extract_from_beatport(
@@ -868,6 +919,7 @@ def main() -> int:
         return 0
     finally:
         beatport.close()
+        spotify.close()
         client.close()
 
 

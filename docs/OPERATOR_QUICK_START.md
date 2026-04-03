@@ -28,7 +28,7 @@ cd ~/Projects/tagslut && ts-auth beatport
 ## Download
 
 ```bash
-ts-get <url>           # TIDAL, Qobuz, or Beatport URL
+ts-get <url>           # Spotify, TIDAL, Qobuz, or Beatport URL
 ts-get <url> --dj      # download + add to DJ pool M3U
 ```
 

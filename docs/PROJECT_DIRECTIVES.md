@@ -166,11 +166,16 @@ The four-tier model defined above is superseded. The correct five-tier model is:
 
 Full multi-provider policy: `docs/MULTI_PROVIDER_ID_POLICY.md`
 
-## Two ingestion tracks
+## Three ingestion tracks
 
 Track A (clean-slate): files from Beatport/TIDAL via `tools/get --enrich`
   ingestion_method = 'provider_api'
   ingestion_confidence = 'verified' (both providers agree) or 'high' (one provider)
+
+Track S (Spotify intake): files from Spotify URLs via `tools/get`, `tagslut intake url`, or `tools/get-intake`
+  ingestion_method = 'spotify_intake'
+  ingestion_confidence = 'high' when ISRC is present, otherwise 'uncertain'
+  ingestion_source = `spotiflac:<spotify_url>|service:<winning_service>`
 
 Track B (legacy): older files with accumulated cross-provider IDs
   ingestion_method = 'multi_provider_reconcile'

@@ -17,6 +17,7 @@
 The active code lives in `tagslut/`, `tools/`, and `scripts/`. Historical code and superseded plans live in `legacy/` and `docs/archive/`.
 
 ## Source selection (summary)
+- Spotify URLs route through a tagslut-owned Spotify intake adapter that expands Spotify metadata first, then downloads per track with service fallback `qobuz -> tidal -> amazon`.
 - TIDAL via tiddl is the primary source when available.
 - Beatport-only tracks download via beatportdl (explicit, not fallback).
 - Qobuz downloads via streamrip when a Qobuz URL is provided.
@@ -34,6 +35,14 @@ Use `tools/get <provider-url>` for day-to-day provider intake. It wraps:
 - promote/fix/quarantine/discard planning
 - downstream playlist generation
 - optional legacy DJ MP3 creation with `--dj` (deprecated; see `docs/DJ_PIPELINE.md` for the canonical 4-stage pipeline)
+
+Supported URL families in the active wrapper path:
+
+- Spotify track/album/playlist URLs
+- TIDAL URLs
+- Beatport URLs
+- Qobuz URLs
+- Deezer URLs
 
 ### Staged-root path
 
@@ -100,7 +109,7 @@ as the primary operator contract. See `docs/DJ_PIPELINE.md` for the canonical pi
 
 The canonical DJ path is a linear, DB-backed pipeline with explicit state at each stage:
 
-1. **Intake masters** — `tagslut intake <provider-url>` refreshes canonical master identity and provenance state
+1. **Intake masters** — `tagslut intake <provider-url>` refreshes canonical master identity and provenance state. Spotify-origin acquisitions are recorded with `ingestion_method='spotify_intake'`; direct provider API downloads remain `provider_api`.
 2. **Build or reconcile MP3s** — `tagslut mp3 build` / `tagslut mp3 reconcile` writes `mp3_asset` rows
 3. **Admit and validate** — `tagslut dj backfill` / `dj admit` promotes assets to `dj_admission`, then `tagslut dj validate` checks readiness
 4. **Emit or patch XML** — `tagslut dj xml emit` / `dj xml patch` writes deterministic Rekordbox XML, preserves stable TrackIDs via `dj_track_id_map`, and records manifest hashes in `dj_export_state`

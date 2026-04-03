@@ -39,7 +39,7 @@ that have been matched by multiple providers over time and where all IDs agree.
 
 ---
 
-## Two ingestion tracks
+## Three ingestion tracks
 
 ### Track A — Clean-slate (new files from provider APIs)
 
@@ -52,6 +52,20 @@ Processing:
 4. If both providers agree on ISRC → `ingestion_confidence = 'verified'`
 5. If single provider only → `ingestion_confidence = 'high'`
 6. All other provider IDs left NULL — populated later by enrichment passes
+
+### Track S — Spotify intake (Spotify-origin acquisition with provider fallback)
+
+Applies to: files downloaded from Spotify track/album/playlist URLs through
+`tools/get`, `tagslut intake url`, or `tools/get-intake`.
+
+Processing:
+1. Expand Spotify track metadata before precheck so duplicate gating still happens on a per-track basis
+2. Acquire audio through the Spotify intake adapter with service order `qobuz -> tidal -> amazon`
+3. Preserve the original Spotify URL plus the winning service/provider track ID in the acquisition manifest
+4. `ingestion_method = 'spotify_intake'`
+5. `ingestion_source = 'spotiflac:<spotify_url>|service:<winning_service>'`
+6. `ingestion_confidence = 'high'` when ISRC is present, otherwise `uncertain`
+7. Preserve `spotify_id` plus the winning provider ID (`qobuz_id` or `tidal_id`) when available
 
 ### Track B — Legacy (older files with accumulated cross-provider IDs)
 
@@ -162,8 +176,8 @@ WHERE beatport_id IS NOT NULL
 CHECK (ingestion_confidence IN ('verified','corroborated','high','uncertain','legacy'))
 ```
 
-`ingestion_method` must include `'multi_provider_reconcile'` in its
-controlled vocabulary (add to `INGESTION_PROVENANCE.md`).
+`ingestion_method` must include both `'multi_provider_reconcile'` and
+`'spotify_intake'` in its controlled vocabulary.
 
 This requires migration 0013 (or whichever is next after 0012).
 

@@ -26,6 +26,7 @@ def test_decide_match_action_skips_equal_or_better_existing() -> None:
         isrc="AAA",
         beatport_id="123",
         tidal_id="",
+        spotify_id="",
         title="Track",
         artist="Artist",
         album="Album",
@@ -51,6 +52,7 @@ def test_decide_match_action_keeps_upgrade_or_unknown_quality() -> None:
         isrc="AAA",
         beatport_id="123",
         tidal_id="",
+        spotify_id="",
         title="Track",
         artist="Artist",
         album="Album",
@@ -62,6 +64,7 @@ def test_decide_match_action_keeps_upgrade_or_unknown_quality() -> None:
         isrc="BBB",
         beatport_id="456",
         tidal_id="",
+        spotify_id="",
         title="Track",
         artist="Artist",
         album="Album",
@@ -149,7 +152,13 @@ def test_load_db_rows_indexes_tidal_id_and_derives_quality_rank(tmp_path: Path) 
     conn.commit()
     conn.close()
 
-    _, _, by_tidal, _, _ = module.load_db_rows(db_path)
+    _, _, by_tidal, _, _, _ = module.load_db_rows(db_path)
 
     assert "TI1" in by_tidal
     assert by_tidal["TI1"][0].quality_rank == 4
+
+
+def test_build_keep_track_url_supports_spotify() -> None:
+    module = _load_pre_download_check_module()
+
+    assert module.build_keep_track_url("spotify", "abc123") == "https://open.spotify.com/track/abc123"

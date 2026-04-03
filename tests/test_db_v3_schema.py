@@ -193,3 +193,31 @@ def test_init_db_is_compatible_with_v3_library_track_sources_shape() -> None:
         init_db(conn)
     finally:
         conn.close()
+
+
+def test_create_schema_v3_accepts_spotify_intake_ingestion_method() -> None:
+    conn = sqlite3.connect(":memory:")
+    try:
+        create_schema_v3(conn)
+        conn.execute(
+            """
+            INSERT INTO track_identity (
+                identity_key,
+                spotify_id,
+                ingested_at,
+                ingestion_method,
+                ingestion_source,
+                ingestion_confidence
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "spotify:abc123",
+                "abc123",
+                "2026-04-03T00:00:00+00:00",
+                "spotify_intake",
+                "spotiflac:https://open.spotify.com/track/abc123|service:qobuz",
+                "high",
+            ),
+        )
+    finally:
+        conn.close()

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# get — Unified intake/download entrypoint for Tidal, Beatport, and Deezer URLs
+# get — Unified intake/download entrypoint for provider URLs
 #
 # Routes URLs to the appropriate workflow based on domain:
+#   - spotify.com  → tools/get-intake sync flow
 #   - tidal.com    → tools/get-intake sync flow (or tools/tiddl for --simple)
 #   - beatport.com → tools/get-intake sync flow (or bpdl for --simple)
 #   - deezer.com   → tools/deemix (Deezer wrapper + auto-register)
@@ -10,6 +11,7 @@
 #   tools/get [--sync|--synch|--simple|--enrich|--backfill] <url> [extra-args...]
 #
 # Examples:
+#   tools/get https://open.spotify.com/playlist/37i9dQZF1DX4JAvHpjipBk
 #   tools/get https://tidal.com/browse/playlist/12345
 #   tools/get https://www.beatport.com/release/some-release/12345
 #   tools/get https://listen.tidal.com/album/12345 --quality high
@@ -40,7 +42,7 @@ fi
 
 usage() {
     echo "Unified download wrapper for provider URLs."
-    echo "Supports TIDAL, Beatport, Qobuz, and Deezer."
+    echo "Supports Spotify, TIDAL, Beatport, Qobuz, and Deezer."
     echo "Operator note: \`ts-get\` may exist as a local shell wrapper for \`tools/get\`."
     echo ""
     echo "Common usage:"
@@ -118,7 +120,7 @@ while [[ $# -gt 0 ]]; do
             RETURN_PLAYLIST=1
             shift
             ;;
-        http://*|https://*|*tidal.com*|*beatport.com*|*deezer.com*|*dzr.page.link*|*qobuz.com*)
+        http://*|https://*|*spotify.com*|*tidal.com*|*beatport.com*|*deezer.com*|*dzr.page.link*|*qobuz.com*)
             URL="$1"
             shift
             break
@@ -391,7 +393,16 @@ for __garg in "$@"; do
 done
 
 # Route based on domain
-if [[ "$URL" == *"tidal.com"* ]]; then
+if [[ "$URL" == *"spotify.com"* ]]; then
+    if [[ ! -x "$GET_INTAKE" ]]; then
+        echo "Error: get-intake not found or not executable at: $GET_INTAKE" >&2
+        exit 1
+    fi
+    cd "$REPO_ROOT"
+    build_intake_cmd "spotify" "$URL" "$@"
+    exec "${INTAKE_CMD[@]}"
+
+elif [[ "$URL" == *"tidal.com"* ]]; then
     if [[ ! -x "$GET_INTAKE" ]]; then
         echo "Error: get-intake not found or not executable at: $GET_INTAKE" >&2
         exit 1
@@ -607,6 +618,6 @@ elif [[ "$URL" == *"deezer.com"* || "$URL" == *"dzr.page.link"* ]]; then
 
 else
     echo "Error: Unrecognized URL domain: $URL" >&2
-    echo "Supported domains: tidal.com, beatport.com, deezer.com, qobuz.com" >&2
+    echo "Supported domains: spotify.com, tidal.com, beatport.com, deezer.com, qobuz.com" >&2
     exit 1
 fi

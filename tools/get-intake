@@ -76,7 +76,7 @@ Note:
 
 Options:
   --batch-root PATH    Download batch root to process (default: $ROOT_TD or $VOLUME_STAGING/tidal)
-  --source TEXT        Source label (tidal). Auto-inferred from URL if omitted.
+  --source TEXT        Source label (tidal/spotify). Auto-inferred from URL if omitted.
   --url URL            Source URL (alternative to positional URL)
   --db PATH            SQLite DB path (default: $TAGSLUT_DB or auto-detected tagslut_db epoch; errors if ambiguous)
   --library-root PATH  Final library root (default: $LIBRARY_ROOT or $VOLUME_LIBRARY or $MASTER_LIBRARY)
@@ -105,7 +105,7 @@ Options:
   --enrich             Explicit alias for tagging/enrich/art pipeline (default)
   --hoard              Deprecated alias for --enrich
   --no-tagging         Skip tagging / metadata enrich / cover-art steps
-  --no-precheck        Skip pre-download DB check for Tidal/Beatport URLs
+  --no-precheck        Skip pre-download DB check for Tidal/Beatport/Spotify URLs
   --resume             Resume: treat existing batch-root files as already acquired (ISRC-only)
   --force-download     Keep matched tracks instead of skipping same/better inventory matches
   --skip-beatport-prefilter
@@ -234,6 +234,9 @@ precheck_candidate_quality_rank() {
       # Tidal max quality is not knowable pre-download; default conservatively to CD lossless.
       printf '%s\n' "${TIDAL_PRECHECK_CANDIDATE_QUALITY_RANK:-4}"
       ;;
+    spotify)
+      printf '%s\n' "${SPOTIFY_PRECHECK_CANDIDATE_QUALITY_RANK:-4}"
+      ;;
     *)
       printf '3\n'
       ;;
@@ -316,6 +319,29 @@ run_tiddl_download() {
   printf '%q ' "${cmd[@]}"
   printf '\n'
   "${cmd[@]}"
+}
+
+run_spotify_download() {
+  local spotify_url="${1:-}"
+  local keep_urls_file="${2:-}"
+  local stamp
+  stamp="$(date +%Y%m%d_%H%M%S)"
+  SPOTIFY_MANIFEST_FILE="$OUT_DIR/spotify_acquisition_manifest_${stamp}.json"
+
+  local cmd=(
+    python
+    -m
+    tagslut.intake.spotify
+    --url "$spotify_url"
+    --batch-root "$BATCH_ROOT"
+    --out-dir "$OUT_DIR"
+    --repo-root "$REPO_ROOT"
+    --manifest-path "$SPOTIFY_MANIFEST_FILE"
+  )
+  if [[ -n "$keep_urls_file" && -f "$keep_urls_file" ]]; then
+    cmd+=(--keep-track-url-file "$keep_urls_file")
+  fi
+  run_cmd_in_dir "$REPO_ROOT" "${cmd[@]}"
 }
 
 count_audio_files() {
@@ -742,6 +768,7 @@ autodetect_db_path() {
 infer_source() {
   local url="$1"
   case "$url" in
+    *spotify.com*) echo "spotify" ;;
     *tidal.com*) echo "tidal" ;;
     *) echo "" ;;
   esac
@@ -749,6 +776,7 @@ infer_source() {
 
 download_step_label() {
   case "${SOURCE:-}" in
+    spotify) echo "Download from Spotify sources" ;;
     tidal) echo "Download from Tidal" ;;
     *) echo "Download from provider" ;;
   esac
@@ -803,6 +831,7 @@ DJ_TAG_MAP_FILE=""
 POST_MOVE_PID=""
 POST_MOVE_LOG=""
 M3U_NAME_HINT=""
+SPOTIFY_MANIFEST_FILE=""
 PREFILTER_KEEP=0
 PREFILTER_SKIP=0
 PREFILTER_TOTAL=0
@@ -1279,6 +1308,8 @@ with decisions_csv.open(newline="", encoding="utf-8") as handle:
             track_id = (row.get("track_id") or "").strip()
             if domain == "beatport" and track_id:
                 candidate_url = f"https://www.beatport.com/track/-/{track_id}"
+            elif domain == "spotify" and track_id:
+                candidate_url = f"https://open.spotify.com/track/{track_id}"
         artist = (row.get("artist") or "").strip()
         title = (row.get("title") or "").strip()
 
@@ -1563,7 +1594,7 @@ PY
 fi
 
 USE_DOWNLOAD_PRECHECK=0
-if [[ "$DOWNLOAD" -eq 1 && "$SKIP_PRECHECK" -eq 0 && "$SOURCE" == "tidal" ]]; then
+if [[ "$DOWNLOAD" -eq 1 && "$SKIP_PRECHECK" -eq 0 && ( "$SOURCE" == "tidal" || "$SOURCE" == "spotify" ) ]]; then
   USE_DOWNLOAD_PRECHECK=1
 fi
 
@@ -1729,44 +1760,44 @@ PY
     echo "Download context:"
     echo "  batch before: $BATCH_AUDIO_BEFORE_DOWNLOAD audio files under $BATCH_ROOT"
   fi
-		  if [[ "$USE_DOWNLOAD_PRECHECK" -eq 1 ]]; then
-		    if [[ "${PREFILTER_KEEP:-0}" -eq 0 ]]; then
-		      echo "All candidates already have same-or-better inventory matches; skipping download."
-		      if [[ "$ENRICH_MODE" -eq 1 && "$DJ_MODE" -eq 0 && ! ( "$RESUME_MODE" -eq 1 && "$BATCH_AUDIO_BEFORE_DOWNLOAD" -gt 0 ) ]]; then
-		        if [[ -n "${PRECHECK_TRACKS_CSV:-}" && -f "$PRECHECK_TRACKS_CSV" ]]; then
-		          step "$((STEP + 1))" "$TOTAL_STEPS" "Refresh provider metadata (no-download)"
-		          run_cmd python -m tagslut.exec.url_metadata_refresh \
-		            --db "$DB_PATH" \
-		            --tracks-csv "$PRECHECK_TRACKS_CSV" \
-		            --source-url "$URL" \
-		            --out-dir "$OUT_DIR"
-		        fi
-		        echo "No new candidates to download; intake pipeline finished (enrich metadata refresh mode)."
-		        exit 0
-		      fi
-		      if [[ "$DJ_MODE" -eq 1 && ! ( "$RESUME_MODE" -eq 1 && "$BATCH_AUDIO_BEFORE_DOWNLOAD" -gt 0 ) ]]; then
-		        echo "CONTRACT NOTE: All tracks are precheck-hit inventory. DJ output will be produced via" >&2
-		        echo "  the precheck-inventory fallback path (link_precheck_inventory_to_dj), NOT the" >&2
-	        echo "  promotion-driven build_pool_v3 path. Results may differ from a first-time intake run." >&2
-	        echo "  For a deterministic DJ build from canonical state, use: tagslut dj pool-wizard" >&2
-          if [[ -z "${DJ_ROOT:-}" ]]; then
-            err "DJ mode requires --dj-root or DJ_MP3_ROOT / MP3_LIBRARY to be set"
-          fi
-          if [[ -z "${DJ_M3U_DIR:-}" ]]; then
-            err "DJ mode requires --dj-m3u-dir or DJ_PLAYLIST_ROOT to be set"
-          fi
-	        step "$((STEP + 1))" "$TOTAL_STEPS" "Link existing inventory to DJ"
-	        link_precheck_inventory_to_dj "$PRECHECK_DECISIONS_CSV" "$PRECHECK_PLAYLIST_TITLE"
-	        echo "No new candidates to download; intake pipeline finished (DJ mode)."
-	        exit 0
-	      fi
-		      if [[ "$BATCH_AUDIO_BEFORE_DOWNLOAD" -gt 0 ]]; then
-		        echo "Resume mode: batch already contains $BATCH_AUDIO_BEFORE_DOWNLOAD audio file(s); continuing pipeline."
-		      else
-		        if [[ "$M3U_MODE" -eq 1 && -n "${PRECHECK_DECISIONS_CSV:-}" && -f "$PRECHECK_DECISIONS_CSV" ]]; then
-		          step "$((STEP + 1))" "$TOTAL_STEPS" "Generate Roon M3U (inventory-backed)"
-		          INVENTORY_M3U_INPUT_FILE="$OUT_DIR/roon_inventory_flacs_$(date +%Y%m%d_%H%M%S).txt"
-		          python - "$PRECHECK_DECISIONS_CSV" "$INVENTORY_M3U_INPUT_FILE" <<'PY'
+  if [[ "$USE_DOWNLOAD_PRECHECK" -eq 1 ]]; then
+    if [[ "${PREFILTER_KEEP:-0}" -eq 0 ]]; then
+      echo "All candidates already have same-or-better inventory matches; skipping download."
+      if [[ "$ENRICH_MODE" -eq 1 && "$DJ_MODE" -eq 0 && ! ( "$RESUME_MODE" -eq 1 && "$BATCH_AUDIO_BEFORE_DOWNLOAD" -gt 0 ) ]]; then
+        if [[ -n "${PRECHECK_TRACKS_CSV:-}" && -f "$PRECHECK_TRACKS_CSV" ]]; then
+          step "$((STEP + 1))" "$TOTAL_STEPS" "Refresh provider metadata (no-download)"
+          run_cmd python -m tagslut.exec.url_metadata_refresh \
+            --db "$DB_PATH" \
+            --tracks-csv "$PRECHECK_TRACKS_CSV" \
+            --source-url "$URL" \
+            --out-dir "$OUT_DIR"
+        fi
+        echo "No new candidates to download; intake pipeline finished (enrich metadata refresh mode)."
+        exit 0
+      fi
+      if [[ "$DJ_MODE" -eq 1 && ! ( "$RESUME_MODE" -eq 1 && "$BATCH_AUDIO_BEFORE_DOWNLOAD" -gt 0 ) ]]; then
+        echo "CONTRACT NOTE: All tracks are precheck-hit inventory. DJ output will be produced via" >&2
+        echo "  the precheck-inventory fallback path (link_precheck_inventory_to_dj), NOT the" >&2
+        echo "  promotion-driven build_pool_v3 path. Results may differ from a first-time intake run." >&2
+        echo "  For a deterministic DJ build from canonical state, use: tagslut dj pool-wizard" >&2
+        if [[ -z "${DJ_ROOT:-}" ]]; then
+          err "DJ mode requires --dj-root or DJ_MP3_ROOT / MP3_LIBRARY to be set"
+        fi
+        if [[ -z "${DJ_M3U_DIR:-}" ]]; then
+          err "DJ mode requires --dj-m3u-dir or DJ_PLAYLIST_ROOT to be set"
+        fi
+        step "$((STEP + 1))" "$TOTAL_STEPS" "Link existing inventory to DJ"
+        link_precheck_inventory_to_dj "$PRECHECK_DECISIONS_CSV" "$PRECHECK_PLAYLIST_TITLE"
+        echo "No new candidates to download; intake pipeline finished (DJ mode)."
+        exit 0
+      fi
+      if [[ "$BATCH_AUDIO_BEFORE_DOWNLOAD" -gt 0 ]]; then
+        echo "Resume mode: batch already contains $BATCH_AUDIO_BEFORE_DOWNLOAD audio file(s); continuing pipeline."
+      else
+        if [[ "$M3U_MODE" -eq 1 && -n "${PRECHECK_DECISIONS_CSV:-}" && -f "$PRECHECK_DECISIONS_CSV" ]]; then
+          step "$((STEP + 1))" "$TOTAL_STEPS" "Generate Roon M3U (inventory-backed)"
+          INVENTORY_M3U_INPUT_FILE="$OUT_DIR/roon_inventory_flacs_$(date +%Y%m%d_%H%M%S).txt"
+          python - "$PRECHECK_DECISIONS_CSV" "$INVENTORY_M3U_INPUT_FILE" <<'PY'
 import csv
 import sys
 from pathlib import Path
@@ -1799,41 +1830,52 @@ if decisions_csv.exists():
 out_file.parent.mkdir(parents=True, exist_ok=True)
 out_file.write_text("\n".join(selected) + ("\n" if selected else ""), encoding="utf-8")
 PY
-		          INVENTORY_M3U_INPUT_COUNT="$(wc -l < "$INVENTORY_M3U_INPUT_FILE" | tr -d ' ')"
-		          if [[ "$INVENTORY_M3U_INPUT_COUNT" -eq 0 ]]; then
-		            echo "No inventory paths resolved; skipping M3U generation."
-		          else
-		            ROON_M3U_MARKER="$OUT_DIR/roon_m3u_inventory_marker_$(date +%Y%m%d_%H%M%S)"
-		            : > "$ROON_M3U_MARKER"
-		            M3U_PATH_ARGS=()
-		            while IFS= read -r m3u_path; do
-		              [[ -n "$m3u_path" ]] || continue
-		              M3U_PATH_ARGS+=("$m3u_path")
-		            done < "$INVENTORY_M3U_INPUT_FILE"
-
-		            run_cmd poetry run python -m tagslut report m3u \
-		              --merge \
-		              --m3u-dir "$M3U_DIR" \
-		              --path-mode relative \
-		              --name-prefix "$ROON_PLAYLIST_PREFIX" \
-		              --name-suffix "$ROON_PLAYLIST_SUFFIX" \
-		              --db "$DB_PATH" \
-		              --source "$SOURCE" \
-		              "${M3U_PATH_ARGS[@]}"
-		            if [[ -n "$M3U_NAME_HINT" ]]; then
-		              rename_latest_m3u_from_marker "$M3U_DIR" "$ROON_M3U_MARKER" "$M3U_NAME_HINT" "$ROON_PLAYLIST_PREFIX" "$ROON_PLAYLIST_SUFFIX"
-		            fi
-		            ROON_M3U_OUTPUT="$(latest_file_after_marker "$M3U_DIR" "$ROON_M3U_MARKER")"
-		            rm -f "$ROON_M3U_MARKER"
-		          fi
-		        fi
-		        echo "No new candidates to download and batch is empty; intake pipeline finished."
-		        exit 0
-		      fi
+          INVENTORY_M3U_INPUT_COUNT="$(wc -l < "$INVENTORY_M3U_INPUT_FILE" | tr -d ' ')"
+          if [[ "$INVENTORY_M3U_INPUT_COUNT" -eq 0 ]]; then
+            echo "No inventory paths resolved; skipping M3U generation."
           else
-	        if [[ "${PREFILTER_SKIP:-0}" -eq 0 && -n "$URL" ]]; then
-	          if [[ "$VERBOSE" -eq 1 ]]; then
-	            echo "  Tidal mode:         direct URL (no filtered skips)"
+            ROON_M3U_MARKER="$OUT_DIR/roon_m3u_inventory_marker_$(date +%Y%m%d_%H%M%S)"
+            : > "$ROON_M3U_MARKER"
+            M3U_PATH_ARGS=()
+            while IFS= read -r m3u_path; do
+              [[ -n "$m3u_path" ]] || continue
+              M3U_PATH_ARGS+=("$m3u_path")
+            done < "$INVENTORY_M3U_INPUT_FILE"
+
+            run_cmd poetry run python -m tagslut report m3u \
+              --merge \
+              --m3u-dir "$M3U_DIR" \
+              --path-mode relative \
+              --name-prefix "$ROON_PLAYLIST_PREFIX" \
+              --name-suffix "$ROON_PLAYLIST_SUFFIX" \
+              --db "$DB_PATH" \
+              --source "$SOURCE" \
+              "${M3U_PATH_ARGS[@]}"
+            if [[ -n "$M3U_NAME_HINT" ]]; then
+              rename_latest_m3u_from_marker "$M3U_DIR" "$ROON_M3U_MARKER" "$M3U_NAME_HINT" "$ROON_PLAYLIST_PREFIX" "$ROON_PLAYLIST_SUFFIX"
+            fi
+            ROON_M3U_OUTPUT="$(latest_file_after_marker "$M3U_DIR" "$ROON_M3U_MARKER")"
+            rm -f "$ROON_M3U_MARKER"
+          fi
+        fi
+        echo "No new candidates to download and batch is empty; intake pipeline finished."
+        exit 0
+      fi
+    else
+      if [[ "$SOURCE" == "spotify" ]]; then
+        if [[ "$VERBOSE" -eq 1 ]]; then
+          echo "  Spotify mode:       filtered keep list"
+          echo "  Spotify keep list:  $KEEP_URLS_TXT"
+          echo "  Spotify batch root: $BATCH_ROOT"
+        fi
+        run_spotify_download "$URL" "$KEEP_URLS_TXT"
+        if [[ $? -ne 0 ]]; then
+          err "Spotify download failed for $URL"
+        fi
+      else
+        if [[ "${PREFILTER_SKIP:-0}" -eq 0 && -n "$URL" ]]; then
+          if [[ "$VERBOSE" -eq 1 ]]; then
+            echo "  Tidal mode:         direct URL (no filtered skips)"
             echo "  Tidal batch root:   $BATCH_ROOT"
           fi
           if [[ ${#DOWNLOADER_ARGS[@]} -gt 0 ]]; then
@@ -1885,25 +1927,34 @@ PY
           fi
         fi
       fi
-    else
-    if [[ "$SOURCE" == "tidal" && "$URL" == *"tidal.com"* ]]; then
-      if [[ "$VERBOSE" -eq 1 ]]; then
-        echo "  Tidal download target: $BATCH_ROOT"
-      fi
-      if [[ ${#DOWNLOADER_ARGS[@]} -gt 0 ]]; then
-        run_tiddl_download "$URL" "${DOWNLOADER_ARGS[@]}"
-      else
-        run_tiddl_download "$URL"
-      fi
-      if [[ $? -ne 0 ]]; then
-        err "Tidal download failed for $URL"
-      fi
-    elif [[ ${#DOWNLOADER_ARGS[@]} -gt 0 ]]; then
-      run_cmd "$GET_BIN" "$URL" "${DOWNLOADER_ARGS[@]}"
-    else
-      run_cmd "$GET_BIN" "$URL"
     fi
-  fi
+    else
+      if [[ "$SOURCE" == "spotify" && "$URL" == *"spotify.com"* ]]; then
+        if [[ "$VERBOSE" -eq 1 ]]; then
+          echo "  Spotify batch root: $BATCH_ROOT"
+        fi
+        run_spotify_download "$URL"
+        if [[ $? -ne 0 ]]; then
+          err "Spotify download failed for $URL"
+        fi
+      elif [[ "$SOURCE" == "tidal" && "$URL" == *"tidal.com"* ]]; then
+        if [[ "$VERBOSE" -eq 1 ]]; then
+          echo "  Tidal download target: $BATCH_ROOT"
+        fi
+        if [[ ${#DOWNLOADER_ARGS[@]} -gt 0 ]]; then
+          run_tiddl_download "$URL" "${DOWNLOADER_ARGS[@]}"
+        else
+          run_tiddl_download "$URL"
+        fi
+        if [[ $? -ne 0 ]]; then
+          err "Tidal download failed for $URL"
+        fi
+      elif [[ ${#DOWNLOADER_ARGS[@]} -gt 0 ]]; then
+        run_cmd "$GET_BIN" "$URL" "${DOWNLOADER_ARGS[@]}"
+      else
+        run_cmd "$GET_BIN" "$URL"
+      fi
+    fi
   if [[ "$VERBOSE" -eq 1 ]]; then
     BATCH_AUDIO_AFTER_DOWNLOAD="$(count_audio_files "$BATCH_ROOT")"
     echo "Download result:"
@@ -2621,6 +2672,9 @@ if [[ "$TAGGING_MODE" -eq 1 && "$EXECUTE" -eq 1 && "$DJ_MODE" -eq 0 ]]; then
       --paths-file "$PROMOTED_FLACS_FILE"
       --providers "$ENRICH_PROVIDERS"
     )
+    if [[ -n "$SPOTIFY_MANIFEST_FILE" ]]; then
+      POST_MOVE_ARGS+=(--intake-context "$SPOTIFY_MANIFEST_FILE")
+    fi
     printf '→ '
     printf '%q ' "${POST_MOVE_ARGS[@]}"
     printf '> %s 2>&1 &\n' "$POST_MOVE_LOG"

@@ -132,6 +132,33 @@ def _run_precheck_candidate_quality_rank(
     )
 
 
+def _run_infer_source(tmp_path: Path, *, url: str) -> subprocess.CompletedProcess[str]:
+    library_path = _write_shell_library(tmp_path)
+    harness = tmp_path / "run-infer-source.sh"
+    harness.write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env bash",
+                "set -euo pipefail",
+                f"source {shlex.quote(str(library_path))}",
+                f"infer_source {shlex.quote(url)}",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    harness.chmod(0o755)
+
+    return subprocess.run(
+        ["bash", str(harness)],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=os.environ.copy(),
+    )
+
+
 def _run_cross_root_audit_compute_root_args(
     tmp_path: Path,
     *,
@@ -226,6 +253,20 @@ def test_precheck_candidate_quality_rank_uses_global_override(tmp_path: Path) ->
 
     assert proc.returncode == 0, f"STDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
     assert proc.stdout.strip() == "2"
+
+
+def test_precheck_candidate_quality_rank_defaults_spotify_to_cd_lossless(tmp_path: Path) -> None:
+    proc = _run_precheck_candidate_quality_rank(tmp_path, source="spotify")
+
+    assert proc.returncode == 0, f"STDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+    assert proc.stdout.strip() == "4"
+
+
+def test_infer_source_detects_spotify_urls(tmp_path: Path) -> None:
+    proc = _run_infer_source(tmp_path, url="https://open.spotify.com/track/abc123")
+
+    assert proc.returncode == 0, f"STDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+    assert proc.stdout.strip() == "spotify"
 
 
 def test_cross_root_audit_compute_root_args_defaults_to_batch_root(tmp_path: Path) -> None:

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 echo "tools/get quick help"
-echo "Supports TIDAL, Beatport, Qobuz, and Deezer."
+echo "Supports Spotify, TIDAL, Beatport, Qobuz, and Deezer."
 echo "Note: \`ts-get\` may exist as a local shell wrapper for \`tools/get\`."
 echo ""
 echo "Common usage:"

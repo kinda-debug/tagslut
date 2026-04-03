@@ -35,7 +35,7 @@ Use canonical entry points: `ts-get`, `ts-enrich`, `ts-auth`. Legacy `tagslut in
 ## Current Daily Workflow
 
 ```bash
-# Download (TIDAL, Qobuz, or Beatport URL)
+# Download (Spotify, TIDAL, Qobuz, or Beatport URL)
 ts-get <url>
 ts-get <url> --dj        # + DJ pool M3U
 
@@ -54,7 +54,7 @@ See `docs/OPERATOR_QUICK_START.md` for full startup sequence.
 ---
 
 ## Command Surface (active wrappers)
-- `ts-get <url> [--dj]` — download via tiddl/streamrip/beatportdl; `--dj` writes per-batch + global `dj_pool.m3u`.
+- `ts-get <url> [--dj]` — download via the Spotify intake adapter, tiddl, streamrip, or beatportdl; `--dj` writes per-batch + global `dj_pool.m3u`.
 - `ts-enrich [--provider ...]` — hoarding pass; uses `$TAGSLUT_DB`.
 - `ts-auth [tidal|beatport|qobuz|all]` — refresh tokens; validates Qobuz session; syncs beatportdl creds.
 - `tools/auth [tidal|beatport|qobuz|all]` — implementation behind ts-auth.
@@ -176,6 +176,7 @@ Use `--quiet` for script-level automation, or run through `tagslut intake <URL>`
 
 ```bash
 # Primary wrapper (recommended)
+tools/get "https://open.spotify.com/playlist/..."
 tools/get "https://www.beatport.com/release/.../..."
 tools/get "https://tidal.com/browse/album/..."
 tools/get "https://www.deezer.com/en/track/..."
@@ -193,6 +194,7 @@ python tools/review/quarantine_gc.py \
 
 | Source   | Wrapper          | `--source` flag | Auto-register | Default path              |
 |----------|------------------|-----------------|---------------|---------------------------|
+| Spotify  | `get`            | `spotify`       | No            | batch root / staging      |
 | Beatport | `get`            | `bpdl`          | No            | config-defined / staging  |
 | Tidal    | `get`, `tiddl`   | `tidal`         | No            | `~/Music/mdl/tidal`       |
 | Deezer   | `get`, `deemix`  | `deezer`        | **Yes**       | `~/Music/mdl/deezer`      |
@@ -629,7 +631,7 @@ See `docs/TROUBLESHOOTING.md` for failure modes and fixes.
 
 - **Always precheck** before download — never download blind.
 - **Never promote** without a passing integrity check and `duration_status=ok`.
-- **Providers**: `beatport,tidal` only. Do not add Qobuz unless explicitly required.
+- **Providers**: `beatport,tidal` only for enrichment. Spotify intake uses its own acquisition adapter and must not be added to `--providers`.
 - **`warn`/`fail` buckets** are review queues — not auto-delete signals.
 - **Rekordbox** is a terminal consumer. It does not write back to the master library.
 - **Master FLAC** is immutable. The DJ MP3 pool is always derived from it, never the source of truth.

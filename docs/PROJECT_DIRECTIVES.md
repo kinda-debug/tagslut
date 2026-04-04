@@ -4,7 +4,7 @@ These directives apply to every agent working in this repo.
 They supplement AGENT.md and CLAUDE.md. When in conflict,
 these directives take precedence.
 
-Last updated: 2026-03-21
+Last updated: 2026-04-04
 
 ---
 
@@ -65,10 +65,12 @@ manually reviewed and upgraded.
 
 /Volumes/MUSIC/MASTER_LIBRARY    FLAC master library — source of truth for audio
 /Volumes/MUSIC/MP3_LIBRARY       MP3 copies for playback
-/Volumes/MUSIC/DJ_LIBRARY        DJ-admitted MP3s (admission-gated subset)
+/Volumes/MUSIC/DJ_POOL           Lexicon-managed DJ MP3 pool (Artist/Album/file.mp3)
+/Volumes/MUSIC/MP3_LIBRARY_CLEAN Centralized clean lossy pool for Rekordbox import
 /Volumes/MUSIC/DJ_POOL_MANUAL_MP3  Manual DJ pool additions
 /Volumes/MUSIC/mdl               Staging root for downloads
-/Volumes/MUSIC/lexicondj.db      Lexicon DJ database (read-only reference)
+/Volumes/MUSIC/lexicondj.db      Lexicon DJ database (read-only reference, 227MB)
+/Users/georgeskhawam/Music/main.db  Active Lexicon working DB (61,752 tracks)
 /Volumes/SAD/                    Legacy epoch DBs — read-only, no writes
 
 $MASTER_LIBRARY = /Volumes/MUSIC/MASTER_LIBRARY
@@ -81,13 +83,73 @@ with a clear error — do not silently fall back to local paths.
 
 ---
 
+## Lexicon integration
+
+Lexicon is an external DJ library manager that reads from and writes to
+MP3 files under /Volumes/MUSIC/DJ_POOL. It maintains its own SQLite DB
+at /Users/georgeskhawam/Music/main.db (active) and at
+/Volumes/MUSIC/lexicondj.db (USB/backup copy).
+
+Field ownership — tagslut writes first, Lexicon enriches after:
+  tagslut owns:   ISRC, label, canonical date, title, artist, album
+  Lexicon owns:   BPM corrections, key (TKEY/TXXX:INITIALKEY),
+                  energy/danceability/happiness scores, mood COMM string,
+                  synced lyrics (TXXX:USLT), AcoustID fingerprint,
+                  Serato autogain, MusicBrainz IDs written by Lexicon
+
+Lexicon-touched file detection (any one of these is sufficient):
+  TXXX:LEXICON_RATING present (even if 0)
+  TXXX:serato_autogain present
+  TXXX:ENERGY present
+  COMM frame matching "NN Energy, NN Dance, NN Happy, NN Pop"
+  TXXX:acoustid_fingerprint present
+
+tagslut must NEVER overwrite Lexicon-owned fields on files where
+any Lexicon marker is present. Use merge-write semantics: write only
+tagslut-owned fields and leave the rest untouched.
+
+Lexicon DB join key: Track.location (absolute path). Query main.db
+by path to read energy, bpm, key, danceability, happiness, label,
+and playlist membership before making tag decisions.
+
+Lexicon backup automation:
+  Backups land at ~/Documents/Lexicon/Backups/backup YYYY-MM-DD HH_MM.zip
+  A launchd agent (com.georgeskhawam.lexicon-backup-mover) watches that
+  folder and moves zips to ~/Music/Lexicon_Backups/ within seconds.
+  Do not add that folder to iCloud sync paths.
+
+---
+
+## CLI surface (current — April 2026)
+
+Public commands the operator uses daily:
+  ts-get <url> [--dj]   download + register + tag; --dj writes M3U
+  ts-enrich             metadata hoarding pass
+  ts-auth [provider]    token refresh
+
+Planned CLI redesign (not yet implemented — do not implement ahead of spec):
+  tagslut get <input>   replaces ts-get; URL or local path
+  tagslut tag [target]  retroactive retag/rehoard
+  tagslut fix [id]      drain the waiting room (blocked cohorts)
+  tagslut auth          stays public
+  tagslut admin ...     all internal/advanced flows
+
+When the redesign is implemented:
+  --fix replaces --refresh everywhere
+  --dj and --playlist are the only output-mode flags
+  Blocked cohort state lives in DB (asset_file.status + blocked_reason)
+  tagslut fix drains by DB query, no URL required
+  Rekordbox XML and M3U are separate artifacts — never unified
+
+---
+
 ## Tool assignment
 
 Codex:   autonomous implementation — all tasks with a prompt file
          in .github/prompts/. Run from repo root.
          Never ask Codex to design — give it a spec first.
 
-Claude Code (rate-limited — use sparingly):
+Claude (this session):
          judgment-critical work: prompt authoring, architecture
          decisions, cross-cutting audit, debugging where the
          problem itself is unclear.
@@ -112,14 +174,14 @@ Copilot+: editor inline completions and single-file chat only.
 
 ## Active task priority order
 
-1. resume-refresh-fix (tools/get-intake) — unblocks daily intake
-2. ingestion provenance migration — prerequisite for fresh DB
-3. fresh DB initialization — prerequisite for clean-slate ingestion
-4. repo cleanup — parallel, no dependencies
+1. CLI redesign (get/tag/fix/auth/admin) — spec approved, not yet implemented
+2. Blocked cohort schema migration — prerequisite for get/fix behavior
+3. Lexicon-aware merge-write for --dj tag output
+4. Fresh DB initialization — prerequisite for clean-slate ingestion
 5. Phase 1 PR chain (PRs 9-11) — blocked on migration 0006 merge
 6. DJ pipeline hardening — after Phase 1
 
-Do not skip ahead. Do not work on item 5 before items 1-2 are done.
+Do not implement item 1 without a Codex prompt file authored by Claude first.
 
 ---
 
@@ -137,7 +199,7 @@ Examples:
 One logical change per commit. Do not bundle unrelated changes.
 Commit after each completed step, not at end of session.
 
-## Testing policy (clarification)
+## Testing policy
 
 Default: targeted pytest only.
   `poetry run pytest tests/<specific_module> -v`
@@ -154,9 +216,7 @@ procedures. They must never appear in a Codex prompt or be executed by
 any agent. The git history cleanup task lives in `docs/OPS_RUNBOOK.md`
 and is executed manually by the operator only.
 
-## Confidence tier update (2026-03-21)
-
-The four-tier model defined above is superseded. The correct five-tier model is:
+## Confidence tier (five-tier model — current)
 
   verified        Two+ providers confirmed same ISRC at ingest time (active check)
   corroborated    Multiple stored provider IDs present, all agree on ISRC
@@ -164,7 +224,7 @@ The four-tier model defined above is superseded. The correct five-tier model is:
   uncertain       Fuzzy match, fingerprint below 0.90, text-only, or any conflict
   legacy          Picard tag, unknown origin, or unverified migration
 
-Full multi-provider policy: `docs/MULTI_PROVIDER_ID_POLICY.md`
+Full multi-provider policy: docs/MULTI_PROVIDER_ID_POLICY.md
 
 ## Three ingestion tracks
 
@@ -172,7 +232,7 @@ Track A (clean-slate): files from Beatport/TIDAL via `tools/get --enrich`
   ingestion_method = 'provider_api'
   ingestion_confidence = 'verified' (both providers agree) or 'high' (one provider)
 
-Track S (Spotify intake): files from Spotify URLs via `tools/get`, `tagslut intake url`, or `tools/get-intake`
+Track S (Spotify intake): files from Spotify URLs via `tools/get`
   ingestion_method = 'spotify_intake'
   ingestion_confidence = 'high' when ISRC is present, otherwise 'uncertain'
   ingestion_source = `spotiflac:<spotify_url>|service:<winning_service>`
@@ -187,4 +247,21 @@ Track B (legacy): older files with accumulated cross-provider IDs
 All provider IDs preserved if they do not conflict with the ISRC.
 Agreement across providers = positive confirmation.
 Conflict = provenance failure — flagged not silently resolved.
-Full policy: `docs/MULTI_PROVIDER_ID_POLICY.md`
+Full policy: docs/MULTI_PROVIDER_ID_POLICY.md
+
+## TIDAL native audio fields (migration 0016)
+
+track_identity now carries TIDAL-sourced audio analysis:
+  tidal_bpm           REAL
+  tidal_key           TEXT (traditional key string)
+  tidal_key_scale     TEXT ('major'/'minor')
+  tidal_camelot       TEXT (derived Camelot notation)
+  replay_gain_track   REAL
+  replay_gain_album   REAL
+  tidal_dj_ready      INTEGER (boolean)
+  tidal_stem_ready    INTEGER (boolean)
+
+These are read-only enrichment fields. They do not replace Beatport as
+the canonical BPM/key authority. When both Beatport and TIDAL provide
+BPM/key, Beatport wins for canonical output; tidal_bpm/tidal_key are
+stored as secondary reference only.

@@ -1,0 +1,1028 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+from collections import Counter, defaultdict
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Iterable
+
+from mutagen.id3 import ID3, ID3NoHeaderError
+from mutagen.mp3 import MP3
+from mutagen.mp4 import MP4
+
+
+ALLOWED_EXTS = {".mp3", ".m4a"}
+COMPILATION_ALBUM_ARTISTS = {"various artists", "va", "various"}
+INVALID_PATH_CHARS = '<>:"/\\|?*'
+
+
+@dataclass
+class TagData:
+    artist: str = ""
+    title: str = ""
+    album: str = ""
+    album_artist: str = ""
+    track_number: int | None = None
+    label: str = ""
+    isrc: str = ""
+    compilation: bool = False
+
+
+@dataclass
+class MediaRead:
+    path: Path
+    ext: str
+    size: int
+    codec: str | None = None
+    bitrate_kbps: int | None = None
+    bitrate_source: str | None = None
+    bitrate_mode: str | None = None
+    duration_seconds: float | None = None
+    sketchy: bool | None = None
+    tags: TagData = field(default_factory=TagData)
+
+
+@dataclass
+class PlannedFile:
+    media: MediaRead
+    action: str
+    reason: str
+    dest: Path | None = None
+    archive: Path | None = None
+    file_hash: str | None = None
+    detail: str = ""
+    flags: set[str] = field(default_factory=set)
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Build a clean lossy Rekordbox pool by moving eligible MP3/M4A files."
+    )
+    parser.add_argument("--source-root", type=Path, required=True, help="Source root to scan.")
+    parser.add_argument("--dest-root", type=Path, required=True, help="Destination clean pool root.")
+    parser.add_argument("--archive-root", type=Path, required=True, help="Archive root for excluded files.")
+    parser.add_argument("--dry-run", action="store_true", help="Explicit dry-run mode.")
+    parser.add_argument("--execute", action="store_true", help="Perform moves.")
+    parser.add_argument("--resume", action="store_true", help="Resume a prior execute run with the same roots.")
+    parser.add_argument("--verbose", action="store_true", help="Print per-file planning and move details.")
+    parser.add_argument("--mp3-kbps", type=int, default=320, help="Required MP3 bitrate in kbps.")
+    parser.add_argument("--aac-min-kbps", type=int, default=256, help="Minimum AAC bitrate in kbps.")
+    parser.add_argument("--manifest", type=Path, default=None, help="Manifest JSONL path.")
+    parser.add_argument(
+        "--duration-tolerance-seconds",
+        type=float,
+        default=2.0,
+        help="Maximum duration delta for safe ISRC dedupe.",
+    )
+    parser.add_argument(
+        "--limit-root",
+        type=Path,
+        default=None,
+        help="Optional source subpath for smoke testing.",
+    )
+    args = parser.parse_args(argv)
+    if args.execute and args.dry_run:
+        parser.error("Choose either --execute or --dry-run, not both.")
+    if args.resume and not args.execute:
+        parser.error("--resume requires --execute.")
+    return args
+
+
+def _is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
+def _ensure_volume_available(path: Path) -> None:
+    if str(path).startswith("/Volumes/"):
+        parts = path.parts
+        if len(parts) < 3:
+            raise ValueError(f"Invalid volume path: {path}")
+        volume_root = Path(parts[0]) / parts[1] / parts[2]
+        if not volume_root.exists():
+            raise ValueError(f"Required volume is not mounted: {volume_root}")
+
+
+def _require_existing_root(path: Path, label: str) -> Path:
+    resolved = path.expanduser().resolve()
+    _ensure_volume_available(resolved)
+    if not resolved.exists():
+        raise ValueError(f"{label} does not exist: {resolved}")
+    if not resolved.is_dir():
+        raise ValueError(f"{label} is not a directory: {resolved}")
+    return resolved
+
+
+def _require_parent_volume(path: Path) -> Path:
+    resolved = path.expanduser().resolve()
+    _ensure_volume_available(resolved)
+    return resolved
+
+
+def _resolve_limit_root(source_root: Path, limit_root: Path | None) -> Path | None:
+    if limit_root is None:
+        return None
+    candidate = limit_root.expanduser()
+    if not candidate.is_absolute():
+        candidate = source_root / candidate
+    candidate = candidate.resolve()
+    if not _is_relative_to(candidate, source_root):
+        raise ValueError(f"--limit-root must stay under source root: {candidate}")
+    if not candidate.exists():
+        raise ValueError(f"--limit-root does not exist: {candidate}")
+    if not candidate.is_dir():
+        raise ValueError(f"--limit-root is not a directory: {candidate}")
+    return candidate
+
+
+def _validate_root_relationships(source_root: Path, dest_root: Path, archive_root: Path) -> None:
+    if _is_relative_to(source_root, dest_root):
+        raise ValueError(f"Source root cannot live under destination root: {source_root}")
+    if _is_relative_to(source_root, archive_root):
+        raise ValueError(f"Source root cannot live under archive root: {source_root}")
+    if _is_relative_to(dest_root, archive_root) or _is_relative_to(archive_root, dest_root):
+        raise ValueError(f"Destination and archive roots must not overlap: {dest_root} / {archive_root}")
+
+
+def _run_root_for_mode(archive_root: Path, execute: bool) -> Path:
+    if execute:
+        return archive_root
+    return archive_root.parent / f"{archive_root.name}__dry_run"
+
+
+def _default_manifest_path(run_root: Path) -> Path:
+    return run_root / "manifest.jsonl"
+
+
+def _emit_verbose(enabled: bool, message: str) -> None:
+    if enabled:
+        print(message, file=sys.stderr)
+
+
+def _safe_float(value: Any) -> float | None:
+    if value in (None, ""):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _safe_int(value: Any) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _decode_tag_value(value: Any) -> str:
+    if value is None:
+        return ""
+    if hasattr(value, "text"):
+        text = getattr(value, "text")
+        if isinstance(text, (list, tuple)):
+            return _decode_tag_value(text[0] if text else "")
+        return str(text).strip()
+    if isinstance(value, bytes):
+        try:
+            return value.decode("utf-8").strip()
+        except UnicodeDecodeError:
+            return value.decode("latin-1", "ignore").strip()
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            text = _decode_tag_value(item)
+            if text:
+                return text
+        return ""
+    return str(value).strip()
+
+
+def _id3_text(tags: ID3, key: str) -> str:
+    frame = tags.get(key)
+    if frame is None:
+        return ""
+    return _decode_tag_value(frame)
+
+
+def _id3_user_text(tags: ID3, desc: str) -> str:
+    direct = _id3_text(tags, f"TXXX:{desc}")
+    if direct:
+        return direct
+    try:
+        frames = tags.getall("TXXX")
+    except Exception:
+        return ""
+    for frame in frames:
+        frame_desc = str(getattr(frame, "desc", "")).strip().upper()
+        if frame_desc == desc.upper():
+            return _decode_tag_value(getattr(frame, "text", ""))
+    return ""
+
+
+def _normalize_isrc(value: str) -> str:
+    return "".join(ch for ch in value.upper() if ch.isalnum())
+
+
+def _parse_track_number(value: Any) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, (list, tuple)) and value:
+        first = value[0]
+        if isinstance(first, tuple) and first:
+            return _parse_track_number(first[0])
+        return _parse_track_number(first)
+    text = _decode_tag_value(value)
+    if not text:
+        return None
+    match = re.match(r"^\s*(\d+)", text)
+    if match is None:
+        return None
+    return int(match.group(1))
+
+
+def _truthy(value: Any) -> bool:
+    if isinstance(value, (list, tuple)) and len(value) == 1:
+        return _truthy(value[0])
+    if isinstance(value, (bool, int)):
+        return bool(value)
+    text = _decode_tag_value(value).strip().lower()
+    return text not in {"", "0", "false", "no", "none"}
+
+
+def _extract_mp3_tags(path: Path) -> TagData:
+    try:
+        tags = ID3(str(path))
+    except ID3NoHeaderError:
+        tags = ID3()
+    artist = _id3_text(tags, "TPE1")
+    title = _id3_text(tags, "TIT2")
+    album = _id3_text(tags, "TALB")
+    album_artist = _id3_text(tags, "TPE2")
+    label = _id3_user_text(tags, "LABEL") or _id3_text(tags, "TPUB")
+    isrc = _normalize_isrc(_id3_text(tags, "TSRC"))
+    compilation = _truthy(_id3_text(tags, "TCMP")) or album_artist.strip().lower() in COMPILATION_ALBUM_ARTISTS
+    track_number = _parse_track_number(_id3_text(tags, "TRCK"))
+    return TagData(
+        artist=artist,
+        title=title,
+        album=album,
+        album_artist=album_artist,
+        track_number=track_number,
+        label=label,
+        isrc=isrc,
+        compilation=compilation,
+    )
+
+
+def _mp4_first(tags: dict[str, Any], *keys: str) -> str:
+    for key in keys:
+        if key not in tags:
+            continue
+        value = _decode_tag_value(tags.get(key))
+        if value:
+            return value
+    return ""
+
+
+def _extract_mp4_tags(path: Path) -> TagData:
+    audio = MP4(str(path))
+    tags = getattr(audio, "tags", None) or {}
+    album_artist = _mp4_first(tags, "aART")
+    compilation = _truthy(tags.get("cpil")) or album_artist.strip().lower() in COMPILATION_ALBUM_ARTISTS
+    track_number = _parse_track_number(tags.get("trkn"))
+    return TagData(
+        artist=_mp4_first(tags, "\xa9ART"),
+        title=_mp4_first(tags, "\xa9nam"),
+        album=_mp4_first(tags, "\xa9alb"),
+        album_artist=album_artist,
+        track_number=track_number,
+        label=_mp4_first(tags, "----:com.apple.iTunes:LABEL"),
+        isrc=_normalize_isrc(
+            _mp4_first(tags, "----:com.apple.iTunes:ISRC", "----:com.apple.iTunes:TSRC")
+        ),
+        compilation=compilation,
+    )
+
+
+def inspect_mp3_file(path: Path) -> MediaRead:
+    audio = MP3(str(path))
+    info = audio.info
+    bitrate_mode_raw = getattr(info, "bitrate_mode", None)
+    bitrate_mode = getattr(bitrate_mode_raw, "name", str(bitrate_mode_raw)) if bitrate_mode_raw is not None else None
+    bitrate = getattr(info, "bitrate", None)
+    return MediaRead(
+        path=path,
+        ext=path.suffix.lower(),
+        size=path.stat().st_size,
+        codec="mp3",
+        bitrate_kbps=int(round(bitrate / 1000)) if bitrate else None,
+        bitrate_source="mutagen",
+        bitrate_mode=bitrate_mode,
+        duration_seconds=_safe_float(getattr(info, "length", None)),
+        sketchy=bool(getattr(info, "sketchy", False)),
+        tags=_extract_mp3_tags(path),
+    )
+
+
+def inspect_m4a_file(path: Path) -> MediaRead:
+    probe = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "a:0",
+            "-show_entries",
+            "stream=codec_name,bit_rate,duration:format=bit_rate,duration",
+            "-of",
+            "json",
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if probe.returncode != 0:
+        stderr = (probe.stderr or probe.stdout or "").strip()
+        raise RuntimeError(stderr or "ffprobe failed")
+    payload = json.loads(probe.stdout or "{}")
+    streams = payload.get("streams") or []
+    stream = streams[0] if streams else {}
+    format_info = payload.get("format") or {}
+    bitrate = _safe_int(stream.get("bit_rate"))
+    bitrate_source = "stream" if bitrate is not None else None
+    if bitrate is None:
+        bitrate = _safe_int(format_info.get("bit_rate"))
+        bitrate_source = "format" if bitrate is not None else None
+    duration = _safe_float(stream.get("duration"))
+    if duration is None:
+        duration = _safe_float(format_info.get("duration"))
+    return MediaRead(
+        path=path,
+        ext=path.suffix.lower(),
+        size=path.stat().st_size,
+        codec=str(stream.get("codec_name") or "").strip().lower() or None,
+        bitrate_kbps=int(round(bitrate / 1000)) if bitrate is not None else None,
+        bitrate_source=bitrate_source,
+        duration_seconds=duration,
+        sketchy=None,
+        tags=_extract_mp4_tags(path),
+    )
+
+
+def inspect_file(path: Path) -> MediaRead:
+    suffix = path.suffix.lower()
+    if suffix == ".mp3":
+        return inspect_mp3_file(path)
+    if suffix == ".m4a":
+        return inspect_m4a_file(path)
+    raise ValueError(f"Unsupported extension: {path.suffix}")
+
+
+def classify_media(media: MediaRead, *, mp3_kbps: int, aac_min_kbps: int) -> str | None:
+    if media.ext == ".mp3":
+        if media.sketchy:
+            return "invalid_media"
+        if media.bitrate_kbps is None:
+            return "invalid_media"
+        if media.bitrate_kbps != mp3_kbps:
+            return "bitrate_policy_reject"
+        return None
+    if media.ext == ".m4a":
+        if media.codec != "aac":
+            return "codec_policy_reject"
+        if media.bitrate_kbps is None:
+            return "invalid_media"
+        if media.bitrate_kbps < aac_min_kbps:
+            return "bitrate_policy_reject"
+        return None
+    return "invalid_media"
+
+
+def _missing_required_tags(media: MediaRead) -> bool:
+    return not media.tags.artist.strip() or not media.tags.title.strip()
+
+
+def _metadata_completeness(row: PlannedFile) -> int:
+    tags = row.media.tags
+    return sum(1 for value in (tags.album, tags.track_number, tags.album_artist, tags.label) if value)
+
+
+def _canonical_sort_key(row: PlannedFile, *, prefer_mp3: bool) -> tuple[int, int, int, str]:
+    format_score = 1 if prefer_mp3 and row.media.ext == ".mp3" else 0
+    return (
+        -format_score,
+        -_metadata_completeness(row),
+        -row.media.size,
+        str(row.media.path),
+    )
+
+
+def choose_canonical(rows: list[PlannedFile], *, prefer_mp3: bool) -> PlannedFile:
+    return sorted(rows, key=lambda row: _canonical_sort_key(row, prefer_mp3=prefer_mp3))[0]
+
+
+def _hash_file(path: Path) -> str:
+    digest = hashlib.blake2b()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def ensure_hash(row: PlannedFile) -> str:
+    if row.file_hash is None:
+        row.file_hash = _hash_file(row.media.path)
+    return row.file_hash
+
+
+def _sanitize_segment(value: str, fallback: str) -> str:
+    text = " ".join((value or "").strip().split())
+    for bad in INVALID_PATH_CHARS:
+        text = text.replace(bad, "_")
+    text = text.rstrip(".").strip()
+    return text or fallback
+
+
+def _track_prefix(track_number: int | None) -> str:
+    if track_number is None:
+        return ""
+    return f"{track_number:02d} - "
+
+
+def compute_dest_rel_path(media: MediaRead) -> Path:
+    tags = media.tags
+    if tags.compilation:
+        label = _sanitize_segment(tags.label, "Compilations")
+        album = _sanitize_segment(tags.album, "Singles")
+        artist = _sanitize_segment(tags.artist, "Unknown Artist")
+        title = _sanitize_segment(tags.title, "Unknown Title")
+        filename = f"{_track_prefix(tags.track_number)}{artist} - {title}{media.ext}"
+        return Path(label) / album / filename
+    artist = _sanitize_segment(tags.artist, "Unknown Artist")
+    album = _sanitize_segment(tags.album, "Singles")
+    title = _sanitize_segment(tags.title, "Unknown Title")
+    filename = f"{_track_prefix(tags.track_number)}{title}{media.ext}"
+    return Path(artist) / album / filename
+
+
+def _is_hidden_relative(path: Path) -> bool:
+    return any(part.startswith(".") for part in path.parts)
+
+
+def iter_candidate_files(
+    source_root: Path,
+    *,
+    excluded_roots: Iterable[Path],
+    limit_root: Path | None = None,
+) -> Iterable[Path]:
+    excluded = [root.resolve() for root in excluded_roots]
+    walk_root = (limit_root or source_root).resolve()
+    for current, dirnames, filenames in os.walk(walk_root, topdown=True, followlinks=False):
+        current_path = Path(current)
+        pruned_dirs: list[str] = []
+        for dirname in dirnames:
+            child = current_path / dirname
+            if dirname.startswith("."):
+                continue
+            if child.is_symlink():
+                continue
+            if any(_is_relative_to(child.resolve(), root) for root in excluded):
+                continue
+            pruned_dirs.append(dirname)
+        dirnames[:] = pruned_dirs
+        for filename in filenames:
+            path = current_path / filename
+            if filename.startswith("."):
+                continue
+            if path.is_symlink() or not path.is_file():
+                continue
+            if path.suffix.lower() not in ALLOWED_EXTS:
+                continue
+            if any(_is_relative_to(path.resolve(), root) for root in excluded):
+                continue
+            rel = path.resolve().relative_to(source_root)
+            if _is_hidden_relative(rel):
+                continue
+            yield path.resolve()
+
+
+def build_initial_records(
+    source_root: Path,
+    *,
+    dest_root: Path,
+    archive_root: Path,
+    mp3_kbps: int,
+    aac_min_kbps: int,
+    limit_root: Path | None = None,
+    verbose: bool = False,
+) -> list[PlannedFile]:
+    records: list[PlannedFile] = []
+    for path in iter_candidate_files(
+        source_root,
+        excluded_roots=(dest_root, archive_root),
+        limit_root=limit_root,
+    ):
+        try:
+            media = inspect_file(path)
+            reason = classify_media(media, mp3_kbps=mp3_kbps, aac_min_kbps=aac_min_kbps)
+            if reason is None and _missing_required_tags(media):
+                reason = "missing_required_tags"
+            if reason is None:
+                row = PlannedFile(media=media, action="keep", reason="keep")
+                records.append(row)
+                _emit_verbose(verbose, f"PLAN keep {row.media.path}")
+            else:
+                row = PlannedFile(media=media, action="archive", reason=reason)
+                records.append(row)
+                _emit_verbose(verbose, f"PLAN archive {row.media.path} reason={reason}")
+        except Exception as exc:
+            size = path.stat().st_size if path.exists() else 0
+            row = PlannedFile(
+                media=MediaRead(path=path, ext=path.suffix.lower(), size=size),
+                action="archive",
+                reason="error_unreadable",
+                detail=f"{type(exc).__name__}: {exc}",
+            )
+            records.append(row)
+            _emit_verbose(verbose, f"PLAN archive {row.media.path} reason=error_unreadable detail={row.detail}")
+    return records
+
+
+def apply_exact_hash_dedupe(records: list[PlannedFile]) -> None:
+    size_groups: dict[int, list[PlannedFile]] = defaultdict(list)
+    for row in records:
+        if row.action == "keep":
+            size_groups[row.media.size].append(row)
+    for rows in size_groups.values():
+        if len(rows) <= 1:
+            continue
+        hash_groups: dict[str, list[PlannedFile]] = defaultdict(list)
+        for row in rows:
+            hash_groups[ensure_hash(row)].append(row)
+        for dupes in hash_groups.values():
+            if len(dupes) <= 1:
+                continue
+            keep = choose_canonical(dupes, prefer_mp3=False)
+            for row in dupes:
+                if row is keep:
+                    continue
+                row.action = "archive"
+                row.reason = "archive_duplicate_hash"
+
+
+def apply_isrc_dedupe(records: list[PlannedFile], *, duration_tolerance_seconds: float) -> None:
+    isrc_groups: dict[str, list[PlannedFile]] = defaultdict(list)
+    for row in records:
+        if row.action != "keep":
+            continue
+        if row.media.tags.isrc:
+            isrc_groups[row.media.tags.isrc].append(row)
+    for rows in isrc_groups.values():
+        if len(rows) <= 1:
+            continue
+        durations = [row.media.duration_seconds for row in rows]
+        if any(duration is None for duration in durations):
+            for row in rows:
+                row.flags.add("conflict_isrc_duration")
+            continue
+        if max(durations) - min(durations) > duration_tolerance_seconds:
+            for row in rows:
+                row.flags.add("conflict_isrc_duration")
+            continue
+        keep = choose_canonical(rows, prefer_mp3=True)
+        for row in rows:
+            if row is keep:
+                continue
+            row.action = "archive"
+            row.reason = "archive_duplicate_isrc"
+
+
+def _collision_candidate(path: Path, file_hash: str, counter: int = 0) -> Path:
+    stem = path.stem
+    suffix = path.suffix
+    if counter == 0:
+        return path.with_name(f"{stem}__{file_hash[:8]}{suffix}")
+    return path.with_name(f"{stem}__{file_hash[:8]}__{counter + 1}{suffix}")
+
+
+def _existing_path_hash(path: Path, cache: dict[Path, str | None]) -> str | None:
+    if path in cache:
+        return cache[path]
+    if not path.exists() or not path.is_file():
+        cache[path] = None
+        return None
+    cache[path] = _hash_file(path)
+    return cache[path]
+
+
+def assign_destinations(records: list[PlannedFile], *, dest_root: Path, resume: bool = False) -> None:
+    occupied: dict[Path, PlannedFile] = {}
+    existing_hash_cache: dict[Path, str | None] = {}
+    keep_rows = sorted(
+        (row for row in records if row.action == "keep"),
+        key=lambda row: (str(compute_dest_rel_path(row.media)), str(row.media.path)),
+    )
+    for row in keep_rows:
+        base_dest = (dest_root / compute_dest_rel_path(row.media)).resolve()
+        file_hash = ensure_hash(row)
+        existing = occupied.get(base_dest)
+        existing_disk_hash = _existing_path_hash(base_dest, existing_hash_cache) if resume else None
+        if existing is None and existing_disk_hash is None:
+            row.dest = base_dest
+            occupied[base_dest] = row
+            continue
+        if existing is None and existing_disk_hash == file_hash:
+            row.action = "archive"
+            row.reason = "archive_duplicate_hash"
+            row.dest = None
+            continue
+        if existing is None:
+            counter = 0
+            while True:
+                candidate = _collision_candidate(base_dest, file_hash, counter=counter)
+                prior_disk_hash = _existing_path_hash(candidate, existing_hash_cache) if resume else None
+                if prior_disk_hash is None:
+                    row.dest = candidate
+                    row.reason = "path_collision_renamed"
+                    occupied[candidate] = row
+                    break
+                if prior_disk_hash == file_hash:
+                    row.action = "archive"
+                    row.reason = "archive_duplicate_hash"
+                    row.dest = None
+                    break
+                counter += 1
+            continue
+        if ensure_hash(existing) == file_hash:
+            row.action = "archive"
+            row.reason = "archive_duplicate_hash"
+            row.dest = None
+            continue
+        counter = 0
+        while True:
+            candidate = _collision_candidate(base_dest, file_hash, counter=counter)
+            prior = occupied.get(candidate)
+            prior_disk_hash = _existing_path_hash(candidate, existing_hash_cache) if resume else None
+            if prior is None and prior_disk_hash is None:
+                row.dest = candidate
+                row.reason = "path_collision_renamed"
+                occupied[candidate] = row
+                break
+            if prior is None and prior_disk_hash == file_hash:
+                row.action = "archive"
+                row.reason = "archive_duplicate_hash"
+                row.dest = None
+                break
+            if ensure_hash(prior) == file_hash:
+                row.action = "archive"
+                row.reason = "archive_duplicate_hash"
+                row.dest = None
+                break
+            counter += 1
+
+
+def assign_archive_paths(records: list[PlannedFile], *, source_root: Path, archive_root: Path) -> None:
+    for row in records:
+        if row.action != "archive":
+            continue
+        rel_path = row.media.path.relative_to(source_root)
+        row.archive = archive_root / row.reason / rel_path
+
+
+def _reason_counts(records: Iterable[PlannedFile]) -> dict[str, int]:
+    counts = Counter(row.reason for row in records)
+    return dict(sorted(counts.items()))
+
+
+def _flag_counts(records: Iterable[PlannedFile]) -> dict[str, int]:
+    counts: Counter[str] = Counter()
+    for row in records:
+        for flag in sorted(row.flags):
+            counts[flag] += 1
+    return dict(sorted(counts.items()))
+
+
+def _manifest_row(row: PlannedFile) -> dict[str, Any]:
+    media = row.media
+    tags = media.tags
+    return {
+        "source": str(media.path),
+        "action": row.action,
+        "dest": str(row.dest) if row.dest is not None else "",
+        "archive": str(row.archive) if row.archive is not None else "",
+        "reason": row.reason,
+        "flags": sorted(row.flags),
+        "detail": row.detail,
+        "ext": media.ext,
+        "size": media.size,
+        "hash": row.file_hash or "",
+        "bitrate_kbps": media.bitrate_kbps,
+        "bitrate_source": media.bitrate_source,
+        "bitrate_mode": media.bitrate_mode,
+        "codec": media.codec,
+        "duration_seconds": media.duration_seconds,
+        "sketchy": media.sketchy,
+        "isrc": tags.isrc,
+        "artist": tags.artist,
+        "title": tags.title,
+        "album": tags.album,
+        "album_artist": tags.album_artist,
+        "track_number": tags.track_number,
+        "label": tags.label,
+        "compilation": tags.compilation,
+    }
+
+
+def write_manifest(path: Path, records: Iterable[PlannedFile], *, append: bool = False) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    mode = "a" if append else "w"
+    with path.open(mode, encoding="utf-8") as handle:
+        for row in records:
+            handle.write(json.dumps(_manifest_row(row), ensure_ascii=False) + "\n")
+
+
+def write_summary(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def execute_moves(records: list[PlannedFile], *, verbose: bool = False) -> None:
+    for row in sorted(records, key=lambda item: str(item.media.path)):
+        if row.action == "keep":
+            if row.dest is None:
+                raise ValueError(f"Missing destination for {row.media.path}")
+            row.dest.parent.mkdir(parents=True, exist_ok=True)
+            _emit_verbose(verbose, f"MOVE keep {row.media.path} -> {row.dest}")
+            shutil.move(str(row.media.path), str(row.dest))
+            continue
+        if row.action == "archive":
+            if row.archive is None:
+                raise ValueError(f"Missing archive path for {row.media.path}")
+            row.archive.parent.mkdir(parents=True, exist_ok=True)
+            _emit_verbose(verbose, f"MOVE archive {row.media.path} -> {row.archive} reason={row.reason}")
+            shutil.move(str(row.media.path), str(row.archive))
+
+
+def _build_audit_records(
+    dest_root: Path,
+    *,
+    mp3_kbps: int,
+    aac_min_kbps: int,
+    duration_tolerance_seconds: float,
+) -> list[PlannedFile]:
+    records: list[PlannedFile] = []
+    for path in iter_candidate_files(dest_root, excluded_roots=(), limit_root=None):
+        try:
+            media = inspect_file(path)
+            reason = classify_media(media, mp3_kbps=mp3_kbps, aac_min_kbps=aac_min_kbps)
+            if reason is None and _missing_required_tags(media):
+                reason = "missing_required_tags"
+            records.append(
+                PlannedFile(
+                    media=media,
+                    action="ok" if reason is None else "invalid",
+                    reason="keep" if reason is None else reason,
+                )
+            )
+        except Exception as exc:
+            size = path.stat().st_size if path.exists() else 0
+            records.append(
+                PlannedFile(
+                    media=MediaRead(path=path, ext=path.suffix.lower(), size=size),
+                    action="invalid",
+                    reason="error_unreadable",
+                    detail=f"{type(exc).__name__}: {exc}",
+                )
+            )
+    active = [row for row in records if row.action == "ok"]
+    size_groups: dict[int, list[PlannedFile]] = defaultdict(list)
+    for row in active:
+        size_groups[row.media.size].append(row)
+    for rows in size_groups.values():
+        if len(rows) <= 1:
+            continue
+        by_hash: dict[str, list[PlannedFile]] = defaultdict(list)
+        for row in rows:
+            by_hash[ensure_hash(row)].append(row)
+        for dupes in by_hash.values():
+            if len(dupes) > 1:
+                for row in dupes:
+                    row.flags.add("duplicate_hash")
+    isrc_groups: dict[str, list[PlannedFile]] = defaultdict(list)
+    for row in active:
+        if row.media.tags.isrc:
+            isrc_groups[row.media.tags.isrc].append(row)
+    for rows in isrc_groups.values():
+        if len(rows) <= 1:
+            continue
+        durations = [row.media.duration_seconds for row in rows]
+        if any(duration is None for duration in durations) or (
+            max(durations) - min(durations) > duration_tolerance_seconds
+        ):
+            for row in rows:
+                row.flags.add("conflict_isrc_duration")
+    return records
+
+
+def audit_clean_pool(
+    dest_root: Path,
+    *,
+    mp3_kbps: int,
+    aac_min_kbps: int,
+    duration_tolerance_seconds: float,
+    audit_manifest_path: Path,
+    audit_summary_path: Path,
+    verbose: bool = False,
+) -> dict[str, Any]:
+    records = _build_audit_records(
+        dest_root,
+        mp3_kbps=mp3_kbps,
+        aac_min_kbps=aac_min_kbps,
+        duration_tolerance_seconds=duration_tolerance_seconds,
+    )
+    write_manifest(audit_manifest_path, records)
+    for row in records:
+        _emit_verbose(verbose, f"AUDIT {row.action} {row.media.path} reason={row.reason}")
+    duplicate_files = sum(1 for row in records if "duplicate_hash" in row.flags)
+    duplicate_groups = len(
+        {
+            row.file_hash or ensure_hash(row)
+            for row in records
+            if "duplicate_hash" in row.flags
+        }
+    )
+    conflict_files = sum(1 for row in records if "conflict_isrc_duration" in row.flags)
+    conflict_groups = len(
+        {
+            row.media.tags.isrc
+            for row in records
+            if "conflict_isrc_duration" in row.flags and row.media.tags.isrc
+        }
+    )
+    invalid_audio = sum(1 for row in records if row.action == "invalid")
+    payload = {
+        "dest_root": str(dest_root),
+        "scanned": len(records),
+        "invalid_audio_count": invalid_audio,
+        "exact_duplicate_files": duplicate_files,
+        "exact_duplicate_groups": duplicate_groups,
+        "unresolved_isrc_conflict_files": conflict_files,
+        "unresolved_isrc_conflict_groups": conflict_groups,
+        "reason_counts": _reason_counts(records),
+        "flag_counts": _flag_counts(records),
+        "audit_manifest": str(audit_manifest_path),
+    }
+    write_summary(audit_summary_path, payload)
+    return payload
+
+
+def build_plan(
+    source_root: Path,
+    *,
+    dest_root: Path,
+    archive_root: Path,
+    mp3_kbps: int,
+    aac_min_kbps: int,
+    duration_tolerance_seconds: float,
+    limit_root: Path | None = None,
+    resume: bool = False,
+    verbose: bool = False,
+) -> list[PlannedFile]:
+    records = build_initial_records(
+        source_root,
+        dest_root=dest_root,
+        archive_root=archive_root,
+        mp3_kbps=mp3_kbps,
+        aac_min_kbps=aac_min_kbps,
+        limit_root=limit_root,
+        verbose=verbose,
+    )
+    apply_exact_hash_dedupe(records)
+    apply_isrc_dedupe(records, duration_tolerance_seconds=duration_tolerance_seconds)
+    assign_destinations(records, dest_root=dest_root, resume=resume)
+    return records
+
+
+def _preflight_dest_root(dest_root: Path, *, resume: bool) -> None:
+    if dest_root.exists() and any(dest_root.iterdir()):
+        if resume:
+            return
+        raise ValueError(f"Destination root exists and is non-empty: {dest_root}")
+
+
+def _preflight_run_root(run_root: Path, *, resume: bool) -> None:
+    if run_root.exists() and any(run_root.iterdir()):
+        if resume:
+            return
+        raise ValueError(f"Run artifact root already exists and is non-empty: {run_root}")
+
+
+def run(args: argparse.Namespace) -> dict[str, Any]:
+    execute = bool(args.execute)
+    source_root = _require_existing_root(args.source_root, "Source root")
+    dest_root = _require_parent_volume(args.dest_root)
+    archive_root = _require_parent_volume(args.archive_root)
+    _validate_root_relationships(source_root, dest_root, archive_root)
+    limit_root = _resolve_limit_root(source_root, args.limit_root)
+    run_root = _run_root_for_mode(archive_root, execute)
+    manifest_path = args.manifest.expanduser().resolve() if args.manifest else _default_manifest_path(run_root)
+
+    _preflight_dest_root(dest_root, resume=bool(args.resume))
+    _preflight_run_root(run_root, resume=bool(args.resume))
+    run_root.mkdir(parents=True, exist_ok=True)
+
+    records = build_plan(
+        source_root,
+        dest_root=dest_root,
+        archive_root=archive_root,
+        mp3_kbps=int(args.mp3_kbps),
+        aac_min_kbps=int(args.aac_min_kbps),
+        duration_tolerance_seconds=float(args.duration_tolerance_seconds),
+        limit_root=limit_root,
+        resume=bool(args.resume),
+        verbose=bool(args.verbose),
+    )
+    assign_archive_paths(records, source_root=source_root, archive_root=run_root)
+
+    write_manifest(manifest_path, records, append=bool(args.resume and manifest_path.exists()))
+    summary_payload = {
+        "mode": "execute" if execute else "dry-run",
+        "resume": bool(args.resume),
+        "source_root": str(source_root),
+        "dest_root": str(dest_root),
+        "archive_root": str(archive_root),
+        "artifact_root": str(run_root),
+        "scanned": len(records),
+        "kept": sum(1 for row in records if row.action == "keep"),
+        "archived": sum(1 for row in records if row.action == "archive"),
+        "reason_counts": _reason_counts(records),
+        "flag_counts": _flag_counts(records),
+        "manifest": str(manifest_path),
+    }
+    write_summary(run_root / "summary.json", summary_payload)
+
+    audit_payload: dict[str, Any] | None = None
+    if execute:
+        execute_moves(records, verbose=bool(args.verbose))
+        audit_payload = audit_clean_pool(
+            dest_root,
+            mp3_kbps=int(args.mp3_kbps),
+            aac_min_kbps=int(args.aac_min_kbps),
+            duration_tolerance_seconds=float(args.duration_tolerance_seconds),
+            audit_manifest_path=run_root / "audit_manifest.jsonl",
+            audit_summary_path=run_root / "audit_summary.json",
+            verbose=bool(args.verbose),
+        )
+
+    print(f"total_scanned: {summary_payload['scanned']}")
+    print(f"kept: {summary_payload['kept']}")
+    print(f"archived: {summary_payload['archived']}")
+    for reason, count in summary_payload["reason_counts"].items():
+        print(f"reason[{reason}]: {count}")
+    for flag, count in summary_payload["flag_counts"].items():
+        print(f"flag[{flag}]: {count}")
+    print(f"manifest: {manifest_path}")
+    print(f"artifacts: {run_root}")
+    if audit_payload is not None:
+        print(f"audit_invalid_audio: {audit_payload['invalid_audio_count']}")
+        print(f"audit_exact_duplicate_files: {audit_payload['exact_duplicate_files']}")
+        print(f"audit_unresolved_isrc_conflict_files: {audit_payload['unresolved_isrc_conflict_files']}")
+
+    return {
+        "records": records,
+        "summary": summary_payload,
+        "audit": audit_payload,
+        "artifact_root": run_root,
+        "manifest": manifest_path,
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    try:
+        run(args)
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+    except FileNotFoundError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

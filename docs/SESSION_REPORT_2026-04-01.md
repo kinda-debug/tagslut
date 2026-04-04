@@ -200,3 +200,35 @@ ts-get <url> --dj    # download + write dj_pool.m3u files
 # Manual re-auth when Qobuz session expires:
 cd ~/Projects/tagslut && poetry run python -m tagslut auth login qobuz --email EMAIL --force
 ```
+
+---
+
+## Clean Lossy Pool Report
+
+Implemented and executed the new standalone operator utility:
+
+```bash
+/Users/georgeskhawam/Projects/tagslut/tools/centralize_lossy_pool
+```
+
+Production run:
+- destination: `/Volumes/MUSIC/MP3_LIBRARY_CLEAN`
+- archive run: `/Volumes/MUSIC/_archive_lossy_pool/MP3_LIBRARY_CLEAN_20260403_212500`
+
+Primary execute result:
+- scanned: `19716`
+- kept: `11094`
+- archived: `8622`
+- final audit: `invalid_audio_count = 0`
+- final audit: `exact_duplicate_files = 0`
+- unresolved `conflict_isrc_duration`: `116` files across `44` groups
+
+Follow-up resume run:
+- a literal hidden-style directory `/Volumes/MUSIC/_work/gig_runs/...` was skipped by design because directory names beginning with `.` are excluded
+- renamed it to `/Volumes/MUSIC/_work/gig_runs/_leftover_pool`
+- reran the same archive stamp with `--execute --resume --verbose --limit-root _work/gig_runs/_leftover_pool`
+- absorbed the remaining `67` lossy files (`53` kept, `14` archived as duplicate hash)
+
+Final operator state:
+- no `.mp3`, `.aac`, or `.m4a` files remained outside `/Volumes/MUSIC/MP3_LIBRARY_CLEAN` and `/Volumes/MUSIC/_archive_lossy_pool/*`
+- Rekordbox import should now start fresh from `/Volumes/MUSIC/MP3_LIBRARY_CLEAN` only

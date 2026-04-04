@@ -378,6 +378,73 @@ When executed, common sidecars such as lyric files and sibling artwork move with
 
 ## DJ Pool Export (FLAC → MP3 → Rekordbox)
 
+### Build a clean lossy Rekordbox import root
+
+Use the standalone operator utility to centralize eligible lossy files into one
+derived Rekordbox-facing root. This is filesystem-only; it does not write DB
+truth. It solves cleanliness only; it does not reconstruct historical DJ
+relevance.
+
+Dry-run:
+
+```bash
+/Users/georgeskhawam/Projects/tagslut/tools/centralize_lossy_pool \
+  --source-root /Volumes/MUSIC \
+  --dest-root /Volumes/MUSIC/MP3_LIBRARY_CLEAN \
+  --archive-root "/Volumes/MUSIC/_archive_lossy_pool/MP3_LIBRARY_CLEAN_$(date +%Y%m%d_%H%M%S)" \
+  --dry-run
+```
+
+Execute:
+
+```bash
+/Users/georgeskhawam/Projects/tagslut/tools/centralize_lossy_pool \
+  --source-root /Volumes/MUSIC \
+  --dest-root /Volumes/MUSIC/MP3_LIBRARY_CLEAN \
+  --archive-root /Volumes/MUSIC/_archive_lossy_pool/MP3_LIBRARY_CLEAN_<STAMP> \
+  --execute
+```
+
+Resume an interrupted execute run:
+
+```bash
+/Users/georgeskhawam/Projects/tagslut/tools/centralize_lossy_pool \
+  --source-root /Volumes/MUSIC \
+  --dest-root /Volumes/MUSIC/MP3_LIBRARY_CLEAN \
+  --archive-root /Volumes/MUSIC/_archive_lossy_pool/MP3_LIBRARY_CLEAN_<STAMP> \
+  --execute --resume --verbose
+```
+
+Behavior:
+- Accepts `.mp3` only at exact configured bitrate and `.m4a` only when `ffprobe` reports AAC at or above the configured threshold.
+- Dedupes exact hashes automatically and dedupes cross-format only when normalized ISRC matches and duration stays within tolerance.
+- Writes the run manifest and audit summary under the archive run folder.
+- The post-execute audit is read-only and reports unresolved `conflict_isrc_duration` groups instead of collapsing them.
+- Hidden files and directories are skipped intentionally. A literal directory name like `...` is treated as hidden and must be renamed first if it should be included.
+
+### Reconstruct a starting DJ seed from `tree_rbx.js`
+
+After `/Volumes/MUSIC/MP3_LIBRARY_CLEAN` exists, use the standalone matcher to
+map prior approved Rekordbox material onto the clean candidate universe.
+
+```bash
+/Users/georgeskhawam/Projects/tagslut/tools/build_dj_seed_from_tree_rbx \
+  --tree-js /Users/georgeskhawam/Projects/tagslut/tree_rbx.js \
+  --pool-root /Volumes/MUSIC/MP3_LIBRARY_CLEAN \
+  --output-dir /Users/georgeskhawam/Music/dj_seed_from_tree_rbx
+```
+
+Behavior:
+- Parses `tree_rbx.js` directly without a JS runtime and preserves exported tree traversal order.
+- Optionally inspects historical seed files if their original paths still exist; otherwise falls back to filename and ancestry hints.
+- Scans `/Volumes/MUSIC/MP3_LIBRARY_CLEAN` for `.mp3` and `.m4a` candidates, then matches by strict tier order:
+  `isrc_exact`, `artist_title_exact`, `artist_title_context`.
+- Writes only under `--output-dir`:
+  `dj_seed_from_tree_rbx.m3u`, `dj_seed_missing.csv`,
+  `dj_seed_ambiguous.csv`, `dj_seed_match_manifest.jsonl`.
+- Does not write DB rows, retag files, transcode, move, or delete anything.
+- The emitted M3U is a reviewable DJ seed starting point, not a broad export of the full clean pool.
+
 ### Transcode new tracks to DJSSD
 
 ```bash
@@ -446,10 +513,13 @@ PY
 
 ### Rekordbox import
 
-1. Lexicon: import folder `$DJ_LIBRARY`
-2. Rekordbox: import MP3 library root → Analyze BPM/beatgrid/phrase
-3. Disable **Preferences → Advanced → Write tags to file**
-4. Export to USB: Rekordbox Export Mode → `$DJ_USB_ROOT`
+1. Build `/Volumes/MUSIC/MP3_LIBRARY_CLEAN` with `tools/centralize_lossy_pool`
+2. Optionally reconstruct a reviewable historical seed with `tools/build_dj_seed_from_tree_rbx`
+3. Rekordbox: import `/Volumes/MUSIC/MP3_LIBRARY_CLEAN` only
+4. Use the emitted M3U and its missing/ambiguous reports as the starting review surface
+5. Analyze BPM/beatgrid/phrase
+6. Disable **Preferences → Advanced → Write tags to file**
+7. Export to USB: Rekordbox Export Mode → `$DJ_USB_ROOT`
 
 ---
 

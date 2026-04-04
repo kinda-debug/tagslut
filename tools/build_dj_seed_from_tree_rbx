@@ -1,0 +1,979 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import csv
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import unicodedata
+from collections import Counter, defaultdict
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Any, Iterable
+
+from mutagen.id3 import ID3, ID3NoHeaderError
+from mutagen.mp3 import MP3
+from mutagen.mp4 import MP4
+
+
+ALLOWED_EXTS = {".mp3", ".m4a"}
+YEAR_RE = re.compile(r"\((\d{4})\)")
+TRACK_RE = re.compile(r"^\s*(\d{1,3})\b")
+WHITESPACE_RE = re.compile(r"\s+")
+PUNCT_RE = re.compile(r"[\W_]+", re.UNICODE)
+DASH_SPLIT_RE = re.compile(r"\s+[-\u2010-\u2015]+\s+")
+
+
+@dataclass(frozen=True)
+class MediaHints:
+    artist: str = ""
+    title: str = ""
+    album: str = ""
+    album_artist: str = ""
+    track_number: int | None = None
+    year: str = ""
+    isrc: str = ""
+    duration_seconds: float | None = None
+    label: str = ""
+
+
+@dataclass(frozen=True)
+class SeedRow:
+    seed_index: int
+    seed_path: str
+    seed_name: str
+    seed_ext: str
+    seed_size: int
+    seed_parent_dirs: tuple[str, ...]
+    seed_context_path: str
+    seed_source_mode: str
+    artist: str
+    title: str
+    album: str
+    album_artist: str
+    track_number: int | None
+    year: str
+    isrc: str
+    duration_seconds: float | None
+    basename_norm: str
+    basename_tokens: tuple[str, ...]
+    context_tokens: tuple[str, ...]
+    normalized_artist: str
+    normalized_title: str
+    normalized_album: str
+    normalized_album_artist: str
+    normalized_isrc: str
+
+
+@dataclass(frozen=True)
+class CandidateRow:
+    path: Path
+    extension: str
+    size: int
+    duration_seconds: float | None
+    artist: str
+    title: str
+    album: str
+    album_artist: str
+    isrc: str
+    track_number: int | None
+    label: str
+    parent_dirs: tuple[str, ...]
+    basename_norm: str
+    basename_tokens: tuple[str, ...]
+    context_tokens: tuple[str, ...]
+    normalized_artist: str
+    normalized_title: str
+    normalized_album: str
+    normalized_album_artist: str
+    normalized_isrc: str
+
+
+@dataclass(frozen=True)
+class MatchDecision:
+    outcome: str
+    best_tier_reached: str
+    chosen_candidate: CandidateRow | None = None
+    chosen_confidence: str = ""
+    ambiguous_candidates: tuple[CandidateRow, ...] = ()
+    note: str = ""
+    ignore_reason: str = ""
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Build a conservative DJ seed playlist by matching tree_rbx.js rows onto a clean lossy pool."
+    )
+    parser.add_argument("--tree-js", type=Path, required=True, help="Path to tree_rbx.js export.")
+    parser.add_argument("--pool-root", type=Path, required=True, help="Root of MP3_LIBRARY_CLEAN to scan.")
+    parser.add_argument("--output-dir", type=Path, required=True, help="Directory for all outputs.")
+    parser.add_argument(
+        "--m3u-name",
+        default="dj_seed_from_tree_rbx.m3u",
+        help="Output M3U file name written under --output-dir.",
+    )
+    parser.add_argument(
+        "--missing-name",
+        default="dj_seed_missing.csv",
+        help="Missing CSV file name written under --output-dir.",
+    )
+    parser.add_argument(
+        "--ambiguous-name",
+        default="dj_seed_ambiguous.csv",
+        help="Ambiguous CSV file name written under --output-dir.",
+    )
+    parser.add_argument(
+        "--manifest-name",
+        default="dj_seed_match_manifest.jsonl",
+        help="Manifest JSONL file name written under --output-dir.",
+    )
+    parser.add_argument("--limit", type=int, default=None, help="Optional limit after ignore filtering.")
+    parser.add_argument(
+        "--path-context-depth",
+        type=int,
+        default=3,
+        help="Parent-dir depth to retain for candidate context matching.",
+    )
+    parser.add_argument(
+        "--duration-tolerance-seconds",
+        type=float,
+        default=2.0,
+        help="Maximum duration delta for duration-aware matching.",
+    )
+    args = parser.parse_args(argv)
+    if args.limit is not None and args.limit < 0:
+        parser.error("--limit must be >= 0")
+    if args.path_context_depth < 0:
+        parser.error("--path-context-depth must be >= 0")
+    if args.duration_tolerance_seconds < 0:
+        parser.error("--duration-tolerance-seconds must be >= 0")
+    if not args.tree_js.expanduser().exists():
+        parser.error(f"--tree-js does not exist: {args.tree_js}")
+    if not args.pool_root.expanduser().exists():
+        parser.error(f"--pool-root does not exist: {args.pool_root}")
+    if not args.pool_root.expanduser().is_dir():
+        parser.error(f"--pool-root is not a directory: {args.pool_root}")
+    return args
+
+
+def _decode_tag_value(value: Any) -> str:
+    if value is None:
+        return ""
+    if hasattr(value, "text"):
+        text = getattr(value, "text")
+        if isinstance(text, (list, tuple)):
+            return _decode_tag_value(text[0] if text else "")
+        return str(text).strip()
+    if isinstance(value, bytes):
+        try:
+            return value.decode("utf-8").strip()
+        except UnicodeDecodeError:
+            return value.decode("latin-1", "ignore").strip()
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            decoded = _decode_tag_value(item)
+            if decoded:
+                return decoded
+        return ""
+    return str(value).strip()
+
+
+def _id3_text(tags: ID3, key: str) -> str:
+    frame = tags.get(key)
+    if frame is None:
+        return ""
+    return _decode_tag_value(frame)
+
+
+def _id3_user_text(tags: ID3, desc: str) -> str:
+    direct = _id3_text(tags, f"TXXX:{desc}")
+    if direct:
+        return direct
+    try:
+        frames = tags.getall("TXXX")
+    except Exception:
+        return ""
+    for frame in frames:
+        if str(getattr(frame, "desc", "")).strip().upper() == desc.upper():
+            return _decode_tag_value(getattr(frame, "text", ""))
+    return ""
+
+
+def _mp4_first(tags: dict[str, Any], *keys: str) -> str:
+    for key in keys:
+        if key not in tags:
+            continue
+        value = _decode_tag_value(tags.get(key))
+        if value:
+            return value
+    return ""
+
+
+def normalize_isrc(value: str) -> str:
+    return "".join(ch for ch in (value or "").upper() if ch.isalnum())
+
+
+def normalize_text(value: str) -> str:
+    text = unicodedata.normalize("NFKC", value or "")
+    text = text.casefold().replace("&", " and ").strip()
+    text = re.sub(r"[_/\-]+", " ", text)
+    text = PUNCT_RE.sub(" ", text)
+    text = WHITESPACE_RE.sub(" ", text).strip()
+    return text
+
+
+def tokenize_text(value: str) -> tuple[str, ...]:
+    normalized = normalize_text(value)
+    if not normalized:
+        return ()
+    return tuple(part for part in normalized.split(" ") if part)
+
+
+def _path_context_tokens(parts: Iterable[str]) -> tuple[str, ...]:
+    tokens: list[str] = []
+    for part in parts:
+        tokens.extend(tokenize_text(part))
+    return tuple(tokens)
+
+
+def _parse_track_number(value: str) -> int | None:
+    match = TRACK_RE.match(value or "")
+    if match is None:
+        return None
+    return int(match.group(1))
+
+
+def _safe_float(value: Any) -> float | None:
+    if value in (None, ""):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _year_from_text(value: str) -> str:
+    match = YEAR_RE.search(value or "")
+    return match.group(1) if match else ""
+
+
+def _strip_common_prefixes(value: str) -> str:
+    text = YEAR_RE.sub("", value or "").strip()
+    text = re.sub(r"^\s*\d{1,3}\s+", "", text)
+    return text.strip(" -_")
+
+
+def _basename_without_ext(name: str) -> str:
+    return Path(name).stem
+
+
+def _merge_hints(primary: MediaHints, fallback: MediaHints) -> MediaHints:
+    return MediaHints(
+        artist=primary.artist or fallback.artist,
+        title=primary.title or fallback.title,
+        album=primary.album or fallback.album,
+        album_artist=primary.album_artist or fallback.album_artist,
+        track_number=primary.track_number if primary.track_number is not None else fallback.track_number,
+        year=primary.year or fallback.year,
+        isrc=primary.isrc or fallback.isrc,
+        duration_seconds=primary.duration_seconds if primary.duration_seconds is not None else fallback.duration_seconds,
+        label=primary.label or fallback.label,
+    )
+
+
+def _fallback_hints(*, seed_name: str, seed_parent_dirs: tuple[str, ...]) -> MediaHints:
+    basename = _basename_without_ext(seed_name).replace("\u2013", " - ").replace("\u2014", " - ")
+    parts = [part.strip() for part in DASH_SPLIT_RE.split(basename) if part.strip()]
+    artist = ""
+    title = _strip_common_prefixes(basename)
+    if len(parts) >= 2:
+        artist = _strip_common_prefixes(parts[0])
+        title = _strip_common_prefixes(parts[-1])
+    track_number = _parse_track_number(title)
+    if track_number is not None:
+        title = re.sub(r"^\s*\d{1,3}\s+", "", title).strip()
+    album = seed_parent_dirs[-1] if seed_parent_dirs else ""
+    return MediaHints(
+        artist=artist,
+        title=title,
+        album=album,
+        album_artist=artist,
+        track_number=track_number,
+        year=_year_from_text(basename),
+    )
+
+
+def _extract_mp3_hints(path: Path) -> MediaHints:
+    duration_seconds: float | None = None
+    try:
+        audio = MP3(str(path))
+        duration_seconds = _safe_float(getattr(audio.info, "length", None))
+    except Exception:
+        duration_seconds = None
+    try:
+        tags = ID3(str(path))
+    except ID3NoHeaderError:
+        tags = ID3()
+    return MediaHints(
+        artist=_id3_text(tags, "TPE1"),
+        title=_id3_text(tags, "TIT2"),
+        album=_id3_text(tags, "TALB"),
+        album_artist=_id3_text(tags, "TPE2"),
+        track_number=_parse_track_number(_id3_text(tags, "TRCK")),
+        year=_year_from_text(_id3_text(tags, "TDRC") or _id3_text(tags, "TYER")),
+        isrc=normalize_isrc(_id3_text(tags, "TSRC")),
+        duration_seconds=duration_seconds,
+        label=_id3_user_text(tags, "LABEL") or _id3_text(tags, "TPUB"),
+    )
+
+
+def probe_duration_ffprobe(path: Path) -> float | None:
+    if shutil.which("ffprobe") is None:
+        return None
+    result = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "csv=p=0",
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+    return _safe_float(result.stdout.strip())
+
+
+def _extract_m4a_hints(path: Path) -> MediaHints:
+    audio = MP4(str(path))
+    tags = getattr(audio, "tags", None) or {}
+    return MediaHints(
+        artist=_mp4_first(tags, "\xa9ART"),
+        title=_mp4_first(tags, "\xa9nam"),
+        album=_mp4_first(tags, "\xa9alb"),
+        album_artist=_mp4_first(tags, "aART"),
+        track_number=_parse_track_number(_decode_tag_value(tags.get("trkn"))),
+        year=_year_from_text(_mp4_first(tags, "\xa9day")),
+        isrc=normalize_isrc(_mp4_first(tags, "----:com.apple.iTunes:ISRC", "----:com.apple.iTunes:TSRC")),
+        duration_seconds=probe_duration_ffprobe(path),
+        label=_mp4_first(tags, "----:com.apple.iTunes:LABEL"),
+    )
+
+
+def inspect_media_hints(path: Path) -> MediaHints:
+    suffix = path.suffix.lower()
+    if suffix == ".mp3":
+        return _extract_mp3_hints(path)
+    if suffix == ".m4a":
+        return _extract_m4a_hints(path)
+    raise ValueError(f"Unsupported extension: {path.suffix}")
+
+
+def load_tree_payload(path: Path) -> dict[str, Any]:
+    text = path.read_text(encoding="utf-8")
+    stripped = text.lstrip()
+    prefix = "export default"
+    if not stripped.startswith(prefix):
+        raise ValueError("tree JS must start with 'export default'")
+    payload = stripped[len(prefix) :].strip()
+    if payload.endswith(";"):
+        payload = payload[:-1].rstrip()
+    try:
+        data = json.loads(payload)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"tree JS payload is not valid JSON: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ValueError("tree JS payload root must be an object")
+    return data
+
+
+def iter_tree_files(node: dict[str, Any], parent_dirs: tuple[str, ...] = ()) -> Iterable[tuple[dict[str, Any], tuple[str, ...]]]:
+    node_type = str(node.get("type") or "")
+    node_name = str(node.get("name") or "")
+    if node_type == "file":
+        yield node, parent_dirs
+        return
+    if node_type != "directory":
+        return
+    next_parents = parent_dirs + ((node_name,) if node_name else ())
+    for child in node.get("children") or []:
+        if isinstance(child, dict):
+            yield from iter_tree_files(child, next_parents)
+
+
+def _ignore_reason_for_file_node(node: dict[str, Any]) -> str | None:
+    name = str(node.get("name") or "")
+    ext = Path(name).suffix.lower()
+    size = int(node.get("size") or 0)
+    if name.startswith("._"):
+        return "appledouble"
+    if name.startswith("."):
+        return "hidden"
+    if ext not in ALLOWED_EXTS:
+        return "unsupported_extension"
+    if size <= 0:
+        return "zero_length"
+    return None
+
+
+def _seed_row_from_node(
+    *,
+    seed_index: int,
+    node: dict[str, Any],
+    parent_dirs: tuple[str, ...],
+) -> SeedRow:
+    seed_path = str(node.get("path") or "")
+    seed_name = str(node.get("name") or "")
+    seed_ext = Path(seed_name).suffix.lower()
+    path_obj = Path(seed_path)
+    fallback = _fallback_hints(seed_name=seed_name, seed_parent_dirs=parent_dirs)
+    if path_obj.exists():
+        hints = _merge_hints(inspect_media_hints(path_obj), fallback)
+        source_mode = "seed_file_inspected"
+    else:
+        hints = fallback
+        source_mode = "seed_path_only"
+    basename = _basename_without_ext(seed_name)
+    basename_norm = normalize_text(basename)
+    context_path = "/".join(parent_dirs)
+    return SeedRow(
+        seed_index=seed_index,
+        seed_path=seed_path,
+        seed_name=seed_name,
+        seed_ext=seed_ext,
+        seed_size=int(node.get("size") or 0),
+        seed_parent_dirs=parent_dirs,
+        seed_context_path=context_path,
+        seed_source_mode=source_mode,
+        artist=hints.artist,
+        title=hints.title,
+        album=hints.album,
+        album_artist=hints.album_artist,
+        track_number=hints.track_number,
+        year=hints.year,
+        isrc=hints.isrc,
+        duration_seconds=hints.duration_seconds,
+        basename_norm=basename_norm,
+        basename_tokens=tokenize_text(basename),
+        context_tokens=_path_context_tokens(parent_dirs),
+        normalized_artist=normalize_text(hints.artist),
+        normalized_title=normalize_text(hints.title),
+        normalized_album=normalize_text(hints.album),
+        normalized_album_artist=normalize_text(hints.album_artist),
+        normalized_isrc=normalize_isrc(hints.isrc),
+    )
+
+
+def load_seed_rows(tree_js: Path, limit: int | None) -> tuple[list[SeedRow], list[dict[str, Any]]]:
+    payload = load_tree_payload(tree_js)
+    seed_rows: list[SeedRow] = []
+    ignored_rows: list[dict[str, Any]] = []
+    processed = 0
+    raw_index = 0
+    for node, parent_dirs in iter_tree_files(payload):
+        ignore_reason = _ignore_reason_for_file_node(node)
+        if ignore_reason is not None:
+            ignored_rows.append(
+                {
+                    "outcome": "ignored",
+                    "best_tier_reached": "ignored",
+                    "seed_index": raw_index,
+                    "seed_path": str(node.get("path") or ""),
+                    "seed_name": str(node.get("name") or ""),
+                    "seed_ext": Path(str(node.get("name") or "")).suffix.lower(),
+                    "seed_size": int(node.get("size") or 0),
+                    "seed_parent_dirs": list(parent_dirs),
+                    "seed_context_path": "/".join(parent_dirs),
+                    "seed_source_mode": "seed_path_only",
+                    "seed_artist": "",
+                    "seed_title": "",
+                    "seed_album": "",
+                    "seed_album_artist": "",
+                    "seed_track_number": None,
+                    "seed_year": "",
+                    "seed_isrc": "",
+                    "seed_duration_seconds": None,
+                    "ignore_reason": ignore_reason,
+                }
+            )
+            raw_index += 1
+            continue
+        if limit is not None and processed >= limit:
+            break
+        seed_rows.append(_seed_row_from_node(seed_index=raw_index, node=node, parent_dirs=parent_dirs))
+        processed += 1
+        raw_index += 1
+    return seed_rows, ignored_rows
+
+
+def _is_hidden_path(path: Path) -> bool:
+    return any(part.startswith(".") for part in path.parts)
+
+
+def iter_pool_files(pool_root: Path) -> Iterable[Path]:
+    for current, dirnames, filenames in os.walk(pool_root, topdown=True, followlinks=False):
+        current_path = Path(current)
+        dirnames[:] = [
+            dirname
+            for dirname in dirnames
+            if not dirname.startswith(".") and not (current_path / dirname).is_symlink()
+        ]
+        for filename in filenames:
+            candidate = current_path / filename
+            if filename.startswith("."):
+                continue
+            if candidate.is_symlink() or not candidate.is_file():
+                continue
+            if candidate.suffix.lower() not in ALLOWED_EXTS:
+                continue
+            rel = candidate.relative_to(pool_root)
+            if _is_hidden_path(rel):
+                continue
+            yield candidate.resolve()
+
+
+def _candidate_from_path(path: Path, pool_root: Path, path_context_depth: int) -> CandidateRow:
+    rel = path.relative_to(pool_root)
+    parent_dirs = tuple(rel.parts[:-1])
+    try:
+        hints = inspect_media_hints(path)
+    except Exception:
+        hints = MediaHints()
+    basename = path.stem
+    context_parts = parent_dirs[-path_context_depth:] if path_context_depth else ()
+    return CandidateRow(
+        path=path,
+        extension=path.suffix.lower(),
+        size=path.stat().st_size,
+        duration_seconds=hints.duration_seconds,
+        artist=hints.artist,
+        title=hints.title,
+        album=hints.album,
+        album_artist=hints.album_artist,
+        isrc=hints.isrc,
+        track_number=hints.track_number,
+        label=hints.label,
+        parent_dirs=parent_dirs,
+        basename_norm=normalize_text(basename),
+        basename_tokens=tokenize_text(basename),
+        context_tokens=_path_context_tokens(context_parts),
+        normalized_artist=normalize_text(hints.artist),
+        normalized_title=normalize_text(hints.title),
+        normalized_album=normalize_text(hints.album),
+        normalized_album_artist=normalize_text(hints.album_artist),
+        normalized_isrc=normalize_isrc(hints.isrc),
+    )
+
+
+def build_candidate_rows(pool_root: Path, path_context_depth: int) -> list[CandidateRow]:
+    rows: list[CandidateRow] = []
+    for path in iter_pool_files(pool_root):
+        rows.append(_candidate_from_path(path, pool_root, path_context_depth))
+    return rows
+
+
+def build_candidate_indexes(
+    candidates: Iterable[CandidateRow],
+) -> tuple[dict[str, list[CandidateRow]], dict[tuple[str, str], list[CandidateRow]]]:
+    by_isrc: dict[str, list[CandidateRow]] = defaultdict(list)
+    by_artist_title: dict[tuple[str, str], list[CandidateRow]] = defaultdict(list)
+    for candidate in candidates:
+        if candidate.normalized_isrc:
+            by_isrc[candidate.normalized_isrc].append(candidate)
+        if candidate.normalized_artist and candidate.normalized_title:
+            by_artist_title[(candidate.normalized_artist, candidate.normalized_title)].append(candidate)
+    return by_isrc, by_artist_title
+
+
+def _duration_ok(seed_duration: float | None, candidate_duration: float | None, tolerance: float) -> bool:
+    if seed_duration is None or candidate_duration is None:
+        return True
+    return abs(seed_duration - candidate_duration) <= tolerance
+
+
+def _prefer_duration_matches(
+    seed: SeedRow,
+    candidates: list[CandidateRow],
+    tolerance: float,
+) -> list[CandidateRow]:
+    if seed.duration_seconds is None:
+        return candidates
+    preferred = [
+        candidate
+        for candidate in candidates
+        if candidate.duration_seconds is not None
+        and abs(candidate.duration_seconds - seed.duration_seconds) <= tolerance
+    ]
+    return preferred or candidates
+
+
+def _candidate_completeness(candidate: CandidateRow) -> int:
+    return sum(
+        1
+        for value in (
+            candidate.artist,
+            candidate.title,
+            candidate.album,
+            candidate.track_number,
+        )
+        if value not in ("", None)
+    )
+
+
+def _resolve_by_tiebreak(seed: SeedRow, candidates: list[CandidateRow]) -> CandidateRow | None:
+    if len(candidates) == 1:
+        return candidates[0]
+    scored: list[tuple[tuple[int, int, float, str], CandidateRow]] = []
+    for candidate in candidates:
+        duration_delta = abs(candidate.duration_seconds - seed.duration_seconds) if (
+            seed.duration_seconds is not None and candidate.duration_seconds is not None
+        ) else float("inf")
+        scored.append(
+            (
+                (
+                    1 if candidate.normalized_isrc else 0,
+                    _candidate_completeness(candidate),
+                    -duration_delta,
+                    str(candidate.path),
+                ),
+                candidate,
+            )
+        )
+    scored.sort(key=lambda item: item[0], reverse=True)
+    if not scored:
+        return None
+    top_key = scored[0][0][:3]
+    top = [candidate for key, candidate in scored if key[:3] == top_key]
+    if len(top) != 1:
+        return None
+    return top[0]
+
+
+def _context_evidence(seed: SeedRow, candidate: CandidateRow) -> tuple[int, int, int]:
+    album_exact = int(bool(seed.normalized_album and candidate.normalized_album and seed.normalized_album == candidate.normalized_album))
+    overlap = len(set(seed.context_tokens).intersection(candidate.context_tokens))
+    basename_support = int(bool(set(seed.basename_tokens).intersection(candidate.basename_tokens)))
+    return album_exact, overlap, basename_support
+
+
+def decide_match(
+    seed: SeedRow,
+    by_isrc: dict[str, list[CandidateRow]],
+    by_artist_title: dict[tuple[str, str], list[CandidateRow]],
+    duration_tolerance_seconds: float,
+) -> MatchDecision:
+    if seed.normalized_isrc:
+        tier_one = [
+            candidate
+            for candidate in by_isrc.get(seed.normalized_isrc, [])
+            if _duration_ok(seed.duration_seconds, candidate.duration_seconds, duration_tolerance_seconds)
+        ]
+        if tier_one:
+            chosen = _resolve_by_tiebreak(seed, tier_one)
+            if chosen is not None:
+                return MatchDecision(
+                    outcome="matched",
+                    best_tier_reached="isrc_exact",
+                    chosen_candidate=chosen,
+                    chosen_confidence="isrc_exact",
+                    note="matched by normalized ISRC",
+                )
+            return MatchDecision(
+                outcome="ambiguous",
+                best_tier_reached="isrc_exact",
+                ambiguous_candidates=tuple(sorted(tier_one, key=lambda item: str(item.path))),
+                note="multiple ISRC matches remained after deterministic tie-break checks",
+            )
+
+    if not (seed.normalized_artist and seed.normalized_title):
+        return MatchDecision(
+            outcome="missing",
+            best_tier_reached="none",
+            note="seed row lacks deterministic artist/title or ISRC matching fields",
+        )
+
+    tier_two = list(by_artist_title.get((seed.normalized_artist, seed.normalized_title), ()))
+    if not tier_two:
+        return MatchDecision(
+            outcome="missing",
+            best_tier_reached="artist_title_exact",
+            note="no exact normalized artist/title candidate found",
+        )
+
+    tier_two = _prefer_duration_matches(seed, tier_two, duration_tolerance_seconds)
+    if len(tier_two) == 1:
+        return MatchDecision(
+            outcome="matched",
+            best_tier_reached="artist_title_exact",
+            chosen_candidate=tier_two[0],
+            chosen_confidence="artist_title_exact",
+            note="matched by exact normalized artist/title",
+        )
+
+    evidence_by_candidate = {candidate: _context_evidence(seed, candidate) for candidate in tier_two}
+    top_evidence = max(evidence_by_candidate.values())
+    if top_evidence == (0, 0, 0):
+        return MatchDecision(
+            outcome="ambiguous",
+            best_tier_reached="artist_title_context",
+            ambiguous_candidates=tuple(sorted(tier_two, key=lambda item: str(item.path))),
+            note="exact artist/title candidates remained but no positive context evidence was available",
+        )
+
+    top_candidates = [
+        candidate
+        for candidate, evidence in evidence_by_candidate.items()
+        if evidence == top_evidence
+    ]
+    if len(top_candidates) == 1:
+        return MatchDecision(
+            outcome="matched",
+            best_tier_reached="artist_title_context",
+            chosen_candidate=top_candidates[0],
+            chosen_confidence="artist_title_context",
+            note="matched by exact artist/title plus context evidence",
+        )
+    return MatchDecision(
+        outcome="ambiguous",
+        best_tier_reached="artist_title_context",
+        ambiguous_candidates=tuple(sorted(top_candidates, key=lambda item: str(item.path))),
+        note="multiple candidates shared the strongest context evidence",
+    )
+
+
+def _seed_manifest_fields(seed: SeedRow) -> dict[str, Any]:
+    return {
+        "seed_index": seed.seed_index,
+        "seed_path": seed.seed_path,
+        "seed_name": seed.seed_name,
+        "seed_ext": seed.seed_ext,
+        "seed_size": seed.seed_size,
+        "seed_parent_dirs": list(seed.seed_parent_dirs),
+        "seed_context_path": seed.seed_context_path,
+        "seed_source_mode": seed.seed_source_mode,
+        "seed_artist": seed.artist,
+        "seed_title": seed.title,
+        "seed_album": seed.album,
+        "seed_album_artist": seed.album_artist,
+        "seed_track_number": seed.track_number,
+        "seed_year": seed.year,
+        "seed_isrc": seed.isrc,
+        "seed_duration_seconds": seed.duration_seconds,
+        "seed_basename_norm": seed.basename_norm,
+        "seed_basename_tokens": list(seed.basename_tokens),
+        "seed_context_tokens": list(seed.context_tokens),
+    }
+
+
+def _candidate_summary(candidate: CandidateRow) -> dict[str, Any]:
+    return {
+        "path": str(candidate.path),
+        "artist": candidate.artist,
+        "title": candidate.title,
+        "album": candidate.album,
+        "isrc": candidate.isrc,
+        "duration_seconds": candidate.duration_seconds,
+        "track_number": candidate.track_number,
+        "label": candidate.label,
+    }
+
+
+def manifest_rows(
+    seeds: Iterable[SeedRow],
+    decisions: dict[int, MatchDecision],
+    ignored_rows: Iterable[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    rows = [dict(item) for item in ignored_rows]
+    for seed in seeds:
+        decision = decisions[seed.seed_index]
+        row = {
+            "outcome": decision.outcome,
+            "best_tier_reached": decision.best_tier_reached,
+            **_seed_manifest_fields(seed),
+            "chosen_candidate_path": str(decision.chosen_candidate.path) if decision.chosen_candidate else "",
+            "chosen_confidence": decision.chosen_confidence,
+            "candidate_summary": [
+                _candidate_summary(candidate)
+                for candidate in decision.ambiguous_candidates
+            ],
+            "ignore_reason": decision.ignore_reason,
+            "note": decision.note,
+        }
+        rows.append(row)
+    rows.sort(key=lambda item: int(item.get("seed_index", 0)))
+    return rows
+
+
+def write_manifest(path: Path, rows: Iterable[dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+def write_m3u(path: Path, seeds: Iterable[SeedRow], decisions: dict[int, MatchDecision]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        handle.write("#EXTM3U\n")
+        for seed in sorted(seeds, key=lambda item: item.seed_index):
+            decision = decisions[seed.seed_index]
+            if decision.outcome != "matched" or decision.chosen_candidate is None:
+                continue
+            handle.write(str(decision.chosen_candidate.path) + "\n")
+
+
+def write_missing_csv(path: Path, seeds: Iterable[SeedRow], decisions: dict[int, MatchDecision]) -> None:
+    fieldnames = [
+        "seed_path",
+        "seed_name",
+        "seed_context_path",
+        "seed_source_mode",
+        "seed_artist",
+        "seed_title",
+        "seed_album",
+        "seed_isrc",
+        "best_tier_attempted",
+        "note",
+    ]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        for seed in sorted(seeds, key=lambda item: item.seed_index):
+            decision = decisions[seed.seed_index]
+            if decision.outcome != "missing":
+                continue
+            writer.writerow(
+                {
+                    "seed_path": seed.seed_path,
+                    "seed_name": seed.seed_name,
+                    "seed_context_path": seed.seed_context_path,
+                    "seed_source_mode": seed.seed_source_mode,
+                    "seed_artist": seed.artist,
+                    "seed_title": seed.title,
+                    "seed_album": seed.album,
+                    "seed_isrc": seed.isrc,
+                    "best_tier_attempted": decision.best_tier_reached,
+                    "note": decision.note,
+                }
+            )
+
+
+def write_ambiguous_csv(path: Path, seeds: Iterable[SeedRow], decisions: dict[int, MatchDecision]) -> None:
+    fieldnames = [
+        "seed_path",
+        "seed_name",
+        "seed_context_path",
+        "seed_source_mode",
+        "candidate_count",
+        "best_tier_reached",
+        "candidate_paths_json",
+        "note",
+    ]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        for seed in sorted(seeds, key=lambda item: item.seed_index):
+            decision = decisions[seed.seed_index]
+            if decision.outcome != "ambiguous":
+                continue
+            writer.writerow(
+                {
+                    "seed_path": seed.seed_path,
+                    "seed_name": seed.seed_name,
+                    "seed_context_path": seed.seed_context_path,
+                    "seed_source_mode": seed.seed_source_mode,
+                    "candidate_count": len(decision.ambiguous_candidates),
+                    "best_tier_reached": decision.best_tier_reached,
+                    "candidate_paths_json": json.dumps(
+                        [str(candidate.path) for candidate in decision.ambiguous_candidates],
+                        ensure_ascii=False,
+                    ),
+                    "note": decision.note,
+                }
+            )
+
+
+def _print_summary(seeds: Iterable[SeedRow], decisions: dict[int, MatchDecision], ignored_count: int) -> None:
+    matched_counter: Counter[str] = Counter()
+    counts: Counter[str] = Counter()
+    for seed in seeds:
+        decision = decisions[seed.seed_index]
+        counts[decision.outcome] += 1
+        if decision.outcome == "matched":
+            matched_counter[decision.chosen_confidence] += 1
+    print(f"total_seed_rows: {len(list(seeds))}")
+    print(f"matched: {counts['matched']}")
+    print(f"missing: {counts['missing']}")
+    print(f"ambiguous: {counts['ambiguous']}")
+    print(f"ignored: {ignored_count}")
+    for tier_name in ("isrc_exact", "artist_title_exact", "artist_title_context"):
+        print(f"tier[{tier_name}]: {matched_counter[tier_name]}")
+
+
+def run(args: argparse.Namespace) -> dict[str, Any]:
+    tree_js = args.tree_js.expanduser().resolve()
+    pool_root = args.pool_root.expanduser().resolve()
+    output_dir = args.output_dir.expanduser().resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    seeds, ignored_rows = load_seed_rows(tree_js, args.limit)
+    candidates = build_candidate_rows(pool_root, args.path_context_depth)
+    by_isrc, by_artist_title = build_candidate_indexes(candidates)
+    decisions = {
+        seed.seed_index: decide_match(
+            seed,
+            by_isrc=by_isrc,
+            by_artist_title=by_artist_title,
+            duration_tolerance_seconds=float(args.duration_tolerance_seconds),
+        )
+        for seed in seeds
+    }
+
+    m3u_path = output_dir / args.m3u_name
+    missing_path = output_dir / args.missing_name
+    ambiguous_path = output_dir / args.ambiguous_name
+    manifest_path = output_dir / args.manifest_name
+
+    write_m3u(m3u_path, seeds, decisions)
+    write_missing_csv(missing_path, seeds, decisions)
+    write_ambiguous_csv(ambiguous_path, seeds, decisions)
+    manifest = manifest_rows(seeds, decisions, ignored_rows)
+    write_manifest(manifest_path, manifest)
+    _print_summary(seeds, decisions, len(ignored_rows))
+
+    return {
+        "seed_rows": seeds,
+        "ignored_rows": ignored_rows,
+        "candidate_rows": candidates,
+        "decisions": decisions,
+        "m3u_path": m3u_path,
+        "missing_path": missing_path,
+        "ambiguous_path": ambiguous_path,
+        "manifest_path": manifest_path,
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    try:
+        run(args)
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

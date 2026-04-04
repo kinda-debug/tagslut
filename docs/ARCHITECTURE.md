@@ -1,7 +1,8 @@
 <!-- Status: Active document. Last major sync 2026-03-14. Note: sections describing
      the 4-stage DJ pipeline (backfill/validate/XML) and DJ_LIBRARY as a distinct
      folder reflect the pre-April 2026 architecture. Current model uses M3U-based
-     DJ pool. See docs/DJ_POOL.md and docs/OPERATOR_QUICK_START.md for current state. -->
+     DJ pool and a standalone historical-seed matcher. See docs/WORKFLOWS.md and
+     docs/OPERATOR_QUICK_START.md for current operator state. -->
 
 # Architecture
 
@@ -34,7 +35,9 @@ Use `tools/get <provider-url>` for day-to-day provider intake. It wraps:
 - local tag prep
 - promote/fix/quarantine/discard planning
 - downstream playlist generation
-- optional legacy DJ MP3 creation with `--dj` (deprecated; see `docs/DJ_PIPELINE.md` for the canonical 4-stage pipeline)
+- optional legacy DJ MP3 creation with `--dj` (deprecated; see
+  `docs/WORKFLOWS.md` and `docs/OPERATOR_QUICK_START.md` for the current
+  operator-facing DJ path)
 
 Supported URL families in the active wrapper path:
 
@@ -73,7 +76,8 @@ The authoritative v3 ownership model is:
 - `move_execution`: executed move attempt and outcome
 - `provenance_event`: immutable audit event stream
 
-See `docs/CORE_MODEL.md` and `docs/DB_V3_SCHEMA.md` for the table-level contract.
+See `docs/archive/CORE_MODEL.md`, `docs/archive/DB_V3_SCHEMA.md`, and
+`tagslut/storage/v3/schema.py` for the table-level contract.
 
 ## Execution and Provenance
 
@@ -101,9 +105,20 @@ The compatibility script `tools/review/move_from_plan.py` remains available but 
 
 ## DJ Layer
 
-The canonical downstream DJ path is the explicit 4-stage pipeline. Legacy wrapper-driven
-DJ output still exists for compatibility, but it is deprecated and should not be treated
-as the primary operator contract. See `docs/DJ_PIPELINE.md` for the canonical pipeline.
+The repo still contains an explicit DB-backed 4-stage DJ pipeline, but the
+current operator-facing Rekordbox path is the clean-pool plus optional
+historical-seed reconstruction flow documented in `docs/WORKFLOWS.md` and
+`docs/OPERATOR_QUICK_START.md`. Legacy wrapper-driven DJ output still exists
+for compatibility, but it is deprecated and should not be treated as the
+primary operator contract.
+
+Separately, the repo now has a filesystem-only precursor utility,
+`tools/build_dj_seed_from_tree_rbx`, for reconstructing a practical starting DJ
+seed from the historical Rekordbox export tree in `tree_rbx.js`. That tool is
+not part of the DB-backed validation pipeline: it reads `tree_rbx.js`, scans
+`/Volumes/MUSIC/MP3_LIBRARY_CLEAN`, applies conservative strict-tier matching,
+and writes a playlist plus review reports under an operator-specified output
+directory.
 
 ### Explicit 4-stage pipeline (canonical)
 
@@ -118,11 +133,12 @@ The canonical DJ path is a linear, DB-backed pipeline with explicit state at eac
 
 `tools/get --dj` and `tools/get-intake --dj` still exist as compatibility wrappers.
 They are not the supported curated-library workflow because they depend on legacy wrapper
-branching and side effects. See `docs/DJ_PIPELINE.md` for the canonical 4-stage pipeline.
+branching and side effects.
 
 The pipeline tables (`mp3_asset`, `dj_admission`, `dj_track_id_map`, `dj_playlist`,
 `dj_playlist_track`, `dj_export_state`, `reconcile_log`) were applied to `music_v3.db`
-via migration 0010 on 2026-03-14. See `docs/DB_V3_SCHEMA.md` for the full schema.
+via migration 0010 on 2026-03-14. See `docs/archive/DB_V3_SCHEMA.md` and
+`tagslut/storage/v3/schema.py` for the full schema.
 
 ### Deterministic v3 DJ pool (pool-wizard)
 
@@ -134,6 +150,23 @@ For building a final cohort-based MP3 pool from `MASTER_LIBRARY`:
 4. `tagslut dj pool-wizard` (preferred) or `scripts/dj/build_pool_v3.py` (lower-level)
 
 This path is plan-first and produces deterministic manifests.
+
+### Historical seed reconstruction
+
+Use `tools/build_dj_seed_from_tree_rbx` when the goal is to recover prior
+approved DJ relevance from a Rekordbox tree export without mutating DB or
+filesystem truth.
+
+- Input truth for relevance recovery: `tree_rbx.js`
+- Candidate universe: `/Volumes/MUSIC/MP3_LIBRARY_CLEAN`
+- Output contract: M3U seed playlist, missing CSV, ambiguous CSV, JSONL manifest
+- Safety model: read-only outside `--output-dir`
+- Matching scope: exact ISRC, exact normalized artist/title, then exact
+  artist/title narrowed by deterministic local context
+
+This utility is intentionally separate from the broader provider-download and
+metadata-provider architecture. It is a precursor input to later curation, not a
+replacement for intake, enrichment, or DB-backed DJ admission.
 
 ## Zones, Lifecycle, and Work Roots
 

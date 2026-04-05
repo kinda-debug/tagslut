@@ -15,12 +15,15 @@ from pathlib import Path
 
 import click
 
+from tagslut.cli.commands.admin import register_admin_group
 from tagslut.cli.commands.auth import register_auth_group
 from tagslut.cli.commands.decide import register_decide_group
 from tagslut.cli.commands.dj import dj_group
 from tagslut.cli.commands.mp3 import mp3_group
 from tagslut.cli.commands.export import export_group
 from tagslut.cli.commands.execute import register_execute_group
+from tagslut.cli.commands.fix import register_fix_command
+from tagslut.cli.commands.get import register_get_command
 from tagslut.cli.commands.gig import gig_group
 from tagslut.cli.commands.index import register_index_group
 from tagslut.cli.commands.intake import register_intake_group
@@ -41,7 +44,28 @@ sys.path.insert(0, str(Path(__file__).parents[2]))
 
 logger = logging.getLogger("tagslut")
 
+_VISIBLE_TOP_LEVEL_COMMANDS = ("get", "tag", "fix", "auth", "admin")
 _TRANSITIONAL_COMMAND_REPLACEMENTS: dict[str, str] = {
+    "decide": "tagslut admin ...",
+    "dj": "tagslut admin dj ...",
+    "execute": "tagslut admin execute ...",
+    "export": "tagslut admin ...",
+    "gig": "tagslut admin ...",
+    "index": "tagslut admin index ...",
+    "init": "tagslut admin ...",
+    "intake": "tagslut admin intake ...",
+    "lexicon": "tagslut admin ...",
+    "library": "tagslut admin library ...",
+    "master": "tagslut admin ...",
+    "misc": "tagslut admin ...",
+    "mp3": "tagslut admin ...",
+    "ops": "tagslut admin ...",
+    "postman": "tagslut admin ...",
+    "provider": "tagslut admin ...",
+    "report": "tagslut admin report ...",
+    "token-get": "tagslut auth token-get ...",
+    "v3": "tagslut admin ...",
+    "verify": "tagslut admin verify ...",
     "tagslut _mgmt": "tagslut index ... / tagslut report m3u ...",
     "tagslut _metadata": "tagslut auth ... / tagslut index enrich ...",
 }
@@ -66,7 +90,15 @@ class _TagslutGroup(click.Group):
     """CLI group that can emit alias warnings before help handling."""
 
     def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
+        if args:
+            command = args[0]
+            if command not in _VISIBLE_TOP_LEVEL_COMMANDS and command in self.commands:
+                _warn_transitional_command(command)
         return super().parse_args(ctx, args)
+
+    def list_commands(self, ctx: click.Context) -> list[str]:
+        visible = [name for name in _VISIBLE_TOP_LEVEL_COMMANDS if name in self.commands]
+        return visible
 
 
 @click.group(cls=_TagslutGroup)
@@ -86,6 +118,9 @@ register_auth_group(cli)
 register_ops_group(cli)
 register_library_group(cli)
 register_tag_group(cli)
+register_get_command(cli)
+register_fix_command(cli)
+register_admin_group(cli)
 register_postman_group(cli)
 register_provider_group(cli)
 register_v3_group(cli)

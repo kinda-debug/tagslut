@@ -1,38 +1,92 @@
 # CLI Redesign: collapse to get / tag / fix / auth / admin
 
-## Do not recreate existing files. Do not modify schema.py without a migration.
+## Guardrails
+
+- Do not recreate existing files.
+- Do not modify `schema.py` without a migration.
+- Do not redesign existing download, registration, enrichment, transcode, or storage internals beyond the minimum cohort/block-state persistence required by this prompt.
+- This change is primarily command-surface, routing, and recovery-state plumbing. It is not a pipeline rewrite.
 
 ## Context
 
-tagslut's current public surface (`ts-get`, `ts-enrich`, `ts-auth`) is wrapper
-scripts. The approved redesign collapses everything into five top-level Click
-command groups on the `tagslut` binary:
+`tagslut` currently exposes wrapper-script entrypoints such as `ts-get`, `ts-enrich`, and `ts-auth`.
 
-  tagslut get     — acquisition (URL or local path)
-  tagslut tag     — retroactive metadata
-  tagslut fix     — drain waiting room (blocked cohorts)
-  tagslut auth    — token management (no change to internals)
-  tagslut admin   — all internal/advanced flows (existing groups moved here)
+The approved redesign collapses the public CLI surface into five top-level Click command groups on the `tagslut` binary:
 
-This prompt implements the new surface. It does NOT change any underlying
-pipeline logic — it is routing and plumbing only.
+- `tagslut get` — acquisition from URL or local path
+- `tagslut tag` — retroactive metadata and rehoard operations
+- `tagslut fix` — resume blocked cohorts
+- `tagslut auth` — token management
+- `tagslut admin` — internal and advanced flows
+
+The goal is to implement this new surface while preserving existing underlying pipeline behavior wherever possible.
 
 ---
 
-## Failure model (implement this before anything else)
+## Failure and recovery model
 
-Every `get` run must enforce this contract:
+Implement this before any CLI wiring.
 
-1. If any file fails at any stage (download, register, enrich, transcode),
-   mark that file `status='blocked'` and `blocked_reason=<stage:message>` in
-   `asset_file` via migration 0018 (see below).
-2. Attempt remaining files in the cohort — do not abort on first failure.
-3. After all files are attempted: if any are blocked, mark the cohort record
-   `status='blocked'` and print a full failure summary. Produce no output
-   artifacts (no MP3, no M3U, no DJ admission) for the blocked cohort.
-4. On every subsequent `tagslut` invocation that touches a blocked cohort,
-   print a scoped reminder naming the cohort and the fix command.
-5. `tagslut admin status` lists all blocked cohorts with their reasons.
+### Per-file blocked state
+
+If a file fails at any stage of a `get` pipeline, including download, register, enrich, transcode, or final output assembly:
+
+- mark that file as blocked in `asset_file`:
+  - `status='blocked'`
+  - `blocked_reason='<stage>:<message>'`
+- mark the corresponding `cohort_file` row:
+  - `status='blocked'`
+  - `blocked_stage='<stage>'`
+  - `blocked_reason='<message or stage:message>'`
+
+Do not abort the cohort on first failure. Continue attempting remaining files.
+
+### Cohort blocked state
+
+After all files in the cohort are attempted:
+
+- if any file remains blocked, set the cohort row to:
+  - `status='blocked'`
+  - `blocked_reason` = a concise cohort-level summary
+- print a full failure summary
+- do not leave final output artifacts for that cohort
+
+### Output artifact rule
+
+This must be enforced strictly.
+
+All cohort output artifacts must be written to a staging location first and promoted to final locations only if the entire cohort completes successfully.
+
+Staged artifacts for a cohort live under `$STAGING_ROOT/<cohort_id>/` and are removed by deleting that directory tree on failure.
+
+If the cohort ends blocked:
+
+- do not write or retain final MP3 output for that cohort
+- do not write or retain final M3U output for that cohort
+- do not perform DJ admission for that cohort
+- delete `$STAGING_ROOT/<cohort_id>/` and everything under it
+
+No partial final artifacts may remain for a blocked cohort.
+
+### Subsequent invocation reminder
+
+Any later `tagslut` invocation that directly touches a blocked cohort must print a scoped reminder that names:
+
+- the cohort ID
+- the cohort source
+- the recovery command to use
+
+The reminder must be scoped, not global spam.
+
+### Status visibility
+
+`tagslut admin status` must list all blocked cohorts with enough detail to act on them:
+
+- cohort ID
+- source URL or source path summary
+- cohort status
+- cohort blocked reason
+- blocked file count
 
 ---
 
@@ -73,8 +127,7 @@ INSERT OR IGNORE INTO schema_migrations (schema_name, version, note)
   VALUES ('v3', 18, '0018_blocked_cohort_state.sql');
 ```
 
-Apply this migration as the first step. The Python migration wrapper pattern
-matches existing migrations in this directory.
+Apply this migration as the first step. The Python migration wrapper pattern matches existing migrations in this directory.
 
 ---
 
@@ -88,13 +141,14 @@ Flags:
   --playlist    Emit M3U only (does not imply --dj).
   --fix         Re-resolve cohort, download missing/failed files, retag,
                 clear blocked state on success. Not valid on local-root input
-                (fail with a clear error: use `tagslut fix` or
-                `tagslut get <url> --fix` for remote cohorts).
+                (fail with a clear targeted error: `--fix is not valid on a
+                local path. Use tagslut fix <cohort_id> or
+                tagslut get <url> --fix to resume a remote cohort.`).
 
 Dispatch logic:
   - URL → route to existing intake adapter (spotify, tidal, beatport, qobuz)
-  - local path → register + tag (skip files already registered silently)
-  - local path + --fix → fail with targeted error
+  - local path → register + tag (skip already-registered files silently)
+  - local path + --fix → fail with targeted error above
 
 Default flow (URL):
   resolve → download → register → enrich → [transcode+M3U if --dj]
@@ -141,7 +195,8 @@ Move the following existing Click groups under `admin` as subgroups:
   intake, index, execute, verify, report, library, dj
 
 Add:
-  admin status   — list all blocked cohorts with ID, source_url, blocked_reason
+  admin status   — list all blocked cohorts (ID, source, status, reason,
+                   blocked file count)
   admin curate   — current staged `tagslut tag ...` batch-curation workflow
 
 Keep compatibility aliases at the top level for one transition window.
@@ -174,9 +229,7 @@ Deprecated aliases must NOT appear in the primary help.
 8. `tests/cli/test_fix_convergence.py` — fix/get --fix state convergence test
 9. `tests/storage/v3/test_migration_0018.py`
 
-Do not modify any existing pipeline logic, enrichment, or storage code outside
-of adding the cohort tracking calls to the intake path.
+Do not modify any existing pipeline logic, enrichment, or storage code outside of adding the cohort tracking calls to the intake path.
 
 Commit after each file. One logical commit per file.
-Run `poetry run pytest tests/cli/ tests/storage/v3/test_migration_0018.py -v`
-after completing all files.
+Run `poetry run pytest tests/cli/ tests/storage/v3/test_migration_0018.py -v` after completing all files.

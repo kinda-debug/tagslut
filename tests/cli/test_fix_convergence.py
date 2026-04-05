@@ -138,36 +138,27 @@ def _snapshot(db_path: Path) -> tuple[tuple[object, ...], tuple[object, ...], tu
 
 
 def test_fix_and_get_fix_converge_to_identical_db_state(tmp_path: Path, monkeypatch) -> None:
+    """
+    Verify that `tagslut fix 1` and `tagslut get <url> --fix` produce identical
+    DB state for the same blocked cohort.
+
+    The seed uses blocked_stage='enrich' with dj=false/playlist=false.
+    With per-stage re-entry, both paths route through _resume_late_stage
+    → retag_flac_paths (mocked to succeed) → mark_paths_ok → complete.
+    The convergence property holds because both entry points call the same
+    resume_cohort() implementation.
+    """
     source_url = "https://example.com/playlist/blocked"
     fix_db = tmp_path / "fix.db"
     get_db = tmp_path / "get_fix.db"
     _seed_blocked_cohort(fix_db, source_url=source_url)
     _seed_blocked_cohort(get_db, source_url=source_url)
 
-    def _fake_run_url_flow(*, url, db_path, cohort_id, dj, playlist):  # type: ignore[no-untyped-def]
-        assert url == source_url
-        assert cohort_id == 1
-        assert dj is False
-        assert playlist is False
-        conn = sqlite3.connect(str(db_path))
-        try:
-            conn.execute(
-                "UPDATE cohort SET status = 'complete', blocked_reason = NULL, completed_at = '2026-04-05T01:00:00+00:00' WHERE id = ?",
-                (cohort_id,),
-            )
-            conn.execute(
-                "UPDATE cohort_file SET status = 'ok', blocked_reason = NULL, blocked_stage = NULL WHERE cohort_id = ?",
-                (cohort_id,),
-            )
-            conn.execute(
-                "UPDATE asset_file SET status = 'ok', blocked_reason = NULL WHERE id = 1"
-            )
-            conn.commit()
-        finally:
-            conn.close()
-        return True, None
+    def _fake_retag(*, db_path, flac_paths, force):  # type: ignore[no-untyped-def]
+        from tagslut.cli.commands._cohort_state import RetagResult
+        return RetagResult(ok_paths=list(flac_paths), blocked={})
 
-    monkeypatch.setattr("tagslut.cli.commands.get._run_url_flow", _fake_run_url_flow)
+    monkeypatch.setattr("tagslut.cli.commands.fix.retag_flac_paths", _fake_retag)
 
     runner = CliRunner()
     fix_result = runner.invoke(cli, ["fix", "1", "--db", str(fix_db)])

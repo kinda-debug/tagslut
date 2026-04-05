@@ -17,6 +17,25 @@ from sqlalchemy import select
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, selectinload
 
+from tagslut.cli.commands._cohort_state import (
+    EARLY_BLOCKED_STAGES,
+    blocked_rows_for_cohort,
+    build_output_artifacts,
+    cohort_paths,
+    cohort_requires_fix_message,
+    create_cohort,
+    ensure_cohort_support,
+    find_cohort_by_source,
+    find_latest_blocked_cohort_for_source,
+    mark_cohort_file_blocked,
+    mark_paths_ok,
+    record_blocked_paths,
+    refresh_cohort_status,
+    resolve_flac_paths,
+    retag_flac_paths,
+    set_cohort_blocked,
+    set_cohort_running,
+)
 from tagslut.dj.key_utils import classical_to_camelot, normalize_key
 from tagslut.library import (
     DEFAULT_LIBRARY_DB_URL,
@@ -45,6 +64,8 @@ from tagslut.tag.providers import get_provider
 from tagslut.tag.providers.base import FieldCandidate, ProviderConfigError, RawResult
 from tagslut.tag.rekordbox_compat import REKORDBOX_TESTED_FIELDS, REKORDBOX_XML_FIELD_MAP
 from tagslut.utils.config import get_config
+from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
+from tagslut.utils.env_paths import get_library_volume
 
 logger = logging.getLogger("tagslut.tag")
 
@@ -1422,12 +1443,86 @@ def run_tag_sync_to_files(
     return summary
 
 
-def register_tag_group(cli: click.Group) -> None:
-    @cli.group()
-    def tag():  # type: ignore[misc]
+def _latest_existing_cohort(
+    conn: sqlite3.Connection,
+    *,
+    source_url: str,
+) -> sqlite3.Row | tuple[Any, ...] | None:
+    rows = find_cohort_by_source(conn, source_url=source_url, blocked_only=False)
+    return rows[0] if rows else None
+
+
+def _cohort_flac_paths(conn: sqlite3.Connection, *, cohort_id: int) -> list[Path]:
+    return [path for path in cohort_paths(conn, cohort_id=cohort_id) if path.suffix.lower() == ".flac"]
+
+
+def _run_retag_flow(
+    conn: sqlite3.Connection,
+    *,
+    db_path: Path,
+    cohort_id: int,
+    flac_paths: list[Path],
+    placeholder_source: str,
+    dj: bool,
+    force: bool,
+) -> tuple[bool, str | None]:
+    if not flac_paths:
+        return False, "no FLAC files found for retag"
+
+    retag_result = retag_flac_paths(db_path=db_path, flac_paths=flac_paths, force=force)
+    mark_paths_ok(conn, cohort_id=cohort_id, paths=retag_result.ok_paths)
+
+    for path, reason in retag_result.blocked.items():
+        asset_row = conn.execute(
+            "SELECT id FROM asset_file WHERE path = ? LIMIT 1",
+            (str(path),),
+        ).fetchone()
+        asset_file_id = int(asset_row[0]) if asset_row is not None and asset_row[0] is not None else None
+        mark_cohort_file_blocked(
+            conn,
+            cohort_id=cohort_id,
+            stage="enrich",
+            reason=reason,
+            source_path=str(path),
+            asset_file_id=asset_file_id,
+        )
+
+    if retag_result.blocked:
+        set_cohort_blocked(
+            conn,
+            cohort_id=cohort_id,
+            reason=f"{len(retag_result.blocked)} file(s) failed during enrich",
+        )
+        return False, "one or more files failed during enrich"
+
+    output_result = build_output_artifacts(
+        db_path=db_path,
+        cohort_id=cohort_id,
+        flac_paths=retag_result.ok_paths,
+        dj=dj,
+        playlist_only=False,
+    )
+    if not output_result.ok:
+        record_blocked_paths(
+            conn,
+            cohort_id=cohort_id,
+            stage=output_result.stage or "output",
+            reason=output_result.reason or "output failed",
+            paths=retag_result.ok_paths,
+            placeholder_source=placeholder_source,
+        )
+        return False, output_result.reason
+
+    refresh_cohort_status(conn, cohort_id=cohort_id)
+    return True, None
+
+
+def register_curate_group(parent: click.Group) -> None:
+    @parent.group("curate")
+    def curate():  # type: ignore[misc]
         """Staged metadata fetch, review, apply, and export workflows."""
 
-    @tag.command("fetch")
+    @curate.command("fetch")
     @click.option("--provider", "provider_name", required=True, help="Registered metadata provider name")
     @click.option("--batch", "batch_id", required=True, help="Batch identifier")
     @click.option("--dry-run", is_flag=True, help="Preview provider work without storing candidates")
@@ -1436,32 +1531,28 @@ def register_tag_group(cli: click.Group) -> None:
         click.echo(f"Job: {job_run.id}")
         click.echo(f"Status: {job_run.status}")
 
-    @tag.command("batch-create")
-    @click.option(
-        "--source",
-        required=True,
-        help="Batch source type",
-    )
+    @curate.command("batch-create")
+    @click.option("--source", required=True, help="Batch source type")
     @click.option("--playlist-id", required=True, help="Playlist identifier")
     @click.option("--batch", "batch_id", required=True, help="Batch identifier")
     def tag_batch_create_command(source: str, playlist_id: str, batch_id: str) -> None:  # type: ignore[misc]
         queued = run_tag_batch_create(source, playlist_id, batch_id)
         click.echo(f"Created batch {batch_id}: {queued} tracks queued.")
 
-    @tag.command("review")
+    @curate.command("review")
     @click.option("--batch", "batch_id", required=True, help="Batch identifier")
     def tag_review_command(batch_id: str) -> None:  # type: ignore[misc]
         reviewed = run_tag_review(batch_id)
         click.echo(f"Reviewed groups: {reviewed}")
 
-    @tag.command("apply")
+    @curate.command("apply")
     @click.option("--batch", "batch_id", required=True, help="Batch identifier")
     def tag_apply_command(batch_id: str) -> None:  # type: ignore[misc]
         job_run = run_tag_apply(batch_id)
         click.echo(f"Job: {job_run.id}")
         click.echo(f"Status: {job_run.status}")
 
-    @tag.command("export")
+    @curate.command("export")
     @click.option(
         "--target",
         required=True,
@@ -1475,9 +1566,196 @@ def register_tag_group(cli: click.Group) -> None:
         click.echo(f"Job: {job_run.id}")
         click.echo(f"Status: {job_run.status}")
 
-    @tag.command("sync-to-files")
+    @curate.command("sync-to-files")
     @click.option("--batch", "batch_id", help="Restrict sync to a specific tag batch")
     @click.option("--dry-run", is_flag=True, help="Preview file-table writes without updating files")
     @click.option("--force", is_flag=True, help="Overwrite non-NULL file-table values")
     def tag_sync_to_files_command(batch_id: str | None, dry_run: bool, force: bool) -> None:  # type: ignore[misc]
         run_tag_sync_to_files(batch_id=batch_id, dry_run=dry_run, force=force)
+
+
+def register_tag_group(cli: click.Group) -> None:
+    @cli.command("tag")
+    @click.argument("target", required=False)
+    @click.option("--db", "db_path_arg", type=click.Path(), help="Database path (or TAGSLUT_DB)")
+    @click.option("--all", "tag_all", is_flag=True, help="Retag the full library.")
+    @click.option("--dj", is_flag=True, help="Rebuild DJ MP3 output for the targeted cohort.")
+    @click.option("--fix", "fix_mode", is_flag=True, help="Clear blocked state on success for post-download cohorts.")
+    def tag_command(  # type: ignore[misc]
+        target: str | None,
+        db_path_arg: str | None,
+        tag_all: bool,
+        dj: bool,
+        fix_mode: bool,
+    ) -> None:
+        if tag_all and target:
+            raise click.ClickException("Use a target or --all, not both.")
+        if not tag_all and not target:
+            raise click.ClickException("Provide a local path, a cohort URL, or use --all.")
+        if fix_mode and tag_all:
+            raise click.ClickException("--fix requires a specific local path or cohort URL target.")
+
+        try:
+            resolution = resolve_cli_env_db_path(db_path_arg, purpose="write", source_label="--db")
+        except DbResolutionError as exc:
+            raise click.ClickException(str(exc)) from exc
+        db_path = resolution.path
+
+        with sqlite3.connect(str(db_path)) as conn:
+            ensure_cohort_support(conn)
+
+            if tag_all:
+                library_root = get_library_volume().expanduser().resolve()
+                cohort_id = create_cohort(
+                    conn,
+                    source_url=str(library_root),
+                    source_kind="local_path",
+                    flags={"command": "tag", "dj": bool(dj)},
+                )
+                flac_paths = resolve_flac_paths(library_root)
+                ok, reason = _run_retag_flow(
+                    conn,
+                    db_path=db_path,
+                    cohort_id=cohort_id,
+                    flac_paths=flac_paths,
+                    placeholder_source=str(library_root),
+                    dj=dj,
+                    force=False,
+                )
+                conn.commit()
+                if not ok and reason:
+                    click.echo(reason, err=True)
+                raise SystemExit(0 if ok else 2)
+
+            assert target is not None
+            if target.startswith("http://") or target.startswith("https://"):
+                source_url = target.strip()
+                if fix_mode:
+                    blocked_row, ambiguous = find_latest_blocked_cohort_for_source(conn, source_url=source_url)
+                    if blocked_row is None:
+                        raise click.ClickException(f"No blocked cohort exists for URL: {source_url}")
+                    if ambiguous:
+                        raise click.ClickException(
+                            "Multiple blocked cohorts match this exact URL. Use `tagslut fix <cohort_id>`."
+                        )
+                    cohort_id = int(blocked_row[0])
+                    blocked_stages = {
+                        str(row[6])
+                        for row in blocked_rows_for_cohort(conn, cohort_id=cohort_id)
+                        if row[6] is not None
+                    }
+                    if any(stage in EARLY_BLOCKED_STAGES for stage in blocked_stages):
+                        raise click.ClickException(
+                            "Cohort is blocked at download/acquisition stage. Use `tagslut fix <cohort_id>` or `tagslut get <url> --fix`."
+                        )
+                    set_cohort_running(conn, cohort_id=cohort_id)
+                    flac_paths = _cohort_flac_paths(conn, cohort_id=cohort_id)
+                    ok, reason = _run_retag_flow(
+                        conn,
+                        db_path=db_path,
+                        cohort_id=cohort_id,
+                        flac_paths=flac_paths,
+                        placeholder_source=source_url,
+                        dj=dj,
+                        force=True,
+                    )
+                    conn.commit()
+                    if not ok and reason:
+                        click.echo(reason, err=True)
+                    raise SystemExit(0 if ok else 2)
+
+                latest = _latest_existing_cohort(conn, source_url=source_url)
+                if latest is None:
+                    raise click.ClickException(f"No cohort exists for URL: {source_url}")
+                if str(latest[3]) == "blocked":
+                    click.echo(
+                        cohort_requires_fix_message(
+                            cohort_id=int(latest[0]),
+                            source_url=str(latest[1]) if latest[1] is not None else None,
+                        ),
+                        err=True,
+                    )
+                cohort_id = int(latest[0])
+                flac_paths = _cohort_flac_paths(conn, cohort_id=cohort_id)
+                ok, reason = _run_retag_flow(
+                    conn,
+                    db_path=db_path,
+                    cohort_id=cohort_id,
+                    flac_paths=flac_paths,
+                    placeholder_source=source_url,
+                    dj=dj,
+                    force=False,
+                )
+                conn.commit()
+                if not ok and reason:
+                    click.echo(reason, err=True)
+                raise SystemExit(0 if ok else 2)
+
+            target_path = Path(target).expanduser().resolve()
+            if not target_path.exists():
+                raise click.ClickException(f"Path not found: {target_path}")
+
+            source_url = str(target_path)
+            if fix_mode:
+                blocked_row, ambiguous = find_latest_blocked_cohort_for_source(conn, source_url=source_url)
+                if blocked_row is None:
+                    raise click.ClickException(f"No blocked cohort exists for: {source_url}")
+                if ambiguous:
+                    raise click.ClickException(
+                        "Multiple blocked cohorts match this local path. Use `tagslut fix <cohort_id>`."
+                    )
+                cohort_id = int(blocked_row[0])
+                blocked_stages = {
+                    str(row[6])
+                    for row in blocked_rows_for_cohort(conn, cohort_id=cohort_id)
+                    if row[6] is not None
+                }
+                if any(stage in EARLY_BLOCKED_STAGES for stage in blocked_stages):
+                    raise click.ClickException(
+                        "Cohort is blocked at download/acquisition stage. Use `tagslut fix <cohort_id>`."
+                    )
+                set_cohort_running(conn, cohort_id=cohort_id)
+                flac_paths = _cohort_flac_paths(conn, cohort_id=cohort_id) or resolve_flac_paths(target_path)
+                ok, reason = _run_retag_flow(
+                    conn,
+                    db_path=db_path,
+                    cohort_id=cohort_id,
+                    flac_paths=flac_paths,
+                    placeholder_source=source_url,
+                    dj=dj,
+                    force=True,
+                )
+                conn.commit()
+                if not ok and reason:
+                    click.echo(reason, err=True)
+                raise SystemExit(0 if ok else 2)
+
+            blocked_row, ambiguous = find_latest_blocked_cohort_for_source(conn, source_url=source_url)
+            if blocked_row is not None and not ambiguous:
+                click.echo(
+                    cohort_requires_fix_message(
+                        cohort_id=int(blocked_row[0]),
+                        source_url=str(blocked_row[1]) if blocked_row[1] is not None else None,
+                    ),
+                    err=True,
+                )
+            cohort_id = create_cohort(
+                conn,
+                source_url=source_url,
+                source_kind="local_path",
+                flags={"command": "tag", "dj": bool(dj)},
+            )
+            flac_paths = resolve_flac_paths(target_path)
+            ok, reason = _run_retag_flow(
+                conn,
+                db_path=db_path,
+                cohort_id=cohort_id,
+                flac_paths=flac_paths,
+                placeholder_source=source_url,
+                dj=dj,
+                force=False,
+            )
+            conn.commit()
+            if not ok and reason:
+                click.echo(reason, err=True)
+            raise SystemExit(0 if ok else 2)

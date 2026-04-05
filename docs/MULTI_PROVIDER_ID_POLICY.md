@@ -72,6 +72,18 @@ Processing:
 Applies to: files that existed before the clean-slate build and have been
 matched by multiple providers over time (Spotify match, Qobuz ID, etc.).
 
+Operator note:
+- There is no dedicated `tagslut intake legacy` command.
+- Track B is an internal provenance classification applied when pre-existing
+  files are registered from disk and already carry provider IDs in tags or
+  metadata.
+- For an unregistered root, the operator surface is
+  `poetry run tagslut index register <root> --db <V3_DB> --source legacy --execute`
+  (or `--source relink` after a DB relink). When provider IDs are present,
+  v3 registration classifies the row as `ingestion_method='multi_provider_reconcile'`.
+- `python -m tagslut intake process-root ...` is follow-on processing for an
+  existing root; it does not create Track B rows by itself.
+
 Processing:
 1. Collect all provider IDs present for the file
 2. Resolve ISRC from the most trusted available source (Beatport > TIDAL > ISRC tag)

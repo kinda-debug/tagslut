@@ -43,6 +43,80 @@ def _seed_blocked_cohort(db_path: Path, *, source_url: str) -> None:
         conn.close()
 
 
+def _seed_blocked_cohort_at_stage(
+    db_path: Path,
+    *,
+    source_url: str,
+    blocked_stage: str,
+    flags: str = '{"command":"get","dj":false,"playlist":false}',
+) -> None:
+    """Seed a single-file cohort blocked at a specific stage."""
+    conn = sqlite3.connect(str(db_path))
+    try:
+        create_schema_v3(conn)
+        init_db(conn)
+        run_pending_v3(conn)
+        conn.execute(
+            """
+            INSERT INTO asset_file (id, path, status, blocked_reason)
+            VALUES (1, '/tmp/example.flac', 'blocked', ?)
+            """,
+            (f"{blocked_stage}:failed",),
+        )
+        conn.execute(
+            """
+            INSERT INTO cohort (
+                id, source_url, source_kind, status, blocked_reason, created_at, flags
+            ) VALUES (1, ?, 'url', 'blocked', ?, '2026-04-05T00:00:00+00:00', ?)
+            """,
+            (source_url, f"{blocked_stage}:failed", flags),
+        )
+        conn.execute(
+            """
+            INSERT INTO cohort_file (
+                id, cohort_id, asset_file_id, source_path,
+                status, blocked_reason, blocked_stage, created_at
+            ) VALUES (
+                1, 1, 1, '/tmp/example.flac',
+                'blocked', 'failed', ?, '2026-04-05T00:00:00+00:00'
+            )
+            """,
+            (blocked_stage,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _mark_complete(db_path: Path, cohort_id: int) -> None:
+    """Transition a cohort and its files to complete state (used by fake flow stubs)."""
+    conn = sqlite3.connect(str(db_path))
+    try:
+        conn.execute(
+            """
+            UPDATE cohort
+            SET status = 'complete', blocked_reason = NULL,
+                completed_at = '2026-04-05T01:00:00+00:00'
+            WHERE id = ?
+            """,
+            (cohort_id,),
+        )
+        conn.execute(
+            """
+            UPDATE cohort_file
+            SET status = 'ok', blocked_reason = NULL, blocked_stage = NULL
+            WHERE cohort_id = ?
+            """,
+            (cohort_id,),
+        )
+        conn.execute(
+            "UPDATE asset_file SET status = 'ok', blocked_reason = NULL WHERE id = 1"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def _snapshot(db_path: Path) -> tuple[tuple[object, ...], tuple[object, ...], tuple[object, ...]]:
     conn = sqlite3.connect(str(db_path))
     try:
@@ -102,3 +176,115 @@ def test_fix_and_get_fix_converge_to_identical_db_state(tmp_path: Path, monkeypa
     assert fix_result.exit_code == 0, fix_result.output
     assert get_fix_result.exit_code == 0, get_fix_result.output
     assert _snapshot(fix_db) == _snapshot(get_db)
+
+
+def test_fix_enrich_stage_skips_intake_calls_retag(tmp_path: Path, monkeypatch) -> None:
+    """
+    A cohort blocked at 'enrich' must call retag_flac_paths and must NOT
+    invoke _run_url_flow, which would trigger a re-download.
+    """
+    source_url = "https://example.com/enrich-blocked"
+    db_path = tmp_path / "enrich.db"
+    _seed_blocked_cohort_at_stage(db_path, source_url=source_url, blocked_stage="enrich")
+
+    def _must_not_call_intake(**kwargs):  # type: ignore[no-untyped-def]
+        raise AssertionError("_run_url_flow must not be called for enrich-stage resume")
+
+    monkeypatch.setattr("tagslut.cli.commands.get._run_url_flow", _must_not_call_intake)
+
+    retag_called: list[bool] = []
+
+    def _fake_retag(*, db_path, flac_paths, force):  # type: ignore[no-untyped-def]
+        retag_called.append(True)
+        from tagslut.cli.commands._cohort_state import RetagResult
+
+        return RetagResult(ok_paths=list(flac_paths), blocked={})
+
+    monkeypatch.setattr("tagslut.cli.commands.fix.retag_flac_paths", _fake_retag)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["fix", "1", "--db", str(db_path)])
+
+    assert result.exit_code == 0, result.output
+    assert retag_called, "retag_flac_paths must be called for enrich-stage resume"
+
+
+def test_fix_mp3_stage_skips_retag_and_intake(tmp_path: Path, monkeypatch) -> None:
+    """
+    A cohort blocked at 'mp3' must invoke build_output_artifacts directly.
+    Neither _run_url_flow nor retag_flac_paths should be called.
+
+    Seed uses dj=true so build_output_artifacts is not short-circuited by
+    the 'no output requested' guard in _resume_late_stage.
+    """
+    source_url = "https://example.com/mp3-blocked"
+    db_path = tmp_path / "mp3.db"
+    _seed_blocked_cohort_at_stage(
+        db_path,
+        source_url=source_url,
+        blocked_stage="mp3",
+        flags='{"command":"get","dj":true,"playlist":false}',
+    )
+
+    def _must_not_call_intake(**kwargs):  # type: ignore[no-untyped-def]
+        raise AssertionError("_run_url_flow must not be called for mp3-stage resume")
+
+    monkeypatch.setattr("tagslut.cli.commands.get._run_url_flow", _must_not_call_intake)
+
+    def _must_not_retag(**kwargs):  # type: ignore[no-untyped-def]
+        raise AssertionError("retag_flac_paths must not be called for mp3-stage resume")
+
+    monkeypatch.setattr("tagslut.cli.commands.fix.retag_flac_paths", _must_not_retag)
+
+    output_called: list[bool] = []
+
+    def _fake_output(**kwargs):  # type: ignore[no-untyped-def]
+        output_called.append(True)
+        from tagslut.cli.commands._cohort_state import OutputResult
+
+        return OutputResult(
+            ok=True, stage=None, reason=None, mp3_paths=[], playlist_paths=[]
+        )
+
+    monkeypatch.setattr("tagslut.cli.commands.fix.build_output_artifacts", _fake_output)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["fix", "1", "--db", str(db_path)])
+
+    assert result.exit_code == 0, result.output
+    assert output_called, "build_output_artifacts must be called for mp3-stage resume"
+
+
+def test_fix_download_stage_uses_full_flow(tmp_path: Path, monkeypatch) -> None:
+    """
+    A cohort blocked at 'download' must re-run the full URL intake flow.
+    retag_flac_paths must NOT be called.
+    """
+    source_url = "https://example.com/download-blocked"
+    db_path = tmp_path / "download.db"
+    _seed_blocked_cohort_at_stage(
+        db_path,
+        source_url=source_url,
+        blocked_stage="download",
+    )
+
+    full_flow_called: list[bool] = []
+
+    def _fake_run_url_flow(*, url, db_path, cohort_id, dj, playlist):  # type: ignore[no-untyped-def]
+        full_flow_called.append(True)
+        assert url == source_url
+        _mark_complete(db_path, cohort_id)
+        return True, None
+
+    monkeypatch.setattr("tagslut.cli.commands.get._run_url_flow", _fake_run_url_flow)
+
+    def _must_not_retag(**kwargs):  # type: ignore[no-untyped-def]
+        raise AssertionError("retag_flac_paths must not be called for download-stage resume")
+
+    monkeypatch.setattr("tagslut.cli.commands.fix.retag_flac_paths", _must_not_retag)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["fix", "1", "--db", str(db_path)])
+
+    assert result.exit_code == 0, result.output
+    assert full_flow_called, "_run_url_flow must be called for early-stage (download) resume"

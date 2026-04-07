@@ -14,6 +14,36 @@ def _quote_ident(name: str) -> str:
     return f'"{name.replace("\"", "\"\"")}"'
 
 
+def _collect_views(conn: sqlite3.Connection) -> list[tuple[str, str]]:
+    rows = conn.execute(
+        "SELECT name, sql FROM sqlite_master WHERE type = 'view' AND sql IS NOT NULL"
+    ).fetchall()
+    views: list[tuple[str, str]] = []
+    for name, sql in rows:
+        view_name = str(name) if name is not None else ""
+        view_sql = str(sql) if sql is not None else ""
+        if view_name and view_sql:
+            views.append((view_name, view_sql))
+    return views
+
+
+def _create_view_if_missing(conn: sqlite3.Connection, create_sql: str) -> None:
+    sql = create_sql.strip()
+    if not sql:
+        return
+    if re.match(r"^CREATE\s+VIEW\s+IF\s+NOT\s+EXISTS\s+", sql, flags=re.IGNORECASE):
+        conn.execute(sql)
+        return
+    sql = re.sub(
+        r"^CREATE\s+VIEW\s+",
+        "CREATE VIEW IF NOT EXISTS ",
+        sql,
+        count=1,
+        flags=re.IGNORECASE,
+    )
+    conn.execute(sql)
+
+
 def up(conn: sqlite3.Connection) -> None:
     row = conn.execute(
         "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'track_identity'"
@@ -49,6 +79,10 @@ def up(conn: sqlite3.Connection) -> None:
     conn.commit()
     conn.execute("PRAGMA foreign_keys = OFF")
     try:
+        existing_views = _collect_views(conn)
+        for view_name, _view_sql in existing_views:
+            conn.execute(f"DROP VIEW IF EXISTS {_quote_ident(view_name)}")
+
         conn.execute("DROP TABLE IF EXISTS track_identity_new")
         conn.execute(new_create_sql)
         conn.execute(
@@ -57,6 +91,8 @@ def up(conn: sqlite3.Connection) -> None:
         conn.execute("DROP TABLE track_identity")
         conn.execute("ALTER TABLE track_identity_new RENAME TO track_identity")
         create_schema_v3(conn)
+        for _view_name, view_sql in existing_views:
+            _create_view_if_missing(conn, view_sql)
         conn.commit()
     finally:
         conn.execute("PRAGMA foreign_keys = ON")

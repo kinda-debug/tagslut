@@ -37,7 +37,7 @@ looks for it at `{repo_root}/config/providers.toml`.
 ## Fix 2: Extract ISRC from filename for no-tag files
 
 ### Problem
-12 files in `/Volumes/MUSIC/mdl/tidal/` log `searched: ? ?` during enrichment,
+12 files in `/Volumes/MUSIC/staging/tidal/` log `searched: ? ?` during enrichment,
 meaning `tag_artist` and `tag_title` are both None. These files have no readable
 tags but their filenames contain the ISRC in brackets:
 

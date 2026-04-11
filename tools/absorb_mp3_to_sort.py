@@ -7,105 +7,131 @@ import re
 import shutil
 
 
-TRACK_PREFIX_RE = re.compile(r"^\s*\d{1,3}(?:-\d{1,3})?[\s._-]+")
+SRC_ROOT = pathlib.Path("/Volumes/MUSIC/mp3_to_sort")
+LIB_ROOT = pathlib.Path("/Volumes/MUSIC/MP3_LIBRARY_CLEAN")
+LEFTOVERS_ROOT = pathlib.Path("/Volumes/MUSIC/mp3_leftorvers")
+INTAKE_ROOT = pathlib.Path("/Volumes/MUSIC/staging/mp3_to_sort_intake")
 
 
-def _decode_fs(b: bytes) -> str:
-    return b.decode("utf-8", errors="replace")
+_TRACK_PREFIX_RE = re.compile(r"^\s*\d+\s*(?:[-_.]\s*\d+)?\s+")
 
 
-def _normalize_basename_stem(stem: str) -> str:
-    s = stem.strip()
-    s = TRACK_PREFIX_RE.sub("", s)
-    return s.strip().casefold()
+def _norm_basename(name: str) -> str:
+    s = _TRACK_PREFIX_RE.sub("", name)
+    return s.strip().lower()
 
 
-def _build_mp3_index(root: bytes) -> dict[str, bytes]:
-    index: dict[str, bytes] = {}
-    for dirpath, _dirnames, filenames in os.walk(root):
+def _walk_files(root: pathlib.Path) -> list[pathlib.Path]:
+    files: list[pathlib.Path] = []
+    for dirpath, _, filenames in os.walk(root, followlinks=False):
+        current = pathlib.Path(dirpath)
         for name in filenames:
-            if not name.lower().endswith(b".mp3"):
+            p = current / name
+            try:
+                if p.is_symlink():
+                    continue
+            except OSError:
                 continue
-            stem = _decode_fs(name)[:-4]
-            key = _normalize_basename_stem(stem)
-            if key and key not in index:
-                index[key] = os.path.join(dirpath, name)
-    return index
+            files.append(p)
+    return files
 
 
-def _pick_non_overwriting_dest(dst_dir: bytes, filename: bytes) -> bytes:
-    base, ext = os.path.splitext(filename)
-    candidate = os.path.join(dst_dir, filename)
-    if not os.path.exists(candidate):
-        return candidate
-    for i in range(1, 10_000):
-        candidate = os.path.join(dst_dir, base + f" ({i})".encode("utf-8") + ext)
-        if not os.path.exists(candidate):
-            return candidate
-    raise RuntimeError(f"Unable to find non-colliding destination for {_decode_fs(filename)}")
+def _safe_move(src: pathlib.Path, dst: pathlib.Path) -> None:
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.replace(src, dst)
+        return
+    except OSError as e:
+        if getattr(e, "errno", None) != getattr(os, "EXDEV", 18):
+            raise
+
+    shutil.copy2(src, dst)
+    try:
+        src_stat = src.stat()
+        dst_stat = dst.stat()
+    except OSError:
+        raise RuntimeError(f"failed to stat after copy: {src} -> {dst}")
+    if src_stat.st_size != dst_stat.st_size:
+        raise RuntimeError(f"size mismatch after copy: {src} -> {dst}")
+    src.unlink()
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Absorb /Volumes/MUSIC/mp3_to_sort into intake with basename-only dedup check."
+        description="Absorb /Volumes/MUSIC/mp3_to_sort/*.mp3 into staging intake, deduping by normalized basename against library + leftovers (dry-run by default)."
     )
-    parser.add_argument("--apply", action="store_true", help="Execute moves (default: dry-run).")
+    parser.add_argument("--apply", action="store_true", help="Apply moves (otherwise dry-run report only)")
     args = parser.parse_args()
 
-    today = datetime.datetime.now().strftime("%Y%m%d")
-    src_dir = pathlib.Path("/Volumes/MUSIC/mp3_to_sort")
-    clean_dir = pathlib.Path("/Volumes/MUSIC/MP3_LIBRARY_CLEAN")
-    leftovers_dir = pathlib.Path("/Volumes/MUSIC/mp3_leftorvers")
-    intake_dir = pathlib.Path("/Volumes/MUSIC/mdl/mp3_to_sort_intake")
-    log_path = src_dir / f"_absorb_log_{today}.txt"
-    dupes_dir = src_dir / f"_dupes_{today}"
+    if not SRC_ROOT.exists() or not SRC_ROOT.is_dir():
+        print(f"ERROR: source not found or not a directory: {SRC_ROOT}")
+        return 2
+    if not LIB_ROOT.exists() or not LIB_ROOT.is_dir():
+        print(f"ERROR: dedupe root not found or not a directory: {LIB_ROOT}")
+        return 2
+    if not LEFTOVERS_ROOT.exists() or not LEFTOVERS_ROOT.is_dir():
+        print(f"ERROR: dedupe root not found or not a directory: {LEFTOVERS_ROOT}")
+        return 2
 
-    src_b = os.fsencode(str(src_dir))
-    clean_b = os.fsencode(str(clean_dir))
-    leftovers_b = os.fsencode(str(leftovers_dir))
-    intake_b = os.fsencode(str(intake_dir))
-    dupes_b = os.fsencode(str(dupes_dir))
+    today = datetime.date.today().strftime("%Y%m%d")
+    dupes_root = SRC_ROOT / f"_dupes_{today}"
+    log_path = SRC_ROOT / f"_absorb_log_{today}.txt"
 
-    clean_index = _build_mp3_index(clean_b)
-    leftovers_index = _build_mp3_index(leftovers_b)
+    index: dict[str, pathlib.Path] = {}
+    for root in (LIB_ROOT, LEFTOVERS_ROOT):
+        for p in _walk_files(root):
+            if not p.name.lower().endswith(".mp3"):
+                continue
+            key = _norm_basename(p.name)
+            if key and key not in index:
+                index[key] = p
+
+    planned = []
+    skipped = 0
+
+    for p in sorted(_walk_files(SRC_ROOT), key=str):
+        if p.parent != SRC_ROOT:
+            skipped += 1
+            continue
+
+        if not p.name.lower().endswith(".mp3"):
+            skipped += 1
+            continue
+
+        key = _norm_basename(p.name)
+        match = index.get(key)
+        if match is None:
+            planned.append((p, INTAKE_ROOT / p.name, "UNIQUE", None))
+        else:
+            planned.append((p, dupes_root / p.name, "DUPLICATE", match))
+
+    unique_count = 0
+    dup_count = 0
+
+    for src, dst, kind, match in planned:
+        if kind == "UNIQUE":
+            unique_count += 1
+            print(f"UNIQUE: {src} -> {dst}")
+        else:
+            dup_count += 1
+            print(f"DUPLICATE: {src} -> {dst} (match: {match})")
 
     if args.apply:
-        os.makedirs(intake_b, exist_ok=True)
+        INTAKE_ROOT.mkdir(parents=True, exist_ok=True)
+        dupes_root.mkdir(parents=True, exist_ok=True)
+        with log_path.open("a") as log:
+            for src, dst, kind, match in planned:
+                _safe_move(src, dst)
+                if not dst.exists():
+                    raise RuntimeError(f"destination missing after move: {dst}")
+                if match is None:
+                    log.write(f"{kind}: {src} -> {dst}\n")
+                else:
+                    log.write(f"{kind}: {src} -> {dst} (match: {match})\n")
 
-    unique_count = dup_count = 0
-    with open(log_path, "a", encoding="utf-8") as log:
-        log.write(f"{today} {'APPLY' if args.apply else 'DRYRUN'}\n")
-        for entry in os.scandir(src_b):
-            if not entry.is_file():
-                continue
-            name = entry.name
-            if not name.lower().endswith(b".mp3"):
-                continue
-            stem = _decode_fs(name)[:-4]
-            key = _normalize_basename_stem(stem)
-            src_path = entry.path
-            match = clean_index.get(key) or leftovers_index.get(key)
-            if match is not None:
-                dup_count += 1
-                planned = _pick_non_overwriting_dest(dupes_b, name) if args.apply else os.path.join(dupes_b, name)
-                print(f"DUPLICATE: {_decode_fs(src_path)} -> {_decode_fs(planned)} (match: {_decode_fs(match)})")
-                log.write(f"DUPLICATE\t{_decode_fs(src_path)}\t{_decode_fs(planned)}\tMATCH\t{_decode_fs(match)}\n")
-                if args.apply:
-                    os.makedirs(dupes_b, exist_ok=True)
-                    shutil.move(src_path, planned)
-                    if not os.path.exists(planned):
-                        raise RuntimeError(f"Move failed: {_decode_fs(planned)}")
-                continue
-            unique_count += 1
-            planned = _pick_non_overwriting_dest(intake_b, name) if args.apply else os.path.join(intake_b, name)
-            print(f"UNIQUE: {_decode_fs(src_path)} -> {_decode_fs(planned)}")
-            log.write(f"UNIQUE\t{_decode_fs(src_path)}\t{_decode_fs(planned)}\n")
-            if args.apply:
-                shutil.move(src_path, planned)
-                if not os.path.exists(planned):
-                    raise RuntimeError(f"Move failed: {_decode_fs(planned)}")
-        log.write(f"SUMMARY\tunique={unique_count}\tduplicates={dup_count}\n")
-
-    print(f"Summary: {unique_count} unique (moved to intake), {dup_count} duplicates (archived).")
+    print(f"SUMMARY: {unique_count} unique, {dup_count} duplicates, {skipped} skipped")
+    if args.apply:
+        print(f"LOG: {log_path}")
     return 0
 
 

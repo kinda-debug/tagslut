@@ -12,8 +12,8 @@ or other scripts.
 Add `qobuz.com` and `play.qobuz.com` URL routing to `tools/get`. When a Qobuz URL
 is passed, the script should:
 
-1. Call `rip url <url>` to download to `/Volumes/MUSIC/mdl/StreamripDownloads/`
-2. Call `tagslut index register /Volumes/MUSIC/mdl/StreamripDownloads --source qobuz --execute`
+1. Call `rip url <url>` to download to `/Volumes/MUSIC/staging/StreamripDownloads/`
+2. Call `tagslut index register /Volumes/MUSIC/staging/StreamripDownloads --source qobuz --execute`
 3. Optionally run enrich if `--enrich` mode is active
 
 ---
@@ -57,7 +57,7 @@ if [[ "$URL" == *"qobuz.com"* ]]; then
         exit $STREAMRIP_EXIT
     fi
 
-    STREAMRIP_ROOT="/Volumes/MUSIC/mdl/StreamripDownloads"
+    STREAMRIP_ROOT="/Volumes/MUSIC/staging/StreamripDownloads"
     echo "Registering downloads..."
     poetry run python -m tagslut index register "$STREAMRIP_ROOT" --source qobuz --execute
 

@@ -195,7 +195,7 @@ def _rank_inventory_row(row: sqlite3.Row) -> tuple[int, int, str]:
         root_rank = 0
     elif path_text.startswith("/Volumes/MUSIC/_work/fix/"):
         root_rank = 1
-    elif path_text.startswith("/Volumes/MUSIC/mdl/tidal/"):
+    elif path_text.startswith("/Volumes/MUSIC/staging/tidal/"):
         root_rank = 2
     has_dj = 0 if _path_exists(row["dj_pool_path"]) else 1
     return (has_dj, root_rank, path_text)

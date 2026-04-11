@@ -512,7 +512,7 @@ elif [[ "$URL" == *"beatport.com"* ]]; then
     fi
 
     # Register downloads and run enrich if requested
-    BEATPORT_ROOT="/Volumes/MUSIC/mdl/bpdl"
+    BEATPORT_ROOT="/Volumes/MUSIC/staging/bpdl"
     if [[ -d "$BEATPORT_ROOT" ]]; then
         poetry run python -m tagslut index register "$BEATPORT_ROOT" --source beatport --execute
     fi
@@ -541,7 +541,7 @@ elif [[ "$URL" == *"qobuz.com"* ]]; then
     fi
 
     STREAMRIP_CONFIG="/Users/georgeskhawam/Projects/streamrip/dev_config.toml"
-    STREAMRIP_ROOT="/Volumes/MUSIC/mdldev/StreamripDownloads"
+    STREAMRIP_ROOT="/Volumes/MUSIC/staging/StreamripDownloads"
 
     cd "$REPO_ROOT"
     "$STREAMRIP_CMD" --config-path "$STREAMRIP_CONFIG" --no-db url "$URL"

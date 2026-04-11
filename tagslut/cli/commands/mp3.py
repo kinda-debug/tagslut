@@ -143,7 +143,7 @@ def mp3_build(
     help=(
         "Canonical MP3 asset root to reconcile. Defaults to "
         "$MP3_LIBRARY. Preserved source/staging folders "
-        "(for example /Volumes/MUSIC/mdl or /Volumes/MUSIC/_work) stay "
+        "(for example /Volumes/MUSIC/staging or /Volumes/MUSIC/_work) stay "
         "reference-only and are not active roots."
     ),
     type=click.Path(exists=True, file_okay=False),

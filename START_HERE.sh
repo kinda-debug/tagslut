@@ -50,7 +50,7 @@ echo "Setting up core paths..."
 : "${MASTER_LIBRARY:=/Volumes/MUSIC/MASTER_LIBRARY}"
 : "${MP3_LIBRARY:=/Volumes/MUSIC/MP3_LIBRARY}"
 : "${DJ_LIBRARY:=/Volumes/MUSIC/MP3_LIBRARY}"  # DJ pool is now an M3U in MP3_LIBRARY, not a separate folder
-: "${STAGING_ROOT:=/Volumes/MUSIC/mdl}"
+: "${STAGING_ROOT:=/Volumes/MUSIC/staging}"
 
 export TAGSLUT_DB
 export MASTER_LIBRARY

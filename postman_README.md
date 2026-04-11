@@ -188,7 +188,7 @@ sqlite3 /Users/georgeskhawam/Projects/tagslut_db/FRESH_2026/music_v3.db \
 
 | Problem | Command |
 |---------|---------|
-| Files not moving from staging | `ls /Volumes/MUSIC/mdl/tidal \| wc -l` — if > 0, clear it: `rm -rf /Volumes/MUSIC/mdl/tidal/*` |
+| Files not moving from staging | `ls /Volumes/MUSIC/staging/tidal \| wc -l` — if > 0, clear it: `rm -rf /Volumes/MUSIC/staging/tidal/*` |
 | Token expired | Re-auth: `tiddl auth` then `poetry run python tagslut/exec/refresh_auth.py` |
 | Truncated files detected | Run Workflow 4 above to identify them |
 | MP3s not getting metadata | Check: `mediainfo /Volumes/MUSIC/MP3_LIBRARY/sample.mp3 \| grep ISRC` |

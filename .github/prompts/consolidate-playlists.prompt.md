@@ -18,7 +18,7 @@ Archive superseded files. Do not delete anything permanently.
 - `/Volumes/MUSIC/tagslut/config/dj/crates/`
 - `/Volumes/MUSIC/MASTER_LIBRARY/playlists/`
 - `/Volumes/MUSIC/_work/`
-- `/Volumes/MUSIC/mdl/`
+- `/Volumes/MUSIC/staging/`
 
 
 ## Input

@@ -8,7 +8,7 @@ Agent instructions: AGENT.md, CLAUDE.md, PROJECT_DIRECTIVES.md
 
 ## Context
 
-The Beatport download staging area at `/Volumes/MUSIC/mdl/bpdl` has a
+The Beatport download staging area at `/Volumes/MUSIC/staging/bpdl` has a
 consistent structural problem: every artist folder contains a `.jpg` file
 sitting alongside the album folder rather than inside it.
 
@@ -35,7 +35,7 @@ the tidal staging area.
 
 ## Task
 
-Scan `/Volumes/MUSIC/mdl/bpdl` and fix all misplaced cover JPEGs.
+Scan `/Volumes/MUSIC/staging/bpdl` and fix all misplaced cover JPEGs.
 
 ### Step 1 — Audit
 
@@ -43,7 +43,7 @@ Find all `.jpg` files at artist level (maxdepth 2) that are NOT
 already named `cover.jpg`:
 
 ```bash
-find /Volumes/MUSIC/mdl/bpdl -maxdepth 2 -name "*.jpg" ! -name "cover.jpg" | sort
+find /Volumes/MUSIC/staging/bpdl -maxdepth 2 -name "*.jpg" ! -name "cover.jpg" | sort
 ```
 
 For each one, check whether a matching album folder exists:
@@ -81,7 +81,7 @@ the tracks may be incoming.
 
 ### Step 5 — Produce manifest
 
-Write `/Volumes/MUSIC/mdl/bpdl/COVER_FIX_MANIFEST.txt` with:
+Write `/Volumes/MUSIC/staging/bpdl/COVER_FIX_MANIFEST.txt` with:
 
 ```
 FIXED (moved inside album folder):
@@ -112,7 +112,7 @@ DELETED (no album folder, empty artist dir):
 - Zero `.jpg` files remain at artist level (maxdepth 2) except those
   flagged as ORPHANED in the manifest
 - Every moved cover is named `cover.jpg` inside its album folder
-- Manifest written to `/Volumes/MUSIC/mdl/bpdl/COVER_FIX_MANIFEST.txt`
+- Manifest written to `/Volumes/MUSIC/staging/bpdl/COVER_FIX_MANIFEST.txt`
 
 ## Commit
 

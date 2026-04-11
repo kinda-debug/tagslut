@@ -6,8 +6,8 @@ import pathlib
 import shutil
 
 
-SRC_ROOT = pathlib.Path("/Volumes/RBX_USB 1/mdl/bpdl")
-DST_ROOT = pathlib.Path("/Volumes/MUSIC/mdl/bpdl")
+SRC_ROOT = pathlib.Path("/Volumes/RBX_USB 1/staging/bpdl")
+DST_ROOT = pathlib.Path("/Volumes/MUSIC/staging/bpdl")
 UNRESOLVED_ROOT = pathlib.Path("/Volumes/RBX_USB 1/DJ_LIBRARY/_UNRESOLVED")
 
 
@@ -55,7 +55,7 @@ def _is_under(path: pathlib.Path, root: pathlib.Path) -> bool:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Absorb FLACs from /Volumes/RBX_USB 1/mdl/bpdl/ back into /Volumes/MUSIC/mdl/bpdl/."
+        description="Absorb FLACs from /Volumes/RBX_USB 1/staging/bpdl/ back into /Volumes/MUSIC/staging/bpdl/."
     )
     parser.add_argument("--apply", action="store_true", help="Apply moves (otherwise dry-run).")
     args = parser.parse_args()
@@ -68,7 +68,7 @@ def main() -> int:
     log_path = DST_ROOT / f"_absorb_log_{today}.txt"
     conflicts_root = DST_ROOT / "_conflicts"
 
-    moved = conflicts = skipped = 0
+    skipped = 0
     planned: list[tuple[pathlib.Path, pathlib.Path, str]] = []
 
     for dirpath, _, filenames in os.walk(SRC_ROOT, followlinks=False):
@@ -101,6 +101,15 @@ def main() -> int:
                 planned.append((src, dst, "MOVE"))
 
     planned.sort(key=lambda t: str(t[0]))
+
+    moved = 0
+    conflicts = 0
+    for _, _, kind in planned:
+        if kind == "CONFLICT":
+            conflicts += 1
+        else:
+            moved += 1
+
     for src, dst, kind in planned:
         print(f"{kind}: {src} -> {dst}")
 
@@ -108,10 +117,6 @@ def main() -> int:
         DST_ROOT.mkdir(parents=True, exist_ok=True)
         with log_path.open("a") as log:
             for src, dst, kind in planned:
-                if kind == "CONFLICT":
-                    conflicts += 1
-                else:
-                    moved += 1
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 _safe_move(src, dst)
                 if not dst.exists():

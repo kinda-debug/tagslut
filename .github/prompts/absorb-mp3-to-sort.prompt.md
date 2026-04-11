@@ -26,7 +26,7 @@ comparing). A match on the normalized basename means the file is a duplicate.
 ## Classification
 
 - **UNIQUE**: no match found in either location → move to
-  `/Volumes/MUSIC/mdl/mp3_to_sort_intake/` for pipeline processing.
+  `/Volumes/MUSIC/staging/mp3_to_sort_intake/` for pipeline processing.
 - **DUPLICATE**: match found → move to
   `/Volumes/MUSIC/mp3_to_sort/_dupes_YYYYMMDD/`.
 

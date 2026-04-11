@@ -432,7 +432,7 @@ def main() -> int:
     ap.add_argument("--db", type=Path, required=True)
     _repo = Path(__file__).resolve().parents[2]
     ap.add_argument("--canon-rules", type=Path, default=_repo / "tools/rules/library_canon.json")
-    ap.add_argument("--move-log", type=Path, default=_repo / "artifacts/logs/file_move_mdl_replace.jsonl")
+    ap.add_argument("--move-log", type=Path, default=_repo / "artifacts/logs/file_move_staging_replace.jsonl")
     ap.add_argument(
         "--allow-duplicate-hash",
         action="store_true",

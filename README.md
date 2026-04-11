@@ -119,8 +119,8 @@ for the canonical reference.
 
 `MP3_LIBRARY` is the single canonical active MP3 asset root. `DJ_LIBRARY`
 is a compatibility alias to the same root, not a separate operational library.
-Preserved source/staging folders (for example `/Volumes/MUSIC/mdl/Apple`,
-`/Volumes/MUSIC/mdl/Apple Music`, `/Volumes/MUSIC/_work`) are provenance-only.
+Preserved source/staging folders (for example `/Volumes/MUSIC/staging/Apple`,
+`/Volumes/MUSIC/staging/Apple Music`, `/Volumes/MUSIC/_work`) are provenance-only.
 
 Building a curated DJ library follows a deterministic 4-stage pipeline.
 Each stage is safe to re-run and leaves explicit DB state as output.

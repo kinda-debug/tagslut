@@ -18,8 +18,8 @@ TIDAL is the primary audio source. Beatport is the metadata authority.
   - ISRC conflict → Trust TIDAL ISRC (it's the audio source), log discrepancy
 
 **Volume layout:**
-  - /Volumes/MUSIC/mdl/tidal → Primary staging (TIDAL downloads)
-  - /Volumes/MUSIC/mdl/bpdl → Reference only (legacy Beatport downloads, read-only)
+  - /Volumes/MUSIC/staging/tidal → Primary staging (TIDAL downloads)
+  - /Volumes/MUSIC/staging/bpdl → Reference only (legacy Beatport downloads, read-only)
   - /Volumes/MUSIC/MASTER_LIBRARY → Final deduplicated library
 
 **Never:**

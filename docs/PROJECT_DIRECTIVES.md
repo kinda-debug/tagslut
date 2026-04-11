@@ -68,7 +68,7 @@ manually reviewed and upgraded.
 /Volumes/MUSIC/DJ_POOL           Lexicon-managed DJ MP3 pool (Artist/Album/file.mp3)
 /Volumes/MUSIC/MP3_LIBRARY_CLEAN Centralized clean lossy pool for Rekordbox import
 /Volumes/MUSIC/DJ_POOL_MANUAL_MP3  Manual DJ pool additions
-/Volumes/MUSIC/mdl               Staging root for downloads
+/Volumes/MUSIC/staging           Staging root for downloads
 /Volumes/MUSIC/lexicondj.db      Lexicon DJ database (read-only reference, 227MB)
 /Users/georgeskhawam/Music/main.db  Active Lexicon working DB (61,752 tracks)
 /Volumes/SAD/                    Legacy epoch DBs — read-only, no writes
@@ -76,7 +76,7 @@ manually reviewed and upgraded.
 $MASTER_LIBRARY = /Volumes/MUSIC/MASTER_LIBRARY
 $DJ_LIBRARY     = /Volumes/MUSIC/DJ_LIBRARY
 $DJ_MP3_ROOT    = /Volumes/MUSIC/DJ_LIBRARY
-$STAGING_ROOT   = /Volumes/MUSIC/mdl
+$STAGING_ROOT   = /Volumes/MUSIC/staging
 
 If a volume is not mounted, operations that require it must fail
 with a clear error — do not silently fall back to local paths.

@@ -62,7 +62,7 @@ beatport4:
   art_overwrite: no
   art_width: 0
   art_height: 0
-  singletons_with_album_meta
+  singletons_with_album_meta:
     enabled: yes
     year: yes
     album: yes
@@ -106,7 +106,6 @@ zero:
   fields:
     - acoustid_id
     - encoder
-    - encodedby
 
 # Optional plugin configs below.
 

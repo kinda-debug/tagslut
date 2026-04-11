@@ -1,0 +1,182 @@
+# Beets sidecar config for tagslut
+#
+# Default posture:
+# - non-destructive
+# - no library reorganization
+# - no file writes
+# - tagslut remains canonical authority
+
+library: /Volumes/MUSIC/beets-library.db
+directory: /Volumes/MUSIC
+
+import:
+  copy: no
+  move: no
+  link: no
+  hardlink: no
+  write: no
+  incremental: yes
+  incremental_skip_later: yes
+  resume: ask
+  quiet_fallback: skip
+  timid: yes
+  log: /Volumes/MUSIC/beets-import.log
+
+plugins:
+  - beatport4
+  - fetchart
+  - embedart
+  - zero
+  - types
+
+  # Optional only. Enable deliberately.
+  # - bandcamp
+  # - keyfinder
+  # - autobpm
+  # - replaygain
+  # - xtractor
+  # - web
+
+# Do not let Beets reorganize paths in sidecar mode.
+paths:
+  default: $path
+
+# Useful if you later enable custom/plugin-added fields and want range queries.
+types:
+  bpm: float
+  energy: float
+  danceability: float
+  loudness: float
+  valence: float
+  replay_gain_track: float
+  replay_gain_album: float
+  tidal_dj_ready: int
+  tidal_stem_ready: int
+
+# Beatport v4 plugin.
+#
+# Leave username/password empty if you prefer token-paste auth instead of
+# stored credentials.
+beatport4:
+  art: no
+  art_overwrite: no
+  art_width: 0
+  art_height: 0
+  singletons_with_album_metadata:
+    enabled: yes
+    year: yes
+    album: yes
+    label: yes
+    catalognum: yes
+    albumartist: yes
+    track_number: yes
+  username:
+  password:
+  client_id:
+
+# Conservative artwork behavior.
+#
+# Since tagslut should remain authoritative, fetch only when art is missing.
+fetchart:
+  auto: yes
+  cautious: yes
+  minwidth: 500
+  maxwidth: 1200
+  enforce_ratio: yes
+  store_source: yes
+  high_resolution: no
+  sources:
+    - filesystem
+    - coverart
+    - itunes
+    - amazon
+
+embedart:
+  auto: yes
+  ifempty: yes
+  compare_threshold: 0
+  maxwidth: 1200
+
+# Cleanup helper.
+#
+# Only use fields mode here. Do not combine with keep_fields.
+# Keep this conservative in sidecar mode because write=no is doing most of the safety work.
+zero:
+  auto: no
+  update_database: yes
+  fields:
+    - acoustid_id
+    - replaygain_track_gain
+    - replaygain_track_peak
+    - replaygain_album_gain
+    - replaygain_album_peak
+    - encoder
+    - encodedby
+
+# Optional plugin configs below.
+
+keyfinder:
+  auto: no
+  bin: keyfinder-cli
+  overwrite: no
+
+autobpm:
+  auto: no
+  force: no
+  beat_track_kwargs: {}
+  quiet: no
+
+replaygain:
+  auto: no
+  backend: ffmpeg
+  overwrite: no
+  threads: 2
+
+# If you enable beetcamp, plugin name is still `bandcamp`.
+bandcamp:
+  include_digital_only_tracks: true
+  search_max: 2
+  art: no
+  comments_separator: "\n---\n"
+  truncate_comments: no
+  exclude_extra_fields: []
+  genre:
+    capitalize: no
+    maximum: 0
+    always_include: []
+    mode: progressive
+
+# Xtractor is real but heavy. Keep disabled by default.
+#
+# Uncomment and fill actual paths only if you have Essentia + SVM models installed.
+# xtractor:
+#   auto: no
+#   dry-run: no
+#   write: yes
+#   threads: 1
+#   force: no
+#   quiet: no
+#   keep_output: yes
+#   keep_profiles: no
+#   output_path: /path/to/xtraction_data
+#   essentia_extractor: /path/to/streaming_extractor_music
+#   extractor_profile:
+#     highlevel:
+#       svm_models:
+#         - /path/to/danceability.history
+#         - /path/to/gender.history
+#         - /path/to/genre_rosamerica.history
+#         - /path/to/mood_acoustic.history
+#         - /path/to/mood_aggressive.history
+#         - /path/to/mood_electronic.history
+#         - /path/to/mood_happy.history
+#         - /path/to/mood_sad.history
+#         - /path/to/mood_party.history
+#         - /path/to/mood_relaxed.history
+#         - /path/to/voice_instrumental.history
+#         - /path/to/moods_mirex.history
+
+web:
+  host: 127.0.0.1
+  port: 8337
+  include_paths: yes

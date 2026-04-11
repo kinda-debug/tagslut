@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from tagslut.core.flac_scan_prep import _convert_to_flac
+from tagslut.core.flac_scan_prep import prepare_flac_scan_input
 
 
 def test_convert_to_flac_returns_verify_failure_without_name_error(
@@ -33,3 +34,115 @@ def test_convert_to_flac_returns_verify_failure_without_name_error(
     assert converted is False
     assert error == "verify failed"
     assert not dest.exists()
+
+
+def test_prepare_flac_scan_input_allows_tidal_aac_m4a(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "track.m4a"
+    source.write_bytes(b"m4a")
+
+    monkeypatch.setattr(
+        "tagslut.core.flac_scan_prep._probe_audio_stream",
+        lambda _path: {"codec_name": "aac", "sample_rate": "44100", "bits_per_sample": "16"},
+    )
+
+    def fake_convert_to_flac(_source: Path, dest: Path) -> tuple[bool, str | None]:
+        dest.write_bytes(b"flac")
+        return True, None
+
+    monkeypatch.setattr("tagslut.core.flac_scan_prep._convert_to_flac", fake_convert_to_flac)
+    monkeypatch.setattr("tagslut.core.flac_scan_prep.shutil.which", lambda _name: "/usr/bin/tool")
+
+    prepared = prepare_flac_scan_input(source, persist=False)
+
+    assert prepared.skip_reason is None
+    assert prepared.converted is True
+    assert prepared.scan_path is not None
+    assert prepared.codec_name == "aac"
+
+
+def test_prepare_flac_scan_input_blocks_tidal_aac_m4a_when_sample_rate_too_low(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "track.m4a"
+    source.write_bytes(b"m4a")
+
+    monkeypatch.setattr(
+        "tagslut.core.flac_scan_prep._probe_audio_stream",
+        lambda _path: {"codec_name": "aac", "sample_rate": "22050", "bits_per_sample": "16"},
+    )
+    monkeypatch.setattr("tagslut.core.flac_scan_prep.shutil.which", lambda _name: "/usr/bin/tool")
+
+    prepared = prepare_flac_scan_input(source, persist=False)
+
+    assert prepared.converted is False
+    assert prepared.scan_path is None
+    assert prepared.skip_reason == "sample_rate_too_low"
+
+
+def test_prepare_flac_scan_input_allows_alac_m4a(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "track.m4a"
+    source.write_bytes(b"m4a")
+
+    monkeypatch.setattr(
+        "tagslut.core.flac_scan_prep._probe_audio_stream",
+        lambda _path: {"codec_name": "alac", "sample_rate": "44100", "bits_per_sample": "16"},
+    )
+
+    def fake_convert_to_flac(_source: Path, dest: Path) -> tuple[bool, str | None]:
+        dest.write_bytes(b"flac")
+        return True, None
+
+    monkeypatch.setattr("tagslut.core.flac_scan_prep._convert_to_flac", fake_convert_to_flac)
+    monkeypatch.setattr("tagslut.core.flac_scan_prep.shutil.which", lambda _name: "/usr/bin/tool")
+
+    prepared = prepare_flac_scan_input(source, persist=False)
+
+    assert prepared.skip_reason is None
+    assert prepared.converted is True
+    assert prepared.scan_path is not None
+    assert prepared.codec_name == "alac"
+
+
+def test_prepare_flac_scan_input_blocks_aac_extension_before_probe(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "track.aac"
+    source.write_bytes(b"aac")
+
+    def should_not_probe(_path: Path) -> dict:
+        raise AssertionError("_probe_audio_stream should not be called for .aac inputs")
+
+    monkeypatch.setattr("tagslut.core.flac_scan_prep._probe_audio_stream", should_not_probe)
+
+    prepared = prepare_flac_scan_input(source, persist=False)
+
+    assert prepared.skip_reason == "lossy_extension"
+    assert prepared.converted is False
+    assert prepared.scan_path is None
+
+
+def test_prepare_flac_scan_input_blocks_mp3_extension(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "track.mp3"
+    source.write_bytes(b"mp3")
+
+    def should_not_probe(_path: Path) -> dict:
+        raise AssertionError("_probe_audio_stream should not be called for .mp3 inputs")
+
+    monkeypatch.setattr("tagslut.core.flac_scan_prep._probe_audio_stream", should_not_probe)
+
+    prepared = prepare_flac_scan_input(source, persist=False)
+
+    assert prepared.skip_reason == "lossy_extension"
+    assert prepared.converted is False
+    assert prepared.scan_path is None

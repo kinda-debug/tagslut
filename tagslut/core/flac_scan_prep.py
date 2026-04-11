@@ -131,7 +131,9 @@ def prepare_flac_scan_input(path: Path, *, persist: bool) -> PreparedFlacInput:
     sample_rate = _safe_int(stream.get("sample_rate"))
     bit_depth = _infer_bit_depth(stream)
 
-    if codec_name in LOSSY_CODECS:
+    is_tidal_aac = codec_name == "aac" and suffix == ".m4a"
+
+    if codec_name in LOSSY_CODECS and not is_tidal_aac:
         return PreparedFlacInput(
             source_path=source_path,
             scan_path=None,
@@ -144,7 +146,7 @@ def prepare_flac_scan_input(path: Path, *, persist: bool) -> PreparedFlacInput:
             message=f"blocked lossy codec: {codec_name}",
         )
 
-    if codec_name not in LOSSLESS_CODECS:
+    if codec_name not in LOSSLESS_CODECS and not is_tidal_aac:
         return PreparedFlacInput(
             source_path=source_path,
             scan_path=None,

@@ -340,6 +340,291 @@ def register_intake_group(cli: click.Group) -> None:
         _EXIT = {"completed": 0, "blocked": 2, "failed": 1}
         sys.exit(_EXIT[result.disposition])
 
+    @intake.command("spotiflac")
+    @click.argument("log_file", type=click.Path(exists=True, dir_okay=False))
+    @click.option(
+        "--base-dir",
+        type=click.Path(exists=True, file_okay=False),
+        default=None,
+        help="Root where SpotiFLAC wrote files (required when M3U8 is missing).",
+    )
+    @click.option("--dry-run", is_flag=True, default=False, help="Parse and print; write nothing.")
+    @click.option(
+        "--failed-only",
+        is_flag=True,
+        default=False,
+        help="Report failed tracks only; do not ingest.",
+    )
+    def intake_spotiflac(  # type: ignore  # TODO: mypy-strict
+        log_file: str,
+        base_dir: str | None,
+        dry_run: bool,
+        failed_only: bool,
+    ) -> None:
+        """Ingest a SpotiFLAC batch output into the standard tagslut intake pipeline."""
+        import json
+        from datetime import datetime, timezone
+
+        from tagslut.core.hashing import calculate_file_hash
+        from tagslut.core.metadata import extract_metadata
+        from tagslut.intake.spotiflac_parser import (
+            build_manifest,
+            classify_failure_reason,
+        )
+        from tagslut.storage.queries import get_file
+        from tagslut.storage.schema import init_db
+        from tagslut.storage.v3 import dual_write_enabled, dual_write_registered_file
+        from tagslut.utils.db import DbResolutionError, open_db, resolve_cli_env_db_path
+
+        log_path = Path(log_file).expanduser().resolve()
+        tracks = build_manifest(log_path)
+
+        total = len(tracks)
+        with_isrc = sum(1 for t in tracks if t.isrc)
+        with_path = sum(1 for t in tracks if t.file_path is not None)
+        failed_count = sum(1 for t in tracks if t.failed)
+        click.echo(
+            f"{total} tracks parsed, {with_isrc} with ISRC, {with_path} with resolved file path, {failed_count} failed"
+        )
+
+        if failed_only:
+            retryable = 0
+            for track in tracks:
+                if not track.failed:
+                    continue
+                classification = classify_failure_reason(track.failure_reason)
+                if classification == "retryable":
+                    retryable += 1
+                reason = (track.failure_reason or "").strip()
+                click.echo(f"[failed/{classification}] {track.display_title} — {reason}".rstrip(" —"))
+            click.echo(f"0 ingested, 0 skipped (file not found), {failed_count} failed ({retryable} retryable)")
+            return
+
+        base_root = Path(base_dir).expanduser().resolve() if base_dir else None
+        if base_root is None:
+            any_resolved = any(t.file_path is not None for t in tracks if not t.failed)
+            if not any_resolved:
+                raise click.ClickException(
+                    "Cannot resolve FLAC paths (no M3U8 found or no paths matched). Provide --base-dir."
+                )
+        else:
+            unresolved = [t for t in tracks if (not t.failed) and t.file_path is None]
+            if unresolved:
+                import re
+                import string
+
+                def _norm_key(text: str) -> str:
+                    lowered = (text or "").lower()
+                    lowered = lowered.translate(str.maketrans({ch: " " for ch in string.punctuation}))
+                    lowered = re.sub(r"[^a-z0-9\\s]+", " ", lowered)
+                    return re.sub(r"\\s+", " ", lowered).strip()
+
+                exact_map = {t.display_title: t for t in unresolved}
+                norm_map: dict[str, list] = {}
+                for t in unresolved:
+                    key = _norm_key(t.display_title)
+                    if key:
+                        norm_map.setdefault(key, []).append(t)
+
+                for flac_path in base_root.rglob("*.flac"):
+                    stem = flac_path.stem
+                    hit = exact_map.pop(stem, None)
+                    if hit is not None:
+                        hit.file_path = flac_path.resolve()
+                    else:
+                        key = _norm_key(stem)
+                        bucket = norm_map.get(key)
+                        if bucket:
+                            track = bucket.pop(0)
+                            track.file_path = flac_path.resolve()
+                            if not bucket:
+                                norm_map.pop(key, None)
+                    if not exact_map and not norm_map:
+                        break
+
+        if dry_run:
+            for track in tracks:
+                if track.failed:
+                    classification = classify_failure_reason(track.failure_reason)
+                    reason = (track.failure_reason or "").strip()
+                    click.echo(f"[failed/{classification}] {track.display_title} — {reason}".rstrip(" —"))
+                    continue
+                click.echo(
+                    f"[would-ingest] {track.display_title} ({track.isrc or 'no ISRC'}) via {track.provider} -> {track.file_path or 'no path'}"
+                )
+            return
+
+        try:
+            resolution = resolve_cli_env_db_path(
+                None,
+                purpose="write",
+                allow_repo_db=False,
+                source_label="TAGSLUT_DB",
+            )
+        except DbResolutionError as exc:
+            raise click.ClickException(str(exc)) from exc
+
+        conn = open_db(resolution)
+        try:
+            init_db(conn)
+            now_iso = datetime.now(timezone.utc).isoformat()
+            ingestion_source = f"spotiflac:{log_path.name}"
+
+            ingest_ok = 0
+            skipped_missing = 0
+            failed_total = 0
+            retryable = 0
+
+            dual_write_v3 = dual_write_enabled()
+
+            with conn:
+                for track in tracks:
+                    if track.failed:
+                        failed_total += 1
+                        classification = classify_failure_reason(track.failure_reason)
+                        if classification == "retryable":
+                            retryable += 1
+                        reason = (track.failure_reason or "").strip()
+                        click.echo(
+                            f"[failed/{classification}] {track.display_title} — {reason}".rstrip(" —")
+                        )
+                        continue
+
+                    if track.file_path is None:
+                        continue
+
+                    file_path = track.file_path
+                    if base_root is not None and not file_path.is_absolute():
+                        file_path = (base_root / file_path).resolve()
+
+                    if not file_path.exists():
+                        click.secho(
+                            f"[warning] missing file; skipping: {file_path}",
+                            fg="yellow",
+                            err=True,
+                        )
+                        skipped_missing += 1
+                        continue
+
+                    existing = get_file(conn, file_path)
+                    if existing is not None:
+                        click.secho(
+                            f"[warning] already indexed; skipping: {file_path}",
+                            fg="yellow",
+                            err=True,
+                        )
+                        continue
+
+                    audio = extract_metadata(
+                        file_path,
+                        scan_integrity=False,
+                        scan_hash=False,
+                        library="default",
+                        zone_manager=None,
+                    )
+                    audio.original_path = file_path
+
+                    checksum = audio.checksum
+                    sha256 = audio.sha256
+                    streaminfo_md5 = audio.streaminfo_md5
+                    if (not streaminfo_md5) and (not sha256):
+                        sha256 = calculate_file_hash(file_path)
+                        checksum = sha256
+
+                    zone_value = audio.zone.value if audio.zone else "staging"
+                    metadata_json = json.dumps(audio.metadata or {}, ensure_ascii=False, sort_keys=True)
+                    flac_ok_value = None if audio.flac_ok is None else int(bool(audio.flac_ok))
+
+                    download_source = f"spotiflac:{track.provider}"
+
+                    conn.execute(
+                        """
+                        INSERT OR IGNORE INTO files (
+                            path, checksum, streaminfo_md5, sha256, library, zone, mtime, size,
+                            duration, bit_depth, sample_rate, bitrate, metadata_json, flac_ok, integrity_state,
+                            download_source, download_date, original_path, mgmt_status,
+                            is_dj_material, duration_ref_ms, duration_ref_source, duration_ref_track_id,
+                            duration_ref_updated_at, duration_measured_ms, duration_measured_at,
+                            duration_delta_ms, duration_status, duration_check_version
+                        ) VALUES (
+                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                        )
+                        """,
+                        (
+                            str(file_path),
+                            checksum,
+                            streaminfo_md5,
+                            sha256,
+                            "default",
+                            zone_value,
+                            audio.mtime,
+                            audio.size,
+                            float(audio.duration or 0.0),
+                            int(audio.bit_depth or 0),
+                            int(audio.sample_rate or 0),
+                            int(audio.bitrate or 0),
+                            metadata_json,
+                            flac_ok_value,
+                            audio.integrity_state,
+                            download_source,
+                            now_iso,
+                            str(file_path),
+                            "new",
+                            0,
+                            None,
+                            None,
+                            None,
+                            None,
+                            None,
+                            None,
+                            None,
+                            None,
+                            None,
+                        ),
+                    )
+
+                    if dual_write_v3:
+                        provider_hints = {"isrc": track.isrc} if track.isrc else None
+                        dual_write_registered_file(
+                            conn,
+                            path=str(file_path),
+                            content_sha256=sha256,
+                            streaminfo_md5=streaminfo_md5,
+                            checksum=checksum,
+                            size_bytes=audio.size,
+                            mtime=audio.mtime,
+                            duration_s=float(audio.duration or 0.0),
+                            sample_rate=int(audio.sample_rate or 0),
+                            bit_depth=int(audio.bit_depth or 0),
+                            bitrate=int(audio.bitrate or 0),
+                            library="default",
+                            zone=zone_value,
+                            download_source=download_source,
+                            download_date=now_iso,
+                            mgmt_status="new",
+                            metadata=audio.metadata or {},
+                            duration_ref_ms=None,
+                            duration_ref_source=None,
+                            event_time=now_iso,
+                            download_source_override=download_source,
+                            ingestion_method_override="spotiflac_import",
+                            ingestion_source_override=ingestion_source,
+                            ingestion_confidence_override="high",
+                            provider_id_hints=provider_hints,
+                        )
+
+                    ingest_ok += 1
+                    click.echo(
+                        f"[ingested] {track.display_title} ({track.isrc or 'no ISRC'}) via {track.provider}"
+                    )
+
+            click.echo(
+                f"{ingest_ok} ingested, {skipped_missing} skipped (file not found), {failed_total} failed ({retryable} retryable)"
+            )
+        finally:
+            conn.close()
+
     @intake.command("resolve")
     @click.option("--db", "db_path", required=True, type=click.Path(), help="Path to tagslut DB")
     @click.option("--input", "input_path", type=click.Path(), help="Input JSONL file with track metadata")

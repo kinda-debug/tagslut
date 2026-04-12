@@ -318,7 +318,113 @@ run_tiddl_download() {
   printf '→ '
   printf '%q ' "${cmd[@]}"
   printf '\n'
-  "${cmd[@]}"
+  local before_count="0"
+  if [[ -n "${BATCH_ROOT:-}" ]]; then
+    before_count="$(count_audio_files "$BATCH_ROOT")"
+  fi
+
+  local tiddl_log
+  tiddl_log="$(mktemp)"
+  set +e
+  "${cmd[@]}" 2>&1 | tee "$tiddl_log"
+  local rc="${PIPESTATUS[0]}"
+  set -e
+  if [[ "$rc" -eq 0 ]]; then
+    rm -f "$tiddl_log"
+    return 0
+  fi
+
+  local output
+  output="$(cat "$tiddl_log" 2>/dev/null || true)"
+  rm -f "$tiddl_log"
+
+  local reason
+  reason="$(printf '%s\n' "$output" | awk 'NF {print; exit}' | tr '\n' ' ' | sed 's/[[:space:]]\\+/ /g' | cut -c1-160)"
+
+  local spotify_url="${TAGSLUT_SPOTIFY_URL:-}"
+  if [[ -z "$spotify_url" ]]; then
+    echo "WARNING: SpotiFLAC fallback unavailable (no Spotify URL in intake chain)" >&2
+    return "$rc"
+  fi
+
+  local should_fallback=0
+  if printf '%s\n' "$output" | grep -Eqi "(unauthorized|forbidden|token[[:space:]]*expired|expired[[:space:]]*token|invalid[[:space:]]*token|http[[:space:]]*401|http[[:space:]]*403|\\b401\\b|\\b403\\b)"; then
+    should_fallback=1
+  elif printf '%s\n' "$output" | grep -Eqi "(\\b404\\b|not[[:space:]]+found|unavailable|not[[:space:]]+available)"; then
+    should_fallback=1
+  fi
+  if [[ "$should_fallback" -ne 1 ]]; then
+    return "$rc"
+  fi
+
+  echo "WARNING: tiddl download failed (${reason:-unknown}), attempting SpotiFLAC fallback" >&2
+  local spotiflac_rc=0
+  set +e
+  python3 - "$spotify_url" "$BATCH_ROOT" <<'PY'
+from __future__ import annotations
+
+import sys
+
+spotify_url = sys.argv[1]
+output_dir = sys.argv[2]
+
+try:
+    from SpotiFLAC import SpotiFLAC  # type: ignore[import-not-found]
+except Exception as exc:
+    print(f"SpotiFLAC not installed: {exc}", file=sys.stderr)
+    raise SystemExit(3)
+
+try:
+    SpotiFLAC(
+        url=spotify_url,
+        output_dir=output_dir,
+        services=["tidal", "qobuz", "amazon"],
+    )
+except Exception as exc:
+    print(f"SpotiFLAC failed: {exc}", file=sys.stderr)
+    raise SystemExit(4)
+PY
+  spotiflac_rc="$?"
+  set -e
+
+  if [[ "$spotiflac_rc" -ne 0 ]]; then
+    echo "WARNING: SpotiFLAC fallback failed (exit=$spotiflac_rc)" >&2
+    return "$rc"
+  fi
+
+  local after_count="0"
+  after_count="$(count_audio_files "$BATCH_ROOT")"
+  if [[ "$after_count" -le "$before_count" ]]; then
+    echo "WARNING: SpotiFLAC fallback produced no new audio files" >&2
+    return "$rc"
+  fi
+
+  local stamp
+  stamp="$(date +%Y%m%d_%H%M%S)"
+  SPOTIFLAC_FALLBACK_CONTEXT_FILE="$OUT_DIR/spotiflac_fallback_context_${stamp}.json"
+  python3 - "$SPOTIFLAC_FALLBACK_CONTEXT_FILE" "$spotify_url" <<'PY'
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1]).expanduser()
+spotify_url = sys.argv[2]
+
+payload = {
+    "source_url": spotify_url,
+    "provenance_overrides": {
+        "ingestion_method": "spotiflac_fallback",
+        "ingestion_confidence": "high",
+        "ingestion_source": f"spotiflac:{spotify_url}",
+    },
+}
+
+path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+PY
+
+  return 0
 }
 
 run_spotify_download() {
@@ -832,6 +938,7 @@ POST_MOVE_PID=""
 POST_MOVE_LOG=""
 M3U_NAME_HINT=""
 SPOTIFY_MANIFEST_FILE=""
+SPOTIFLAC_FALLBACK_CONTEXT_FILE=""
 PREFILTER_KEEP=0
 PREFILTER_SKIP=0
 PREFILTER_TOTAL=0
@@ -2674,6 +2781,8 @@ if [[ "$TAGGING_MODE" -eq 1 && "$EXECUTE" -eq 1 && "$DJ_MODE" -eq 0 ]]; then
     )
     if [[ -n "$SPOTIFY_MANIFEST_FILE" ]]; then
       POST_MOVE_ARGS+=(--intake-context "$SPOTIFY_MANIFEST_FILE")
+    elif [[ -n "$SPOTIFLAC_FALLBACK_CONTEXT_FILE" ]]; then
+      POST_MOVE_ARGS+=(--intake-context "$SPOTIFLAC_FALLBACK_CONTEXT_FILE")
     fi
     printf '→ '
     printf '%q ' "${POST_MOVE_ARGS[@]}"

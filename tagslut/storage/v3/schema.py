@@ -113,7 +113,8 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
                     'manual',
                     'migration',
                     'multi_provider_reconcile',
-                    'spotify_intake'
+                    'spotify_intake',
+                    'spotiflac_fallback'
                 )
             ),
             ingestion_source TEXT NOT NULL,

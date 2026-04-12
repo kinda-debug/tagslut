@@ -60,6 +60,9 @@ def load_intake_context(path: Path | None) -> dict[str, object]:
         return {}
     records = payload.get("records")
     if not isinstance(records, list):
+        overrides = payload.get("provenance_overrides")
+        if isinstance(overrides, dict):
+            return payload
         return {}
 
     by_spotify_id: dict[str, dict[str, object]] = {}
@@ -269,6 +272,17 @@ def main() -> int:
                             ingestion_confidence_override = None
                             provider_id_hints = None
                             duration_ref_source = "tidal"
+                            provenance_overrides = intake_context.get("provenance_overrides")
+                            if isinstance(provenance_overrides, dict):
+                                method = str(provenance_overrides.get("ingestion_method") or "").strip()
+                                source = str(provenance_overrides.get("ingestion_source") or "").strip()
+                                confidence = str(provenance_overrides.get("ingestion_confidence") or "").strip()
+                                if method:
+                                    ingestion_method_override = method
+                                if source:
+                                    ingestion_source_override = source
+                                if confidence:
+                                    ingestion_confidence_override = confidence
                             if spotify_record is not None:
                                 service = str(spotify_record.get("service") or "").strip().lower()
                                 spotify_url = str(

@@ -5,6 +5,7 @@ from tagslut.metadata.models.types import EnrichmentResult, MatchConfidence, Pro
 from tagslut.metadata.store.db_writer import update_database
 from tagslut.storage.schema import init_db
 from tagslut.storage.v3.migration_runner import run_pending_v3
+from tagslut.storage.v3.schema import create_schema_v3
 
 
 def test_update_database_writes_provider_ids_in_recovery_mode(tmp_path: Path) -> None:
@@ -44,8 +45,8 @@ def test_update_database_persists_tidal_native_fields_to_v3_identity(tmp_path: P
     db_path = tmp_path / "test_v2_v3.db"
     conn = sqlite3.connect(db_path)
     try:
+        create_schema_v3(conn)
         init_db(conn)
-        conn.execute("INSERT OR IGNORE INTO schema_migrations (schema_name, version, note) VALUES ('v3', 15, 'fixture')")
         run_pending_v3(conn)
 
         conn.execute("INSERT INTO files (path) VALUES (?)", ("/music/test.flac",))

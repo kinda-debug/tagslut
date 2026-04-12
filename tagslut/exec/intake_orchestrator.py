@@ -26,6 +26,7 @@ import csv
 import sqlite3
 
 from tagslut.utils.env_paths import get_artifacts_dir
+from tagslut.intake.dispatch import IntakeError, dispatch_intake_url
 
 
 @dataclass
@@ -1167,6 +1168,7 @@ def _run_tools_get(
     verbose: bool,
     debug_raw: bool,
     run_started: float,
+    env_extra: dict[str, str] | None = None,
 ) -> None:
     """Run tools/get.
 
@@ -1175,10 +1177,14 @@ def _run_tools_get(
     """
 
     if debug_raw:
+        env = dict(os.environ)
+        if env_extra:
+            env.update(env_extra)
         subprocess.run(
             cmd,
             check=True,
             cwd=str(cwd),
+            env=env,
         )
         return
 
@@ -1188,6 +1194,8 @@ def _run_tools_get(
     summarizer = _GetIntakeHumanSummarizer(verbose=verbose, run_started=run_started, emit=_emit)
     env = dict(os.environ)
     env["PYTHONUNBUFFERED"] = "1"
+    if env_extra:
+        env.update(env_extra)
 
     proc = subprocess.Popen(
         cmd,
@@ -1265,6 +1273,32 @@ def run_intake(
 
     artifacts_root = get_artifacts_dir()
 
+    try:
+        dispatch = dispatch_intake_url(url)
+    except IntakeError as exc:
+        artifact_path = artifact_dir / f"intake_{stamp}.json"
+        result = IntakeResult(
+            url=url,
+            stages=[
+                IntakeStageResult(
+                    stage="download",
+                    status="failed",
+                    detail=str(exc),
+                )
+            ],
+            disposition="failed",
+            precheck_summary={},
+            precheck_csv=None,
+            artifact_path=artifact_path,
+        )
+        artifact_path.write_text(json.dumps(result.to_dict(), indent=2), encoding="utf-8")
+        return result
+
+    download_url = dispatch.url
+    env_extra: dict[str, str] | None = None
+    if dispatch.spotify_url:
+        env_extra = {"TAGSLUT_SPOTIFY_URL": dispatch.spotify_url}
+
     repo_root = Path(__file__).resolve().parents[2]
     precheck_script = repo_root / "tools" / "review" / "pre_download_check.py"
     get_script = repo_root / "tools" / "get"
@@ -1291,7 +1325,7 @@ def run_intake(
                 precheck_cmd = [
                     "python3",
                     str(precheck_script),
-                    url,
+                    download_url,
                     "--db",
                     str(db_path),
                     "--out-dir",
@@ -1310,7 +1344,7 @@ def run_intake(
                     cwd=str(repo_root),
                 )
 
-                precheck_csv_path = _find_latest_precheck_csv(artifacts_root, url)
+                precheck_csv_path = _find_latest_precheck_csv(artifacts_root, download_url)
                 if precheck_csv_path and precheck_csv_path.exists():
                     precheck_summary = _parse_precheck_csv(precheck_csv_path)
                 else:
@@ -1368,7 +1402,7 @@ def run_intake(
     # ────────────────────────────────────────────────────────────────────
     if not dry_run and disposition == "completed":
         try:
-            download_cmd = [str(get_script), "--sync", url]
+            download_cmd = [str(get_script), "--sync", download_url]
             if no_precheck:
                 download_cmd.append("--no-precheck")
             if force_download:
@@ -1383,10 +1417,11 @@ def run_intake(
                 verbose=verbose,
                 debug_raw=debug_raw,
                 run_started=run_started,
+                env_extra=env_extra,
             )
 
             _maybe_emit_qobuz_promoted_flacs(
-                url=url,
+                url=download_url,
                 artifacts_root=artifacts_root,
                 stamp=stamp,
                 run_started=run_started,
@@ -1400,7 +1435,7 @@ def run_intake(
             )
 
             if not no_precheck:
-                precheck_csv_path = _find_latest_precheck_csv(artifacts_root, url)
+                precheck_csv_path = _find_latest_precheck_csv(artifacts_root, download_url)
                 if precheck_csv_path and precheck_csv_path.exists():
                     if precheck_csv_path.stat().st_mtime < (run_started - 1.0):
                         precheck_csv_path = None
@@ -1574,7 +1609,7 @@ def run_intake(
         enrich_paths_file.write_text("\n".join(mp3_inputs) + "\n", encoding="utf-8")
 
         providers_arg: str | None = None
-        lowered_url = url.lower()
+        lowered_url = download_url.lower()
         if "tidal.com" in lowered_url:
             providers_arg = "beatport,tidal" if dj else "tidal"
         elif "beatport.com" in lowered_url:

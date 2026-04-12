@@ -1781,7 +1781,7 @@ PY
         echo "  promotion-driven build_pool_v3 path. Results may differ from a first-time intake run." >&2
         echo "  For a deterministic DJ build from canonical state, use: tagslut dj pool-wizard" >&2
         if [[ -z "${DJ_ROOT:-}" ]]; then
-          err "DJ mode requires --dj-root or DJ_MP3_ROOT / MP3_LIBRARY to be set"
+          err "DJ mode requires --dj-root or DJ_MP3_ROOT / DJ_LIBRARY to be set"
         fi
         if [[ -z "${DJ_M3U_DIR:-}" ]]; then
           err "DJ mode requires --dj-m3u-dir or DJ_PLAYLIST_ROOT to be set"

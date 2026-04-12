@@ -1,6 +1,6 @@
 # Codex Parallelization Plan
 # tagslut / dev branch
-# Last updated: 2026-04-12
+# Last updated: 2026-04-12 (updated)
 
 ## Ground rules
 
@@ -28,8 +28,8 @@ Can run in parallel with each other AND with any code group.
 
 | Prompt                        | Status | Notes |
 |-------------------------------|--------|-------|
-| triage-loose-audio            | READY  | Writes tools/ + tests/ + triage_rules.json |
-| absorb-rbx-usb-bpdl-flacs    | STALE  | Absorb already ran 2026-04-12; verify before running |
+| triage-loose-audio            | DONE   | Implemented 0885d93, 11/11 tests |
+| absorb-rbx-usb-bpdl-flacs    | DONE   | Absorb ran 2026-04-12 |
 | absorb-mp3-to-sort            | DONE   | Ran 2026-04-12 |
 | consolidate-playlists         | READY  | Filesystem under /Volumes/MUSIC/playlists/ only |
 | cleanup-djpool-home           | READY  | Deletes /Users/georgeskhawam/Music/DJPool |
@@ -123,8 +123,8 @@ These only touch docs/, .github/, or archived files.
 
 | Prompt                        | Issue |
 |-------------------------------|-------|
-| postman-api-optimize          | Marked COMPLETE in file header — archive it |
-| rename-mdl-to-staging         | Already implemented 2026-04-12 — archive it |
+| postman-api-optimize          | DONE   | Marked COMPLETE in file header — archive it |
+| rename-mdl-to-staging         | DONE   | Implemented, archive it |
 | beets-sidecar-research        | Research doc only — check if feat-beets-sidecar supersedes |
 | beets-sidecar-package         | Check if feat-beets-sidecar covers this |
 | feat-beets-sidecar            | Runs on separate branch feat/beets-sidecar — safe to run any time |

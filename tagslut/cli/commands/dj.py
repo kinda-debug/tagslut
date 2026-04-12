@@ -1588,3 +1588,55 @@ def dj_xml_patch(
 
     click.echo(f"Patched: {output_path}")
     click.echo(f"  manifest_hash: {manifest_hash}")
+
+
+@dj_xml_group.command(
+    "patch-repair",
+    help="Repair dj_export_state output_path for a prior Rekordbox XML export (file moved).",
+)
+@click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
+@click.option(
+    "--xml",
+    "xml_path",
+    required=True,
+    help="Path to the prior Rekordbox XML file on disk (used to verify manifest hash).",
+    type=click.Path(dir_okay=False, readable=True, exists=True),
+)
+@click.option(
+    "--prior-export-id",
+    default=None,
+    type=int,
+    help="dj_export_state.id of the prior emit to repair (default: locate by XML manifest hash).",
+)
+def dj_xml_patch_repair(
+    db_path: str | None,
+    xml_path: str,
+    prior_export_id: int | None,
+) -> None:
+    import sqlite3
+    from pathlib import Path
+
+    from tagslut.exec.dj_xml_emit import patch_repair
+    from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
+
+    try:
+        resolved_db = resolve_cli_env_db_path(
+            db_path, purpose="write", source_label="--db"
+        ).path
+    except DbResolutionError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    conn = sqlite3.connect(str(resolved_db))
+    try:
+        export_id = patch_repair(
+            conn,
+            xml_path=Path(xml_path),
+            prior_export_id=prior_export_id,
+        )
+    except ValueError as exc:
+        conn.close()
+        raise click.ClickException(str(exc)) from exc
+    finally:
+        conn.close()
+
+    click.echo(f"Repaired prior export id={export_id}")

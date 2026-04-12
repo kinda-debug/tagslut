@@ -449,6 +449,38 @@ def test_patch_emits_new_export_state_row(tmp_path: Path) -> None:
     assert count == 2
 
 
+def test_patch_repair_updates_prior_export_path(tmp_path: Path) -> None:
+    """patch_repair fixes the common 'prior XML moved' failure mode."""
+    from tagslut.dj.xml_emit import repair_rekordbox_xml_patch_path
+
+    conn = _make_db(tmp_path)
+    _setup_one_admitted_track(tmp_path, conn, n=7)
+    conn.commit()
+
+    first_xml = tmp_path / "v1.xml"
+    emit_rekordbox_xml(conn, output_path=first_xml, skip_validation=True)
+    prior_export_id = int(
+        conn.execute(
+            "SELECT id FROM dj_export_state WHERE kind = 'rekordbox_xml' ORDER BY id DESC LIMIT 1"
+        ).fetchone()[0]
+    )
+
+    moved_xml = tmp_path / "moved.xml"
+    first_xml.rename(moved_xml)
+
+    with pytest.raises(ValueError, match="Prior XML file not found on disk"):
+        patch_rekordbox_xml(conn, output_path=tmp_path / "v2.xml", skip_validation=True)
+
+    repaired_id = repair_rekordbox_xml_patch_path(
+        conn,
+        xml_path=moved_xml,
+        prior_export_id=prior_export_id,
+    )
+    assert repaired_id == prior_export_id
+
+    patch_rekordbox_xml(conn, output_path=tmp_path / "v2.xml", skip_validation=True)
+
+
 # ---------------------------------------------------------------------------
 # Full pipeline: reconcile → backfill → emit → patch
 # ---------------------------------------------------------------------------

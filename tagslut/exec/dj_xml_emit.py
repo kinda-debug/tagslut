@@ -9,7 +9,11 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from tagslut.dj.xml_emit import emit_rekordbox_xml, patch_rekordbox_xml
+from tagslut.dj.xml_emit import (
+    emit_rekordbox_xml,
+    patch_rekordbox_xml,
+    repair_rekordbox_xml_patch_path,
+)
 from tagslut.storage.v3.dj_state import compute_dj_state_hash
 from tagslut.cli._progress import ProgressCallback
 
@@ -52,4 +56,17 @@ def patch_xml(
         playlist_scope=playlist_scope,
         skip_validation=skip_validation,
         progress_cb=progress_cb,
+    )
+
+
+def patch_repair(
+    conn: sqlite3.Connection,
+    *,
+    xml_path: Path,
+    prior_export_id: int | None = None,
+) -> int:
+    return repair_rekordbox_xml_patch_path(
+        conn,
+        xml_path=xml_path,
+        prior_export_id=prior_export_id,
     )

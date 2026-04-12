@@ -568,3 +568,68 @@ def patch_rekordbox_xml(
         skip_validation=skip_validation,
         progress_cb=progress_cb,
     )
+
+
+def repair_rekordbox_xml_patch_path(
+    conn: sqlite3.Connection,
+    *,
+    xml_path: Path,
+    prior_export_id: int | None = None,
+) -> int:
+    """Repair dj_export_state.output_path for a prior rekordbox_xml export.
+
+    This is intended for the common "file moved" failure mode where
+    patch_rekordbox_xml() cannot find the prior XML path on disk.
+
+    If prior_export_id is not provided, the export row is located by matching
+    manifest_hash to the on-disk xml_path bytes (latest match wins).
+
+    Returns the repaired dj_export_state.id.
+    Raises ValueError if no matching export is found or the file hash does not match.
+    """
+    xml_path = xml_path.expanduser().resolve()
+    if not xml_path.exists():
+        raise ValueError(f"XML file not found on disk: {xml_path}")
+    file_hash = hashlib.sha256(xml_path.read_bytes()).hexdigest()
+
+    if prior_export_id is not None:
+        row = conn.execute(
+            """
+            SELECT id, manifest_hash
+            FROM dj_export_state
+            WHERE id = ? AND kind = 'rekordbox_xml'
+            """,
+            (prior_export_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError(
+                f"No rekordbox_xml export found with id={prior_export_id}."
+            )
+        export_id, manifest_hash = int(row[0]), str(row[1] or "")
+        if file_hash != manifest_hash:
+            raise ValueError(
+                f"XML at {xml_path} does not match stored manifest hash for export id={export_id}."
+            )
+    else:
+        row = conn.execute(
+            """
+            SELECT id
+            FROM dj_export_state
+            WHERE kind = 'rekordbox_xml' AND manifest_hash = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (file_hash,),
+        ).fetchone()
+        if row is None:
+            raise ValueError(
+                "No rekordbox_xml export found matching the provided XML file manifest hash."
+            )
+        export_id = int(row[0])
+
+    conn.execute(
+        "UPDATE dj_export_state SET output_path = ? WHERE id = ?",
+        (str(xml_path), export_id),
+    )
+    conn.commit()
+    return export_id

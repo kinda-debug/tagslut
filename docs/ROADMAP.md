@@ -186,12 +186,22 @@ Never delegate. Full runbook: `docs/OPS_RUNBOOK.md` (to be written).
 
 ### 7.3 Supplement cleanup pass: COMPLETE (2026-03-29 + 2026-03-30)
 
+Supplement cleanup pass 2026-03-29: COMPLETE
+
 Structural audit (2026-03-30):
 - `models.py` vs `models/` package: not a conflict — intentional shim. No action needed.
 - `cli/scan.py` + `cli/track_hub_cli.py`: not a conflict — intentional shims. No action needed.
 - `migrations/0007*` prefix collision: ✅ FIXED (9dc3e0b) — renamed
   `0007_v3_isrc_partial_unique.py` → `0015_v3_isrc_partial_unique.py`.
   Runner updated with LEGACY_FILENAME_ALIAS for idempotency on existing DBs.
+
+### 7.4 Open items — structural audit follow-ups (targeted PRs)
+
+- E1 (`tagslut/storage/migrations/0007*`): verify/lock policy to prevent future numeric-prefix collisions; runner currently applies in lexicographic filename order.
+- E2 (`tagslut/metadata/models.py` vs `tagslut/metadata/models/`): decide whether to remove/rename the file-module or formalize it as an explicit shim; imports in codebase target `tagslut.metadata.models.*` submodules.
+- E3 (`tagslut/cli/scan.py`, `tagslut/cli/track_hub_cli.py` vs `tagslut/cli/commands/*`): decide whether to keep these compatibility re-export modules and document their intended lifespan.
+
+### 7.4 Script and docs cleanup: COMPLETE — see docs/CLEANUP_MANIFEST.md (2026-04-12)
 
 ---
 

@@ -87,6 +87,79 @@ _GET_INTAKE_STEP_RE = re.compile(r"^\[(\d+)/(\d+)\]\s+(.*)$")
 _GET_INTAKE_URL_RE = re.compile(r"^https?://", re.IGNORECASE)
 
 
+def _looks_like_qobuz_url(url: str) -> bool:
+    return "qobuz.com" in (url or "").strip().lower()
+
+
+def _resolve_streamrip_root() -> Path:
+    configured = os.environ.get("STREAMRIP_ROOT")
+    if configured:
+        return Path(configured).expanduser()
+    staging_root = os.environ.get("STAGING_ROOT") or os.environ.get("VOLUME_STAGING")
+    if staging_root:
+        return Path(staging_root).expanduser() / "StreamripDownloads"
+    return Path("/Volumes/MUSIC/staging/StreamripDownloads")
+
+
+def _find_recent_flacs(root: Path, *, since: float) -> list[Path]:
+    if not root.exists():
+        return []
+
+    threshold = max(0.0, float(since) - 2.0)
+    recent_dirs: list[Path] = []
+    newest_dir: tuple[float, Path] | None = None
+
+    try:
+        for child in root.iterdir():
+            if not child.is_dir():
+                continue
+            try:
+                mtime = child.stat().st_mtime
+            except OSError:
+                continue
+            if newest_dir is None or mtime > newest_dir[0]:
+                newest_dir = (mtime, child)
+            if mtime >= threshold:
+                recent_dirs.append(child)
+    except OSError:
+        return []
+
+    scan_roots = recent_dirs or ([newest_dir[1]] if newest_dir is not None else [root])
+    out: list[Path] = []
+    for scan_root in scan_roots:
+        for dirpath, _dirnames, filenames in os.walk(scan_root):
+            for name in filenames:
+                if not name.lower().endswith(".flac"):
+                    continue
+                path = Path(dirpath) / name
+                try:
+                    if path.stat().st_mtime < threshold:
+                        continue
+                except OSError:
+                    continue
+                out.append(path)
+    return sorted({p.resolve() for p in out})
+
+
+def _maybe_emit_qobuz_promoted_flacs(
+    *,
+    url: str,
+    artifacts_root: Path,
+    stamp: str,
+    run_started: float,
+) -> None:
+    if not _looks_like_qobuz_url(url):
+        return
+    streamrip_root = _resolve_streamrip_root()
+    flacs = _find_recent_flacs(streamrip_root, since=run_started)
+    if not flacs:
+        return
+    compare_dir = artifacts_root / "compare"
+    compare_dir.mkdir(parents=True, exist_ok=True)
+    promoted_path = compare_dir / f"promoted_flacs_{stamp}.txt"
+    promoted_path.write_text("\n".join(str(p) for p in flacs) + "\n", encoding="utf-8")
+
+
 def _short_list(items: list[str], *, limit: int) -> str:
     if not items:
         return ""
@@ -1309,6 +1382,13 @@ def run_intake(
                 cwd=repo_root,
                 verbose=verbose,
                 debug_raw=debug_raw,
+                run_started=run_started,
+            )
+
+            _maybe_emit_qobuz_promoted_flacs(
+                url=url,
+                artifacts_root=artifacts_root,
+                stamp=stamp,
                 run_started=run_started,
             )
 

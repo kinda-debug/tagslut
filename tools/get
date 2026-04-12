@@ -357,6 +357,10 @@ if [[ -n "$URL" ]]; then
     done
 
     if [[ "$WANTS_TAG" -eq 1 || "$WANTS_MP3" -eq 1 || "$WANTS_DJ" -eq 1 ]]; then
+        if [[ "$URL" == *"qobuz.com"* ]]; then
+            # Qobuz is routed through streamrip below; do not bypass it with the direct intake shortcut.
+            :
+        else
         cd "$REPO_ROOT"
 
         if [[ -z "$MP3_ROOT_ARG" && ( "$WANTS_MP3" -eq 1 || "$WANTS_DJ" -eq 1 ) ]]; then
@@ -373,6 +377,50 @@ if [[ -n "$URL" ]]; then
             INTAKE_URL_CMD+=(--mp3 --mp3-root "$MP3_ROOT_ARG")
         fi
 
+        if [[ "$WANTS_DJ" -eq 1 && "$URL" == *"tidal.com"* ]]; then
+            PLAYLIST_NAME=""
+            if [[ "$URL" == *"/playlist/"* ]]; then
+                TIDAL_ID="${URL##*/playlist/}"
+                PLAYLIST_NAME="$(
+                    cd "$REPO_ROOT" && poetry run python3 -c "
+from tagslut.metadata.auth import TokenManager
+import requests, json
+from pathlib import Path
+tm = TokenManager(Path.home() / '.config/tagslut/tokens.json')
+tok = tm.get_token('tidal')
+access = tok.access_token if tok else ''
+if not access:
+    raise SystemExit
+r = requests.get(f'https://openapi.tidal.com/v2/playlists/${TIDAL_ID}',
+    headers={'Authorization': f'Bearer {access}', 'Accept': 'application/vnd.api+json'}, timeout=8)
+d = r.json()
+print((d.get('data') or {}).get('attributes', {}).get('name', ''))
+" 2>/dev/null || true
+                )"
+            elif [[ "$URL" == *"/album/"* ]]; then
+                TIDAL_ID="${URL##*/album/}"
+                PLAYLIST_NAME="$(
+                    cd "$REPO_ROOT" && poetry run python3 -c "
+from tagslut.metadata.auth import TokenManager
+import requests
+from pathlib import Path
+tm = TokenManager(Path.home() / '.config/tagslut/tokens.json')
+tok = tm.get_token('tidal')
+access = tok.access_token if tok else ''
+if not access:
+    raise SystemExit
+r = requests.get(f'https://openapi.tidal.com/v2/albums/${TIDAL_ID}',
+    headers={'Authorization': f'Bearer {access}', 'Accept': 'application/vnd.api+json'}, timeout=8)
+print((r.json().get('data') or {}).get('attributes', {}).get('title', ''))
+" 2>/dev/null || true
+                )"
+            fi
+
+            if [[ -n "$PLAYLIST_NAME" ]]; then
+                INTAKE_URL_CMD+=(--playlist-name "$PLAYLIST_NAME")
+            fi
+        fi
+
         if [[ "$WRAPPER_VERBOSE" -eq 1 ]]; then
             INTAKE_URL_CMD+=(--verbose --debug-raw)
         fi
@@ -381,6 +429,7 @@ if [[ -n "$URL" ]]; then
         fi
 
         exec "${INTAKE_URL_CMD[@]}"
+        fi
     fi
 fi
 
@@ -462,7 +511,7 @@ r = requests.get(f'https://openapi.tidal.com/v2/playlists/${TIDAL_ID}',
     headers={'Authorization': f'Bearer {access}', 'Accept': 'application/vnd.api+json'}, timeout=8)
 d = r.json()
 print((d.get('data') or {}).get('attributes', {}).get('name', ''))
-" 2>/dev/null)"
+" 2>/dev/null || true)"
     elif [[ "$URL" == *"/album/"* ]]; then
         TIDAL_ID="${URL##*/album/}"
         PLAYLIST_NAME="$(cd "$REPO_ROOT" && poetry run python3 -c "
@@ -477,7 +526,7 @@ if not access:
 r = requests.get(f'https://openapi.tidal.com/v2/albums/${TIDAL_ID}',
     headers={'Authorization': f'Bearer {access}', 'Accept': 'application/vnd.api+json'}, timeout=8)
 print((r.json().get('data') or {}).get('attributes', {}).get('title', ''))
-" 2>/dev/null)"
+" 2>/dev/null || true)"
     fi
 
     if [[ -n "$PLAYLIST_NAME" ]]; then
@@ -569,7 +618,7 @@ r = requests.get('https://www.qobuz.com/api.json/0.2/playlist/get',
     headers={'X-App-Id': app_id, 'X-User-Auth-Token': tok}, timeout=8)
 d = r.json()
 print(d.get('name', '') or d.get('title', ''))
-" 2>/dev/null)"
+" 2>/dev/null || true)"
     elif [[ "$URL" == *"/album/"* ]]; then
         ALBUM_ID="${URL##*/album/}"
         PLAYLIST_NAME="$(cd "$REPO_ROOT" && poetry run python3 -c "
@@ -583,7 +632,7 @@ r = requests.get('https://www.qobuz.com/api.json/0.2/album/get',
     params={'album_id': '${ALBUM_ID}', 'app_id': app_id},
     headers={'X-App-Id': app_id, 'X-User-Auth-Token': tok}, timeout=8)
 print(r.json().get('title', ''))
-" 2>/dev/null)"
+" 2>/dev/null || true)"
     fi
 
     # Build MP3s and write DJ pool M3U if --dj or --mp3 requested

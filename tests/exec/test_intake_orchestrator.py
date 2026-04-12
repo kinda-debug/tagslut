@@ -351,6 +351,42 @@ def test_download_does_not_waive_precheck_by_default(
     assert "--no-precheck" not in called_cmd
 
 
+def test_qobuz_download_emits_promoted_flacs_file(temp_db: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    streamrip_root = tmp_path / "streamrip"
+    album_dir = streamrip_root / "Artist" / "Album"
+    album_dir.mkdir(parents=True, exist_ok=True)
+    f1 = album_dir / "one.flac"
+    f2 = album_dir / "two.flac"
+    f1.write_bytes(b"fLaC")
+    f2.write_bytes(b"fLaC")
+
+    future = time.time() + 5
+    os.utime(f1, (future, future))
+    os.utime(f2, (future, future))
+    monkeypatch.setenv("STREAMRIP_ROOT", str(streamrip_root))
+
+    with patch("tagslut.exec.intake_orchestrator._run_tools_get") as mock_get:
+        mock_get.return_value = None
+
+        result = run_intake(
+            url="https://open.qobuz.com/album/abc123",
+            db_path=temp_db,
+            mp3=False,
+            dry_run=False,
+            artifact_dir=tmp_path / "artifacts",
+        )
+
+    promote_stage = next((s for s in result.stages if s.stage == "promote"), None)
+    assert promote_stage is not None
+    assert promote_stage.status == "ok"
+    assert promote_stage.artifact_path is not None
+    assert promote_stage.artifact_path.exists()
+
+    promoted = promote_stage.artifact_path.read_text(encoding="utf-8").splitlines()
+    assert str(f1.resolve()) in promoted
+    assert str(f2.resolve()) in promoted
+
+
 def test_artifact_written_on_block(
     temp_db: Path, tmp_path: Path, mock_precheck_csv: Path
 ) -> None:

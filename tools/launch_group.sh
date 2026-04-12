@@ -1,12 +1,12 @@
 #!/usr/bin/env zsh
 # Usage: tools/launch_group.sh [GROUP]
 # Launches Codex exec instances for a named group via Terminal tabs.
-# Stagger delay (seconds) is specified per prompt as name:delay.
 
 set -e
 
 REPO="/Users/georgeskhawam/Projects/tagslut"
 PROMPTS="$REPO/.github/prompts"
+CODEX="/opt/homebrew/bin/codex"
 
 declare -A GROUPS
 GROUPS[GROUP0]="consolidate-playlists:0 cleanup-djpool-home:0 mp3-consolidate:0"
@@ -40,7 +40,7 @@ for entry in $ENTRIES; do
   fi
 
   echo "  Launching: $name"
-  osascript -e "tell application \"Terminal\" to do script \"cd '$REPO' && codex exec --full-auto - < '$prompt_file'\""
+  osascript -e "tell application \"Terminal\" to do script \"cd '$REPO' && $CODEX exec --full-auto - < '$prompt_file'\""
 done
 
 echo "All $GROUP instances launched."

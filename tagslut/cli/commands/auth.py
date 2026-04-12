@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 import time
 from pathlib import Path
 
@@ -34,9 +35,34 @@ def _emit_provider_token(provider: str, tokens_path: str | None) -> None:
 
 
 def register_auth_group(cli: click.Group) -> None:
+    def _logout_tidal(tokens_path: str | None) -> None:
+        from tagslut.metadata.auth import DEFAULT_TOKENS_PATH, TokenManager
+
+        path = Path(tokens_path) if tokens_path else DEFAULT_TOKENS_PATH
+        token_manager = TokenManager(path)
+
+        try:
+            result = subprocess.run(["tiddl", "auth", "logout"], check=False)
+            if result.returncode != 0:
+                click.echo(
+                    "Warning: tiddl auth logout failed; clearing tagslut token anyway.",
+                    err=True,
+                )
+        except FileNotFoundError:
+            click.echo("Warning: tiddl not found; clearing tagslut token only.", err=True)
+
+        token_manager.logout_tidal()
+        click.echo("TIDAL logged out (local token cleared).")
+
     @cli.group()
     def auth():  # type: ignore  # TODO: mypy-strict
         """Canonical provider authentication commands."""
+
+    @cli.command("auth-tidal-logout")
+    @click.option('--tokens-path', type=click.Path(), help='Path to tokens.json')
+    def auth_tidal_logout(tokens_path):  # type: ignore  # TODO: mypy-strict
+        """Legacy wrapper: logout from TIDAL and clear local token."""
+        _logout_tidal(tokens_path)
 
     @cli.command("token-get")
     @click.argument("provider")
@@ -232,13 +258,11 @@ def register_auth_group(cli: click.Group) -> None:
                     return
             else:
                 token = token_manager.get_token(provider)
-                if token and token.access_token and not token.is_expired:
-                    click.echo(f"Already logged in to {provider}. Use --force to re-authenticate.")
-                    return
+            if token and token.access_token and not token.is_expired:
+                click.echo(f"Already logged in to {provider}. Use --force to re-authenticate.")
+                return
 
         if provider == 'tidal':
-            import subprocess
-
             click.echo("Delegating to tiddl for TIDAL authentication...")
             result = subprocess.run(["tiddl", "auth", "login"], check=False)
             if result.returncode != 0:
@@ -276,3 +300,16 @@ def register_auth_group(cli: click.Group) -> None:
                 click.echo("Qobuz login failed. See logs for details.", err=True)
                 raise SystemExit(1)
             click.echo(f"Qobuz login OK (token={token[:8]}...)")
+
+    @auth.command("logout")
+    @click.argument('provider')
+    @click.option('--tokens-path', type=click.Path(), help='Path to tokens.json')
+    def auth_logout(provider, tokens_path):  # type: ignore  # TODO: mypy-strict
+        """Logout from a provider and clear local token."""
+        if provider != "tidal":
+            click.echo(
+                f"Error: Unsupported provider '{provider}'. Use tidal.",
+                err=True,
+            )
+            raise SystemExit(1)
+        _logout_tidal(tokens_path)

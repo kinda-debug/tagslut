@@ -217,8 +217,12 @@ class BeatportApiClient:
 
     def _auth_config(self) -> BeatportAuthConfig:
         token = None
-        if self.provider.token_manager is not None:
-            token = self.provider.token_manager.ensure_valid_token("beatport")
+        if self.provider.token_manager is not None and not self.provider._session_dead:  # noqa: SLF001
+            try:
+                token = self.provider.token_manager.ensure_valid_token("beatport")
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("beatport: token refresh failed: %s", exc)
+                self.provider.trip_session_dead()
 
         creds = self.provider.token_manager.get_credentials("beatport") if self.provider.token_manager else {}
         _env_token = os.getenv("BEATPORT_ACCESS_TOKEN")
@@ -266,6 +270,8 @@ class BeatportApiClient:
         auth_kind: str,
         params: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
+        if self.provider._session_dead:  # noqa: SLF001
+            raise BeatportAuthError("Beatport session marked dead")
         auth_config = self._auth_config()
         headers: Dict[str, str] = {"Accept": "application/json"}
         request_kwargs: Dict[str, Any] = {}
@@ -1427,6 +1433,8 @@ class BeatportProvider(AbstractProvider):
 
     def get_track_by_id(self, track_id: str | int) -> ProviderTrack:
         """Canonical catalog hydration by Beatport track ID."""
+        if self._session_dead:
+            raise BeatportAuthError("Beatport session marked dead")
         catalog_payload = self._api_client.catalog_get_track(track_id)
         if "id" not in catalog_payload:
             raise BeatportMalformedResponseError("Beatport catalog track detail missing id")
@@ -1438,6 +1446,8 @@ class BeatportProvider(AbstractProvider):
         return self._provider_track_from_payload(merged_payload, confidence=MatchConfidence.EXACT)
 
     def get_genres(self) -> List[Dict[str, Any]]:
+        if self._session_dead:
+            raise BeatportAuthError("Beatport session marked dead")
         payload = self._api_client.catalog_list_genres({"page": 1, "per_page": 200})
         results = payload.get("results")
         if not isinstance(results, list):
@@ -1445,6 +1455,8 @@ class BeatportProvider(AbstractProvider):
         return [item for item in results if isinstance(item, dict)]
 
     def get_subgenres(self) -> List[Dict[str, Any]]:
+        if self._session_dead:
+            raise BeatportAuthError("Beatport session marked dead")
         payload = self._api_client.catalog_list_subgenres({"page": 1, "per_page": 200})
         results = payload.get("results")
         if not isinstance(results, list):
@@ -1452,6 +1464,8 @@ class BeatportProvider(AbstractProvider):
         return [item for item in results if isinstance(item, dict)]
 
     def get_labels(self) -> List[Dict[str, Any]]:
+        if self._session_dead:
+            raise BeatportAuthError("Beatport session marked dead")
         payload = self._api_client.catalog_list_labels({"page": 1, "per_page": 200})
         results = payload.get("results")
         if not isinstance(results, list):
@@ -1459,6 +1473,8 @@ class BeatportProvider(AbstractProvider):
         return [item for item in results if isinstance(item, dict)]
 
     def fetch_by_id(self, track_id: str) -> Optional[ProviderTrack]:
+        if self._session_dead:
+            return None
         extracted_id = _extract_numeric_id(track_id)
         if extracted_id is not None:
             track_data = self._fetch_nextjs_track(int(extracted_id))

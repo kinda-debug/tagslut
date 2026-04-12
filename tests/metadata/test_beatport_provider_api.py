@@ -84,6 +84,12 @@ class _StubTokenManager:
         return {}
 
 
+class _ExplodingTokenManager(_StubTokenManager):
+    def ensure_valid_token(self, provider: str) -> TokenInfo | None:
+        assert provider == "beatport"
+        raise httpx.ReadTimeout("timeout")
+
+
 def _make_provider(
     monkeypatch: pytest.MonkeyPatch,
     routes: dict[tuple[str, str], Any],
@@ -371,6 +377,35 @@ def test_provider_trips_circuit_breaker_after_401(monkeypatch: pytest.MonkeyPatc
 
     assert provider.search_track_by_isrc("GBEXH2400001") == []
     assert len(stub.calls) == 1
+
+
+def test_provider_trips_circuit_breaker_on_token_refresh_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.delenv("BEATPORT_ACCESS_TOKEN", raising=False)
+    monkeypatch.delenv("BEATPORT_BASIC_AUTH_USERNAME", raising=False)
+    monkeypatch.delenv("BEATPORT_BASIC_AUTH_PASSWORD", raising=False)
+
+    provider = BeatportProvider(token_manager=_ExplodingTokenManager(None))
+    monkeypatch.setattr(provider.rate_limiter, "wait", lambda: None)
+
+    stub = _StubClient({})
+    provider._client = stub  # type: ignore[assignment]
+
+    with caplog.at_level("WARNING"):
+        assert provider.search_track_by_text("Warehouse Cut", artist="Artist A") == []
+
+    assert provider._session_dead is True  # noqa: SLF001
+    assert "beatport: token expired — skipping all further requests this session." in caplog.text
+    assert len(stub.calls) == 0
+
+    caplog.clear()
+    with caplog.at_level("WARNING"):
+        assert provider.search_track_by_text("Warehouse Cut", artist="Artist A") == []
+
+    assert caplog.text == ""
+    assert len(stub.calls) == 0
 
 
 def test_search_tracks_retries_once_on_429(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -1,7 +1,11 @@
-# DO NOT recreate existing files. DO NOT modify tagslut source code.
-# DO NOT rely on folder names to infer intent — verify contents.
+# work-folder-triage — Triage and clean up `/Volumes/MUSIC/_work`
 
-# Triage and clean up /Volumes/MUSIC/_work
+## Hard rules
+
+- Do not recreate existing files.
+- Do not modify `tagslut/` source code.
+- Do not write to the DB (read-only queries only).
+- Do not rely on folder names alone — every delete/move must be justified by verification (DB / MASTER_LIBRARY checks below).
 
 ## Context
 
@@ -10,25 +14,33 @@ The FRESH DB is at `/Users/georgeskhawam/Projects/tagslut_db/FRESH_2026/music_v3
 The task is to safely delete what is confirmed redundant and move what is valuable
 to `staging/` for intake.
 
-No tagslut source code changes. No DB writes. Filesystem operations only.
+Repo changes are limited to adding a standalone tool script + tests.
+Operational actions (when `--execute`) are filesystem moves/deletes only.
 
 ---
 
-## Step 1 — Build a full inventory
+## Scope
+
+- Add `tools/triage_work_folder.py` (stdlib only).
+- Add `tests/tools/test_triage_work_folder.py` (pytest).
+- Do not touch any other paths.
+
+---
+
+## Step 1 — Inventory and classification (dry-run by default)
 
 Write a standalone Python script `tools/triage_work_folder.py` (stdlib only).
 
-For each audio file (`.flac`, `.mp3`, `.m4a`) found recursively under
-`/Volumes/MUSIC/_work`, determine:
+For each audio file (`.flac`, `.mp3`, `.m4a`) found recursively under `--work-root`,
+classify it as exactly one of:
 
-1. **In DB by path** — exact path match in `asset_file.path`
-2. **In DB by ISRC** — ISRC extracted from filename
-   `re.search(r'\[([A-Z]{2}[A-Z0-9]{3}\d{7})\]', filename)` matched against
-   `track_identity.isrc`
-3. **In MASTER_LIBRARY by basename** — basename (after stripping leading track
-   number prefix `^\d+[\.\s\-]+`) found anywhere under
-   `/Volumes/MUSIC/MASTER_LIBRARY` (case-insensitive)
-4. **Unknown** — none of the above
+1. `in_db_path` — exact path match in SQLite `asset_file.path`
+2. `in_db_isrc` — ISRC extracted from filename via:
+   `re.search(r"\[([A-Z]{2}[A-Z0-9]{3}\d{7})\]", filename)`
+   then matched against SQLite `track_identity.isrc`
+3. `in_master_library` — normalized basename match against a recursive scan of
+   `--master-library` (case-insensitive, with leading track-number prefixes stripped)
+4. `unknown` — none of the above
 
 Output a TSV report to stdout and to
 `/Volumes/MUSIC/_work/_triage_report_YYYYMMDD.tsv` with columns:
@@ -47,28 +59,34 @@ python tools/triage_work_folder.py \
 
 ---
 
-## Step 2 — Execute triage based on report
+## Step 2 — Execute triage actions (`--execute`)
 
 After the report is generated, apply the following rules with a second pass
 `--execute` flag on the same script:
 
-### Delete (no rescue needed — confirmed by verification, not by name):
+### A) Delete-eligible subdirs (only delete verified-redundant audio)
 
-These subdirs have been verified to contain only files already present in
-MASTER_LIBRARY or the DB, or confirmed pipeline detritus:
+These subdirs are expected to be safe-to-clear, but deletion is still gated per-file:
+only delete files whose `status` is one of `in_db_path`, `in_db_isrc`, `in_master_library`.
+If any `unknown` exists in a delete-eligible subtree, do not delete it; instead log an error.
 
 - `_work/quarantine/` — 50 GB filesystem snapshot
 - `_work/fix/rejected_because_existing_24bit/` — 12 FLACs, all in DB
 - `_work/cleanup_20260308_220000/` — reports/exports, 0 audio
 - `_work/absolute_dj_mp3/` — M3U8 playlists only, 0 audio
 - `_work/gig_runs/` — artwork/metadata only, 0 audio
-- `_work/fix/_DISCARDED_20260225_171845/` — 16 FLACs to verify first (see below)
+- `_work/fix/_DISCARDED_20260225_171845/` — 16 FLACs (special rule below)
 
-**Before deleting `_DISCARDED_20260225_171845/`**: check each of its 16 FLACs
-against MASTER_LIBRARY by basename. If ALL 16 are found there, delete. If any
-are missing, move them to `staging/tidal/` instead.
+**Special rule: `_DISCARDED_20260225_171845/`**
+- Check each of its 16 FLACs against MASTER_LIBRARY by normalized basename.
+- If ALL 16 are `in_master_library`, delete the directory.
+- If ANY are not, move the non-matching files to `/Volumes/MUSIC/staging/tidal/` and leave a clear log entry.
 
-### Rescue to staging — unknown files not in DB or MASTER_LIBRARY:
+### B) Rescue subdirs (move files to staging based on verification + rule)
+
+Moves are allowed even if a file is verified present elsewhere, but the intent is:
+- Move `unknown` files to staging.
+- Skip (do nothing) for files verified present in DB/MASTER_LIBRARY unless a specific rule says otherwise.
 
 - `_work/fix/_quarantine/` — 122 FLACs, no ISRCs in filenames, pre-pipeline era.
   Move all to `/Volumes/MUSIC/staging/pre_pipeline/` for future intake.
@@ -111,10 +129,9 @@ Write a summary log to `/Volumes/MUSIC/_work/_triage_executed_YYYYMMDD.txt`:
 ## Implementation notes
 
 - Dry-run by default. `--execute` to apply.
-- Basename matching against MASTER_LIBRARY: build an in-memory set of all
-  basenames under MASTER_LIBRARY once (case-folded), then check each file.
-  MASTER_LIBRARY is large (~1.12 TB) — use `os.walk` with early break on
-  first match per basename.
+- Basename matching against MASTER_LIBRARY:
+  - Normalize basename by stripping leading track-number prefixes like `^\d+[\.\s\-]+` and case-folding.
+  - Build a set of normalized basenames by walking MASTER_LIBRARY once (it’s large; still do it once).
 - Do not use `shutil.rmtree` on non-empty dirs unless all contents have been
   accounted for by the report first.
 - `staging/pre_pipeline/` may not exist — create with `mkdir -p`.

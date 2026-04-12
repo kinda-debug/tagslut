@@ -129,6 +129,125 @@ def _write_toml_file(config: dict, path: Path) -> None:  # type: ignore  # TODO:
 
 
 def register_misc_commands(cli: click.Group) -> None:
+    @cli.command("intake-mp3-to-sort-staging")
+    @click.option(
+        "--src-root",
+        default=None,
+        type=click.Path(exists=True, file_okay=False, path_type=Path),  # type: ignore  # TODO: mypy-strict
+        help="Drop folder containing MP3s to intake (defaults to MP3_TO_SORT_ROOT or inferred from staging/work volumes).",
+    )
+    @click.option(
+        "--intake-root",
+        default=None,
+        type=click.Path(file_okay=False, path_type=Path),  # type: ignore  # TODO: mypy-strict
+        help="Destination intake root (default: $STAGING_ROOT/mp3_to_sort_intake).",
+    )
+    @click.option(
+        "--mp3-library-root",
+        default=None,
+        type=click.Path(exists=True, file_okay=False, path_type=Path),  # type: ignore  # TODO: mypy-strict
+        help="Reference MP3 library root for dedupe (default: $MP3_LIBRARY).",
+    )
+    @click.option(
+        "--leftovers-root",
+        default=None,
+        type=click.Path(exists=True, file_okay=False, path_type=Path),  # type: ignore  # TODO: mypy-strict
+        help="Optional reference leftovers root for dedupe (default: inferred from $WORK_ROOT).",
+    )
+    @click.option(
+        "--dry-run/--execute",
+        default=True,
+        show_default=True,
+        help="Dry-run plans only (default). Pass --execute to move files.",
+    )
+    def intake_mp3_to_sort_staging(
+        src_root: Path | None,
+        intake_root: Path | None,
+        mp3_library_root: Path | None,
+        leftovers_root: Path | None,
+        dry_run: bool,
+    ) -> None:
+        """Intake MP3 drop folder into mp3_to_sort staging intake, deduping by normalized basename."""
+        import os
+        import datetime
+
+        from tagslut.exec.intake_mp3_to_sort_staging import (
+            execute_intake_plan,
+            plan_intake_mp3_to_sort_staging,
+            IntakeKind,
+        )
+        from tagslut.utils.env_paths import get_volume
+
+        staging = get_volume("staging")
+        work = get_volume("work")
+
+        resolved_src = src_root
+        if resolved_src is None:
+            env_src = os.environ.get("MP3_TO_SORT_ROOT")
+            candidates: list[Path] = []
+            if env_src:
+                candidates.append(Path(env_src).expanduser())
+            if work is not None:
+                candidates.append(work / "mp3_to_sort")
+            if staging is not None:
+                candidates.append(staging / "mp3_to_sort")
+                candidates.append(staging.parent / "mp3_to_sort")
+            for candidate in candidates:
+                if candidate.exists() and candidate.is_dir():
+                    resolved_src = candidate
+                    break
+        if resolved_src is None:
+            raise click.ClickException(
+                "Missing --src-root (or set MP3_TO_SORT_ROOT)."
+            )
+
+        resolved_intake = intake_root
+        if resolved_intake is None:
+            if staging is None:
+                raise click.ClickException(
+                    "Missing --intake-root (or configure STAGING_ROOT / VOLUME_STAGING)."
+                )
+            resolved_intake = staging / "mp3_to_sort_intake"
+
+        resolved_lib = mp3_library_root
+        if resolved_lib is None:
+            env_lib = os.environ.get("MP3_LIBRARY")
+            if env_lib:
+                candidate = Path(env_lib).expanduser()
+                if candidate.exists() and candidate.is_dir():
+                    resolved_lib = candidate
+
+        resolved_leftovers = leftovers_root
+        if resolved_leftovers is None and work is not None:
+            for name in ("mp3_leftovers", "mp3_leftorvers"):
+                candidate = work / name
+                if candidate.exists() and candidate.is_dir():
+                    resolved_leftovers = candidate
+                    break
+
+        planned, skipped = plan_intake_mp3_to_sort_staging(
+            src_root=resolved_src,
+            intake_root=resolved_intake,
+            mp3_library_root=resolved_lib,
+            leftovers_root=resolved_leftovers,
+            today=datetime.date.today(),
+        )
+
+        unique = 0
+        dupes = 0
+        for item in planned:
+            if item.kind == IntakeKind.UNIQUE:
+                unique += 1
+                click.echo(f"UNIQUE: {item.src} -> {item.dst}")
+            elif item.kind == IntakeKind.DUPLICATE:
+                dupes += 1
+                click.echo(f"DUPLICATE: {item.src} -> {item.dst} (match: {item.match})")
+
+        if not dry_run:
+            execute_intake_plan(planned)
+
+        click.echo(f"SUMMARY: {unique} unique, {dupes} duplicates, {skipped} skipped")
+
     @cli.command("tidal-seed")
     @click.option(
         "--playlist-url",
@@ -864,4 +983,3 @@ def register_misc_commands(cli: click.Group) -> None:
         click.echo("  3. Build a deterministic plan:")
         click.echo("     tagslut decide plan --policy library_balanced --input candidates.json")
         click.echo("")
-

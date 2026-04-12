@@ -43,6 +43,10 @@ packages = [{ include = "tagslut" }]
 
 [tool.poetry.dependencies]
 python = ">=3.11,<4.0"
+SpotiFLAC = { version = "*", optional = true }
+
+[tool.poetry.extras]
+fallback = ["SpotiFLAC"]
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^9.0.2"

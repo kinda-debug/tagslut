@@ -237,6 +237,11 @@ Track S (Spotify intake): files from Spotify URLs via `tools/get`
   ingestion_confidence = 'high' when ISRC is present, otherwise 'uncertain'
   ingestion_source = `spotiflac:<spotify_url>|service:<winning_service>`
 
+Track SF (Spotify intake + SpotiFLAC fallback): when TIDDL fails on a Spotify-origin intake
+  ingestion_method = 'spotiflac_fallback'
+  ingestion_confidence = 'high'
+  ingestion_source = `spotiflac:<spotify_url>`
+
 Track B (legacy): older files with accumulated cross-provider IDs
   ingestion_method = 'multi_provider_reconcile'
   ingestion_confidence = 'corroborated' (all IDs agree on ISRC), 'uncertain' (conflict)

@@ -1,267 +1,269 @@
-# Beets sidecar package for `tagslut`
+# Beets sidecar package for `tagslut` (bridge, not replacement)
+
+This design pass treats Beets as a secondary index + UI layer that can optionally *augment* metadata, but never replaces `tagslut`’s provider logic, precedence rules, or genre normalization.
+
+## Grounding: the `tagslut` metadata contract (authoritative)
+
+The active `tagslut` enrichment model is defined in:
+- `tagslut/metadata/models/types.py` (provider + canonical fields)
+- `tagslut/metadata/models/precedence.py` (Beatport vs TIDAL precedence)
+- `tagslut/metadata/genre_normalization.py` (genre/sub-genre normalization cascade + mapping)
+- `tools/rules/library_canon.json` (cleanup policy)
+- Providers: `tagslut/metadata/providers/beatport.py`, `tagslut/metadata/providers/tidal.py`
+
+Key implications for a Beets sidecar:
+- Provider precedence is explicit (see `tagslut/metadata/models/precedence.py`): Beatport wins for DJ fields (`bpm`, `key`, `genre`, `sub_genre`, `label`, `catalog_number`, duration), while TIDAL wins for identity/artwork (`title`, `artist`, `album`, artwork) and composer.
+- Genre normalization is centralized (see `tagslut/metadata/genre_normalization.py`): tag cascade priority is `GENRE_PREFERRED` → `SUBGENRE` → `GENRE` → `GENRE_FULL`, with Beatport-compatible output tags (`GENRE`, `SUBGENRE`, `GENRE_PREFERRED`, `GENRE_FULL`).
+- Canon cleanup policy is explicit (see `tools/rules/library_canon.json`): replaygain tags are removed (`replaygain_*` and explicit `replaygain_*_gain/peak`), and tags like `acoustid_id`/`encoder` are stripped; a small allowlist is preserved (e.g. `composer`, `comment`, `copyright`).
+- Therefore: Beets must not silently “improve” genre, and any file-writing plugins must be manual-only in sidecar mode.
+
+## Research memo (primary sources)
+
+### Beets core docs + source
+- Beets config reference: https://docs.beets.io/en/stable/reference/config.html
+- Beets version baseline for this package (maintenance/risk only): PyPI `beets` `2.7.1` (2026-03-08). https://pypi.org/project/beets/
+- Beets core plugins live in `beetsplug/` in `beetbox/beets`: https://github.com/beetbox/beets/tree/master/beetsplug
+- Beets item/album fields (“what the DB can store”): https://docs.beets.io/en/stable/dev/library.html and `beets/library.py` / `Item._fields` (the rendered field list is easiest to cite): https://beets.readthedocs.io/en/latest/reference/library.html
+- Plugin event system (hook points for custom sync): https://docs.beets.io/en/stable/dev/plugins.html
+
+### Beets core plugin docs (relevant to `tagslut`)
+- `web` plugin (sidecar UI): https://docs.beets.io/en/stable/plugins/web.html
+- `fetchart` plugin (art fetching) + “cover_art_url” source: https://docs.beets.io/en/stable/plugins/fetchart.html
+- `embedart` plugin (embed art): https://docs.beets.io/en/stable/plugins/embedart.html
+- `replaygain` plugin: https://docs.beets.io/en/stable/plugins/replaygain.html
+- `keyfinder` plugin: https://docs.beets.io/en/stable/plugins/keyfinder.html
+- `autobpm` plugin: https://docs.beets.io/en/stable/plugins/autobpm.html
+- `types` plugin: https://docs.beets.io/en/stable/plugins/types.html
+- `zero` plugin: https://docs.beets.io/en/stable/plugins/zero.html
+- `beatport` core plugin (deprecated due to Beatport API retirement): https://docs.beets.io/en/stable/plugins/beatport.html
+- `musicbrainz` plugin (external IDs include `tidal`, `beatport`, `bandcamp`): https://docs.beets.io/en/stable/plugins/musicbrainz.html
+
+### External plugins (explicitly verified)
+- Beatport v4: `Samik081/beets-beatport4` (plugin name `beatport4`): https://github.com/Samik081/beets-beatport4
+  - Config keys verified in README: `singletons_with_album_metadata`, `art*`, `username/password/client_id`. https://github.com/Samik081/beets-beatport4#configuration-reference
+- Bandcamp: `snejus/beetcamp` (plugin name remains `bandcamp`): https://github.com/snejus/beetcamp
+  - Config keys verified in README: `include_digital_only_tracks`, `search_max`, `art`, `comments_separator`, `truncate_comments`, `exclude_extra_fields`, `genre.*`. https://github.com/snejus/beetcamp#configuration
+- Audio analysis (Essentia): `adamjakab/BeetsPluginXtractor` / `beets-xtractor` (plugin name `xtractor`): https://github.com/adamjakab/BeetsPluginXtractor
+  - Config keys verified in README: `auto`, `dry-run`, `write`, `threads`, `force`, `quiet`, `keep_output`, `keep_profiles`, `output_path`, `essentia_extractor`, `extractor_profile.highlevel.svm_models`. https://github.com/adamjakab/BeetsPluginXtractor#configuration
+  - Essentia extractor binary + models are required (and must match): https://essentia.upf.edu/documentation/
+
+### Bandcamp older lineage (verified as stale)
+- `beets-bandcamp` package: last release April 2020 (`0.1.4`) and Python 2-era constraints are common in downstream mirrors. Example: https://pypi.org/project/beets-bandcamp/ and mirrors like https://www.piwheels.org/project/beets-bandcamp/ (release date + version).
+
+## Beets-as-sidecar architecture for `tagslut`
+
+Beets gives you:
+1) A queryable SQLite DB + schema for core tags and flexible attributes.
+2) A “metadata source plugin” pipeline for import-time matching (MusicBrainz + optional sources).
+3) A web UI (`web` plugin) that fits “read-mostly, browse/search” sidecar operation.
+
+For `tagslut`, the bridge strategy is:
+- `tagslut` continues to do enrichment (Beatport + TIDAL, precedence, genre normalization).
+- Beets imports *without moving or writing* and acts as a searchable UI / index.
+- A *custom Beets plugin* (stubbed in `BEETS_CUSTOM_PLUGIN_STUBS.md`) syncs canonical `tagslut` outputs into Beets’ DB as item fields / flex attributes.
+
+## Mapping `tagslut` fields to Beets storage & plugins
+
+### Sidecar storage strategy used by this repo
+
+This sidecar package keeps Beets from becoming a competing metadata authority by storing `tagslut`’s canonical values in *separate* flexible attributes prefixed with `ts_*` (see `beets-flask-config/beets/config.yaml`), while leaving Beets core fields as “what Beets imported / what’s on-disk”.
+
+### What Beets can store natively (core fields)
+
+Beets’ library field list includes (among many others): `title`, `artist`, `album`, `year`, `length`, `genre`, `label`, `catalognum`, `isrc`, `initial_key`, and ReplayGain fields like `rg_track_gain` / `rg_album_gain`. (See Beets’ rendered library field reference.) https://beets.readthedocs.io/en/latest/reference/library.html
+
+### Compatibility matrix (required arrow form)
+
+Core identity
+- `title` -> Beets core `title` (stored); source via import tags / MusicBrainz / external sources.
+- `artist` -> Beets core `artist` (stored); source via import tags / MusicBrainz / external sources.
+- `album` -> Beets core `album` (stored); source via import tags / MusicBrainz / external sources.
+- `isrc` -> Beets core `isrc` (stored); best populated by `tagslutsync` custom plugin (sidecar parity) or by existing file tags if present. https://beets.readthedocs.io/en/latest/reference/library.html
+- `release_date` -> Beets core is *year/month/day* oriented; `year` is first-class, but full-date parity typically needs a flex attribute (custom). https://beets.readthedocs.io/en/latest/reference/library.html
+- `year` -> Beets core `year` (stored).
+- `duration` -> Beets core `length` (stored, seconds).
+
+DJ metadata
+- `bpm` -> Beets can store `bpm`; for `tagslut` canonical BPM (float), prefer syncing to a separate field (e.g. `ts_canonical_bpm`) via `tagslutsync` and treat `beatport4`/`autobpm`/`xtractor` as fallback helpers only.
+- `key` -> Beets core `initial_key` (stored); sourced by `beatport4` (import-time, when Beatport candidate chosen) or `keyfinder` fallback. https://beets.readthedocs.io/en/latest/reference/library.html
+- `Camelot-compatible key` -> unsupported in core; needs custom extension (`camelotconverter`) to derive/store e.g. `camelot` flex attr from `initial_key`.
+- `genre` -> Beets core `genre` (stored); **must be protected from “lastgenre”-style auto-genre** to preserve `tagslut` normalization boundary.
+- `sub_genre` -> closest Beets core slot is `style`; recommended mapping: `tagslut.canonical_sub_genre` -> Beets `style`. If you need a dedicated field, store `sub_genre` as a flex attribute and only populate from `tagslut` (or explicit external sources).
+- `mix_name` -> no strong standard field; store as flex attribute (custom) if needed.
+- `label` -> Beets core `label` (stored); sources include `beatport4` and/or Bandcamp via `beetcamp`. https://beets.readthedocs.io/en/latest/reference/library.html
+- `catalog_number` -> Beets core `catalognum` (stored); sources include `beatport4` (and sometimes Bandcamp). https://beets.readthedocs.io/en/latest/reference/library.html
+
+Extended metadata worth preserving/exposing
+- `explicit` -> no first-class Beets field; store as flex attribute `explicit` (bool) populated by `tagslutsync`.
+- `artwork / cover URLs` -> Beets supports local art files + embedding; Beets also supports using a flex attribute `cover_art_url` as a fetchart source. https://docs.beets.io/en/stable/plugins/fetchart.html
+- `composer` -> Beets core `composer` exists; populate from tagslut if present. https://beets.readthedocs.io/en/latest/reference/library.html
+- `lyrics_available` -> Beets core can store lyrics (and has a `lyrics` plugin), but `tagslut` semantics are “availability” not a lyrics corpus; recommended: store as `lyrics_available` flex attribute; do not auto-fetch lyrics by default.
+- `replay_gain_track` / `replay_gain_album` -> map to Beets’ `rg_track_gain` / `rg_album_gain` (and/or `r128_*` depending on your policy); source should remain `tagslut`/TIDAL unless you explicitly run `replaygain`. https://beets.readthedocs.io/en/latest/reference/library.html and https://docs.beets.io/en/stable/plugins/replaygain.html
+- `audio_quality` -> flex attribute (custom), populated from `tagslut` (TIDAL media tags); no Beets core parity plugin.
+- `tone_tags` -> flex attribute (custom), populated from `tagslut`; no Beets core parity plugin.
+- `tidal_dj_ready` / `tidal_stem_ready` -> flex attributes (custom), populated from `tagslut`; no Beets core parity plugin.
+- `waveform_url` / `preview_url` -> flex attributes (custom) if you want to surface them in the Beets web JSON API; no Beets core parity UI.
+
+### Compatibility matrix (required table form)
+
+| `tagslut` field | Beets core field(s) | Core / external plugins | Status | Notes |
+|---|---|---|---|---|
+| title / artist / album | `title` / `artist` / `album` | core | Core | Store natively; sidecar source should be `tagslutsync` or existing file tags. |
+| isrc | `isrc` | core | Core | Store natively; match/sync strategy is the gap (see `tagslutsync`). |
+| release_date | `year`/`month`/`day` (+ optional flex for full string) | core | Partial | Full-date parity typically needs a flex attribute (`ts_canonical_release_date`) if you care. |
+| year | `year` | core | Core |  |
+| duration | `length` | core | Core | Stored as seconds. |
+| bpm | `bpm` | `beatport4`, `autobpm`, `xtractor` | Partial | Keep `tagslut` canonical BPM in a separate flex attribute (`ts_canonical_bpm`) to avoid silent drift. |
+| key | `initial_key` | `beatport4`, `keyfinder` | Partial | `tagslut` key strings vs Beets `initial_key` formatting must be normalized if you want parity. |
+| Camelot | (flex) `camelot` | custom (`camelotconverter`) | Custom | Compute from `initial_key` or from synced `tagslut` fields. |
+| genre | `genre` | core (+ optional source plugins) | Partial | Must not enable auto-genre plugins (e.g. `lastgenre`) by default; `tagslut` owns normalization. |
+| sub_genre | `style` (recommended) or flex `sub_genre` | custom sync | Partial / custom | Beatport4 does not document Beatport sub-genre support; treat Beatport sub-genre as a `tagslut`-only field today. |
+| mix_name | (flex) `mix_name` | custom sync | Custom | Beatport4 appends mix to the title; `tagslut` tracks mix separately. |
+| label | `label` | `beatport4`, `bandcamp` | Core / external | Straight mapping. |
+| catalog_number | `catalognum` | `beatport4`, `bandcamp` | Core / external | Straight mapping. |
+| explicit | (flex) `ts_canonical_explicit` | custom sync | Custom | No Beets core field. |
+| artwork | album `artpath` (+ embedded art) | `fetchart`, `embedart`, `beatport4`(art), `bandcamp`(art source) | Core / external | Sidecar-safe default is `auto: no` because art operations write files. |
+| composer | `composer` | core | Core | Store natively. |
+| lyrics availability | (flex) `lyrics_available` | custom sync | Custom | `lyrics` plugin fetches lyrics text, not “availability”; do not auto-fetch by default. |
+| replay gain (track/album) | `rg_track_gain` / `rg_album_gain` | `replaygain` | Core | `tools/rules/library_canon.json` explicitly strips replaygain tags; keep Beets replaygain manual-only. |
+| audio_quality | (flex) `audio_quality` | custom sync | Custom | No Beets parity for TIDAL media tags. |
+| tone_tags | (flex) `tone_tags` | custom sync | Custom | No Beets parity. |
+| tidal_dj_ready / tidal_stem_ready | (flex) `tidal_*` | custom sync | Custom | No Beets parity. |
+| waveform_url / preview_url | (flex) `waveform_url` / `preview_url` | custom sync | Custom | Beets can store + expose via `web`, but cannot fetch these natively. |
 
-## Position
+## Beets core plugins: evaluation against `tagslut`
 
-This package treats Beets as a sidecar only. `tagslut` remains the metadata authority.
+### Sidecar-safe core plugin stack (recommended baseline)
 
-That boundary matters because `tagslut` already defines a canonical metadata model, provider precedence, and genre normalization rules. In the repo, the active provider model includes identity fields such as title, artist, album, ISRC, release date and duration; DJ fields such as BPM, key, TIDAL DJ key variants, replay gain, genre, sub-genre, label, catalog number and mix name; audio features such as danceability and loudness; and TIDAL-specific flags such as `tidal_dj_ready`, `tidal_stem_ready`, `tone_tags`, `audio_quality`, artwork and waveform/preview URLs. The resolution model then collapses those into canonical fields for the final enrichment result.
+UI / inspection
+- `web`: makes Beets a browse/search API/UI. Config keys: `host`, `port`, `readonly`, `include_paths`. https://docs.beets.io/en/stable/plugins/web.html
 
-The precedence rules are also explicit. Beatport is preferred for DJ-facing fields such as BPM, key, genre, sub-genre, label and catalog number. TIDAL is preferred for identity-facing fields such as title, artist, album, artwork and composer. Genre normalization is not delegated to providers directly: `tagslut` applies its own normalization cascade and mapping logic on top of raw tags.
+Non-destructive helpers (kept “manual” by default)
+- `types`: declare types for numeric/boolean/date *flex attributes* you add for the sidecar (e.g. `ts_*` fields produced by a future `tagslutsync`). https://docs.beets.io/en/stable/plugins/types.html
+- `zero`: can strip unwanted fields in DB and (if you choose) file tags; keep `auto: no` in sidecar mode. Config keys: `fields`, `tags`, `keep_fields`, `update_database`. https://docs.beets.io/en/stable/plugins/zero.html
+- `fetchart` / `embedart`: useful, but they *write files* (art files and/or embedded tags). Keep `auto: no` in sidecar defaults. https://docs.beets.io/en/stable/plugins/fetchart.html and https://docs.beets.io/en/stable/plugins/embedart.html
 
-So the safe design is:
+Fallback-only analysis (keep off by default)
+- `keyfinder`: compute `initial_key` when missing; keep `auto: no` and `overwrite: no`. https://docs.beets.io/en/stable/plugins/keyfinder.html
+- `autobpm`: compute `bpm` when missing; keep `auto: no` and `overwrite: no`. https://docs.beets.io/en/stable/plugins/autobpm.html
+- `replaygain`: compute `rg_*` values when missing; keep `auto: no`. https://docs.beets.io/en/stable/plugins/replaygain.html
 
-- `tagslut` owns canonical values.
-- Beets can enrich, inspect, search and expose a UI.
-- Beets must not silently replace `tagslut`'s normalized genre/sub-genre or provider precedence logic.
-- Beets should run non-destructively by default: no reorganizing, no moving, no writing back to files unless explicitly requested.
+Genre policy
+- Avoid `lastgenre` in the default stack: it will conflict with `tagslut`’s normalization policy and create hard-to-audit drift between “canonical tagslut” and “beets UI”.
 
-## What Beets can do well for `tagslut`
+Beatport core plugin (do not use)
+- Beets’ built-in `beatport` plugin is deprecated because Beatport retired the API it relied on. https://beets.readthedocs.io/en/latest/plugins/beatport.html
 
-### Works today with core Beets plugins
+### MusicBrainz external IDs (useful sidecar glue)
 
-**Artwork**
+Beets’ `musicbrainz` plugin can store third-party IDs found via MusicBrainz relationships (including `tidal`, `beatport`, `bandcamp`) into fields such as `tidal_album_id` / `beatport_album_id` / `bandcamp_album_id`. https://docs.beets.io/en/stable/plugins/musicbrainz.html
 
-`fetchart` and `embedart` are useful as sidecar helpers. They can fetch missing artwork and optionally embed it. In sidecar mode they should be configured conservatively so they only act when art is missing.
+This does **not** fetch TIDAL/Beatport metadata. It is only an ID bridge that can help correlate Beets items with `tagslut` provider IDs.
 
-**ReplayGain**
+## External plugins: evaluation against `tagslut`
 
-The core `replaygain` plugin can compute track and album gain values. This is useful only as a fallback. If `tagslut` or TIDAL already provide replay gain values, Beets should not overwrite them by default.
+### Beatport v4 (`Samik081/beets-beatport4`)
 
-**Key analysis**
+Fit:
+- Directly aligned with `tagslut`’s Beatport-first stance for DJ metadata (BPM/key/genre/label/catalog number).
+- Practical way for Beets to import/identify electronic releases when MusicBrainz/Discogs are weak.
 
-The core `keyfinder` plugin can compute a musical key using KeyFinder or `keyfinder-cli`. This is useful as a fallback when a track has no reliable key from `tagslut`/Beatport.
+Plugin identity (verified):
+- Plugin name used in `plugins:` is `beatport4`. https://github.com/Samik081/beets-beatport4
+- Install: `pip install beets-beatport4`. https://pypi.org/project/beets-beatport4/
 
-**BPM analysis**
+Auth model (verified in plugin docs):
+- Two supported approaches: (1) username/password in config, or (2) manually copy/paste the Beatport `/token` JSON from browser devtools. https://github.com/Samik081/beets-beatport4
+- The plugin documents that it uses a workaround relying on the public API client ID from Beatport’s docs frontend; the `client_id` can be scraped automatically or set manually. https://github.com/Samik081/beets-beatport4
 
-The core `autobpm` plugin can estimate BPM from audio using Librosa. Again, this is fallback-only. It is not a replacement for Beatport DJ metadata.
+Verified config surface:
+- `beatport4.art`, `beatport4.art_overwrite`, `beatport4.art_width`, `beatport4.art_height` (plugin-managed artwork fetching/embedding). https://github.com/Samik081/beets-beatport4#configuration-reference
+- `beatport4.singletons_with_album_metadata.*` (optional fill of album-level fields for singleton imports). https://github.com/Samik081/beets-beatport4#configuration-reference
+- `beatport4.username`, `beatport4.password`, `beatport4.client_id`. https://github.com/Samik081/beets-beatport4#configuration-reference
 
-**Field typing and cleanup**
+Operational risk / fragility:
+- Scraping the Beatport docs frontend for `client_id` is a known fragility (it will break if Beatport changes `/v4/docs/` and its scripts). https://github.com/Samik081/beets-beatport4
 
-The `types` plugin is useful for declaring flexible fields as `float`, `bool`, or `date`, which makes the sidecar DB queryable. The `zero` plugin is useful for enforcing cleanup policy similar to `tools/rules/library_canon.json`, but it should be used carefully because it can strip tags from files if writing is enabled.
+Maintenance signal (as of 2026-04-13):
+- PyPI lists `beets-beatport4` `1.1.0` published `2026-03-08`. https://pypi.org/project/beets-beatport4/
 
-**Web/UI**
+Sidecar posture:
+- Keep `art: no` (avoid file writes).
+- Keep `singletons_with_album_metadata.enabled: no` by default (extra API calls + title drift risk via mix-name appending).
+- Treat Beatport4-derived values as vendor raw unless/until `tagslutsync` overwrites them with canonical `tagslut` values.
 
-The core `web` plugin and the surrounding `beets-flask` container are useful as a browse/query layer. That fits the sidecar model well.
+### Bandcamp (`snejus/beetcamp`)
 
-### Works today with external plugins
+Fit:
+- Good for Bandcamp-only content and for capturing “cover art URL” into `cover_art_url` (which `fetchart` can then use as an art source). https://docs.beets.io/en/stable/plugins/fetchart.html
 
-**Beatport v4: `beets-beatport4`**
+Plugin identity (verified):
+- Plugin name used in `plugins:` is `bandcamp`. https://github.com/snejus/beetcamp
+- Install: `pip install beetcamp`. https://pypi.org/project/beetcamp/
 
-This is the only Beatport plugin worth considering. The stock Beets Beatport plugin is deprecated because Beatport retired the API it relied on. `beets-beatport4` is a drop-in replacement for the old plugin, updated for Beatport API v4.
+Verified config surface:
+- See `beetcamp` README `bandcamp:` configuration block. https://github.com/snejus/beetcamp#configuration
 
-What it provides:
+Maintenance signal (as of 2026-04-13):
+- PyPI lists `beetcamp` `0.24.0` published “last month”. https://pypi.org/project/beetcamp/
 
-- plugin name: `beatport4`
-- install method: `pip install beets-beatport4` or `pipx inject beets beets-beatport4`
-- Beatport v4 auth support using either username/password in config or a manually pasted token JSON
-- optional Beatport artwork fetching using the release image URL
-- optional singleton album metadata expansion, including year, album, label, catalog number, albumartist and track number
+Lineage note:
+- The older `beets-bandcamp` project exists but is stale by release history (`0.1.4`, published 2020-04-12). Prefer `beetcamp`. https://pypi.org/project/beets-bandcamp/
 
-Why it matters for `tagslut`:
+### Essentia analysis (`adamjakab/BeetsPluginXtractor` / `beets-xtractor`)
 
-- It aligns with `tagslut`'s preference for Beatport on BPM, key, genre, sub-genre, label and catalog number.
-- It is useful when Beets is being used to enrich tracks that have not yet gone through `tagslut`.
-- It is still only a helper. It does not implement `tagslut`'s resolution pipeline.
+Fit:
+- Useful for optional “audio feature research” fields (danceability / mood / loudness-ish descriptors).
+- Not a replacement for Beatport/TIDAL DJ metadata. Treat it as opt-in analysis.
 
-Risks:
+Plugin identity (verified):
+- Plugin name used in `plugins:` is `xtractor`. https://github.com/adamjakab/BeetsPluginXtractor
+- Install: `pip install beets-xtractor`. https://pypi.org/project/beets-xtractor/
 
-- It depends on a workaround around Beatport's public docs frontend client ID.
-- Credential-based auth stores Beatport credentials unencrypted in config.
-- It may break if Beatport changes the auth flow or public client behavior.
+Runtime dependencies (verified):
+- Requires Essentia’s `streaming_extractor_music` binary and a set of matching SVM model files. https://github.com/adamjakab/BeetsPluginXtractor and https://essentia.upf.edu/documentation/
 
-**Bandcamp: `beetcamp`**
+Operational constraints (verified):
+- `auto` mode is not implemented; you must run it manually (e.g. `beet xtractor`). https://github.com/adamjakab/BeetsPluginXtractor#configuration
 
-If Bandcamp metadata matters in your sidecar, use `beetcamp`, not the older `beets-bandcamp`.
+Extracted fields (verified):
+- Extracts a set of flex attributes including `danceability`, `beats_count`, `average_loudness`, mood classifiers, etc. (See PyPI project description for the current list.) https://pypi.org/project/beets-xtractor/
 
-What it provides:
+Tag-writing behavior (verified in plugin docs):
+- Only BPM is written back to file tags when writeback is enabled; the rest stays in the Beets DB as flex attributes. https://github.com/adamjakab/BeetsPluginXtractor#configuration
 
-- plugin name: `bandcamp`
-- install method: `pip install beetcamp`
-- modern Bandcamp metadata extraction with broader field support than the older plugin
-- configurable genre extraction modes
-- `cover_art_url` output that can be used by `fetchart`
-- better maintenance posture than the old HTML-scraping Bandcamp plugin
+Maintenance signal (as of 2026-04-13):
+- PyPI lists `beets-xtractor` `0.4.2` published ~`1.9 years` ago. https://pypi.org/project/beets-xtractor/0.4.2/
 
-Where it helps:
+Sidecar posture:
+- Keep disabled by default; use only on explicit batches and avoid writing tags in sidecar mode.
 
-- Bandcamp-only material
-- catalog numbers, comments, label-style info, and art URL capture
+## Recommended plugin stack (opinionated)
 
-Where it does **not** help:
+Works today (sidecar-safe defaults)
+- Core: `web`, `types`, `zero` (manual), `musicbrainz` (genres disabled)
+- External: `beatport4` (metadata source, no art, singleton album expansion off)
 
-- BPM, key, Camelot, TIDAL-specific flags, waveform or preview parity
+Works with external plugin (optional)
+- Bandcamp: `bandcamp` (via `beetcamp`) if you have Bandcamp-heavy intake
+- Analysis: `keyfinder`, `autobpm`, `replaygain`, `xtractor` as deliberate fallback tooling
 
-**Audio analysis: `beets-xtractor`**
+Needs custom extension (to reach meaningful `tagslut` parity in Beets DB)
+- `tagslutsync` (sync canonical `tagslut` output -> Beets DB, DB-only by default)
+- `camelotconverter` (derive Camelot code from `initial_key`, consistent with `tagslut`’s Camelot expectations)
+- Optional: `genreguard` (enforce “tagslut owns genre/sub-genre” boundary inside Beets workflows)
 
-This plugin is real, but heavy.
+Not realistically supported at parity
+- Native TIDAL enrichment inside Beets matching `tagslut`’s TIDAL fields (DJ/stem readiness, tone tags, audio quality) without calling into `tagslut` or building a new TIDAL plugin.
+- Beatport/TIDAL merged resolution with audit trail identical to `tagslut`’s match logging.
 
-What it provides:
+## Install notes (minimal, tied to this sidecar stack)
 
-- plugin name: `xtractor`
-- install method: `pip install beets-xtractor`
-- Essentia-backed extraction of BPM, danceability, beats count, average loudness, gender/voice/instrumental classifiers, and several mood descriptors
+- Beets itself: install per Beets docs. https://docs.beets.io/en/stable/
+- Beatport v4 plugin: `pip install beets-beatport4` (or `pipx inject beets beets-beatport4`). https://github.com/Samik081/beets-beatport4#installation
+- Bandcamp plugin (optional): `pip install beetcamp`. https://github.com/snejus/beetcamp#installation
+- Xtractor (optional): `pip install beets-xtractor` + Essentia extractor + models. https://github.com/adamjakab/BeetsPluginXtractor#installation and https://essentia.upf.edu/documentation/
 
-Dependencies and complexity:
+## Repo-ready config
 
-- requires the Essentia `streaming_extractor_music` binary
-- requires matching SVM model files
-- the README explicitly notes that auto mode is not implemented; you must run it manually
-- only BPM is written back to file tags; the other values are flex attributes in the Beets DB
-
-Fit for `tagslut`:
-
-- useful only as optional research enrichment
-- not appropriate as a routine mandatory part of the sidecar unless you specifically want those descriptors
-- does not replace `tagslut` for canonical DJ metadata
-
-### Plugins that are real but should stay secondary
-
-**`keyfinder`**
-
-Good fallback. Do not let it overwrite trusted Beatport/TIDAL keys by default.
-
-**`autobpm`**
-
-Good fallback. Do not let it overwrite trusted Beatport BPM by default.
-
-**`replaygain`**
-
-Useful for files missing replay gain. Keep `auto: false` unless you explicitly want batch analysis.
-
-**`lastgenre`**
-
-Technically usable, strategically wrong here. It conflicts with `tagslut`'s own genre normalization and should not be part of the default sidecar stack.
-
-**`lyrics`**
-
-Also real, but not part of the default sidecar stack. `tagslut` tracks lyrics availability, not a Beets-managed lyrics corpus.
-
-## What Beets cannot do at parity
-
-These are the real gaps.
-
-### Needs custom extension
-
-**ISRC ingestion as a first-class sidecar identity field**
-
-Beets can store arbitrary fields, but there is no default sidecar-aware plugin that solves your exact `tagslut` identity flow around ISRC matching and sync.
-
-**Camelot compatibility**
-
-Beets can store key values, and keyfinder can generate keys, but there is no built-in canonical Camelot conversion/plugin that matches `tagslut` expectations.
-
-**TIDAL-specific DJ fields**
-
-No core/external Beets plugin gives you:
-
-- `tidal_dj_ready`
-- `tidal_stem_ready`
-- `tone_tags`
-- `audio_quality`
-- TIDAL waveform/preview parity
-
-**Direct sync from `tagslut` canonical output into Beets**
-
-Nothing in Beets natively understands `tagslut`'s canonical result model and precedence logic.
-
-### Not realistically supported at parity right now
-
-- full TIDAL enrichment parity
-- Beatport/TIDAL merged resolution with explicit canonical audit trail
-- native preservation of `tagslut`'s exact genre/sub-genre normalization path
-- waveform/preview parity as a normal Beets enrichment path
-
-## Compatibility matrix
-
-| `tagslut` field | Beets support status | Notes |
-|---|---|---|
-| title / artist / album | Partial | Core Beets can store them; source metadata may come from Beatport4 / Bandcamp / import tags |
-| isrc | Partial / custom | Needs a dedicated sync/import strategy for parity with `tagslut` |
-| release_date / year | Partial | Available from metadata sources including Beatport4 / Bandcamp |
-| duration | Yes | Core item model already supports it |
-| bpm | Partial | Beatport4 preferred; Autobpm/Xtractor only fallback |
-| key | Partial | Beatport4 preferred; Keyfinder only fallback |
-| Camelot | Custom | Needs custom converter layer |
-| genre | Partial | Must not override `tagslut` normalization |
-| sub_genre | Partial | Beatport4 can help, but normalization policy remains in `tagslut` |
-| mix_name | Weak | Not a strong Beets-side story |
-| label | Partial | Beatport4 / Bandcamp can provide it |
-| catalog_number | Partial | Beatport4 / Bandcamp can provide it |
-| explicit | Weak | Storage is possible; source parity is inconsistent |
-| artwork | Yes | `fetchart` / `embedart`, conservative mode only |
-| composer | Weak | Can be stored; source parity depends on importer/provider |
-| lyrics availability | Weak | `lyrics` plugin exists but does not map cleanly to `tagslut`'s semantics |
-| replay gain | Yes | `replaygain` plugin, fallback use only |
-| audio_quality | Custom / unsupported | No TIDAL parity plugin |
-| tone_tags | Custom | No existing plugin |
-| tidal_dj_ready | Custom | No existing plugin |
-| tidal_stem_ready | Custom | No existing plugin |
-| waveform / preview | Unsupported | No realistic parity path in stock Beets |
-
-## Recommended default stack
-
-Default means: worth enabling in the sidecar immediately.
-
-- `beatport4`
-- `fetchart`
-- `embedart`
-- `types`
-- `zero`
-
-Optional, enable only when you truly need them:
-
-- `bandcamp`
-- `keyfinder`
-- `autobpm`
-- `replaygain`
-- `web`
-- `xtractor`
-
-Not recommended in the default stack:
-
-- `lastgenre`
-- `lyrics`
-- old `beets-bandcamp`
-
-## Operational recommendation
-
-Use Beets in one of two ways only:
-
-### Mode A: browse/query sidecar
-
-- ingest files without moving or copying
-- do not write tags back to files
-- use Beets DB + web/flask for inspection and filtering
-- keep canonical values owned by `tagslut`
-
-### Mode B: selective enrichment sidecar
-
-Same as Mode A, plus:
-
-- allow Beatport4 lookups when helpful
-- allow fallback key/BPM analysis only on tracks missing trusted values
-- allow optional research-grade analysis with Xtractor on explicit batches
-
-Do **not** let it become a third competing metadata authority.
-
-## Bottom line
-
-A Beets sidecar for `tagslut` is viable, but only within a hard boundary.
-
-It is good for:
-
-- enrichment helpers
-- a searchable local DB
-- a lightweight web UI
-- fallback analysis for missing values
-
-It is not good for:
-
-- canonical metadata resolution
-- genre/sub-genre normalization authority
-- Beatport/TIDAL precedence authority
-- TIDAL DJ metadata parity
-
-So the right architecture is simple:
-
-`tagslut` decides. Beets assists.
+Use `beets-flask-config/beets/config.yaml` as the baseline sidecar configuration. It is intentionally conservative (no file writes; web UI read-only).

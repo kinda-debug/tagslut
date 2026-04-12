@@ -1,13 +1,15 @@
-# Beets sidecar config for tagslut
+# Beets sidecar config for tagslut (Beets is a bridge, not the authority).
 #
-# Default posture:
-# - non-destructive
-# - no library reorganization
+# Sidecar defaults:
+# - no renames/reorg
 # - no file writes
-# - tagslut remains canonical authority
-
-library: /Volumes/MUSIC/beets-library.db
-directory: /Volumes/MUSIC
+# - Beets DB is a secondary index + UI
+#
+# Container-friendly defaults:
+# - `library` lives under `/config`
+# - music files are readable under `/music`
+library: /config/library.db
+directory: /music
 
 import:
   copy: no
@@ -15,70 +17,82 @@ import:
   link: no
   hardlink: no
   write: no
+  resume: ask
   incremental: yes
   incremental_skip_later: yes
-  resume: ask
   quiet_fallback: skip
   timid: yes
-  log: /Volumes/MUSIC/beets-import.log
+  log: /config/beets-import.log
+
+# Do not let Beets reorganize paths in sidecar mode (even if move/copy is later enabled).
+paths:
+  default: $path
 
 plugins:
-  - beatport4
+  # UI (used by beets-flask or any Beets web sidecar).
+  - web
+
+  # Core helpers (kept non-destructive via config defaults below).
+  - musicbrainz
   - fetchart
   - embedart
   - zero
   - types
 
-  # Optional only. Enable deliberately.
-  # - bandcamp
+  # Provider helpers (external).
+  - beatport4
+  # - bandcamp   # provided by `beetcamp` (plugin name remains `bandcamp`)
+
+  # Optional analysis (core / external).
   # - keyfinder
   # - autobpm
   # - replaygain
   # - xtractor
-  # - web
 
-# Do not let Beets reorganize paths in sidecar mode.
-paths:
-  default: $path
+# Be conservative about MusicBrainz: keep it enabled for general matching,
+# but do not let it inject genres by default (tagslut owns genre normalization).
+musicbrainz:
+  enabled: yes
+  genres: no
+  external_ids:
+    bandcamp: yes
+    beatport: yes
+    tidal: yes
 
-# Useful if you later enable custom/plugin-added fields and want range queries.
+# Useful for querying tagslut-sidecar flexible attributes using range queries.
+# (`types` supports: int, float, bool, date)
 types:
-  bpm: float
-  energy: float
-  danceability: float
-  loudness: float
-  valence: float
-  replay_gain_track: float
-  replay_gain_album: float
-  tidal_dj_ready: int
-  tidal_stem_ready: int
+  ts_canonical_bpm: float
+  ts_replay_gain_track: float
+  ts_replay_gain_album: float
+  ts_tidal_dj_ready: int
+  ts_tidal_stem_ready: int
+  ts_canonical_year: int
+  ts_canonical_explicit: bool
 
-# Beatport v4 plugin.
-#
-# Leave username/password empty if you prefer token-paste auth instead of
-# stored credentials.
+# Beatport API v4 plugin (external: `beets-beatport4`).
 beatport4:
   art: no
   art_overwrite: no
   art_width: 0
   art_height: 0
-  singletons_with_album_meta:
-    enabled: yes
+  singletons_with_album_metadata:
+    enabled: no
     year: yes
     album: yes
     label: yes
     catalognum: yes
     albumartist: yes
     track_number: yes
-  username:
-  password:
-  client_id:
+  username: ""
+  password: ""
+  client_id: ""
 
-# Conservative artwork behavior.
+# Artwork helpers (core).
 #
-# Since tagslut should remain authoritative, fetch only when art is missing.
+# Default is "no writes": keep these off by default; use manual commands if needed.
 fetchart:
-  auto: yes
+  auto: no
   cautious: yes
   minwidth: 500
   maxwidth: 1200
@@ -87,19 +101,19 @@ fetchart:
   high_resolution: no
   sources:
     - filesystem
+    - cover_art_url
     - coverart
     - itunes
 
 embedart:
-  auto: yes
+  auto: no
   ifempty: yes
   compare_threshold: 0
   maxwidth: 1200
 
-# Cleanup helper.
+# Cleanup helper (core).
 #
-# Only use fields mode here. Do not combine with keep_fields.
-# Keep this conservative in sidecar mode because write=no is doing most of the safety work.
+# Keep disabled by default; it can modify file tags if you run it intentionally.
 zero:
   auto: no
   update_database: yes
@@ -107,8 +121,7 @@ zero:
     - acoustid_id
     - encoder
 
-# Optional plugin configs below.
-
+# Optional plugin configs (disabled by default via `auto: no`).
 keyfinder:
   auto: no
   bin: keyfinder-cli
@@ -124,9 +137,8 @@ replaygain:
   auto: no
   backend: ffmpeg
   overwrite: no
-  threads: 2
 
-# If you enable beetcamp, plugin name is still `bandcamp`.
+# beetcamp configuration (external: `beetcamp`, plugin name `bandcamp`).
 bandcamp:
   include_digital_only_tracks: true
   search_max: 2
@@ -140,9 +152,9 @@ bandcamp:
     always_include: []
     mode: progressive
 
-# Xtractor is real but heavy. Keep disabled by default.
+# Xtractor is real but heavy (external: `beets-xtractor`).
+# Keep disabled by default; enable deliberately and fill paths.
 #
-# Uncomment and fill actual paths only if you have Essentia + SVM models installed.
 # xtractor:
 #   auto: no
 #   dry-run: no
@@ -152,7 +164,7 @@ bandcamp:
 #   quiet: no
 #   keep_output: yes
 #   keep_profiles: no
-#   output_path: /path/to/xtraction_data
+#   output_path: /config/xtraction_data
 #   essentia_extractor: /path/to/streaming_extractor_music
 #   extractor_profile:
 #     highlevel:
@@ -171,6 +183,7 @@ bandcamp:
 #         - /path/to/moods_mirex.history
 
 web:
-  host: 127.0.0.1
+  host: 0.0.0.0
   port: 8337
   include_paths: yes
+  readonly: true

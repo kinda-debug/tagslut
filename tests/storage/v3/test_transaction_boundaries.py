@@ -379,11 +379,11 @@ def test_merge_group_by_repointing_assets_rolls_back_without_outer_transaction(
                 ingestion_confidence
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            [
-                (1, "beatport:BP-1-a", "BP-1", "Artist A", "Track A", None, "2026-01-01T00:00:00+00:00", "migration", "test_fixture", "legacy"),
-                (2, "beatport:BP-1-b", "BP-2", None, None, "2026-03-04T00:00:00Z", "2026-01-01T00:00:00+00:00", "migration", "test_fixture", "legacy"),
-            ],
-        )
+                [
+                    (1, "beatport:BP-1-a", "BP-1", "Artist A", "Track A", None, "2026-01-01T00:00:00+00:00", "migration", "test_fixture", "legacy"),
+                    (2, "beatport:BP-1-b", "BP-2", None, None, "2026-03-04T00:00:00Z", "2026-01-01T00:00:00+00:00", "migration", "test_fixture", "legacy"),
+                ],
+            )
     conn.executemany(
         "INSERT INTO asset_link (asset_id, identity_id, active) VALUES (?, ?, 1)",
         [
@@ -549,3 +549,64 @@ def test_merge_group_by_repointing_assets_updates_legacy_mirror_and_lineage() ->
         assert library_track["isrc"] == "ABC123"
     finally:
         conn.close()
+
+
+def test_merge_group_by_repointing_assets_canonicalizes_merged_winner_identity() -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    create_schema_v3(conn)
+    conn.executemany(
+        "INSERT INTO asset_file (id, path) VALUES (?, ?)",
+        [
+            (1, "/music/a1.flac"),
+            (2, "/music/a2.flac"),
+        ],
+    )
+    conn.executemany(
+        """
+        INSERT INTO track_identity (
+            id,
+            identity_key,
+            beatport_id,
+            merged_into_id,
+            canonical_artist,
+            canonical_title,
+            enriched_at,
+            ingested_at,
+            ingestion_method,
+            ingestion_source,
+            ingestion_confidence
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (3, "beatport:BP-2-canonical", "BP-2", None, None, None, "2026-03-04T00:00:00Z", "2026-01-01T00:00:00+00:00", "migration", "test_fixture", "legacy"),
+            (2, "beatport:BP-2-merged", "BP-2", 3, None, None, None, "2026-01-01T00:00:00+00:00", "migration", "test_fixture", "legacy"),
+            (1, "beatport:BP-1-a", "BP-1", None, "Artist A", "Track A", None, "2026-01-01T00:00:00+00:00", "migration", "test_fixture", "legacy"),
+        ],
+    )
+    conn.executemany(
+        "INSERT INTO asset_link (asset_id, identity_id, active) VALUES (?, ?, 1)",
+        [
+            (1, 1),
+            (2, 2),
+        ],
+    )
+
+    merge_group_by_repointing_assets(conn, 2, [1], dry_run=False)
+
+    loser = conn.execute(
+        "SELECT beatport_id, merged_into_id FROM track_identity WHERE id = 1"
+    ).fetchone()
+    merged_winner = conn.execute(
+        "SELECT beatport_id, merged_into_id FROM track_identity WHERE id = 2"
+    ).fetchone()
+    links = conn.execute(
+        "SELECT asset_id, identity_id FROM asset_link ORDER BY asset_id"
+    ).fetchall()
+
+    assert loser["beatport_id"] is None
+    assert int(loser["merged_into_id"]) == 3
+    assert merged_winner["beatport_id"] is None
+    assert int(merged_winner["merged_into_id"]) == 3
+    assert [tuple(row) for row in links] == [(1, 3), (2, 3)]
+    conn.close()

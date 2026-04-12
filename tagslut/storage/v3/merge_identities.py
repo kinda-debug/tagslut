@@ -380,78 +380,103 @@ def merge_group_by_repointing_assets(
         began_transaction = True
 
     try:
+        if not _column_exists(conn, "track_identity", "merged_into_id"):
+            raise RuntimeError("v3 identity merge requires track_identity.merged_into_id")
+
         normalized_losers = _normalize_ids(loser_ids)
-        if int(winner_id) in normalized_losers:
-            raise RuntimeError("winner_id cannot be included in loser_ids")
 
         _assert_foreign_keys_on(conn)
 
-        all_ids = tuple(sorted({int(winner_id), *normalized_losers}))
+        from tagslut.storage.v3.identity_service import resolve_active_identity
+
+        canonical_winner_id = int(resolve_active_identity(conn, int(winner_id))["id"])
+        all_ids = tuple(sorted({canonical_winner_id, int(winner_id), *normalized_losers}))
         rows_by_id = _identity_rows_by_id(conn, all_ids)
-        winner_row = rows_by_id[int(winner_id)]
-        if _column_exists(conn, "track_identity", "merged_into_id") and winner_row["merged_into_id"] is not None:
-            raise RuntimeError("winner identity cannot already be merged")
+        winner_row = rows_by_id[int(canonical_winner_id)]
+        if winner_row["merged_into_id"] is not None:
+            raise RuntimeError("canonical winner identity cannot be merged")
 
         beatport_id = str(winner_row["beatport_id"] or "").strip()
         if not beatport_id:
             raise RuntimeError("winner identity must have non-empty beatport_id")
 
-        selection = choose_winner_identity(conn, all_ids)
-        if selection.winner_id != int(winner_id):
+        normalized_merge_losers = tuple(sorted(int(identity_id) for identity_id in all_ids if int(identity_id) != canonical_winner_id))
+        if not normalized_merge_losers:
+            selection = choose_winner_identity(conn, (canonical_winner_id,))
+        else:
+            selection_candidates = tuple(
+                identity_id
+                for identity_id in all_ids
+                if rows_by_id[int(identity_id)]["merged_into_id"] is None
+            )
+            if not selection_candidates:
+                selection_candidates = (canonical_winner_id,)
+            selection = choose_winner_identity(conn, selection_candidates)
+        if selection.winner_id != int(canonical_winner_id):
             raise RuntimeError(
-                f"winner mismatch: expected {winner_id}, deterministic selector chose {selection.winner_id}"
+                f"winner mismatch: expected {canonical_winner_id}, deterministic selector chose {selection.winner_id}"
             )
 
-        loser_placeholders = ",".join("?" for _ in normalized_losers)
+        loser_placeholders = ",".join("?" for _ in normalized_merge_losers)
         where_active_link = _active_link_where(conn)
-        assets_moved_row = conn.execute(
-            f"""
-            SELECT COUNT(*) AS n
-            FROM asset_link
-            WHERE identity_id IN ({loser_placeholders}) AND {where_active_link}
-            """,
-            tuple(normalized_losers),
-        ).fetchone()
-        assets_moved = int(assets_moved_row["n"]) if assets_moved_row else 0
+        assets_moved = 0
+        if normalized_merge_losers:
+            assets_moved_row = conn.execute(
+                f"""
+                SELECT COUNT(*) AS n
+                FROM asset_link
+                WHERE identity_id IN ({loser_placeholders}) AND {where_active_link}
+                """,
+                tuple(normalized_merge_losers),
+            ).fetchone()
+            assets_moved = int(assets_moved_row["n"]) if assets_moved_row else 0
 
         existing_fields = _existing_canonical_fields(conn)
         fields_copied: dict[str, Any] = {}
-        loser_keys = tuple(str(rows_by_id[int(loser_id)]["identity_key"]) for loser_id in normalized_losers)
+        loser_keys = tuple(
+            str(rows_by_id[int(loser_id)]["identity_key"]) for loser_id in normalized_merge_losers
+        )
         for field in existing_fields:
             winner_value = winner_row[field]
             if not _is_blank(winner_value):
                 continue
-            for loser_id in normalized_losers:
+            for loser_id in normalized_merge_losers:
                 loser_value = rows_by_id[int(loser_id)][field]
                 if not _is_blank(loser_value):
                     fields_copied[field] = loser_value
                     break
         if _column_exists(conn, "track_identity", "isrc") and _is_blank(winner_row["isrc"]):
-            for loser_id in normalized_losers:
+            for loser_id in normalized_merge_losers:
                 loser_isrc = rows_by_id[int(loser_id)]["isrc"]
                 if not _is_blank(loser_isrc):
                     fields_copied["isrc"] = loser_isrc
                     break
 
-        if _column_exists(conn, "track_identity", "merged_into_id"):
-            for loser_id in normalized_losers:
-                if rows_by_id[int(loser_id)]["merged_into_id"] is not None:
-                    raise RuntimeError(f"loser identity is already merged: {int(loser_id)}")
+        for loser_id in normalized_merge_losers:
+            if rows_by_id[int(loser_id)]["merged_into_id"] is not None:
+                resolved = resolve_active_identity(conn, int(loser_id))
+                if int(resolved["id"]) != int(canonical_winner_id):
+                    raise RuntimeError(
+                        "cannot merge identity already merged into a different canonical winner: "
+                        f"loser_id={int(loser_id)} canonical_winner_id={int(canonical_winner_id)} "
+                        f"current_canonical_id={int(resolved['id'])}"
+                    )
 
         if not dry_run:
-            conn.execute(
-                f"""
-                UPDATE asset_link
-                SET identity_id = ?
-                WHERE identity_id IN ({loser_placeholders})
-                """,
-                (int(winner_id), *normalized_losers),
-            )
+            if normalized_merge_losers:
+                conn.execute(
+                    f"""
+                    UPDATE asset_link
+                    SET identity_id = ?
+                    WHERE identity_id IN ({loser_placeholders})
+                    """,
+                    (int(canonical_winner_id), *normalized_merge_losers),
+                )
 
             if fields_copied:
                 set_clause = ", ".join(f"{field} = ?" for field in fields_copied)
                 params: list[Any] = list(fields_copied.values())
-                params.append(int(winner_id))
+                params.append(int(canonical_winner_id))
                 conn.execute(
                     f"""
                     UPDATE track_identity
@@ -461,14 +486,14 @@ def merge_group_by_repointing_assets(
                     tuple(params),
                 )
 
-            if _column_exists(conn, "track_identity", "merged_into_id"):
+            if normalized_merge_losers:
                 conn.execute(
                     f"""
                     UPDATE track_identity
                     SET merged_into_id = ?
                     WHERE id IN ({loser_placeholders})
                     """,
-                    (int(winner_id), *normalized_losers),
+                    (int(canonical_winner_id), *normalized_merge_losers),
                 )
                 conn.execute(
                     f"""
@@ -477,7 +502,7 @@ def merge_group_by_repointing_assets(
                     WHERE id IN ({loser_placeholders})
                       AND merged_into_id = ?
                     """,
-                    (*normalized_losers, int(winner_id)),
+                    (*normalized_merge_losers, int(canonical_winner_id)),
                 )
                 _sync_legacy_file_keys(
                     conn,
@@ -490,11 +515,12 @@ def merge_group_by_repointing_assets(
                         DELETE FROM preferred_asset
                         WHERE identity_id IN ({loser_placeholders})
                         """,
-                        tuple(normalized_losers),
+                        tuple(normalized_merge_losers),
                     )
-                from tagslut.storage.v3.identity_service import mirror_identity_to_legacy
 
-                mirror_identity_to_legacy(conn, int(winner_id), asset_id=None)
+            from tagslut.storage.v3.identity_service import mirror_identity_to_legacy
+
+            mirror_identity_to_legacy(conn, int(canonical_winner_id), asset_id=None)
 
         if not dry_run:
             where_active_identity = _active_identity_where(conn)
@@ -513,7 +539,7 @@ def merge_group_by_repointing_assets(
                     f"beatport_id={beatport_id} active_count={duplicate_count}"
                 )
 
-            _assert_merge_lineage(conn, int(winner_id), tuple(normalized_losers))
+            _assert_merge_lineage(conn, int(canonical_winner_id), tuple(normalized_merge_losers))
             _assert_asset_link_unique(conn)
             _assert_active_links_resolve_to_canonical(conn)
             _assert_foreign_keys_on(conn)
@@ -527,8 +553,8 @@ def merge_group_by_repointing_assets(
         result = MergeResult(
             merge_type="beatport_id",
             key_value=beatport_id,
-            winner_identity_id=int(winner_id),
-            loser_identity_ids=tuple(int(identity_id) for identity_id in normalized_losers),
+            winner_identity_id=int(canonical_winner_id),
+            loser_identity_ids=tuple(int(identity_id) for identity_id in normalized_merge_losers),
             assets_moved=assets_moved,
             fields_copied=fields_copied,
             rationale=rationale,

@@ -22,6 +22,13 @@ __all__ = [
 PROVIDER_COLUMNS: tuple[str, ...] = (
     "beatport_id",
     "tidal_id",
+    "qobuz_id",
+    "spotify_id",
+    "apple_music_id",
+    "deezer_id",
+    "traxsource_id",
+    "itunes_id",
+    "musicbrainz_id",
 )
 FUZZY_DURATION_TOLERANCE_S = 2.0
 FUZZY_SCORE_THRESHOLD = 0.92
@@ -136,9 +143,18 @@ def _identity_value_map(
     provenance: Mapping[str, Any],
 ) -> dict[str, Any]:
     duration_s = _duration_seconds(asset_row, metadata)
+    isrc = _lookup_value(metadata, "isrc", "canonical_isrc")
+    isrc = isrc.upper() if isrc else None
     provider_values = {
         "beatport_id": _lookup_value(metadata, "beatport_id"),
         "tidal_id": _lookup_value(metadata, "tidal_id"),
+        "qobuz_id": _lookup_value(metadata, "qobuz_id"),
+        "spotify_id": _lookup_value(metadata, "spotify_id"),
+        "apple_music_id": _lookup_value(metadata, "apple_music_id"),
+        "deezer_id": _lookup_value(metadata, "deezer_id"),
+        "traxsource_id": _lookup_value(metadata, "traxsource_id"),
+        "itunes_id": _lookup_value(metadata, "itunes_id"),
+        "musicbrainz_id": _lookup_value(metadata, "musicbrainz_id"),
     }
     artist = _lookup_value(metadata, "artist", "canonical_artist")
     title = _lookup_value(metadata, "title", "canonical_title")
@@ -150,7 +166,7 @@ def _identity_value_map(
             payload_json = None
 
     values: dict[str, Any] = {
-        "isrc": _lookup_value(metadata, "isrc", "canonical_isrc"),
+        "isrc": isrc,
         **provider_values,
         "artist_norm": _norm_name(artist),
         "title_norm": _norm_name(title),
@@ -161,11 +177,14 @@ def _identity_value_map(
         "canonical_genre": _lookup_value(metadata, "genre", "canonical_genre"),
         "canonical_sub_genre": _lookup_value(metadata, "sub_genre", "canonical_sub_genre"),
         "canonical_label": _lookup_value(metadata, "label", "canonical_label"),
+        "label": _lookup_value(metadata, "label", "canonical_label"),
         "canonical_catalog_number": _lookup_value(
             metadata, "catalog_number", "canonical_catalog_number"
         ),
+        "catalog_number": _lookup_value(metadata, "catalog_number", "canonical_catalog_number"),
         "canonical_mix_name": _lookup_value(metadata, "mix_name", "canonical_mix_name"),
         "canonical_duration": duration_s,
+        "canonical_duration_s": duration_s,
         "canonical_year": _lookup_value(metadata, "year", "canonical_year"),
         "canonical_release_date": _lookup_value(
             metadata, "release_date", "canonical_release_date"
@@ -262,10 +281,26 @@ def _merge_identity_fields_if_empty(
         raise LookupError(f"identity not found: {identity_id}")
 
     updates: dict[str, Any] = {}
+    for canonical, legacy in (
+        ("canonical_label", "label"),
+        ("canonical_catalog_number", "catalog_number"),
+        ("canonical_duration", "canonical_duration_s"),
+    ):
+        if not _column_exists(conn, "track_identity", canonical):
+            continue
+        if not _column_exists(conn, "track_identity", legacy):
+            continue
+        incoming = fields.get(canonical)
+        if incoming is not None:
+            continue
+        if _is_blank_db(_row_value(row, canonical)) and not _is_blank_db(_row_value(row, legacy)):
+            updates[canonical] = _row_value(row, legacy)
     for column, value in fields.items():
         if column == "identity_key" or value is None:
             continue
         if not _column_exists(conn, "track_identity", column):
+            continue
+        if column in updates:
             continue
         if _is_blank_db(_row_value(row, column)):
             updates[column] = value
@@ -291,12 +326,15 @@ def _matched_identity_id_by_field(
         return None
 
     has_merged_into = _column_exists(conn, "track_identity", "merged_into_id")
+    where_expr = f"{column} = ?"
+    if column == "isrc":
+        where_expr = "UPPER(isrc) = UPPER(?)"
     if has_merged_into:
         row = conn.execute(
             f"""
             SELECT id
             FROM track_identity
-            WHERE {column} = ?
+            WHERE {where_expr}
             ORDER BY CASE WHEN merged_into_id IS NULL THEN 0 ELSE 1 END, id ASC
             LIMIT 1
             """,
@@ -304,7 +342,7 @@ def _matched_identity_id_by_field(
         ).fetchone()
     else:
         row = conn.execute(
-            f"SELECT id FROM track_identity WHERE {column} = ? ORDER BY id ASC LIMIT 1",
+            f"SELECT id FROM track_identity WHERE {where_expr} ORDER BY id ASC LIMIT 1",
             (value,),
         ).fetchone()
 
@@ -390,13 +428,22 @@ def _create_identity(
     ]
     params = [insert_fields[column] for column in columns]
     placeholders = ", ".join("?" for _ in columns)
-    conn.execute(
-        f"""
-        INSERT OR IGNORE INTO track_identity ({", ".join(columns)})
-        VALUES ({placeholders})
-        """,
-        params,
-    )
+    try:
+        conn.execute(
+            f"""
+            INSERT INTO track_identity ({", ".join(columns)})
+            VALUES ({placeholders})
+            """,
+            params,
+        )
+    except sqlite3.IntegrityError:
+        row = conn.execute(
+            "SELECT id FROM track_identity WHERE identity_key = ?",
+            (insert_fields["identity_key"],),
+        ).fetchone()
+        if row is not None:
+            return int(row["id"])
+        raise
     row = conn.execute(
         "SELECT id FROM track_identity WHERE identity_key = ?",
         (insert_fields["identity_key"],),
@@ -407,10 +454,10 @@ def _create_identity(
 
 
 def _identity_duration_ms(identity_row: sqlite3.Row) -> int | None:
-    duration_s = _to_float(identity_row["canonical_duration"])
+    duration_s = _to_float(_row_value(identity_row, "canonical_duration"))
     if duration_s is not None:
         return int(round(duration_s * 1000.0))
-    duration_ref_ms = _to_float(identity_row["duration_ref_ms"])
+    duration_ref_ms = _to_float(_row_value(identity_row, "duration_ref_ms"))
     if duration_ref_ms is not None:
         return int(round(duration_ref_ms))
     return None
@@ -458,27 +505,40 @@ def _mirror_to_files(
     if not paths:
         return
 
-    file_values: dict[str, Any] = {
-        "library_track_key": identity_row["identity_key"],
-        "beatport_id": identity_row["beatport_id"],
-        "canonical_title": identity_row["canonical_title"],
-        "canonical_artist": identity_row["canonical_artist"],
-        "canonical_album": identity_row["canonical_album"],
-        "canonical_isrc": identity_row["isrc"],
-        "canonical_duration": identity_row["canonical_duration"],
-        "canonical_duration_source": identity_row["ref_source"],
-        "canonical_year": identity_row["canonical_year"],
-        "canonical_release_date": identity_row["canonical_release_date"],
-        "canonical_bpm": identity_row["canonical_bpm"],
-        "canonical_key": identity_row["canonical_key"],
-        "canonical_genre": identity_row["canonical_genre"],
-        "canonical_sub_genre": identity_row["canonical_sub_genre"],
-        "canonical_label": identity_row["canonical_label"],
-        "canonical_catalog_number": identity_row["canonical_catalog_number"],
-        "canonical_mix_name": identity_row["canonical_mix_name"],
+    field_map: dict[str, str] = {
+        "library_track_key": "identity_key",
+        "beatport_id": "beatport_id",
+        "canonical_title": "canonical_title",
+        "canonical_artist": "canonical_artist",
+        "canonical_album": "canonical_album",
+        "canonical_isrc": "isrc",
+        "canonical_duration": "canonical_duration",
+        "canonical_duration_source": "ref_source",
+        "canonical_year": "canonical_year",
+        "canonical_release_date": "canonical_release_date",
+        "canonical_bpm": "canonical_bpm",
+        "canonical_key": "canonical_key",
+        "canonical_genre": "canonical_genre",
+        "canonical_sub_genre": "canonical_sub_genre",
+        "canonical_label": "canonical_label",
+        "canonical_catalog_number": "canonical_catalog_number",
+        "canonical_mix_name": "canonical_mix_name",
     }
-    available = [column for column in file_values if _column_exists(conn, "files", column)]
-    if not available:
+    updates: dict[str, Any] = {}
+    for file_column, identity_column in field_map.items():
+        if not _column_exists(conn, "files", file_column):
+            continue
+        if identity_column == "identity_key":
+            value = identity_row["identity_key"]
+        else:
+            if not _column_exists(conn, "track_identity", identity_column):
+                continue
+            value = _row_value(identity_row, identity_column)
+        if file_column != "library_track_key" and value is None:
+            continue
+        updates[file_column] = value
+
+    if not updates:
         logger.warning(
             "mirror_identity_to_legacy: no canonical_* columns found in 'files' "
             "table — mirror skipped for identity %s. Run legacy schema migration first.",
@@ -486,9 +546,9 @@ def _mirror_to_files(
         )
         return
 
-    assignments = ", ".join(f"{column} = ?" for column in available)
+    assignments = ", ".join(f"{column} = ?" for column in updates)
     placeholders = ", ".join("?" for _ in paths)
-    params = [file_values[column] for column in available]
+    params = [updates[column] for column in updates]
     params.extend(paths)
     conn.execute(
         f"""
@@ -521,30 +581,30 @@ def _mirror_to_library_tracks(conn: sqlite3.Connection, identity_row: sqlite3.Ro
             updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         ON CONFLICT(library_track_key) DO UPDATE SET
-            title = excluded.title,
-            artist = excluded.artist,
-            album = excluded.album,
-            duration_ms = excluded.duration_ms,
-            isrc = excluded.isrc,
-            release_date = excluded.release_date,
-            genre = excluded.genre,
-            bpm = excluded.bpm,
-            musical_key = excluded.musical_key,
-            label = excluded.label,
+            title = COALESCE(excluded.title, title),
+            artist = COALESCE(excluded.artist, artist),
+            album = COALESCE(excluded.album, album),
+            duration_ms = COALESCE(excluded.duration_ms, duration_ms),
+            isrc = COALESCE(excluded.isrc, isrc),
+            release_date = COALESCE(excluded.release_date, release_date),
+            genre = COALESCE(excluded.genre, genre),
+            bpm = COALESCE(excluded.bpm, bpm),
+            musical_key = COALESCE(excluded.musical_key, musical_key),
+            label = COALESCE(excluded.label, label),
             updated_at = CURRENT_TIMESTAMP
         """,
         (
             identity_row["identity_key"],
-            identity_row["canonical_title"],
-            identity_row["canonical_artist"],
-            identity_row["canonical_album"],
+            _row_value(identity_row, "canonical_title"),
+            _row_value(identity_row, "canonical_artist"),
+            _row_value(identity_row, "canonical_album"),
             _identity_duration_ms(identity_row),
-            identity_row["isrc"],
-            identity_row["canonical_release_date"],
-            identity_row["canonical_genre"],
-            identity_row["canonical_bpm"],
-            identity_row["canonical_key"],
-            identity_row["canonical_label"],
+            _row_value(identity_row, "isrc"),
+            _row_value(identity_row, "canonical_release_date"),
+            _row_value(identity_row, "canonical_genre"),
+            _row_value(identity_row, "canonical_bpm"),
+            _row_value(identity_row, "canonical_key"),
+            _row_value(identity_row, "canonical_label"),
         ),
     )
 
@@ -552,8 +612,9 @@ def _mirror_to_library_tracks(conn: sqlite3.Connection, identity_row: sqlite3.Ro
 def resolve_active_identity(conn: sqlite3.Connection, identity_id: int | str) -> sqlite3.Row:
     """Resolve an identity row to the active canonical row.
 
-    The function follows ``merged_into_id`` until it reaches a row whose
-    ``merged_into_id`` is null, then returns that row.
+    The function follows at most one ``merged_into_id`` hop and returns a row
+    whose ``merged_into_id`` is null. Transitive merge chains are treated as a
+    storage invariant violation.
     """
     if not _table_exists(conn, "track_identity"):
         raise RuntimeError("track_identity table is missing")
@@ -572,27 +633,43 @@ def resolve_active_identity(conn: sqlite3.Connection, identity_id: int | str) ->
             current_id = int(row["id"])
     else:
         current_id = int(identity_id)
-    seen_ids: set[int] = set()
 
-    while True:
-        row_any = conn.execute(
-            "SELECT * FROM track_identity WHERE id = ?",
-            (current_id,),
-        ).fetchone()
-        if row_any is None:
-            raise LookupError(f"identity not found: {current_id}")
-        row = cast(sqlite3.Row, row_any)
-        if not has_merged_into:
-            return row
+    row_any = conn.execute(
+        "SELECT * FROM track_identity WHERE id = ?",
+        (current_id,),
+    ).fetchone()
+    if row_any is None:
+        raise LookupError(f"identity not found: {current_id}")
+    row = cast(sqlite3.Row, row_any)
+    if not has_merged_into:
+        return row
 
-        if current_id in seen_ids:
-            raise RuntimeError(f"merged_into_id cycle detected at identity {current_id}")
-        seen_ids.add(current_id)
+    merged_into_raw = row["merged_into_id"]
+    if merged_into_raw is None:
+        return row
 
-        merged_into_raw = row["merged_into_id"]
-        if merged_into_raw is None:
-            return row
-        current_id = int(merged_into_raw)
+    merged_into_id = int(merged_into_raw)
+    if merged_into_id == current_id:
+        raise RuntimeError(f"merged_into_id cycle detected at identity {current_id}")
+
+    merged_any = conn.execute(
+        "SELECT * FROM track_identity WHERE id = ?",
+        (merged_into_id,),
+    ).fetchone()
+    if merged_any is None:
+        raise LookupError(f"identity not found: {merged_into_id}")
+    merged = cast(sqlite3.Row, merged_any)
+    merged_into_next = merged["merged_into_id"]
+    if merged_into_next is not None:
+        merged_into_next_id = int(merged_into_next)
+        if merged_into_next_id == current_id:
+            raise RuntimeError(
+                f"merged_into_id cycle detected between identities {current_id} and {merged_into_id}"
+            )
+        raise RuntimeError(
+            f"transitive merged_into_id chain detected from identity {current_id} via {merged_into_id}"
+        )
+    return merged
 
 
 def resolve_or_create_identity(
@@ -639,6 +716,7 @@ def resolve_or_create_identity(
                 resolved = resolve_active_identity(conn, int(linked["identity_id"]))
                 resolved_id = int(resolved["id"])
                 _merge_identity_fields_if_empty(conn, resolved_id, fields)
+                mirror_identity_to_legacy(conn, resolved_id, asset_id=asset_id)
                 if owns_transaction:
                     conn.commit()
                 return resolved_id
@@ -648,6 +726,7 @@ def resolve_or_create_identity(
             matched_id = _matched_identity_id_by_field(conn, "isrc", isrc)
             if matched_id is not None:
                 _merge_identity_fields_if_empty(conn, matched_id, fields)
+                mirror_identity_to_legacy(conn, matched_id, asset_id=asset_id)
                 if owns_transaction:
                     conn.commit()
                 return matched_id
@@ -659,6 +738,7 @@ def resolve_or_create_identity(
             matched_id = _matched_identity_id_by_field(conn, column, value)
             if matched_id is not None:
                 _merge_identity_fields_if_empty(conn, matched_id, fields)
+                mirror_identity_to_legacy(conn, matched_id, asset_id=asset_id)
                 if owns_transaction:
                     conn.commit()
                 return matched_id
@@ -671,11 +751,37 @@ def resolve_or_create_identity(
         )
         if matched_id is not None:
             _merge_identity_fields_if_empty(conn, matched_id, fields)
+            mirror_identity_to_legacy(conn, matched_id, asset_id=asset_id)
             if owns_transaction:
                 conn.commit()
             return matched_id
 
-        created_id = _create_identity(conn, asset_row, fields)
+        try:
+            created_id = _create_identity(conn, asset_row, fields)
+        except sqlite3.IntegrityError:
+            fallback_isrc = _norm_text(fields.get("isrc"))
+            if fallback_isrc:
+                matched_id = _matched_identity_id_by_field(conn, "isrc", fallback_isrc)
+                if matched_id is not None:
+                    _merge_identity_fields_if_empty(conn, matched_id, fields)
+                    mirror_identity_to_legacy(conn, matched_id, asset_id=asset_id)
+                    if owns_transaction:
+                        conn.commit()
+                    return matched_id
+            for column in PROVIDER_COLUMNS:
+                value = _norm_text(fields.get(column))
+                if not value:
+                    continue
+                matched_id = _matched_identity_id_by_field(conn, column, value)
+                if matched_id is not None:
+                    _merge_identity_fields_if_empty(conn, matched_id, fields)
+                    mirror_identity_to_legacy(conn, matched_id, asset_id=asset_id)
+                    if owns_transaction:
+                        conn.commit()
+                    return matched_id
+            raise
+
+        mirror_identity_to_legacy(conn, created_id, asset_id=asset_id)
         if owns_transaction:
             conn.commit()
         return created_id

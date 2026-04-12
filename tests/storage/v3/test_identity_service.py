@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import sqlite3
 
+import pytest
+
 from tagslut.storage.schema import init_db
 from tagslut.storage.v3.identity_service import (
     link_asset_to_identity,
@@ -57,6 +59,26 @@ def test_exact_reuse_by_provider_id() -> None:
         conn.close()
 
 
+def test_exact_reuse_by_spotify_id() -> None:
+    conn = _setup_db()
+    try:
+        conn.execute(
+            """
+            INSERT INTO track_identity (id, identity_key, spotify_id, canonical_artist, canonical_title, ingested_at, ingestion_method, ingestion_source, ingestion_confidence)
+            VALUES (12, 'spotify:sp-1', 'sp-1', 'Artist', 'Track', '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')
+            """
+        )
+        identity_id = resolve_or_create_identity(
+            conn,
+            asset_row={"path": "/music/provider-spotify.flac"},
+            metadata={"spotify_id": "sp-1", "artist": "Artist", "title": "Track"},
+            provenance={"source": "spotify"},
+        )
+        assert identity_id == 12
+    finally:
+        conn.close()
+
+
 def test_fuzzy_reuse_then_create_when_no_match() -> None:
     conn = _setup_db()
     try:
@@ -104,6 +126,102 @@ def test_resolve_active_identity_follows_single_merge_hop() -> None:
         row = resolve_active_identity(conn, 11)
         assert int(row["id"]) == 10
         assert str(row["identity_key"]) == "id:active"
+    finally:
+        conn.close()
+
+
+def test_resolve_active_identity_rejects_transitive_merge_chain() -> None:
+    conn = _setup_db()
+    try:
+        conn.executemany(
+            "INSERT INTO track_identity (id, identity_key, merged_into_id, ingested_at, ingestion_method, ingestion_source, ingestion_confidence) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [
+                (20, "id:active", None, "2026-01-01T00:00:00+00:00", "migration", "test_fixture", "legacy"),
+                (21, "id:merged", 20, "2026-01-01T00:00:00+00:00", "migration", "test_fixture", "legacy"),
+                (22, "id:transitive", 21, "2026-01-01T00:00:00+00:00", "migration", "test_fixture", "legacy"),
+            ],
+        )
+        with pytest.raises(RuntimeError, match="transitive"):
+            resolve_active_identity(conn, 22)
+    finally:
+        conn.close()
+
+
+def test_resolve_or_create_identity_mirrors_legacy_on_create() -> None:
+    conn = _setup_db()
+    try:
+        conn.execute("INSERT INTO asset_file (id, path, duration_s) VALUES (9, '/music/auto.flac', 300.0)")
+        conn.execute("INSERT INTO files (path, library_track_key) VALUES ('/music/auto.flac', NULL)")
+
+        identity_id = resolve_or_create_identity(
+            conn,
+            asset_row={"id": 9, "path": "/music/auto.flac", "duration_s": 300.0},
+            metadata={"isrc": "US1234567890", "artist": "Artist", "title": "Track", "beatport_id": "1"},
+            provenance={"source": "beatport"},
+        )
+
+        row = conn.execute(
+            "SELECT identity_key FROM track_identity WHERE id = ?",
+            (identity_id,),
+        ).fetchone()
+        assert row is not None
+        identity_key = str(row["identity_key"])
+
+        file_row = conn.execute(
+            "SELECT library_track_key, canonical_artist, canonical_title, beatport_id FROM files WHERE path = ?",
+            ("/music/auto.flac",),
+        ).fetchone()
+        assert file_row is not None
+        assert file_row["library_track_key"] == identity_key
+        assert file_row["canonical_artist"] == "Artist"
+        assert file_row["canonical_title"] == "Track"
+        assert file_row["beatport_id"] == "1"
+
+        track_row = conn.execute(
+            "SELECT library_track_key, artist, title, isrc FROM library_tracks WHERE library_track_key = ?",
+            (identity_key,),
+        ).fetchone()
+        assert track_row is not None
+        assert track_row["library_track_key"] == identity_key
+        assert track_row["artist"] == "Artist"
+        assert track_row["title"] == "Track"
+        assert track_row["isrc"] == "US1234567890"
+    finally:
+        conn.close()
+
+
+def test_phase1_rename_backfills_canonical_columns() -> None:
+    conn = _setup_db()
+    try:
+        conn.execute("ALTER TABLE track_identity ADD COLUMN label TEXT")
+        conn.execute("ALTER TABLE track_identity ADD COLUMN catalog_number TEXT")
+        conn.execute("ALTER TABLE track_identity ADD COLUMN canonical_duration_s REAL")
+        conn.execute(
+            """
+            INSERT INTO track_identity (
+                id, identity_key, isrc, label, catalog_number, canonical_duration_s,
+                ingested_at, ingestion_method, ingestion_source, ingestion_confidence
+            ) VALUES (
+                33, 'isrc:legacy-1', 'LEGACY1', 'LegacyLabel', 'CAT-1', 123.0,
+                '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy'
+            )
+            """
+        )
+        identity_id = resolve_or_create_identity(
+            conn,
+            asset_row={"path": "/music/legacy.flac"},
+            metadata={"isrc": "legacy1", "artist": "Artist", "title": "Track"},
+            provenance={"source": "manual"},
+        )
+        assert identity_id == 33
+        row = conn.execute(
+            "SELECT canonical_label, canonical_catalog_number, canonical_duration FROM track_identity WHERE id = ?",
+            (33,),
+        ).fetchone()
+        assert row is not None
+        assert row["canonical_label"] == "LegacyLabel"
+        assert row["canonical_catalog_number"] == "CAT-1"
+        assert float(row["canonical_duration"]) == 123.0
     finally:
         conn.close()
 

@@ -35,7 +35,7 @@ Use canonical entry points: `ts-get`, `ts-enrich`, `ts-auth`. Legacy `tagslut in
 ## Current Daily Workflow
 
 ```bash
-# Download (Spotify, TIDAL, Qobuz, or Beatport URL)
+# Download (TIDAL, Qobuz, or Beatport URL)
 ts-get <url>
 ts-get <url> --dj        # + DJ pool M3U
 
@@ -50,16 +50,6 @@ ts-auth qobuz            # one provider only
 ```
 
 See `docs/OPERATOR_QUICK_START.md` for full startup sequence.
-
----
-
-## Command Surface (active wrappers)
-- `ts-get <url> [--dj]` — download via the Spotify intake adapter, tiddl, streamrip, or beatportdl; `--dj` writes per-batch + global `dj_pool.m3u`.
-- `ts-enrich [--provider ...]` — hoarding pass; uses `$TAGSLUT_DB`.
-- `ts-auth [tidal|beatport|qobuz|all]` — refresh tokens; validates Qobuz session; syncs beatportdl creds.
-- `tools/auth [tidal|beatport|qobuz|all]` — implementation behind ts-auth.
-- `tools/enrich` — implementation behind ts-enrich.
-- Legacy wrappers (`tools/get`, `poetry run tagslut intake ...`, etc.) are archived; see `docs/archive/` if needed.
 
 ---
 

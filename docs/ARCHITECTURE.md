@@ -1,8 +1,7 @@
 <!-- Status: Active document. Last major sync 2026-03-14. Note: sections describing
      the 4-stage DJ pipeline (backfill/validate/XML) and DJ_LIBRARY as a distinct
      folder reflect the pre-April 2026 architecture. Current model uses M3U-based
-     DJ pool and a standalone historical-seed matcher. See docs/WORKFLOWS.md and
-     docs/OPERATOR_QUICK_START.md for current operator state. -->
+     DJ pool. See docs/DJ_POOL.md and docs/OPERATOR_QUICK_START.md for current state. -->
 
 # Architecture
 

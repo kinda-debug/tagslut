@@ -7,7 +7,7 @@ import re
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, Optional, Sequence
+from typing import Dict, Iterable, Optional
 
 from mutagen import id3, mp3
 
@@ -41,11 +41,11 @@ def parse_filename(stem: str) -> ParsedFilename | None:
     match_a = SCHEMA_A.match(stem)
     if match_a:
         return ParsedFilename(
-            artist=match_a["artist"],
-            title=match_a["title"],
-            album=match_a["album"],
-            year=match_a["year"],
-            track=match_a["track"],
+            artist=match_a["artist"].strip(),
+            title=match_a["title"].strip(),
+            album=match_a["album"].strip(),
+            year=match_a["year"].strip(),
+            track=match_a["track"].strip(),
         )
 
     match_b = SCHEMA_B.match(stem)
@@ -53,7 +53,7 @@ def parse_filename(stem: str) -> ParsedFilename | None:
         raw_title = match_b["title"].strip()
         title = BPM_SUFFIX.sub("", raw_title).strip()
         return ParsedFilename(
-            artist=match_b["artist"],
+            artist=match_b["artist"].strip(),
             title=title,
             album=None,
             year=None,
@@ -70,8 +70,8 @@ def _first_text(frame: object | None) -> str:
     if text is None:
         return ""
     if isinstance(text, (list, tuple)):
-        return str(text[0]) if text else ""
-    return str(text)
+        return str(text[0]).strip() if text else ""
+    return str(text).strip()
 
 
 def _load_tags(path: Path) -> id3.ID3:
@@ -126,10 +126,10 @@ def _duration_seconds(path: Path) -> Optional[int]:
 
 def _maybe_isrc_from_filename(path: Path, metadata: Dict[str, str]) -> Optional[str]:
     if metadata.get("isrc"):
-        return metadata["isrc"]
+        return metadata["isrc"].strip().upper()
     match = ISRC_IN_BRACKETS.search(path.stem)
     if match:
-        value = match.group(1).upper()
+        value = match.group(1).strip().upper()
         metadata.setdefault("isrc", value)
         return value
     return None
@@ -138,25 +138,6 @@ def _maybe_isrc_from_filename(path: Path, metadata: Dict[str, str]) -> Optional[
 def _load_existing_paths(conn: sqlite3.Connection) -> set[str]:
     rows = conn.execute("SELECT path FROM files").fetchall()
     return {str(row[0]) for row in rows}
-
-
-def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
-    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
-    return {str(row[1]) for row in rows}
-
-
-def _insert_row(conn: sqlite3.Connection, table: str, row: Dict[str, object], available_cols: set[str]) -> bool:
-    cols: Sequence[str] = [col for col in row.keys() if col in available_cols]
-    if not cols:
-        return False
-    placeholders = ", ".join(["?"] * len(cols))
-    col_list = ", ".join(cols)
-    before = conn.total_changes
-    conn.execute(
-        f"INSERT OR IGNORE INTO {table} ({col_list}) VALUES ({placeholders})",
-        tuple(row[col] for col in cols),
-    )
-    return (conn.total_changes - before) > 0
 
 
 def _iter_mp3(root: Path) -> Iterable[Path]:
@@ -176,7 +157,7 @@ def register_mp3_only(
     if db_path is None:
         env_db = os.environ.get("TAGSLUT_DB")
         if not env_db:
-            raise RuntimeError("--db not provided and TAGSLUT_DB not set")
+            raise SystemExit("Database path required: pass --db or set TAGSLUT_DB")
         db_path = Path(env_db)
 
     root = root.expanduser().resolve()
@@ -188,7 +169,6 @@ def register_mp3_only(
 
     try:
         existing_paths = _load_existing_paths(conn)
-        available_cols = _table_columns(conn, "files")
 
         for path in _iter_mp3(root):
             stats.scanned += 1
@@ -208,26 +188,42 @@ def register_mp3_only(
                 duration = _duration_seconds(path)
 
                 if not execute:
-                    stats.inserted += 1
                     if verbose:
                         print(f"[dry-run] would insert: {path_str}")
                     continue
 
-                metadata_json = json.dumps(metadata, ensure_ascii=False, sort_keys=True)
+                metadata_json = json.dumps(metadata, ensure_ascii=False)
 
-                row = {
-                    "path": path_str,
-                    "zone": zone,
-                    "download_source": source,
-                    "flac_ok": None,
-                    "duration": duration,
-                    "metadata_json": metadata_json,
-                    "canonical_isrc": isrc_value,
-                    "ingestion_method": "legacy_mp3_register",
-                    "ingestion_source": path_str,
-                    "ingestion_confidence": "uncertain",
-                }
-                inserted = _insert_row(conn, "files", row, available_cols)
+                before = conn.total_changes
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO files (
+                        path,
+                        zone,
+                        download_source,
+                        flac_ok,
+                        duration,
+                        metadata_json,
+                        canonical_isrc,
+                        ingestion_method,
+                        ingestion_source,
+                        ingestion_confidence
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        path_str,
+                        zone,
+                        source,
+                        None,
+                        duration,
+                        metadata_json,
+                        isrc_value,
+                        "legacy_mp3_register",
+                        path_str,
+                        "uncertain",
+                    ),
+                )
+                inserted = (conn.total_changes - before) > 0
                 stats.inserted += int(inserted)
                 existing_paths.add(path_str)
                 if verbose:
@@ -243,7 +239,7 @@ def register_mp3_only(
         conn.close()
 
     print(
-        "Scanned: {stats.scanned}, in DB: {stats.skipped_existing}, "
+        "Scanned: {stats.scanned}, already in DB: {stats.skipped_existing}, "
         "inserted: {stats.inserted}, failed: {stats.failed}".format(stats=stats)
     )
     return stats
@@ -254,7 +250,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--root",
         type=Path,
-        default=Path("/Volumes/MUSIC/MP3_LIBRARY"),
+        default=Path("/Volumes/MUSIC/DJ_LIBRARY"),
         help="directory to scan recursively",
     )
     parser.add_argument(

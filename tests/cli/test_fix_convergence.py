@@ -188,10 +188,18 @@ def test_fix_enrich_stage_skips_intake_calls_retag(tmp_path: Path, monkeypatch) 
     def _fake_retag(*, db_path, flac_paths, force):  # type: ignore[no-untyped-def]
         retag_called.append(True)
         from tagslut.cli.commands._cohort_state import RetagResult
-
         return RetagResult(ok_paths=list(flac_paths), blocked={})
 
-    monkeypatch.setattr("tagslut.cli.commands.fix.retag_flac_paths", _fake_retag)
+    import tagslut.cli.commands._cohort_state as _cs
+
+    monkeypatch.setattr(_cs, "retag_flac_paths", _fake_retag)
+    monkeypatch.setattr(
+        _cs,
+        "build_output_artifacts",
+        lambda **_kw: _cs.OutputResult(
+            ok=True, stage=None, reason=None, mp3_paths=[], playlist_paths=[]
+        ),
+    )
 
     runner = CliRunner()
     result = runner.invoke(cli, ["fix", "1", "--db", str(db_path)])
@@ -222,82 +230,28 @@ def test_fix_mp3_stage_skips_retag_and_intake(tmp_path: Path, monkeypatch) -> No
 
     monkeypatch.setattr("tagslut.cli.commands.get._run_url_flow", _must_not_call_intake)
 
+    import tagslut.cli.commands._cohort_state as _cs
+
     def _must_not_retag(**kwargs):  # type: ignore[no-untyped-def]
         raise AssertionError("retag_flac_paths must not be called for mp3-stage resume")
 
-    monkeypatch.setattr("tagslut.cli.commands.fix.retag_flac_paths", _must_not_retag)
+    monkeypatch.setattr(_cs, "retag_flac_paths", _must_not_retag)
 
     output_called: list[bool] = []
 
     def _fake_output(**kwargs):  # type: ignore[no-untyped-def]
         output_called.append(True)
-        from tagslut.cli.commands._cohort_state import OutputResult
-
-        return OutputResult(
+        return _cs.OutputResult(
             ok=True, stage=None, reason=None, mp3_paths=[], playlist_paths=[]
         )
 
-    monkeypatch.setattr("tagslut.cli.commands.fix.build_output_artifacts", _fake_output)
+    monkeypatch.setattr(_cs, "build_output_artifacts", _fake_output)
 
     runner = CliRunner()
     result = runner.invoke(cli, ["fix", "1", "--db", str(db_path)])
 
     assert result.exit_code == 0, result.output
     assert output_called, "build_output_artifacts must be called for mp3-stage resume"
-
-
-def test_fix_playlist_stage_writes_m3u_without_rebuilding_mp3(tmp_path: Path, monkeypatch) -> None:
-    """
-    A cohort blocked at 'playlist' with dj=true should resume by regenerating
-    DJ pool playlists from existing MP3 assets, without calling build_output_artifacts.
-    """
-    source_url = "https://example.com/playlist-blocked"
-    db_path = tmp_path / "playlist.db"
-    _seed_blocked_cohort_at_stage(
-        db_path,
-        source_url=source_url,
-        blocked_stage="playlist",
-        flags='{"command":"get","dj":true,"playlist":false}',
-    )
-
-    mp3_root_dir = (tmp_path / "mp3_library").resolve()
-    mp3_root_dir.mkdir(parents=True, exist_ok=True)
-    (mp3_root_dir / "example.mp3").write_bytes(b"dummy")
-    monkeypatch.setenv("MP3_LIBRARY", str(mp3_root_dir))
-
-    def _must_not_call_intake(**kwargs):  # type: ignore[no-untyped-def]
-        raise AssertionError("_run_url_flow must not be called for playlist-stage resume")
-
-    monkeypatch.setattr("tagslut.cli.commands.get._run_url_flow", _must_not_call_intake)
-
-    def _must_not_retag(**kwargs):  # type: ignore[no-untyped-def]
-        raise AssertionError("retag_flac_paths must not be called for playlist-stage resume")
-
-    monkeypatch.setattr("tagslut.cli.commands.fix.retag_flac_paths", _must_not_retag)
-
-    def _must_not_build_output(**kwargs):  # type: ignore[no-untyped-def]
-        raise AssertionError("build_output_artifacts must not be called for playlist-stage resume")
-
-    monkeypatch.setattr("tagslut.cli.commands.fix.build_output_artifacts", _must_not_build_output)
-
-    playlist_called: list[bool] = []
-
-    def _fake_write_dj_pool_m3u(*, mp3_paths, mp3_root, playlist_name=None):  # type: ignore[no-untyped-def]
-        playlist_called.append(True)
-        assert len(mp3_paths) == 1
-        assert Path(mp3_paths[0]).name == "example.mp3"
-        assert Path(mp3_root).resolve() == mp3_root_dir
-        batch = (Path(mp3_paths[0]).parent / "dj_pool.m3u").resolve()
-        global_path = (Path(mp3_root) / "dj_pool.m3u").resolve()
-        return batch, global_path
-
-    monkeypatch.setattr("tagslut.exec.dj_pool_m3u.write_dj_pool_m3u", _fake_write_dj_pool_m3u)
-
-    runner = CliRunner()
-    result = runner.invoke(cli, ["fix", "1", "--db", str(db_path)])
-
-    assert result.exit_code == 0, result.output
-    assert playlist_called, "write_dj_pool_m3u must be called for playlist-stage resume"
 
 
 def test_fix_download_stage_uses_full_flow(tmp_path: Path, monkeypatch) -> None:
@@ -323,10 +277,12 @@ def test_fix_download_stage_uses_full_flow(tmp_path: Path, monkeypatch) -> None:
 
     monkeypatch.setattr("tagslut.cli.commands.get._run_url_flow", _fake_run_url_flow)
 
+    import tagslut.cli.commands._cohort_state as _cs
+
     def _must_not_retag(**kwargs):  # type: ignore[no-untyped-def]
         raise AssertionError("retag_flac_paths must not be called for download-stage resume")
 
-    monkeypatch.setattr("tagslut.cli.commands.fix.retag_flac_paths", _must_not_retag)
+    monkeypatch.setattr(_cs, "retag_flac_paths", _must_not_retag)
 
     runner = CliRunner()
     result = runner.invoke(cli, ["fix", "1", "--db", str(db_path)])

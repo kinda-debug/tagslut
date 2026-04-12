@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import sqlite3
 from pathlib import Path
 
@@ -96,7 +95,6 @@ def _resume_late_stage(
     successful re-enrich or path validation without building output artifacts.
     """
     _ENRICH_STAGES = frozenset({"enrich"})
-    _DJ_PLAYLIST_STAGES = frozenset({"playlist"})
 
     flac_paths = cohort_paths(conn, cohort_id=cohort_id)
     if not flac_paths:
@@ -158,98 +156,6 @@ def _resume_late_stage(
         conn.commit()
         return 0
 
-    if dj and min_stage in _DJ_PLAYLIST_STAGES:
-        try:
-            from tagslut.exec.dj_pool_m3u import write_dj_pool_m3u
-            from tagslut.exec.mp3_build import _mp3_asset_dest_for_flac_path
-            from tagslut.utils.env_paths import get_volume
-        except Exception as exc:
-            record_blocked_paths(
-                conn,
-                cohort_id=cohort_id,
-                stage="playlist",
-                reason=f"Failed to load DJ playlist resume dependencies: {exc}",
-                paths=effective_paths,
-                placeholder_source=f"cohort-{cohort_id}",
-            )
-            conn.commit()
-            return 2
-
-        mp3_root_value = os.environ.get("MP3_LIBRARY")
-        if not mp3_root_value:
-            record_blocked_paths(
-                conn,
-                cohort_id=cohort_id,
-                stage="mp3",
-                reason="Missing MP3_LIBRARY environment variable for DJ output",
-                paths=effective_paths,
-                placeholder_source=f"cohort-{cohort_id}",
-            )
-            conn.commit()
-            return 2
-
-        final_mp3_root = Path(mp3_root_value).expanduser().resolve()
-        library_root = get_volume("library", required=False)
-
-        expected_mp3s: list[Path] = [
-            _mp3_asset_dest_for_flac_path(
-                flac_path=path.expanduser().resolve(),
-                mp3_root=final_mp3_root,
-                library_root=library_root,
-            ).resolve()
-            for path in effective_paths
-        ]
-        existing_mp3s = [path for path in expected_mp3s if path.exists()]
-
-        # If MP3s are missing, we cannot safely resume at playlist-only; fall back to mp3+playlist build.
-        if len(existing_mp3s) != len(expected_mp3s):
-            output_result = build_output_artifacts(
-                db_path=db_path,
-                cohort_id=cohort_id,
-                flac_paths=effective_paths,
-                dj=True,
-                playlist_only=False,
-            )
-            if not output_result.ok:
-                record_blocked_paths(
-                    conn,
-                    cohort_id=cohort_id,
-                    stage=output_result.stage or "output",
-                    reason=output_result.reason or "output failed",
-                    paths=effective_paths,
-                    placeholder_source=f"cohort-{cohort_id}",
-                )
-                conn.commit()
-                click.echo(
-                    f"{output_result.stage or 'output'}: {output_result.reason}",
-                    err=True,
-                )
-                return 2
-
-            mark_paths_ok(conn, cohort_id=cohort_id, paths=effective_paths)
-            refresh_cohort_status(conn, cohort_id=cohort_id)
-            conn.commit()
-            return 0
-
-        try:
-            write_dj_pool_m3u(mp3_paths=existing_mp3s, mp3_root=final_mp3_root)
-        except Exception as exc:
-            record_blocked_paths(
-                conn,
-                cohort_id=cohort_id,
-                stage="playlist",
-                reason=str(exc),
-                paths=effective_paths,
-                placeholder_source=f"cohort-{cohort_id}",
-            )
-            conn.commit()
-            return 2
-
-        mark_paths_ok(conn, cohort_id=cohort_id, paths=effective_paths)
-        refresh_cohort_status(conn, cohort_id=cohort_id)
-        conn.commit()
-        return 0
-
     output_result = build_output_artifacts(
         db_path=db_path,
         cohort_id=cohort_id,
@@ -273,10 +179,34 @@ def _resume_late_stage(
         )
         return 2
 
-    mark_paths_ok(conn, cohort_id=cohort_id, paths=effective_paths)
     refresh_cohort_status(conn, cohort_id=cohort_id)
     conn.commit()
     return 0
+
+
+def retag_flac_paths(*, db_path: Path, flac_paths: list[Path], force: bool) -> object:
+    import tagslut.cli.commands._cohort_state as _cs
+
+    return _cs.retag_flac_paths(db_path=db_path, flac_paths=flac_paths, force=force)
+
+
+def build_output_artifacts(
+    *,
+    db_path: Path,
+    cohort_id: int,
+    flac_paths: list[Path],
+    dj: bool,
+    playlist_only: bool,
+) -> object:
+    import tagslut.cli.commands._cohort_state as _cs
+
+    return _cs.build_output_artifacts(
+        db_path=db_path,
+        cohort_id=cohort_id,
+        flac_paths=flac_paths,
+        dj=dj,
+        playlist_only=playlist_only,
+    )
 
 
 def resume_cohort(

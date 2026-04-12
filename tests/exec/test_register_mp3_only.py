@@ -52,37 +52,25 @@ class _StubMP3Module:
         return obj
 
 
-def _make_db(tmp_path: Path, minimal: bool = False) -> Path:
-    db = tmp_path / ("files_min.db" if minimal else "files.db")
+def _make_db(tmp_path: Path) -> Path:
+    db = tmp_path / "files.db"
     conn = sqlite3.connect(str(db))
-    if minimal:
-        conn.execute(
-            """
-            CREATE TABLE files (
-                path TEXT PRIMARY KEY,
-                zone TEXT,
-                download_source TEXT,
-                metadata_json TEXT
-            )
-            """
+    conn.execute(
+        """
+        CREATE TABLE files (
+            path TEXT PRIMARY KEY,
+            zone TEXT,
+            download_source TEXT,
+            flac_ok INTEGER,
+            duration INTEGER,
+            metadata_json TEXT,
+            canonical_isrc TEXT,
+            ingestion_method TEXT,
+            ingestion_source TEXT,
+            ingestion_confidence TEXT
         )
-    else:
-        conn.execute(
-            """
-            CREATE TABLE files (
-                path TEXT PRIMARY KEY,
-                zone TEXT,
-                download_source TEXT,
-                flac_ok INTEGER,
-                duration INTEGER,
-                metadata_json TEXT,
-                canonical_isrc TEXT,
-                ingestion_method TEXT,
-                ingestion_source TEXT,
-                ingestion_confidence TEXT
-            )
-            """
-        )
+        """
+    )
     conn.commit()
     conn.close()
     return db
@@ -242,29 +230,5 @@ def test_dry_run_does_not_insert(monkeypatch, tmp_path: Path, db_path: Path):
     row = conn.execute("SELECT COUNT(*) FROM files").fetchone()
     conn.close()
 
-    assert stats.inserted == 1  # counted dry-run intention
+    assert stats.inserted == 0
     assert row[0] == 0
-
-
-def test_inserts_when_optional_columns_missing(monkeypatch, tmp_path: Path):
-    db = _make_db(tmp_path, minimal=True)
-    mp3_path = tmp_path / "Minimal.mp3"
-    mp3_path.touch()
-
-    _install_stubs(monkeypatch, mapping={str(mp3_path): _FakeID3({})}, durations={str(mp3_path): 45})
-
-    stats = module.register_mp3_only(
-        root=tmp_path,
-        db_path=db,
-        source="legacy_mp3",
-        zone="accepted",
-        execute=True,
-        verbose=False,
-    )
-
-    conn = sqlite3.connect(str(db))
-    row = conn.execute("SELECT path, metadata_json FROM files").fetchone()
-    conn.close()
-
-    assert stats.inserted == 1
-    assert row is not None

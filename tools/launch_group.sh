@@ -37,6 +37,10 @@ GROUPS[GROUP5]="feat-tidal-native-fields:0 feat-intake-spotiflac:120 feat-spotif
 # Beets sidecar — self-contained branch, anytime
 GROUPS[GROUP6]="beets-sidecar-research:0 beets-sidecar-package:120 feat-beets-sidecar:300"
 
+# Filesystem consolidation + cleanup — independent, run together
+GROUPS[GROUP8]="consolidate-mp3-leftovers:0 purge-stale-work:0"
+GROUPS[GROUP8B]="consolidate-mp3-leftovers:0"
+
 # DJ hardening — after GROUP5
 GROUPS[GROUP7]="dj-missing-tests-week1:0 dj-pool-wizard-transcode:120 lexicon-reconcile:240"
 
@@ -54,7 +58,11 @@ echo "Launching $GROUP (${#ENTRIES} prompts)..."
 for entry in $ENTRIES; do
   name="${entry%%:*}"
   delay="${entry##*:}"
-  prompt_file="$PROMPTS/${name}.prompt.md"
+  if [[ -f "$PROMPTS/${name}.md" ]]; then
+    prompt_file="$PROMPTS/${name}.md"
+  else
+    prompt_file="$PROMPTS/${name}.prompt.md"
+  fi
 
   if [[ ! -f "$prompt_file" ]]; then
     echo "  SKIP: $name (prompt file not found)"

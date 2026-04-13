@@ -61,7 +61,29 @@ def _detect_format(log_path: Path) -> Literal["legacy", "next"]:
 
 
 def _strip_next_playlist_suffix(title: str) -> str:
-    return re.sub(r"\s+\((?P<suffix>[A-Z][^)]*)\)\s*$", "", title).strip()
+    stripped = title.rstrip()
+    if not stripped.endswith(")"):
+        return stripped
+
+    depth = 0
+    for idx in range(len(stripped) - 1, -1, -1):
+        char = stripped[idx]
+        if char == ")":
+            depth += 1
+            continue
+        if char != "(":
+            continue
+
+        depth -= 1
+        if depth != 0 or idx == 0 or stripped[idx - 1] != " ":
+            continue
+
+        suffix = stripped[idx + 1 : -1].strip()
+        if suffix and suffix[0].isupper():
+            return stripped[: idx - 1].rstrip()
+        return stripped
+
+    return stripped
 
 
 def _coerce_next_provider(value: str | None) -> ProviderName:
@@ -98,6 +120,12 @@ def parse_log_next(log_path: Path) -> list[SpotiflacTrack]:
     tracks: list[SpotiflacTrack] = []
     current_failed: SpotiflacTrack | None = None
 
+    def _flush_failed() -> None:
+        nonlocal current_failed
+        if current_failed is not None:
+            tracks.append(current_failed)
+            current_failed = None
+
     for raw in log_path.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
         if not line:
@@ -107,6 +135,7 @@ def parse_log_next(log_path: Path) -> list[SpotiflacTrack]:
 
         success_m = _NEXT_SUCCESS_RE.match(line)
         if success_m:
+            _flush_failed()
             title = (success_m.group("title") or "").strip()
             if not title:
                 continue
@@ -120,14 +149,13 @@ def parse_log_next(log_path: Path) -> list[SpotiflacTrack]:
                     failure_reason=None,
                 )
             )
-            current_failed = None
             continue
 
         failed_m = _NEXT_FAILED_HEADER_RE.match(line)
         if failed_m:
+            _flush_failed()
             title = _strip_next_playlist_suffix((failed_m.group("title") or "").strip())
             if not title:
-                current_failed = None
                 continue
             current_failed = SpotiflacTrack(
                 display_title=title,
@@ -137,7 +165,6 @@ def parse_log_next(log_path: Path) -> list[SpotiflacTrack]:
                 failed=True,
                 failure_reason=None,
             )
-            tracks.append(current_failed)
             continue
 
         if current_failed is None:
@@ -159,6 +186,7 @@ def parse_log_next(log_path: Path) -> list[SpotiflacTrack]:
         if id_m:
             current_failed.spotify_id = (id_m.group("id") or "").strip() or None
 
+    _flush_failed()
     return tracks
 
 
@@ -375,6 +403,23 @@ def parse_failed_report(failed_path: Path) -> dict[str, str]:
     return out
 
 
+def _resolve_file_paths(
+    tracks: list[SpotiflacTrack],
+    stem_map: dict[str, Path],
+    norm_stem_map: dict[str, Path],
+) -> None:
+    """Mutate track.file_path in-place using exact then normalised stem matching."""
+    for track in tracks:
+        exact = stem_map.get(track.display_title)
+        if exact is not None:
+            track.file_path = exact
+            continue
+
+        norm_key = _norm_match_key(track.display_title)
+        if norm_key in norm_stem_map:
+            track.file_path = norm_stem_map[norm_key]
+
+
 def build_manifest(
     log_path: Path,
     m3u8_path: Path | None = None,
@@ -407,6 +452,10 @@ def build_manifest(
         failed_map = (
             parse_failed_report(failed_path) if failed_path and failed_path.exists() else {}
         )
+        for track in tracks:
+            if track.display_title in failed_map:
+                track.failure_reason = failed_map[track.display_title]
+                track.failed = True
 
     stem_map = parse_m3u8(m3u8_path) if m3u8_path and m3u8_path.exists() else {}
 
@@ -416,20 +465,7 @@ def build_manifest(
         if key and key not in norm_stem_map:
             norm_stem_map[key] = path
 
-    for track in tracks:
-        if stem_map:
-            exact = stem_map.get(track.display_title)
-            if exact is not None:
-                track.file_path = exact
-            else:
-                norm_key = _norm_match_key(track.display_title)
-                if norm_key in norm_stem_map:
-                    track.file_path = norm_stem_map[norm_key]
-
-        if track.display_title in failed_map:
-            track.failure_reason = failed_map[track.display_title]
-            track.failed = True
-
+    _resolve_file_paths(tracks, stem_map, norm_stem_map)
     return tracks
 
 

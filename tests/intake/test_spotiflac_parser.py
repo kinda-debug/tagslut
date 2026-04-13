@@ -175,3 +175,37 @@ Burn Myself - Coyu; Edu Imbernon.mp3
     assert "deezer api returned status: 502" in (
         by_title["Der Spatz Auf Dem Dach - Peter Juergens; Oliver Klein"].failure_reason or ""
     ).lower()
+
+
+def test_spotiflacnext_manifest_parsing(tmp_path: Path) -> None:
+    log_path = _write_next_log(tmp_path)
+    m3u8_path = tmp_path / "Berlin Underground Selection_converted.m3u8"
+    m3u8_path.write_text(
+        """\
+#EXTM3U
+What's Next - Ramon Tapia.mp3
+Shanghai Spinner - Oliver Huntemann.mp3
+Burn Myself - Coyu; Edu Imbernon.mp3
+""",
+        encoding="utf-8",
+    )
+
+    tracks = build_manifest(log_path, m3u8_path=m3u8_path)
+    by_title = {track.display_title: track for track in tracks}
+
+    success = by_title["What's Next - Ramon Tapia"]
+    assert success.failed is False
+    assert success.provider == "unknown"
+    assert success.spotify_id is None
+    assert success.file_path is not None
+    assert success.file_path.name == "What's Next - Ramon Tapia.mp3"
+
+    failed = by_title["Der Spatz Auf Dem Dach - Peter Juergens; Oliver Klein"]
+    assert failed.failed is True
+    assert failed.isrc == "DEAA20900927"
+    assert failed.spotify_id == "4CMBoQOCX7KNjJqCB800Rm"
+    assert (
+        failed.failure_reason
+        == "[Qobuz A] track not found for ISRC: DEAA20900927 | [Deezer A] deezer api returned status: 502"
+    )
+    assert classify_failure_reason(failed.failure_reason) == "unavailable"

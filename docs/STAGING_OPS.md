@@ -97,16 +97,24 @@ poetry run tagslut intake spotiflac /Volumes/MUSIC/staging/SpotiFLAC/SpotiFLAC_*
 
 ### `tidal/` (mixed `.m4a`, `.flac`, `.mp3`, and `tmp*` orphans)
 
-1) Transcode `.m4a` first:
+Tidal `.m4a` AAC files split into two buckets — audit with ffprobe before deciding:
+
+- **ALAC / FLAC-in-M4A** → transcode to FLAC (lossless, safe).
+- **AAC-LC ≥ 256 kbps** → optionally transcode to MP3 320k with `--lossy-to-mp3` if DJ pool inclusion is desired.
+- **HE-AAC ≤ 96 kbps** → **do not transcode**. HE-AAC 96k → MP3 320k is a net quality loss. Leave untouched and flag for re-acquisition from TIDAL lossless or Qobuz.
+
+1) Transcode `.m4a` for lossless files only (HE-AAC 96k files will be skipped automatically):
 
 ```bash
+# ALAC→FLAC only; 96k HE-AAC files skipped automatically
 scripts/transcode_m4a_to_flac_lossless.sh \
-  --scan-path /Volumes/MUSIC/staging/tidal \
-  --lossy-to-mp3
+  --scan-path /Volumes/MUSIC/staging/tidal
 ```
 
-2) Do not intake `tmp*` until each file is identified (ffprobe) and either renamed to the correct extension or discarded if corrupt/incomplete.
-3) Intake the root:
+If any high-quality AAC-LC files should also go to MP3, transcode them separately or add `--lossy-to-mp3` after confirming only acceptable-quality AAC files remain.
+
+2. Do not intake `tmp*` until each file is identified (ffprobe) and either renamed to the correct extension or discarded if corrupt/incomplete.
+3. Intake the root:
 
 ```bash
 poetry run tagslut intake process-root --root /Volumes/MUSIC/staging/tidal --dry-run

@@ -413,11 +413,24 @@ def register_intake_group(cli: click.Group) -> None:
                 import re
                 import string
 
+                _TRACK_PREFIX_RE = re.compile(r"^(?:\d+(?:-\d+)?\.\s+|\d+\s*-\s+)")
+
                 def _norm_key(text: str) -> str:
                     lowered = (text or "").lower()
                     lowered = lowered.translate(str.maketrans({ch: " " for ch in string.punctuation}))
                     lowered = re.sub(r"[^a-z0-9\\s]+", " ", lowered)
                     return re.sub(r"\\s+", " ", lowered).strip()
+
+                def _stem_variants(text: str) -> list[str]:
+                    raw = (text or "").strip()
+                    if not raw:
+                        return []
+                    stripped = _TRACK_PREFIX_RE.sub("", raw).strip()
+                    variants: list[str] = []
+                    for value in (raw, stripped):
+                        if value and value not in variants:
+                            variants.append(value)
+                    return variants
 
                 exact_map = {t.display_title: t for t in unresolved}
                 norm_map: dict[str, list] = {}
@@ -426,19 +439,24 @@ def register_intake_group(cli: click.Group) -> None:
                     if key:
                         norm_map.setdefault(key, []).append(t)
 
-                for flac_path in base_root.rglob("*.flac"):
-                    stem = flac_path.stem
-                    hit = exact_map.pop(stem, None)
-                    if hit is not None:
-                        hit.file_path = flac_path.resolve()
-                    else:
-                        key = _norm_key(stem)
-                        bucket = norm_map.get(key)
-                        if bucket:
-                            track = bucket.pop(0)
-                            track.file_path = flac_path.resolve()
-                            if not bucket:
-                                norm_map.pop(key, None)
+                for pattern in ("*.flac", "*.m4a", "*.mp3"):
+                    for candidate_path in base_root.rglob(pattern):
+                        for stem in _stem_variants(candidate_path.stem):
+                            hit = exact_map.pop(stem, None)
+                            if hit is not None:
+                                hit.file_path = candidate_path.resolve()
+                                break
+
+                            key = _norm_key(stem)
+                            bucket = norm_map.get(key)
+                            if bucket:
+                                track = bucket.pop(0)
+                                track.file_path = candidate_path.resolve()
+                                if not bucket:
+                                    norm_map.pop(key, None)
+                                break
+                        if not exact_map and not norm_map:
+                            break
                     if not exact_map and not norm_map:
                         break
 
@@ -608,7 +626,7 @@ def register_intake_group(cli: click.Group) -> None:
                             duration_ref_source=None,
                             event_time=now_iso,
                             download_source_override=download_source,
-                            ingestion_method_override="spotiflac_import",
+                            ingestion_method_override="spotiflac_fallback",
                             ingestion_source_override=ingestion_source,
                             ingestion_confidence_override="high",
                             provider_id_hints=provider_hints,

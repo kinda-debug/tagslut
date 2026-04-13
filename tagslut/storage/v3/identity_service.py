@@ -15,6 +15,7 @@ __all__ = [
     "derive_identity_key",
     "resolve_active_identity",
     "resolve_or_create_identity",
+    "merge_identity_fields_if_empty",
     "link_asset_to_identity",
     "mirror_identity_to_legacy",
 ]
@@ -508,6 +509,7 @@ def _mirror_to_files(
     field_map: dict[str, str] = {
         "library_track_key": "identity_key",
         "beatport_id": "beatport_id",
+        "spotify_id": "spotify_id",
         "canonical_title": "canonical_title",
         "canonical_artist": "canonical_artist",
         "canonical_album": "canonical_album",
@@ -785,6 +787,38 @@ def resolve_or_create_identity(
         if owns_transaction:
             conn.commit()
         return created_id
+    except Exception:
+        if owns_transaction:
+            conn.rollback()
+        raise
+
+
+def merge_identity_fields_if_empty(
+    conn: sqlite3.Connection,
+    identity_id: int,
+    metadata: Mapping[str, Any],
+    provenance: Mapping[str, Any],
+    *,
+    asset_id: int | None = None,
+) -> int:
+    """Merge non-conflicting metadata into an existing identity without overwriting set fields."""
+    owns_transaction = not conn.in_transaction
+    if owns_transaction:
+        conn.execute("BEGIN IMMEDIATE")
+
+    try:
+        resolved = resolve_active_identity(conn, int(identity_id))
+        resolved_id = int(resolved["id"])
+        fields = _identity_value_map(
+            {"id": asset_id, "path": None, "duration_s": None},
+            metadata,
+            provenance,
+        )
+        _merge_identity_fields_if_empty(conn, resolved_id, fields)
+        mirror_identity_to_legacy(conn, resolved_id, asset_id=asset_id)
+        if owns_transaction:
+            conn.commit()
+        return resolved_id
     except Exception:
         if owns_transaction:
             conn.rollback()

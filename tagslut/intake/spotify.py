@@ -248,6 +248,30 @@ class SpotifyMetadataClient:
                     details[track_id] = track
         return details
 
+    def search_by_isrc(self, isrc: str, *, limit: int = 10) -> list[SpotifyTrack]:
+        normalized_isrc = str(isrc or "").strip().upper()
+        if not normalized_isrc:
+            return []
+        payload = self._request(
+            "/search",
+            params={"q": f"isrc:{normalized_isrc}", "type": "track", "limit": max(1, int(limit))},
+        )
+        tracks_payload = payload.get("tracks") if isinstance(payload.get("tracks"), dict) else {}
+        items = tracks_payload.get("items") if isinstance(tracks_payload, dict) else []
+        results: list[SpotifyTrack] = []
+        for item in items or []:
+            if not isinstance(item, dict):
+                continue
+            track = self._track_from_payload(
+                item,
+                collection_type="search",
+                collection_title=f"isrc:{normalized_isrc}",
+                playlist_index=len(results) + 1,
+            )
+            if track.spotify_id:
+                results.append(track)
+        return results
+
     def _track_from_payload(
         self,
         payload: dict[str, Any],

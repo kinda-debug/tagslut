@@ -723,6 +723,7 @@ def scan_mp3_roots(
                     continue
             all_files.append((mp3, zone))
 
+    all_files.sort(key=lambda item: str(item[0]))
     total = len(all_files)
 
     with (
@@ -1261,6 +1262,8 @@ def generate_missing_masters_report(
     conn: sqlite3.Connection,
     *,
     out_path: Path,
+    run_id: str,
+    log_dir: Path,
 ) -> dict:
     """Generate a Markdown report of missing master FLACs for DJ MP3s.
 
@@ -1268,67 +1271,143 @@ def generate_missing_masters_report(
     Section B — FLACs ready but no MP3 built.
     """
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    jsonl_path = log_dir / f"reconcile_missing_masters_{run_id}.jsonl"
+
+    def _col_exists(table: str, col: str) -> bool:
+        try:
+            return any(
+                str(r[1]) == col
+                for r in conn.execute(f"PRAGMA table_info({table})").fetchall()
+            )
+        except sqlite3.OperationalError:
+            return False
+
+    has_status = _col_exists("track_identity", "status")
+    has_identity_key = _col_exists("track_identity", "identity_key")
+    has_ingestion_method = _col_exists("track_identity", "ingestion_method")
 
     # Section A — orphaned mp3_asset rows
+    stub_clause = "0"
+    if has_status:
+        stub_clause = "ti.status = 'stub_pending_master'"
+    elif has_identity_key and has_ingestion_method:
+        stub_clause = "ti.identity_key LIKE 'stub_%' AND ti.ingestion_method = 'mp3_reconcile'"
+    elif has_identity_key:
+        stub_clause = "ti.identity_key LIKE 'stub_%'"
+
     orphan_rows = conn.execute(
-        """
-        SELECT ma.id, ma.path, ma.zone, ma.bitrate, ma.lexicon_track_id,
-               ti.canonical_bpm, ti.canonical_key, ti.status AS id_status
+        f"""
+        SELECT
+          ma.path,
+          ma.zone,
+          ma.bitrate,
+          ma.lexicon_track_id,
+          ma.identity_id,
+          ti.canonical_title,
+          ti.canonical_artist,
+          ti.canonical_bpm,
+          ti.canonical_key,
+          dp.energy
         FROM mp3_asset ma
         LEFT JOIN track_identity ti ON ti.id = ma.identity_id
-        WHERE ma.identity_id IS NULL
-           OR (ti.status = 'stub_pending_master')
+        LEFT JOIN dj_track_profile dp ON dp.identity_id = ma.identity_id
+        WHERE ma.identity_id IS NULL OR ({stub_clause})
         """,
     ).fetchall()
 
     # Determine playlist membership for priority
-    in_playlist = set()
+    in_playlist: set[int] = set()
     for r in conn.execute(
         """
-        SELECT ma.path
-        FROM mp3_asset ma
-        JOIN dj_admission da ON da.identity_id = ma.identity_id
-        JOIN dj_playlist_track dpt ON dpt.dj_admission_id = da.id
+        SELECT DISTINCT da.identity_id
+        FROM dj_playlist_track dpt
+        JOIN dj_admission da ON da.id = dpt.dj_admission_id
         """
     ).fetchall():
-        in_playlist.add(r[0])
+        if r and r[0] is not None:
+            in_playlist.add(int(r[0]))
 
-    section_a: list[tuple[str, str]] = []  # (priority, path)
+    section_a: list[tuple[str, dict]] = []  # (priority, row)
     high = medium = low = 0
 
     for r in orphan_rows:
-        path = r[1]
-        lex_id = r[4]
-        bpm = r[5]
-        key = r[6]
+        (
+            path,
+            zone,
+            bitrate,
+            lex_id,
+            identity_id,
+            title,
+            artist,
+            bpm,
+            key,
+            energy,
+        ) = r
 
-        if path in in_playlist or lex_id is not None:
+        is_high = False
+        if identity_id is not None and int(identity_id) in in_playlist:
+            is_high = True
+        if not is_high and lex_id is not None and energy is not None:
+            try:
+                is_high = int(energy) > 5
+            except Exception:
+                is_high = False
+
+        if is_high:
             prio = "HIGH"
             high += 1
-        elif bpm and key:
+        elif bpm is not None and key is not None:
             prio = "MEDIUM"
             medium += 1
         else:
             prio = "LOW"
             low += 1
-        section_a.append((prio, path))
+        section_a.append(
+            (
+                prio,
+                {
+                    "priority": prio,
+                    "zone": zone or "",
+                    "title": title or "",
+                    "artist": artist or "",
+                    "path": path,
+                    "bitrate": bitrate,
+                },
+            )
+        )
 
     # Sort by priority
     _prio_order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
-    section_a.sort(key=lambda x: _prio_order[x[0]])
+    section_a.sort(key=lambda x: (_prio_order[x[0]], str(x[1].get("path") or "")))
 
     # Section B — identities with asset_link but no mp3_asset
-    section_b_rows = conn.execute(
-        """
-        SELECT ti.id, ti.canonical_artist, ti.canonical_title
-        FROM track_identity ti
-        JOIN asset_link al ON al.identity_id = ti.id
-        WHERE NOT EXISTS (
-            SELECT 1 FROM mp3_asset ma WHERE ma.identity_id = ti.id
-        )
-        """,
-    ).fetchall()
-    section_b = [(r[0], r[1], r[2]) for r in section_b_rows]
+    section_b: list[tuple[object, object, object, object, object]] = []
+    try:
+        section_b_rows = conn.execute(
+            """
+            SELECT identity_id, identity_key, canonical_artist, canonical_title, asset_path
+            FROM v_dj_ready_candidates
+            WHERE NOT EXISTS (
+                SELECT 1 FROM mp3_asset ma WHERE ma.identity_id = v_dj_ready_candidates.identity_id
+            )
+            """
+        ).fetchall()
+        section_b = [(r[0], r[1], r[2], r[3], r[4]) for r in section_b_rows]
+    except sqlite3.OperationalError:
+        section_b_rows = conn.execute(
+            """
+            SELECT ti.identity_key, ti.canonical_artist, ti.canonical_title, af.path
+            FROM track_identity ti
+            JOIN asset_link al ON al.identity_id = ti.id
+            JOIN asset_file af ON af.id = al.asset_id
+            WHERE NOT EXISTS (
+                SELECT 1 FROM mp3_asset ma WHERE ma.identity_id = ti.id
+            )
+            ORDER BY lower(ti.canonical_artist), lower(ti.canonical_title)
+            """
+        ).fetchall()
+        section_b = [(None, r[0], r[1], r[2], r[3]) for r in section_b_rows]
 
     lines: list[str] = [
         "# Missing Masters Report",
@@ -1338,19 +1417,46 @@ def generate_missing_masters_report(
         f"Priority breakdown: HIGH={high} MEDIUM={medium} LOW={low}",
         "",
     ]
-    for prio, path in section_a:
-        lines.append(f"- [ ] `{prio}` {path}")
+    for prio, row in section_a:
+        artist = str(row.get("artist") or "?").strip() or "?"
+        title = str(row.get("title") or "?").strip() or "?"
+        zone = str(row.get("zone") or "").strip()
+        path = str(row.get("path") or "")
+        bitrate = row.get("bitrate")
+        br = str(bitrate) if bitrate is not None else ""
+        lines.append(f"- [ ] `{prio}` | `{zone}` | {artist} — {title} | `{path}` | {br}")
 
     lines += [
         "",
         f"## Section B — FLACs ready, no MP3 ({len(section_b)} total)",
         "",
     ]
-    for iid, artist, title in section_b:
-        label = f"{artist or '?'} — {title or '?'} (id={iid})"
+    for identity_id, identity_key, artist, title, asset_path in section_b:
+        suggest = f"tagslut mp3 build --identity-ids {identity_id}" if identity_id else "tagslut mp3 build --identity-ids <id>"
+        label = f"`{identity_key}` | {artist or '?'} — {title or '?'} | `{asset_path}` | `{suggest}`"
         lines.append(f"- [ ] {label}")
 
     out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    with open(jsonl_path, "a", encoding="utf-8") as jsonl_fh:
+        jsonl_fh.write(
+            json.dumps(
+                {
+                    "ts": datetime.now(tz=timezone.utc).isoformat(),
+                    "run_id": run_id,
+                    "action": "report_generated",
+                    "path": str(out_path),
+                    "result": "ok",
+                    "details": {
+                        "section_a": len(section_a),
+                        "high": high,
+                        "medium": medium,
+                        "low": low,
+                        "section_b": len(section_b),
+                    },
+                }
+            )
+            + "\n"
+        )
 
     return {
         "section_a_count": len(section_a),

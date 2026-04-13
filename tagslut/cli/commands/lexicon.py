@@ -32,6 +32,7 @@ def lexicon_group() -> None:
     show_default=True,
     help="Dry-run counts without writing to DB.",
 )
+@click.option("--force", is_flag=True, default=False, help="Re-run even if checkpoint marks Task 4 done.")
 def lexicon_import(
     db_path: str | None,
     lexicon_path: str,
@@ -39,6 +40,7 @@ def lexicon_import(
     log_dir: str,
     prefer_lexicon: bool,
     dry_run: bool,
+    force: bool,
 ) -> None:
     """Import Lexicon DJ library metadata into TAGSLUT_DB."""
     import sqlite3
@@ -46,6 +48,13 @@ def lexicon_import(
 
     from tagslut.exec.lexicon_import import import_lexicon_metadata
     from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
+    from tagslut.utils.reconcile_session import (
+        ensure_session_run_id,
+        find_latest_checkpoint_for_run_id,
+        format_completed_tasks,
+        task_done,
+        update_checkpoint,
+    )
 
     try:
         resolved_db = resolve_cli_env_db_path(
@@ -54,7 +63,14 @@ def lexicon_import(
     except DbResolutionError as exc:
         raise click.ClickException(str(exc)) from exc
 
-    _run_id = run_id or "a655f8d4-c88b-4986-8a92-8e952848a75d"
+    checkpoints_dir = Path("data/checkpoints")
+    _run_id, _ = ensure_session_run_id(run_id_arg=run_id, checkpoints_dir=checkpoints_dir)
+    checkpoint = find_latest_checkpoint_for_run_id(checkpoints_dir, run_id=_run_id)
+    if checkpoint is not None:
+        click.echo(f"[CHECKPOINT] {checkpoint.path} tasks done: {format_completed_tasks(checkpoint)}")
+        if task_done(checkpoint, 4) and not force:
+            if not click.confirm("Task 4 is marked done. Re-run anyway?", default=False):
+                return
 
     conn = sqlite3.connect(str(resolved_db))
     try:
@@ -80,6 +96,15 @@ def lexicon_import(
     if dry_run:
         click.secho("Dry-run complete. Pass --execute to commit.", fg="yellow")
 
+    ckpt_path = update_checkpoint(
+        checkpoints_dir=checkpoints_dir,
+        run_id=_run_id,
+        task_number=4,
+        notes=f"lexicon={lexicon_path} prefer_lexicon={prefer_lexicon} dry_run={dry_run} "
+              f"matched={matched} written={written} skipped={skipped} errors={errors}",
+    )
+    click.echo(f"[CHECKPOINT SAVED] {ckpt_path}")
+
 
 @lexicon_group.command("import-playlists", help="Import Lexicon playlists into TAGSLUT_DB.")
 @click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
@@ -98,12 +123,14 @@ def lexicon_import(
     show_default=True,
     help="Dry-run counts without writing to DB.",
 )
+@click.option("--force", is_flag=True, default=False, help="Re-run even if checkpoint marks Task 5 done.")
 def lexicon_import_playlists(
     db_path: str | None,
     lexicon_path: str,
     run_id: str,
     log_dir: str,
     dry_run: bool,
+    force: bool,
 ) -> None:
     """Import selected Lexicon playlists into dj_playlist and dj_playlist_track."""
     import sqlite3
@@ -111,6 +138,13 @@ def lexicon_import_playlists(
 
     from tagslut.exec.lexicon_import import import_lexicon_playlists
     from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
+    from tagslut.utils.reconcile_session import (
+        ensure_session_run_id,
+        find_latest_checkpoint_for_run_id,
+        format_completed_tasks,
+        task_done,
+        update_checkpoint,
+    )
 
     try:
         resolved_db = resolve_cli_env_db_path(
@@ -119,7 +153,14 @@ def lexicon_import_playlists(
     except DbResolutionError as exc:
         raise click.ClickException(str(exc)) from exc
 
-    _run_id = run_id or "a655f8d4-c88b-4986-8a92-8e952848a75d"
+    checkpoints_dir = Path("data/checkpoints")
+    _run_id, _ = ensure_session_run_id(run_id_arg=run_id, checkpoints_dir=checkpoints_dir)
+    checkpoint = find_latest_checkpoint_for_run_id(checkpoints_dir, run_id=_run_id)
+    if checkpoint is not None:
+        click.echo(f"[CHECKPOINT] {checkpoint.path} tasks done: {format_completed_tasks(checkpoint)}")
+        if task_done(checkpoint, 5) and not force:
+            if not click.confirm("Task 5 is marked done. Re-run anyway?", default=False):
+                return
 
     conn = sqlite3.connect(str(resolved_db))
     try:
@@ -141,3 +182,11 @@ def lexicon_import_playlists(
     )
     if dry_run:
         click.secho("Dry-run complete. Pass --execute to commit.", fg="yellow")
+
+    ckpt_path = update_checkpoint(
+        checkpoints_dir=checkpoints_dir,
+        run_id=_run_id,
+        task_number=5,
+        notes=f"lexicon={lexicon_path} dry_run={dry_run} playlists={playlists} tracks={tracks} skipped={skipped}",
+    )
+    click.echo(f"[CHECKPOINT SAVED] {ckpt_path}")

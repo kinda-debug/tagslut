@@ -129,7 +129,10 @@ def import_lexicon_metadata(
                streamingId, archived, incoming
         FROM lex.Track
         WHERE archived = 0 AND incoming = 0
-          AND location LIKE '/Volumes/MUSIC/MP3_LIBRARY/%'
+          AND (
+            location LIKE '/Volumes/MUSIC/DJ_LIBRARY/%'
+            OR location LIKE '/Volumes/MUSIC/DJ_POOL_MANUAL_MP3/%'
+          )
         """
     ).fetchall()
 
@@ -234,12 +237,38 @@ def _process_lex_track(
 
     counters["matched"] += 1
 
-    # Always set mp3_asset.lexicon_track_id
-    if not dry_run and location:
-        conn.execute(
-            "UPDATE mp3_asset SET lexicon_track_id = ? WHERE path = ? AND lexicon_track_id IS NULL",
-            (lex_id, location),
-        )
+    # Always set mp3_asset.lexicon_track_id when matched by path
+    if location:
+        mp3_row = conn.execute(
+            "SELECT lexicon_track_id FROM mp3_asset WHERE path = ? LIMIT 1",
+            (location,),
+        ).fetchone()
+        current_lexicon_id = mp3_row[0] if mp3_row else None
+        if current_lexicon_id is None:
+            if not dry_run:
+                conn.execute(
+                    "UPDATE mp3_asset SET lexicon_track_id = ? WHERE path = ? AND lexicon_track_id IS NULL",
+                    (lex_id, location),
+                )
+            _write_log(
+                conn,
+                run_id=run_id,
+                source="lexicon_import",
+                action="lexicon_field_import",
+                confidence="",
+                mp3_path=location,
+                identity_id=identity_id,
+                lexicon_track_id=lex_id,
+                details={
+                    "table": "mp3_asset",
+                    "field": "lexicon_track_id",
+                    "old_value": None,
+                    "new_value": lex_id,
+                },
+                jsonl_fh=jsonl_fh,
+                dry_run=dry_run,
+            )
+            counters["fields_written"] += 1
 
     # --- Write identity fields ---
     id_fields = {
@@ -273,10 +302,15 @@ def _process_lex_track(
                     )
                 _write_log(
                     conn, run_id=run_id, source="lexicon_import",
-                    action="field_written", confidence="",
+                    action="lexicon_field_import", confidence="",
                     mp3_path=location or "", identity_id=identity_id,
                     lexicon_track_id=lex_id,
-                    details={"field": col, "value": new_val},
+                    details={
+                        "table": "track_identity",
+                        "field": col,
+                        "old_value": current,
+                        "new_value": new_val,
+                    },
                     jsonl_fh=jsonl_fh, dry_run=dry_run,
                 )
                 counters["fields_written"] += 1
@@ -316,10 +350,15 @@ def _process_lex_track(
                 )
             _write_log(
                 conn, run_id=run_id, source="lexicon_import",
-                action="profile_field_written", confidence="",
+                action="lexicon_field_import", confidence="",
                 mp3_path=location or "", identity_id=identity_id,
                 lexicon_track_id=lex_id,
-                details={"field": col, "value": val},
+                details={
+                    "table": "dj_track_profile",
+                    "field": col,
+                    "old_value": {"energy": current_energy, "rating": current_rating, "last_played_at": current_lp}.get(col),
+                    "new_value": val,
+                },
                 jsonl_fh=jsonl_fh, dry_run=dry_run,
             )
             counters["fields_written"] += 1
@@ -349,10 +388,16 @@ def _process_lex_track(
                 )
             _write_log(
                 conn, run_id=run_id, source="lexicon_import",
-                action="notes_appended", confidence="",
+                action="lexicon_field_import", confidence="",
                 mp3_path=location or "", identity_id=identity_id,
                 lexicon_track_id=lex_id,
-                details={"additions": notes_additions},
+                details={
+                    "table": "dj_track_profile",
+                    "field": "notes",
+                    "old_value": current_notes,
+                    "new_value": new_notes,
+                    "additions": notes_additions,
+                },
                 jsonl_fh=jsonl_fh, dry_run=dry_run,
             )
             counters["fields_written"] += 1

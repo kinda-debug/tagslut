@@ -6,6 +6,21 @@ All notable changes to this project are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 Versioning: [Semantic Versioning](https://semver.org/)
 
+## [Unreleased] - 2026-04-13
+
+### Added
+- Reconcile task checkpoints: commands read/write `data/checkpoints/reconcile_YYYYMMDD_HH.json` and prompt before re-running completed tasks.
+- `tagslut v3 migrate` — preview/apply pending v3 schema migrations (dry-run by default).
+- `tagslut mp3 verify-schema` — Task 1 table verification + JSONL log + checkpoint.
+
+### Changed
+- `tagslut mp3 reconcile` now reconciles from `--scan-csv`; legacy direct-root scan moved to `tagslut mp3 reconcile-library` (alias kept: `reconcile-scan`).
+- Lexicon metadata import only considers DJ MP3 roots: `/Volumes/MUSIC/DJ_LIBRARY/` and `/Volumes/MUSIC/DJ_POOL_MANUAL_MP3/`.
+
+### Fixed
+- Lexicon field writes now log as `lexicon_field_import` with old/new values.
+- Missing masters report no longer depends on `track_identity.status` and prefers `v_dj_ready_candidates` when available.
+
 ## [Unreleased] - 2026-03-29
 
 ### Added - Auth

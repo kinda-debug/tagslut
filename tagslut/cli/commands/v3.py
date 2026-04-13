@@ -104,6 +104,60 @@ def register_v3_group(cli: click.Group) -> None:
     def v3():  # type: ignore  # TODO: mypy-strict
         """V3 database utilities."""
 
+    @v3.command("migrate")
+    @click.option("--db", "db_path", required=True, type=click.Path(exists=True), help="tagslut v3 DB path")
+    @click.option("--dry-run/--execute", default=True, show_default=True, help="Dry-run lists pending migrations only.")
+    def v3_migrate(db_path: str, dry_run: bool) -> None:  # type: ignore  # TODO: mypy-strict
+        """Run (or preview) v3 schema migrations."""
+        from tagslut.storage.v3.migration_runner import MIGRATIONS_DIR, run_pending_v3
+
+        version_prefix = re.compile(r"^(?P<version>\\d+)")
+        conn = sqlite3.connect(str(Path(db_path)))
+        try:
+            row = conn.execute(
+                """
+                SELECT COALESCE(MAX(version), 0)
+                FROM schema_migrations
+                WHERE schema_name = 'v3'
+                """
+            ).fetchone()
+            current_version = int(row[0] or 0) if row else 0
+            applied_notes = {
+                str(r[0])
+                for r in conn.execute(
+                    "SELECT note FROM schema_migrations WHERE schema_name = 'v3'"
+                ).fetchall()
+                if r and r[0]
+            }
+        finally:
+            conn.close()
+
+        pending: list[str] = []
+        for path in sorted(MIGRATIONS_DIR.iterdir(), key=lambda p: p.name):
+            if not path.is_file() or path.name.startswith("_") or path.suffix not in {".sql", ".py"}:
+                continue
+            if path.suffix == ".sql":
+                if path.name in applied_notes:
+                    continue
+                pending.append(path.name)
+                continue
+            # .py migration: compare version prefix and/or module.VERSION
+            m = version_prefix.match(path.stem)
+            file_version = int(m.group("version")) if m else 0
+            if file_version > current_version:
+                pending.append(path.name)
+
+        if dry_run:
+            click.echo(f"v3 migrations: current_version={current_version} pending={len(pending)}")
+            for name in pending:
+                click.echo(f"  - {name}")
+            return
+
+        applied = run_pending_v3(Path(db_path))
+        click.echo(f"v3 migrations applied: {len(applied)}")
+        for name in applied:
+            click.echo(f"  - {name}")
+
     @v3.group("provenance")
     def provenance_group():  # type: ignore  # TODO: mypy-strict
         """Query v3 provenance and ingestion attribution."""
@@ -209,4 +263,3 @@ def register_v3_group(cli: click.Group) -> None:
                 )
         finally:
             conn.close()
-

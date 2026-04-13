@@ -46,11 +46,17 @@ def _read_flac_tags(path: Path) -> dict:
         "bpm": None,
         "key": None,
         "duration_s": None,
+        "sample_rate": None,
+        "bitrate": None,
     }
 
     try:
         audio = FLAC(str(path))
-        info["duration_s"] = round(float(audio.info.length), 3) if audio.info and audio.info.length else None
+        if audio.info:
+            info["duration_s"] = round(float(audio.info.length), 3) if audio.info.length else None
+            info["sample_rate"] = int(getattr(audio.info, "sample_rate", 0) or 0) or None
+            br = getattr(audio.info, "bitrate", None)
+            info["bitrate"] = int(br) if isinstance(br, (int, float)) and br else None
 
         def _first(tag: str) -> str | None:
             vals = audio.get(tag.upper()) or audio.get(tag.lower())
@@ -100,6 +106,18 @@ def scan_master_library(
         "errors": 0,
     }
 
+    def _col_exists(table: str, col: str) -> bool:
+        try:
+            return any(
+                str(r[1]) == col
+                for r in conn.execute(f"PRAGMA table_info({table})").fetchall()
+            )
+        except sqlite3.OperationalError:
+            return False
+
+    has_sample_rate = _col_exists("asset_file", "sample_rate")
+    has_bitrate = _col_exists("asset_file", "bitrate")
+
     # Pre-build identity lookup maps
     _isrc_map: dict[str, int] = {}
     _norm_map: dict[tuple[str, str], int] = {}
@@ -145,15 +163,40 @@ def scan_master_library(
 
                     asset_id: int | None = None
                     if not dry_run:
+                        cols = ["path", "zone", "library", "size_bytes", "mtime", "content_sha256", "duration_s", "first_seen_at"]
+                        vals: list[object] = [
+                            path_str,
+                            "MASTER_LIBRARY",
+                            "master",
+                            size_bytes,
+                            mtime,
+                            sha256,
+                            tags.get("duration_s"),
+                            "datetime('now')",
+                        ]
+                        if has_sample_rate:
+                            cols.insert(6, "sample_rate")
+                            vals.insert(6, tags.get("sample_rate"))
+                        if has_bitrate:
+                            insert_at = cols.index("duration_s")
+                            cols.insert(insert_at, "bitrate")
+                            vals.insert(insert_at, tags.get("bitrate"))
+
+                        placeholders = []
+                        params: list[object] = []
+                        for v in vals:
+                            if isinstance(v, str) and v == "datetime('now')":
+                                placeholders.append(v)
+                            else:
+                                placeholders.append("?")
+                                params.append(v)
+
                         conn.execute(
-                            """
-                            INSERT OR IGNORE INTO asset_file
-                              (path, zone, library, size_bytes, mtime,
-                               content_sha256, duration_s, first_seen_at)
-                            VALUES (?, 'MASTER_LIBRARY', 'master', ?, ?, ?, ?, datetime('now'))
+                            f"""
+                            INSERT OR IGNORE INTO asset_file ({", ".join(cols)})
+                            VALUES ({", ".join(placeholders)})
                             """,
-                            (path_str, size_bytes, mtime,
-                             sha256, tags["duration_s"]),
+                            tuple(params),
                         )
                         row = conn.execute(
                             "SELECT id FROM asset_file WHERE path = ? LIMIT 1",

@@ -25,12 +25,14 @@ def master_group() -> None:
     show_default=True,
     help="Dry-run counts without writing to DB.",
 )
+@click.option("--force", is_flag=True, default=False, help="Re-run even if checkpoint marks Task 6 done.")
 def master_scan(
     root: str,
     db_path: str | None,
     run_id: str,
     log_dir: str,
     dry_run: bool,
+    force: bool,
 ) -> None:
     """Scan the MASTER_LIBRARY FLAC tree and register asset_file + asset_link rows."""
     import sqlite3
@@ -38,6 +40,13 @@ def master_scan(
 
     from tagslut.exec.master_scan import scan_master_library
     from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
+    from tagslut.utils.reconcile_session import (
+        ensure_session_run_id,
+        find_latest_checkpoint_for_run_id,
+        format_completed_tasks,
+        task_done,
+        update_checkpoint,
+    )
 
     try:
         resolved_db = resolve_cli_env_db_path(
@@ -46,7 +55,14 @@ def master_scan(
     except DbResolutionError as exc:
         raise click.ClickException(str(exc)) from exc
 
-    _run_id = run_id or "a655f8d4-c88b-4986-8a92-8e952848a75d"
+    checkpoints_dir = Path("data/checkpoints")
+    _run_id, _ = ensure_session_run_id(run_id_arg=run_id, checkpoints_dir=checkpoints_dir)
+    checkpoint = find_latest_checkpoint_for_run_id(checkpoints_dir, run_id=_run_id)
+    if checkpoint is not None:
+        click.echo(f"[CHECKPOINT] {checkpoint.path} tasks done: {format_completed_tasks(checkpoint)}")
+        if task_done(checkpoint, 6) and not force:
+            if not click.confirm("Task 6 is marked done. Re-run anyway?", default=False):
+                return
 
     conn = sqlite3.connect(str(resolved_db))
     try:
@@ -73,3 +89,11 @@ def master_scan(
     )
     if dry_run:
         click.secho("Dry-run complete. Pass --execute to commit.", fg="yellow")
+
+    ckpt_path = update_checkpoint(
+        checkpoints_dir=checkpoints_dir,
+        run_id=_run_id,
+        task_number=6,
+        notes=f"root={root} dry_run={dry_run} inserted={inserted} matched={matched} stubs={stubs} skipped={skipped} errors={errors}",
+    )
+    click.echo(f"[CHECKPOINT SAVED] {ckpt_path}")

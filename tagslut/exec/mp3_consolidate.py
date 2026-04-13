@@ -65,16 +65,8 @@ def _visible_files_exist(root: Path) -> bool:
     return False
 
 
-def _next_conflict_path(dest: Path) -> Path:
-    candidate = dest.with_name(f"{dest.stem}_conflict{dest.suffix}")
-    if not candidate.exists():
-        return candidate
-    i = 2
-    while True:
-        candidate = dest.with_name(f"{dest.stem}_conflict{i}{dest.suffix}")
-        if not candidate.exists():
-            return candidate
-        i += 1
+def _conflict_path(dest: Path) -> Path:
+    return dest.with_name(f"{dest.stem}_conflict{dest.suffix}")
 
 
 def _update_db_path(conn: sqlite3.Connection, src: Path, dest: Path) -> int:
@@ -136,7 +128,9 @@ def consolidate_mp3s(
                                 print(f"DUPLICATE: {src} == {dest} (deleted src)")
                             continue
 
-                        conflict_dest = _next_conflict_path(dest)
+                        conflict_dest = _conflict_path(dest)
+                        if conflict_dest.exists():
+                            raise RuntimeError(f"Conflict target already exists: {conflict_dest}")
                         shutil.move(str(dest), str(conflict_dest))
                         stats.conflicts_renamed += 1
                         stats.db_rows_updated += _update_db_path(conn, dest, conflict_dest)
@@ -195,4 +189,3 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

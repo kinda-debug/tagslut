@@ -77,6 +77,17 @@ def _walk_files(root: pathlib.Path) -> list[pathlib.Path]:
                     continue
             except OSError:
                 continue
+            lower = name.lower()
+            if not (
+                lower.endswith(".m3u")
+                or lower.endswith(".m3u8")
+                or lower.endswith(".bak")
+                or lower.endswith(".txt")
+                or lower.endswith(".zip")
+                or lower.endswith(".xml")
+                or name == ".DS_Store"
+            ):
+                continue
             files.append(p)
     return files
 
@@ -97,6 +108,18 @@ def _choose_keeper(paths: list[pathlib.Path], mtimes: dict[pathlib.Path, float],
     return min(paths, key=key)
 
 
+def _unique_destination_path(dest: pathlib.Path) -> pathlib.Path:
+    if not dest.exists():
+        return dest
+    suffix = "".join(dest.suffixes)
+    base = dest.name[: -len(suffix)] if suffix else dest.name
+    for i in range(1, 10_000):
+        candidate = dest.with_name(f"{base}_{i}{suffix}")
+        if not candidate.exists():
+            return candidate
+    raise RuntimeError(f"Unable to find unique destination for: {dest}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Parse, deduplicate, classify, and consolidate playlists under /Volumes/MUSIC/playlists/")
     parser.add_argument("--apply", action="store_true", help="Apply moves (otherwise dry-run report only)")
@@ -115,7 +138,6 @@ def main() -> int:
     all_files = _walk_files(root)
     entries: list[dict] = []
     mtimes: dict[pathlib.Path, float] = {}
-    playlist_entries_by_norm: dict[tuple[str, ...], list[dict]] = {}
 
     for p in sorted(all_files, key=str):
         name_lower = p.name.lower()
@@ -130,30 +152,20 @@ def main() -> int:
         if not is_playlist and not is_bak:
             entries.append({"path": p, "mtime": mtime, "tracks": None, "norm": None,
                             "track_count": None, "bucket": "SKIP", "reason": "",
-                            "duplicate_of": None, "rel": None})
+                            "duplicate_of": None, "rel": None, "is_playlist": False, "is_bak": False})
             continue
 
         tracks = _read_playlist_tracks(p)
         norm = tuple(_basename_any(t) for t in tracks)
         entry = {"path": p, "mtime": mtime, "tracks": tracks, "norm": norm,
                  "track_count": len(tracks), "bucket": None, "reason": "",
-                 "duplicate_of": None, "rel": p.relative_to(root)}
+                 "duplicate_of": None, "rel": p.relative_to(root), "is_playlist": is_playlist, "is_bak": is_bak}
         entries.append(entry)
-        playlist_entries_by_norm.setdefault(norm, []).append(entry)
-
-    for norm, group in playlist_entries_by_norm.items():
-        if len(group) <= 1:
-            continue
-        keeper = _choose_keeper([e["path"] for e in group], mtimes, root)
-        for e in group:
-            if e["path"] != keeper:
-                e["duplicate_of"] = keeper
 
     for e in entries:
         if e["bucket"] == "SKIP":
             continue
         p: pathlib.Path = e["path"]
-        rel: pathlib.Path = e["rel"]
 
         junk_reason = ""
         if p.name == " .m3u8":
@@ -171,7 +183,28 @@ def main() -> int:
         if junk_reason:
             e["bucket"] = "JUNK"
             e["reason"] = junk_reason
+
+    playlist_dedupe_groups: dict[tuple[str, ...], list[dict]] = {}
+    for e in entries:
+        if e.get("bucket") is not None:
             continue
+        if not e.get("is_playlist", False):
+            continue
+        playlist_dedupe_groups.setdefault(e["norm"], []).append(e)
+
+    for norm, group in playlist_dedupe_groups.items():
+        if len(group) <= 1:
+            continue
+        keeper = _choose_keeper([e["path"] for e in group], mtimes, root)
+        for e in group:
+            if e["path"] != keeper:
+                e["duplicate_of"] = keeper
+
+    for e in entries:
+        if e["bucket"] in ("SKIP", "JUNK"):
+            continue
+        p: pathlib.Path = e["path"]
+        rel: pathlib.Path = e["rel"]
 
         if e.get("duplicate_of") is not None:
             e["bucket"] = "ARCHIVE"
@@ -214,7 +247,10 @@ def main() -> int:
             continue
         src: pathlib.Path = e["path"]
         rel: pathlib.Path = e["rel"]
-        dest = (archive_root if bucket == "ARCHIVE" else junk_root) / rel
+        if bucket == "ARCHIVE":
+            dest = archive_root / rel
+        else:
+            dest = junk_root / src.name
         moves.append((src, dest))
 
     moved_archive = 0
@@ -226,9 +262,10 @@ def main() -> int:
                 if not src.exists():
                     continue
                 dest.parent.mkdir(parents=True, exist_ok=True)
-                shutil.move(str(src), str(dest))
-                log.write(f"MOVE {src} -> {dest}\n")
-                if dest.is_relative_to(archive_root):
+                final_dest = _unique_destination_path(dest)
+                shutil.move(str(src), str(final_dest))
+                log.write(f"MOVE {src} -> {final_dest}\n")
+                if final_dest.is_relative_to(archive_root):
                     moved_archive += 1
                 else:
                     moved_junk += 1

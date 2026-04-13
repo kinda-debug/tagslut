@@ -592,17 +592,6 @@ elif [[ "$URL" == *"qobuz.com"* ]]; then
     STREAMRIP_CONFIG="/Users/georgeskhawam/Projects/streamrip/dev_config.toml"
     STREAMRIP_ROOT="/Volumes/MUSIC/staging/StreamripDownloads"
 
-    cd "$REPO_ROOT"
-    "$STREAMRIP_CMD" --config-path "$STREAMRIP_CONFIG" --no-db url "$URL"
-
-    STREAMRIP_EXIT=$?
-    if [[ $STREAMRIP_EXIT -ne 0 ]]; then
-        echo "Error: streamrip exited with code $STREAMRIP_EXIT" >&2
-        exit $STREAMRIP_EXIT
-    fi
-
-    poetry run python -m tagslut index register "$STREAMRIP_ROOT" --source qobuz --execute
-
     PLAYLIST_NAME=""
     if [[ "$URL" == *"/playlist/"* ]]; then
         PLAYLIST_ID="${URL##*/playlist/}"
@@ -635,27 +624,26 @@ print(r.json().get('title', ''))
 " 2>/dev/null || true)"
     fi
 
-    # Build MP3s and write DJ pool M3U if --dj or --mp3 requested
-    if [[ "$WANTS_DJ" -eq 1 || "$WANTS_MP3" -eq 1 ]]; then
-        MP3_ROOT_ARG="${MP3_LIBRARY:-/Volumes/MUSIC/MP3_LIBRARY}"
-        INTAKE_CMD=(poetry run python -m tagslut intake url "$URL")
-        if [[ "$WANTS_DJ" -eq 1 ]]; then
-            INTAKE_CMD+=(--dj --mp3-root "$MP3_ROOT_ARG")
-        else
-            INTAKE_CMD+=(--mp3 --mp3-root "$MP3_ROOT_ARG")
-        fi
-        if [[ -n "$PLAYLIST_NAME" ]]; then
-            INTAKE_CMD+=(--playlist-name "$PLAYLIST_NAME")
-        fi
-        "${INTAKE_CMD[@]}"
+    cd "$REPO_ROOT"
+    "$STREAMRIP_CMD" --config-path "$STREAMRIP_CONFIG" --no-db url "$URL"
+
+    STREAMRIP_EXIT=$?
+    if [[ $STREAMRIP_EXIT -ne 0 ]]; then
+        echo "Error: streamrip exited with code $STREAMRIP_EXIT" >&2
+        exit $STREAMRIP_EXIT
     fi
 
-    # Enrich if --enrich requested or always after download
-    if [[ "$MODE" == "enrich" || "$MODE" == "auto" ]]; then
-        "$SCRIPT_DIR/enrich"
+    QOBUZ_INTAKE_ARGS=()
+    if [[ "$MODE" == "enrich" ]]; then
+        QOBUZ_INTAKE_ARGS+=(--enrich)
+    fi
+    if [[ -n "$PLAYLIST_NAME" ]]; then
+        QOBUZ_INTAKE_ARGS+=(--playlist-name "$PLAYLIST_NAME")
     fi
 
-    exit 0
+    build_intake_cmd "qobuz" "$STREAMRIP_ROOT/Qobuz" "$@" "${QOBUZ_INTAKE_ARGS[@]}"
+
+    exec "${INTAKE_CMD[@]}"
 
 elif [[ "$URL" == *"deezer.com"* || "$URL" == *"dzr.page.link"* ]]; then
     if [[ ! -x "$DEEMIX_WRAPPER" ]]; then

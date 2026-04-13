@@ -39,7 +39,8 @@ GROUPS[GROUP6]="beets-sidecar-research:0 beets-sidecar-package:120 feat-beets-si
 
 # Filesystem consolidation + cleanup — independent, run together
 GROUPS[GROUP8]="consolidate-mp3-leftovers:0 purge-stale-work:0"
-GROUPS[GROUP8B]="consolidate-mp3-leftovers:0"
+GROUPS[GROUP9]="qobuz-full-intake-pipeline:0"
+GROUPS[GROUP10]="triage-work-dirs:0"
 
 # DJ hardening — after GROUP5
 GROUPS[GROUP7]="dj-missing-tests-week1:0 dj-pool-wizard-transcode:120 lexicon-reconcile:240"

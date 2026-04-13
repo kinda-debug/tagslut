@@ -58,7 +58,7 @@ def up(conn: sqlite3.Connection) -> None:
         raise RuntimeError("track_identity ingestion_method CHECK does not match expected shape")
 
     new_create_sql = re.sub(
-        r"^CREATE TABLE(?: IF NOT EXISTS)? track_identity\b",
+        r'^CREATE TABLE(?: IF NOT EXISTS)?\s+"?track_identity"?',
         "CREATE TABLE track_identity_new",
         create_sql,
         count=1,

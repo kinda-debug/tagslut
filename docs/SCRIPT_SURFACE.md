@@ -129,6 +129,18 @@ Role: Combined build + run OneTagger workflow with defaults.
 14. `tools/review/sync_phase1_prs.sh`
 Role: Maintainer-only helper for pushing the active Phase 1 branch stack with preserved PR scope boundaries.
 
+## Transcode Helpers (Scripts)
+
+- `scripts/transcode_m4a_to_flac_lossless.sh`
+Purpose: Transcode lossless `.m4a` (ALAC or FLAC-in-M4A) to `.flac` (optionally AAC `.m4a` to 320k MP3) while preserving metadata/artwork.
+Flags: `--scan-path`, `--output-dir`, `--lossy-to-mp3`, `--overwrite`
+Example: `scripts/transcode_m4a_to_flac_lossless.sh --scan-path /Volumes/MUSIC/staging/SpotiFLACnext --lossy-to-mp3`
+
+- `scripts/verify_transcodes.sh`
+Purpose: Sanity-check outputs from `transcode_m4a_to_flac_lossless.sh` (lossless pairs: bit-perfect PCM MD5; lossy pairs: duration+decode).
+Flags: `--scan-path`, `--lossy-mp3`
+Example: `scripts/verify_transcodes.sh --scan-path /Volumes/MUSIC/staging/SpotiFLACnext --lossy-mp3`
+
 ## Canonical DJ Pool Builder
 
 Primary operator-facing DJ pool workflow:

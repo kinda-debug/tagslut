@@ -12,6 +12,8 @@ Versioning: [Semantic Versioning](https://semver.org/)
 - Reconcile task checkpoints: commands read/write `data/checkpoints/reconcile_YYYYMMDD_HH.json` and prompt before re-running completed tasks.
 - `tagslut v3 migrate` — preview/apply pending v3 schema migrations (dry-run by default).
 - `tagslut mp3 verify-schema` — Task 1 table verification + JSONL log + checkpoint.
+- `scripts/transcode_m4a_to_flac_lossless.sh` — transcode lossless `.m4a` (ALAC or FLAC-in-M4A) to `.flac` with optional AAC `.m4a` → 320k MP3.
+- `scripts/verify_transcodes.sh` — verify `.m4a` → `.flac` (bit-perfect PCM MD5) and optional AAC `.m4a` → `.mp3` (duration + decode).
 
 ### Changed
 - `tagslut mp3 reconcile` now reconciles from `--scan-csv`; legacy direct-root scan moved to `tagslut mp3 reconcile-library` (alias kept: `reconcile-scan`).

@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 from pathlib import Path
+import shutil
+import subprocess
 
 from tagslut.intake.spotiflac_parser import (
     _detect_format,
+    _enrich_from_tags,
     build_manifest,
     classify_failure_reason,
     parse_log,
     parse_log_next,
+    SpotiflacTrack,
 )
 
 
@@ -63,6 +67,34 @@ def _write_next_log(tmp_path: Path, name: str = "Berlin Underground Selection.tx
 
 def _parse_next_tracks(tmp_path: Path) -> list:
     return parse_log_next(_write_next_log(tmp_path))
+
+
+def _healthy_flac_fixture() -> Path:
+    return Path(__file__).parent.parent / "data" / "healthy.flac"
+
+
+def _write_test_m4a(path: Path) -> Path:
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "anullsrc=r=44100:cl=stereo",
+            "-t",
+            "1",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            str(path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return path
 
 
 def test_spotiflac_manifest_parsing(tmp_path: Path) -> None:
@@ -199,6 +231,80 @@ Burn Myself - Coyu; Edu Imbernon.mp3
     assert success.provider == "unknown"
     assert success.spotify_id is None
     assert success.file_path is not None
+
+
+def test_enrich_from_tags_flac(tmp_path: Path) -> None:
+    from mutagen.flac import FLAC
+
+    flac_path = tmp_path / "test.flac"
+    shutil.copy(_healthy_flac_fixture(), flac_path)
+    audio = FLAC(flac_path)
+    audio["isrc"] = ["GBRTB2500016"]
+    audio["comment"] = ["https://open.spotify.com/track/41kUqScV9h8smErQor3Ul6"]
+    audio.save()
+
+    track = SpotiflacTrack(
+        display_title="Track - Artist",
+        isrc=None,
+        provider="unknown",
+        file_path=flac_path,
+        failed=False,
+        failure_reason=None,
+    )
+
+    _enrich_from_tags([track])
+
+    assert track.isrc == "GBRTB2500016"
+    assert track.spotify_id == "41kUqScV9h8smErQor3Ul6"
+    assert track.provider == "unknown"
+
+
+def test_enrich_from_tags_m4a(tmp_path: Path) -> None:
+    from mutagen.mp4 import MP4, MP4FreeForm
+
+    m4a_path = _write_test_m4a(tmp_path / "test.m4a")
+    audio = MP4(m4a_path)
+    audio["----:com.apple.iTunes:ISRC"] = [MP4FreeForm(b"QM24S2300943")]
+    audio["\xa9cmt"] = ["https://open.spotify.com/track/45hT5XsnLSJpzNY6tzfqtO"]
+    audio.save()
+
+    track = SpotiflacTrack(
+        display_title="Track - Artist",
+        isrc=None,
+        provider="unknown",
+        file_path=m4a_path,
+        failed=False,
+        failure_reason=None,
+    )
+
+    _enrich_from_tags([track])
+
+    assert track.isrc == "QM24S2300943"
+    assert track.spotify_id == "45hT5XsnLSJpzNY6tzfqtO"
+    assert track.provider == "apple"
+
+
+def test_enrich_does_not_overwrite_existing(tmp_path: Path) -> None:
+    from mutagen.flac import FLAC
+
+    flac_path = tmp_path / "existing.flac"
+    shutil.copy(_healthy_flac_fixture(), flac_path)
+    audio = FLAC(flac_path)
+    audio["isrc"] = ["FROMFILE"]
+    audio.save()
+
+    track = SpotiflacTrack(
+        display_title="Track - Artist",
+        isrc="EXISTING",
+        provider="unknown",
+        file_path=flac_path,
+        failed=False,
+        failure_reason=None,
+    )
+
+    _enrich_from_tags([track])
+
+    assert track.isrc == "EXISTING"
 
 
 def test_parse_log_extracts_spotify_album_id(tmp_path: Path) -> None:

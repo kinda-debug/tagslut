@@ -39,6 +39,7 @@ _NEXT_ERROR_RE = re.compile(r"^Error:\s*(?P<err>.+)$")
 _NEXT_ID_RE = re.compile(r"^ID:\s*(?P<id>\S+)\s*$")
 _NEXT_PROVIDER_TOKEN_RE = re.compile(r"^\[(?P<label>[^\]]+)\]\s*(?P<reason>.+)$")
 _SPOTIFY_ALBUM_URL_RE = re.compile(r"https?://open\.spotify\.com/album/(?P<id>[A-Za-z0-9]+)", re.IGNORECASE)
+_SPOTIFY_TRACK_URL_RE = re.compile(r"open\.spotify\.com/track/(?P<id>[A-Za-z0-9]+)")
 _QOBUZ_ALBUM_URL_RE = re.compile(r"https?://open\.qobuz\.com/album/(?P<id>[A-Za-z0-9]+)", re.IGNORECASE)
 _TIDAL_ALBUM_URL_RE = re.compile(r"https?://(?:listen\.)?tidal\.com/album/(?P<id>\d+)", re.IGNORECASE)
 
@@ -467,6 +468,61 @@ def _resolve_file_paths(
             track.file_path = norm_stem_map[norm_key]
 
 
+def _read_tags_from_file(path: Path) -> dict[str, str | None]:
+    from mutagen.flac import FLAC
+    from mutagen.mp4 import MP4
+
+    empty = {"isrc": None, "spotify_id": None, "provider": None}
+
+    try:
+        suffix = path.suffix.lower()
+        isrc: str | None = None
+        comment: str | None = None
+        provider: str | None = None
+
+        if suffix == ".flac":
+            tags = FLAC(path)
+            isrc = tags.get("isrc", [None])[0]
+            comment = tags.get("comment", [None])[0]
+        elif suffix == ".m4a":
+            tags = MP4(path)
+            isrc_data = tags.get("----:com.apple.iTunes:ISRC", [None])[0]
+            comment = tags.get("\xa9cmt", [None])[0]
+            if isrc_data is not None:
+                isrc = isrc_data.decode("utf-8")
+            provider = "apple"
+        else:
+            return empty
+
+        spotify_id = None
+        if comment:
+            match = _SPOTIFY_TRACK_URL_RE.search(comment)
+            if match:
+                spotify_id = match.group("id")
+
+        return {
+            "isrc": isrc.upper() if isrc else None,
+            "spotify_id": spotify_id,
+            "provider": provider,
+        }
+    except Exception:
+        return empty
+
+
+def _enrich_from_tags(tracks: list[SpotiflacTrack]) -> None:
+    for track in tracks:
+        if track.failed or track.file_path is None:
+            continue
+
+        tags = _read_tags_from_file(track.file_path)
+        if tags["isrc"] is not None and track.isrc is None:
+            track.isrc = tags["isrc"]
+        if tags["spotify_id"] is not None and track.spotify_id is None:
+            track.spotify_id = tags["spotify_id"]
+        if tags["provider"] is not None and track.provider == "unknown":
+            track.provider = _coerce_provider(tags["provider"])
+
+
 def build_manifest(
     log_path: Path,
     m3u8_path: Path | None = None,
@@ -513,6 +569,8 @@ def build_manifest(
             norm_stem_map[key] = path
 
     _resolve_file_paths(tracks, stem_map, norm_stem_map)
+    if log_format == "next":
+        _enrich_from_tags(tracks)
     return tracks
 
 

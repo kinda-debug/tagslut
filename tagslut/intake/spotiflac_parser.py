@@ -18,13 +18,19 @@ class SpotiflacTrack:
     failed: bool
     failure_reason: str | None
     spotify_id: str | None = None
+    qobuz_album_id: str | None = None
+    tidal_album_id: str | None = None
+    album_source_url: str | None = None
 
 
 _LOG_LINE_RE = re.compile(r"^\[(?P<ts>\d{2}:\d{2}:\d{2})\]\s+\[(?P<level>\w+)\]\s+(?P<msg>.*)$")
-_TRYING_RE = re.compile(r"^trying\s+(?P<provider>\w+)\s+for:\s+(?P<title>.+)$", re.IGNORECASE)
+_TRYING_RE = re.compile(r"^(?:direct\s+link:\s*)?trying\s+(?P<provider>\w+)\s+for:\s+(?P<title>.+)$", re.IGNORECASE)
 _DOWNLOADED_RE = re.compile(r"^downloaded:\s+(?P<title>.+)$", re.IGNORECASE)
 _FAILED_RE = re.compile(r"^failed:\s+(?P<title>.+)$", re.IGNORECASE)
-_PROVIDER_SUCCESS_RE = re.compile(r"^(?P<provider>tidal|qobuz|amazon|apple|deezer):\s+(?P<title>.+)$", re.IGNORECASE)
+_PROVIDER_SUCCESS_RE = re.compile(
+    r"^(?:direct\s+link\s+)?(?P<provider>tidal|qobuz|amazon|apple|deezer):\s+(?P<title>.+)$",
+    re.IGNORECASE,
+)
 _PROVIDER_ERROR_RE = re.compile(r"^(?P<provider>tidal|qobuz|amazon|apple|deezer)\s+error:\s+(?P<reason>.+)$", re.IGNORECASE)
 _QOBUZ_ISRC_RE = re.compile(r"\bISRC:\s*(?P<isrc>[A-Z]{2}[A-Z0-9]{3}\d{2}\d{5})\b", re.IGNORECASE)
 _NEXT_SUCCESS_RE = re.compile(r"^\[SUCCESS\]\s+(?P<title>.+)$")
@@ -32,6 +38,9 @@ _NEXT_FAILED_HEADER_RE = re.compile(r"^\d+\.\s+(?P<title>.+)$")
 _NEXT_ERROR_RE = re.compile(r"^Error:\s*(?P<err>.+)$")
 _NEXT_ID_RE = re.compile(r"^ID:\s*(?P<id>\S+)\s*$")
 _NEXT_PROVIDER_TOKEN_RE = re.compile(r"^\[(?P<label>[^\]]+)\]\s*(?P<reason>.+)$")
+_SPOTIFY_ALBUM_URL_RE = re.compile(r"https?://open\.spotify\.com/album/(?P<id>[A-Za-z0-9]+)", re.IGNORECASE)
+_QOBUZ_ALBUM_URL_RE = re.compile(r"https?://open\.qobuz\.com/album/(?P<id>[A-Za-z0-9]+)", re.IGNORECASE)
+_TIDAL_ALBUM_URL_RE = re.compile(r"https?://(?:listen\.)?tidal\.com/album/(?P<id>\d+)", re.IGNORECASE)
 
 
 def _coerce_provider(value: str | None) -> ProviderName:
@@ -225,6 +234,10 @@ def parse_log(log_path: Path) -> list[SpotiflacTrack]:
     buffered_isrc: str | None = None
     current_title: str | None = None
     last_error_by_title: dict[str, str] = {}
+    current_album_source_url: str | None = None
+    current_spotify_album_id: str | None = None
+    current_qobuz_album_id: str | None = None
+    current_tidal_album_id: str | None = None
 
     for raw in log_path.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
@@ -235,6 +248,24 @@ def parse_log(log_path: Path) -> list[SpotiflacTrack]:
         if not m:
             continue
         msg = (m.group("msg") or "").strip()
+
+        if msg.lower().startswith("url:"):
+            url = msg.split(":", 1)[1].strip()
+            current_album_source_url = url or None
+            current_spotify_album_id = None
+            current_qobuz_album_id = None
+            current_tidal_album_id = None
+            if current_album_source_url:
+                spotify_m = _SPOTIFY_ALBUM_URL_RE.search(current_album_source_url)
+                qobuz_m = _QOBUZ_ALBUM_URL_RE.search(current_album_source_url)
+                tidal_m = _TIDAL_ALBUM_URL_RE.search(current_album_source_url)
+                if spotify_m:
+                    current_spotify_album_id = spotify_m.group("id")
+                elif qobuz_m:
+                    current_qobuz_album_id = qobuz_m.group("id")
+                elif tidal_m:
+                    current_tidal_album_id = tidal_m.group("id")
+            continue
 
         isrc_m = _QOBUZ_ISRC_RE.search(msg)
         if isrc_m and "qobuz error" in msg.lower():
@@ -257,6 +288,10 @@ def parse_log(log_path: Path) -> list[SpotiflacTrack]:
                     file_path=None,
                     failed=False,
                     failure_reason=None,
+                    spotify_id=current_spotify_album_id,
+                    qobuz_album_id=current_qobuz_album_id,
+                    tidal_album_id=current_tidal_album_id,
+                    album_source_url=current_album_source_url,
                 )
                 tracks[title] = track
                 order.append(title)
@@ -282,6 +317,10 @@ def parse_log(log_path: Path) -> list[SpotiflacTrack]:
                     file_path=None,
                     failed=False,
                     failure_reason=None,
+                    spotify_id=current_spotify_album_id,
+                    qobuz_album_id=current_qobuz_album_id,
+                    tidal_album_id=current_tidal_album_id,
+                    album_source_url=current_album_source_url,
                 )
                 tracks[title] = track
                 order.append(title)
@@ -303,6 +342,10 @@ def parse_log(log_path: Path) -> list[SpotiflacTrack]:
                     file_path=None,
                     failed=False,
                     failure_reason=None,
+                    spotify_id=current_spotify_album_id,
+                    qobuz_album_id=current_qobuz_album_id,
+                    tidal_album_id=current_tidal_album_id,
+                    album_source_url=current_album_source_url,
                 )
                 tracks[title] = track
                 order.append(title)
@@ -330,6 +373,10 @@ def parse_log(log_path: Path) -> list[SpotiflacTrack]:
                     file_path=None,
                     failed=True,
                     failure_reason=None,
+                    spotify_id=current_spotify_album_id,
+                    qobuz_album_id=current_qobuz_album_id,
+                    tidal_album_id=current_tidal_album_id,
+                    album_source_url=current_album_source_url,
                 )
                 tracks[title] = track
                 order.append(title)

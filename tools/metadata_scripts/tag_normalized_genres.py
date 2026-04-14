@@ -179,7 +179,7 @@ def main() -> int:
 
     if not flacs:
         print("No FLAC files found.")
-        return 1
+        return 0
 
     changed = 0
     for idx, p in enumerate(flacs, start=1):

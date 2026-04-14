@@ -363,6 +363,8 @@ def register_intake_group(cli: click.Group) -> None:
     ) -> None:
         """Ingest a SpotiFLAC batch output into the standard tagslut intake pipeline."""
         import json
+        import os
+        import shutil
         from datetime import datetime, timezone
 
         from tagslut.core.hashing import calculate_file_hash
@@ -486,12 +488,13 @@ def register_intake_group(cli: click.Group) -> None:
         try:
             init_db(conn)
             now_iso = datetime.now(timezone.utc).isoformat()
-            ingestion_source = f"spotiflac:{log_path.name}"
+            ingestion_source_prefix = f"spotiflac_log:{log_path.name}"
 
             ingest_ok = 0
             skipped_missing = 0
             failed_total = 0
             retryable = 0
+            mp3_sources: list[Path] = []
 
             dual_write_v3 = dual_write_enabled()
 
@@ -603,7 +606,25 @@ def register_intake_group(cli: click.Group) -> None:
                     )
 
                     if dual_write_v3:
-                        provider_hints = {"isrc": track.isrc} if track.isrc else None
+                        provider_hints: dict[str, str] = {}
+                        if track.isrc:
+                            provider_hints["isrc"] = track.isrc
+                        if track.spotify_id:
+                            provider_hints["spotify_album_id"] = track.spotify_id
+                        if track.qobuz_album_id:
+                            provider_hints["qobuz_album_id"] = track.qobuz_album_id
+                        if track.tidal_album_id:
+                            provider_hints["tidal_album_id"] = track.tidal_album_id
+                        provider_hints = provider_hints if provider_hints else None
+
+                        ingestion_method_override = (
+                            "provider_api" if track.provider != "unknown" else "spotiflac_fallback"
+                        )
+                        ingestion_source_override = ingestion_source_prefix
+                        if track.album_source_url:
+                            ingestion_source_override = (
+                                f"{ingestion_source_prefix}|source:{track.album_source_url}"
+                            )
                         dual_write_registered_file(
                             conn,
                             path=str(file_path),
@@ -626,16 +647,62 @@ def register_intake_group(cli: click.Group) -> None:
                             duration_ref_source=None,
                             event_time=now_iso,
                             download_source_override=download_source,
-                            ingestion_method_override="spotiflac_fallback",
-                            ingestion_source_override=ingestion_source,
+                            ingestion_method_override=ingestion_method_override,
+                            ingestion_source_override=ingestion_source_override,
                             ingestion_confidence_override="high",
                             provider_id_hints=provider_hints,
                         )
 
                     ingest_ok += 1
+                    if file_path.suffix.lower() == ".mp3":
+                        mp3_sources.append(file_path)
                     click.echo(
                         f"[ingested] {track.display_title} ({track.isrc or 'no ISRC'}) via {track.provider}"
                     )
+
+            if mp3_sources:
+                mp3_library = Path(os.environ.get("MP3_LIBRARY", "/Volumes/MUSIC/MP3_LIBRARY"))
+                if not mp3_library.exists():
+                    click.secho(
+                        "[warning] MP3_LIBRARY not mounted; skipping MP3 copy and M3U steps",
+                        fg="yellow",
+                        err=True,
+                    )
+                else:
+                    mp3_destinations: list[Path] = []
+                    wrote_any = False
+                    for src_path in mp3_sources:
+                        dest_path = mp3_library / src_path.name
+                        mp3_destinations.append(dest_path)
+                        if not dest_path.exists():
+                            shutil.copy2(src_path, dest_path)
+                            wrote_any = True
+
+                    if wrote_any:
+                        ingest_logs_dir = Path("_ingest/spotiflac_logs")
+                        ingest_logs_dir.mkdir(parents=True, exist_ok=True)
+                        batch_m3u_path = ingest_logs_dir / f"{log_path.stem}__mp3.m3u"
+                        batch_m3u_path.write_text(
+                            "\n".join(str(path) for path in mp3_destinations) + "\n",
+                            encoding="utf-8",
+                        )
+
+                        dj_pool_path = Path(
+                            os.environ.get("DJ_POOL_M3U", "/Volumes/MUSIC/MP3_LIBRARY/dj_pool.m3u")
+                        )
+                        existing_entries: set[str] = set()
+                        if dj_pool_path.exists():
+                            existing_entries = {
+                                line.strip()
+                                for line in dj_pool_path.read_text(encoding="utf-8").splitlines()
+                                if line.strip()
+                            }
+                        to_append = [str(path) for path in mp3_destinations if str(path) not in existing_entries]
+                        if to_append:
+                            dj_pool_path.parent.mkdir(parents=True, exist_ok=True)
+                            with dj_pool_path.open("a", encoding="utf-8") as handle:
+                                for entry in to_append:
+                                    handle.write(entry + "\n")
 
             click.echo(
                 f"{ingest_ok} ingested, {skipped_missing} skipped (file not found), {failed_total} failed ({retryable} retryable)"

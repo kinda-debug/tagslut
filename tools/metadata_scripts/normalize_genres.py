@@ -66,7 +66,7 @@ def main() -> int:
     flacs = iter_flac_paths(root)
     if not flacs:
         print("No FLAC files found.")
-        return 1
+        return 0
 
     import sqlite3
     conn = sqlite3.connect(db_path)

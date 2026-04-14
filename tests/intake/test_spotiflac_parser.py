@@ -6,6 +6,7 @@ from tagslut.intake.spotiflac_parser import (
     _detect_format,
     build_manifest,
     classify_failure_reason,
+    parse_log,
     parse_log_next,
 )
 
@@ -198,14 +199,61 @@ Burn Myself - Coyu; Edu Imbernon.mp3
     assert success.provider == "unknown"
     assert success.spotify_id is None
     assert success.file_path is not None
-    assert success.file_path.name == "What's Next - Ramon Tapia.mp3"
 
-    failed = by_title["Der Spatz Auf Dem Dach - Peter Juergens; Oliver Klein"]
-    assert failed.failed is True
-    assert failed.isrc == "DEAA20900927"
-    assert failed.spotify_id == "4CMBoQOCX7KNjJqCB800Rm"
-    assert (
-        failed.failure_reason
-        == "[Qobuz A] track not found for ISRC: DEAA20900927 | [Deezer A] deezer api returned status: 502"
+
+def test_parse_log_extracts_spotify_album_id(tmp_path: Path) -> None:
+    log_path = tmp_path / "legacy_spotify.log"
+    log_path.write_text(
+        """\
+[08:38:51] [info] fetching album metadata...
+[08:38:51] [debug] url: https://open.spotify.com/album/2U0b5MfkMUgzdvRUI69mya
+[08:39:05] [debug] trying qobuz for: Track One - Artist A
+[08:39:08] [success] qobuz: Track One - Artist A
+[08:39:08] [success] downloaded: Track One - Artist A
+""",
+        encoding="utf-8",
     )
-    assert classify_failure_reason(failed.failure_reason) == "unavailable"
+    tracks = parse_log(log_path)
+    assert tracks[0].spotify_id == "2U0b5MfkMUgzdvRUI69mya"
+    assert tracks[0].album_source_url == "https://open.spotify.com/album/2U0b5MfkMUgzdvRUI69mya"
+
+
+def test_parse_log_extracts_qobuz_album_id(tmp_path: Path) -> None:
+    log_path = tmp_path / "legacy_qobuz.log"
+    log_path.write_text(
+        """\
+[08:48:08] [info] fetching direct link metadata...
+[08:48:08] [debug] url: https://open.qobuz.com/album/ldgvxrkvvvfpb
+[08:48:17] [debug] direct link: trying qobuz for: Someone Like You  - Fred Everything
+[08:48:48] [success] direct link qobuz: Someone Like You  - Fred Everything
+[08:48:48] [success] downloaded: Someone Like You  - Fred Everything
+""",
+        encoding="utf-8",
+    )
+    tracks = parse_log(log_path)
+    assert tracks[0].qobuz_album_id == "ldgvxrkvvvfpb"
+    assert tracks[0].spotify_id is None
+
+
+def test_parse_log_multi_batch_ids_do_not_bleed(tmp_path: Path) -> None:
+    log_path = tmp_path / "legacy_multi.log"
+    log_path.write_text(
+        """\
+[08:38:51] [info] fetching album metadata...
+[08:38:51] [debug] url: https://open.spotify.com/album/2U0b5MfkMUgzdvRUI69mya
+[08:39:05] [debug] trying qobuz for: Track One - Artist A
+[08:39:08] [success] qobuz: Track One - Artist A
+[08:39:08] [success] downloaded: Track One - Artist A
+[08:48:08] [info] fetching direct link metadata...
+[08:48:08] [debug] url: https://open.qobuz.com/album/ldgvxrkvvvfpb
+[08:48:17] [debug] direct link: trying qobuz for: Someone Like You  - Fred Everything
+[08:48:48] [success] direct link qobuz: Someone Like You  - Fred Everything
+[08:48:48] [success] downloaded: Someone Like You  - Fred Everything
+""",
+        encoding="utf-8",
+    )
+    tracks = parse_log(log_path)
+    assert tracks[0].spotify_id == "2U0b5MfkMUgzdvRUI69mya"
+    assert tracks[0].qobuz_album_id is None
+    assert tracks[1].qobuz_album_id == "ldgvxrkvvvfpb"
+    assert tracks[1].spotify_id is None

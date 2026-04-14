@@ -198,6 +198,12 @@ config/dj/crates/safe.m3u8
 config/dj/dj_curation_usb_v[0-9]*.yaml
 dj_purge_*.m3u8
 safe_mp3s.m3u8
+
+# =============================================================================
+# Repo-root cleanup allowlist helpers
+# =============================================================================
+*.pyc
+diagnostics/
 safe_copy.m3u8
 wider_new.m3u8
 phase_*.m3u8
@@ -315,3 +321,4 @@ Untitled Playlist.m3u8
 WEIRD.m3u8
 
 SpotiFLAC-Module-Version/
+logsspotiflac.rtf

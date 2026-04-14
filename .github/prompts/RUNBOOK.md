@@ -1,67 +1,70 @@
-# Library Cleanup — Runbook (updated 2026-04-14)
+# Library Cleanup — Runbook (final)
 
-## Current state
+## Current state (2026-04-14 23:37)
 
-P1 (inventory) — done.
-P2 (intake) — `intake_sweep_v2.py` exists, run this.
-P3 (resolve unresolved) — `resolve_unresolved.py` exists, updated in-place.
-P4 (mp3 consolidation) — `mp3_consolidation.py` exists, re-run after P2/P3.
-P5 (final audit + rekordbox) — `final_audit.py` and `rekordbox_export.py` exist.
+336 files remain unaccounted for. Breakdown:
 
-Root cause of zero moves: P2 never ingested staging FLACs into DB,
-so P3 and P4 had nothing to match against.
+| Location | Files | Status |
+|----------|-------|--------|
+| staging_spotiflacnext | 177 | 147 are MP3 derivatives (wait for P7). 30 originals need intake. |
+| staging_spotiflac | 26 | 24 need direct intake run |
+| master_unresolved | 48 | 44 have no ISRC — permanent manual backlog |
+| master_unresolved_from_library | 85 | 55 have no ISRC — permanent manual backlog |
+| mp3_library_spotiflac_next | 72 | In DB, need P4 re-run after P7 |
+| mp3_leftovers | 378 | No master FLAC exists — permanent manual backlog |
+
+Rekordbox XML is at `/Volumes/MUSIC/rekordbox_fresh_20260414_1.xml` (454 tracks).
 
 ---
 
-## Run order
-
-```
-P2  →  P3  →  P4  →  P5
-```
-
-## Commands
+## Remaining automated work
 
 ```bash
 cd /Users/georgeskhawam/Projects/tagslut
 export PATH="$HOME/.local/bin:$PATH"
 
-# P2 — ingest all staging batches
-poetry run python3 tools/intake_sweep_v2.py
+# P7 — intake remaining batches, re-promote, re-consolidate MP3s
+codex exec --full-auto - < .github/prompts/P7-final-intake-pass.md
 
-# P3 — resolve _UNRESOLVED FLACs (dry-run first)
-poetry run python3 tools/resolve_unresolved.py --dry-run
-poetry run python3 tools/resolve_unresolved.py
-
-# P4 — consolidate MP3s (dry-run first)
-poetry run python3 tools/mp3_consolidation.py --dry-run
-poetry run python3 tools/mp3_consolidation.py
-
-# P5 — final audit + rekordbox XML
+# After P7 completes:
 poetry run python3 tools/final_audit.py
 poetry run python3 tools/rekordbox_export.py
 ```
 
-## What each script does
+---
 
-| Script | Does | Output |
-|--------|------|--------|
-| intake_sweep_v2.py | Calls `tagslut intake spotiflac` for every batch (with and without .txt) | `logs/intake_sweep_v2_*.tsv` |
-| resolve_unresolved.py | Matches _UNRESOLVED FLACs by ISRC, falls back to file tags for path | `logs/resolve_unresolved_*.tsv` |
-| mp3_consolidation.py | Moves MP3s from `_spotiflac_next` and `mp3_leftorvers` to MP3_LIBRARY | `logs/mp3_consolidation_*.tsv` |
-| final_audit.py | Re-scans all locations, reports remaining unaccounted files | `logs/final_audit_*.tsv` |
-| rekordbox_export.py | Generates Rekordbox XML from mp3_asset table | `rekordbox_fresh_*.xml` |
+## Permanent manual backlog (do not attempt to automate)
 
-## Files that will remain after all steps (expected)
+These files require human decision. Open the TSV in a spreadsheet:
 
-- No ISRC + no fuzzy match → manual review
-- `fuzzy_match_pending_review` in resolve log → manual review
-- `no_master_flac` in consolidation log → no FLAC counterpart exists
-- `_work/fix` and `_work/quarantine` → never touched
+```
+/Volumes/MUSIC/logs/resolve_unresolved_20260414_230445.tsv
+  → filter result=fuzzy_match_pending_review (67 files)
+  → filter result=unmatched (25 files)
+
+/Volumes/MUSIC/logs/final_audit_20260414_233727.tsv
+  → filter location=master_unresolved (44 no ISRC)
+  → filter location=master_unresolved_from_library (55 no ISRC)
+  → filter location=mp3_leftovers (378 files, no master FLAC)
+```
+
+For fuzzy matches: review the `target_path` column. If correct, move manually
+and update `asset_file` zone to `MASTER_LIBRARY`. If wrong, delete source or
+leave in `_UNRESOLVED`.
+
+For no-ISRC files: either tag them manually with an ISRC and re-run
+`resolve_unresolved.py`, or accept them as unresolvable and delete or archive.
+
+For mp3_leftovers with no master FLAC: these are MP3-only tracks. Either
+accept them into MP3_LIBRARY directly (without a FLAC counterpart) or discard.
+
+---
 
 ## Key paths
 
 - DB: `/Users/georgeskhawam/Projects/tagslut_db/FRESH_2026/music_v3.db`
 - Logs: `/Volumes/MUSIC/logs/`
+- Rekordbox XML: `/Volumes/MUSIC/rekordbox_fresh_20260414_1.xml`
 - Staging: `/Volumes/MUSIC/staging/`
 - Master: `/Volumes/MUSIC/MASTER_LIBRARY/`
 - MP3: `/Volumes/MUSIC/MP3_LIBRARY/`

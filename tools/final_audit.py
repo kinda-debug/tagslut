@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import csv
-import os
 import sqlite3
 import sys
 from dataclasses import dataclass
@@ -183,7 +182,7 @@ def _load_db_state(db_path: Path) -> tuple[dict[str, str], set[str]]:
     for raw_path, zone in asset_rows:
         if raw_path is None:
             continue
-        asset_zones[os.path.normpath(str(raw_path))] = str(zone or "")
+        asset_zones[str(raw_path)] = str(zone or "")
 
     identity_isrcs = {
         normalized
@@ -194,18 +193,27 @@ def _load_db_state(db_path: Path) -> tuple[dict[str, str], set[str]]:
 
 
 def _output_path(now: datetime) -> Path:
-    return OUTPUT_DIR / f"inventory_{now.strftime('%Y%m%d_%H%M%S')}.tsv"
+    return OUTPUT_DIR / f"final_audit_{now.strftime('%Y%m%d_%H%M%S')}.tsv"
+
+
+def _is_unaccounted_location(location: str) -> bool:
+    if location.startswith("staging_"):
+        return True
+    if location.startswith("master_unresolved"):
+        return True
+    return False
 
 
 def main() -> int:
     asset_zones, identity_isrcs = _load_db_state(DB_PATH)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    output_path = _output_path(datetime.now())
+    now = datetime.now()
+    output_path = _output_path(now)
 
     total_files = 0
-    in_db_count = 0
-    has_isrc_count = 0
-    identity_match_count = 0
+    per_location_remaining: dict[str, int] = {k: 0 for k in LOCATIONS}
+    per_location_not_in_db: dict[str, int] = {k: 0 for k in LOCATIONS}
+    per_location_no_isrc: dict[str, int] = {k: 0 for k in LOCATIONS}
 
     with output_path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
@@ -214,21 +222,22 @@ def main() -> int:
         for location, root in LOCATIONS.items():
             for path in _iter_location_files(location, root):
                 total_files += 1
+                per_location_remaining[location] += 1
                 if total_files % 500 == 0:
                     print(".", end="", file=sys.stderr, flush=True)
 
                 size_bytes = path.stat().st_size
                 isrc, upc, artist, title = _read_tags(path)
                 path_str = str(path)
-                path_norm = os.path.normpath(path_str)
-                in_asset_file = 1 if path_norm in asset_zones else 0
+                in_asset_file = 1 if path_str in asset_zones else 0
                 in_track_identity = 1 if isrc and isrc in identity_isrcs else 0
-                asset_zone = asset_zones.get(path_norm, "")
+                asset_zone = asset_zones.get(path_str, "")
                 identity_isrc_match = isrc if in_track_identity else ""
 
-                in_db_count += in_asset_file
-                has_isrc_count += 1 if isrc else 0
-                identity_match_count += in_track_identity
+                if not in_asset_file:
+                    per_location_not_in_db[location] += 1
+                if not isrc:
+                    per_location_no_isrc[location] += 1
 
                 row = InventoryRow(
                     location=location,
@@ -261,16 +270,25 @@ def main() -> int:
                     ]
                 )
 
-    not_in_db_count = total_files - in_db_count
-    no_isrc_count = total_files - has_isrc_count
+    unaccounted = sum(
+        per_location_remaining[loc] for loc in LOCATIONS if _is_unaccounted_location(loc)
+    )
 
-    print(f"Total files scanned: {total_files}")
-    print(f"In DB: {in_db_count}  |  Not in DB: {not_in_db_count}")
-    print(f"Has ISRC: {has_isrc_count}  |  No ISRC: {no_isrc_count}")
-    print(f"Matched to track_identity: {identity_match_count}")
+    print("")
+    for location in LOCATIONS:
+        remaining = per_location_remaining[location]
+        not_in_db = per_location_not_in_db[location]
+        no_isrc = per_location_no_isrc[location]
+        print(f"{location:28} {remaining:5d} files remaining  ({not_in_db} not in DB, {no_isrc} no ISRC)")
+
+    if unaccounted:
+        print(f"WARNING: {unaccounted} files remain unaccounted for. Review logs before proceeding.")
+
     print(f"Output: {output_path}")
+    print(f"Final audit: {total_files} total files across all locations, {unaccounted} unaccounted")
     return 0
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

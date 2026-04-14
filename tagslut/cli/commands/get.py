@@ -124,14 +124,15 @@ def _run_local_flow(
     if not flac_paths:
         return False, "no FLAC inputs resolved from local path"
 
-    with sqlite3.connect(str(db_path)) as conn:
-        ensure_cohort_support(conn)
-        bind_asset_paths(conn, cohort_id=cohort_id, paths=flac_paths)
-        retag_result = retag_flac_paths(db_path=db_path, flac_paths=flac_paths, force=False)
-        mark_paths_ok(conn, cohort_id=cohort_id, paths=retag_result.ok_paths)
-        for path, reason in retag_result.blocked.items():
-            asset_row = conn.execute(
-                "SELECT id FROM asset_file WHERE path = ? LIMIT 1",
+        with sqlite3.connect(str(db_path)) as conn:
+            ensure_cohort_support(conn)
+            bind_asset_paths(conn, cohort_id=cohort_id, paths=flac_paths)
+            conn.commit()
+            retag_result = retag_flac_paths(db_path=db_path, flac_paths=flac_paths, force=False)
+            mark_paths_ok(conn, cohort_id=cohort_id, paths=retag_result.ok_paths)
+            for path, reason in retag_result.blocked.items():
+                asset_row = conn.execute(
+                    "SELECT id FROM asset_file WHERE path = ? LIMIT 1",
                 (str(path),),
             ).fetchone()
             asset_file_id = int(asset_row[0]) if asset_row is not None and asset_row[0] is not None else None

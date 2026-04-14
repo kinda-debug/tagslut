@@ -428,7 +428,11 @@ def update_database(  # type: ignore  # TODO: mypy-strict
         logger.info("[DRY-RUN] Would update %s (mode=%s)", result.path, mode)
         return True
 
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(str(db_path), timeout=30.0)
+    try:
+        conn.execute("PRAGMA busy_timeout=30000")
+    except sqlite3.Error:
+        pass
     try:
         cursor = conn.cursor()
 
@@ -572,7 +576,11 @@ def mark_no_match(db_path, path: str, dry_run: bool) -> None:  # type: ignore  #
     if dry_run:
         return
 
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(str(db_path), timeout=30.0)
+    try:
+        conn.execute("PRAGMA busy_timeout=30000")
+    except sqlite3.Error:
+        pass
     try:
         conn.execute(
             """UPDATE files SET

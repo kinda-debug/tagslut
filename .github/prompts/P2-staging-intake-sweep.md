@@ -1,76 +1,127 @@
-# P2 — Staging Intake Sweep
+# P2 — Staging Intake Sweep (v2)
 
-## Purpose
-Process all unprocessed staging batches into the DB. Reads the TSV produced
-by P1 to know what exists. No files are moved to MASTER_LIBRARY yet — this
-prompt only updates the DB and produces a per-batch report.
+## Context — read before implementing
 
-## Prerequisite
-P1 must have run. TSV exists at `/Volumes/MUSIC/logs/inventory_*.tsv` (use
-the most recent one).
+The previous P2 attempt produced zero ingestions. Two root causes:
+
+1. `tagslut intake spotiflac` resolves ISRCs from the `.txt` report only.
+   The tag-enrichment hook added to `build_manifest` populates ISRCs from
+   file tags AFTER path resolution, but only when called via `build_manifest`.
+   The CLI calls `build_manifest` already — verify this is wired correctly
+   before proceeding.
+
+2. Most SpotiFLACnext batches have no `.txt` — only `.m3u8` files. The CLI
+   requires a log file as the positional argument. For M3U8-only batches,
+   we must synthesize a minimal log or use `--base-dir` with a dummy log.
 
 ## Do not recreate existing files. Do not run the full test suite.
 
 ---
 
-## What "unprocessed" means
+## Step 1 — Verify tag enrichment is wired into CLI intake
 
-A staging batch is unprocessed if its files appear in the P1 TSV with
-`in_asset_file=0`. Batches already fully in the DB are skipped.
+Read `tagslut/cli/commands/intake.py`. Find the `intake_spotiflac` command.
+Confirm that `build_manifest` is called there (not a bare `parse_log_next`).
+`build_manifest` calls `_enrich_from_tags` — this is correct.
 
-## Locations to process, in order
+If `intake_spotiflac` calls `parse_log_next` or `parse_log` directly instead
+of `build_manifest`, fix it to call `build_manifest` instead.
 
-1. `staging/SpotiFLACnext` — use `tagslut intake spotiflac` with `--base-dir`
-   for each `.txt` Download Report found. Use the non-`_converted` `.m3u8`
-   for path resolution.
-2. `staging/SpotiFLAC` — same, for each `.txt` log file found.
-3. `staging/bpdl` — use `tagslut intake bpdl` if implemented, else log as
-   "manual required" and skip.
-4. `staging/StreamripDownloads` — use `tagslut intake streamrip` if
-   implemented, else log as "manual required" and skip.
-5. `staging/tidal` — use `tagslut intake tidal` if implemented, else log.
-6. Any remaining files in `staging/` not covered above — log as
-   "unrecognised source, manual required".
+Do NOT add a separate enrichment call. `build_manifest` already does it.
 
-## Per-batch report
+---
 
-For each batch write one line to
-`/Volumes/MUSIC/logs/intake_sweep_YYYYMMDD_HHMMSS.tsv`:
+## Step 2 — Inventory what batches exist in staging
+
+Write `tools/intake_sweep_v2.py`. At startup it discovers all batches:
+
+### SpotiFLACnext batches (`/Volumes/MUSIC/staging/SpotiFLACnext`)
+
+A batch is defined as any `.m3u8` file (non-`_converted`) in the staging root
+or any subdirectory. For each `.m3u8`:
+- Look for a `.txt` with the same stem in the same directory.
+- The batch anchor is the `.txt` if it exists, else the `.m3u8` itself.
+- `--base-dir` is always `/Volumes/MUSIC/staging/SpotiFLACnext`.
+
+### SpotiFLAC batches (`/Volumes/MUSIC/staging/SpotiFLAC`)
+
+A batch is any `.txt` file that is NOT a `_Failed` file. Discover all.
+`--base-dir` is `/Volumes/MUSIC/staging/SpotiFLAC`.
+
+---
+
+## Step 3 — Run intake for each batch
+
+For each discovered batch, call:
+
+```python
+import subprocess, sys
+
+cmd = [
+    sys.executable, "-m", "tagslut.cli.main",
+    "intake", "spotiflac",
+    "--base-dir", base_dir,
+    anchor_path,
+]
+result = subprocess.run(cmd, capture_output=True, text=True,
+                        cwd="/Users/georgeskhawam/Projects/tagslut")
 ```
-batch_name  source  total_tracks  ingested  already_in_db  failed  notes
+
+Parse stdout for lines matching:
+- `ingested N tracks` or similar summary
+- `[would-ingest]` lines (count them)
+- `[failed/` lines (count them)
+- `Error:` lines
+
+If the CLI is not importable as a module, use the poetry entrypoint instead:
+```python
+cmd = ["poetry", "run", "tagslut", "intake", "spotiflac", ...]
 ```
 
-## Implementation
+---
 
-Write as `tools/intake_sweep.py`. It:
-- Discovers batches by scanning staging subdirs for `.txt` files and
-  known folder structures
-- Calls the appropriate `tagslut intake` CLI command per batch via subprocess,
-  capturing stdout/stderr
-- Parses CLI output for success/fail counts
-- Writes the per-batch TSV report
-- Never touches `_UNRESOLVED`, `_UNRESOLVED_FROM_LIBRARY`, `MP3_LIBRARY`,
-  `MASTER_LIBRARY` proper, or `_work`
+## Step 4 — Per-batch report
+
+Write to `/Volumes/MUSIC/logs/intake_sweep_v2_YYYYMMDD_HHMMSS.tsv`:
+```
+batch_name  source  anchor_type  total_tracks  ingested  already_in_db  failed  notes
+```
+
+- `anchor_type`: `txt` or `m3u8_only`
+- Parse counts from CLI stdout/stderr
+
+---
+
+## Step 5 — Re-run P1 inventory after intake
+
+After all batches complete, re-run the inventory scan for
+`staging_spotiflacnext` and `staging_spotiflac` only and append a summary
+showing how many files moved from `in_asset_file=0` to `in_asset_file=1`.
+
+---
 
 ## Script entrypoint
 
 ```
 cd /Users/georgeskhawam/Projects/tagslut
 export PATH="$HOME/.local/bin:$PATH"
-poetry run python3 tools/intake_sweep.py
+poetry run python3 tools/intake_sweep_v2.py
 ```
 
 ## Acceptance
 
-Script runs to completion. TSV report written. Print final summary:
+- Script runs to completion.
+- At least one batch shows `ingested > 0`.
+- TSV report written.
+- Print final summary:
 ```
 Batches processed: N
-Tracks ingested: N  |  Already in DB: N  |  Failed: N  |  Manual required: N
-Output: /Volumes/MUSIC/logs/intake_sweep_YYYYMMDD_HHMMSS.tsv
+Tracks ingested: N  |  Already in DB: N  |  Failed: N
+Output: /Volumes/MUSIC/logs/intake_sweep_v2_YYYYMMDD_HHMMSS.tsv
 ```
 
 ## Commit
 
 ```
-feat(tools): add intake_sweep.py for automated staging batch intake
+fix(tools): rewrite intake_sweep_v2 with correct CLI invocation and m3u8-only batch support
 ```

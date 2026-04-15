@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
+# beatport — compatibility wrapper for tools/get with Beatport URLs
+#
+# Forwards all arguments to tools/get. Beatport URL routing is handled
+# natively by tools/get (see the *beatport.com* block in that file).
+#
+# Usage: tools/beatport <beatport-url> [flags]
+# This wrapper exists for shell-history and shortcut compatibility only.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec "$SCRIPT_DIR/get-sync" "$@"
+exec "$SCRIPT_DIR/get" "$@"

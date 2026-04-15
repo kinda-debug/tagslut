@@ -26,12 +26,14 @@ It separates physical files from logical track identities, then applies determin
    ```
 
 2. **Learn the commands:**
-   - [Command Guide](docs/COMMAND_GUIDE.md) - Which command to use when
-   - [Documentation Index](docs/README.md) - Canonical operator docs
-   - [DJ Pipeline](docs/DJ_PIPELINE.md) - DJ workflow reference
+   - [Documentation Index](docs/README.md) - Active docs, reference docs, and audit docs
+   - [Operator Quick Start](docs/OPERATOR_QUICK_START.md) - Daily startup and operator workflow
+   - [Workflows](docs/WORKFLOWS.md) - Current workflow contract and legacy archaeology
+   - [Architecture](docs/ARCHITECTURE.md) - System shape and authoritative data model
+   - [DJ Pool](docs/DJ_POOL.md) - Current M3U-based DJ pool workflow
    - [Download Strategy](docs/DOWNLOAD_STRATEGY.md) - Provider selection rules
-   - [Backfill Guide](docs/BACKFILL_GUIDE.md) - Backfill principles and patterns
-   - [Provenance Integration](docs/PROVENANCE_INTEGRATION.md) - Provenance tracking integration notes
+   - [Ingestion Provenance](docs/INGESTION_PROVENANCE.md) - Provenance fields and vocabulary
+   - [Multi-Provider ID Policy](docs/MULTI_PROVIDER_ID_POLICY.md) - Provider-ID reconciliation rules
 
 Manual setup (legacy/reference):
 
@@ -114,8 +116,7 @@ Notes:
 For a curated DJ library, the only supported workflow is:
 `tagslut intake` -> `tagslut mp3 build` or `tagslut mp3 reconcile` ->
 `tagslut dj backfill` -> `tagslut dj validate` ->
-`tagslut dj xml emit` or `tagslut dj xml patch`. See `docs/DJ_PIPELINE.md`
-for the canonical reference.
+`tagslut dj xml emit` or `tagslut dj xml patch`. See `docs/WORKFLOWS.md`, `docs/DJ_POOL.md`, and `docs/ARCHITECTURE.md` for the current contract and legacy context.
 
 `MP3_LIBRARY` is the single canonical active MP3 asset root. `DJ_LIBRARY`
 is a compatibility alias to the same root, not a separate operational library.
@@ -161,8 +162,7 @@ poetry run tagslut dj xml emit --db "$TAGSLUT_DB" --out rekordbox.xml
 poetry run tagslut dj xml patch --db "$TAGSLUT_DB" --out rekordbox_v2.xml
 ```
 
-See `docs/DJ_PIPELINE.md` for the concise reference and `docs/DJ_WORKFLOW.md`
-for the extended operator guide.
+See `docs/README.md` for the active doc index, `docs/DJ_POOL.md` for the current DJ pool model, and `docs/WORKFLOWS.md` for legacy DJ/XML workflow context.
 
 ## Move Plan Execution
 

@@ -4,7 +4,7 @@
 
 # WORKFLOWS.md
 
-Operator reference for tagslut. Start here.
+Operator reference for tagslut. Start here. For the full active-doc set, use `docs/README.md`.
 
 **Surface policy**
 Use canonical entry points: `ts-get`, `ts-enrich`, `ts-auth`. Legacy `tagslut intake/index/decide/execute/verify/report/auth` flows and `tools/review/*` scripts below are reference only.

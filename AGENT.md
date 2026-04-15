@@ -5,7 +5,7 @@ This is a CLI-first Python repo. Use these rules for all agents.
 ## Execution
 - Primary wrappers: `ts-get <url> [--dj]`, `ts-enrich [--provider ...]`, `ts-auth [tidal|beatport|qobuz|all]`.
 - Legacy 4-stage DJ pipeline is archived; `tools/get --dj` and Rekordbox XML emit are legacy reference only.
-- Do not rely on files under `docs/archive/` for current behavior (active docs: `docs/OPERATOR_QUICK_START.md`, `docs/WORKFLOWS.md`, `docs/ARCHITECTURE.md`).
+- Do not rely on files under `docs/archive/` for current behavior. Start with `docs/README.md`, then read only the active docs relevant to your task.
 
 ## DJ pool (current model)
 - DJ pool is M3U-based: `ts-get --dj` writes per-batch M3U + global `$MP3_LIBRARY/dj_pool.m3u`.

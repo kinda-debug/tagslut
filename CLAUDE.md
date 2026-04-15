@@ -10,10 +10,10 @@ Claude-specific guardrails (canonical rules still in `AGENT.md`).
 ## Current workflow (post-April 2026)
 - Active wrappers: `ts-get <url> [--dj]`, `ts-enrich [--provider ...]`, `ts-auth [tidal|beatport|qobuz|all]`.
 - DJ pool is M3U-based (`dj_pool.m3u`); 4-stage DJ pipeline and XML emit are legacy (see `docs/archive/`).
-- Active docs are only: `docs/OPERATOR_QUICK_START.md`, `docs/WORKFLOWS.md`, `docs/ARCHITECTURE.md`. Treat everything under `docs/archive/` as historical reference only.
+- Treat `docs/README.md` as the current active-doc index. Read only the active docs relevant to the task, and treat everything under `docs/archive/` as historical reference only.
 
 ## How to audit/edit
-1) Read: `AGENT.md`, this file, `docs/README.md` (pointer), active docs above, `.github/prompts/`, and relevant workflows/configs if needed.
+1) Read: `AGENT.md`, this file, `docs/README.md`, `.github/prompts/`, and only the active docs/workflows/configs relevant to the task.
 2) Plan before editing; keep scope tight; no drive-by refactors.
 3) After edits, check for consistency between `AGENT.md`, `CLAUDE.md`, and any automation touched.
 

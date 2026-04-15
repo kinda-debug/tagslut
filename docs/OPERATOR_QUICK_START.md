@@ -50,3 +50,11 @@ ts-enrich              # BPM, key, genre, label for all unenriched tracks
 sqlite3 "$TAGSLUT_DB" "SELECT COUNT(*) FROM files;"
 sqlite3 "$TAGSLUT_DB" "SELECT COUNT(*), SUM(CASE WHEN canonical_genre IS NOT NULL THEN 1 ELSE 0 END) FROM track_identity;"
 ```
+
+
+## Related active docs
+
+- `docs/README.md` — full active-doc index and audit-doc location.
+- `docs/DJ_POOL.md` — current M3U-based DJ pool contract.
+- `docs/DOWNLOAD_STRATEGY.md` — source-selection policy.
+- `docs/TIDDL_CONFIG.md` — tiddl config contract for this workspace.

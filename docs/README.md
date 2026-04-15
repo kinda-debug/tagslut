@@ -1,10 +1,29 @@
-<!-- Status: Active index. Updated 2026-04-02. -->
+<!-- Status: Active index. Updated 2026-04-15. -->
 
-# docs index (lean)
+# docs index
 
-Active docs (read me):
-- **OPERATOR_QUICK_START.md** — daily commands, tokens, DJ pool, historical seed reconstruction.
-- **WORKFLOWS.md** — current flow + active command surface, including the standalone `tree_rbx.js` seed matcher.
-- **ARCHITECTURE.md** — system shape + source-selection summary + DJ-seed reconstruction role.
+## Core operator docs
 
-Everything else lives in `docs/archive/`. If you can’t find it here, look there.
+- [OPERATOR_QUICK_START.md](OPERATOR_QUICK_START.md) — daily startup, auth, download, enrichment, and DJ pool usage.
+- [WORKFLOWS.md](WORKFLOWS.md) — current workflow contract plus legacy workflow archaeology kept in one place.
+- [ARCHITECTURE.md](ARCHITECTURE.md) — current system shape, data model, intake layers, and DJ/export architecture.
+
+## Active reference docs
+
+- [DJ_POOL.md](DJ_POOL.md) — current M3U-based DJ pool model and Rekordbox boundary.
+- [DOWNLOAD_STRATEGY.md](DOWNLOAD_STRATEGY.md) — source-selection policy and provider roles.
+- [INGESTION_PROVENANCE.md](INGESTION_PROVENANCE.md) — ingestion metadata fields and vocabulary.
+- [MULTI_PROVIDER_ID_POLICY.md](MULTI_PROVIDER_ID_POLICY.md) — provider-ID reconciliation and confidence-tier policy.
+- [PROJECT_DIRECTIVES.md](PROJECT_DIRECTIVES.md) — repo-wide directives and DB/volume safety rules.
+- [ROADMAP.md](ROADMAP.md) — agent roadmap and work sequencing.
+- [SCRIPT_SURFACE.md](SCRIPT_SURFACE.md) — command surface map and canonical vs legacy entry points.
+- [STAGING_OPS.md](STAGING_OPS.md) — staging-root cleanup and intake runbook.
+- [TIDDL_CONFIG.md](TIDDL_CONFIG.md) — tiddl config contract for this workspace.
+
+## Audit docs
+
+- [docs/audit/2026-04-15-model-evals/](audit/2026-04-15-model-evals/) — model audit reports, blind evaluations, and the confirmed implementation/planning document.
+
+## Archive
+
+Historical and superseded material lives under [`docs/archive/`](archive/).

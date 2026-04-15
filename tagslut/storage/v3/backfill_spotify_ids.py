@@ -10,6 +10,7 @@ import signal
 import sqlite3
 import sys
 import traceback
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -96,6 +97,14 @@ class InterruptState:
     signal_name: str | None = None
 
 
+@dataclass
+class BackfillReport:
+    started_at: float
+    state_path: Path
+    resume_from_state: bool = False
+    state_source: str | None = None
+
+
 def _row_artist_name(row: sqlite3.Row | dict[str, Any]) -> str | None:
     return _norm_text(row["canonical_artist"]) or _norm_text(row["artist_norm"])
 
@@ -154,6 +163,377 @@ def _format_candidate_brief(detail: CandidateDetail) -> str:
         f"{detail.album or '?'} | {detail.release_date or '?'} | "
         f"{_format_duration_ms(detail.duration_ms)} | score {detail.score}/3"
     )
+
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _strip_ansi(text: str) -> str:
+    return _ANSI_RE.sub("", text)
+
+
+def _supports_color(stream: Any) -> bool:
+    return bool(getattr(stream, "isatty", lambda: False)()) and os.environ.get("NO_COLOR") is None
+
+
+def _paint(text: str, *, color: str | None = None, bold: bool = False, dim: bool = False, enabled: bool) -> str:
+    if not enabled:
+        return text
+    codes: list[str] = []
+    if bold:
+        codes.append("1")
+    if dim:
+        codes.append("2")
+    if color is not None:
+        codes.append(color)
+    if not codes:
+        return text
+    return f"\033[{';'.join(codes)}m{text}\033[0m"
+
+
+def _human_count(value: int) -> str:
+    return f"{value:,}"
+
+
+def _format_elapsed(seconds: float) -> str:
+    total = max(0, int(seconds))
+    hours, remainder = divmod(total, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+    return f"{minutes:02d}:{secs:02d}"
+
+
+def _state_path_for_db(db_path: Path) -> Path:
+    suffix = db_path.suffix + ".backfill_spotify_ids.json"
+    return db_path.with_suffix(suffix)
+
+
+def _load_state(path: Path) -> dict[str, Any] | None:
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _write_state(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_name(f"{path.name}.tmp")
+    tmp_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    tmp_path.replace(path)
+
+
+def _clear_state(path: Path) -> None:
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        pass
+
+
+def _state_signature(
+    *,
+    execute: bool,
+    newest_first: bool,
+    limit: int | None,
+    m3u_paths: tuple[str, ...],
+    artist_terms: tuple[str, ...],
+    title_terms: tuple[str, ...],
+    isrc_terms: tuple[str, ...],
+    search_limit: int,
+) -> dict[str, Any]:
+    return {
+        "execute": bool(execute),
+        "newest_first": bool(newest_first),
+        "limit": limit,
+        "m3u_paths": list(m3u_paths),
+        "artist_terms": list(artist_terms),
+        "title_terms": list(title_terms),
+        "isrc_terms": list(isrc_terms),
+        "search_limit": int(search_limit),
+    }
+
+
+def _state_matches(
+    state: dict[str, Any],
+    *,
+    execute: bool,
+    newest_first: bool,
+    limit: int | None,
+    m3u_paths: tuple[str, ...],
+    artist_terms: tuple[str, ...],
+    title_terms: tuple[str, ...],
+    isrc_terms: tuple[str, ...],
+    search_limit: int,
+) -> bool:
+    expected = _state_signature(
+        execute=execute,
+        newest_first=newest_first,
+        limit=limit,
+        m3u_paths=m3u_paths,
+        artist_terms=artist_terms,
+        title_terms=title_terms,
+        isrc_terms=isrc_terms,
+        search_limit=search_limit,
+    )
+    for key, value in expected.items():
+        if state.get(key) != value:
+            return False
+    return True
+
+
+def _state_resume_from_id(state: dict[str, Any]) -> int:
+    try:
+        return int(state.get("resume_from_id") or 0)
+    except Exception:
+        return 0
+
+
+def _read_m3u_paths(m3u_path: Path) -> list[Path]:
+    out: list[Path] = []
+    base_dir = m3u_path.parent
+    for raw in m3u_path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        candidate = Path(line).expanduser()
+        if not candidate.is_absolute():
+            candidate = (base_dir / candidate).expanduser()
+        out.append(candidate.resolve())
+    return out
+
+
+def _identity_row_for_asset_path(
+    conn: sqlite3.Connection,
+    asset_path: str | Path,
+) -> sqlite3.Row | None:
+    active_order = "CASE WHEN COALESCE(al.active, 1) = 1 THEN 0 ELSE 1 END, " if _column_exists(
+        conn, "asset_link", "active"
+    ) else ""
+    return conn.execute(
+        f"""
+        SELECT
+            ti.id,
+            ti.isrc,
+            ti.spotify_id,
+            ti.artist_norm,
+            ti.title_norm,
+            ti.canonical_artist,
+            ti.canonical_title,
+            ti.duration_ref_ms
+        FROM asset_file af
+        JOIN asset_link al ON al.asset_id = af.id
+        JOIN track_identity ti ON ti.id = al.identity_id
+        WHERE af.path = ?
+          AND ti.merged_into_id IS NULL
+          AND (ti.spotify_id IS NULL OR TRIM(ti.spotify_id) = '')
+        ORDER BY {active_order} al.id ASC
+        LIMIT 1
+        """,
+        (str(asset_path),),
+    ).fetchone()
+
+
+def _select_rows_for_paths(
+    conn: sqlite3.Connection,
+    *,
+    asset_paths: tuple[Path, ...],
+    resume_from_id: int,
+    limit: int | None,
+    newest_first: bool = True,
+) -> list[sqlite3.Row]:
+    rows: list[sqlite3.Row] = []
+    seen_ids: set[int] = set()
+    for asset_path in asset_paths:
+        row = _identity_row_for_asset_path(conn, asset_path)
+        if row is None:
+            continue
+        identity_id = int(row["id"])
+        if identity_id in seen_ids:
+            continue
+        seen_ids.add(identity_id)
+        rows.append(row)
+    rows.sort(key=lambda row: int(row["id"]), reverse=newest_first)
+    if resume_from_id > 0:
+        if newest_first:
+            rows = [row for row in rows if int(row["id"]) < resume_from_id]
+        else:
+            rows = [row for row in rows if int(row["id"]) > resume_from_id]
+    if limit is not None:
+        rows = rows[: int(limit)]
+    return rows
+
+
+def _emit_line(text: str, *, stream: Any, enabled: bool = True) -> None:
+    print(text if enabled else _strip_ansi(text), file=stream)
+
+
+def _emit_tracker(
+    *,
+    stream: Any,
+    enabled: bool,
+    processed: int,
+    total: int,
+    updated: int,
+    unresolved: int,
+    ambiguous: int,
+    conflicts: int,
+    errors: int,
+    last_identity_id: int,
+    last_isrc: str | None,
+    last_status: str | None,
+) -> None:
+    if not enabled:
+        return
+    tracker = (
+        f"tracker {processed}/{total} "
+        f"updated={updated} unresolved={unresolved} ambiguous={ambiguous} "
+        f"conflicts={conflicts} errors={errors} "
+        f"last=#{last_identity_id or 0}"
+    )
+    if last_isrc:
+        tracker += f" isrc={last_isrc}"
+    if last_status:
+        tracker += f" status={last_status}"
+    print(f"\r\033[2K{tracker}", end="", file=stream, flush=True)
+
+
+def _emit_start(
+    *,
+    stream: Any,
+    enabled: bool,
+    db_path: Path,
+    mode: str,
+    order: str,
+    total: int,
+    state_path: Path,
+    resume_from_id: int,
+    resumed: bool,
+    state_source: str | None,
+    filters: dict[str, list[str]],
+) -> None:
+    if resumed:
+        source = f" from {state_source}" if state_source else ""
+        _emit_line(
+            _paint(
+                f"resume{source}: continuing at id<{resume_from_id}",
+                color="36",
+                bold=True,
+                enabled=enabled,
+            ),
+            stream=stream,
+        )
+    _emit_line(
+        _paint(
+            f"start: {mode} {order} total={_human_count(total)} db={db_path}",
+            color="37",
+            bold=True,
+            enabled=enabled,
+        ),
+        stream=stream,
+    )
+    if any(filters.values()):
+        _emit_line(
+            _paint(
+                "filters: "
+                f"artist={filters['artist'] or ['(none)']} "
+                f"title={filters['title'] or ['(none)']} "
+                f"isrc={filters['isrc'] or ['(none)']}",
+                color="36",
+                enabled=enabled,
+            ),
+            stream=stream,
+        )
+    _emit_line(
+        _paint(f"state: {state_path}", color="35", dim=True, enabled=enabled),
+        stream=stream,
+    )
+
+
+def _emit_event(
+    *,
+    stream: Any,
+    enabled: bool,
+    kind: str,
+    identity_id: int,
+    isrc: str | None,
+    message: str,
+) -> None:
+    palette = {
+        "match": ("32", True),
+        "skip": ("33", True),
+        "error": ("31", True),
+        "info": ("36", False),
+        "state": ("35", False),
+    }
+    color, bold = palette.get(kind, ("37", False))
+    prefix = kind.upper()
+    parts = [prefix, f"#{identity_id}"]
+    if isrc:
+        parts.append(isrc)
+    parts.append(message)
+    _emit_line(
+        _paint(" ".join(parts), color=color, bold=bold, enabled=enabled),
+        stream=stream,
+    )
+
+
+def _emit_report(
+    *,
+    stream: Any,
+    enabled: bool,
+    stats: dict[str, Any],
+    elapsed_s: float,
+    state_path: Path,
+    state_saved: bool,
+) -> None:
+    status = "interrupted" if stats.get("interrupted") else "completed"
+    _emit_line(
+        _paint(f"{status}: {_human_count(int(stats.get('processed') or 0))} rows in {_format_elapsed(elapsed_s)}", color="37", bold=True, enabled=enabled),
+        stream=stream,
+    )
+    _emit_line(
+        _paint(
+            f"updated={_human_count(int(stats.get('updated') or 0))} "
+            f"unresolved={_human_count(int(stats.get('unresolved') or 0))} "
+            f"ambiguous={_human_count(int(stats.get('ambiguous') or 0))} "
+            f"conflicts={_human_count(int(stats.get('conflicts') or 0))} "
+            f"errors={_human_count(int(stats.get('errors') or 0))}",
+            color="36",
+            enabled=enabled,
+        ),
+        stream=stream,
+    )
+    _emit_line(
+        _paint(
+            f"last_id={int(stats.get('last_identity_id') or 0)} next_resume_from_id={int(stats.get('next_resume_from_id') or 0)}",
+            color="35",
+            enabled=enabled,
+        ),
+        stream=stream,
+    )
+    if stats.get("missing_m3u_written"):
+        _emit_line(
+            _paint(
+                f"missing_m3u={stats['missing_m3u_written']} count={int(stats.get('missing_m3u_count') or 0)}",
+                color="36",
+                bold=True,
+                enabled=enabled,
+            ),
+            stream=stream,
+        )
+    if state_saved:
+        _emit_line(
+            _paint(f"checkpoint saved: {state_path}", color="33", bold=True, enabled=enabled),
+            stream=stream,
+        )
+    else:
+        _emit_line(
+            _paint(f"checkpoint cleared: {state_path}", color="32", bold=True, enabled=enabled),
+            stream=stream,
+        )
 
 
 def _semantic_key(hit: SpotifyTrack) -> tuple[tuple[str, ...], str | None, int | None]:
@@ -337,6 +717,39 @@ def _select_rows(
     return conn.execute(sql, tuple(params)).fetchall()
 
 
+def _missing_spotify_rows(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    merged_where = "AND ti.merged_into_id IS NULL" if _column_exists(conn, "track_identity", "merged_into_id") else ""
+    return conn.execute(
+        f"""
+        SELECT DISTINCT
+            af.path AS path,
+            COALESCE(ti.canonical_artist, ti.artist_norm) AS artist,
+            COALESCE(ti.canonical_title, ti.title_norm) AS title
+        FROM track_identity ti
+        JOIN asset_link al ON al.identity_id = ti.id
+        JOIN asset_file af ON af.id = al.asset_id
+        WHERE (ti.spotify_id IS NULL OR TRIM(ti.spotify_id) = '')
+          AND af.path IS NOT NULL
+          AND TRIM(af.path) != ''
+          {merged_where}
+        ORDER BY af.path ASC
+        """,
+    ).fetchall()
+
+
+def _write_missing_spotify_m3u(conn: sqlite3.Connection, output_path: Path) -> int:
+    rows = _missing_spotify_rows(conn)
+    lines = ["#EXTM3U", "#EXTENC: UTF-8", "#PLAYLIST:missing spotify_id"]
+    for row in rows:
+        artist = _norm_text(row["artist"]) or "Unknown"
+        title = _norm_text(row["title"]) or Path(str(row["path"])).stem
+        lines.append(f"#EXTINF:-1,{artist} - {title}")
+        lines.append(str(Path(str(row["path"])).expanduser()))
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return len(rows)
+
+
 def _spotify_id_conflicts(conn: sqlite3.Connection, identity_id: int, spotify_id: str) -> bool:
     merged_where = "AND merged_into_id IS NULL" if _column_exists(conn, "track_identity", "merged_into_id") else ""
     row = conn.execute(
@@ -357,8 +770,10 @@ def run(
     *,
     db_path: Path,
     execute: bool,
-    resume_from_id: int,
+    resume_from_id: int | None,
     limit: int | None,
+    asset_paths: tuple[Path, ...] = (),
+    missing_m3u_path: Path | None = None,
     newest_first: bool = True,
     artist_terms: tuple[str, ...] = (),
     title_terms: tuple[str, ...] = (),
@@ -373,16 +788,47 @@ def run(
     conn.execute(f"PRAGMA busy_timeout = {int(busy_timeout_ms)}")
     interrupt_state = InterruptState()
     previous_handlers = _install_interrupt_handler(interrupt_state)
+    state_path = _state_path_for_db(db_path)
+    started_at = time.monotonic()
     try:
-        rows = _select_rows(
-            conn,
-            resume_from_id=resume_from_id,
-            limit=limit,
+        initial_resume_from_id = int(resume_from_id or 0)
+        auto_resume = resume_from_id is None
+        state = _load_state(state_path)
+        resume_source: str | None = None
+        effective_resume_from_id = initial_resume_from_id
+        if auto_resume and state is not None and _state_matches(
+            state,
+            execute=execute,
             newest_first=newest_first,
+            limit=limit,
+            m3u_paths=tuple(str(path) for path in asset_paths),
             artist_terms=artist_terms,
             title_terms=title_terms,
             isrc_terms=isrc_terms,
-        )
+            search_limit=search_limit,
+        ):
+            state_resume_from_id = _state_resume_from_id(state)
+            if state_resume_from_id > 0 and state_resume_from_id != initial_resume_from_id:
+                effective_resume_from_id = state_resume_from_id
+                resume_source = str(state_path)
+        if asset_paths:
+            rows = _select_rows_for_paths(
+                conn,
+                asset_paths=asset_paths,
+                resume_from_id=effective_resume_from_id,
+                limit=limit,
+                newest_first=newest_first,
+            )
+        else:
+            rows = _select_rows(
+                conn,
+                resume_from_id=effective_resume_from_id,
+                limit=limit,
+                newest_first=newest_first,
+                artist_terms=artist_terms,
+                title_terms=title_terms,
+                isrc_terms=isrc_terms,
+            )
         stats: dict[str, Any] = {
             "mode": "execute" if execute else "dry_run",
             "db_path": str(db_path),
@@ -393,8 +839,8 @@ def run(
             "conflicts": 0,
             "errors": 0,
             "last_identity_id": 0,
-            "resume_from_id": resume_from_id,
-            "next_resume_from_id": resume_from_id,
+            "resume_from_id": effective_resume_from_id,
+            "next_resume_from_id": effective_resume_from_id,
             "order": "newest_first" if newest_first else "oldest_first",
             "interrupted": False,
             "interrupted_signal": None,
@@ -404,10 +850,29 @@ def run(
                 "title": list(title_terms),
                 "isrc": list(isrc_terms),
             },
+            "source_paths": [str(path) for path in asset_paths],
+            "resume_state_path": str(state_path),
+            "resume_state_used": bool(resume_source),
+            "missing_m3u_path": str(missing_m3u_path) if missing_m3u_path else None,
         }
 
         if execute:
             conn.execute("BEGIN IMMEDIATE")
+
+        tracker_enabled = _supports_color(sys.stderr)
+        _emit_start(
+            stream=sys.stderr,
+            enabled=tracker_enabled,
+            db_path=db_path,
+            mode=stats["mode"],
+            order=stats["order"],
+            total=len(rows),
+            state_path=state_path,
+            resume_from_id=effective_resume_from_id,
+            resumed=bool(resume_source),
+            state_source=resume_source,
+            filters=stats["filters"],
+        )
 
         with SpotifyMetadataClient() as spotify:
             for row in rows:
@@ -416,26 +881,95 @@ def run(
                 identity_id = int(row["id"])
                 stats["processed"] += 1
                 stats["last_identity_id"] = identity_id
-                stats["next_resume_from_id"] = identity_id
                 isrc = _norm_isrc(row["isrc"])
+                last_status = None
                 if not isrc:
                     stats["unresolved"] += 1
+                    last_status = "skip"
+                    if verbose or tracker_enabled:
+                        _emit_event(
+                            stream=sys.stderr,
+                            enabled=tracker_enabled,
+                            kind="skip",
+                            identity_id=identity_id,
+                            isrc=None,
+                            message="missing isrc",
+                        )
+                    _emit_tracker(
+                        stream=sys.stderr,
+                        enabled=tracker_enabled,
+                        processed=stats["processed"],
+                        total=len(rows),
+                        updated=stats["updated"],
+                        unresolved=stats["unresolved"],
+                        ambiguous=stats["ambiguous"],
+                        conflicts=stats["conflicts"],
+                        errors=stats["errors"],
+                        last_identity_id=stats["last_identity_id"],
+                        last_isrc=isrc,
+                        last_status=last_status,
+                    )
                     continue
                 try:
                     hits = spotify.search_by_isrc(isrc, limit=search_limit)
                     selection = choose_spotify_candidate(row, hits)
                     if selection.spotify_id is None:
                         stats[selection.reason] = int(stats.get(selection.reason, 0)) + 1
+                        last_status = "skip"
+                        if verbose or tracker_enabled:
+                            _emit_event(
+                                stream=sys.stderr,
+                                enabled=tracker_enabled,
+                                kind="skip",
+                                identity_id=identity_id,
+                                isrc=isrc,
+                                message=selection.reason,
+                            )
                         if verbose:
-                            print(f"[skip] #{identity_id} {isrc} {selection.reason}", file=sys.stderr)
                             for line in _format_verbose_lines(row, selection):
-                                print(line, file=sys.stderr)
+                                _emit_line(line, stream=sys.stderr)
+                        _emit_tracker(
+                            stream=sys.stderr,
+                            enabled=tracker_enabled,
+                            processed=stats["processed"],
+                            total=len(rows),
+                            updated=stats["updated"],
+                            unresolved=stats["unresolved"],
+                            ambiguous=stats["ambiguous"],
+                            conflicts=stats["conflicts"],
+                            errors=stats["errors"],
+                            last_identity_id=stats["last_identity_id"],
+                            last_isrc=isrc,
+                            last_status=last_status,
+                        )
                         continue
                     spotify_id = selection.spotify_id
                     if _spotify_id_conflicts(conn, identity_id, spotify_id):
                         stats["conflicts"] += 1
-                        if verbose:
-                            print(f"[skip] #{identity_id} {isrc} conflict on {spotify_id}", file=sys.stderr)
+                        last_status = "skip"
+                        if verbose or tracker_enabled:
+                            _emit_event(
+                                stream=sys.stderr,
+                                enabled=tracker_enabled,
+                                kind="skip",
+                                identity_id=identity_id,
+                                isrc=isrc,
+                                message=f"conflict on {spotify_id}",
+                            )
+                        _emit_tracker(
+                            stream=sys.stderr,
+                            enabled=tracker_enabled,
+                            processed=stats["processed"],
+                            total=len(rows),
+                            updated=stats["updated"],
+                            unresolved=stats["unresolved"],
+                            ambiguous=stats["ambiguous"],
+                            conflicts=stats["conflicts"],
+                            errors=stats["errors"],
+                            last_identity_id=stats["last_identity_id"],
+                            last_isrc=isrc,
+                            last_status=last_status,
+                        )
                         continue
                     if execute:
                         merge_identity_fields_if_empty(
@@ -454,27 +988,150 @@ def run(
                         if stats["updated"] > 0 and stats["updated"] % int(commit_every) == 0:
                             conn.commit()
                             conn.execute("BEGIN IMMEDIATE")
+                            stats["next_resume_from_id"] = identity_id
+                            _write_state(
+                                state_path,
+                                {
+                                    "db_path": str(db_path),
+                                    "resume_from_id": stats["next_resume_from_id"],
+                            **_state_signature(
+                                execute=execute,
+                                newest_first=newest_first,
+                                limit=limit,
+                                m3u_paths=tuple(str(path) for path in asset_paths),
+                                artist_terms=artist_terms,
+                                title_terms=title_terms,
+                                isrc_terms=isrc_terms,
+                                search_limit=search_limit,
+                            ),
+                                    "status": "checkpoint",
+                                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                                },
+                            )
                     stats["updated"] += 1
+                    if not execute:
+                        stats["next_resume_from_id"] = identity_id
+                    last_status = "match"
+                    if verbose or tracker_enabled:
+                        _emit_event(
+                            stream=sys.stderr,
+                            enabled=tracker_enabled,
+                            kind="match",
+                            identity_id=identity_id,
+                            isrc=isrc,
+                            message=f"-> {spotify_id} ({selection.reason})",
+                        )
                     if verbose:
-                        print(f"[match] #{identity_id} {isrc} -> {spotify_id} ({selection.reason})", file=sys.stderr)
                         for line in _format_verbose_lines(row, selection):
-                            print(line, file=sys.stderr)
+                            _emit_line(line, stream=sys.stderr)
                 except SpotifyIntakeError as exc:
                     stats["errors"] += 1
-                    if verbose:
-                        print(f"[error] #{identity_id} {isrc} {exc}", file=sys.stderr)
+                    last_status = "error"
+                    if verbose or tracker_enabled:
+                        _emit_event(
+                            stream=sys.stderr,
+                            enabled=tracker_enabled,
+                            kind="error",
+                            identity_id=identity_id,
+                            isrc=isrc,
+                            message=str(exc),
+                        )
+                    _emit_tracker(
+                        stream=sys.stderr,
+                        enabled=tracker_enabled,
+                        processed=stats["processed"],
+                        total=len(rows),
+                        updated=stats["updated"],
+                        unresolved=stats["unresolved"],
+                        ambiguous=stats["ambiguous"],
+                        conflicts=stats["conflicts"],
+                        errors=stats["errors"],
+                        last_identity_id=stats["last_identity_id"],
+                        last_isrc=isrc,
+                        last_status=last_status,
+                    )
                     if "rate_limited" in str(exc):
                         break
                 except Exception:
                     stats["errors"] += 1
+                    last_status = "error"
+                    if verbose or tracker_enabled:
+                        _emit_event(
+                            stream=sys.stderr,
+                            enabled=tracker_enabled,
+                            kind="error",
+                            identity_id=identity_id,
+                            isrc=isrc,
+                            message="unexpected exception",
+                        )
                     if verbose:
                         traceback.print_exc()
+                    _emit_tracker(
+                        stream=sys.stderr,
+                        enabled=tracker_enabled,
+                        processed=stats["processed"],
+                        total=len(rows),
+                        updated=stats["updated"],
+                        unresolved=stats["unresolved"],
+                        ambiguous=stats["ambiguous"],
+                        conflicts=stats["conflicts"],
+                        errors=stats["errors"],
+                        last_identity_id=stats["last_identity_id"],
+                        last_isrc=isrc,
+                        last_status=last_status,
+                    )
+                _emit_tracker(
+                    stream=sys.stderr,
+                    enabled=tracker_enabled,
+                    processed=stats["processed"],
+                    total=len(rows),
+                    updated=stats["updated"],
+                    unresolved=stats["unresolved"],
+                    ambiguous=stats["ambiguous"],
+                    conflicts=stats["conflicts"],
+                    errors=stats["errors"],
+                    last_identity_id=stats["last_identity_id"],
+                    last_isrc=isrc,
+                    last_status=last_status,
+                )
 
         if execute:
             conn.commit()
         stats["interrupted"] = interrupt_state.requested
         stats["interrupted_signal"] = interrupt_state.signal_name
         stats["stopped_at"] = datetime.now(timezone.utc).isoformat()
+        if stats["interrupted"]:
+            _write_state(
+                state_path,
+                {
+                    "db_path": str(db_path),
+                    "resume_from_id": int(stats["next_resume_from_id"] or initial_resume_from_id),
+                    **_state_signature(
+                        execute=execute,
+                        newest_first=newest_first,
+                        limit=limit,
+                        m3u_paths=tuple(str(path) for path in asset_paths),
+                        artist_terms=artist_terms,
+                        title_terms=title_terms,
+                        isrc_terms=isrc_terms,
+                        search_limit=search_limit,
+                    ),
+                    "status": "interrupted",
+                    "updated_at": stats["stopped_at"],
+                    "summary": {k: stats[k] for k in ("processed", "updated", "unresolved", "ambiguous", "conflicts", "errors", "last_identity_id", "next_resume_from_id")},
+                },
+            )
+            stats["resume_state_saved"] = True
+        else:
+            if execute:
+                _clear_state(state_path)
+            stats["resume_state_saved"] = False
+        if missing_m3u_path is not None:
+            stats["missing_m3u_count"] = _write_missing_spotify_m3u(conn, missing_m3u_path)
+            stats["missing_m3u_written"] = str(missing_m3u_path)
+        if tracker_enabled:
+            print(file=sys.stderr)
+        stats["elapsed_s"] = round(time.monotonic() - started_at, 3)
         return stats
     finally:
         _restore_interrupt_handler(previous_handlers)
@@ -490,10 +1147,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--resume-from-id",
         type=int,
-        default=0,
-        help="Resume cursor. Default order is newest-first, so resume continues with lower ids.",
+        default=None,
+        help="Resume cursor. When omitted, the last interrupted run is resumed automatically.",
     )
     parser.add_argument("--limit", type=int, default=None, help="Only process the first N eligible identities")
+    parser.add_argument(
+        "--m3u",
+        action="append",
+        default=[],
+        help="Optional M3U/M3U8 file listing audio paths to backfill (repeatable)",
+    )
+    parser.add_argument(
+        "--missing-m3u",
+        type=Path,
+        default=None,
+        help="Write an M3U of DB tracks still missing spotify_id (defaults to <db>.missing_spotify_ids.m3u)",
+    )
     parser.add_argument("--artist", action="append", default=[], help="Only process rows whose artist contains this text (repeatable)")
     parser.add_argument("--title", action="append", default=[], help="Only process rows whose title contains this text (repeatable)")
     parser.add_argument("--isrc", action="append", default=[], help="Only process these ISRCs (repeatable)")
@@ -517,12 +1186,24 @@ def main(argv: list[str] | None = None) -> int:
     artist_terms = _normalized_terms(args.artist)
     title_terms = _normalized_terms(args.title)
     isrc_terms = _normalized_terms(args.isrc, upper=True)
+    m3u_paths = tuple(
+        path.resolve()
+        for raw in args.m3u
+        for path in _read_m3u_paths(Path(raw).expanduser().resolve())
+    )
+    missing_m3u_path = (
+        args.missing_m3u.expanduser().resolve()
+        if args.missing_m3u is not None
+        else db_path.with_name(f"{db_path.stem}.missing_spotify_ids.m3u")
+    )
     try:
         summary = run(
             db_path=db_path,
             execute=bool(args.execute),
-            resume_from_id=int(args.resume_from_id),
+            resume_from_id=args.resume_from_id,
             limit=args.limit,
+            asset_paths=m3u_paths,
+            missing_m3u_path=missing_m3u_path,
             newest_first=not bool(args.oldest_first),
             artist_terms=artist_terms,
             title_terms=title_terms,
@@ -539,11 +1220,14 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     print(json.dumps(summary, indent=2, sort_keys=True))
-    if summary.get("interrupted"):
-        print(
-            f"resume with --resume-from-id {summary['next_resume_from_id']}",
-            file=sys.stderr,
-        )
+    _emit_report(
+        stream=sys.stderr,
+        enabled=_supports_color(sys.stderr),
+        stats=summary,
+        elapsed_s=float(summary.get("elapsed_s") or 0.0),
+        state_path=_state_path_for_db(db_path),
+        state_saved=bool(summary.get("resume_state_saved")),
+    )
     return 0
 
 

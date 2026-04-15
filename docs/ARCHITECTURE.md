@@ -14,7 +14,7 @@
 3. move planning, execution, and provenance
 4. downstream DJ export
 
-The active code lives in `tagslut/`, `tools/`, and `scripts/`. Historical code and superseded plans live in `legacy/` and `docs/archive/`.
+The active code lives in `tagslut/`, `tools/`, and `scripts/`. Historical code and superseded plans live in `legacy/` and `docs/archive/`. See `docs/README.md` for the full active-doc index.
 
 ## Source selection (summary)
 - Spotify URLs route through a tagslut-owned Spotify intake adapter that expands Spotify metadata first, then downloads per track with service fallback `qobuz -> tidal -> amazon`.

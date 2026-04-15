@@ -302,7 +302,7 @@ def _print_blocked_list(rows: list[sqlite3.Row | tuple[object, ...]]) -> None:
 
 
 def register_fix_command(cli: click.Group) -> None:
-    @cli.command("fix")
+    @cli.command("fix", help="Resume a blocked cohort or repair a specific file or identity.")
     @click.argument("cohort_id", required=False, type=int)
     @click.option("--db", "db_path_arg", type=click.Path(), help="Database path (or TAGSLUT_DB)")
     def fix_command(cohort_id: int | None, db_path_arg: str | None) -> None:  # type: ignore[misc]

@@ -251,7 +251,15 @@ def _run_url_flow(
 
 
 def register_get_command(cli: click.Group) -> None:
-    @cli.command("get")
+    @cli.command(
+        "get",
+        help=(
+            "Download and ingest a provider URL or local path. "
+            "Runs precheck → download → tag → promote → M3U. "
+            "Add --dj to build MP3 output with DJ playlists, "
+            "--fix to resume a blocked cohort."
+        ),
+    )
     @click.argument("input_value")
     @click.option("--db", "db_path_arg", type=click.Path(), help="Database path (or TAGSLUT_DB)")
     @click.option("--dj", is_flag=True, help="Build MP3 output with DJ playlists.")

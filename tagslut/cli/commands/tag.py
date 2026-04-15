@@ -1575,7 +1575,7 @@ def register_curate_group(parent: click.Group) -> None:
 
 
 def register_tag_group(cli: click.Group) -> None:
-    @cli.command("tag")
+    @cli.command("tag", help="Curate, fetch, apply, and sync metadata tags for library files.")
     @click.argument("target", required=False)
     @click.option("--db", "db_path_arg", type=click.Path(), help="Database path (or TAGSLUT_DB)")
     @click.option("--all", "tag_all", is_flag=True, help="Retag the full library.")

@@ -92,7 +92,7 @@ class _TagslutGroup(click.Group):
     def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
         if args:
             command = args[0]
-            if command not in _VISIBLE_TOP_LEVEL_COMMANDS and command in self.commands:
+            if command != "dj" and command not in _VISIBLE_TOP_LEVEL_COMMANDS and command in self.commands:
                 _warn_transitional_command(command)
         return super().parse_args(ctx, args)
 

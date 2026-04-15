@@ -7,7 +7,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-_SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "db" / "migrate_v2_to_v3.py"
+_SCRIPT = Path(__file__).resolve().parent.parent.parent / "scripts" / "db" / "migrate_v2_to_v3.py"
 _SPEC = _ilu.spec_from_file_location("migrate_v2_to_v3", _SCRIPT)
 _MOD = _ilu.module_from_spec(_SPEC)
 sys.modules[_SPEC.name] = _MOD

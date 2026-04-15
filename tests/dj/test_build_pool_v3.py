@@ -13,7 +13,7 @@ from pathlib import Path
 from tagslut.storage.v3.dj_profile import ensure_schema
 from tagslut.storage.v3.schema import create_schema_v3
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 BUILD_POOL_SCRIPT = PROJECT_ROOT / "scripts" / "dj" / "build_pool_v3.py"
 
 

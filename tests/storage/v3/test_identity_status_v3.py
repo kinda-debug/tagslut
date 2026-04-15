@@ -18,7 +18,7 @@ from tagslut.storage.v3.identity_status import (
 from tagslut.storage.v3.schema import create_schema_v3
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 SCRIPT_PATH = PROJECT_ROOT / "scripts" / "db" / "compute_identity_status_v3.py"
 
 _SPEC = _ilu.spec_from_file_location("compute_identity_status_v3", SCRIPT_PATH)

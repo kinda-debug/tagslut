@@ -13,7 +13,7 @@ import pytest
 
 from tagslut.storage.v3.schema import create_schema_v3
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 EXPORT_SCRIPT = PROJECT_ROOT / "scripts" / "dj" / "export_candidates_v3.py"
 
 

@@ -11,7 +11,7 @@ from tagslut.storage.schema import init_db
 from tagslut.storage.v3.schema import create_schema_v3
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 MIGRATION_NAME = "0007_isrc_primary_key.py"
 
 

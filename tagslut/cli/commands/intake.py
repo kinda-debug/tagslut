@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
+import re
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -136,6 +139,28 @@ def _intent_reference(intent_dict: dict[str, Any]) -> str:
     if title:
         return f"title:{title}"
     return "unresolved-intent"
+
+
+def _run_stage_step(command: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(command, capture_output=True, text=True)
+
+
+def _echo_completed_process(result: subprocess.CompletedProcess[str]) -> None:
+    if result.stdout:
+        sys.stdout.write(result.stdout)
+        if not result.stdout.endswith("\n"):
+            sys.stdout.write("\n")
+    if result.stderr:
+        sys.stderr.write(result.stderr)
+        if not result.stderr.endswith("\n"):
+            sys.stderr.write("\n")
+
+
+def _extract_int(pattern: str, text: str) -> int | None:
+    match = re.search(pattern, text, re.MULTILINE)
+    if not match:
+        return None
+    return int(match.group(1))
 
 
 def register_intake_group(cli: click.Group) -> None:
@@ -908,3 +933,144 @@ def register_intake_group(cli: click.Group) -> None:
             args.append("--dry-run")
 
         run_python_script("tools/review/process_root.py", tuple(args))
+
+    @intake.command("stage")
+    @click.argument("root", type=click.Path(exists=True, file_okay=False))
+    @click.option(
+        "--source",
+        required=True,
+        type=click.Choice(["bpdl", "tidal", "qobuz", "spotiflacnext", "legacy"]),
+        help="Download source passed to index register",
+    )
+    @click.option(
+        "--library",
+        type=click.Path(file_okay=False),
+        help="Library destination for promote; defaults to $MASTER_LIBRARY",
+    )
+    @click.option(
+        "--providers",
+        default="beatport,tidal",
+        show_default=True,
+        help="Comma-separated providers passed to enrich",
+    )
+    @click.option(
+        "--dry-run",
+        is_flag=True,
+        help="Run without writes on register and duration-check; passed through to process-root",
+    )
+    @click.option("--db", "db_path", type=click.Path(), help="DB path (or set TAGSLUT_DB)")
+    @click.option("--force", is_flag=True, help="Force re-enrichment in process-root")
+    def intake_stage(
+        root: str,
+        source: str,
+        library: str | None,
+        providers: str,
+        dry_run: bool,
+        db_path: str | None,
+        force: bool,
+    ) -> None:
+        """One-shot staged-files intake wrapper."""
+        try:
+            resolution = resolve_cli_env_db_path(db_path, purpose="write", source_label="--db")
+        except DbResolutionError as exc:
+            raise click.ClickException(str(exc)) from exc
+
+        resolved_library = library or os.environ.get("MASTER_LIBRARY")
+        if not resolved_library:
+            raise click.UsageError("Missing --library or $MASTER_LIBRARY")
+
+        root_path = Path(root).expanduser().resolve()
+        db_arg = str(resolution.path)
+        library_arg = str(Path(resolved_library).expanduser().resolve())
+
+        steps: list[tuple[str, list[str]]] = [
+            (
+                "register",
+                [
+                    sys.executable,
+                    "-m",
+                    "tagslut",
+                    "index",
+                    "register",
+                    str(root_path),
+                    "--source",
+                    source,
+                    "--db",
+                    db_arg,
+                ],
+            ),
+            (
+                "duration-check",
+                [
+                    sys.executable,
+                    "-m",
+                    "tagslut",
+                    "index",
+                    "duration-check",
+                    str(root_path),
+                    "--db",
+                    db_arg,
+                ],
+            ),
+            (
+                "enrich + art + promote",
+                [
+                    sys.executable,
+                    "-m",
+                    "tagslut",
+                    "intake",
+                    "process-root",
+                    "--root",
+                    str(root_path),
+                    "--phases",
+                    "enrich,art,promote",
+                    "--library",
+                    library_arg,
+                    "--providers",
+                    providers,
+                    "--db",
+                    db_arg,
+                ],
+            ),
+        ]
+
+        if force:
+            steps[-1][1].append("--force")
+        if dry_run:
+            steps[2][1].append("--dry-run")
+        else:
+            steps[0][1].append("--execute")
+            steps[1][1].append("--execute")
+
+        summaries: list[str] = []
+        for idx, (label, command) in enumerate(steps, start=1):
+            click.echo(f"=== Step {idx}/3: {label} ===")
+            result = _run_stage_step(command)
+            _echo_completed_process(result)
+            if result.returncode != 0:
+                raise click.ClickException(f"Step {idx}/3 failed: {label}")
+
+            if label == "register":
+                registered = _extract_int(r"^\s*Registered:\s+(\d+)", result.stdout or "")
+                skipped = _extract_int(r"^\s*Skipped:\s+(\d+)", result.stdout or "")
+                errors = _extract_int(r"^\s*Errors:\s+(\d+)", result.stdout or "")
+                summaries.append(
+                    f"register: registered={registered if registered is not None else '?'} "
+                    f"skipped={skipped if skipped is not None else '?'} "
+                    f"errors={errors if errors is not None else '?'}"
+                )
+            elif label == "duration-check":
+                updated = _extract_int(r"^\s*Updated:\s+(\d+)", result.stdout or "")
+                missing = _extract_int(r"^\s*Missing DB:\s+(\d+)", result.stdout or "")
+                errors = _extract_int(r"^\s*Errors:\s+(\d+)", result.stdout or "")
+                summaries.append(
+                    f"duration-check: updated={updated if updated is not None else '?'} "
+                    f"missing_db={missing if missing is not None else '?'} "
+                    f"errors={errors if errors is not None else '?'}"
+                )
+            else:
+                summaries.append("process-root: phases=enrich,art,promote")
+
+        click.echo("Summary:")
+        for line in summaries:
+            click.echo(f"  {line}")

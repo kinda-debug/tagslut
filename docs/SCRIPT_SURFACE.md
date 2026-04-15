@@ -16,30 +16,34 @@ Role: Canonical intake orchestration. Includes URL-based intake
 Use `tagslut intake <URL>` as the primary entry point for Beatport/Tidal URLs;
 `tools/get` is kept as a compatibility wrapper.
 
-2. `poetry run tagslut index ...`
+2. `poetry run tagslut admin intake stage`
+Role: One-shot staged-files intake for already-downloaded roots. Runs register,
+duration-check, and enrich/art/promote in sequence.
+
+3. `poetry run tagslut index ...`
 Role: Inventory registration, duplicate checks, duration checks, and metadata enrichment for indexed files.
 
-3. `poetry run tagslut decide ...`
+4. `poetry run tagslut decide ...`
 Role: Policy-profile listing and deterministic plan generation.
 
-4. `poetry run tagslut execute ...`
+5. `poetry run tagslut execute ...`
 Role: Execute move/quarantine/promote workflows from plans.
 
-5. `poetry run tagslut verify ...`
+6. `poetry run tagslut verify ...`
 Role: Validate duration/parity and move receipt consistency.
 
-6. `poetry run tagslut report ...`
+7. `poetry run tagslut report ...`
 Role: M3U and operational reports (duration, plan summaries).
 
-7. `poetry run tagslut auth ...`
+8. `poetry run tagslut auth ...`
 Role: Provider authentication and token lifecycle flows.
 
-8. `poetry run tagslut mp3 ...`
+9. `poetry run tagslut mp3 ...`
 Role: MP3 derivative asset management (Stage 2 of the 4-stage DJ pipeline; prerequisite: Stage 1 intake).
 - `mp3 build` — transcode preferred FLAC master(s) to MP3 and register in `mp3_asset`
 - `mp3 reconcile` — scan an existing MP3 root (via `--mp3-root` or `$DJ_LIBRARY`) and register files in `mp3_asset` without re-transcoding
 
-9. `poetry run tagslut dj ...`
+10. `poetry run tagslut dj ...`
 Role: DJ library admission, validation, and Rekordbox XML export (Stages 3 and 4).
 - `dj admit` — admit a single identity into the DJ library (`dj_admission` row)
 - `dj backfill` — admit all `mp3_asset` rows not yet in `dj_admission`
@@ -48,13 +52,13 @@ Role: DJ library admission, validation, and Rekordbox XML export (Stages 3 and 4
 - `dj xml patch` — re-emit XML verifying prior manifest, preserving stable TrackIDs
 - legacy subcommands (`curate`, `export`, `pool-wizard`, `role`) remain available
 
-10. `poetry run tagslut gig ...`
+11. `poetry run tagslut gig ...`
 Role: Build and manage DJ gig sets.
 
-11. `poetry run tagslut export ...`
+12. `poetry run tagslut export ...`
 Role: Export tracks to USB or DJ pools.
 
-12. `poetry run tagslut init ...`
+13. `poetry run tagslut init ...`
 Role: First-run interactive initialization wizard.
 
 ## Rebrand Invocation

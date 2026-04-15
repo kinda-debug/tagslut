@@ -1,4 +1,4 @@
-<!-- Status: Active document. Synced 2026-03-09 after recent code/doc review. Historical or superseded material belongs in docs/archive/. -->
+<!-- Status: Active document. Synced 2026-04-15 after recent code/doc review. Historical or superseded material belongs in docs/archive/. -->
 
 # Script Surface (Canonical vs Legacy)
 
@@ -61,6 +61,35 @@ Role: Export tracks to USB or DJ pools.
 13. `poetry run tagslut init ...`
 Role: First-run interactive initialization wizard.
 
+14. `poetry run tagslut ops ...`
+Role: Internal operator utilities for guarded maintenance workflows.
+- `ops run-move-plan` — execute a move plan with preflight/postflight checks and receipt archival
+- `ops plan-dj-library-normalize` — build DJ library normalization plans
+- `ops relink-dj-pool` — apply DJ pool relink manifests and optional playlist rewrites
+- `ops writeback-canonical` — write canonical tags back to FLAC files from a root or M3U
+
+15. `poetry run tagslut provider status`
+Role: Check authentication and availability status for all configured metadata providers.
+
+16. `poetry run tagslut postman ingest`
+Role: Import Postman collection data from a Newman JSON report into v3 provenance.
+
+17. `poetry run tagslut library import-rekordbox`
+Role: Import a Rekordbox XML export into the library database.
+
+18. `poetry run tagslut lexicon ...`
+Role: Import and reconcile Lexicon DJ library data.
+- `lexicon import` — import Lexicon track metadata into `TAGSLUT_DB`
+- `lexicon import-playlists` — import Lexicon playlists into `TAGSLUT_DB`
+
+19. `poetry run tagslut master scan`
+Role: Scan the `MASTER_LIBRARY` root and register files.
+
+20. `poetry run tagslut v3 ...`
+Role: Database migration utilities and provenance inspection for operator/maintenance use only.
+- `v3 migrate` — run or preview v3 schema migrations
+- `v3 provenance show` — show ingestion fields and recent provenance events
+
 ## Rebrand Invocation
 
 The preferred command brand is now `tagslut`.
@@ -97,40 +126,37 @@ Role: Advanced/backend intake engine.
 3. `tools/get-report <beatport-url>`
 Role: Beatport report-only mode (no download).
 
-4. `tools/get-sync <beatport-url>`
-Role: Deprecated compatibility alias for `tools/get <beatport-url>`.
-
-5. `tools/tagslut [args...]`
+4. `tools/tagslut [args...]`
 Role: Local wrapper for `python -m tagslut`.
 
-6. `ts-get <url> [--dj] [--enrich]` (shell function in ~/.zshrc)
-Role: Primary download entry point. Routes to tiddl (TIDAL), streamrip (Qobuz), or beatportdl (Beatport) based on URL domain. `--dj` writes DJ pool M3U files.
+5. `ts-get <url> [--dj] [--enrich]` (shell function in ~/.zshrc)
+Role: Wraps `tagslut get`; exists for operator convenience.
 
-7. `ts-enrich` (shell function in ~/.zshrc)
-Role: Run metadata hoarding enrichment. Reads $TAGSLUT_DB, hits beatport → tidal → qobuz → reccobeats, fills BPM/key/genre/label. Resumable.
+6. `ts-enrich` (shell function in ~/.zshrc)
+Role: Wraps `tagslut index enrich`; exists for operator convenience.
 
-8. `ts-auth [tidal|beatport|qobuz|all]` (shell function in ~/.zshrc)
-Role: Refresh all provider tokens. Validates Qobuz session. Syncs beatportdl credentials. Wraps `tools/auth`.
+7. `ts-auth [tidal|beatport|qobuz|all]` (shell function in ~/.zshrc)
+Role: Wraps `tagslut auth`; exists for operator convenience.
 
-9. `tools/auth [tidal|beatport|qobuz|all]`
+8. `tools/auth [tidal|beatport|qobuz|all]`
 Role: Token refresh implementation. Called by ts-auth. Handles:
 - TIDAL: delegates to `tiddl auth refresh`
 - Beatport: attempts API refresh of stored token; syncs from beatportdl credentials
 - Qobuz: refreshes app credentials from bundle.js; validates session; pushes to streamrip dev_config.toml
 
-10. `tools/enrich`
+9. `tools/enrich`
 Role: Zero-config enrichment wrapper. Reads $TAGSLUT_DB from environment. Called by ts-enrich.
 
-11. `tools/tag-build [options]`
+10. `tools/tag-build [options]`
 Role: Build M3U from DB for library FLAC files missing ISRC.
 
-12. `tools/tag-run --m3u <path> [options]`
+11. `tools/tag-run --m3u <path> [options]`
 Role: Run `onetagger-cli` on a symlink batch from M3U and emit summary artifacts.
 
-13. `tools/tag [options]`
+12. `tools/tag [options]`
 Role: Combined build + run OneTagger workflow with defaults.
 
-14. `tools/review/sync_phase1_prs.sh`
+13. `tools/review/sync_phase1_prs.sh`
 Role: Maintainer-only helper for pushing the active Phase 1 branch stack with preserved PR scope boundaries.
 
 ## Transcode Helpers (Scripts)

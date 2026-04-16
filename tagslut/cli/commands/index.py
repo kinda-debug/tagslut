@@ -23,6 +23,7 @@ from tagslut.cli.commands._enrich_helpers import (
 from tagslut.core.flac_scan_prep import cleanup_prepared_flac_input, prepare_flac_scan_input
 from tagslut.storage.schema import init_db
 from tagslut.utils import AUDIO_EXTENSIONS
+from tagslut.utils.console_ui import ConsoleUI
 
 
 def register_index_group(cli: click.Group) -> None:
@@ -118,21 +119,25 @@ def register_index_group(cli: click.Group) -> None:
         if limit:
             input_iter = itertools.islice(input_iter, int(limit))
 
-        cb = make_progress_cb(bool(verbose))
+        ui = ConsoleUI(verbose=bool(verbose))
+        cb = make_progress_cb(bool(verbose), ui=ui)
         total = 0
         if cb is not None:
             input_paths = list(input_iter)
             input_iter = input_paths
             total = len(input_paths)
 
-        click.echo(f"Scanning: {path_obj}")
-        click.echo(f"Source: {source}")
-        click.echo(f"Hashing: {'full sha256' if full_hash else 'streaminfo md5 (sha256 fallback)'}")
-        if limit:
-            click.echo(f"Limit: {limit}")
-        if not execute:
-            click.echo("[DRY-RUN MODE - use --execute to save]")
-        click.echo("")
+        ui.begin_command("Index Register", target=str(path_obj), mode="execute" if execute else "dry-run")
+        ui.summary(
+            "Context",
+            [
+                ("Source", source),
+                ("Hashing", "full sha256" if full_hash else "streaminfo md5 (sha256 fallback)"),
+                ("Limit", limit if limit else "none"),
+                ("DJ only", "yes" if dj_only else "no"),
+                ("Duration check", "yes" if check_duration else "no"),
+            ],
+        )
 
         config = get_config()
         log_dir = None
@@ -147,7 +152,7 @@ def register_index_group(cli: click.Group) -> None:
         try:
             dual_write_v3 = bool(execute and dual_write_enabled())
             if dual_write_v3:
-                click.echo("V3 dual-write: enabled")
+                ui.note("V3 dual-write: enabled")
             registered = 0
             skipped = 0
             errors = 0
@@ -164,6 +169,7 @@ def register_index_group(cli: click.Group) -> None:
                     prepared = prepare_flac_scan_input(input_path, persist=bool(execute))
                     if prepared.scan_path is None:
                         skipped += 1
+                        ui.file_event("skip", path=input_path, reason="unsupported input")
                         if cb is not None:
                             cb(input_path.name, i, total)
                         continue
@@ -174,6 +180,7 @@ def register_index_group(cli: click.Group) -> None:
                     existing = get_file(conn, file_path)
                     if existing:
                         skipped += 1
+                        ui.file_event("skip", path=file_path, reason="already registered")
                         if cb is not None:
                             cb(input_path.name, i, total)
                         continue
@@ -245,6 +252,7 @@ def register_index_group(cli: click.Group) -> None:
                             raise click.ClickException("User aborted")
                         if action == "skip":
                             skipped += 1
+                            ui.file_event("skip", path=file_path, reason="duplicate")
                             if cb is not None:
                                 cb(input_path.name, i, total)
                             continue
@@ -416,12 +424,16 @@ def register_index_group(cli: click.Group) -> None:
                             )
 
                     registered += 1
+                    detail = source
+                    if duration_status_value:
+                        detail += f" duration={duration_status_value}"
+                    ui.file_event("register", path=file_path, extra=detail)
                     if cb is not None:
                         cb(input_path.name, i, total)
 
                 except Exception as e:
                     errors += 1
-                    click.echo(f"  ERROR: {input_path.name}: {e}")
+                    ui.error(f"{input_path.name}: {e}")
                     if cb is not None:
                         cb(input_path.name, i, total)
                 finally:
@@ -429,7 +441,7 @@ def register_index_group(cli: click.Group) -> None:
                         cleanup_prepared_flac_input(prepared)
 
             if total == 0:
-                click.echo(f"No audio files found in {path}")
+                ui.note(f"No audio files found in {path}")
                 return
 
             if execute:
@@ -438,14 +450,15 @@ def register_index_group(cli: click.Group) -> None:
         finally:
             conn.close()
 
-        click.echo("")
-        click.echo(f"{'='*50}")
-        click.echo("RESULTS")
-        click.echo(f"{'='*50}")
-        click.echo(f"  Total:       {total:>6}")
-        click.echo(f"  Registered:  {registered:>6}  {'✓' if registered > 0 else '(none)'}")
-        click.echo(f"  Skipped:     {skipped:>6}")
-        click.echo(f"  Errors:      {errors:>6}  {'⚠' if errors > 0 else ''}")
+        ui.finish(
+            "warn" if errors else "ok",
+            [
+                ("Total", total),
+                ("Registered", registered),
+                ("Skipped", skipped),
+                ("Errors", errors),
+            ],
+        )
 
     @index.command("check")
     @click.argument('path', type=click.Path(exists=True), required=False)
@@ -502,15 +515,19 @@ def register_index_group(cli: click.Group) -> None:
                     file_paths.append(file_path)
 
         if not file_paths:
-            click.echo("No FLAC files provided")
+            ConsoleUI(verbose=bool(verbose)).note("No FLAC files provided")
             return
 
-        click.echo(f"Checking {len(file_paths)} files against database...")
-        if source:
-            click.echo(f"Filter: source={source}")
-        if strict:
-            click.echo("Mode: STRICT (any match is a conflict)")
-        click.echo("")
+        ui = ConsoleUI(verbose=bool(verbose))
+        ui.begin_command("Index Check", target=str(path or "stdin"), mode="strict" if strict else "default")
+        ui.summary(
+            "Context",
+            [
+                ("Files", len(file_paths)),
+                ("Source filter", source or "none"),
+                ("Prompt", "yes" if prompt else "no"),
+            ],
+        )
 
         config = get_config()
         log_dir = None
@@ -576,70 +593,66 @@ def register_index_group(cli: click.Group) -> None:
                             raise click.ClickException("User aborted")
                         if action == "download":
                             allowed.append(file_path)
-                            if verbose:
-                                click.echo(f"  ALLOW: {file_path.name}")
+                            ui.file_event("allow", path=file_path, reason="duplicate accepted")
                         elif action == "replace":
                             replacements.append((file_path, existing))
-                            if verbose:
-                                click.echo(f"  REPLACE: {file_path.name}")
+                            ui.file_event("replace", path=file_path, reason="duplicate replace")
                         else:
                             duplicates.append((file_path, existing))
+                            ui.file_event("conflict", path=file_path, reason="already exists")
                             if verbose:
-                                click.echo(f"  CONFLICT: {file_path.name}")
                                 for match in existing:
                                     src = match[1] if match[1] else "unknown"
-                                    click.echo(f"    → {src}: {Path(match[0]).name}")
+                                    ui.note(f"match={Path(match[0]).name} source={src}")
                     else:
                         unique.append(file_path)
-                        if verbose:
-                            click.echo(f"  OK: {file_path.name}")
+                        ui.file_event("ok", path=file_path)
 
                     if i % 50 == 0 or i == len(file_paths):
-                        click.echo(f"  [{i}/{len(file_paths)}]...")
+                        ui.stage("Duplicate scan", "running", detail=f"{i}/{len(file_paths)}")
 
                 except Exception as e:
                     errors += 1
-                    click.echo(f"  ERROR: {file_path.name}: {e}")
+                    ui.error(f"{file_path.name}: {e}")
 
         finally:
             conn.close()
 
-        click.echo("")
-        click.echo(f"{'='*50}")
-        click.echo("RESULTS")
-        click.echo(f"{'='*50}")
-        click.echo(f"  Total:        {len(file_paths):>6}")
-        click.echo(f"  Unique:       {len(unique):>6}  ✓ (safe to download)")
-        click.echo(f"  Allowed:      {len(allowed):>6}  ✓ (download anyway)")
-        click.echo(f"  Replace:      {len(replacements):>6}  ⚠ (mark for replace)")
-        click.echo(f"  Duplicates:   {len(duplicates):>6}  ⚠ (already exists)")
-        click.echo(f"  Errors:       {errors:>6}  {'⚠' if errors > 0 else ''}")
+        ui.finish(
+            "warn" if errors or duplicates or replacements else "ok",
+            [
+                ("Total", len(file_paths)),
+                ("Unique", len(unique)),
+                ("Allowed", len(allowed)),
+                ("Replace", len(replacements)),
+                ("Duplicates", len(duplicates)),
+                ("Errors", errors),
+            ],
+        )
 
         if duplicates:
-            click.echo("")
-            click.echo("Conflicts (files that already exist):")
+            ui.section("Conflicts")
             for file_path, matches in duplicates[:10]:
-                click.echo(f"  • {file_path.name}")
+                ui.note(file_path.name)
                 for match in matches[:2]:
                     src = match[1] if match[1] else "unknown"
-                    click.echo(f"    → {src}: {Path(match[0]).name}")
+                    ui.note(f"  -> {src}: {Path(match[0]).name}")
                 if len(matches) > 2:
-                    click.echo(f"    ... and {len(matches) - 2} more")
+                    ui.note(f"  ... and {len(matches) - 2} more")
             if len(duplicates) > 10:
-                click.echo(f"  ... and {len(duplicates) - 10} more conflicts")
+                ui.note(f"... and {len(duplicates) - 10} more conflicts")
 
         if replacements:
-            click.echo("")
-            click.echo("Replace candidates:")
+            ui.section("Replace Candidates")
             for file_path, matches in replacements[:10]:
-                click.echo(f"  • {file_path.name}")
+                ui.note(file_path.name)
                 for match in matches[:2]:
                     src = match[1] if match[1] else "unknown"
-                    click.echo(f"    → {src}: {Path(match[0]).name}")
+                    ui.note(f"  -> {src}: {Path(match[0]).name}")
                 if len(matches) > 2:
-                    click.echo(f"    ... and {len(matches) - 2} more")
+                    ui.note(f"  ... and {len(matches) - 2} more")
             if len(replacements) > 10:
-                click.echo(f"  ... and {len(replacements) - 10} more replacements")
+                ui.note(f"... and {len(replacements) - 10} more replacements")
 
     @index.command("register-mp3")
     @click.option("--root", default="/Volumes/MUSIC/MP3_LIBRARY", show_default=True, help="Directory to scan for MP3 files")
@@ -697,9 +710,21 @@ def register_index_group(cli: click.Group) -> None:
         else:
             file_paths = list(path_obj.rglob("*.flac"))
 
+        ui = ConsoleUI(verbose=bool(verbose))
+
         if not file_paths:
-            click.echo("No FLAC files found to check")
+            ui.note("No FLAC files found to check")
             return
+
+        ui.begin_command("Duration Check", target=str(path_obj), mode="execute" if execute else "dry-run")
+        ui.summary(
+            "Context",
+            [
+                ("Files", len(file_paths)),
+                ("DJ only", "yes" if dj_only else "no"),
+                ("Source", source or "none"),
+            ],
+        )
 
         ok_max_ms, warn_max_ms = duration_thresholds_from_config()
         duration_version = duration_check_version(ok_max_ms, warn_max_ms)
@@ -721,8 +746,7 @@ def register_index_group(cli: click.Group) -> None:
                     ).fetchone()
                     if not row:
                         missing += 1
-                        if verbose:
-                            click.echo(f"  [{i}/{len(file_paths)}] SKIP (not in DB) {file_path.name}")
+                        ui.file_event("skip", path=file_path, reason="not in DB")
                         continue
                     db_beatport_id = (row[0] or "").strip() if row[0] is not None else None
                     db_isrc = (row[1] or "").strip() if row[1] is not None else None
@@ -843,13 +867,17 @@ def register_index_group(cli: click.Group) -> None:
                             ),
                         )
 
-                    if verbose or i % 50 == 0 or i == len(file_paths):
-                        click.echo(f"  [{i}/{len(file_paths)}] {file_path.name}")
+                    ui.file_event(
+                        "check",
+                        path=file_path,
+                        reason=f"status={duration_status_value}",
+                        extra=f"{i}/{len(file_paths)}",
+                    )
                     updated += 1
 
                 except Exception as e:
                     errors += 1
-                    click.echo(f"  ERROR: {file_path.name}: {e}")
+                    ui.error(f"{file_path.name}: {e}")
 
             if execute:
                 conn.commit()
@@ -857,14 +885,15 @@ def register_index_group(cli: click.Group) -> None:
         finally:
             conn.close()
 
-        click.echo("")
-        click.echo(f"{'='*50}")
-        click.echo("DURATION CHECK RESULTS")
-        click.echo(f"{'='*50}")
-        click.echo(f"  Total:        {len(file_paths):>6}")
-        click.echo(f"  Updated:      {updated:>6}")
-        click.echo(f"  Missing DB:   {missing:>6}")
-        click.echo(f"  Errors:       {errors:>6}  {'⚠' if errors > 0 else ''}")
+        ui.finish(
+            "warn" if errors else "ok",
+            [
+                ("Total", len(file_paths)),
+                ("Updated", updated),
+                ("Missing DB", missing),
+                ("Errors", errors),
+            ],
+        )
 
     @index.command("duration-audit")
     @click.option("--db", type=click.Path(), help="Database path (auto-detect from env if not provided)")

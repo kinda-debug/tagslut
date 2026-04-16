@@ -1610,10 +1610,13 @@ def run_intake(
 
         providers_arg: str | None = None
         lowered_url = download_url.lower()
+        writeback_force = False
         if "tidal.com" in lowered_url:
             providers_arg = "beatport,tidal" if dj else "tidal"
         elif "beatport.com" in lowered_url:
             providers_arg = "beatport,tidal"
+        elif "qobuz.com" in lowered_url and "/playlist/" in lowered_url:
+            writeback_force = True
 
         enrich_script = repo_root / "tools" / "review" / "post_move_enrich_art.py"
         enrich_cmd = [
@@ -1626,6 +1629,8 @@ def run_intake(
         ]
         if providers_arg:
             enrich_cmd += ["--providers", providers_arg]
+        if writeback_force:
+            enrich_cmd.append("--writeback-force")
 
         try:
             subprocess.run(enrich_cmd, check=True, cwd=str(repo_root))

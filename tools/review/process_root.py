@@ -34,6 +34,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from tagslut.utils import AUDIO_EXTENSIONS  # noqa: E402
+from tagslut.utils.console_ui import ConsoleUI  # noqa: E402
 from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path  # noqa: E402
 from tagslut.utils.paths import list_files  # noqa: E402
 from tagslut.utils.config import get_config  # noqa: E402
@@ -75,10 +76,11 @@ class PipelineStep:
 
 
 logger = logging.getLogger(__name__)
+_UI = ConsoleUI()
 
 
 def run(cmd: list[str]) -> None:
-    print("\n$ " + " ".join(cmd))
+    _UI.stage("Run step", "running", detail=" ".join(cmd[:8]) + (" ..." if len(cmd) > 8 else ""))
     subprocess.check_call(cmd)
 
 
@@ -469,7 +471,6 @@ def main() -> None:
     except DbResolutionError as exc:
         raise SystemExit(f"ERROR: {exc}") from exc
     db = str(db_resolution.path)
-    print(f"Resolved DB path: {db}")
     root = args.root or ""
     library = args.library or default_library
 
@@ -479,13 +480,23 @@ def main() -> None:
     db_path = Path(db)
     root_path = Path(root)
     if root_path.exists() and not list(list_files(root_path, set(AUDIO_EXTENSIONS))):
-        print(f"Warning: no audio files found under {root_path}")
+        _UI.warn(f"no audio files found under {root_path}")
     library_path = Path(library)
+
+    _UI.begin_command("Process Root", target=str(root_path), mode="dry-run" if args.dry_run else "execute")
+    _UI.summary(
+        "Context",
+        [
+            ("Resolved DB path", db),
+            ("Library", library_path),
+            ("Providers", args.providers),
+        ],
+    )
 
     if not root_path.exists():
         raise SystemExit(f"Root not found: {root_path}")
     if not library_path.exists():
-        print(f"Warning: library path does not exist yet: {library_path}")
+        _UI.warn(f"library path does not exist yet: {library_path}")
 
     phases = parse_phases(phases_arg=args.phases, scan_only=bool(args.scan_only))
     compatibility_error = validate_phase_compatibility(db_path=db_path, phases=phases)
@@ -514,9 +525,9 @@ def main() -> None:
         phases=phases,
     )
 
-    print("Phases: " + ",".join(phases))
+    _UI.note("Phases: " + ",".join(phases))
     if args.scan_only:
-        print("Mode: scan-only")
+        _UI.note("Mode: scan-only")
     for step in steps:
         run(step.command)
 

@@ -18,6 +18,7 @@ from tagslut.exec.intake_orchestrator import run_intake
 from tagslut.exec.dj_pool_m3u import write_dj_pool_m3u
 from tagslut.filters.identity_resolver import TrackIntent
 from tagslut.storage.schema import get_connection
+from tagslut.utils.console_ui import ConsoleUI
 from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
 from tagslut.utils.env_paths import get_artifacts_dir
 
@@ -257,14 +258,14 @@ def register_intake_group(cli: click.Group) -> None:
         debug_raw: bool,
     ):  # type: ignore  # TODO: mypy-strict
         """Precheck → download → promote → [tag] → [mp3] → [dj] for a single provider URL."""
+        ui = ConsoleUI(verbose=bool(verbose))
         if dj:
             mp3 = True
         if mp3 and not dj:
-            click.echo(
-                "WARNING: tagslut intake --mp3 is a legacy convenience shortcut. "
+            ui.warn(
+                "tagslut intake --mp3 is a legacy convenience shortcut. "
                 "Use the dedicated MP3 commands when you want to build or reconcile "
                 "MP3 derivatives outside intake.",
-                err=True,
             )
 
         # Resolve DB path
@@ -289,6 +290,8 @@ def register_intake_group(cli: click.Group) -> None:
             )
 
         artifact_dir_path = Path(artifact_dir).expanduser().resolve() if artifact_dir else None
+
+        ui.begin_command("Intake URL", target=url, mode="dry-run" if dry_run else "execute")
 
         # Run orchestration
         result = run_intake(
@@ -355,11 +358,11 @@ def register_intake_group(cli: click.Group) -> None:
                             raise click.ClickException(f"Failed to write DJ pool M3U playlists: {exc}") from exc
 
         # Print summary
-        click.echo(result.summary())
+        ui.stage("Intake result", result.disposition, detail=result.summary())
         if debug_raw and result.artifact_path:
-            click.echo(f"Artifact: {result.artifact_path}")
+            ui.note(f"Artifact: {result.artifact_path}")
         if debug_raw and result.precheck_csv:
-            click.echo(f"Precheck CSV: {result.precheck_csv}")
+            ui.note(f"Precheck CSV: {result.precheck_csv}")
 
         # Exit with mapped code
         _EXIT = {"completed": 0, "blocked": 2, "failed": 1}

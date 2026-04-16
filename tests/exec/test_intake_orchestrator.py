@@ -905,6 +905,41 @@ def test_backfill_prefers_dj_copy_profile_when_both_exist(temp_db: Path, tmp_pat
     assert row == (identity_id, dj_id, "admitted")
 
 
+def test_qobuz_playlist_enrich_forces_canonical_writeback(
+    temp_db: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    promoted_txt = tmp_path / "artifacts" / "compare" / "promoted_flacs_20260315_140002.txt"
+    promoted_txt.parent.mkdir(parents=True, exist_ok=True)
+    flac_path = tmp_path / "track.flac"
+    flac_path.write_bytes(b"fLaC")
+    promoted_txt.write_text(f"{flac_path.resolve()}\n", encoding="utf-8")
+    future = time.time() + 5
+    os.utime(promoted_txt, (future, future))
+
+    with patch("tagslut.exec.intake_orchestrator._run_tools_get") as mock_get:
+        mock_get.return_value = None
+        with patch("tagslut.exec.intake_orchestrator._find_latest_promoted_flacs_txt") as mock_find_promoted:
+            mock_find_promoted.return_value = promoted_txt
+            with patch("tagslut.exec.intake_orchestrator.subprocess.run") as mock_run:
+                mock_run.return_value = Mock(returncode=0, stdout="", stderr="")
+
+                result = run_intake(
+                    url="https://open.qobuz.com/playlist/61955983",
+                    db_path=temp_db,
+                    tag=True,
+                    mp3=False,
+                    dry_run=False,
+                    artifact_dir=tmp_path / "artifacts",
+                )
+
+    enrich_stage = next((s for s in result.stages if s.stage == "enrich"), None)
+    assert enrich_stage is not None
+    assert enrich_stage.status == "ok"
+    enrich_cmd = mock_run.call_args.args[0]
+    assert "post_move_enrich_art.py" in " ".join(str(part) for part in enrich_cmd)
+    assert "--writeback-force" in enrich_cmd
+
+
 def test_cli_intake_direct_url_routes_to_intake_url_command(temp_db: Path) -> None:
     import click
 
@@ -931,6 +966,7 @@ def test_cli_intake_direct_url_routes_to_intake_url_command(temp_db: Path) -> No
         result = runner.invoke(cli, ["intake", url, "--db", str(temp_db)])
 
     assert result.exit_code == 0
+    assert "Intake result" in result.output
     assert mock_run.call_count == 1
     assert mock_run.call_args.kwargs["url"] == url
 

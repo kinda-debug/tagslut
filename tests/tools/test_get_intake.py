@@ -7,6 +7,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 GET_INTAKE = PROJECT_ROOT / "tools" / "get-intake"
+UI_HELPER = PROJECT_ROOT / "tools" / "_console_ui.sh"
 
 
 def _write_shell_library(tmp_path: Path) -> Path:
@@ -333,3 +334,35 @@ def test_emit_batch_leftovers_report_writes_sorted_audio_list(tmp_path: Path) ->
         str(nested / "a-first.m4a"),
         str(batch_root / "z-last.flac"),
     ]
+
+
+def test_shell_ui_helper_uses_plain_status_lines_when_not_tty(tmp_path: Path) -> None:
+    harness = tmp_path / "run-ui-helper.sh"
+    harness.write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env bash",
+                "set -euo pipefail",
+                f"source {shlex.quote(str(UI_HELPER))}",
+                "ui_init",
+                'ui_header "tagslut get"',
+                'ui_status ok "done"',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    harness.chmod(0o755)
+
+    proc = subprocess.run(
+        ["bash", str(harness)],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0, f"STDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+    assert "tagslut get" in proc.stdout
+    assert "[OK] done" in proc.stdout
+    assert "\x1b[" not in proc.stdout

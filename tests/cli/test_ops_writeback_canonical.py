@@ -84,4 +84,4 @@ def test_ops_writeback_canonical_uses_v3_identity_data(tmp_path, monkeypatch) ->
     assert fake_audio.tags["TITLE"] == ["Title"]
     assert fake_audio.tags["BPM"] == ["128.0"]
     assert fake_audio.tags["INITIALKEY"] == ["Am"]
-    assert "Updated:  1" in result.output
+    assert "Updated: 1" in result.output

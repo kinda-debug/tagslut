@@ -32,6 +32,13 @@ DEEMIX_WRAPPER="$SCRIPT_DIR/deemix"
 GET_INTAKE="$SCRIPT_DIR/get-intake"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 ENV_LOADER="$SCRIPT_DIR/_load_env.sh"
+UI_HELPER="$SCRIPT_DIR/_console_ui.sh"
+
+if [[ -f "$UI_HELPER" ]]; then
+    # shellcheck disable=SC1090
+    source "$UI_HELPER"
+    ui_init
+fi
 
 if [[ -f "$ENV_LOADER" ]]; then
     # Load repo-local .env so wrapper commands see TAGSLUT_DB and volume roots.
@@ -158,6 +165,15 @@ for arg in "$@"; do
 done
 if [[ "$RETURN_PLAYLIST" -eq 1 && "$MODE" == "auto" ]]; then
     MODE="sync"
+fi
+
+if declare -F ui_header >/dev/null 2>&1; then
+    ui_header "tagslut get"
+    if [[ -n "$URL" ]]; then
+        ui_status run "input=$URL mode=$MODE"
+    elif [[ -n "$INPUT_PATH" ]]; then
+        ui_status run "input=$INPUT_PATH mode=$MODE"
+    fi
 fi
 
 INTAKE_CMD=()
@@ -583,14 +599,15 @@ elif [[ "$URL" == *"beatport.com"* ]]; then
 
 elif [[ "$URL" == *"qobuz.com"* ]]; then
     # Route Qobuz URLs to streamrip
-    STREAMRIP_CMD="/Users/georgeskhawam/Projects/streamrip/.venv/bin/rip"
+    STREAMRIP_CMD="${STREAMRIP_CMD:-/Users/georgeskhawam/Projects/streamrip/.venv/bin/rip}"
     if [[ ! -x "$STREAMRIP_CMD" ]]; then
         echo "Error: streamrip not found at $STREAMRIP_CMD" >&2
         exit 1
     fi
 
-    STREAMRIP_CONFIG="/Users/georgeskhawam/Projects/streamrip/dev_config.toml"
-    STREAMRIP_ROOT="/Volumes/MUSIC/staging/StreamripDownloads"
+    STREAMRIP_CONFIG="${STREAMRIP_CONFIG:-/Users/georgeskhawam/Projects/streamrip/dev_config.toml}"
+    STREAMRIP_ROOT="${STREAMRIP_ROOT:-/Volumes/MUSIC/staging/StreamripDownloads}"
+    QOBUZ_BATCH_ROOT="${STREAMRIP_QOBUZ_ROOT:-$STREAMRIP_ROOT/Qobuz}"
 
     PLAYLIST_NAME=""
     if [[ "$URL" == *"/playlist/"* ]]; then
@@ -637,11 +654,9 @@ print(r.json().get('title', ''))
     if [[ "$MODE" == "enrich" ]]; then
         QOBUZ_INTAKE_ARGS+=(--enrich)
     fi
-    if [[ -n "$PLAYLIST_NAME" ]]; then
-        QOBUZ_INTAKE_ARGS+=(--playlist-name "$PLAYLIST_NAME")
-    fi
+    QOBUZ_INTAKE_ARGS+=(--no-download --batch-root "$QOBUZ_BATCH_ROOT")
 
-    build_intake_cmd "qobuz" "$STREAMRIP_ROOT/Qobuz" "$@" "${QOBUZ_INTAKE_ARGS[@]}"
+    build_intake_cmd "qobuz" "$URL" "$@" "${QOBUZ_INTAKE_ARGS[@]}"
 
     exec "${INTAKE_CMD[@]}"
 

@@ -21,6 +21,7 @@ from tagslut.exec.dj_library_normalize import (
     plan_dj_library_normalize,
 )
 from tagslut.cli.runtime import PROJECT_ROOT
+from tagslut.utils.console_ui import ConsoleUI
 from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
 
 _DOCTOR_COUNT_KEYS = (
@@ -468,6 +469,7 @@ def register_ops_group(cli: click.Group) -> None:
     ) -> None:
         temp_plan_path: Path | None = None
         plan_summary: PlanSummary | None = None
+        ui = ConsoleUI()
         timestamp_iso = _now_iso()
         timestamp_slug = _timestamp_slug()
         plan_csv_path = Path(plan_csv)
@@ -486,31 +488,38 @@ def register_ops_group(cli: click.Group) -> None:
                 raise click.ClickException(str(exc)) from exc
 
             db_path = resolution.path
-            click.echo(f"Resolved DB path: {db_path}")
+            ui.begin_command("Run Move Plan", target=str(plan_csv_path), mode="dry-run" if dry_run else "execute")
+            ui.summary("Context", [("Resolved DB path", db_path)])
 
             preflight = _run_doctor(db_path, strict=strict)
             if preflight.exit_code != 0:
                 _print_doctor_failure("Preflight", preflight)
                 raise click.ClickException("preflight failed; refusing to execute moves")
 
-            click.echo(
-                "Preflight doctor OK: "
-                f"asset_file_total={preflight.counts['asset_file_total']} "
-                f"asset_link_total={preflight.counts['asset_link_total']} "
-                f"track_identity_total={preflight.counts['track_identity_total']}"
+            ui.stage(
+                "Preflight doctor OK",
+                "ok",
+                counts=[
+                    ("asset_file_total", preflight.counts["asset_file_total"]),
+                    ("asset_link_total", preflight.counts["asset_link_total"]),
+                    ("track_identity_total", preflight.counts["track_identity_total"]),
+                ],
             )
 
             plan_summary = _validate_and_summarize_plan(plan_csv_path)
             temp_plan_path = plan_summary.temp_executor_plan_path
-            click.echo(
-                "Plan summary: "
-                f"rows={plan_summary.row_count} "
-                f"moves={plan_summary.move_count} "
-                f"copies={plan_summary.copy_count} "
-                f"deletes={plan_summary.delete_count}"
+            ui.stage(
+                "Plan summary",
+                "running",
+                counts=[
+                    ("rows", plan_summary.row_count),
+                    ("moves", plan_summary.move_count),
+                    ("copies", plan_summary.copy_count),
+                    ("deletes", plan_summary.delete_count),
+                ],
             )
             if plan_summary.copy_count > 0 or plan_summary.delete_count > 0:
-                click.echo("Warning: executor handles MOVE rows only; COPY/DELETE rows are ignored.")
+                ui.warn("executor handles MOVE rows only; COPY/DELETE rows are ignored.")
 
             executor_result = _run_executor(
                 plan_path=plan_summary.executor_plan_path,
@@ -518,7 +527,7 @@ def register_ops_group(cli: click.Group) -> None:
                 dry_run=dry_run,
             )
             if dry_run and not executor_result.dry_run_supported:
-                click.echo("dry-run not supported")
+                ui.warn("dry-run not supported")
 
             if executor_result.exit_code != 0:
                 if executor_result.stderr.strip():
@@ -532,16 +541,19 @@ def register_ops_group(cli: click.Group) -> None:
             if postcheck:
                 postflight = _run_doctor(db_path, strict=strict)
                 if postflight.exit_code == 0:
-                    click.echo(
-                        "Postflight doctor OK: "
-                        f"asset_file_total={postflight.counts['asset_file_total']} "
-                        f"asset_link_total={postflight.counts['asset_link_total']} "
-                        f"track_identity_total={postflight.counts['track_identity_total']}"
+                    ui.stage(
+                        "Postflight doctor OK",
+                        "ok",
+                        counts=[
+                            ("asset_file_total", postflight.counts["asset_file_total"]),
+                            ("asset_link_total", postflight.counts["asset_link_total"]),
+                            ("track_identity_total", postflight.counts["track_identity_total"]),
+                        ],
                     )
                 else:
                     _print_doctor_failure("Postflight", postflight)
             else:
-                click.echo("Postflight skipped (--no-postcheck).")
+                ui.note("Postflight skipped (--no-postcheck).")
 
             receipt_path = _resolve_receipt_path(receipt_out_path, timestamp_slug)
             archive_dir = _resolve_plan_archive_dir(plan_archive_dir_path)
@@ -573,13 +585,15 @@ def register_ops_group(cli: click.Group) -> None:
             receipt_path.parent.mkdir(parents=True, exist_ok=True)
             receipt_path.write_text(json.dumps(receipt_payload, indent=2, sort_keys=True), encoding="utf-8")
 
-            click.echo(
-                "Receipt summary: "
-                f"executor_exit_code={executor_result.exit_code} "
-                f"plan_rows={plan_summary.row_count}"
+            ui.summary(
+                "Receipt Summary",
+                [
+                    ("executor_exit_code", executor_result.exit_code),
+                    ("plan_rows", plan_summary.row_count),
+                    ("Receipt written", receipt_path),
+                    ("Plan archived", archived_plan),
+                ],
             )
-            click.echo(f"Receipt written: {receipt_path}")
-            click.echo(f"Plan archived: {archived_plan}")
 
             if postcheck and postflight is not None and postflight.exit_code != 0:
                 raise click.ClickException(
@@ -588,7 +602,7 @@ def register_ops_group(cli: click.Group) -> None:
             if executor_result.exit_code != 0:
                 raise click.ClickException("move-plan execution failed; review diagnostics above")
 
-            click.echo("Move-plan cycle completed.")
+            ui.finish("ok")
         finally:
             if temp_plan_path is not None and temp_plan_path.exists():
                 try:
@@ -645,19 +659,26 @@ def register_ops_group(cli: click.Group) -> None:
                 duration_tol=float(duration_tol),
             )
 
-        click.echo(f"Resolved DB path: {resolution.path}")
-        click.echo(f"Root: {root_path}")
-        click.echo(f"Master root: {master_root}")
-        click.echo(f"Unresolved root: {unresolved_root}")
-        click.echo(f"Total MP3: {summary['total_mp3']}")
-        click.echo(f"Already canonical: {summary['already_canonical']}")
-        click.echo(f"Move plan rows: {summary['move_plan_rows']}")
-        click.echo(f"Repair from master: {summary['repair_master_rows']}")
-        click.echo(f"Repair from DB: {summary['repair_db_rows']}")
-        click.echo(f"Unresolved rows: {summary['unresolved_rows']}")
-        click.echo(f"Playlist rewrite rows: {summary['playlist_rewrite_rows']}")
+        ui = ConsoleUI()
+        ui.begin_command("Plan DJ Library Normalize", target=str(root_path))
+        ui.summary(
+            "Summary",
+            [
+                ("Resolved DB path", resolution.path),
+                ("Root", root_path),
+                ("Master root", master_root),
+                ("Unresolved root", unresolved_root),
+                ("Total MP3", summary["total_mp3"]),
+                ("Already canonical", summary["already_canonical"]),
+                ("Move plan rows", summary["move_plan_rows"]),
+                ("Repair from master", summary["repair_master_rows"]),
+                ("Repair from DB", summary["repair_db_rows"]),
+                ("Unresolved rows", summary["unresolved_rows"]),
+                ("Playlist rewrite rows", summary["playlist_rewrite_rows"]),
+            ],
+        )
         for label, path_value in sorted(dict(summary["outputs"]).items()):  # type: ignore[arg-type]
-            click.echo(f"{label}: {path_value}")
+            ui.note(f"{label}: {path_value}")
 
     @ops_group.command("relink-dj-pool")
     @click.option("--db", "db_path_arg", type=click.Path(), help="SQLite DB path (or TAGSLUT_DB)")
@@ -708,18 +729,22 @@ def register_ops_group(cli: click.Group) -> None:
         if playlist_manifest is not None:
             playlist_rewrites = apply_playlist_rewrite_manifest(playlist_manifest, execute=do_execute)
 
-        click.echo(f"Resolved DB path: {resolution.path}")
-        click.echo(f"Manifest: {manifest_path}")
+        ui = ConsoleUI()
+        ui.begin_command("Relink DJ Pool", target=str(manifest_path), mode="execute" if do_execute else "dry-run")
+        rows = [
+            ("Resolved DB path", resolution.path),
+            ("Manifest", manifest_path),
+            ("Rows", stats.rows),
+            ("Updated", stats.updated),
+            ("Skipped", stats.skipped),
+            ("Errors", stats.errors),
+        ]
         if playlist_manifest is not None:
-            click.echo(f"Playlist manifest: {playlist_manifest}")
-        click.echo(f"Rows: {stats.rows}")
-        click.echo(f"Updated: {stats.updated}")
-        click.echo(f"Skipped: {stats.skipped}")
-        click.echo(f"Errors: {stats.errors}")
-        if playlist_manifest is not None:
-            click.echo(f"Playlist rewrites: {playlist_rewrites}")
+            rows.insert(2, ("Playlist manifest", playlist_manifest))
+            rows.append(("Playlist rewrites", playlist_rewrites))
+        ui.summary("Summary", rows)
         if not do_execute:
-            click.echo("DRY-RUN: use --execute to write dj_pool_path and playlists")
+            ui.note("DRY-RUN: use --execute to write dj_pool_path and playlists")
 
     @ops_group.command("writeback-canonical")
     @click.option("--db", "db_path_arg", type=click.Path(), help="SQLite DB path (or TAGSLUT_DB)")
@@ -769,9 +794,16 @@ def register_ops_group(cli: click.Group) -> None:
                 echo=click.echo,
             )
 
-        click.echo(f"Scanned:  {stats.scanned}")
-        click.echo(f"Updated:  {stats.updated}")
-        click.echo(f"Skipped:  {stats.skipped}")
-        click.echo(f"Missing:  {stats.missing}")
+        ui = ConsoleUI()
+        ui.begin_command("Writeback Canonical", target=str(path_arg or m3u_arg), mode="execute" if execute else "dry-run")
+        ui.finish(
+            "ok",
+            [
+                ("Scanned", stats.scanned),
+                ("Updated", stats.updated),
+                ("Skipped", stats.skipped),
+                ("Missing", stats.missing),
+            ],
+        )
         if not execute:
-            click.echo("DRY-RUN: use --execute to write tags")
+            ui.note("DRY-RUN: use --execute to write tags")

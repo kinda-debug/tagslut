@@ -104,6 +104,14 @@ Start with:
 3. `tests/dj/`
 4. `tests/exec/`
 
+### If the task is a Lexicon metadata issue
+Start with:
+1. `tagslut/cli/commands/lexicon.py`
+2. `tagslut/exec/lexicon_import.py`
+3. `tagslut/dj/reconcile/lexicon_backfill.py`
+4. `tests/dj/test_lexicon_import.py`
+5. `tests/exec/test_lexicon_backfill_idempotence.py`
+
 ## Do not preload
 
 Avoid reading unless the task explicitly requires it:
@@ -158,4 +166,3 @@ DJ pipeline task
 - inspect dj/ and exec/
 - modify only the stage involved
 - verify using DJ tests
-

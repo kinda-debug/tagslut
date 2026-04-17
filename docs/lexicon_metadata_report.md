@@ -8,6 +8,13 @@ _Read-only inspection of `/Users/georgeskhawam/Documents/Lexicon`_
 - Inference: `main.db` is the authoritative Lexicon state, while reports, playlists, HTML/CSV/XML exports, and backups are derived outputs or historical snapshots.
 - Fact: No audio files live inside this directory; every audio path referenced by the DB points outside, mostly under `/Volumes/MUSIC/...`.
 
+## tagslut Import Contract
+- `tagslut lexicon import` accepts either a materialized `main.db` or a backup ZIP containing `main.db`.
+- Matching prefers normalized `Track.locationUnique`, then normalized `Track.location`, then existing identity fallbacks.
+- Lexicon evidence from `Track.id`, `location`, `locationUnique`, `fingerprint`, `importSource`, and `data` is preserved in `track_identity.canonical_payload_json`.
+- `tagslut lexicon import-playlists` reads playlist membership from the same snapshot input.
+- Reports, CSVs, HTML, M3U, and XML exports remain operational evidence; they are not treated as the primary source for Lexicon state.
+
 ## Directory Map
 
 | Path | Count | Observed role |

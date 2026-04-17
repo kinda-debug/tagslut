@@ -17,6 +17,7 @@ Recent implemented work includes:
 - gig prep workflow documentation, templates, and helper scripts
 - key normalization and Camelot mapping utilities
 - maintainer helper for syncing stacked Phase 1 PR branches
+- Lexicon snapshot import: backup ZIP/main.db support, `locationUnique` path matching, and payload preservation in `track_identity.canonical_payload_json`
 
 ## Database work already implemented
 

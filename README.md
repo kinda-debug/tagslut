@@ -123,6 +123,11 @@ is a compatibility alias to the same root, not a separate operational library.
 Preserved source/staging folders (for example `/Volumes/MUSIC/staging/Apple`,
 `/Volumes/MUSIC/staging/Apple Music`, `/Volumes/MUSIC/_work`) are provenance-only.
 
+Lexicon metadata should be imported from a `main.db` snapshot, preferably a
+backup ZIP from `$HOME/Documents/Lexicon/Backups`. The importer matches
+`Track.locationUnique` before `Track.location` and preserves Lexicon source
+payloads in `track_identity.canonical_payload_json`.
+
 Building a curated DJ library follows a deterministic 4-stage pipeline.
 Each stage is safe to re-run and leaves explicit DB state as output.
 

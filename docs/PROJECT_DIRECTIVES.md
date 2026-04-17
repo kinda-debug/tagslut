@@ -63,19 +63,20 @@ manually reviewed and upgraded.
 
 ## Volume layout (current machine)
 
-/Volumes/MUSIC/MASTER_LIBRARY    FLAC master library — source of truth for audio
-/Volumes/MUSIC/MP3_LIBRARY       MP3 copies for playback
-/Volumes/MUSIC/DJ_POOL           Lexicon-managed DJ MP3 pool (Artist/Album/file.mp3)
+/Volumes/MUSIC/MASTER_LIBRARY    Trusted lossless library — source of truth for audio
+/Volumes/MUSIC/MP3_LIBRARY       Trusted lossy/MP3 library for playback and DJ copies
+/Volumes/MUSIC/DJ_LIBRARY        Legacy compatibility alias for MP3_LIBRARY, not separate truth
 /Volumes/MUSIC/MP3_LIBRARY_CLEAN Centralized clean lossy pool for Rekordbox import
-/Volumes/MUSIC/DJ_POOL_MANUAL_MP3  Manual DJ pool additions
+/Volumes/MUSIC/DJ_POOL_MANUAL_MP3  Legacy/manual DJ MP3 additions
 /Volumes/MUSIC/staging           Staging root for downloads
-/Volumes/MUSIC/lexicondj.db      Lexicon DJ database (read-only reference, 227MB)
-/Users/georgeskhawam/Music/main.db  Active Lexicon working DB (61,752 tracks)
+/Users/georgeskhawam/Documents/Lexicon/Backups/*.zip
+                                  Lexicon point-in-time snapshots, each containing main.db
 /Volumes/SAD/                    Legacy epoch DBs — read-only, no writes
 
 $MASTER_LIBRARY = /Volumes/MUSIC/MASTER_LIBRARY
-$DJ_LIBRARY     = /Volumes/MUSIC/DJ_LIBRARY
-$DJ_MP3_ROOT    = /Volumes/MUSIC/DJ_LIBRARY
+$MP3_LIBRARY    = /Volumes/MUSIC/MP3_LIBRARY
+$DJ_LIBRARY     = /Volumes/MUSIC/DJ_LIBRARY  # compatibility alias only
+$DJ_MP3_ROOT    = /Volumes/MUSIC/MP3_LIBRARY
 $STAGING_ROOT   = /Volumes/MUSIC/staging
 
 If a volume is not mounted, operations that require it must fail
@@ -85,10 +86,12 @@ with a clear error — do not silently fall back to local paths.
 
 ## Lexicon integration
 
-Lexicon is an external DJ library manager that reads from and writes to
-MP3 files under /Volumes/MUSIC/DJ_POOL. It maintains its own SQLite DB
-at /Users/georgeskhawam/Music/main.db (active) and at
-/Volumes/MUSIC/lexicondj.db (USB/backup copy).
+Lexicon is an external DJ library manager. tagslut treats Lexicon
+`Track` rows inside `main.db` snapshots as Lexicon's source of truth,
+and treats file tags/reports/exports as downstream evidence. The
+preferred input is a timestamped ZIP from
+`/Users/georgeskhawam/Documents/Lexicon/Backups/` containing `main.db`;
+materialized `main.db` files are accepted when explicitly provided.
 
 Field ownership — tagslut writes first, Lexicon enriches after:
   tagslut owns:   ISRC, label, canonical date, title, artist, album
@@ -108,15 +111,24 @@ tagslut must NEVER overwrite Lexicon-owned fields on files where
 any Lexicon marker is present. Use merge-write semantics: write only
 tagslut-owned fields and leave the rest untouched.
 
-Lexicon DB join key: Track.location (absolute path). Query main.db
-by path to read energy, bpm, key, danceability, happiness, label,
-and playlist membership before making tag decisions.
+Lexicon DB join order:
+  1. normalized Track.locationUnique
+  2. normalized Track.location
+  3. normalized title + artist
+  4. streamingService + streamingId where available
 
-Lexicon backup automation:
-  Backups land at ~/Documents/Lexicon/Backups/backup YYYY-MM-DD HH_MM.zip
-  A launchd agent (com.georgeskhawam.lexicon-backup-mover) watches that
-  folder and moves zips to ~/Music/Lexicon_Backups/ within seconds.
-  Do not add that folder to iCloud sync paths.
+`tagslut lexicon import` preserves Lexicon source evidence in
+track_identity.canonical_payload_json:
+  lexicon_track_id, lexicon_location, lexicon_location_unique,
+  lexicon_fingerprint, lexicon_import_source, lexicon_source_payload.
+The importer also sets mp3_asset.lexicon_track_id when a concrete MP3
+path match is found.
+
+Lexicon backup snapshots:
+  Backups land at ~/Documents/Lexicon/Backups/backup YYYY-MM-DD HH_MM.zip.
+  Do not mutate those snapshots. Import them read-only through
+  `tagslut lexicon import --lexicon <backup.zip>` or
+  `tagslut lexicon import-playlists --lexicon <backup.zip>`.
 
 ---
 

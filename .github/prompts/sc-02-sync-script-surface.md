@@ -67,7 +67,7 @@ Append entries 14–20 (renumber as needed) for:
 - `tagslut library import-rekordbox` — import a Rekordbox XML file into the
   library database.
 - `tagslut lexicon import` / `tagslut lexicon import-playlists` — import
-  Lexicon DJ data.
+  Lexicon DJ data from `main.db` or backup ZIP snapshots.
 - `tagslut master scan` — scan the MASTER_LIBRARY root and register files.
 - `tagslut v3 migrate` / `tagslut v3 provenance show` — database migration
   utilities and provenance inspection. Operator/maintenance use only.

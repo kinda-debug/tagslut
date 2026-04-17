@@ -4,10 +4,29 @@
 
 This file is the authoritative map of where to run things in this repo.
 
-Policy and deprecation rules are defined in:
-- `docs/SURFACE_POLICY.md`
+Policy and deprecation rules are defined in this file. Superseded surface
+policy material lives under `docs/archive/`.
 
-## Canonical Entry Points
+## Visible Top-Level Entry Points
+
+1. `poetry run tagslut get ...`
+Role: Download and ingest a provider URL or local path.
+
+2. `poetry run tagslut tag ...`
+Role: Curate, fetch, apply, and sync metadata tags for library files.
+
+3. `poetry run tagslut fix ...`
+Role: Resume a blocked cohort or repair a specific file or identity.
+
+4. `poetry run tagslut auth ...`
+Role: Provider authentication and token lifecycle flows.
+
+5. `poetry run tagslut admin ...`
+Role: Advanced workflow groups. Use `admin intake`, `admin index`,
+`admin execute`, `admin verify`, `admin report`, `admin library`,
+`admin dj`, and `admin lexicon` for lower-level operations.
+
+## Advanced and Transitional Entry Points
 
 1. `poetry run tagslut intake ...`
 Role: Canonical intake orchestration. Includes URL-based intake
@@ -77,10 +96,10 @@ Role: Import Postman collection data from a Newman JSON report into v3 provenanc
 17. `poetry run tagslut library import-rekordbox`
 Role: Import a Rekordbox XML export into the library database.
 
-18. `poetry run tagslut lexicon ...`
-Role: Import and reconcile Lexicon DJ library data.
-- `lexicon import` — import Lexicon track metadata into `TAGSLUT_DB`
-- `lexicon import-playlists` — import Lexicon playlists into `TAGSLUT_DB`
+18. `poetry run tagslut admin lexicon ...` or `poetry run tagslut lexicon ...`
+Role: Import Lexicon DJ snapshot metadata and playlists.
+- `lexicon import` — import Lexicon track metadata from `main.db` or a backup ZIP containing `main.db`; matches normalized `locationUnique` before `location` and preserves Lexicon provenance in `track_identity.canonical_payload_json`
+- `lexicon import-playlists` — import Lexicon playlists from `main.db` or a backup ZIP containing `main.db`
 
 19. `poetry run tagslut master scan`
 Role: Scan the `MASTER_LIBRARY` root and register files.
@@ -211,7 +230,8 @@ Hidden top-level commands by policy:
 - `tagslut explain-keeper ...`
 - `tagslut show-zone ...`
 
-Use `tagslut intake/index/decide/execute/verify/report/auth/dj/gig/export/init` for new work.
+Use visible top-level commands (`get`, `tag`, `fix`, `auth`, `admin`) for new
+operator work. Use `tagslut admin ...` for lower-level workflow groups.
 
 ## Recovery Command Status
 

@@ -33,6 +33,12 @@ DJ pipeline task
 - modify only the stage involved
 - verify with DJ tests
 
+Lexicon metadata task
+- inspect `tagslut/cli/commands/lexicon.py`, `tagslut/exec/lexicon_import.py`, or `tagslut/dj/reconcile/lexicon_backfill.py`
+- preserve backup ZIP/main.db compatibility
+- preserve `locationUnique` matching and `canonical_payload_json` source payloads
+- verify with Lexicon importer/backfill tests
+
 Refactor
 - preserve runtime behavior
 - modify the smallest possible surface

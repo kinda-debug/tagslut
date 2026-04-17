@@ -144,11 +144,15 @@ Not a one-time task. Re-run `dj backfill --dry-run` after any significant intake
 ### 4.1 Lexicon reconcile
 
 Prompt: `.github/prompts/lexicon-reconcile.prompt.md`
-36% of identities (11,679) unmatched — no streaming-ID fallback in Lexicon DB.
+Implemented first slice: `tagslut lexicon import` and `import-playlists`
+accept Lexicon `main.db` or backup ZIP snapshots, prefer `Track.locationUnique`
+for path matching, and preserve Lexicon provenance in
+`track_identity.canonical_payload_json`.
 
 ### 4.2 Incremental backfill
 
-`python -m tagslut.dj.reconcile.lexicon_backfill --dry-run` after any Lexicon DB update.
+`python -m tagslut.dj.reconcile.lexicon_backfill --lex <backup.zip|main.db> --dry-run`
+after any Lexicon DB update.
 
 ---
 
@@ -464,7 +468,7 @@ describes at policy level.
 | `dj-pipeline-hardening.prompt.md` | DJ pipeline discipline | Codex | COMPLETE (retired) |
 | `dj-workflow-audit.prompt.md` | DJ workflow audit | Codex | COMPLETE |
 | `dj-ffmpeg-validation.prompt.md` | FFmpeg output validation | Codex | COMPLETE |
-| `lexicon-reconcile.prompt.md` | Lexicon reconcile strategy | Codex | Ready |
+| `lexicon-reconcile.prompt.md` | Lexicon snapshot import and reconcile strategy | Codex | First slice implemented |
 | `open-streams-post-0010.prompt.md` | Write DJ pipeline post | Codex | Ready |
 | `postman-api-optimize.prompt.md` | Beatport/TIDAL API collection | Postman | COMPLETE |
 | `CODEX_PROVIDER_ARCHITECTURE_IMPLEMENTATION_PROMPTS.md` | Provider architecture (8 prompts) | Codex | Ready (§23) |

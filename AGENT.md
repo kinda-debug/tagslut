@@ -11,6 +11,12 @@ This is a CLI-first Python repo. Use these rules for all agents.
 - DJ pool is M3U-based: `ts-get --dj` writes per-batch M3U + global `$MP3_LIBRARY/dj_pool.m3u`.
 - No `DJ_LIBRARY` writes and no XML emit in the active workflow.
 
+## Lexicon metadata
+- Prefer Lexicon backup ZIP snapshots from `$HOME/Documents/Lexicon/Backups`; each snapshot contains `main.db`.
+- `tagslut lexicon import --lexicon <main.db|backup.zip>` is the DB source-of-truth path.
+- Match Lexicon paths by normalized `Track.locationUnique` before `Track.location`.
+- Preserve Lexicon source payloads in `track_identity.canonical_payload_json`; do not flatten or discard them.
+
 ## Debugging workflow
 1) Reproduce via CLI wrappers (ts-get/ts-enrich/ts-auth).
 2) Inspect the smallest relevant module.

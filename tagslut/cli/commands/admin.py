@@ -9,6 +9,7 @@ from tagslut.cli.commands.execute import register_execute_group
 from tagslut.cli.commands.index import register_index_group
 from tagslut.cli.commands.intake import register_intake_group
 from tagslut.cli.commands.library import register_library_group
+from tagslut.cli.commands.lexicon import lexicon_group
 from tagslut.cli.commands.report import register_report_group
 from tagslut.cli.commands.tag import register_curate_group
 from tagslut.cli.commands.verify import register_verify_group
@@ -36,6 +37,7 @@ def register_admin_group(cli: click.Group) -> None:
     register_verify_group(admin)
     register_report_group(admin)
     register_library_group(admin)
+    admin.add_command(lexicon_group, name="lexicon")
     admin.add_command(dj_group, name="dj")
     register_curate_group(admin)
 

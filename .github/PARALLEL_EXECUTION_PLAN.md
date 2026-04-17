@@ -97,7 +97,7 @@ with any of the above since it touches only docs.
 | feat-tidal-native-fields      | migration 0006+ merged        | BLOCKED |
 | feat-intake-spotiflac         | identity service hardened     | BLOCKED |
 | feat-spotify-intake-path      | feat-intake-spotiflac         | BLOCKED |
-| lexicon-reconcile             | GROUP 3 complete              | BLOCKED |
+| lexicon-reconcile             | GROUP 3 complete              | FIRST SLICE LANDED |
 
 feat-tidal-native-fields and lexicon-reconcile touch different modules
 and can run simultaneously once GROUP 3 is done.

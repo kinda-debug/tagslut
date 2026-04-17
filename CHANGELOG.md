@@ -17,7 +17,8 @@ Versioning: [Semantic Versioning](https://semver.org/)
 
 ### Changed
 - `tagslut mp3 reconcile` now reconciles from `--scan-csv`; legacy direct-root scan moved to `tagslut mp3 reconcile-library` (alias kept: `reconcile-scan`).
-- Lexicon metadata import only considers DJ MP3 roots: `/Volumes/MUSIC/DJ_LIBRARY/` and `/Volumes/MUSIC/DJ_POOL_MANUAL_MP3/`.
+- Lexicon metadata import accepts `main.db` or backup ZIP snapshots containing `main.db`, matches normalized `Track.locationUnique` before `Track.location`, and preserves Lexicon source payloads in `track_identity.canonical_payload_json`.
+- Lexicon metadata import considers trusted/compatibility DJ MP3 roots: `/Volumes/MUSIC/MP3_LIBRARY/`, `/Volumes/MUSIC/DJ_LIBRARY/`, and `/Volumes/MUSIC/DJ_POOL_MANUAL_MP3/`.
 
 ### Fixed
 - Lexicon field writes now log as `lexicon_field_import` with old/new values.

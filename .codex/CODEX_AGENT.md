@@ -66,6 +66,17 @@ DJ candidate export (read-only, produces CSV):
 
 Implemented in scripts/dj/export_candidates_v3.py
 
+### Lexicon metadata
+
+Lexicon imports are snapshot-driven. Use:
+
+- `tagslut lexicon import --lexicon <main.db|backup.zip>`
+- `tagslut lexicon import-playlists --lexicon <main.db|backup.zip>`
+
+Prefer backup ZIP snapshots from `$HOME/Documents/Lexicon/Backups`. Match by
+normalized `Track.locationUnique` before `Track.location`; preserve Lexicon
+source payloads in `track_identity.canonical_payload_json`.
+
 ### Credentials
 
 Token storage: ~/.config/tagslut/tokens.json (single source of truth).

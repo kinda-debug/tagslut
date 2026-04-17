@@ -78,6 +78,20 @@ The authoritative v3 ownership model is:
 See `docs/archive/CORE_MODEL.md`, `docs/archive/DB_V3_SCHEMA.md`, and
 `tagslut/storage/v3/schema.py` for the table-level contract.
 
+### Lexicon metadata evidence
+
+Lexicon is an external metadata/workflow system. tagslut imports Lexicon state
+from `main.db` snapshots, preferably backup ZIPs under
+`/Users/georgeskhawam/Documents/Lexicon/Backups/`.
+
+- Lexicon `Track` rows are the source for Lexicon-owned state.
+- `Track.locationUnique` is the preferred path bridge, followed by
+  `Track.location` and identity fallbacks.
+- `Track.data`, `fingerprint`, `importSource`, and path evidence are preserved
+  in `track_identity.canonical_payload_json`.
+- File tags and Lexicon reports are downstream mirrors/evidence, not the
+  authoritative Lexicon dataset.
+
 ## Execution and Provenance
 
 Move planning and move execution are deliberately separate.

@@ -10,6 +10,7 @@ Claude-specific guardrails (canonical rules still in `AGENT.md`).
 ## Current workflow (post-April 2026)
 - Active wrappers: `ts-get <url> [--dj]`, `ts-enrich [--provider ...]`, `ts-auth [tidal|beatport|qobuz|all]`.
 - DJ pool is M3U-based (`dj_pool.m3u`); 4-stage DJ pipeline and XML emit are legacy (see `docs/archive/`).
+- Lexicon DB imports use `tagslut lexicon import --lexicon <main.db|backup.zip>`; prefer backup ZIP snapshots from `$HOME/Documents/Lexicon/Backups`.
 - Treat `docs/README.md` as the current active-doc index. Read only the active docs relevant to the task, and treat everything under `docs/archive/` as historical reference only.
 
 ## How to audit/edit

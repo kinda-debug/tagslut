@@ -4,12 +4,12 @@ from __future__ import annotations
 import click
 
 
-@click.group("lexicon", help="Import and reconcile Lexicon DJ library data.")
+@click.group("lexicon", help="Import Lexicon DJ snapshot metadata and playlists.")
 def lexicon_group() -> None:
     pass
 
 
-@lexicon_group.command("import", help="Import Lexicon track metadata into TAGSLUT_DB.")
+@lexicon_group.command("import", help="Import Lexicon track metadata from main.db or backup ZIP into TAGSLUT_DB.")
 @click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
 @click.option(
     "--lexicon",
@@ -106,7 +106,7 @@ def lexicon_import(
     click.echo(f"[CHECKPOINT SAVED] {ckpt_path}")
 
 
-@lexicon_group.command("import-playlists", help="Import Lexicon playlists into TAGSLUT_DB.")
+@lexicon_group.command("import-playlists", help="Import Lexicon playlists from main.db or backup ZIP into TAGSLUT_DB.")
 @click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
 @click.option(
     "--lexicon",

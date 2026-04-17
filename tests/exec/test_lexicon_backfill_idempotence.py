@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from pathlib import Path
+import zipfile
 
 from tagslut.dj.reconcile.lexicon_backfill import run_backfill
 
@@ -77,6 +78,13 @@ def _make_lexicon_db(path: Path) -> None:
     conn.close()
 
 
+def _zip_lexicon_db(lex_path: Path) -> Path:
+    zip_path = lex_path.with_suffix(".zip")
+    with zipfile.ZipFile(zip_path, "w") as archive:
+        archive.write(lex_path, arcname="main.db")
+    return zip_path
+
+
 def test_backfill_first_run_sets_canonical_payload(tmp_path: Path) -> None:
     db_path = tmp_path / "music_v3.db"
     lex_path = tmp_path / "lexicon.db"
@@ -122,7 +130,49 @@ def test_backfill_first_run_sets_canonical_payload(tmp_path: Path) -> None:
     assert payload["lexicon_track_id"] == 101
     assert payload["lexicon_energy"] == 8
     assert payload["lexicon_danceability"] == 7
-    assert row[1] == 101
+
+
+def test_backfill_accepts_lexicon_backup_zip(tmp_path: Path) -> None:
+    db_path = tmp_path / "music_v3.db"
+    lex_path = tmp_path / "lexicon.db"
+    _make_v3_db(db_path)
+    _make_lexicon_db(lex_path)
+
+    v3 = sqlite3.connect(str(db_path))
+    v3.execute(
+        """
+        INSERT INTO track_identity (beatport_id, artist_norm, title_norm, canonical_payload_json)
+        VALUES (?, ?, ?, ?)
+        """,
+        ("bp-zip", "Zip Artist", "Zip Track", None),
+    )
+    v3.commit()
+    v3.close()
+
+    lex = sqlite3.connect(str(lex_path))
+    lex.execute(
+        """
+        INSERT INTO Track
+          (id, title, artist, bpm, key, energy, danceability, happiness, popularity, streamingService, streamingId)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (202, "Zip Track", "Zip Artist", 124.0, "7A", 6, 5, 4, 3, "beatport", "bp-zip"),
+    )
+    lex.commit()
+    lex.close()
+
+    result = run_backfill(db_path=db_path, lex_path=_zip_lexicon_db(lex_path), run_id="run-zip", dry_run=False)
+
+    v3 = sqlite3.connect(str(db_path))
+    row = v3.execute(
+        "SELECT canonical_payload_json, lexicon_track_id FROM track_identity"
+    ).fetchone()
+    v3.close()
+    payload = json.loads(row[0])
+
+    assert result["matched_beatport"] == 1
+    assert row[1] == 202
+    assert payload["lexicon_track_id"] == 202
 
 
 def test_backfill_second_run_is_idempotent(tmp_path: Path) -> None:

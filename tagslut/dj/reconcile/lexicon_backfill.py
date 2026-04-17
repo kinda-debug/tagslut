@@ -14,21 +14,25 @@ track_identity.canonical_payload_json is updated only for fields that are curren
 
 Usage:
     python -m tagslut.dj.reconcile.lexicon_backfill [--dry-run] [--run-id RUN_ID]
-    python -m tagslut.dj.reconcile.lexicon_backfill --db /path/to/music_v3.db --lex /Volumes/MUSIC/lexicondj.db
+    python -m tagslut.dj.reconcile.lexicon_backfill --db /path/to/music_v3.db --lex "/Users/.../Documents/Lexicon/Backups/backup YYYY-MM-DD HH_MM.zip"
 """
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import logging
 import re
+import shutil
 import sqlite3
+import tempfile
 import unicodedata
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+import zipfile
 
 logger = logging.getLogger("tagslut.reconcile.lexicon_backfill")
 
@@ -79,6 +83,28 @@ class MatchResult:
 # ---------------------------------------------------------------------------
 # Lexicon loading
 # ---------------------------------------------------------------------------
+
+
+@contextlib.contextmanager
+def _materialized_lexicon_db(lex_path: Path):
+    lex_path = Path(lex_path)
+    if lex_path.suffix.lower() != ".zip":
+        yield lex_path
+        return
+
+    with tempfile.TemporaryDirectory(prefix="lexicon_backfill_") as tmp_dir:
+        materialized = Path(tmp_dir) / "main.db"
+        with zipfile.ZipFile(lex_path) as archive:
+            member = next(
+                (info for info in archive.infolist() if not info.is_dir() and Path(info.filename).name == "main.db"),
+                None,
+            )
+            if member is None:
+                raise RuntimeError(f"No main.db found in Lexicon backup zip: {lex_path}")
+            with archive.open(member) as src, materialized.open("wb") as dst:
+                shutil.copyfileobj(src, dst)
+        yield materialized
+
 
 def _load_lex_tracks(lex_conn: sqlite3.Connection) -> list[LexTrack]:
     rows = lex_conn.execute(
@@ -223,81 +249,82 @@ def run_backfill(
 
     logger.info("run_id=%s  db=%s  lex=%s  dry_run=%s", run_id, db_path, lex_path, dry_run)
 
-    lex_conn = sqlite3.connect(f"file:{lex_path}?mode=ro", uri=True)
-    lex_conn.row_factory = sqlite3.Row
+    with _materialized_lexicon_db(lex_path) as lex_db:
+        lex_conn = sqlite3.connect(f"file:{lex_db}?mode=ro", uri=True)
+        lex_conn.row_factory = sqlite3.Row
 
-    lex_tracks = _load_lex_tracks(lex_conn)
-    logger.info("Loaded %d Lexicon tracks", len(lex_tracks))
+        lex_tracks = _load_lex_tracks(lex_conn)
+        logger.info("Loaded %d Lexicon tracks", len(lex_tracks))
 
-    beatport_idx, spotify_idx, text_idx = _build_indexes(lex_tracks)
-    logger.info("Index sizes — beatport:%d  spotify:%d  text:%d",
-                len(beatport_idx), len(spotify_idx), len(text_idx))
+        beatport_idx, spotify_idx, text_idx = _build_indexes(lex_tracks)
+        logger.info("Index sizes — beatport:%d  spotify:%d  text:%d",
+                    len(beatport_idx), len(spotify_idx), len(text_idx))
 
-    v3_conn = sqlite3.connect(db_path)
-    v3_conn.row_factory = sqlite3.Row
-    v3_conn.execute("PRAGMA journal_mode=WAL")
-    v3_conn.execute("PRAGMA foreign_keys=ON")
+        v3_conn = sqlite3.connect(db_path)
+        v3_conn.row_factory = sqlite3.Row
+        v3_conn.execute("PRAGMA journal_mode=WAL")
+        v3_conn.execute("PRAGMA foreign_keys=ON")
 
-    # Detect available columns on track_identity
-    ti_cols = {r[1] for r in v3_conn.execute("PRAGMA table_info(track_identity)").fetchall()}
-    has_lexicon_col = "lexicon_track_id" in ti_cols
+        # Detect available columns on track_identity
+        ti_cols = {r[1] for r in v3_conn.execute("PRAGMA table_info(track_identity)").fetchall()}
+        has_lexicon_col = "lexicon_track_id" in ti_cols
 
-    identity_rows = v3_conn.execute(
-        "SELECT id, beatport_id, spotify_id, artist_norm, title_norm, "
-        "       canonical_bpm, canonical_key, canonical_payload_json "
-        "FROM track_identity"
-    ).fetchall()
+        identity_rows = v3_conn.execute(
+            "SELECT id, beatport_id, spotify_id, artist_norm, title_norm, "
+            "       canonical_bpm, canonical_key, canonical_payload_json "
+            "FROM track_identity"
+        ).fetchall()
 
-    log_batch:    list[tuple] = []
-    update_batch: list[tuple] = []
-    matched_lex_ids: list[int] = []
+        log_batch:    list[tuple] = []
+        update_batch: list[tuple] = []
+        matched_lex_ids: list[int] = []
 
-    for row in identity_rows:
-        stats["identities_scanned"] += 1
-        match_result = _match(row, beatport_idx, spotify_idx, text_idx)
+        for row in identity_rows:
+            stats["identities_scanned"] += 1
+            match_result = _match(row, beatport_idx, spotify_idx, text_idx)
 
-        if match_result is None:
-            stats["unmatched"] += 1
-            continue
+            if match_result is None:
+                stats["unmatched"] += 1
+                continue
 
-        lt = match_result.lex_track
-        if   match_result.method == "beatport_id": stats["matched_beatport"] += 1
-        elif match_result.method == "spotify_id":  stats["matched_spotify"]  += 1
-        else:                           stats["matched_text"]     += 1
+            lt = match_result.lex_track
+            if   match_result.method == "beatport_id": stats["matched_beatport"] += 1
+            elif match_result.method == "spotify_id":  stats["matched_spotify"]  += 1
+            else:                           stats["matched_text"]     += 1
 
-        matched_lex_ids.append(lt.lex_id)
+            matched_lex_ids.append(lt.lex_id)
 
-        # Only write fields not already present
-        payload_updates: dict[str, Any] = {}
-        if lt.energy      > 0: payload_updates["lexicon_energy"]       = lt.energy
-        if lt.danceability > 0: payload_updates["lexicon_danceability"] = lt.danceability
-        if lt.happiness   > 0: payload_updates["lexicon_happiness"]    = lt.happiness
-        if lt.popularity  > 0: payload_updates["lexicon_popularity"]   = lt.popularity
-        if lt.bpm and not row["canonical_bpm"]:  payload_updates["lexicon_bpm"] = lt.bpm
-        if lt.key and not row["canonical_key"]:  payload_updates["lexicon_key"] = lt.key
-        payload_updates["lexicon_track_id"] = lt.lex_id
+            # Only write fields not already present
+            payload_updates: dict[str, Any] = {}
+            if lt.energy      > 0: payload_updates["lexicon_energy"]       = lt.energy
+            if lt.danceability > 0: payload_updates["lexicon_danceability"] = lt.danceability
+            if lt.happiness   > 0: payload_updates["lexicon_happiness"]    = lt.happiness
+            if lt.popularity  > 0: payload_updates["lexicon_popularity"]   = lt.popularity
+            if lt.bpm and not row["canonical_bpm"]:  payload_updates["lexicon_bpm"] = lt.bpm
+            if lt.key and not row["canonical_key"]:  payload_updates["lexicon_key"] = lt.key
+            payload_updates["lexicon_track_id"] = lt.lex_id
 
-        new_payload = _merge_payload(row["canonical_payload_json"], payload_updates)
+            new_payload = _merge_payload(row["canonical_payload_json"], payload_updates)
 
-        log_batch.append((
-            run_id, now, "lexicondj", "backfill_metadata",
-            match_result.confidence, None,           # mp3_path
-            match_result.identity_id, lt.lex_id,
-            json.dumps({
-                "method": match_result.method, "lex_id": lt.lex_id,
-                "lex_artist": lt.artist, "lex_title": lt.title,
-                "payload_keys_set": list(payload_updates.keys()),
-            }, ensure_ascii=False),
-        ))
-        stats["log_rows_written"] += 1
+            log_batch.append((
+                run_id, now, "lexicondj", "backfill_metadata",
+                match_result.confidence, None,           # mp3_path
+                match_result.identity_id, lt.lex_id,
+                json.dumps({
+                    "method": match_result.method, "lex_id": lt.lex_id,
+                    "lex_artist": lt.artist, "lex_title": lt.title,
+                    "payload_keys_set": list(payload_updates.keys()),
+                }, ensure_ascii=False),
+            ))
+            stats["log_rows_written"] += 1
 
-        if payload_updates:
-            update_batch.append((new_payload, lt.lex_id, match_result.identity_id))
-            stats["payload_updated"] += 1
+            if payload_updates:
+                update_batch.append((new_payload, lt.lex_id, match_result.identity_id))
+                stats["payload_updated"] += 1
 
-    # Tempomarkers for matched tracks
-    tempo_map = _load_tempomarkers(lex_conn, list(set(matched_lex_ids)))
-    lex_conn.close()
+        # Tempomarkers for matched tracks
+        tempo_map = _load_tempomarkers(lex_conn, list(set(matched_lex_ids)))
+        lex_conn.close()
 
     for lex_id, markers in tempo_map.items():
         if not markers:
@@ -390,7 +417,7 @@ def _cli() -> None:
     )
     parser = argparse.ArgumentParser(description="Backfill Lexicon DJ metadata into music_v3.db")
     parser.add_argument("--db",      default="/Users/georgeskhawam/Projects/tagslut_db/EPOCH_2026-03-04/music_v3.db")
-    parser.add_argument("--lex",     default="/Volumes/MUSIC/lexicondj.db")
+    parser.add_argument("--lex",     required=True, help="Path to Lexicon main.db or backup ZIP containing main.db.")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--run-id",  default=None)
     args = parser.parse_args()

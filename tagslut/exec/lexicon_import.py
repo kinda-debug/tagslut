@@ -14,6 +14,13 @@ import zipfile
 from tagslut.utils.fs import normalize_path
 
 
+_LEXICON_MP3_ROOTS = (
+    "/Volumes/MUSIC/MP3_LIBRARY/",
+    "/Volumes/MUSIC/DJ_LIBRARY/",
+    "/Volumes/MUSIC/DJ_POOL_MANUAL_MP3/",
+)
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -128,6 +135,11 @@ def _lex_track_query(conn: sqlite3.Connection) -> str:
     def _value_col(name: str) -> str:
         return name if name in lex_track_cols else "NULL"
 
+    path_filters = []
+    for root in _LEXICON_MP3_ROOTS:
+        path_filters.append(f"location LIKE '{root}%'")
+        path_filters.append(f"{_value_col('locationUnique')} LIKE '{root}%'")
+
     return f"""
         SELECT id, title, artist, location, {_select_col('locationUnique')},
                bpm, key, energy, rating, lastPlayed, color, genre, label,
@@ -135,12 +147,7 @@ def _lex_track_query(conn: sqlite3.Connection) -> str:
                archived, incoming, {_select_col('data')}, {_select_col('fingerprint')}, {_select_col('importSource')}
         FROM lex.Track
         WHERE archived = 0 AND incoming = 0
-          AND (
-            location LIKE '/Volumes/MUSIC/DJ_LIBRARY/%'
-            OR location LIKE '/Volumes/MUSIC/DJ_POOL_MANUAL_MP3/%'
-            OR {_value_col('locationUnique')} LIKE '/Volumes/MUSIC/DJ_LIBRARY/%'
-            OR {_value_col('locationUnique')} LIKE '/Volumes/MUSIC/DJ_POOL_MANUAL_MP3/%'
-          )
+          AND ({" OR ".join(path_filters)})
     """
 
 
@@ -240,8 +247,9 @@ def import_lexicon_metadata(
 ) -> dict:
     """Import Lexicon DJ library metadata into TAGSLUT_DB.
 
-    For each active Lexicon track in MP3_LIBRARY:
-    - Match to a track_identity (via mp3_asset.path, title+artist, or streamingId).
+    For each active Lexicon track under the trusted DJ MP3 roots:
+    - Match to a track_identity (via normalized locationUnique/location path,
+      title+artist, or streamingId).
     - Write NULL fields in track_identity and dj_track_profile (or overwrite if
       prefer_lexicon=True).
 

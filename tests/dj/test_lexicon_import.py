@@ -456,7 +456,7 @@ def test_location_unique_match_preserves_lexicon_payload(tmp_path: Path) -> None
 
 def test_backup_zip_supported(tmp_path: Path) -> None:
     conn = _make_tagslut_db()
-    loc = "/Volumes/MUSIC/DJ_LIBRARY/zipped.mp3"
+    loc = "/Volumes/MUSIC/MP3_LIBRARY/zipped.mp3"
     iid = _seed_tagslut_identity(conn, key="ti9", artist_norm="zip artist", title_norm="zip title")
     _seed_mp3_asset(conn, identity_id=iid, path=loc)
 

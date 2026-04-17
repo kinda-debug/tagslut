@@ -16,7 +16,8 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DOCS_DIR = PROJECT_ROOT / "docs"
 
-TOP_CANONICAL_COMMANDS = {"intake", "index", "decide", "execute", "verify", "report", "auth"}
+TOP_CANONICAL_COMMANDS = {"get", "tag", "fix", "auth", "admin"}
+ADMIN_REQUIRED_COMMANDS = {"curate", "dj", "execute", "index", "intake", "lexicon", "library", "report", "status", "verify"}
 REMOVED_LEGACY_COMMANDS = {"scan", "recommend", "apply", "promote", "quarantine"}
 REMOVED_COMPAT_COMMANDS = {"mgmt", "metadata", "recover", "m"}
 INTAKE_REQUIRED_COMMANDS = {"run", "prefilter", "process-root"}
@@ -56,7 +57,7 @@ def run_help(module_name: str, *args: str) -> str:
 def parse_help_commands(help_text: str) -> set[str]:
     commands: set[str] = set()
     in_commands = False
-    pattern = re.compile(r"^\s{2}([a-zA-Z0-9_-]+)\s{2,}")
+    pattern = re.compile(r"^\s{2}([a-zA-Z0-9_-]+)(?:\s{2,}|$)")
 
     for line in help_text.splitlines():
         if line.strip() == "Commands:":
@@ -160,6 +161,7 @@ def main() -> int:
     errors: list[str] = []
 
     top_help = run_help("tagslut")
+    admin_help = run_help("tagslut", "admin")
     intake_help = run_help("tagslut", "intake")
     index_help = run_help("tagslut", "index")
     decide_help = run_help("tagslut", "decide")
@@ -168,6 +170,7 @@ def main() -> int:
     report_help = run_help("tagslut", "report")
     auth_help = run_help("tagslut", "auth")
     top_commands = parse_help_commands(top_help)
+    admin_commands = parse_help_commands(admin_help)
     intake_commands = parse_help_commands(intake_help)
     index_commands = parse_help_commands(index_help)
     decide_commands = parse_help_commands(decide_help)
@@ -184,6 +187,10 @@ def main() -> int:
         errors.append(
             "Removed top-level commands still present: " + ", ".join(stale_top)
         )
+
+    missing_admin = sorted(ADMIN_REQUIRED_COMMANDS - admin_commands)
+    if missing_admin:
+        errors.append("Missing expected admin subcommands: " + ", ".join(missing_admin))
 
     missing_intake = sorted(INTAKE_REQUIRED_COMMANDS - intake_commands)
     if missing_intake:
@@ -213,13 +220,17 @@ def main() -> int:
     if missing_auth:
         errors.append("Missing expected auth subcommands: " + ", ".join(missing_auth))
 
-    operations_doc = (DOCS_DIR / "OPERATIONS.md").read_text(encoding="utf-8", errors="replace")
-    surface_policy_doc = (DOCS_DIR / "SURFACE_POLICY.md").read_text(encoding="utf-8", errors="replace")
-    project_scripts = load_project_scripts(PROJECT_ROOT / "pyproject.toml")
     # Phase runbook docs have been archived — read if present, skip checks otherwise
     def _read_optional(name: str) -> str:
         p = DOCS_DIR / name
         return p.read_text(encoding="utf-8", errors="replace") if p.is_file() else ""
+
+    operations_doc = _read_optional("OPERATIONS.md")
+    script_surface_doc = _read_optional("SCRIPT_SURFACE.md")
+    surface_policy_doc = _read_optional("SURFACE_POLICY.md")
+    surface_doc = operations_doc or script_surface_doc
+    surface_context = "docs/OPERATIONS.md" if operations_doc else "docs/SCRIPT_SURFACE.md"
+    project_scripts = load_project_scripts(PROJECT_ROOT / "pyproject.toml")
 
     phase1_doc = _read_optional("PHASE1_V3_DUAL_WRITE.md")
     phase2_doc = _read_optional("PHASE2_POLICY_DECIDE.md")
@@ -231,52 +242,57 @@ def main() -> int:
     readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8", errors="replace")
     workflows_doc = (DOCS_DIR / "WORKFLOWS.md").read_text(encoding="utf-8", errors="replace")
 
-    # SCRIPT_SURFACE requirements (now consolidated into docs/OPERATIONS.md)
-    for canonical in sorted(TOP_CANONICAL_COMMANDS):
-        ensure_contains(
-            operations_doc,
-            f"poetry run tagslut {canonical} ...",
-            errors,
-            "docs/OPERATIONS.md",
-        )
-    ensure_contains(operations_doc, "Compatibility aliases:", errors, "docs/OPERATIONS.md")
-    # Phase runbook doc references removed — docs archived during decommission
+    # Active surface requirements. Older docs/OPERATIONS.md and docs/SURFACE_POLICY.md
+    # may be archived; docs/SCRIPT_SURFACE.md is the active fallback.
+    if surface_doc:
+        for canonical in sorted(TOP_CANONICAL_COMMANDS):
+            ensure_contains(
+                surface_doc,
+                f"poetry run tagslut {canonical} ...",
+                errors,
+                surface_context,
+            )
+        ensure_contains(surface_doc, "Compatibility", errors, surface_context)
 
-    for removed in sorted(REMOVED_LEGACY_COMMANDS | REMOVED_COMPAT_COMMANDS):
-        ensure_not_contains(
-            operations_doc, f"`dedupe {removed}`", errors, "docs/OPERATIONS.md"
-        )
+        for removed in sorted(REMOVED_LEGACY_COMMANDS | REMOVED_COMPAT_COMMANDS):
+            ensure_not_contains(
+                surface_doc, f"`dedupe {removed}`", errors, surface_context
+            )
 
-    # SURFACE_POLICY requirements (now consolidated into docs/OPERATIONS.md)
-    ensure_contains(
-        operations_doc,
-        "## Canonical Surface (Use For New Work)",
-        errors,
-        "docs/OPERATIONS.md",
-    )
-    ensure_contains(
-        operations_doc,
-        "## Transitional Surface",
-        errors,
-        "docs/OPERATIONS.md",
-    )
-    ensure_contains(
-        operations_doc,
-        "validate_v3_dual_write_parity.py",
-        errors,
-        "docs/OPERATIONS.md",
-    )
-    ensure_contains(
-        operations_doc,
-        "lint_policy_profiles.py",
-        errors,
-        "docs/OPERATIONS.md",
-    )
-    check_dedupe_docs_alignment(
-        surface_policy_text=surface_policy_doc,
-        project_scripts=project_scripts,
-        errors=errors,
-    )
+        if operations_doc:
+            ensure_contains(
+                operations_doc,
+                "## Canonical Surface (Use For New Work)",
+                errors,
+                "docs/OPERATIONS.md",
+            )
+            ensure_contains(
+                operations_doc,
+                "## Transitional Surface",
+                errors,
+                "docs/OPERATIONS.md",
+            )
+            ensure_contains(
+                operations_doc,
+                "validate_v3_dual_write_parity.py",
+                errors,
+                "docs/OPERATIONS.md",
+            )
+            ensure_contains(
+                operations_doc,
+                "lint_policy_profiles.py",
+                errors,
+                "docs/OPERATIONS.md",
+            )
+    else:
+        errors.append("Missing active CLI surface doc: docs/SCRIPT_SURFACE.md")
+
+    if surface_policy_doc:
+        check_dedupe_docs_alignment(
+            surface_policy_text=surface_policy_doc,
+            project_scripts=project_scripts,
+            errors=errors,
+        )
     # Phase runbook doc cross-references removed — docs archived during decommission
 
     # README minimal workflow checks
@@ -292,7 +308,7 @@ def main() -> int:
         "tools/get \"https://www.beatport.com/release/.../...\"",
         "tools/get \"https://tidal.com/browse/album/...\"",
         "tools/get-intake",
-        "deprecated Beatport compatibility alias",
+        "Legacy reference",
     ]
     for phrase in required_active_workflow_phrases:
         ensure_contains(workflows_doc, phrase, errors, "docs/WORKFLOWS.md")

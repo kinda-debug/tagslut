@@ -13,6 +13,7 @@
 - [DJ_POOL.md](DJ_POOL.md) — current M3U-based DJ pool model and Rekordbox boundary.
 - [DOWNLOAD_STRATEGY.md](DOWNLOAD_STRATEGY.md) — source-selection policy and provider roles.
 - [INGESTION_PROVENANCE.md](INGESTION_PROVENANCE.md) — ingestion metadata fields and vocabulary.
+- [lexicon_metadata_report.md](lexicon_metadata_report.md) — Lexicon snapshot/report map and metadata lifecycle notes.
 - [MULTI_PROVIDER_ID_POLICY.md](MULTI_PROVIDER_ID_POLICY.md) — provider-ID reconciliation and confidence-tier policy.
 - [PROJECT_DIRECTIVES.md](PROJECT_DIRECTIVES.md) — repo-wide directives and DB/volume safety rules.
 - [ROADMAP.md](ROADMAP.md) — agent roadmap and work sequencing.

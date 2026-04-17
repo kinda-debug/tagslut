@@ -534,13 +534,29 @@ python tools/review/tag_normalized_genres.py "$STAGING_ROOT" \
 ### Sync Lexicon tag edits → DB
 
 ```bash
+# Import Lexicon's DB source of truth first. The preferred input is a
+# timestamped backup ZIP from ~/Documents/Lexicon/Backups containing main.db.
+poetry run tagslut lexicon import \
+  --db "$TAGSLUT_DB" \
+  --lexicon "$HOME/Documents/Lexicon/Backups/backup YYYY-MM-DD HH_MM.zip" \
+  --execute
+
+# Import selected Lexicon playlist membership from the same snapshot.
+poetry run tagslut lexicon import-playlists \
+  --db "$TAGSLUT_DB" \
+  --lexicon "$HOME/Documents/Lexicon/Backups/backup YYYY-MM-DD HH_MM.zip" \
+  --execute
+
+# Use file-tag sync only as a follow-up drift check for fields written back to files.
 tools/metadata sync-tags \
   --read-files --execute \
   --db "$TAGSLUT_DB" \
-  --path "$MASTER_LIBRARY"
+  --path "$MP3_LIBRARY"
 ```
 
-Writes an M3U of tracks still missing critical tags at `$MASTER_LIBRARY/missing_tags_*.m3u`.
+Lexicon matching prefers normalized `Track.locationUnique`, then `Track.location`,
+then identity fallbacks. Lexicon `Track.data`, `fingerprint`, `importSource`,
+and path evidence are preserved in `track_identity.canonical_payload_json`.
 
 ### ISRC enrichment (OneTagger)
 

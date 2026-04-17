@@ -20,6 +20,7 @@ Do not suggest alternative invocations or new entrypoints.
 - All complex atomic writes go inside Postgres RPC functions — PostgREST has no
   client-side multi-step transaction support
 - DJ pipeline: `FLAC → tagslut mp3 → tagslut dj → Rekordbox XML export`
+- Lexicon metadata imports are snapshot-driven: `tagslut lexicon import --lexicon <main.db|backup.zip>` preserves `Track.locationUnique`/payload evidence in `track_identity.canonical_payload_json`
 - Intake pipeline: `tools/get` → `tools/get-intake` (precheck → download → scan →
   identify → audit → plan → apply → m3u → DJ → enrich/art)
 

@@ -61,6 +61,9 @@ musicbrainz:
 
 # Useful for querying tagslut-sidecar flexible attributes using range queries.
 # (`types` supports: int, float, bool, date)
+# Controlled genre/style fields such as `ts_canonical_genre` and
+# `ts_canonical_sub_genre` remain plain string flex attrs and do not need entries
+# here.
 types:
   ts_canonical_bpm: float
   ts_replay_gain_track: float
@@ -87,6 +90,11 @@ beatport4:
   username: ""
   password: ""
   client_id: ""
+
+# Custom sidecar plugins described in docs/beets/BEETS_CUSTOM_PLUGIN_STUBS.md.
+# Keep commented until implemented.
+# - tagslutsync
+# - genreguard
 
 # Artwork helpers (core).
 #
@@ -139,6 +147,9 @@ replaygain:
   overwrite: no
 
 # beetcamp configuration (external: `beetcamp`, plugin name `bandcamp`).
+# Bandcamp can surface raw genre strings for browse/search, but tagslut remains
+# the canonical genre authority. Do not treat Bandcamp genre output as canonical
+# `genre` / `style` without an explicit sync/protection layer.
 bandcamp:
   include_digital_only_tracks: true
   search_max: 2

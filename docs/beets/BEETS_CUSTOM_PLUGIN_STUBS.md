@@ -135,10 +135,13 @@ Output:
 Enforce the boundary that `tagslut` owns canonical genre + sub-genre, preventing “helpful” Beets sources from overriding normalized values.
 
 In Beets terms, this usually means protecting `genre` and `style` (where `style` is the most natural built-in slot for `tagslut`’s `canonical_sub_genre`).
+The protected values are not arbitrary strings: they come from the controlled
+Beatport-hybrid taxonomy in `tagslut.metadata.genre_normalization`
+(`canonical_genres` + `style_parent_map`).
 
 ### Why core/external plugins do not cover it
 
-- Beets metadata sources and plugins can set `genre` (and related fields) during import, but none know about `tagslut`’s normalization cascade and protection requirements.
+- Beets metadata sources and plugins can set `genre` (and related fields) during import, but none know about `tagslut`’s normalization cascade, parent-style promotion rules, and protection requirements.
 
 ### Expected config surface
 

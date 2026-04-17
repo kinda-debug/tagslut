@@ -10,6 +10,8 @@ Two supported modes:
 1) Apple Music MP3 mode (recommended for this workflow)
    - Invoked via `--root /path/to/library`
    - Reads and writes only the ID3 `TCON` (genre) field
+   - Resolves raw values through the controlled Beatport-hybrid taxonomy and
+     writes the parent canonical genre into `TCON`
    - `--dry-run` reports changes without writing
 
 2) Legacy FLAC mode (Beatport-compatible tags)
@@ -92,7 +94,7 @@ def normalize_id3_tcon(
 ) -> Tuple[Optional[str], bool]:
     if raw_genre is None:
         return None, False
-    normalized = normalizer.normalize_value(raw_genre, "genre")
+    normalized, _style = normalizer.normalize_pair(raw_genre, None)
     if normalized == raw_genre:
         return raw_genre, False
     # Empty-string means "delete"

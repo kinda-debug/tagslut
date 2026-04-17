@@ -13,7 +13,7 @@ The active `tagslut` enrichment model is defined in:
 
 Key implications for a Beets sidecar:
 - Provider precedence is explicit (see `tagslut/metadata/models/precedence.py`): Beatport wins for DJ fields (`bpm`, `key`, `genre`, `sub_genre`, `label`, `catalog_number`, duration), while TIDAL wins for identity/artwork (`title`, `artist`, `album`, artwork) and composer.
-- Genre normalization is centralized (see `tagslut/metadata/genre_normalization.py`): tag cascade priority is `GENRE_PREFERRED` → `SUBGENRE` → `GENRE` → `GENRE_FULL`, with Beatport-compatible output tags (`GENRE`, `SUBGENRE`, `GENRE_PREFERRED`, `GENRE_FULL`).
+- Genre normalization is centralized (see `tagslut/metadata/genre_normalization.py`): tag cascade priority is `GENRE_PREFERRED` → `SUBGENRE` → `GENRE` → `GENRE_FULL`, then values are resolved into a controlled Beatport-hybrid taxonomy (`canonical_genres` + `style_parent_map`) with Beatport-compatible output tags (`GENRE`, `SUBGENRE`, `GENRE_PREFERRED`, `GENRE_FULL`).
 - Canon cleanup policy is explicit (see `tools/rules/library_canon.json`): replaygain tags are removed (`replaygain_*` and explicit `replaygain_*_gain/peak`), and tags like `acoustid_id`/`encoder` are stripped; a small allowlist is preserved (e.g. `composer`, `comment`, `copyright`).
 - Therefore: Beets must not silently “improve” genre, and any file-writing plugins must be manual-only in sidecar mode.
 
@@ -66,7 +66,7 @@ For `tagslut`, the bridge strategy is:
 
 ### Sidecar storage strategy used by this repo
 
-This sidecar package keeps Beets from becoming a competing metadata authority by storing `tagslut`’s canonical values in *separate* flexible attributes prefixed with `ts_*` (see `beets-flask-config/beets/config.yaml`), while leaving Beets core fields as “what Beets imported / what’s on-disk”.
+This sidecar package keeps Beets from becoming a competing metadata authority by storing `tagslut`’s canonical values in *separate* flexible attributes prefixed with `ts_*` (see `config/beets/beets/config.yaml`), while leaving Beets core fields as “what Beets imported / what’s on-disk”.
 
 ### What Beets can store natively (core fields)
 
@@ -87,8 +87,8 @@ DJ metadata
 - `bpm` -> Beets can store `bpm`; for `tagslut` canonical BPM (float), prefer syncing to a separate field (e.g. `ts_canonical_bpm`) via `tagslutsync` and treat `beatport4`/`autobpm`/`xtractor` as fallback helpers only.
 - `key` -> Beets core `initial_key` (stored); sourced by `beatport4` (import-time, when Beatport candidate chosen) or `keyfinder` fallback. https://beets.readthedocs.io/en/latest/reference/library.html
 - `Camelot-compatible key` -> unsupported in core; needs custom extension (`camelotconverter`) to derive/store e.g. `camelot` flex attr from `initial_key`.
-- `genre` -> Beets core `genre` (stored); **must be protected from “lastgenre”-style auto-genre** to preserve `tagslut` normalization boundary.
-- `sub_genre` -> closest Beets core slot is `style`; recommended mapping: `tagslut.canonical_sub_genre` -> Beets `style`. If you need a dedicated field, store `sub_genre` as a flex attribute and only populate from `tagslut` (or explicit external sources).
+- `genre` -> Beets core `genre` (stored); **must be protected from “lastgenre”-style auto-genre** to preserve `tagslut` normalization boundary. The stored value should already be one of the controlled Beatport-hybrid canonical genres, not an arbitrary raw provider string.
+- `sub_genre` -> closest Beets core slot is `style`; recommended mapping: `tagslut.canonical_sub_genre` -> Beets `style`. This remains the secondary controlled field under the same Beatport-hybrid taxonomy; do not let Beets invent parallel style labels.
 - `mix_name` -> no strong standard field; store as flex attribute (custom) if needed.
 - `label` -> Beets core `label` (stored); sources include `beatport4` and/or Bandcamp via `beetcamp`. https://beets.readthedocs.io/en/latest/reference/library.html
 - `catalog_number` -> Beets core `catalognum` (stored); sources include `beatport4` (and sometimes Bandcamp). https://beets.readthedocs.io/en/latest/reference/library.html
@@ -266,4 +266,4 @@ Not realistically supported at parity
 
 ## Repo-ready config
 
-Use `beets-flask-config/beets/config.yaml` as the baseline sidecar configuration. It is intentionally conservative (no file writes; web UI read-only).
+Use `config/beets/beets/config.yaml` as the baseline sidecar configuration. It is intentionally conservative (no file writes; web UI read-only).

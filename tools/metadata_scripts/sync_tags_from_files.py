@@ -7,6 +7,8 @@ for files missing important tags.
 
 This is meant to pick up tag edits made by Lexicon (or other tag editors)
 by copying BPM/Key/Genre/Energy/Danceability from file tags into canonical columns.
+Genre values are normalized through the shared Beatport-hybrid taxonomy before
+they are promoted into canonical fields.
 """
 from __future__ import annotations
 
@@ -25,6 +27,7 @@ if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 
 from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
+from tagslut.metadata.genre_normalization import default_genre_normalizer
 
 
 def _now_stamp() -> str:
@@ -227,7 +230,11 @@ def main() -> int:
             if key_raw:
                 updates["canonical_key"] = key_raw
             if genre_raw:
-                updates["canonical_genre"] = genre_raw
+                canonical_genre, canonical_sub_genre = default_genre_normalizer().normalize_pair(genre_raw, None)
+                if canonical_genre:
+                    updates["canonical_genre"] = canonical_genre
+                if canonical_sub_genre:
+                    updates["canonical_sub_genre"] = canonical_sub_genre
             if energy_val is not None and energy_val > 0:
                 updates["canonical_energy"] = energy_val
             if dance_val is not None and dance_val > 0:

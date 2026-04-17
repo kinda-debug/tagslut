@@ -40,8 +40,8 @@ Role: Provider authentication and token lifecycle flows.
 
 9. `poetry run tagslut mp3 ...`
 Role: MP3 derivative asset management (Stage 2 of the 4-stage DJ pipeline; prerequisite: Stage 1 intake).
-- `mp3 build` — transcode preferred FLAC master(s) to MP3 and register in `mp3_asset`
-- `mp3 reconcile` — scan an existing MP3 root (via `--mp3-root` or `$DJ_LIBRARY`) and register files in `mp3_asset` without re-transcoding
+- `mp3 build` — transcode preferred source asset(s) to MP3 and register in `mp3_asset` (lossless canonical first, provisional high-quality lossy allowed when linked)
+- `mp3 reconcile` — scan an existing MP3 root (via `--mp3-root` or `$DJ_LIBRARY`) and register files in `mp3_asset`; unmatched files are preserved as provisional lineage rows instead of being dropped
 
 10. `poetry run tagslut dj ...`
 Role: DJ library admission, validation, and Rekordbox XML export (Stages 3 and 4).
@@ -162,14 +162,19 @@ Role: Maintainer-only helper for pushing the active Phase 1 branch stack with pr
 ## Transcode Helpers (Scripts)
 
 - `scripts/transcode_m4a_to_flac_lossless.sh`
-Purpose: Transcode lossless `.m4a` (ALAC or FLAC-in-M4A) to `.flac` (optionally AAC `.m4a` to 320k MP3) while preserving metadata/artwork.
+Purpose: Narrow M4A helper for lossless-first staging. Transcodes ALAC or FLAC-in-M4A to `.flac`, and can optionally route AAC `.m4a` to 320k MP3 while preserving metadata/artwork.
 Flags: `--scan-path`, `--output-dir`, `--lossy-to-mp3`, `--overwrite`
 Example: `scripts/transcode_m4a_to_flac_lossless.sh --scan-path /Volumes/MUSIC/staging/SpotiFLACnext --lossy-to-mp3`
 
 - `scripts/verify_transcodes.sh`
-Purpose: Sanity-check outputs from `transcode_m4a_to_flac_lossless.sh` (lossless pairs: bit-perfect PCM MD5; lossy pairs: duration+decode).
+Purpose: Sanity-check outputs from `transcode_m4a_to_flac_lossless.sh` (lossless pairs: bit-perfect PCM MD5; lossy pairs: duration+decode). Use this after either the helper script or the broader MP3 lineage flow.
 Flags: `--scan-path`, `--lossy-mp3`
 Example: `scripts/verify_transcodes.sh --scan-path /Volumes/MUSIC/staging/SpotiFLACnext --lossy-mp3`
+
+- `scripts/resolve_lossless_winner.sh`
+Purpose: Codec-aware per-stem winner selection for staging directories. Keeps lossless sources canonical and flags lossy stems when no lossless sibling exists.
+Flags: `--scan-path`, `--dry-run`, `--overwrite`
+Example: `scripts/resolve_lossless_winner.sh --scan-path /Volumes/MUSIC/staging/SpotiFLACnext --dry-run`
 
 ## Canonical DJ Pool Builder
 

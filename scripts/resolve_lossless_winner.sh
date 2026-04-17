@@ -4,14 +4,15 @@
 # Per-stem lossless winner selection for SpotiFLACnext staging directories.
 #
 # Rules (in priority order):
-#   1. m4a + mp3 coexisting for the same stem → m4a is lossless (always).
+#   1. Losslessness is codec-based, not container-based.
+#      ALAC/FLAC m4a are canonical; AAC m4a is provisional/lossy.
 #   2. eac3 codec → not lossless regardless of container; flag as NO_LOSSLESS.
 #   3. ALAC m4a only → transcode to FLAC in-place, delete m4a.
 #   4. FLAC only → keep.
 #   5. Both FLAC and ALAC m4a → LARGER file is the better source.
 #      - ALAC larger: transcode ALAC → FLAC, delete original FLAC and m4a.
 #      - FLAC larger: keep FLAC, delete m4a.
-#   6. MP3s are never deleted by this script.
+#   6. MP3s are never deleted by this script; they stay provisional until a lossless source returns.
 #
 # Output (stdout): TSV  ACTION<tab>PATH
 #   Actions: KEEP_FLAC  TRANSCODE_ALAC  WIN_ALAC_LARGER  WIN_FLAC_LARGER

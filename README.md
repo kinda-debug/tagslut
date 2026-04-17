@@ -107,11 +107,11 @@ Notes:
 - `--force-download` bypasses the pre-download skip so matched URLs are still fetched, but equal-or-better library files still win at promote time unless you run an explicit replacement workflow
 - `tools/get-intake` is the advanced/backend command for existing batch roots, Spotify/Tidal direct intake, `--m3u-only`, and direct pipeline control.
 - `tools/get-sync` is a deprecated Beatport compatibility alias.
-- `tools/get --mp3` / `tools/get --dj` route to the canonical `tagslut intake url` orchestration to ensure the FLAC cohort is fully tagged once before writing MP3 derivatives.
+- `tools/get --mp3` / `tools/get --dj` route to the canonical `tagslut intake url` orchestration to ensure the canonical source audio is tagged once before writing MP3 derivatives.
 
 ## 4-Stage DJ Pipeline
 
-`tools/get --dj` is a convenience for URL → fully-tagged FLAC → MP3 derivatives. It does not replace the curated DJ pipeline below (admission/validation/XML).
+`tools/get --dj` is a convenience for URL → canonical source audio → MP3 derivatives. It does not replace the curated DJ pipeline below (admission/validation/XML).
 
 For a curated DJ library, the only supported workflow is:
 `tagslut intake` -> `tagslut mp3 build` or `tagslut mp3 reconcile` ->
@@ -130,15 +130,15 @@ Each stage is safe to re-run and leaves explicit DB state as output.
 # Stage 1: intake or refresh canonical masters
 poetry run tagslut intake <provider-url>
 
-# Stage 2: register existing MP3s against canonical identities (no re-transcode)
+# Stage 2: register existing MP3s against canonical identities and preserve provisional lineage
 poetry run tagslut mp3 reconcile \
   --db "$TAGSLUT_DB" --mp3-root "$MP3_LIBRARY" --execute
 
-# Stage 2 alternative: build DJ MP3s from canonical masters
+# Stage 2 alternative: build DJ MP3s from canonical source assets
 poetry run tagslut mp3 build \
   --db "$TAGSLUT_DB" --dj-root "$MP3_LIBRARY" --execute
 
-# When building new MP3s from masters, tagslut validates the ffmpeg output
+# When building new MP3s from source audio, tagslut validates the ffmpeg output
 # before accepting it: file must exist, be large enough, parse as MP3, and
 # report a duration greater than 1 second.
 

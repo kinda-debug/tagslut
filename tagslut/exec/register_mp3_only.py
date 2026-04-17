@@ -5,11 +5,18 @@ import json
 import os
 import re
 import sqlite3
+from datetime import datetime, timezone
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, Optional
 
 from mutagen import id3, mp3
+
+from tagslut.core.hashing import calculate_file_hash
+from tagslut.storage.models import AudioFile
+from tagslut.storage.schema import init_db
+from tagslut.storage.v3 import dual_write_enabled, dual_write_registered_file
+from tagslut.zones import Zone, coerce_zone, determine_zone
 
 
 SCHEMA_A = re.compile(
@@ -135,6 +142,25 @@ def _maybe_isrc_from_filename(path: Path, metadata: Dict[str, str]) -> Optional[
     return None
 
 
+def _infer_library(path: Path) -> str:
+    resolved = path.expanduser().resolve()
+    if str(resolved).startswith("/Volumes/MUSIC/Albums/"):
+        return "SPOTIFLAC_MOBILE"
+    for part in resolved.parts:
+        if part == "MP3_LIBRARY":
+            return "MP3_LIBRARY"
+        if part == "MASTER_LIBRARY":
+            return "MASTER_LIBRARY"
+    return "default"
+
+
+def _default_zone_for_path(path: Path) -> Zone:
+    library = _infer_library(path)
+    if library == "MP3_LIBRARY":
+        return Zone.ACCEPTED
+    return determine_zone(integrity_ok=True, is_duplicate=False, file_path=path)
+
+
 def _load_existing_paths(conn: sqlite3.Connection) -> set[str]:
     rows = conn.execute("SELECT path FROM files").fetchall()
     return {str(row[0]) for row in rows}
@@ -144,6 +170,45 @@ def _iter_mp3(root: Path) -> Iterable[Path]:
     for path in root.rglob("*"):
         if path.is_file() and path.suffix.lower() == ".mp3":
             yield path
+
+
+def extract_mp3_audio(
+    path: Path,
+    *,
+    library: str | None = None,
+    zone: str | None = None,
+) -> AudioFile:
+    path = path.expanduser().resolve()
+    st = path.stat()
+    tags = _load_tags(path)
+    metadata = _extract_metadata_from_tags(tags)
+    _maybe_parse_from_filename(path, metadata)
+    _maybe_isrc_from_filename(path, metadata)
+
+    audio = mp3.MP3(str(path))
+    duration = float(getattr(audio.info, "length", 0.0) or 0.0)
+    sample_rate = int(getattr(audio.info, "sample_rate", 0) or 0)
+    bitrate = int(getattr(audio.info, "bitrate", 0) or 0)
+    sha256 = calculate_file_hash(path)
+    resolved_library = library or _infer_library(path)
+    resolved_zone = coerce_zone(zone) or _default_zone_for_path(path)
+
+    return AudioFile(
+        path=path,
+        checksum=sha256,
+        sha256=sha256,
+        duration=duration,
+        bit_depth=0,
+        sample_rate=sample_rate,
+        bitrate=bitrate,
+        metadata=metadata,
+        flac_ok=None,
+        library=resolved_library,
+        zone=resolved_zone,
+        mtime=st.st_mtime,
+        size=st.st_size,
+        original_path=path,
+    )
 
 
 def register_mp3_only(
@@ -168,7 +233,10 @@ def register_mp3_only(
     stats = Stats()
 
     try:
+        if execute:
+            init_db(conn)
         existing_paths = _load_existing_paths(conn)
+        dual_write_v3 = bool(execute and dual_write_enabled())
 
         for path in _iter_mp3(root):
             stats.scanned += 1
@@ -180,49 +248,77 @@ def register_mp3_only(
                 continue
 
             try:
-                tags = _load_tags(path)
-                metadata = _extract_metadata_from_tags(tags)
-                _maybe_parse_from_filename(path, metadata)
-                isrc_value = _maybe_isrc_from_filename(path, metadata)
-
-                duration = _duration_seconds(path)
+                audio = extract_mp3_audio(path, zone=zone)
+                metadata_json = json.dumps(audio.metadata or {}, ensure_ascii=False, sort_keys=True)
+                now_iso = datetime.now(timezone.utc).isoformat()
 
                 if not execute:
                     if verbose:
                         print(f"[dry-run] would insert: {path_str}")
                     continue
 
-                metadata_json = json.dumps(metadata, ensure_ascii=False)
-
                 before = conn.total_changes
                 conn.execute(
                     """
                     INSERT OR IGNORE INTO files (
                         path,
+                        checksum,
+                        sha256,
+                        library,
                         zone,
+                        mtime,
+                        size,
+                        sample_rate,
+                        bitrate,
                         download_source,
                         flac_ok,
                         duration,
                         metadata_json,
-                        canonical_isrc,
-                        ingestion_method,
-                        ingestion_source,
-                        ingestion_confidence
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        original_path,
+                        mgmt_status
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         path_str,
-                        zone,
+                        audio.checksum,
+                        audio.sha256,
+                        audio.library,
+                        audio.zone.value if audio.zone else zone,
+                        audio.mtime,
+                        audio.size,
+                        audio.sample_rate,
+                        audio.bitrate,
                         source,
                         None,
-                        duration,
+                        audio.duration,
                         metadata_json,
-                        isrc_value,
-                        "legacy_mp3_register",
-                        path_str,
-                        "uncertain",
+                        str(audio.original_path or audio.path),
+                        "new",
                     ),
                 )
+                if dual_write_v3:
+                    dual_write_registered_file(
+                        conn,
+                        path=path_str,
+                        content_sha256=audio.sha256,
+                        streaminfo_md5=None,
+                        checksum=audio.checksum,
+                        size_bytes=audio.size,
+                        mtime=audio.mtime,
+                        duration_s=audio.duration,
+                        sample_rate=audio.sample_rate,
+                        bit_depth=audio.bit_depth,
+                        bitrate=audio.bitrate,
+                        library=audio.library,
+                        zone=audio.zone.value if audio.zone else zone,
+                        download_source=source,
+                        download_date=now_iso,
+                        mgmt_status="new",
+                        metadata=audio.metadata,
+                        duration_ref_ms=None,
+                        duration_ref_source=source,
+                        event_time=now_iso,
+                    )
                 inserted = (conn.total_changes - before) > 0
                 stats.inserted += int(inserted)
                 existing_paths.add(path_str)

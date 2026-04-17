@@ -142,12 +142,20 @@ def test_no_match_produces_suspect_status(tmp_path: Path) -> None:
     result = reconcile_mp3_library(conn, mp3_root=tmp_path / "dj", dry_run=False)
 
     row = conn.execute(
-        "SELECT id FROM mp3_asset WHERE path = ?",
+        "SELECT identity_id, status, source FROM mp3_asset WHERE path = ?",
         (str(mp3_file),),
+    ).fetchone()
+    stub = conn.execute(
+        "SELECT id, ingestion_method, ingestion_source FROM track_identity WHERE identity_key LIKE 'stub_%' AND ingestion_method='mp3_reconcile'"
     ).fetchone()
     assert result.linked == 0
     assert result.unmatched == 1
-    assert row is None
+    assert row is not None
+    assert row[1] == "unverified"
+    assert row[2] == "mp3_reconcile"
+    assert stub is not None
+    assert stub[1] == "mp3_reconcile"
+    assert stub[2] == "mp3_reconcile_stub"
 
 
 def test_duplicate_isrc_handled_without_silent_skip(tmp_path: Path) -> None:

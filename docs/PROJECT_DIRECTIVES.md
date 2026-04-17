@@ -247,6 +247,12 @@ Track B (legacy): older files with accumulated cross-provider IDs
   ingestion_confidence = 'corroborated' (all IDs agree on ISRC), 'uncertain' (conflict)
   Conflicts preserved in canonical_payload_json.provider_id_conflicts — never dropped
 
+Track M (MP3 lineage): provisional MP3-only imports and consolidations
+  ingestion_method = 'mp3_reconcile' or 'mp3_consolidation'
+  ingestion_confidence = 'uncertain'
+  Preserve the source_path, source_root, ingest_session, and content hash on the mp3_asset row.
+  Do not fake a FLAC placeholder; a later lossless source supersedes the provisional row.
+
 ## Provider ID policy
 
 All provider IDs preserved if they do not conflict with the ISRC.

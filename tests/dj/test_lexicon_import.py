@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import json
 import sqlite3
-import tempfile
 from pathlib import Path
+import zipfile
 
 import pytest
 
@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS track_identity (
     canonical_genre TEXT,
     canonical_label TEXT,
     canonical_mix_name TEXT,
+    canonical_payload_json TEXT,
     spotify_id TEXT,
     beatport_id TEXT,
     tidal_id TEXT,
@@ -90,6 +91,7 @@ CREATE TABLE IF NOT EXISTS Track (
     title TEXT,
     artist TEXT,
     location TEXT,
+    locationUnique TEXT,
     bpm REAL,
     key TEXT,
     energy INTEGER,
@@ -101,6 +103,10 @@ CREATE TABLE IF NOT EXISTS Track (
     remixer TEXT,
     extra1 TEXT,
     extra2 TEXT,
+    data TEXT,
+    fingerprint TEXT,
+    importSource TEXT,
+    streamingService TEXT,
     streamingId TEXT,
     archived INTEGER DEFAULT 0,
     incoming INTEGER DEFAULT 0
@@ -162,6 +168,7 @@ def _insert_lex_track(lex_path: Path, *, location: str, **kwargs) -> int:
         title=kwargs.get("title", "Test Title"),
         artist=kwargs.get("artist", "Test Artist"),
         location=location,
+        locationUnique=kwargs.get("locationUnique", None),
         bpm=kwargs.get("bpm", 128),
         key=kwargs.get("key", "Am"),
         energy=kwargs.get("energy", 5),
@@ -173,23 +180,34 @@ def _insert_lex_track(lex_path: Path, *, location: str, **kwargs) -> int:
         remixer=kwargs.get("remixer", None),
         extra1=kwargs.get("extra1", None),
         extra2=kwargs.get("extra2", None),
+        data=kwargs.get("data", None),
+        fingerprint=kwargs.get("fingerprint", None),
+        importSource=kwargs.get("importSource", None),
+        streamingService=kwargs.get("streamingService", None),
         streamingId=kwargs.get("streamingId", None),
         archived=0,
         incoming=0,
     )
     conn.execute(
-        """INSERT INTO Track (title, artist, location, bpm, key, energy, rating,
-           lastPlayed, color, genre, label, remixer, extra1, extra2,
-           streamingId, archived, incoming)
-           VALUES (:title, :artist, :location, :bpm, :key, :energy, :rating,
-                   :lastPlayed, :color, :genre, :label, :remixer, :extra1, :extra2,
-                   :streamingId, :archived, :incoming)""",
+        """INSERT INTO Track (title, artist, location, locationUnique, bpm, key, energy, rating,
+           lastPlayed, color, genre, label, remixer, extra1, extra2, data, fingerprint,
+           importSource, streamingService, streamingId, archived, incoming)
+           VALUES (:title, :artist, :location, :locationUnique, :bpm, :key, :energy, :rating,
+                   :lastPlayed, :color, :genre, :label, :remixer, :extra1, :extra2, :data, :fingerprint,
+                   :importSource, :streamingService, :streamingId, :archived, :incoming)""",
         defaults,
     )
     conn.commit()
     row_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     conn.close()
     return row_id
+
+
+def _zip_lex_db(lex_path: Path, *, name: str = "main.db") -> Path:
+    zip_path = lex_path.with_suffix(".zip")
+    with zipfile.ZipFile(zip_path, "w") as archive:
+        archive.write(lex_path, arcname=name)
+    return zip_path
 
 
 # ---------------------------------------------------------------------------
@@ -385,3 +403,78 @@ def test_idempotent_double_run(tmp_path: Path) -> None:
     ).fetchone()[0]
 
     assert bpm_after_1 == bpm_after_2 == 140.0
+
+
+def test_location_unique_match_preserves_lexicon_payload(tmp_path: Path) -> None:
+    conn = _make_tagslut_db()
+    actual_path = "/Volumes/MUSIC/DJ_LIBRARY/matched.mp3"
+    lex_location = "/Volumes/MUSIC/DJ_LIBRARY/mismatch.mp3"
+    iid = _seed_tagslut_identity(
+        conn,
+        key="ti8",
+        artist_norm="different artist",
+        title_norm="different title",
+    )
+    _seed_mp3_asset(conn, identity_id=iid, path=actual_path)
+
+    lex_path = _make_lex_db(tmp_path)
+    lex_id = _insert_lex_track(
+        lex_path,
+        location=lex_location,
+        locationUnique=actual_path,
+        data='{"itunes":{"trackId":123}}',
+        fingerprint="fp-123",
+        importSource="7",
+    )
+
+    import_lexicon_metadata(
+        conn,
+        lexicon_db_path=lex_path,
+        run_id=RUN_ID,
+        log_dir=tmp_path / "logs",
+        dry_run=False,
+    )
+
+    mp3_row = conn.execute(
+        "SELECT lexicon_track_id FROM mp3_asset WHERE path = ?",
+        (actual_path,),
+    ).fetchone()
+    payload_row = conn.execute(
+        "SELECT canonical_payload_json FROM track_identity WHERE id = ?",
+        (iid,),
+    ).fetchone()
+    payload = json.loads(payload_row[0])
+
+    assert mp3_row[0] == lex_id
+    assert payload["lexicon_track_id"] == lex_id
+    assert payload["lexicon_location"] == lex_location
+    assert payload["lexicon_location_unique"] == actual_path
+    assert payload["lexicon_fingerprint"] == "fp-123"
+    assert payload["lexicon_import_source"] == "7"
+    assert payload["lexicon_source_payload"] == {"itunes": {"trackId": 123}}
+
+
+def test_backup_zip_supported(tmp_path: Path) -> None:
+    conn = _make_tagslut_db()
+    loc = "/Volumes/MUSIC/DJ_LIBRARY/zipped.mp3"
+    iid = _seed_tagslut_identity(conn, key="ti9", artist_norm="zip artist", title_norm="zip title")
+    _seed_mp3_asset(conn, identity_id=iid, path=loc)
+
+    lex_path = _make_lex_db(tmp_path)
+    _insert_lex_track(lex_path, location=loc, genre="Electro")
+    zip_path = _zip_lex_db(lex_path)
+
+    result = import_lexicon_metadata(
+        conn,
+        lexicon_db_path=zip_path,
+        run_id=RUN_ID,
+        log_dir=tmp_path / "logs",
+        dry_run=False,
+    )
+
+    genre = conn.execute(
+        "SELECT canonical_genre FROM track_identity WHERE id = ?",
+        (iid,),
+    ).fetchone()[0]
+    assert result["matched"] == 1
+    assert genre == "Electro"

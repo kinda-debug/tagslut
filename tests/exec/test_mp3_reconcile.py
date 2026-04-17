@@ -186,7 +186,7 @@ def test_no_match_creates_stub(tmp_path: Path) -> None:
     )
     assert result["stubs"] == 1
     stub = conn.execute(
-        "SELECT id FROM track_identity WHERE status='stub_pending_master'"
+        "SELECT id FROM track_identity WHERE identity_key LIKE 'stub_%' AND status='stub_pending_master'"
     ).fetchone()
     assert stub is not None
 

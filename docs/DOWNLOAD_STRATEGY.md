@@ -15,6 +15,10 @@ music this is TIDAL (via tiddl). For tracks exclusive to Beatport — white-labe
 promo, label exclusives — Beatport is the only viable source. These situations are
 permanent exceptions, not failures to recover from.
 
+Downstream DJ lineage is lossless-first: canonical lossless audio stays canonical,
+while high-quality lossy audio is preserved as provisional and can be superseded
+later without losing provenance.
+
 **Beatport remains the metadata authority for DJ-critical tags** (BPM, key, genre,
 label, catalog number) regardless of where audio was acquired.
 

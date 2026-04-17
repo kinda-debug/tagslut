@@ -1,13 +1,13 @@
-"""Build and reconcile MP3 derivative assets from canonical master state.
+"""Build and reconcile MP3 derivative assets with lossless-first lineage.
 
-build_mp3_from_identity()   — transcode preferred FLAC master(s) to MP3 and register
+build_mp3_from_identity()   — transcode preferred source asset(s) to MP3 and register
                                the result in mp3_asset
 reconcile_mp3_library()     — scan an existing MP3 root, match files to canonical
                                identities via ISRC or title/artist, and register them
-                               in mp3_asset without re-transcoding
+                               in mp3_asset while preserving provisional lineage
 scan_mp3_roots()            — scan MP3 root directories and write a CSV manifest
 reconcile_mp3_scan()        — reconcile a scan CSV against the DB using multi-tier matching
-generate_missing_masters_report() — report orphaned MP3s and FLACs-ready-but-no-MP3
+generate_missing_masters_report() — report orphaned MP3s and lossless-ready-but-no-MP3
 """
 from __future__ import annotations
 
@@ -31,6 +31,22 @@ from tagslut.utils.fs import normalize_path
 
 MP3_ASSET_PROFILE_FULL_TAGS = "mp3_asset_320_cbr_full"
 DJ_COPY_PROFILE = "dj_copy_320_cbr"
+_TRUSTED_SOURCE_ROOTS = (
+    normalize_path(Path("/Volumes/MUSIC/MASTER_LIBRARY")),
+    normalize_path(Path("/Volumes/MUSIC/MP3_LIBRARY")),
+)
+
+
+def source_provenance_for_path(path: Path) -> tuple[str | None, str]:
+    """Return the trusted source root and canonical source path for a file."""
+    source_path = normalize_path(path)
+    for root in _TRUSTED_SOURCE_ROOTS:
+        try:
+            source_path.relative_to(root)
+        except ValueError:
+            continue
+        return str(root), str(source_path)
+    return None, str(source_path)
 
 
 def insert_mp3_asset_row(
@@ -41,14 +57,200 @@ def insert_mp3_asset_row(
     profile: str,
     path: Path,
     status: str = "verified",
+    source_root: str | None = None,
+    source_path: str | None = None,
 ) -> None:
+    _upsert_mp3_asset_row(
+        conn,
+        path=path,
+        identity_id=identity_id,
+        asset_id=asset_id,
+        profile=profile,
+        status=status,
+        source_root=source_root,
+        source_path=source_path,
+        transcoded_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+
+def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    try:
+        return {
+            str(row[1])
+            for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+            if row and row[1]
+        }
+    except sqlite3.OperationalError:
+        return set()
+
+
+def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?",
+            (table,),
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return False
+    return row is not None
+
+
+def _insert_reconcile_log_row(
+    conn: sqlite3.Connection,
+    *,
+    run_id: str,
+    source: str,
+    action: str,
+    confidence: str,
+    mp3_path: str,
+    identity_id: int | None,
+    details: dict,
+    dry_run: bool = False,
+) -> None:
+    if dry_run or not _table_exists(conn, "reconcile_log"):
+        return
     conn.execute(
         """
-        INSERT OR IGNORE INTO mp3_asset
-          (identity_id, asset_id, profile, path, status, transcoded_at)
-        VALUES (?, ?, ?, ?, ?, datetime('now'))
+        INSERT INTO reconcile_log
+          (run_id, source, action, confidence, mp3_path, identity_id, lexicon_track_id, details_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (int(identity_id), int(asset_id), str(profile), str(path), str(status)),
+        (
+            run_id,
+            source,
+            action,
+            confidence,
+            mp3_path,
+            identity_id,
+            None,
+            json.dumps(details, ensure_ascii=False, sort_keys=True),
+        ),
+    )
+
+
+def _insert_track_identity_stub(
+    conn: sqlite3.Connection,
+    *,
+    identity_key: str,
+    title: str | None,
+    artist: str | None,
+    isrc: str | None,
+    source: str,
+) -> int | None:
+    columns = _table_columns(conn, "track_identity")
+    if not columns:
+        return None
+
+    values: dict[str, object] = {
+        "identity_key": identity_key,
+        "canonical_title": title or "",
+        "canonical_artist": artist or "",
+        "artist_norm": normalize_artist_for_match(artist),
+        "title_norm": normalize_title_for_match(title),
+        "ingested_at": datetime.now(timezone.utc).isoformat(),
+        "ingestion_method": source,
+        "ingestion_source": f"{source}_stub",
+        "ingestion_confidence": "uncertain",
+        "status": "stub_pending_master",
+        "source": source,
+    }
+    if isrc:
+        values["isrc"] = isrc
+
+    insert_keys = [key for key in values if key in columns]
+    if insert_keys:
+        conn.execute(
+            f"""
+            INSERT OR IGNORE INTO track_identity ({', '.join(insert_keys)})
+            VALUES ({', '.join('?' for _ in insert_keys)})
+            """,
+            [values[key] for key in insert_keys],
+        )
+
+    row = conn.execute(
+        "SELECT id FROM track_identity WHERE identity_key = ?",
+        (identity_key,),
+    ).fetchone()
+    return int(row[0]) if row else None
+
+
+def _upsert_mp3_asset_row(
+    conn: sqlite3.Connection,
+    *,
+    path: Path,
+    identity_id: int | None,
+    asset_id: int | None = None,
+    profile: str = "mp3_320_cbr_reconciled",
+    status: str = "verified",
+    source: str = "mp3_reconcile",
+    zone: str | None = None,
+    content_sha256: str | None = None,
+    size_bytes: int | None = None,
+    bitrate: int | None = None,
+    sample_rate: int | None = None,
+    duration_s: float | None = None,
+    source_root: str | None = None,
+    source_path: str | None = None,
+    ingest_session: str | None = None,
+    ingest_at: str | None = None,
+    transcoded_at: str | None = None,
+    reconciled_at: str | None = None,
+    lexicon_track_id: int | None = None,
+) -> None:
+    columns = _table_columns(conn, "mp3_asset")
+    if not columns:
+        return
+
+    insert_cols: list[str] = []
+    insert_vals: list[object] = []
+    update_sets: list[str] = []
+
+    def add(col: str, value: object | None, *, update: bool = True) -> None:
+        if col not in columns or value is None:
+            return
+        insert_cols.append(col)
+        insert_vals.append(value)
+        if update:
+            update_sets.append(f"{col} = excluded.{col}")
+
+    add("identity_id", identity_id)
+    add("asset_id", asset_id)
+    add("path", str(path), update=False)
+    add("profile", profile)
+    add("status", status)
+    add("source", source)
+    add("zone", zone)
+    add("content_sha256", content_sha256)
+    add("size_bytes", size_bytes)
+    add("bitrate", bitrate)
+    add("sample_rate", sample_rate)
+    add("duration_s", duration_s)
+    add("source_root", source_root)
+    add("source_path", source_path)
+    add("ingest_session", ingest_session)
+    add("ingest_at", ingest_at)
+    add("transcoded_at", transcoded_at)
+    add("reconciled_at", reconciled_at)
+    add("lexicon_track_id", lexicon_track_id)
+
+    if "updated_at" in columns:
+        update_sets.append("updated_at = CURRENT_TIMESTAMP")
+
+    if not insert_cols:
+        return
+
+    placeholders = ", ".join("?" for _ in insert_cols)
+    if update_sets:
+        on_conflict = f"DO UPDATE SET {', '.join(update_sets)}"
+    else:
+        on_conflict = "DO NOTHING"
+    conn.execute(
+        f"""
+        INSERT INTO mp3_asset ({', '.join(insert_cols)})
+        VALUES ({placeholders})
+        ON CONFLICT(path) {on_conflict}
+        """,
+        insert_vals,
     )
 
 
@@ -159,6 +361,7 @@ def build_full_tag_mp3_assets_from_flac_paths(
                 result.built += 1
                 continue
 
+            source_root, source_path = source_provenance_for_path(flac_path_fs)
             transcode_to_mp3_full_tags(
                 flac_path_fs,
                 dest_path_fs,
@@ -167,13 +370,16 @@ def build_full_tag_mp3_assets_from_flac_paths(
                 ffmpeg_path=None,
             )
 
-            conn.execute(
-                """
-                INSERT OR IGNORE INTO mp3_asset
-                  (identity_id, asset_id, profile, path, status, transcoded_at)
-                VALUES (?, ?, ?, ?, 'verified', datetime('now'))
-                """,
-                (identity_id, asset_id, MP3_ASSET_PROFILE_FULL_TAGS, str(dest_path)),
+            _upsert_mp3_asset_row(
+                conn,
+                path=dest_path,
+                identity_id=identity_id,
+                asset_id=asset_id,
+                profile=MP3_ASSET_PROFILE_FULL_TAGS,
+                status="verified",
+                source_root=source_root,
+                source_path=source_path,
+                transcoded_at=datetime.now(timezone.utc).isoformat(),
             )
             conn.commit()
             result.built += 1
@@ -265,19 +471,23 @@ def build_dj_copies_from_full_tag_mp3_assets(
                 result.built += 1
                 continue
 
+            source_root, source_path = source_provenance_for_path(flac_path_fs)
             if not dj_dest_path_fs.exists() or overwrite:
                 dj_dest_path_fs.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(src_mp3_path_fs, dj_dest_path_fs)
 
             tag_mp3_as_dj_copy(dj_dest_path_fs, flac_path_fs)
 
-            conn.execute(
-                """
-                INSERT OR IGNORE INTO mp3_asset
-                  (identity_id, asset_id, profile, path, status, transcoded_at)
-                VALUES (?, ?, ?, ?, 'verified', datetime('now'))
-                """,
-                (identity_id, asset_id, DJ_COPY_PROFILE, str(dj_dest_path)),
+            _upsert_mp3_asset_row(
+                conn,
+                path=dj_dest_path,
+                identity_id=identity_id,
+                asset_id=asset_id,
+                profile=DJ_COPY_PROFILE,
+                status="verified",
+                source_root=source_root,
+                source_path=source_path,
+                transcoded_at=datetime.now(timezone.utc).isoformat(),
             )
             conn.commit()
             result.built += 1
@@ -296,10 +506,10 @@ def build_mp3_from_identity(
     dry_run: bool = True,
     progress_cb: "ProgressCallback | None" = None,
 ) -> Mp3BuildResult:
-    """Transcode preferred FLAC master(s) to MP3 and register in mp3_asset.
+    """Transcode preferred source asset(s) to MP3 and register in mp3_asset.
 
     Only processes identities that do not already have a mp3_asset row with
-    status='verified'. Uses the active asset_link rows to find the source FLAC.
+    status='verified'. Uses the active asset_link rows to find the source audio.
 
     When dry_run=True, counts what would be built without writing anything.
     """
@@ -336,6 +546,7 @@ def build_mp3_from_identity(
     for idx, (identity_id, asset_id, flac_path) in enumerate(rows, 1):
         flac_path_db = Path(flac_path)
         flac_path_fs = normalize_path(flac_path_db)
+        source_root, source_path = source_provenance_for_path(flac_path_fs)
         if not flac_path_fs.exists():
             result.failed += 1
             result.errors.append(
@@ -366,13 +577,16 @@ def build_mp3_from_identity(
                 progress_cb(flac_path_db.name, idx, len(rows))
             continue
 
-        conn.execute(
-            """
-            INSERT OR IGNORE INTO mp3_asset
-              (identity_id, asset_id, profile, path, status, transcoded_at)
-            VALUES (?, ?, 'mp3_320_cbr', ?, 'verified', datetime('now'))
-            """,
-            (identity_id, asset_id, str(mp3_path)),
+        _upsert_mp3_asset_row(
+            conn,
+            path=mp3_path,
+            identity_id=identity_id,
+            asset_id=asset_id,
+            profile="mp3_320_cbr",
+            status="verified",
+            source_root=source_root,
+            source_path=source_path,
+            transcoded_at=datetime.now(timezone.utc).isoformat(),
         )
         conn.commit()
         result.built += 1
@@ -385,13 +599,14 @@ def build_mp3_from_identity(
 @dataclass
 class Mp3ReconcileResult:
     linked: int = 0
+    provisional: int = 0
     unmatched: int = 0
     skipped_existing: int = 0
     errors: list[str] = field(default_factory=list)
 
     def summary(self) -> str:
         return (
-            f"mp3 reconcile: linked={self.linked} "
+            f"mp3 reconcile: linked={self.linked} provisional={self.provisional} "
             f"skipped_existing={self.skipped_existing} "
             f"unmatched={self.unmatched}"
         )
@@ -412,9 +627,12 @@ def reconcile_mp3_library(
 
     Skips files that already have an mp3_asset row.
     When dry_run=True, counts what would be linked without writing anything.
+    When no master exists, writes a provisional lineage row instead of dropping
+    the MP3 on the floor.
     """
     try:
         from mutagen.id3 import ID3, ID3NoHeaderError  # type: ignore[import-untyped]
+        from mutagen.mp3 import MP3  # type: ignore[import-untyped]
     except ImportError as exc:
         raise RuntimeError(
             "mutagen is required for mp3 reconcile. "
@@ -423,6 +641,9 @@ def reconcile_mp3_library(
 
     result = Mp3ReconcileResult()
     mp3_root_fs = normalize_path(mp3_root)
+    run_id = f"mp3_reconcile:{mp3_root.name}:{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}"
+    ingest_session = run_id
+    source_root = str(mp3_root_fs)
 
     # Preload identity maps for case-insensitive / whitespace-insensitive matching.
     def _column_exists(table: str, column: str) -> bool:
@@ -499,11 +720,13 @@ def reconcile_mp3_library(
         artist_raw = str(artist_frame.text[0]) if artist_frame and artist_frame.text else None
 
         identity_id: int | None = None
+        tier: int | None = None
         isrc_key = normalize_isrc(isrc_raw)
         if isrc_key:
             candidates = isrc_map.get(isrc_key, [])
             if len(candidates) == 1:
                 identity_id = candidates[0]
+                tier = 2
             elif len(candidates) > 1:
                 result.unmatched += 1
                 result.errors.append(
@@ -518,6 +741,7 @@ def reconcile_mp3_library(
             candidates = norm_map.get(key, [])
             if len(candidates) == 1:
                 identity_id = candidates[0]
+                tier = 3
             elif len(candidates) > 1:
                 result.unmatched += 1
                 result.errors.append(
@@ -529,9 +753,72 @@ def reconcile_mp3_library(
 
         if identity_id is None:
             result.unmatched += 1
+            result.provisional += 1
             result.errors.append(
                 f"No identity match for {mp3_file.name} "
-                f"(isrc={isrc_raw!r}, title={title_raw!r}, artist={artist_raw!r})"
+                f"(isrc={isrc_raw!r}, title={title_raw!r}, artist={artist_raw!r}) "
+                "-> stubbed provisional record"
+            )
+            stub_id: int | None = None
+            if not dry_run:
+                import uuid as _uuid
+
+                stub_key = f"stub_{_uuid.uuid4().hex[:12]}"
+                stub_id = _insert_track_identity_stub(
+                    conn,
+                    identity_key=stub_key,
+                    title=title_raw or mp3_file.stem,
+                    artist=artist_raw,
+                    isrc=isrc_raw,
+                    source="mp3_reconcile",
+                )
+                now_iso = datetime.now(timezone.utc).isoformat()
+                bitrate = sample_rate = None
+                duration_s = None
+                try:
+                    audio = MP3(str(mp3_file_fs))
+                    bitrate = int(audio.info.bitrate) if getattr(audio.info, "bitrate", None) else None
+                    sample_rate = int(audio.info.sample_rate) if getattr(audio.info, "sample_rate", None) else None
+                    duration_s = round(float(audio.info.length), 3) if getattr(audio.info, "length", None) else None
+                except Exception:
+                    pass
+                _upsert_mp3_asset_row(
+                    conn,
+                    path=mp3_file_fs,
+                    identity_id=stub_id,
+                    asset_id=None,
+                    profile="mp3_320_cbr_reconciled",
+                    status="unverified",
+                    source="mp3_reconcile",
+                    zone=mp3_root.name,
+                    content_sha256=_compute_sha256(mp3_file_fs),
+                    size_bytes=mp3_file_fs.stat().st_size,
+                    bitrate=bitrate,
+                    sample_rate=sample_rate,
+                    duration_s=duration_s,
+                    source_root=source_root,
+                    source_path=str(mp3_file_fs),
+                    ingest_session=ingest_session,
+                    ingest_at=now_iso,
+                    reconciled_at=now_iso,
+                )
+                conn.commit()
+            _insert_reconcile_log_row(
+                conn,
+                run_id=run_id,
+                source="mp3_reconcile",
+                action="orphan_stubbed",
+                confidence="",
+                mp3_path=str(mp3_file),
+                identity_id=stub_id,
+                details={
+                    "isrc": isrc_raw,
+                    "title": title_raw,
+                    "artist": artist_raw,
+                    "source_root": source_root,
+                    "stub_identity_id": stub_id,
+                },
+                dry_run=dry_run,
             )
             if progress_cb is not None:
                 progress_cb(mp3_file.name, idx, total)
@@ -547,13 +834,7 @@ def reconcile_mp3_library(
                 progress_cb(mp3_file.name, idx, total)
             continue
 
-        if dry_run:
-            result.linked += 1
-            if progress_cb is not None:
-                progress_cb(mp3_file.name, idx, total)
-            continue
-
-        # Find the master asset for this identity
+        # Find the master asset for this identity.
         master_row = conn.execute(
             """
             SELECT af.id FROM asset_file af
@@ -564,25 +845,131 @@ def reconcile_mp3_library(
             """,
             (identity_id,),
         ).fetchone()
+
+        if dry_run:
+            if master_row is None:
+                result.provisional += 1
+                result.unmatched += 1
+            else:
+                result.linked += 1
+            _insert_reconcile_log_row(
+                conn,
+                run_id=run_id,
+                source="mp3_reconcile",
+                    action="provisional_registered" if master_row is None else f"matched_tier{tier}",
+                confidence=confidence,
+                mp3_path=str(mp3_file),
+                identity_id=identity_id,
+                details={
+                    "tier": tier,
+                    "zone": mp3_root.name,
+                    "has_master": master_row is not None,
+                    "source_root": source_root,
+                },
+                dry_run=dry_run,
+            )
+            if progress_cb is not None:
+                progress_cb(mp3_file.name, idx, total)
+            continue
+
+        bitrate = sample_rate = None
+        duration_s = None
+        try:
+            audio = MP3(str(mp3_file_fs))
+            bitrate = int(audio.info.bitrate) if getattr(audio.info, "bitrate", None) else None
+            sample_rate = int(audio.info.sample_rate) if getattr(audio.info, "sample_rate", None) else None
+            duration_s = round(float(audio.info.length), 3) if getattr(audio.info, "length", None) else None
+        except Exception:
+            pass
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        content_sha256 = _compute_sha256(mp3_file_fs)
+        size_bytes = mp3_file_fs.stat().st_size
         if master_row is None:
             result.errors.append(
                 f"identity {identity_id}: no master asset found for {mp3_file.name}"
             )
             result.unmatched += 1
-            if progress_cb is not None:
-                progress_cb(mp3_file.name, idx, total)
-            continue
-
-        conn.execute(
-            """
-            INSERT OR IGNORE INTO mp3_asset
-              (identity_id, asset_id, profile, path, status, source, zone, reconciled_at)
-            VALUES (?, ?, 'mp3_320_cbr_reconciled', ?, 'verified', 'mp3_reconcile', ?, datetime('now'))
-            """,
-            (identity_id, master_row[0], str(mp3_file), mp3_root.name),
-        )
-        conn.commit()
-        result.linked += 1
+            _upsert_mp3_asset_row(
+                conn,
+                path=mp3_file_fs,
+                identity_id=identity_id,
+                asset_id=None,
+                profile="mp3_320_cbr_reconciled",
+                status="unverified",
+                source="mp3_reconcile",
+                zone=mp3_root.name,
+                content_sha256=content_sha256,
+                size_bytes=size_bytes,
+                bitrate=bitrate,
+                sample_rate=sample_rate,
+                duration_s=duration_s,
+                source_root=source_root,
+                source_path=str(mp3_file_fs),
+                ingest_session=ingest_session,
+                ingest_at=now_iso,
+                reconciled_at=now_iso,
+            )
+            conn.commit()
+            result.provisional += 1
+            _insert_reconcile_log_row(
+                conn,
+                run_id=run_id,
+                source="mp3_reconcile",
+                action="provisional_registered",
+                confidence=confidence,
+                mp3_path=str(mp3_file),
+                identity_id=identity_id,
+                details={
+                    "tier": tier,
+                    "zone": mp3_root.name,
+                    "has_master": False,
+                    "source_root": source_root,
+                    "content_sha256": content_sha256,
+                },
+                dry_run=dry_run,
+            )
+        else:
+            _upsert_mp3_asset_row(
+                conn,
+                path=mp3_file_fs,
+                identity_id=identity_id,
+                asset_id=int(master_row[0]),
+                profile="mp3_320_cbr_reconciled",
+                status="verified",
+                source="mp3_reconcile",
+                zone=mp3_root.name,
+                content_sha256=content_sha256,
+                size_bytes=size_bytes,
+                bitrate=bitrate,
+                sample_rate=sample_rate,
+                duration_s=duration_s,
+                source_root=source_root,
+                source_path=str(mp3_file_fs),
+                ingest_session=ingest_session,
+                ingest_at=now_iso,
+                reconciled_at=now_iso,
+            )
+            conn.commit()
+            result.linked += 1
+        confidence = "HIGH" if tier in (1, 2) else "MEDIUM" if tier == 3 else ""
+        _insert_reconcile_log_row(
+            conn,
+            run_id=run_id,
+            source="mp3_reconcile",
+            action=f"matched_tier{tier if tier is not None else 'unknown'}",
+            confidence=confidence,
+            mp3_path=str(mp3_file),
+            identity_id=identity_id,
+                details={
+                    "tier": tier,
+                    "zone": mp3_root.name,
+                    "has_master": True,
+                    "source_root": source_root,
+                    "content_sha256": content_sha256,
+                },
+                dry_run=dry_run,
+            )
         if progress_cb is not None:
             progress_cb(mp3_file.name, idx, total)
 
@@ -1039,6 +1426,7 @@ def _process_reconcile_row(
         return
 
     filename = Path(path_str).name
+    mp3_file_fs = normalize_path(Path(path_str))
     isrc_raw = (row.get("id3_isrc") or "").strip() or None
     id3_title = (row.get("id3_title") or "").strip() or None
     id3_artist = (row.get("id3_artist") or "").strip() or None
@@ -1177,16 +1565,26 @@ def _process_reconcile_row(
             stub_id = stub_row[0] if stub_row else None
 
             if stub_id:
-                conn.execute(
-                    """
-                    INSERT OR IGNORE INTO mp3_asset
-                      (identity_id, path, zone, content_sha256, bitrate,
-                       sample_rate, duration_s, status, source, reconciled_at,
-                       lexicon_track_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, 'unverified', 'mp3_reconcile',
-                            datetime('now'), NULL)
-                    """,
-                    (stub_id, path_str, zone, sha256, bitrate, sample_rate, duration_s),
+                now_iso = datetime.now(timezone.utc).isoformat()
+                _upsert_mp3_asset_row(
+                    conn,
+                    path=mp3_file_fs,
+                    identity_id=stub_id,
+                    asset_id=None,
+                    profile="mp3_320_cbr_reconciled",
+                    status="unverified",
+                    source="mp3_reconcile",
+                    zone=zone,
+                    content_sha256=sha256,
+                    size_bytes=int(row.get("size_bytes") or 0) or None,
+                    bitrate=bitrate,
+                    sample_rate=sample_rate,
+                    duration_s=duration_s,
+                    source_root=zone,
+                    source_path=path_str,
+                    ingest_session=run_id,
+                    ingest_at=now_iso,
+                    reconciled_at=now_iso,
                 )
 
         counters["stubs"] += 1
@@ -1200,18 +1598,38 @@ def _process_reconcile_row(
         return
 
     # Matched (Tier 1/2/3) — handle duplicate MP3s for same identity
+    confidence = "HIGH" if tier in (1, 2) else "MEDIUM" if tier == 3 else ""
+    action_name = f"matched_tier{tier}"
+    if tier == 1:
+        counters["matched_t1"] += 1
+    elif tier == 2:
+        counters["matched_t2"] += 1
+    elif tier == 3:
+        counters["matched_t3"] += 1
+
     if not dry_run:
-        # Insert this MP3 first
-        conn.execute(
-            """
-            INSERT OR IGNORE INTO mp3_asset
-              (identity_id, path, zone, content_sha256, bitrate,
-               sample_rate, duration_s, status, source, reconciled_at,
-               lexicon_track_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'unverified', 'mp3_reconcile',
-                    datetime('now'), NULL)
-            """,
-            (identity_id, path_str, zone, sha256, bitrate, sample_rate, duration_s),
+        now_iso = datetime.now(timezone.utc).isoformat()
+        size_bytes = int(row.get("size_bytes") or 0) or None
+        # Insert this MP3 first.
+        _upsert_mp3_asset_row(
+            conn,
+            path=mp3_file_fs,
+            identity_id=identity_id,
+            asset_id=None,
+            profile="mp3_320_cbr_reconciled",
+            status="unverified",
+            source="mp3_reconcile",
+            zone=zone,
+            content_sha256=sha256,
+            size_bytes=size_bytes,
+            bitrate=bitrate,
+            sample_rate=sample_rate,
+            duration_s=duration_s,
+            source_root=zone,
+            source_path=path_str,
+            ingest_session=run_id,
+            ingest_at=now_iso,
+            reconciled_at=now_iso,
         )
 
         # Keep the highest bitrate MP3 as 'verified', others 'superseded'.
@@ -1236,20 +1654,18 @@ def _process_reconcile_row(
                         (mp3_row[0],),
                     )
 
-    action_name = f"matched_tier{tier}"
-    if tier == 1:
-        counters["matched_t1"] += 1
-    elif tier == 2:
-        counters["matched_t2"] += 1
-    elif tier == 3:
-        counters["matched_t3"] += 1
-
     _log_reconcile(
-        conn, run_id=run_id, source="mp3_reconcile",
-        action=action_name, confidence=confidence, mp3_path=path_str,
-        identity_id=identity_id, lexicon_track_id=None,
+        conn,
+        run_id=run_id,
+        source="mp3_reconcile",
+        action=action_name,
+        confidence=confidence,
+        mp3_path=path_str,
+        identity_id=identity_id,
+        lexicon_track_id=None,
         details={"tier": tier, "zone": zone, "bitrate": bitrate},
-        jsonl_fh=jsonl_fh, dry_run=dry_run,
+        jsonl_fh=jsonl_fh,
+        dry_run=dry_run,
     )
 
 
@@ -1265,10 +1681,10 @@ def generate_missing_masters_report(
     run_id: str,
     log_dir: Path,
 ) -> dict:
-    """Generate a Markdown report of missing master FLACs for DJ MP3s.
+    """Generate a Markdown report of missing lossless masters for DJ MP3s.
 
     Section A — Orphaned MP3s (no identity or stub identity).
-    Section B — FLACs ready but no MP3 built.
+    Section B — lossless masters ready but no MP3 built.
     """
     out_path.parent.mkdir(parents=True, exist_ok=True)
     log_dir.mkdir(parents=True, exist_ok=True)

@@ -4,6 +4,8 @@
 #
 # For ALAC -> FLAC: bit-perfect PCM MD5 comparison (decoded samples must match).
 # For AAC  -> MP3 : duration match within 1 s + full decode without error.
+# This helper verifies the narrow M4A path; broader lossless-first lineage
+# flows through `tagslut mp3 build` / `tagslut mp3 reconcile`.
 #
 # Usage:
 #   verify_transcodes.sh --scan-path DIR [--lossy-mp3]

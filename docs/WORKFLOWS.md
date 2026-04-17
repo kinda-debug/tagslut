@@ -366,7 +366,7 @@ When executed, common sidecars such as lyric files and sibling artwork move with
 
 ---
 
-## DJ Pool Export (FLAC → MP3 → Rekordbox)
+## DJ Pool Export (lossless-first audio → MP3 → Rekordbox)
 
 ### Build a clean lossy Rekordbox import root
 
@@ -694,5 +694,5 @@ See `docs/TROUBLESHOOTING.md` for failure modes and fixes.
 - **Providers**: `beatport,tidal` only for enrichment. Spotify intake uses its own acquisition adapter and must not be added to `--providers`.
 - **`warn`/`fail` buckets** are review queues — not auto-delete signals.
 - **Rekordbox** is a terminal consumer. It does not write back to the master library.
-- **Master FLAC** is immutable. The DJ MP3 pool is always derived from it, never the source of truth.
+- **Canonical source audio** is immutable. The DJ MP3 pool is always derived from it, never the source of truth.
 - Rebuild Roon playlists from DB statuses after every major run.

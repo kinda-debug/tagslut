@@ -26,6 +26,19 @@ from tagslut.utils import AUDIO_EXTENSIONS
 from tagslut.utils.console_ui import ConsoleUI
 
 
+def _infer_registration_library(path: Path) -> str:
+    resolved = path.expanduser().resolve()
+    resolved_text = str(resolved)
+    if resolved_text.startswith("/Volumes/MUSIC/Albums/"):
+        return "SPOTIFLAC_MOBILE"
+    for part in resolved.parts:
+        if part == "MP3_LIBRARY":
+            return "MP3_LIBRARY"
+        if part == "MASTER_LIBRARY":
+            return "MASTER_LIBRARY"
+    return "default"
+
+
 def register_index_group(cli: click.Group) -> None:
     @cli.group()
     def index():  # type: ignore  # TODO: mypy-strict
@@ -62,9 +75,10 @@ def register_index_group(cli: click.Group) -> None:
         Register files in inventory.
 
         Scans directory for audio files, converts eligible non-FLAC lossless
-        inputs to FLAC, computes checksums, and registers the resulting FLAC
-        files in the database with source tracking. Used after downloading
-        from Beatport, TIDAL (Qobuz: legacy/future), etc.
+        inputs to FLAC, preserves MP3 assets in place, computes checksums,
+        and registers the resulting assets in the database with source
+        tracking. Used after downloading from Beatport, TIDAL (Qobuz:
+        legacy/future), manual library drops, etc.
 
         Note: Only Beatport and TIDAL are currently supported as active providers. Qobuz and others are legacy/future/aspirational.
 
@@ -86,8 +100,8 @@ def register_index_group(cli: click.Group) -> None:
         import json
         from datetime import datetime, timezone
 
-        from tagslut.core.hashing import calculate_file_hash
         from tagslut.core.metadata import extract_metadata
+        from tagslut.exec.register_mp3_only import extract_mp3_audio
         from tagslut.storage.queries import get_file
         from tagslut.storage.schema import get_connection, init_db
         from tagslut.storage.v3 import dual_write_enabled, dual_write_registered_file
@@ -166,16 +180,33 @@ def register_index_group(cli: click.Group) -> None:
                 prepared = None
                 try:
                     mgmt_status_override = None
-                    prepared = prepare_flac_scan_input(input_path, persist=bool(execute))
-                    if prepared.scan_path is None:
-                        skipped += 1
-                        ui.file_event("skip", path=input_path, reason="unsupported input")
-                        if cb is not None:
-                            cb(input_path.name, i, total)
-                        continue
+                    if input_path.suffix.lower() == ".mp3":
+                        audio = extract_mp3_audio(
+                            input_path,
+                            library=_infer_registration_library(input_path),
+                        )
+                        file_path = audio.path
+                        original_path = audio.original_path or audio.path
+                    else:
+                        prepared = prepare_flac_scan_input(input_path, persist=bool(execute))
+                        if prepared.scan_path is None:
+                            skipped += 1
+                            ui.file_event("skip", path=input_path, reason="unsupported input")
+                            if cb is not None:
+                                cb(input_path.name, i, total)
+                            continue
 
-                    file_path = prepared.scan_path
-                    original_path = prepared.original_path
+                        file_path = prepared.scan_path
+                        original_path = prepared.original_path
+                        audio = extract_metadata(
+                            file_path,
+                            scan_integrity=False,
+                            scan_hash=bool(full_hash),
+                            library=_infer_registration_library(original_path),
+                            zone_manager=None,
+                        )
+                        if original_path != file_path:
+                            audio.original_path = original_path
 
                     existing = get_file(conn, file_path)
                     if existing:
@@ -185,22 +216,9 @@ def register_index_group(cli: click.Group) -> None:
                             cb(input_path.name, i, total)
                         continue
 
-                    audio = extract_metadata(
-                        file_path,
-                        scan_integrity=False,
-                        scan_hash=bool(full_hash),
-                        library="default",
-                        zone_manager=None,
-                    )
-                    if original_path != file_path:
-                        audio.original_path = original_path
-
                     checksum = audio.checksum
                     sha256 = audio.sha256
                     streaminfo_md5 = audio.streaminfo_md5
-                    if (not streaminfo_md5) and (not sha256):
-                        sha256 = calculate_file_hash(file_path)
-                        checksum = sha256
 
                     zone_value = audio.zone.value if audio.zone else "staging"
                     metadata_json = json.dumps(audio.metadata or {}, ensure_ascii=False, sort_keys=True)
@@ -362,7 +380,7 @@ def register_index_group(cli: click.Group) -> None:
                                 checksum,
                                 streaminfo_md5,
                                 sha256,
-                                "default",
+                                audio.library or "default",
                                 zone_value,
                                 audio.mtime,
                                 audio.size,
@@ -407,7 +425,7 @@ def register_index_group(cli: click.Group) -> None:
                                 sample_rate=int(audio.sample_rate or 0),
                                 bit_depth=int(audio.bit_depth or 0),
                                 bitrate=int(audio.bitrate or 0),
-                                library="default",
+                                library=audio.library or "default",
                                 zone=zone_value,
                                 download_source=source,
                                 download_date=now_iso,

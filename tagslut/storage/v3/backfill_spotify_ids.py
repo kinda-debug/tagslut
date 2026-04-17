@@ -138,6 +138,94 @@ def _candidate_detail(
     )
 
 
+def _rank_spotify_candidates(
+    row: sqlite3.Row | dict[str, Any],
+    hits: list[SpotifyTrack],
+) -> CandidateSelection:
+    row_artists = _artist_parts(_row_artist_name(row))
+    row_title_key = _norm_title_key(_row_title_name(row))
+    row_duration_ms = _row_duration_ms(row)
+
+    unique_hits: dict[str, SpotifyTrack] = {}
+    for hit in hits:
+        if _norm_text(hit.spotify_id):
+            unique_hits[str(hit.spotify_id)] = hit
+    ordered_hits = list(unique_hits.values())
+    if not ordered_hits:
+        return CandidateSelection(None, "unresolved")
+
+    scored: list[tuple[int, SpotifyTrack]] = []
+    for hit in ordered_hits:
+        score = 0
+        if _artist_sets_compatible(_artist_parts(hit.artist), row_artists):
+            score += 1
+        if row_title_key and _norm_title_key(hit.title) == row_title_key:
+            score += 1
+        if row_duration_ms and hit.duration_ms == row_duration_ms:
+            score += 1
+        scored.append((score, hit))
+    scored.sort(key=lambda item: (-item[0], item[1].spotify_id))
+    details = tuple(
+        _candidate_detail(hit, row_artists=row_artists, row_title_key=row_title_key, row_duration_ms=row_duration_ms)
+        for _, hit in scored
+    )
+    best_score = scored[0][0]
+    if best_score < 2:
+        return CandidateSelection(None, "ambiguous", details)
+    top_hits = [hit for score, hit in scored if score == best_score]
+    if len(top_hits) > 1:
+        semantic_keys = {_semantic_key(hit) for hit in top_hits}
+        if len(semantic_keys) == 1:
+            chosen = min(top_hits, key=_semantic_tie_break_key)
+            return CandidateSelection(str(chosen.spotify_id), "semantic_tie_break", details)
+        return CandidateSelection(None, "ambiguous", details)
+    return CandidateSelection(str(scored[0][1].spotify_id), "artist_title_tiebreak", details)
+
+
+def _search_spotify_by_metadata(
+    spotify: SpotifyMetadataClient,
+    *,
+    artist: str | None,
+    title: str | None,
+    limit: int,
+) -> list[SpotifyTrack]:
+    artist_text = _norm_text(artist)
+    title_text = _norm_text(title)
+    if not artist_text and not title_text:
+        return []
+    queries: list[str] = []
+    if title_text and artist_text:
+        queries.append(f'track:"{title_text}" artist:"{artist_text}"')
+    if title_text:
+        queries.append(f'track:"{title_text}"')
+    if artist_text:
+        queries.append(f'artist:"{artist_text}"')
+
+    seen: set[str] = set()
+    results: list[SpotifyTrack] = []
+    for query in queries:
+        payload = spotify._request(
+            "/search",
+            params={"q": query, "type": "track", "limit": max(1, int(limit))},
+        )
+        tracks_payload = payload.get("tracks") if isinstance(payload.get("tracks"), dict) else {}
+        items = tracks_payload.get("items") if isinstance(tracks_payload, dict) else []
+        for item in items or []:
+            if not isinstance(item, dict):
+                continue
+            track = spotify._track_from_payload(
+                item,
+                collection_type="search",
+                collection_title=query,
+                playlist_index=len(results) + 1,
+            )
+            if not track.spotify_id or track.spotify_id in seen:
+                continue
+            seen.add(track.spotify_id)
+            results.append(track)
+    return results
+
+
 def _row_duration_ms(row: sqlite3.Row | dict[str, Any]) -> int | None:
     raw = row["duration_ref_ms"]
     if raw in (None, ""):
@@ -552,56 +640,29 @@ def choose_spotify_candidate(row: sqlite3.Row | dict[str, Any], hits: list[Spoti
         return CandidateSelection(None, "missing_isrc")
 
     exact_hits = [hit for hit in hits if _norm_isrc(hit.isrc) == target_isrc and _norm_text(hit.spotify_id)]
-    by_id: dict[str, SpotifyTrack] = {}
-    for hit in exact_hits:
-        by_id[str(hit.spotify_id)] = hit
-    unique_hits = list(by_id.values())
-    if not unique_hits:
+    if not exact_hits:
         return CandidateSelection(None, "unresolved")
-    if len(unique_hits) == 1:
+    if len(exact_hits) == 1:
         return CandidateSelection(
-            str(unique_hits[0].spotify_id),
+            str(exact_hits[0].spotify_id),
             "exact_isrc",
             (
                 _candidate_detail(
-                    unique_hits[0],
+                    exact_hits[0],
                     row_artists=_artist_parts(_row_artist_name(row)),
                     row_title_key=_norm_title_key(_row_title_name(row)),
                     row_duration_ms=_row_duration_ms(row),
                 ),
             ),
         )
+    return _rank_spotify_candidates(row, exact_hits)
 
-    row_artists = _artist_parts(row["artist_norm"] if row["artist_norm"] else row["canonical_artist"])
-    row_title_key = _norm_title_key(row["title_norm"] if row["title_norm"] else row["canonical_title"])
-    row_duration_ms = _row_duration_ms(row)
 
-    scored: list[tuple[int, SpotifyTrack]] = []
-    for hit in unique_hits:
-        score = 0
-        if _artist_sets_compatible(_artist_parts(hit.artist), row_artists):
-            score += 1
-        if row_title_key and _norm_title_key(hit.title) == row_title_key:
-            score += 1
-        if row_duration_ms and hit.duration_ms == row_duration_ms:
-            score += 1
-        scored.append((score, hit))
-    scored.sort(key=lambda item: (-item[0], item[1].spotify_id))
-    details = tuple(
-        _candidate_detail(hit, row_artists=row_artists, row_title_key=row_title_key, row_duration_ms=row_duration_ms)
-        for _, hit in scored
-    )
-    best_score = scored[0][0]
-    if best_score < 2:
-        return CandidateSelection(None, "ambiguous", details)
-    top_hits = [hit for score, hit in scored if score == best_score]
-    if len(top_hits) > 1:
-        semantic_keys = {_semantic_key(hit) for hit in top_hits}
-        if len(semantic_keys) == 1:
-            chosen = min(top_hits, key=_semantic_tie_break_key)
-            return CandidateSelection(str(chosen.spotify_id), "semantic_tie_break", details)
-        return CandidateSelection(None, "ambiguous", details)
-    return CandidateSelection(str(scored[0][1].spotify_id), "artist_title_tiebreak", details)
+def choose_spotify_candidate_from_metadata(
+    row: sqlite3.Row | dict[str, Any],
+    hits: list[SpotifyTrack],
+) -> CandidateSelection:
+    return _rank_spotify_candidates(row, hits)
 
 
 def _format_verbose_lines(
@@ -678,8 +739,6 @@ def _select_rows(
         FROM track_identity
         WHERE 1=1
           {merged_where}
-          AND isrc IS NOT NULL
-          AND TRIM(isrc) != ''
           AND (spotify_id IS NULL OR TRIM(spotify_id) = '')
     """
     params: list[Any] = []
@@ -883,36 +942,20 @@ def run(
                 stats["last_identity_id"] = identity_id
                 isrc = _norm_isrc(row["isrc"])
                 last_status = None
-                if not isrc:
-                    stats["unresolved"] += 1
-                    last_status = "skip"
-                    if verbose or tracker_enabled:
-                        _emit_event(
-                            stream=sys.stderr,
-                            enabled=tracker_enabled,
-                            kind="skip",
-                            identity_id=identity_id,
-                            isrc=None,
-                            message="missing isrc",
-                        )
-                    _emit_tracker(
-                        stream=sys.stderr,
-                        enabled=tracker_enabled,
-                        processed=stats["processed"],
-                        total=len(rows),
-                        updated=stats["updated"],
-                        unresolved=stats["unresolved"],
-                        ambiguous=stats["ambiguous"],
-                        conflicts=stats["conflicts"],
-                        errors=stats["errors"],
-                        last_identity_id=stats["last_identity_id"],
-                        last_isrc=isrc,
-                        last_status=last_status,
-                    )
-                    continue
                 try:
-                    hits = spotify.search_by_isrc(isrc, limit=search_limit)
-                    selection = choose_spotify_candidate(row, hits)
+                    if isrc:
+                        hits = spotify.search_by_isrc(isrc, limit=search_limit)
+                        selection = choose_spotify_candidate(row, hits)
+                    else:
+                        selection = choose_spotify_candidate_from_metadata(
+                            row,
+                            _search_spotify_by_metadata(
+                                spotify,
+                                artist=_row_artist_name(row),
+                                title=_row_title_name(row),
+                                limit=search_limit,
+                            ),
+                        )
                     if selection.spotify_id is None:
                         stats[selection.reason] = int(stats.get(selection.reason, 0)) + 1
                         last_status = "skip"
@@ -923,7 +966,7 @@ def run(
                                 kind="skip",
                                 identity_id=identity_id,
                                 isrc=isrc,
-                                message=selection.reason,
+                                message=selection.reason if isrc else "missing_isrc_unresolved",
                             )
                         if verbose:
                             for line in _format_verbose_lines(row, selection):

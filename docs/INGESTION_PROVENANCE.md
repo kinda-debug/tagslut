@@ -19,4 +19,5 @@
 - `multi_provider_reconcile`
 - `spotify_intake`
 - `spotiflac_import`
-
+- `mp3_reconcile`
+- `mp3_consolidation`

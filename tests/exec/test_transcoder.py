@@ -5,6 +5,7 @@ import pytest
 
 from tagslut.exec.transcoder import (
     FFmpegNotFoundError,
+    SourceTagData,
     TranscodeError,
     _build_mp3_filename,
     transcode_to_mp3,
@@ -77,6 +78,19 @@ def test_build_mp3_filename_from_missing_tags_falls_back_to_source_stem(tmp_path
     src = tmp_path / "artist_title.flac"
     name = _build_mp3_filename(src, None)
     assert name == "artist_title.mp3"
+
+
+def test_build_mp3_filename_from_source_tag_data(tmp_path: Path):
+    src = tmp_path / "track.m4a"
+    tags = SourceTagData(
+        tags={
+            "artist": ["Artist"],
+            "title": ["Title"],
+            "initialkey": ["8A"],
+            "bpm": ["128"],
+        }
+    )
+    assert _build_mp3_filename(src, tags) == "Artist - Title (8A) (128).mp3"
 
 
 def test_error_handling_for_unsupported_format_from_ffmpeg(tmp_path: Path):

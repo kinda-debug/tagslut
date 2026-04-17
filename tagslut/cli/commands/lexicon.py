@@ -16,7 +16,7 @@ def lexicon_group() -> None:
     "lexicon_path",
     required=True,
     type=click.Path(exists=True),
-    help="Path to lexicondj.db (Lexicon SQLite database).",
+    help="Path to Lexicon main.db or backup ZIP containing main.db.",
 )
 @click.option("--run-id", "run_id", default="", help="Session run ID (generated if empty).")
 @click.option("--log-dir", "log_dir", default="data/logs", help="Directory for JSONL logs.")
@@ -113,7 +113,7 @@ def lexicon_import(
     "lexicon_path",
     required=True,
     type=click.Path(exists=True),
-    help="Path to lexicondj.db (Lexicon SQLite database).",
+    help="Path to Lexicon main.db or backup ZIP containing main.db.",
 )
 @click.option("--run-id", "run_id", default="", help="Session run ID.")
 @click.option("--log-dir", "log_dir", default="data/logs", help="Directory for JSONL logs.")

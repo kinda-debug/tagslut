@@ -18,8 +18,8 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description=(
             "Audit a pool for invalid audio and exact duplicates, optionally "
-            "deduping by replacing duplicate files with hardlinks or deleting "
-            "duplicate paths."
+            "deduping by replacing duplicate files with hardlinks, symlinks, or "
+            "deleting duplicate paths."
         )
     )
     parser.add_argument("root", help="Pool root to audit")
@@ -32,6 +32,11 @@ def parse_args():
         "--apply",
         action="store_true",
         help="Replace exact duplicate files with hardlinks to a canonical copy",
+    )
+    parser.add_argument(
+        "--symlink",
+        action="store_true",
+        help="Replace exact duplicate files with symlinks to a canonical copy",
     )
     parser.add_argument(
         "--delete-duplicates",
@@ -90,6 +95,14 @@ def hardlink_replace(source_path, keeper_path):
     os.replace(temp_path, source_path)
 
 
+def symlink_replace(source_path, keeper_path):
+    temp_path = source_path.with_name(f".{source_path.name}.symlink_tmp")
+    if temp_path.exists() or temp_path.is_symlink():
+        temp_path.unlink()
+    temp_path.symlink_to(keeper_path)
+    os.replace(temp_path, source_path)
+
+
 def prune_empty_parent_dirs(path, stop_root):
     current = path.parent
     while current != stop_root and current != current.parent:
@@ -102,8 +115,8 @@ def prune_empty_parent_dirs(path, stop_root):
 
 def main():
     args = parse_args()
-    if args.apply and args.delete_duplicates:
-        raise SystemExit("Use only one of --apply or --delete-duplicates")
+    if sum(bool(flag) for flag in (args.apply, args.symlink, args.delete_duplicates)) > 1:
+        raise SystemExit("Use only one of --apply, --symlink, or --delete-duplicates")
 
     root = Path(args.root).expanduser()
     manifest_dir = Path(args.manifest_dir).expanduser()
@@ -210,7 +223,9 @@ def main():
                     "path": str(path),
                     "already_hardlinked": path.stat().st_ino == keeper.stat().st_ino,
                     "action": "keep" if path == keeper else (
-                        "delete" if args.delete_duplicates else "hardlink"
+                        "delete" if args.delete_duplicates else (
+                            "symlink" if args.symlink else "hardlink"
+                        )
                     ),
                 }
 
@@ -220,6 +235,10 @@ def main():
                     hardlink_replace(path, keeper)
                     row["applied"] = True
                     stats["files_hardlinked"] += 1
+                elif args.symlink:
+                    symlink_replace(path, keeper)
+                    row["applied"] = True
+                    stats["files_symlinked"] += 1
                 elif args.delete_duplicates:
                     path.unlink()
                     prune_empty_parent_dirs(path, root)
@@ -254,6 +273,9 @@ def main():
     if args.apply:
         print(f"- Files hardlinked: {stats['files_hardlinked']}")
         print("- Mode: apply")
+    elif args.symlink:
+        print(f"- Files symlinked: {stats['files_symlinked']}")
+        print("- Mode: symlink")
     elif args.delete_duplicates:
         print(f"- Files deleted: {stats['files_deleted']}")
         print("- Mode: delete-duplicates")

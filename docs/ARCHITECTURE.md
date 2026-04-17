@@ -124,7 +124,7 @@ directory.
 The canonical DJ path is a linear, DB-backed pipeline with explicit state at each stage:
 
 1. **Intake masters** — `tagslut intake <provider-url>` refreshes canonical master identity and provenance state. Spotify-origin acquisitions are recorded with `ingestion_method='spotify_intake'`; direct provider API downloads remain `provider_api`.
-2. **Build or reconcile MP3s** — `tagslut mp3 build` / `tagslut mp3 reconcile` writes `mp3_asset` rows
+2. **Build or reconcile MP3s** — `tagslut mp3 build` / `tagslut mp3 reconcile` writes `mp3_asset` rows; lossless sources stay canonical and high-quality lossy sources remain provisional until a lossless source is reacquired
 3. **Admit and validate** — `tagslut dj backfill` / `dj admit` promotes assets to `dj_admission`, then `tagslut dj validate` checks readiness
 4. **Emit or patch XML** — `tagslut dj xml emit` / `dj xml patch` writes deterministic Rekordbox XML, preserves stable TrackIDs via `dj_track_id_map`, and records manifest hashes in `dj_export_state`
 

@@ -1,7 +1,7 @@
 """
-FLAC to MP3 transcoder for DJ pool export.
+Source-audio to MP3 transcoder for DJ pool export.
 
-Master FLAC files are NEVER modified. MP3 is written to dest_dir.
+Master source files are NEVER modified. MP3 is written to dest_dir.
 DJ copies intentionally keep only a small, operational tag set plus artwork.
 Requires ffmpeg installed as a system dependency.
 """
@@ -11,18 +11,21 @@ from __future__ import annotations
 import logging
 import shutil
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Optional, cast
 
+from mutagen import File as MutagenFile
 from mutagen.flac import FLAC
 from mutagen.id3 import ID3
+from mutagen.mp4 import MP4Cover
 
 from tagslut.exec.dj_tag_snapshot import DjTagSnapshot
 
 logger = logging.getLogger(__name__)
 
-# FLAC Vorbis keys already mapped to explicit ID3 frames in _apply_full_id3_tags.
-# Any FLAC key NOT in this set is treated as a credit role and written as TXXX.
+# Common source tags already mapped to explicit ID3 frames in _apply_full_id3_tags.
+# Any remaining source tag NOT in this set is treated as a credit role and written as TXXX.
 _FULL_TAG_STANDARD_KEYS: frozenset[str] = frozenset({
     "title", "artist", "albumartist", "album", "tracknumber", "discnumber",
     "date", "originaldate", "year", "genre", "bpm", "initialkey", "key",
@@ -58,6 +61,19 @@ class FFmpegNotFoundError(TranscodeError):
 TagLookup = Callable[[str], Optional[str]]
 
 
+@dataclass(frozen=True)
+class SourceTagData:
+    tags: dict[str, list[str]]
+    cover_art: tuple[bytes, str] | None = None
+
+    def first(self, key: str) -> str | None:
+        values = self.tags.get(key.lower())
+        if not values:
+            return None
+        value = str(values[0]).strip()
+        return value or None
+
+
 def _mutagen_id3() -> Any:
     from mutagen import id3 as mutagen_id3
 
@@ -76,7 +92,142 @@ def _check_ffmpeg(ffmpeg_path: str | None = None) -> None:
         )
 
 
-def _build_mp3_filename(source: Path, tags: Optional[FLAC]) -> str:
+def _normalize_tag_values(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if hasattr(value, "text"):
+        return _normalize_tag_values(getattr(value, "text"))
+    if isinstance(value, (list, tuple)):
+        out: list[str] = []
+        for item in value:
+            out.extend(_normalize_tag_values(item))
+        return [item for item in out if item]
+    if isinstance(value, bytes):
+        for encoding in ("utf-8", "latin-1"):
+            with contextlib.suppress(Exception):
+                text = value.decode(encoding).strip()
+                if text:
+                    return [text]
+        return []
+    text = str(value).strip()
+    return [text] if text else []
+
+
+def _normalize_tag_mapping(tags: Any) -> dict[str, list[str]]:
+    normalized: dict[str, list[str]] = {}
+    if tags is None:
+        return normalized
+    try:
+        items = tags.items()
+    except Exception:
+        return normalized
+    for key, value in items:
+        values = _normalize_tag_values(value)
+        if values:
+            normalized[str(key).strip().lower()] = values
+    return normalized
+
+
+def _first_raw_tag(tags: Any, *keys: str) -> str | None:
+    if tags is None:
+        return None
+    for key in keys:
+        try:
+            value = tags.get(key)
+        except Exception:
+            value = None
+        values = _normalize_tag_values(value)
+        if values:
+            return values[0]
+    return None
+
+
+def _extract_cover_art(audio: Any) -> tuple[bytes, str] | None:
+    pictures = getattr(audio, "pictures", None) or []
+    if pictures:
+        front_cover = None
+        for picture in pictures:
+            if getattr(picture, "type", None) == 3:
+                front_cover = picture
+                break
+        if front_cover is None:
+            front_cover = pictures[0]
+        data = getattr(front_cover, "data", None)
+        if data:
+            mime = getattr(front_cover, "mime", None) or "image/jpeg"
+            return bytes(data), str(mime)
+
+    tags = getattr(audio, "tags", None)
+    if tags is None:
+        return None
+
+    try:
+        apic_frames = tags.getall("APIC")
+    except Exception:
+        apic_frames = []
+    if apic_frames:
+        frame = apic_frames[0]
+        data = getattr(frame, "data", None)
+        if data:
+            mime = getattr(frame, "mime", None) or "image/jpeg"
+            return bytes(data), str(mime)
+
+    try:
+        covr_frames = tags.get("covr")
+    except Exception:
+        covr_frames = None
+    if covr_frames:
+        frame = covr_frames[0]
+        data = bytes(frame)
+        imageformat = getattr(frame, "imageformat", None)
+        mime = "image/png" if imageformat == getattr(MP4Cover, "FORMAT_PNG", 14) else "image/jpeg"
+        return data, mime
+
+    return None
+
+
+def _load_source_metadata(source: Path) -> SourceTagData | None:
+    suffix = source.suffix.lower()
+    try:
+        if suffix == ".flac":
+            audio: Any = FLAC(source)
+            tags = _normalize_tag_mapping(getattr(audio, "tags", None))
+            return SourceTagData(tags=tags, cover_art=_extract_cover_art(audio))
+
+        easy_audio = MutagenFile(str(source), easy=True)
+        raw_audio = None
+        with contextlib.suppress(Exception):
+            raw_audio = MutagenFile(str(source), easy=False)
+
+        tags: dict[str, list[str]] = {}
+        if easy_audio is not None:
+            tags = _normalize_tag_mapping(getattr(easy_audio, "tags", None))
+
+        if not tags and raw_audio is not None:
+            tags = _normalize_tag_mapping(getattr(raw_audio, "tags", None))
+
+        if suffix in {".m4a", ".mp4"} and raw_audio is not None:
+            raw_tags = getattr(raw_audio, "tags", None)
+            if raw_tags is not None:
+                extras = {
+                    "isrc": _first_raw_tag(raw_tags, "----:com.apple.iTunes:ISRC", "ISRC"),
+                    "comment": _first_raw_tag(raw_tags, "\xa9cmt"),
+                    "lyrics": _first_raw_tag(raw_tags, "\xa9lyr"),
+                    "composer": _first_raw_tag(raw_tags, "\xa9wrt"),
+                    "label": _first_raw_tag(raw_tags, "----:com.apple.iTunes:LABEL"),
+                    "initialkey": _first_raw_tag(raw_tags, "----:com.apple.iTunes:INITIALKEY"),
+                }
+                for key, value in extras.items():
+                    if value and key not in tags:
+                        tags[key] = [value]
+
+        return SourceTagData(tags=tags, cover_art=_extract_cover_art(raw_audio or easy_audio))
+    except Exception as exc:
+        logger.warning("Could not read source tags from %s: %s", source, exc)
+        return None
+
+
+def _build_mp3_filename(source: Path, tags: Optional[SourceTagData]) -> str:
     """
     Build DJ-friendly MP3 filename: Artist - Title (Key) (BPM).mp3
     Falls back to source stem if tags are missing.
@@ -84,10 +235,10 @@ def _build_mp3_filename(source: Path, tags: Optional[FLAC]) -> str:
     if tags is None:
         return source.stem + ".mp3"
 
-    artist = (tags.get("artist") or tags.get("albumartist") or [""])[0]
-    title = (tags.get("title") or [""])[0]
-    key = (tags.get("initialkey") or tags.get("key") or [""])[0]
-    bpm = (tags.get("bpm") or [""])[0]
+    artist = tags.first("artist") or tags.first("albumartist") or ""
+    title = tags.first("title") or ""
+    key = tags.first("initialkey") or tags.first("key") or ""
+    bpm = tags.first("bpm") or ""
 
     if not artist or not title:
         return source.stem + ".mp3"
@@ -127,26 +278,16 @@ def _build_snapshot_mp3_filename(
     return safe + ".mp3"
 
 
-def _flac_first(flac_tags: Optional[FLAC], key: str) -> str | None:
-    if flac_tags is None:
-        return None
-    values = flac_tags.get(key)
-    if not values:
-        return None
-    value = str(values[0]).strip()
-    return value or None
-
-
-def _snapshot_with_flac_fallback(snapshot: DjTagSnapshot, flac_tags: Optional[FLAC]) -> DjTagSnapshot:
-    if flac_tags is None:
+def _snapshot_with_flac_fallback(snapshot: DjTagSnapshot, source_tags: Optional[SourceTagData]) -> DjTagSnapshot:
+    if source_tags is None:
         return snapshot
 
-    artist = snapshot.artist or _flac_first(flac_tags, "artist") or _flac_first(flac_tags, "albumartist")
-    title = snapshot.title or _flac_first(flac_tags, "title")
-    album = snapshot.album or _flac_first(flac_tags, "album")
+    artist = snapshot.artist or source_tags.first("artist") or source_tags.first("albumartist")
+    title = snapshot.title or source_tags.first("title")
+    album = snapshot.album or source_tags.first("album")
     year_text = (
         str(snapshot.year) if snapshot.year is not None else (
-            _flac_first(flac_tags, "date") or _flac_first(flac_tags, "originaldate") or _flac_first(flac_tags, "year")
+            source_tags.first("date") or source_tags.first("originaldate") or source_tags.first("year")
         )
     )
     year: int | None = snapshot.year
@@ -160,12 +301,12 @@ def _snapshot_with_flac_fallback(snapshot: DjTagSnapshot, flac_tags: Optional[FL
         artist=artist,
         title=title,
         album=album,
-        genre=snapshot.genre or _flac_first(flac_tags, "genre"),
-        label=snapshot.label or _flac_first(flac_tags, "label"),
+        genre=snapshot.genre or source_tags.first("genre"),
+        label=snapshot.label or source_tags.first("label"),
         year=year,
-        isrc=snapshot.isrc or _flac_first(flac_tags, "isrc"),
-        bpm=snapshot.bpm or _flac_first(flac_tags, "bpm"),
-        musical_key=snapshot.musical_key or _flac_first(flac_tags, "initialkey") or _flac_first(flac_tags, "key"),
+        isrc=snapshot.isrc or source_tags.first("isrc"),
+        bpm=snapshot.bpm or source_tags.first("bpm"),
+        musical_key=snapshot.musical_key or source_tags.first("initialkey") or source_tags.first("key"),
         energy_1_10=snapshot.energy_1_10,
         bpm_source=snapshot.bpm_source,
         key_source=snapshot.key_source,
@@ -183,13 +324,13 @@ def transcode_to_mp3(
     overwrite: bool = False,
 ) -> Path:
     """
-    Transcode a FLAC file to MP3 and copy to dest_dir.
+    Transcode a source audio file to MP3 and copy to dest_dir.
 
-    The source FLAC is never modified.
-    Tags are copied from FLAC to MP3 via mutagen.
+    The source file is never modified.
+    Tags are copied from the source to MP3 via mutagen.
 
     Args:
-        source:    Absolute path to the source FLAC file.
+        source:    Absolute path to the source audio file.
         dest_dir:  Destination directory for the MP3.
         bitrate:   MP3 bitrate in kbps (default 320).
         overwrite: If False, skip if dest already exists.
@@ -206,14 +347,10 @@ def transcode_to_mp3(
         raise FileNotFoundError(f"Source file not found: {source}")
     _check_ffmpeg()
 
-    try:
-        flac_tags: Optional[FLAC] = FLAC(source)
-    except Exception as e:
-        flac_tags = None
-        logger.warning("Could not read FLAC tags from %s: %s", source, e)
+    source_tags = _load_source_metadata(source)
 
     dest_dir.mkdir(parents=True, exist_ok=True)
-    mp3_name = _build_mp3_filename(source, flac_tags)
+    mp3_name = _build_mp3_filename(source, source_tags)
     dest_path = dest_dir / mp3_name
 
     if dest_path.exists() and not overwrite:
@@ -221,26 +358,22 @@ def transcode_to_mp3(
         return dest_path
 
     _run_ffmpeg_transcode(source, dest_path, bitrate=bitrate, ffmpeg_path=None)
-    _apply_id3_tags(dest_path, flac_tags, prune_existing=True)
+    _apply_id3_tags(dest_path, source_tags, prune_existing=True)
 
     logger.info("Transcoded: %s -> %s", source, dest_path)
     return dest_path
 
 
 def build_dj_copy_filename(source_flac: Path) -> str:
-    """Return the DJ-copy filename for a FLAC source (no I/O besides tag read)."""
-    try:
-        flac_tags: Optional[FLAC] = FLAC(source_flac)
-    except Exception as e:
-        flac_tags = None
-        logger.warning("Could not read FLAC tags from %s: %s", source_flac, e)
-    return _build_mp3_filename(source_flac, flac_tags)
+    """Return the DJ-copy filename for a source file (no I/O besides tag read)."""
+    source_tags = _load_source_metadata(source_flac)
+    return _build_mp3_filename(source_flac, source_tags)
 
 
 def tag_mp3_as_dj_copy(mp3_path: Path, source_flac: Path) -> None:
     """Apply the DJ tag policy to an existing MP3, pruning to the DJ-managed frames."""
-    flac_tags: Optional[FLAC] = FLAC(source_flac)
-    _apply_id3_tags(mp3_path, flac_tags, prune_existing=True)
+    source_tags = _load_source_metadata(source_flac)
+    _apply_id3_tags(mp3_path, source_tags, prune_existing=True)
 
 
 def transcode_to_mp3_from_snapshot(
@@ -257,13 +390,9 @@ def transcode_to_mp3_from_snapshot(
         raise FileNotFoundError(f"Source file not found: {source}")
     _check_ffmpeg(ffmpeg_path)
 
-    try:
-        flac_tags: Optional[FLAC] = FLAC(source)
-    except Exception as e:
-        flac_tags = None
-        logger.warning("Could not read FLAC tags from %s: %s", source, e)
+    source_tags = _load_source_metadata(source)
 
-    resolved_snapshot = _snapshot_with_flac_fallback(snapshot, flac_tags)
+    resolved_snapshot = _snapshot_with_flac_fallback(snapshot, source_tags)
     if not resolved_snapshot.artist or not resolved_snapshot.title:
         raise TranscodeError(f"DJ snapshot export requires artist/title metadata: {source}")
 
@@ -277,7 +406,7 @@ def transcode_to_mp3_from_snapshot(
         return final_dest_path
 
     _run_ffmpeg_transcode(source, final_dest_path, bitrate=bitrate, ffmpeg_path=ffmpeg_path)
-    _apply_snapshot_id3_tags(final_dest_path, resolved_snapshot, flac_tags, prune_existing=True)
+    _apply_snapshot_id3_tags(final_dest_path, resolved_snapshot, source_tags, prune_existing=True)
 
     logger.info("Transcoded from snapshot: %s -> %s", source, final_dest_path)
     return final_dest_path
@@ -291,16 +420,12 @@ def transcode_to_mp3_full_tags(
     overwrite: bool = False,
     ffmpeg_path: str | None = None,
 ) -> Path:
-    """Transcode a FLAC to MP3 and apply a broader, library-friendly tag set."""
+    """Transcode a source audio file to MP3 and apply a broader, library-friendly tag set."""
     if not source.exists():
         raise FileNotFoundError(f"Source file not found: {source}")
     _check_ffmpeg(ffmpeg_path)
 
-    try:
-        flac_tags: Optional[FLAC] = FLAC(source)
-    except Exception as e:
-        flac_tags = None
-        logger.warning("Could not read FLAC tags from %s: %s", source, e)
+    source_tags = _load_source_metadata(source)
 
     dest_path.parent.mkdir(parents=True, exist_ok=True)
     if dest_path.exists() and not overwrite:
@@ -308,7 +433,7 @@ def transcode_to_mp3_full_tags(
         return dest_path
 
     _run_ffmpeg_transcode(source, dest_path, bitrate=bitrate, ffmpeg_path=ffmpeg_path)
-    _apply_full_id3_tags(dest_path, flac_tags)
+    _apply_full_id3_tags(dest_path, source_tags)
     logger.info("Transcoded (full tags): %s -> %s", source, dest_path)
     return dest_path
 
@@ -347,9 +472,9 @@ def _run_ffmpeg_transcode(
 
 
 def sync_dj_mp3_from_flac(mp3_path: Path, source_flac: Path) -> None:
-    """Refresh DJ MP3 tags/artwork from an enriched source FLAC."""
-    flac_tags = FLAC(source_flac)
-    _apply_id3_tags(mp3_path, flac_tags, prune_existing=False)
+    """Refresh DJ MP3 tags/artwork from an enriched source file."""
+    source_tags = _load_source_metadata(source_flac)
+    _apply_id3_tags(mp3_path, source_tags, prune_existing=False)
 
 
 def _validate_mp3_output(path: Path, *, min_size_bytes: int = 4096) -> None:
@@ -419,7 +544,7 @@ def _user_text_frame(desc: str, text: str) -> object:
 
 def _apply_id3_tags(
     mp3_path: Path,
-    flac_tags: Optional[FLAC],
+    source_tags: Optional[SourceTagData],
     *,
     prune_existing: bool,
 ) -> None:
@@ -434,27 +559,25 @@ def _apply_id3_tags(
             tags = _empty_id3()
 
     _clear_dj_managed_frames(tags)
-    if flac_tags is None:
+    if source_tags is None:
         tags.save(mp3_path)
         return
 
     def first(key: str) -> Optional[str]:
-        vals = flac_tags.get(key)
-        return vals[0] if vals else None
+        return source_tags.first(key)
 
-    _apply_dj_tag_policy(tags, flac_tags, first)
+    _apply_dj_tag_policy(tags, source_tags, first)
     tags.save(mp3_path)
 
 
-def _apply_full_id3_tags(mp3_path: Path, flac_tags: Optional[FLAC]) -> None:
+def _apply_full_id3_tags(mp3_path: Path, source_tags: Optional[SourceTagData]) -> None:
     tags = _empty_id3()
-    if flac_tags is None:
+    if source_tags is None:
         tags.save(mp3_path)
         return
 
     def first(key: str) -> Optional[str]:
-        vals = flac_tags.get(key)
-        return vals[0] if vals else None
+        return source_tags.first(key)
 
     title = first("title")
     artist = first("artist") or first("albumartist")
@@ -513,23 +636,23 @@ def _apply_full_id3_tags(mp3_path: Path, flac_tags: Optional[FLAC]) -> None:
 
     # Write any remaining FLAC keys (e.g. tiddl credit roles: PRODUCER, MIXER,
     # REMIXER, ENGINEER, LYRICIST, …) as TXXX frames.
-    for flac_key in flac_tags.keys():
+    for flac_key in source_tags.tags.keys():
         if flac_key.lower() in _FULL_TAG_STANDARD_KEYS:
             continue
-        vals = flac_tags.get(flac_key)
+        vals = source_tags.tags.get(flac_key)
         if vals:
             value = "; ".join(str(v) for v in vals if str(v).strip())
             if value:
                 tags[f"TXXX:{flac_key.upper()}"] = _user_text_frame(flac_key.upper(), value)
 
-    _apply_cover_art(tags, flac_tags)
+    _apply_cover_art(tags, source_tags)
     tags.save(mp3_path)
 
 
 def _apply_snapshot_id3_tags(
     mp3_path: Path,
     snapshot: DjTagSnapshot,
-    flac_tags: Optional[FLAC],
+    source_tags: Optional[SourceTagData],
     *,
     prune_existing: bool,
 ) -> None:
@@ -544,8 +667,8 @@ def _apply_snapshot_id3_tags(
 
     _clear_dj_managed_frames(tags)
     _apply_snapshot_tag_policy(tags, snapshot)
-    if flac_tags is not None:
-        _apply_cover_art(tags, flac_tags)
+    if source_tags is not None:
+        _apply_cover_art(tags, source_tags)
     tags.save(mp3_path)
 
 
@@ -554,7 +677,7 @@ def _clear_dj_managed_frames(tags: ID3) -> None:
         _id3_delall(tags, frame_id)
 
 
-def _apply_dj_tag_policy(tags: ID3, flac_tags: FLAC, first: TagLookup) -> None:
+def _apply_dj_tag_policy(tags: ID3, source_tags: SourceTagData, first: TagLookup) -> None:
     title = first("title")
     artist = first("artist")
     albumartist = first("albumartist")
@@ -592,7 +715,7 @@ def _apply_dj_tag_policy(tags: ID3, flac_tags: FLAC, first: TagLookup) -> None:
     if energy:
         tags["TXXX:ENERGY"] = _user_text_frame("ENERGY", energy)
 
-    _apply_cover_art(tags, flac_tags)
+    _apply_cover_art(tags, source_tags)
 
 
 def _apply_snapshot_tag_policy(tags: ID3, snapshot: DjTagSnapshot) -> None:
@@ -619,22 +742,11 @@ def _apply_snapshot_tag_policy(tags: ID3, snapshot: DjTagSnapshot) -> None:
         tags["TXXX:ENERGY"] = _user_text_frame("ENERGY", str(snapshot.energy_1_10))
 
 
-def _apply_cover_art(tags: ID3, flac_tags: FLAC) -> None:
-    pictures = getattr(flac_tags, "pictures", None) or []
-    if not pictures:
+def _apply_cover_art(tags: ID3, source_tags: Optional[SourceTagData]) -> None:
+    if source_tags is None or source_tags.cover_art is None:
         return
-
-    front_cover = None
-    for picture in pictures:
-        if getattr(picture, "type", None) == 3:
-            front_cover = picture
-            break
-    if front_cover is None:
-        front_cover = pictures[0]
-
-    data = getattr(front_cover, "data", None)
+    data, mime = source_tags.cover_art
     if not data:
         return
-
     _id3_delall(tags, "APIC")
-    _id3_add(tags, _apic_frame(data, getattr(front_cover, "mime", "image/jpeg") or "image/jpeg"))
+    _id3_add(tags, _apic_frame(data, mime or "image/jpeg"))

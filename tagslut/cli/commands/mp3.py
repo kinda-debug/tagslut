@@ -1,7 +1,7 @@
 """CLI commands for MP3 derivative management.
 
-  tagslut mp3 build      — transcode preferred FLAC masters to MP3 and register in mp3_asset
-  tagslut mp3 reconcile  — scan an existing MP3 root and link files to canonical identities
+  tagslut mp3 build      — transcode preferred source assets to MP3 and register in mp3_asset
+  tagslut mp3 reconcile  — scan an existing MP3 root and preserve provisional lineage when needed
 """
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import sys
 import click
 
 CANONICAL_PIPELINE_TEXT = (
-    "Current DJ workflow: curate → transcode → M3U → Rekordbox."
+    "Lossless-first DJ workflow: canonical source audio → transcode → M3U → Rekordbox."
 )
 
 
@@ -18,7 +18,7 @@ CANONICAL_PIPELINE_TEXT = (
     "mp3",
     help="""
 \b
-Build and reconcile MP3 derivative assets in MP3_LIBRARY.
+Build and reconcile MP3 derivative assets in MP3_LIBRARY with lossless-first lineage.
 
 Common subcommands:
   build, reconcile
@@ -41,7 +41,7 @@ def mp3_group() -> None:
 
 @mp3_group.command(
     "build",
-    help=f"Build MP3s from canonical FLAC masters. {CANONICAL_PIPELINE_TEXT}",
+    help=f"Build MP3s from canonical source assets. {CANONICAL_PIPELINE_TEXT}",
 )
 @click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
 @click.option(
@@ -75,7 +75,7 @@ def mp3_build(
     dry_run: bool,
     verbose: bool,
 ) -> None:
-    """Transcode preferred FLAC masters to MP3 and register in mp3_asset.
+    """Transcode preferred source assets to MP3 and register in mp3_asset.
 
     Only processes identities that do not already have an mp3_asset row
     with status='verified'. Safe to re-run (idempotent).
@@ -131,7 +131,8 @@ def mp3_build(
 @mp3_group.command(
     "reconcile-library",
     help=(
-        "Reconcile an existing MP3 root with the database (legacy direct scan). "
+        "Reconcile an existing MP3 root with the database (legacy direct scan; "
+        "unmatched files become provisional lineage rows). "
         f"{CANONICAL_PIPELINE_TEXT}"
     ),
 )
@@ -172,7 +173,8 @@ def mp3_reconcile_library(
     Uses one active MP3 asset root (MP3_LIBRARY).
     Source/staging folders remain provenance-only inputs. Matches via ISRC tag
     first, then title+artist. Files that already have an mp3_asset row are
-    skipped. Safe to re-run (idempotent).
+    skipped. Unmatched files become provisional lineage rows. Safe to re-run
+    (idempotent).
     """
     import os
     import sqlite3
@@ -377,7 +379,7 @@ def _run_reconcile_scan(
 
 @mp3_group.command(
     "reconcile",
-    help=f"Reconcile a scan CSV against the DB using multi-tier matching. {CANONICAL_PIPELINE_TEXT}",
+    help=f"Reconcile a scan CSV against the DB using multi-tier matching and provisional lineage. {CANONICAL_PIPELINE_TEXT}",
 )
 @click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
 @click.option("--scan-csv", "scan_csv", required=True, type=click.Path(exists=True), help="Scan CSV from mp3 scan.")
@@ -429,7 +431,7 @@ def mp3_reconcile_scan(
 
 @mp3_group.command(
     "reconcile-scan",
-    help=f"(Alias) Reconcile a scan CSV against the DB. {CANONICAL_PIPELINE_TEXT}",
+    help=f"(Alias) Reconcile a scan CSV against the DB and preserve provisional lineage. {CANONICAL_PIPELINE_TEXT}",
 )
 @click.option("--db", "db_path", default=None, help="Path to tagslut SQLite DB.")
 @click.option("--scan-csv", "scan_csv", required=True, type=click.Path(exists=True), help="Scan CSV from mp3 scan.")

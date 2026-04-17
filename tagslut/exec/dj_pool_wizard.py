@@ -12,7 +12,7 @@ import shutil
 from typing import Any, Mapping
 
 import click
-from tagslut.exec.mp3_build import DJ_COPY_PROFILE, insert_mp3_asset_row
+from tagslut.exec.mp3_build import DJ_COPY_PROFILE, insert_mp3_asset_row, source_provenance_for_path
 from tagslut.exec.transcoder import TranscodeError, transcode_to_mp3_from_snapshot
 from tagslut.storage.models import DJ_SET_ROLES
 from tagslut.storage.v3 import record_provenance_event, resolve_asset_id_by_path
@@ -1160,6 +1160,7 @@ def execute_plan(
                 )
                 if asset_id is None:
                     raise ValueError(f"asset_id missing for master_path {row['master_path']}")
+                source_root, source_path = source_provenance_for_path(Path(row["master_path"]))
                 conn.execute("BEGIN")
                 insert_mp3_asset_row(
                     conn,
@@ -1167,6 +1168,8 @@ def execute_plan(
                     asset_id=int(asset_id),
                     profile=DJ_COPY_PROFILE,
                     path=cache_dest,
+                    source_root=source_root,
+                    source_path=source_path,
                 )
                 conn.execute(
                     "UPDATE files SET dj_pool_path = ? WHERE path = ?",

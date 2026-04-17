@@ -15,8 +15,10 @@ Usage:
                     skipping them. Note: AAC->MP3 is a lossy-to-lossy transcode.
   --overwrite       Re-transcode even if the output file already exists.
 
-By default only ALAC/FLAC .m4a files are transcoded (lossless -> FLAC).
+By default only ALAC/FLAC .m4a files are transcoded to .flac.
 Use --lossy-to-mp3 to also handle AAC files.
+For broader lossless-first MP3 lineage handling, use `tagslut mp3 build` and
+`tagslut mp3 reconcile`.
 All metadata and embedded artwork are carried through intact.
 EOF
 }
@@ -163,4 +165,3 @@ for in_path in "${inputs[@]}"; do
 done
 
 echo "done: $done_count transcoded, $skip_count skipped" >&2
-

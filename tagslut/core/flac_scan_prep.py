@@ -11,43 +11,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-
-LOSSY_EXTENSIONS = {".mp3", ".aac", ".ogg", ".opus"}
-LOSSLESS_CONTAINER_EXTENSIONS = {".flac", ".wav", ".aif", ".aiff", ".m4a", ".mp4"}
-LOSSLESS_CODECS = {
-    "flac",
-    "alac",
-    "wavpack",
-    "ape",
-    "tta",
-    "pcm_s8",
-    "pcm_s16be",
-    "pcm_s16le",
-    "pcm_s24be",
-    "pcm_s24le",
-    "pcm_s32be",
-    "pcm_s32le",
-    "pcm_f16be",
-    "pcm_f16le",
-    "pcm_f24be",
-    "pcm_f24le",
-    "pcm_f32be",
-    "pcm_f32le",
-    "pcm_f64be",
-    "pcm_f64le",
-    "pcm_u8",
-}
-LOSSY_CODECS = {
-    "aac",
-    "ac3",
-    "eac3",
-    "mp2",
-    "mp3",
-    "opus",
-    "vorbis",
-    "wmav2",
-    "wmapro",
-}
+from tagslut.core.audio_policy import classify_audio_probe, probe_from_stream
+from tagslut.utils import AUDIO_EXTENSIONS
 
 
 @dataclass(frozen=True)
@@ -57,8 +22,11 @@ class PreparedFlacInput:
     original_path: Path
     converted: bool
     codec_name: str | None = None
+    bitrate_kbps: int | None = None
     sample_rate: int | None = None
     bit_depth: int | None = None
+    classification: str | None = None
+    classification_reason: str | None = None
     skip_reason: str | None = None
     message: str | None = None
     cleanup_path: Path | None = None
@@ -84,19 +52,10 @@ def prepare_flac_scan_input(path: Path, *, persist: bool) -> PreparedFlacInput:
             scan_path=source_path,
             original_path=source_path,
             converted=False,
+            classification="canonical_lossless",
         )
 
-    if suffix in LOSSY_EXTENSIONS:
-        return PreparedFlacInput(
-            source_path=source_path,
-            scan_path=None,
-            original_path=source_path,
-            converted=False,
-            skip_reason="lossy_extension",
-            message=f"blocked lossy input: {suffix}",
-        )
-
-    if suffix not in LOSSLESS_CONTAINER_EXTENSIONS:
+    if suffix not in AUDIO_EXTENSIONS:
         return PreparedFlacInput(
             source_path=source_path,
             scan_path=None,
@@ -113,6 +72,7 @@ def prepare_flac_scan_input(path: Path, *, persist: bool) -> PreparedFlacInput:
             scan_path=sibling_flac,
             original_path=source_path,
             converted=False,
+            classification="canonical_lossless",
             message="using existing sibling FLAC",
         )
 
@@ -127,62 +87,33 @@ def prepare_flac_scan_input(path: Path, *, persist: bool) -> PreparedFlacInput:
             message="could not inspect audio stream with ffprobe",
         )
 
-    codec_name = str(stream.get("codec_name") or "").strip().lower() or None
-    sample_rate = _safe_int(stream.get("sample_rate"))
-    bit_depth = _infer_bit_depth(stream)
+    probe = probe_from_stream(source_path, stream)
+    classification = classify_audio_probe(probe)
 
-    is_tidal_aac = codec_name == "aac" and suffix == ".m4a"
+    if not classification.accepted:
+        skip_reason = "unsupported_codec"
+        if classification.reason.startswith("sample rate below 44.1kHz"):
+            skip_reason = "sample_rate_too_low"
+        elif classification.reason.startswith("bit depth below 16-bit"):
+            skip_reason = "bit_depth_too_low"
+        elif classification.reason.startswith("lossy codec below provisional threshold"):
+            skip_reason = "lossy_below_threshold"
+        elif classification.reason.startswith("missing bitrate evidence"):
+            skip_reason = "lossy_bitrate_missing"
 
-    if codec_name in LOSSY_CODECS and not is_tidal_aac:
         return PreparedFlacInput(
             source_path=source_path,
             scan_path=None,
             original_path=source_path,
             converted=False,
-            codec_name=codec_name,
-            sample_rate=sample_rate,
-            bit_depth=bit_depth,
-            skip_reason="lossy_codec",
-            message=f"blocked lossy codec: {codec_name}",
-        )
-
-    if codec_name not in LOSSLESS_CODECS and not is_tidal_aac:
-        return PreparedFlacInput(
-            source_path=source_path,
-            scan_path=None,
-            original_path=source_path,
-            converted=False,
-            codec_name=codec_name,
-            sample_rate=sample_rate,
-            bit_depth=bit_depth,
-            skip_reason="unsupported_codec",
-            message=f"unsupported codec for FLAC conversion: {codec_name or 'unknown'}",
-        )
-
-    if sample_rate is not None and sample_rate < 44100:
-        return PreparedFlacInput(
-            source_path=source_path,
-            scan_path=None,
-            original_path=source_path,
-            converted=False,
-            codec_name=codec_name,
-            sample_rate=sample_rate,
-            bit_depth=bit_depth,
-            skip_reason="sample_rate_too_low",
-            message=f"sample rate below 44.1kHz: {sample_rate}",
-        )
-
-    if bit_depth is not None and bit_depth < 16:
-        return PreparedFlacInput(
-            source_path=source_path,
-            scan_path=None,
-            original_path=source_path,
-            converted=False,
-            codec_name=codec_name,
-            sample_rate=sample_rate,
-            bit_depth=bit_depth,
-            skip_reason="bit_depth_too_low",
-            message=f"bit depth below 16-bit: {bit_depth}",
+            codec_name=classification.codec_name,
+            bitrate_kbps=classification.bitrate_kbps,
+            sample_rate=classification.sample_rate,
+            bit_depth=classification.bit_depth,
+            classification=classification.kind,
+            classification_reason=classification.reason,
+            skip_reason=skip_reason,
+            message=classification.reason,
         )
 
     if shutil.which("ffmpeg") is None:
@@ -191,9 +122,12 @@ def prepare_flac_scan_input(path: Path, *, persist: bool) -> PreparedFlacInput:
             scan_path=None,
             original_path=source_path,
             converted=False,
-            codec_name=codec_name,
-            sample_rate=sample_rate,
-            bit_depth=bit_depth,
+            codec_name=classification.codec_name,
+            bitrate_kbps=classification.bitrate_kbps,
+            sample_rate=classification.sample_rate,
+            bit_depth=classification.bit_depth,
+            classification=classification.kind,
+            classification_reason=classification.reason,
             skip_reason="ffmpeg_missing",
             message="ffmpeg is required to convert non-FLAC inputs",
         )
@@ -223,9 +157,12 @@ def prepare_flac_scan_input(path: Path, *, persist: bool) -> PreparedFlacInput:
             scan_path=None,
             original_path=source_path,
             converted=False,
-            codec_name=codec_name,
-            sample_rate=sample_rate,
-            bit_depth=bit_depth,
+            codec_name=classification.codec_name,
+            bitrate_kbps=classification.bitrate_kbps,
+            sample_rate=classification.sample_rate,
+            bit_depth=classification.bit_depth,
+            classification=classification.kind,
+            classification_reason=classification.reason,
             skip_reason="conversion_failed",
             message=error or "ffmpeg conversion failed",
         )
@@ -235,10 +172,13 @@ def prepare_flac_scan_input(path: Path, *, persist: bool) -> PreparedFlacInput:
         scan_path=scan_path,
         original_path=source_path,
         converted=True,
-        codec_name=codec_name,
-        sample_rate=sample_rate,
-        bit_depth=bit_depth,
-        message=f"converted {suffix or '<none>'} -> .flac",
+        codec_name=classification.codec_name,
+        bitrate_kbps=classification.bitrate_kbps,
+        sample_rate=classification.sample_rate,
+        bit_depth=classification.bit_depth,
+        classification=classification.kind,
+        classification_reason=classification.reason,
+        message=f"converted {suffix or '<none>'} -> .flac ({classification.kind})",
         cleanup_path=cleanup_path,
     )
 
@@ -253,7 +193,7 @@ def _probe_audio_stream(path: Path) -> dict[str, Any] | None:
         "-select_streams",
         "a:0",
         "-show_entries",
-        "stream=codec_name,sample_rate,bits_per_sample,bits_per_raw_sample,sample_fmt",
+        "stream=codec_name,sample_rate,bit_rate,bits_per_sample,bits_per_raw_sample,sample_fmt",
         "-of",
         "json",
         str(path),

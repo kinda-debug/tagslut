@@ -25,8 +25,13 @@ AUDIO_EXTENSIONS = {
     ".aif",
     ".mp3",
     ".m4a",
+    ".mp4",
     ".ogg",
     ".aac",
+    ".opus",
+    ".wv",
+    ".ape",
+    ".tta",
 }
 
 

@@ -38,6 +38,10 @@ ts-get <url> --dj      # download + add to DJ pool M3U
 ts-enrich              # BPM, key, genre, label for all unenriched tracks
 ```
 
+Enrichment fills linked `track_identity.canonical_*` fields when an active
+identity link exists, while keeping `files.canonical_*` as the compatibility
+fallback used by canonical FLAC writeback.
+
 ## DJ pool — Rekordbox
 
 - Import `$MP3_LIBRARY/dj_pool.m3u` into Rekordbox

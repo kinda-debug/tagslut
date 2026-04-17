@@ -4,7 +4,9 @@ Write canonical fields from the v3 identity graph into FLAC file tags.
 
 Defaults are conservative:
 - Only write missing tags (does not overwrite existing values).
-- Uses canonical fields from track_identity via asset_link/asset_file.
+- Uses linked track_identity canonical fields first via asset_link/asset_file.
+- Falls back to files.canonical_* when identity fields are blank or no identity
+  link exists yet.
 - Supports --path (root) or --m3u list of paths.
 
 Example:
@@ -24,7 +26,7 @@ from tagslut.exec.canonical_writeback import iter_flacs_from_m3u, iter_flacs_fro
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Write canonical_* fields into FLAC tags")
+    ap = argparse.ArgumentParser(description="Write canonical identity/fallback fields into FLAC tags")
     ap.add_argument("--db", type=Path, required=True, help="SQLite DB path")
     ap.add_argument("--path", type=Path, help="Root path to scan (FLAC)")
     ap.add_argument("--m3u", type=Path, help="M3U file listing FLAC paths")

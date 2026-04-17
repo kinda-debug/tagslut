@@ -61,6 +61,19 @@ manually reviewed and upgraded.
 
 ---
 
+## Canonical metadata writeback
+
+`track_identity` is the canonical metadata store. Enrichment may mirror provider
+fields into `files.canonical_*`, but active writeback must prefer linked
+`track_identity.canonical_*` fields and use `files.canonical_*` only as a
+compatibility fallback when identity fields are blank.
+
+Provider snapshot writes must support both active source table shapes:
+legacy `library_track_key/service/service_track_id` and v3
+`identity_key/provider/provider_track_id`.
+
+---
+
 ## Volume layout (current machine)
 
 /Volumes/MUSIC/MASTER_LIBRARY    Trusted lossless library — source of truth for audio

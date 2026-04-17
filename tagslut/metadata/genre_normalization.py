@@ -42,6 +42,161 @@ import re
 from pathlib import Path
 from typing import Dict, Any, List, Tuple, Optional
 
+DEFAULT_RULES_PATH = Path(__file__).resolve().parents[2] / "tools" / "rules" / "genre_normalization.json"
+
+DEFAULT_CANONICAL_GENRES = frozenset({
+    "140 / Deep Dubstep / Grime",
+    "Afro House",
+    "African",
+    "Alternative / Indie",
+    "Amapiano",
+    "Ambient / Experimental",
+    "Bass / Club",
+    "Bass House",
+    "Blues",
+    "Brazilian Funk",
+    "Breaks / Breakbeat / UK Bass",
+    "Caribbean",
+    "Classical",
+    "Country",
+    "Dance / Pop",
+    "Deep House",
+    "Disco",
+    "DJ Tools",
+    "Downtempo",
+    "Drum & Bass",
+    "Dubstep",
+    "Electro (Classic / Detroit / Modern)",
+    "Electronica",
+    "Funky House",
+    "Hard Dance / Hardcore / Neo Rave",
+    "Hard Techno",
+    "Hip-Hop",
+    "Holiday",
+    "House",
+    "Indie Dance",
+    "Jackin House",
+    "Jazz",
+    "Latin",
+    "Mainstage",
+    "Melodic House & Techno",
+    "Minimal / Deep Tech",
+    "Nu Disco / Disco",
+    "Organic House",
+    "Other",
+    "Pop",
+    "Progressive House",
+    "Psy-Trance",
+    "R&B",
+    "Rock",
+    "Soul",
+    "Soundtrack",
+    "Tech House",
+    "Techno",
+    "Techno (Peak Time / Driving)",
+    "Techno (Raw / Deep / Hypnotic)",
+    "Trance",
+    "Trance (Main Floor)",
+    "Trance (Raw / Deep / Hypnotic)",
+    "Trap / Future Bass",
+    "UK Garage / Bassline",
+    "World",
+})
+
+DEFAULT_STYLE_PARENT_MAP = {
+    "2-Step": "UK Garage / Bassline",
+    "3Step": "Afro House",
+    "Acapellas": "DJ Tools",
+    "Acid": "Techno (Raw / Deep / Hypnotic)",
+    "Afro / Latin": "Afro House",
+    "Afro Melodic": "Afro House",
+    "Afrobeats": "African",
+    "Bassline": "UK Garage / Bassline",
+    "Battle Tools": "DJ Tools",
+    "Big Room": "Mainstage",
+    "Breakbeat": "Breaks / Breakbeat / UK Bass",
+    "Broken": "Breaks / Breakbeat / UK Bass",
+    "Dancehall": "Caribbean",
+    "Dark & Forest": "Drum & Bass",
+    "Dark Disco": "Indie Dance",
+    "Deep": "Deep House",
+    "Deep / Hypnotic": "Techno (Raw / Deep / Hypnotic)",
+    "Deep House": "Deep House",
+    "Deep Tech": "Minimal / Deep Tech",
+    "Deep Trance": "Trance (Raw / Deep / Hypnotic)",
+    "Disco": "Nu Disco / Disco",
+    "Driving": "Techno (Peak Time / Driving)",
+    "Dub": "Dubstep",
+    "EBM": "Indie Dance",
+    "Electro House": "Mainstage",
+    "Electronica": "Electronica",
+    "Frenchcore": "Hard Dance / Hardcore / Neo Rave",
+    "Full-On": "Psy-Trance",
+    "Funk": "Soul",
+    "Future Bass": "Trap / Future Bass",
+    "Future House": "House",
+    "Future Rave": "Mainstage",
+    "Glitch Hop": "Bass / Club",
+    "Global": "World",
+    "Global Club": "Bass / Club",
+    "Goa Trance": "Psy-Trance",
+    "Grime": "140 / Deep Dubstep / Grime",
+    "Halftime": "Drum & Bass",
+    "Hard House": "Hard Dance / Hardcore / Neo Rave",
+    "Hard Trance": "Trance (Main Floor)",
+    "Hardstyle": "Hard Dance / Hardcore / Neo Rave",
+    "House": "House",
+    "Hypnotic Trance": "Trance (Raw / Deep / Hypnotic)",
+    "Indie": "Alternative / Indie",
+    "Italo": "Nu Disco / Disco",
+    "Jersey Club": "Bass / Club",
+    "Juke / Footwork": "Bass / Club",
+    "Jump Up": "Drum & Bass",
+    "Jungle": "Drum & Bass",
+    "Latin Dance": "Latin",
+    "Latin House": "House",
+    "Liquid": "Drum & Bass",
+    "Loops": "DJ Tools",
+    "Melodic Dubstep": "Dubstep",
+    "Melodic House": "Melodic House & Techno",
+    "Melodic House & Techno": "Melodic House & Techno",
+    "Melodic Techno": "Melodic House & Techno",
+    "Minimal / Deep Tech": "Minimal / Deep Tech",
+    "Minimal House": "Minimal / Deep Tech",
+    "Neo Rave": "Hard Dance / Hardcore / Neo Rave",
+    "Nu Disco / Disco": "Nu Disco / Disco",
+    "Peak Time": "Techno (Peak Time / Driving)",
+    "Progressive Psy": "Psy-Trance",
+    "Progressive Trance": "Trance (Main Floor)",
+    "Psy-Techno": "Psy-Trance",
+    "Psychedelic": "Psy-Trance",
+    "Raw": "Techno (Raw / Deep / Hypnotic)",
+    "Raw Trance": "Trance (Raw / Deep / Hypnotic)",
+    "Reggae / Dancehall": "Caribbean",
+    "Soulful": "House",
+    "Speed Garage": "UK Garage / Bassline",
+    "Speed House": "House",
+    "Tech House": "Tech House",
+    "Tech Trance": "Trance (Main Floor)",
+    "Techno": "Techno",
+    "Trap": "Trap / Future Bass",
+    "UK Bass": "Breaks / Breakbeat / UK Bass",
+    "UK Funky": "UK Garage / Bassline",
+    "UK Garage": "UK Garage / Bassline",
+    "Uplifting Trance": "Trance (Main Floor)",
+    "Vocal Trance": "Trance (Main Floor)",
+}
+
+_DEFAULT_NORMALIZER: "GenreNormalizer | None" = None
+
+
+def default_genre_normalizer() -> "GenreNormalizer":
+    global _DEFAULT_NORMALIZER
+    if _DEFAULT_NORMALIZER is None:
+        rules_path = DEFAULT_RULES_PATH if DEFAULT_RULES_PATH.exists() else None
+        _DEFAULT_NORMALIZER = GenreNormalizer(rules_path)
+    return _DEFAULT_NORMALIZER
+
 
 class GenreNormalizer:
     """
@@ -90,15 +245,23 @@ class GenreNormalizer:
                        If None, no normalization is applied (pass-through).
         """
         self.rules = self._load_rules(rules_path) if rules_path else {}
+        self.canonical_genres = set(DEFAULT_CANONICAL_GENRES)
+        self.canonical_genres.update(self.rules.get("canonical_genres", []))
+        self.style_parent_map = dict(DEFAULT_STYLE_PARENT_MAP)
+        self.style_parent_map.update(self.rules.get("style_parent_map", {}))
+        self.fallback_genre = str(self.rules.get("fallback_genre") or "Other")
 
     @staticmethod
-    def _load_rules(path: Path) -> Dict[str, Dict[str, str]]:
+    def _load_rules(path: Path) -> Dict[str, Any]:
         """Load genre/style mapping rules from JSON."""
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             return {
                 "genre_map": data.get("genre_map", {}),
                 "style_map": data.get("style_map", {}),
+                "canonical_genres": data.get("canonical_genres", []),
+                "style_parent_map": data.get("style_parent_map", {}),
+                "fallback_genre": data.get("fallback_genre", "Other"),
             }
         except Exception as e:
             raise ValueError(f"Failed to load rules from {path}: {e}") from e
@@ -136,11 +299,110 @@ class GenreNormalizer:
         if not self.rules:
             return value
         mapping = self.rules.get(f"{mapping_type}_map", {})
-        return mapping.get(value, value)
+        mapped = self._lookup_mapping(mapping, value)
+        return mapped if mapped is not None else value
 
     @staticmethod
     def _normalize_spacing(value: str) -> str:
         return re.sub(r"\s+", " ", value.strip())
+
+    @classmethod
+    def _lookup_key(cls, value: str) -> str:
+        return cls._normalize_spacing(value).casefold()
+
+    @classmethod
+    def _lookup_mapping(cls, mapping: Dict[str, str], value: str) -> Optional[str]:
+        if value in mapping:
+            return mapping[value]
+        wanted = cls._lookup_key(value)
+        for key, mapped in mapping.items():
+            if cls._lookup_key(key) == wanted:
+                return mapped
+        return None
+
+    def _is_canonical_genre(self, value: Optional[str]) -> bool:
+        if not value:
+            return False
+        wanted = self._lookup_key(value)
+        return any(self._lookup_key(genre) == wanted for genre in self.canonical_genres)
+
+    def _parent_for_style(self, value: Optional[str]) -> Optional[str]:
+        if not value:
+            return None
+        style = self.normalize_value(value, "style")
+        parent = self._lookup_mapping(self.style_parent_map, style)
+        if parent:
+            return self.normalize_value(parent, "genre")
+        return None
+
+    def normalize_pair(
+        self,
+        genre: Optional[str],
+        style: Optional[str] = None,
+    ) -> Tuple[Optional[str], Optional[str]]:
+        """
+        Normalize a genre/subgenre pair into the controlled Beatport-hybrid model.
+
+        The returned genre is always one of `canonical_genres` when rules are
+        enabled. Known styles are resolved to their parent genre; unknown values
+        fall back to the configured catch-all genre instead of leaking arbitrary
+        tags into canonical output.
+        """
+        if not self.rules:
+            return genre, style
+
+        raw_genre = self._normalize_spacing(genre) if genre else None
+        raw_style = self._normalize_spacing(style) if style else None
+
+        if raw_genre and not raw_style:
+            split_genre, split_style = self._split_parenthetical(raw_genre)
+            raw_genre = split_genre
+            raw_style = split_style
+
+        if raw_genre:
+            parts = self._split_compound(raw_genre)
+            if parts:
+                raw_genre = parts[0]
+                if not raw_style and len(parts) >= 2:
+                    raw_style = parts[1]
+
+        if raw_style:
+            style_parts = self._split_compound(raw_style)
+            if style_parts:
+                raw_style = style_parts[0]
+
+        mapped_genre = self.normalize_value(raw_genre, "genre") if raw_genre else None
+        mapped_style = self.normalize_value(raw_style, "style") if raw_style else None
+        mapped_genre = mapped_genre or None
+        mapped_style = mapped_style or None
+
+        style_parent = self._parent_for_style(mapped_style)
+        if mapped_genre and not self._is_canonical_genre(mapped_genre):
+            genre_as_style = self.normalize_value(mapped_genre, "style")
+            parent = self._parent_for_style(genre_as_style)
+            if parent:
+                mapped_genre = parent
+                mapped_style = mapped_style or genre_as_style
+            else:
+                mapped_genre = self.fallback_genre or None
+                mapped_style = None
+
+        if not mapped_genre and style_parent:
+            mapped_genre = style_parent
+        elif style_parent and mapped_genre:
+            if self._lookup_key(mapped_genre) == self._lookup_key(self.fallback_genre):
+                mapped_genre = style_parent
+            elif self._lookup_key(mapped_genre) in {"house", "techno", "trance", "electronica", "dance / pop"}:
+                mapped_genre = style_parent
+
+        if mapped_genre and not self._is_canonical_genre(mapped_genre):
+            mapped_genre = self.fallback_genre or None
+            mapped_style = None
+
+        if mapped_style and mapped_genre and self._lookup_key(mapped_style) == self._lookup_key(mapped_genre):
+            mapped_style = None
+
+        return mapped_genre, mapped_style
 
     @classmethod
     def _is_protected(cls, value: str) -> bool:
@@ -267,6 +529,8 @@ class GenreNormalizer:
             genre = self.normalize_value(genre, "genre")
         if style:
             style = self.normalize_value(style, "style")
+
+        genre, style = self.normalize_pair(genre, style)
 
         # Any present tag that didn't participate is "dropped"
         used_tags = set()

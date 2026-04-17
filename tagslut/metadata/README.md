@@ -9,6 +9,14 @@ Start here:
 - `docs/SCRIPT_SURFACE.md` — canonical command surface and workflow ownership.
 - `docs/archive/ (historical — see docs/archive/)METADATA_WORKFLOW.md` — archived legacy metadata workflow notes.
 
+Writeback contract:
+- Enrichment writes provider snapshots to `library_track_sources`, supporting both
+  legacy `service/service_track_id` and v3 `provider/provider_track_id` shapes.
+- Linked identities are resolved through `asset_file.path -> asset_link.identity_id`.
+- `track_identity.canonical_*` fields are filled null-safely; existing identity
+  metadata is not overwritten by enrichment writeback.
+- FLAC writeback reads identity fields first and falls back to `files.canonical_*`
+  only when the linked identity field is blank.
 
 ## Supported Providers
 

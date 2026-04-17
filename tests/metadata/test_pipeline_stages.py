@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import sqlite3
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
-from tagslut.metadata.models.types import LocalFileInfo, MatchConfidence, ProviderTrack
+from tagslut.metadata.models.types import EnrichmentResult, LocalFileInfo, MatchConfidence, ProviderTrack
 from tagslut.metadata.pipeline import stages
+from tagslut.metadata.store.db_writer import CONFIDENCE_NUMERIC, _merge_into_track_identity
 
 
 @dataclass
@@ -169,3 +171,132 @@ def test_classify_health_ok_truncated_extended_and_edge() -> None:
 def test_normalize_title_strips_original_mix_suffixes() -> None:
     assert stages.normalize_title("My Song (Original Mix)") == "my song"
     assert stages.normalize_title("My Song (Main Mix)") == "my song"
+
+
+def test_confidence_ordering() -> None:
+    levels = ["exact", "strong", "medium", "weak", "none"]
+    scores = [CONFIDENCE_NUMERIC[level] for level in levels]
+
+    assert scores == sorted(scores, reverse=True)
+    assert len(set(scores)) == len(scores)
+
+
+def test_merge_into_track_identity_fills_blank_v3_fields_without_overwrite() -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE asset_file (id INTEGER PRIMARY KEY, path TEXT NOT NULL)")
+    conn.execute(
+        """
+        CREATE TABLE asset_link (
+            id INTEGER PRIMARY KEY,
+            asset_id INTEGER NOT NULL,
+            identity_id INTEGER NOT NULL,
+            active INTEGER NOT NULL DEFAULT 1
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE track_identity (
+            id INTEGER PRIMARY KEY,
+            identity_key TEXT,
+            canonical_title TEXT,
+            canonical_artist TEXT,
+            canonical_album TEXT,
+            isrc TEXT,
+            canonical_label TEXT,
+            canonical_catalog_number TEXT,
+            canonical_mix_name TEXT,
+            canonical_year INTEGER,
+            canonical_release_date TEXT,
+            canonical_bpm REAL,
+            canonical_key TEXT,
+            canonical_genre TEXT,
+            canonical_sub_genre TEXT,
+            beatport_id TEXT,
+            tidal_id TEXT,
+            canonical_duration REAL,
+            duration_ref_ms INTEGER,
+            ref_source TEXT,
+            enriched_at TEXT,
+            updated_at TEXT,
+            merged_into_id INTEGER
+        )
+        """
+    )
+    conn.execute("INSERT INTO asset_file (id, path) VALUES (1, ?)", ("/music/linked.flac",))
+    conn.execute(
+        """
+        INSERT INTO track_identity (
+            id,
+            identity_key,
+            canonical_title,
+            canonical_artist
+        ) VALUES (7, 'identity:key', 'Existing Title', 'Existing Artist')
+        """
+    )
+    conn.execute("INSERT INTO asset_link (asset_id, identity_id, active) VALUES (1, 7, 1)")
+
+    result = EnrichmentResult(
+        path="/music/linked.flac",
+        canonical_title="New Title",
+        canonical_artist="New Artist",
+        canonical_album="Album",
+        canonical_label="Hot Creations",
+        canonical_catalog_number="HOTC275",
+        canonical_release_date="2026-02-27",
+        canonical_bpm=131.0,
+        canonical_key="Ab",
+        canonical_genre="Tech House",
+        canonical_duration=360.0,
+        beatport_id="12345",
+        tidal_id="67890",
+        enrichment_providers=["beatport", "tidal"],
+    )
+    best = ProviderTrack(
+        service="beatport",
+        service_track_id="12345",
+        match_confidence=MatchConfidence.EXACT,
+    )
+
+    _merge_into_track_identity(conn, result, best)
+
+    row = conn.execute(
+        """
+        SELECT
+            canonical_title,
+            canonical_artist,
+            canonical_label,
+            canonical_catalog_number,
+            canonical_release_date,
+            canonical_bpm,
+            canonical_key,
+            canonical_genre,
+            beatport_id,
+            tidal_id,
+            canonical_duration,
+            duration_ref_ms,
+            ref_source,
+            enriched_at,
+            updated_at
+        FROM track_identity
+        WHERE id = 7
+        """
+    ).fetchone()
+    conn.close()
+
+    assert row is not None
+    assert row[0] == "Existing Title"
+    assert row[1] == "Existing Artist"
+    assert row[2] == "Hot Creations"
+    assert row[3] == "HOTC275"
+    assert row[4] == "2026-02-27"
+    assert row[5] == 131.0
+    assert row[6] == "Ab"
+    assert row[7] == "Tech House"
+    assert row[8] == "12345"
+    assert row[9] == "67890"
+    assert row[10] == 360.0
+    assert row[11] == 360000
+    assert row[12] == "beatport"
+    assert row[13] is not None
+    assert row[14] is not None

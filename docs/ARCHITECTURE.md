@@ -78,6 +78,12 @@ The authoritative v3 ownership model is:
 See `docs/archive/CORE_MODEL.md`, `docs/archive/DB_V3_SCHEMA.md`, and
 `tagslut/storage/v3/schema.py` for the table-level contract.
 
+Metadata enrichment writes provider evidence to both compatibility mirrors and
+identity-owned state: `files.canonical_*` stays available as a fallback mirror,
+while linked `track_identity.canonical_*` fields are filled null-safely through
+`asset_file` -> `asset_link`. Canonical FLAC writeback reads identity values
+first and falls back to `files.canonical_*` only when identity fields are blank.
+
 ### Lexicon metadata evidence
 
 Lexicon is an external metadata/workflow system. tagslut imports Lexicon state

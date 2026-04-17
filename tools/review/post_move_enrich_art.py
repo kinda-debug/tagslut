@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Background post-move enrichment + cover-art embedding for exact file paths."""
+"""Background post-move enrichment, canonical writeback, and cover-art embedding."""
 from __future__ import annotations
 
 import argparse
@@ -31,7 +31,11 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--retry-no-match", action="store_true", help="Retry files previously marked no_match")
     ap.add_argument("--art-force", action="store_true", help="Force replace embedded cover art")
     ap.add_argument("--skip-art", action="store_true", help="Skip cover-art embedding after enrichment")
-    ap.add_argument("--writeback-force", action="store_true", help="Force overwrite canonical FLAC tags")
+    ap.add_argument(
+        "--writeback-force",
+        action="store_true",
+        help="Overwrite canonical FLAC tags instead of only filling missing identity/fallback values",
+    )
     return ap.parse_args()
 
 

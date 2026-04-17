@@ -85,3 +85,85 @@ def test_ops_writeback_canonical_uses_v3_identity_data(tmp_path, monkeypatch) ->
     assert fake_audio.tags["BPM"] == ["128.0"]
     assert fake_audio.tags["INITIALKEY"] == ["Am"]
     assert "Updated: 1" in result.output
+
+
+def test_ops_writeback_canonical_falls_back_to_files_canonical_fields(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "music.db"
+    flac_path = tmp_path / "fallback.flac"
+    flac_path.write_bytes(b"fake")
+
+    conn = sqlite3.connect(str(db_path))
+    create_schema_v3(conn)
+    init_db(conn)
+    conn.execute(
+        """
+        INSERT INTO files (
+            path,
+            canonical_label,
+            canonical_catalog_number,
+            canonical_release_date,
+            canonical_bpm,
+            canonical_key,
+            canonical_genre
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (str(flac_path), "Toolroom", "TOOL123", "2024-03-01", 128.0, "8A", "Techno"),
+    )
+    conn.execute(
+        """
+        INSERT INTO asset_file (path, library, zone)
+        VALUES (?, 'MASTER_LIBRARY', 'library')
+        """,
+        (str(flac_path),),
+    )
+    asset_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+    conn.execute(
+        """
+        INSERT INTO track_identity (
+            identity_key,
+            canonical_artist,
+            canonical_title,
+            ingested_at,
+            ingestion_method,
+            ingestion_source,
+            ingestion_confidence
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "fallback:identity",
+            "Identity Artist",
+            "Identity Title",
+            "2026-01-01T00:00:00+00:00",
+            "migration",
+            "test_fixture",
+            "legacy",
+        ),
+    )
+    identity_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+    conn.execute(
+        """
+        INSERT INTO asset_link (asset_id, identity_id, active)
+        VALUES (?, ?, 1)
+        """,
+        (asset_id, identity_id),
+    )
+    conn.commit()
+    conn.close()
+
+    fake_audio = _FakeFlac()
+    monkeypatch.setattr("tagslut.exec.canonical_writeback.FLAC", lambda *_args, **_kwargs: fake_audio)
+    monkeypatch.setenv("TAGSLUT_DB", str(db_path))
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["ops", "writeback-canonical", "--path", str(flac_path), "--execute"])
+
+    assert result.exit_code == 0, result.output
+    assert fake_audio.saved is True
+    assert fake_audio.tags["TITLE"] == ["Identity Title"]
+    assert fake_audio.tags["ARTIST"] == ["Identity Artist"]
+    assert fake_audio.tags["LABEL"] == ["Toolroom"]
+    assert fake_audio.tags["CATALOGNUMBER"] == ["TOOL123"]
+    assert fake_audio.tags["DATE"] == ["2024-03-01"]
+    assert fake_audio.tags["BPM"] == ["128.0"]
+    assert fake_audio.tags["INITIALKEY"] == ["8A"]
+    assert fake_audio.tags["GENRE"] == ["Techno"]

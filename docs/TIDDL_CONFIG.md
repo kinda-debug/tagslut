@@ -188,7 +188,7 @@ Sourced from `tiddl/core/utils/format.py` and `docs/templating.md`.
 | `skip_existing` | `true` | Idempotent downloads — `tools/tiddl` relies on this |
 | `threads_count` | `4` | Conservative. Increase if TIDAL rate limits are not an issue |
 | `update_mtime` | `true` | Allows detection of files removed from TIDAL collections |
-| `rewrite_metadata` | `false` | tagslut owns metadata writeback via `canonical_writeback.py` |
+| `rewrite_metadata` | `false` | tagslut owns metadata writeback via `canonical_writeback.py`; writeback reads `track_identity.canonical_*` first and falls back to `files.canonical_*` |
 | `metadata.cover` | `true` | Embeds cover art in FLAC at download time |
 | `metadata.lyrics` | `false` | Not used in tagslut workflow |
 | `download_path` | unset | Managed at runtime by `tools/tiddl` `sync_tiddl_config_paths()` |

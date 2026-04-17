@@ -3,7 +3,11 @@
 This module is responsible for persisting enrichment outcomes to SQLite.
 
 In addition to updating the per-file record in the `files` table, we also
-maintain a track-level hub for provenance and cross-file consolidation:
+merge canonical enrichment fields into the linked `track_identity` row when
+one exists. The merge is null-safe for metadata fields and keeps `files`
+as a compatibility mirror/fallback for writeback.
+
+We also maintain a track-level hub for provenance and cross-file consolidation:
 
 - `library_tracks`: canonical track entity (one row per logical track)
 - `library_track_sources`: per-provider snapshots (raw payload + confidence)
@@ -25,6 +29,14 @@ from tagslut.metadata.models.types import EnrichmentResult, MatchConfidence, Pro
 
 logger = logging.getLogger("tagslut.metadata.enricher")
 
+CONFIDENCE_NUMERIC: dict[str, int] = {
+    "exact": 4,
+    "strong": 3,
+    "medium": 2,
+    "weak": 1,
+    "none": 0,
+}
+
 
 def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
     try:
@@ -35,6 +47,18 @@ def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
     except sqlite3.Error:
         return False
     return row is not None
+
+
+def _best_match(result: EnrichmentResult) -> ProviderTrack | None:
+    if not result.matches:
+        return None
+    return max(
+        result.matches,
+        key=lambda m: CONFIDENCE_NUMERIC.get(
+            getattr(getattr(m, "match_confidence", None), "value", "none"),
+            0,
+        ),
+    )
 
 
 def _best_tidal_match(matches: list[ProviderTrack]) -> ProviderTrack | None:
@@ -145,6 +169,10 @@ def _table_has_column(conn: sqlite3.Connection, table: str, column: str) -> bool
     return False
 
 
+def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    return {str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+
+
 def _resolve_track_hub_key_column(conn: sqlite3.Connection, table: str) -> str:
     if _table_has_column(conn, table, "identity_key"):
         return "identity_key"
@@ -195,19 +223,7 @@ def _derive_library_track_key(result: EnrichmentResult) -> str:
       3) normalized artist/title + duration bucket
       4) last-resort hash of path (to avoid NULL keys)
     """
-    best: ProviderTrack | None = None
-    if result.matches:
-        rank = {
-            "exact": 4,
-            "strong": 3,
-            "medium": 2,
-            "weak": 1,
-            "none": 0,
-        }
-        best = max(
-            result.matches,
-            key=lambda m: rank.get(getattr(getattr(m, "match_confidence", None), "value", "none"), 0),
-        )
+    best = _best_match(result)
 
     if result.canonical_isrc:
         return f"isrc:{result.canonical_isrc.strip().upper()}"
@@ -254,6 +270,7 @@ def _upsert_library_track(
     key_column: str,
     key: str,
     result: EnrichmentResult,
+    best: ProviderTrack | None = None,
 ) -> None:
     """Upsert canonical track row (library_tracks) with null-safe updates."""
     if key_column not in ("library_track_key", "identity_key"):
@@ -261,19 +278,8 @@ def _upsert_library_track(
     # Map enrichment canonical fields to library_tracks columns.
     # In recovery-only runs, canonical identity fields may not be set; fall back
     # to the best available provider match to keep the hub usable.
-    best: ProviderTrack | None = None
-    if result.matches:
-        rank = {
-            "exact": 4,
-            "strong": 3,
-            "medium": 2,
-            "weak": 1,
-            "none": 0,
-        }
-        best = max(
-            result.matches,
-            key=lambda m: rank.get(getattr(getattr(m, "match_confidence", None), "value", "none"), 0),
-        )
+    if best is None:
+        best = _best_match(result)
 
     title = result.canonical_title or (best.title if best else None)
     artist = result.canonical_artist or (best.artist if best else None)
@@ -357,8 +363,46 @@ def _upsert_library_track_source(
     if key_column not in ("library_track_key", "identity_key"):
         raise ValueError(f"Unexpected key column: {key_column!r}")
 
-    # Avoid duplicates without requiring a unique constraint:
-    # delete existing row for (key, service, service_track_id) then insert.
+    columns = _table_columns(conn, "library_track_sources")
+    if not columns:
+        raise sqlite3.OperationalError("library_track_sources table is missing")
+
+    raw_json = json.dumps(match.raw) if match.raw else None
+    confidence = match.match_confidence.value if match.match_confidence else None
+
+    if "provider" in columns:
+        conn.execute(
+            f"""
+            DELETE FROM library_track_sources
+            WHERE {key_column} = ? AND provider = ? AND provider_track_id = ?
+            """,
+            (key, match.service, match.service_track_id),
+        )
+        conn.execute(
+            f"""
+            INSERT INTO library_track_sources (
+                {key_column},
+                provider,
+                provider_track_id,
+                source_url,
+                raw_payload_json,
+                metadata_json,
+                match_confidence,
+                fetched_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """,
+            (
+                key,
+                match.service,
+                match.service_track_id,
+                match.url,
+                raw_json,
+                raw_json,
+                confidence,
+            ),
+        )
+        return
+
     conn.execute(
         f"""
         DELETE FROM library_track_sources
@@ -394,7 +438,7 @@ def _upsert_library_track_source(
             match.service,
             match.service_track_id,
             match.url,
-            json.dumps(match.raw) if match.raw else None,
+            raw_json,
             match.duration_ms,
             match.isrc,
             match.album_art_url,
@@ -405,9 +449,118 @@ def _upsert_library_track_source(
             match.artist,
             match.track_number,
             match.disc_number,
-            match.match_confidence.value if match.match_confidence else None,
+            confidence,
         ),
     )
+
+
+def _active_identity_for_path(conn: sqlite3.Connection, path: str) -> tuple[int, str | None] | None:
+    if not (_table_exists(conn, "asset_file") and _table_exists(conn, "asset_link") and _table_exists(conn, "track_identity")):
+        return None
+
+    active_where = "AND al.active = 1" if _table_has_column(conn, "asset_link", "active") else ""
+    merged_where = "AND ti.merged_into_id IS NULL" if _table_has_column(conn, "track_identity", "merged_into_id") else ""
+    active_order = "CASE WHEN COALESCE(al.active, 1) = 1 THEN 0 ELSE 1 END, " if _table_has_column(
+        conn, "asset_link", "active"
+    ) else ""
+    identity_key_select = "ti.identity_key" if _table_has_column(conn, "track_identity", "identity_key") else "NULL"
+    row = conn.execute(
+        f"""
+        SELECT ti.id, {identity_key_select} AS identity_key
+        FROM asset_file af
+        JOIN asset_link al ON al.asset_id = af.id
+        JOIN track_identity ti ON ti.id = al.identity_id
+        WHERE af.path = ?
+        {active_where}
+        {merged_where}
+        ORDER BY {active_order} al.id ASC
+        LIMIT 1
+        """,
+        (path,),
+    ).fetchone()
+    if row is None:
+        return None
+    return int(row[0]), (str(row[1]) if row[1] is not None else None)
+
+
+def _duration_ref_ms(result: EnrichmentResult, best: ProviderTrack | None) -> int | None:
+    if result.canonical_duration is not None:
+        try:
+            return int(round(float(result.canonical_duration) * 1000.0))
+        except (TypeError, ValueError):
+            return None
+    if best and best.duration_ms is not None:
+        return int(best.duration_ms)
+    return None
+
+
+def _provider_id_for(result: EnrichmentResult, best: ProviderTrack | None, provider: str) -> str | None:
+    direct = result.beatport_id if provider == "beatport" else result.tidal_id
+    if direct:
+        return direct
+    if best and best.service == provider and best.service_track_id:
+        return str(best.service_track_id)
+    return None
+
+
+def _merge_into_track_identity(
+    conn: sqlite3.Connection,
+    result: EnrichmentResult,
+    best: ProviderTrack | None,
+) -> None:
+    identity = _active_identity_for_path(conn, result.path)
+    if identity is None:
+        return
+
+    identity_id, _identity_key = identity
+    columns = _table_columns(conn, "track_identity")
+    fields_to_merge: list[tuple[str, object]] = [
+        ("canonical_title", result.canonical_title or (best.title if best else None)),
+        ("canonical_artist", result.canonical_artist or (best.artist if best else None)),
+        ("canonical_album", result.canonical_album or (best.album if best else None)),
+        ("isrc", result.canonical_isrc or (best.isrc if best else None)),
+        ("canonical_label", result.canonical_label or (best.label if best else None)),
+        ("canonical_catalog_number", result.canonical_catalog_number or (best.catalog_number if best else None)),
+        ("canonical_mix_name", result.canonical_mix_name or (best.mix_name if best else None)),
+        ("canonical_year", result.canonical_year or (best.year if best else None)),
+        ("canonical_release_date", result.canonical_release_date or (best.release_date if best else None)),
+        ("canonical_bpm", result.canonical_bpm or (best.bpm if best else None)),
+        ("canonical_key", result.canonical_key or (best.key if best else None)),
+        ("canonical_genre", result.canonical_genre or (best.genre if best else None)),
+        ("canonical_sub_genre", result.canonical_sub_genre or (best.sub_genre if best else None)),
+        ("beatport_id", _provider_id_for(result, best, "beatport")),
+        ("tidal_id", _provider_id_for(result, best, "tidal")),
+        ("canonical_duration", result.canonical_duration or (best.duration_s if best else None)),
+        ("duration_ref_ms", _duration_ref_ms(result, best)),
+        ("ref_source", (result.enrichment_providers[0] if result.enrichment_providers else (best.service if best else None))),
+    ]
+
+    for column, value in fields_to_merge:
+        if value is None or column not in columns:
+            continue
+        conn.execute(
+            f"""
+            UPDATE track_identity
+            SET {column} = ?
+            WHERE id = ?
+              AND ({column} IS NULL OR TRIM(CAST({column} AS TEXT)) = '')
+            """,
+            (value, identity_id),
+        )
+
+    timestamp_fields: list[str] = []
+    timestamp_values: list[object] = []
+    if "enriched_at" in columns:
+        timestamp_fields.append("enriched_at = ?")
+        timestamp_values.append(datetime.now(timezone.utc).isoformat())
+    if "updated_at" in columns:
+        timestamp_fields.append("updated_at = CURRENT_TIMESTAMP")
+    if timestamp_fields:
+        timestamp_values.append(identity_id)
+        conn.execute(
+            f"UPDATE track_identity SET {', '.join(timestamp_fields)} WHERE id = ?",
+            timestamp_values,
+        )
 
 
 def update_database(  # type: ignore  # TODO: mypy-strict
@@ -438,23 +591,22 @@ def update_database(  # type: ignore  # TODO: mypy-strict
 
         # Derive or reuse a track-hub key and persist the hub/sources.
         library_track_key = _derive_library_track_key(result)
+        best = _best_match(result)
         library_tracks_key_column = _resolve_track_hub_key_column(conn, "library_tracks")
         library_track_sources_key_column = _resolve_track_hub_key_column(conn, "library_track_sources")
+        active_identity = _active_identity_for_path(conn, result.path)
+        source_snapshot_key = library_track_key
+        if library_track_sources_key_column == "identity_key" and active_identity is not None and active_identity[1]:
+            source_snapshot_key = active_identity[1]
 
         # Ensure canonical track hub and provenance snapshots exist.
         # This is safe to call even if mode is "recovery" because it doesn't
         # require DJ metadata; it will only fill what we have.
-        _upsert_library_track(conn, library_tracks_key_column, library_track_key, result)
+        _upsert_library_track(conn, library_tracks_key_column, library_track_key, result, best)
         for match in (result.matches or []):
-            try:
-                _upsert_library_track_source(conn, library_track_sources_key_column, library_track_key, match)
-            except sqlite3.Error as e:
-                logger.debug(
-                    "Failed to upsert source snapshot (service=%s id=%s): %s",
-                    getattr(match, "service", None),
-                    getattr(match, "service_track_id", None),
-                    e,
-                )
+            _upsert_library_track_source(conn, library_track_sources_key_column, source_snapshot_key, match)
+
+        _merge_into_track_identity(conn, result, best)
 
         # Build dynamic UPDATE based on mode
         fields = []
@@ -555,16 +707,16 @@ def update_database(  # type: ignore  # TODO: mypy-strict
 
         query = f"UPDATE files SET {', '.join(fields)} WHERE path = ?"
         cursor.execute(query, values)
-        conn.commit()
         updated = cursor.rowcount > 0
         if updated:
-            try:
-                _try_update_v3_identity_native_fields(conn, result)
-                conn.commit()
-            except sqlite3.Error:
-                pass
+            _try_update_v3_identity_native_fields(conn, result)
+        conn.commit()
         return updated
     except sqlite3.Error as e:
+        try:
+            conn.rollback()
+        except sqlite3.Error:
+            pass
         logger.error("Database update failed: %s", e)
         return False
     finally:

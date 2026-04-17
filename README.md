@@ -15,6 +15,8 @@ It separates physical files from logical track identities, then applies determin
 ## Operational Model
 - Intake and scan update asset-level state.
 - Identity linking and enrichment update identity-level state.
+- Provider enrichment mirrors canonical fields to `files.canonical_*` for compatibility,
+  but the linked `track_identity` row remains the canonical writeback source.
 - Preferred asset computation materializes deterministic playback/promotion choices.
 - Promotion moves files with post-run invariant checks.
 

@@ -1,3 +1,10 @@
+"""Canonical FLAC tag writeback.
+
+Reads linked `track_identity.canonical_*` fields first and falls back to
+`files.canonical_*` mirrors when identity fields are blank. Existing FLAC tags
+are preserved unless `force=True`.
+"""
+
 from __future__ import annotations
 
 import sqlite3
@@ -6,6 +13,8 @@ from pathlib import Path
 from typing import Callable, Iterable, Sequence
 
 from mutagen.flac import FLAC
+
+from tagslut.metadata.genre_normalization import default_genre_normalizer
 
 
 @dataclass(frozen=True)
@@ -40,31 +49,30 @@ def _column_exists(conn: sqlite3.Connection, table_name: str, column_name: str) 
 
 def _canonical_row_for_path(conn: sqlite3.Connection, path: Path) -> sqlite3.Row | None:
     conn.row_factory = sqlite3.Row
-    active_order = "CASE WHEN COALESCE(al.active, 1) = 1 THEN 0 ELSE 1 END, " if _column_exists(
-        conn, "asset_link", "active"
-    ) else ""
+    active_join = "AND al.active = 1" if _column_exists(conn, "asset_link", "active") else ""
+    merged_join = "AND ti.merged_into_id IS NULL" if _column_exists(conn, "track_identity", "merged_into_id") else ""
     return conn.execute(
         f"""
         SELECT
-            ti.canonical_artist,
-            ti.canonical_title,
-            ti.canonical_album,
-            ti.canonical_genre,
-            ti.canonical_sub_genre,
-            ti.canonical_label,
-            ti.canonical_catalog_number,
-            ti.canonical_year,
-            ti.canonical_release_date,
-            ti.canonical_bpm,
-            ti.canonical_key,
-            ti.isrc,
-            ti.beatport_id
-        FROM asset_file af
-        JOIN asset_link al ON al.asset_id = af.id
-        JOIN track_identity ti ON ti.id = al.identity_id
-        WHERE af.path = ?
-          AND ti.merged_into_id IS NULL
-        ORDER BY {active_order} al.id ASC
+            COALESCE(NULLIF(TRIM(CAST(ti.canonical_artist AS TEXT)), ''), NULLIF(TRIM(CAST(f.canonical_artist AS TEXT)), '')) AS canonical_artist,
+            COALESCE(NULLIF(TRIM(CAST(ti.canonical_title AS TEXT)), ''), NULLIF(TRIM(CAST(f.canonical_title AS TEXT)), '')) AS canonical_title,
+            COALESCE(NULLIF(TRIM(CAST(ti.canonical_album AS TEXT)), ''), NULLIF(TRIM(CAST(f.canonical_album AS TEXT)), '')) AS canonical_album,
+            COALESCE(NULLIF(TRIM(CAST(ti.canonical_genre AS TEXT)), ''), NULLIF(TRIM(CAST(f.canonical_genre AS TEXT)), '')) AS canonical_genre,
+            COALESCE(NULLIF(TRIM(CAST(ti.canonical_sub_genre AS TEXT)), ''), NULLIF(TRIM(CAST(f.canonical_sub_genre AS TEXT)), '')) AS canonical_sub_genre,
+            COALESCE(NULLIF(TRIM(CAST(ti.canonical_label AS TEXT)), ''), NULLIF(TRIM(CAST(f.canonical_label AS TEXT)), '')) AS canonical_label,
+            COALESCE(NULLIF(TRIM(CAST(ti.canonical_catalog_number AS TEXT)), ''), NULLIF(TRIM(CAST(f.canonical_catalog_number AS TEXT)), '')) AS canonical_catalog_number,
+            COALESCE(NULLIF(TRIM(CAST(ti.canonical_year AS TEXT)), ''), NULLIF(TRIM(CAST(f.canonical_year AS TEXT)), '')) AS canonical_year,
+            COALESCE(NULLIF(TRIM(CAST(ti.canonical_release_date AS TEXT)), ''), NULLIF(TRIM(CAST(f.canonical_release_date AS TEXT)), '')) AS canonical_release_date,
+            COALESCE(NULLIF(TRIM(CAST(ti.canonical_bpm AS TEXT)), ''), NULLIF(TRIM(CAST(f.canonical_bpm AS TEXT)), '')) AS canonical_bpm,
+            COALESCE(NULLIF(TRIM(CAST(ti.canonical_key AS TEXT)), ''), NULLIF(TRIM(CAST(f.canonical_key AS TEXT)), '')) AS canonical_key,
+            COALESCE(NULLIF(TRIM(CAST(ti.isrc AS TEXT)), ''), NULLIF(TRIM(CAST(f.canonical_isrc AS TEXT)), '')) AS isrc,
+            COALESCE(NULLIF(TRIM(CAST(ti.beatport_id AS TEXT)), ''), NULLIF(TRIM(CAST(f.beatport_id AS TEXT)), '')) AS beatport_id
+        FROM files f
+        LEFT JOIN asset_file af ON af.path = f.path
+        LEFT JOIN asset_link al ON al.asset_id = af.id {active_join}
+        LEFT JOIN track_identity ti ON ti.id = al.identity_id {merged_join}
+        WHERE f.path = ?
+        ORDER BY al.id ASC
         LIMIT 1
         """,
         (str(path),),
@@ -135,13 +143,15 @@ def write_canonical_tags(
         maybe_set("BPM", row["canonical_bpm"])
         maybe_set("INITIALKEY", row["canonical_key"])
 
-        genre = row["canonical_genre"]
-        sub_genre = row["canonical_sub_genre"]
+        genre, sub_genre = default_genre_normalizer().normalize_pair(
+            row["canonical_genre"],
+            row["canonical_sub_genre"],
+        )
         maybe_set("GENRE", genre)
         maybe_set("SUBGENRE", sub_genre)
         if genre and sub_genre:
             maybe_set("GENRE_FULL", f"{genre} | {sub_genre}")
-            maybe_set("GENRE_PREFERRED", genre)
+            maybe_set("GENRE_PREFERRED", sub_genre)
 
         if updates:
             if execute:

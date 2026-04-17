@@ -21,6 +21,10 @@ Versioning: [Semantic Versioning](https://semver.org/)
 - Lexicon metadata import considers trusted/compatibility DJ MP3 roots: `/Volumes/MUSIC/MP3_LIBRARY/`, `/Volumes/MUSIC/DJ_LIBRARY/`, and `/Volumes/MUSIC/DJ_POOL_MANUAL_MP3/`.
 
 ### Fixed
+- Metadata enrichment writeback now merges provider canonical fields into the linked
+  `track_identity` row via `asset_file` → `asset_link`, writes schema-aware
+  `library_track_sources` snapshots for legacy and v3 DBs, and lets FLAC
+  canonical writeback fall back to `files.canonical_*` when identity fields are blank.
 - Lexicon field writes now log as `lexicon_field_import` with old/new values.
 - Missing masters report no longer depends on `track_identity.status` and prefers `v_dj_ready_candidates` when available.
 

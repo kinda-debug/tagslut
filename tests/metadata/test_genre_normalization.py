@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from tagslut.metadata.genre_normalization import GenreNormalizer
+from tagslut.metadata.genre_normalization import DEFAULT_RULES_PATH, GenreNormalizer
 
 
 class _FakeAudio:
@@ -50,6 +50,37 @@ def test_choose_normalized_picks_highest_priority_tag(tmp_path: Path) -> None:
     assert genre == "Drum & Bass"
     assert style == "Neuro"
     assert "GENRE" in dropped
+
+
+def test_default_rules_promote_subgenre_to_beatport_parent() -> None:
+    normalizer = GenreNormalizer(DEFAULT_RULES_PATH)
+
+    genre, style, _ = normalizer.choose_normalized({"GENRE": "Techno", "SUBGENRE": "Peak Time"})
+
+    assert genre == "Techno (Peak Time / Driving)"
+    assert style == "Peak Time"
+
+
+def test_default_rules_keep_primary_beatport_genre_controlled() -> None:
+    normalizer = GenreNormalizer(DEFAULT_RULES_PATH)
+
+    genre, style, _ = normalizer.choose_normalized({
+        "GENRE": "House",
+        "SUBGENRE": "Tech House",
+        "GENRE_PREFERRED": "Tech House",
+    })
+
+    assert genre == "Tech House"
+    assert style is None
+
+
+def test_default_rules_unknown_genre_falls_back_to_other() -> None:
+    normalizer = GenreNormalizer(DEFAULT_RULES_PATH)
+
+    genre, style, _ = normalizer.choose_normalized({"GENRE": "Mystery Warehouse Stuff"})
+
+    assert genre == "Other"
+    assert style is None
 
 
 def test_protected_compound_genre_is_not_split() -> None:

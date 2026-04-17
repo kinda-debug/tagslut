@@ -26,6 +26,7 @@ from tagslut.metadata.models.precedence import (
 )
 from tagslut.metadata.providers.base import classify_match_confidence
 from tagslut.metadata.capabilities import Capability
+from tagslut.metadata.genre_normalization import default_genre_normalizer
 from tagslut.metadata.metadata_router import DEFAULT_ISRC_FALLBACK_POLICY, ISRCResolutionFallbackPolicy
 
 logger = logging.getLogger("tagslut.metadata.enricher")
@@ -381,10 +382,11 @@ def apply_cascade(
             result.canonical_key = key
 
             genre, _ = pick_by_precedence(GENRE_PRECEDENCE, lambda m: m.genre, hoarding_usable)
-            result.canonical_genre = genre
 
             sub_genre, _ = pick_by_precedence(
                 SUB_GENRE_PRECEDENCE, lambda m: m.sub_genre, hoarding_usable)
+            genre, sub_genre = default_genre_normalizer().normalize_pair(genre, sub_genre)
+            result.canonical_genre = genre
             result.canonical_sub_genre = sub_genre
 
             # Release info

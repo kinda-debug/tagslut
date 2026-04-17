@@ -750,7 +750,7 @@ def register_ops_group(cli: click.Group) -> None:
     @click.option("--db", "db_path_arg", type=click.Path(), help="SQLite DB path (or TAGSLUT_DB)")
     @click.option("--path", "path_arg", type=click.Path(), help="Root path or FLAC file to scan")
     @click.option("--m3u", "m3u_arg", type=click.Path(), help="M3U file listing FLAC paths")
-    @click.option("--force", is_flag=True, help="Overwrite existing tags")
+    @click.option("--force", is_flag=True, help="Overwrite existing tags instead of only filling missing values")
     @click.option("--execute", is_flag=True, help="Write tags to files")
     @click.option("--progress-interval", default=100, show_default=True, type=int)
     def writeback_canonical(

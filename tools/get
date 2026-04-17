@@ -554,7 +554,7 @@ print((r.json().get('data') or {}).get('attributes', {}).get('title', ''))
 
 elif [[ "$URL" == *"beatport.com"* ]]; then
     # Beatport download via beatportdl — fallback for tracks only available on Beatport
-    BEATPORTDL_CMD="/Users/georgeskhawam/Projects/beatportdl/beatportdl-darwin-arm64"
+    BEATPORTDL_CMD="${BEATPORTDL_CMD:-}"
     if [[ ! -x "$BEATPORTDL_CMD" ]]; then
         echo "Error: beatportdl not found at $BEATPORTDL_CMD" >&2
         exit 1
@@ -566,7 +566,7 @@ elif [[ "$URL" == *"beatport.com"* ]]; then
     bash "$SCRIPT_DIR/auth" beatport 2>/dev/null
 
     # Run beatportdl with URL as argument (accepts positional args, no interactive prompt needed)
-    cd /Users/georgeskhawam/Projects/beatportdl
+    cd "$(dirname "$BEATPORTDL_CMD")"
     "$BEATPORTDL_CMD" "$URL"
     BEATPORT_EXIT=$?
     cd "$REPO_ROOT"
@@ -577,7 +577,7 @@ elif [[ "$URL" == *"beatport.com"* ]]; then
     fi
 
     # Register downloads and run enrich if requested
-    BEATPORT_ROOT="/Volumes/MUSIC/staging/bpdl"
+    BEATPORT_ROOT="${BEATPORT_ROOT:-${STAGING_ROOT:-/Volumes/MUSIC/staging}/bpdl}"
     if [[ -d "$BEATPORT_ROOT" ]]; then
         poetry run python -m tagslut index register "$BEATPORT_ROOT" --source beatport --execute
     fi
@@ -599,14 +599,14 @@ elif [[ "$URL" == *"beatport.com"* ]]; then
 
 elif [[ "$URL" == *"qobuz.com"* ]]; then
     # Route Qobuz URLs to streamrip
-    STREAMRIP_CMD="${STREAMRIP_CMD:-/Users/georgeskhawam/Projects/streamrip/.venv/bin/rip}"
+    STREAMRIP_CMD="${STREAMRIP_CMD:-}"
     if [[ ! -x "$STREAMRIP_CMD" ]]; then
         echo "Error: streamrip not found at $STREAMRIP_CMD" >&2
         exit 1
     fi
 
-    STREAMRIP_CONFIG="${STREAMRIP_CONFIG:-/Users/georgeskhawam/Projects/streamrip/dev_config.toml}"
-    STREAMRIP_ROOT="${STREAMRIP_ROOT:-/Volumes/MUSIC/staging/StreamripDownloads}"
+    STREAMRIP_CONFIG="${STREAMRIP_CONFIG:-}"
+    STREAMRIP_ROOT="${STREAMRIP_ROOT:-${STAGING_ROOT:-/Volumes/MUSIC/staging}/StreamripDownloads}"
     QOBUZ_BATCH_ROOT="${STREAMRIP_QOBUZ_ROOT:-$STREAMRIP_ROOT/Qobuz}"
 
     PLAYLIST_NAME=""

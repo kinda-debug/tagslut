@@ -41,7 +41,7 @@ class BeatportTrack:
     - key_camelot: Camelot wheel notation (e.g., "8A")
     - subgenre: Beatport subgenre
     - mix_name: e.g., "Original Mix", "Extended Mix"
-    - label_name: record label
+    - _name: record label
     - release_id, release_name: release info
     - sample_url: preview audio URL
     - catalog_number: label catalog number

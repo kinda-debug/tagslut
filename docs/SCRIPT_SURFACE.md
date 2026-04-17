@@ -85,7 +85,7 @@ Role: Internal operator utilities for guarded maintenance workflows.
 - `ops run-move-plan` — execute a move plan with preflight/postflight checks and receipt archival
 - `ops plan-dj-library-normalize` — build DJ library normalization plans
 - `ops relink-dj-pool` — apply DJ pool relink manifests and optional playlist rewrites
-- `ops writeback-canonical` — write canonical tags back to FLAC files from a root or M3U
+- `ops writeback-canonical` — write canonical tags back to FLAC files from a root or M3U; reads linked `track_identity.canonical_*` first and falls back to `files.canonical_*` for blank identity fields
 
 15. `poetry run tagslut provider status`
 Role: Check authentication and availability status for all configured metadata providers.

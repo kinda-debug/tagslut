@@ -2,10 +2,9 @@
 # enrich — Run metadata hoarding enrichment against the active DB.
 #
 # Usage:
-#   tools/enrich              # enrich all unenriched/unmatched tracks
+#   tools/enrich              # enrich all unenriched/unmatched tracks (verbose by default)
 #   tools/enrich --force      # re-enrich everything
 #   tools/enrich --limit N    # cap at N tracks
-#   tools/enrich --verbose    # show per-track debug output
 #
 # Reads TAGSLUT_DB from environment (set by env_exports.sh).
 # Providers: beatport → tidal → qobuz (in priority order).
@@ -41,6 +40,7 @@ CMD=(poetry run python -m tagslut index enrich \
     --db "$TAGSLUT_DB" \
     --hoarding \
     --retry-no-match \
+    --verbose \
     --execute)
 
 if [[ $# -gt 0 ]]; then

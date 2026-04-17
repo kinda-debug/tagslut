@@ -185,7 +185,7 @@ build_intake_cmd() {
 
     local precheck_enabled=1
     local intake_args=()
-    local wrapper_verbose=0
+    local wrapper_verbose=1
     local arg=""
     while [[ $# -gt 0 ]]; do
         arg="$1"
@@ -327,7 +327,7 @@ if [[ -n "$URL" ]]; then
     WANTS_MP3=0
     WANTS_DJ=0
     MP3_ROOT_ARG=""
-    WRAPPER_VERBOSE=0
+    WRAPPER_VERBOSE=1
     INTAKE_URL_FORWARD=()
 
     i=0
@@ -480,7 +480,7 @@ elif [[ "$URL" == *"tidal.com"* ]]; then
     done
     if [[ "$MODE" != "sync" && "$MODE" != "enrich" && "$MODE" != "backfill" ]]; then
         FORCE_NO_SKIP=0
-        WRAPPER_VERBOSE=0
+        WRAPPER_VERBOSE=1
         FORWARD_ARGS=()
         for arg in "$@"; do
             case "$arg" in

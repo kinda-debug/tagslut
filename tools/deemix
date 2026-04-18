@@ -10,20 +10,18 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_wrapper_common.sh"
+ts_wrapper_bootstrap "${BASH_SOURCE[0]}"
 DEEMIX_BIN="${DEEMIX_BIN:-/opt/homebrew/bin/deemix}"
 DEEMIX_PATH="${DEEMIX_PATH:-$HOME/Music/mdl/deezer}"
 AUTO_REGISTER="${DEEMIX_AUTO_REGISTER:-1}"
 DB_PATH="${TAGSLUT_DB:-}"
 
-if [[ ! -x "$DEEMIX_BIN" ]]; then
+if [[ -d "$DEEMIX_BIN" || ! -x "$DEEMIX_BIN" ]]; then
     if command -v deemix >/dev/null 2>&1; then
         DEEMIX_BIN="$(command -v deemix)"
     else
-        echo "Error: deemix binary not found: $DEEMIX_BIN" >&2
-        echo "Set DEEMIX_BIN or install deemix in PATH." >&2
-        exit 1
+        ts_die "deemix binary not found or not executable at: $DEEMIX_BIN"
     fi
 fi
 
@@ -65,15 +63,10 @@ printf '\n'
 "$DEEMIX_BIN" "${ARGS[@]}"
 
 if [[ "$AUTO_REGISTER" == "1" && "$SHOW_ONLY" == "0" ]]; then
-    if command -v poetry >/dev/null 2>&1; then
-        echo "→ Registering downloaded files to DB as source=deezer..."
-        cd "$REPO_ROOT"
-        if [[ -n "$DB_PATH" ]]; then
-            poetry run tagslut index register "$DOWNLOAD_PATH" --source deezer --db "$DB_PATH" --execute || true
-        else
-            poetry run tagslut index register "$DOWNLOAD_PATH" --source deezer --execute || true
-        fi
+    echo "→ Registering downloaded files to DB as source=deezer..."
+    if [[ -n "$DB_PATH" ]]; then
+        "$TAGSLUT_TOOLS_DIR/tagslut" index register "$DOWNLOAD_PATH" --source deezer --db "$DB_PATH" --execute || true
     else
-        echo "Warning: poetry not found; skipping auto-register." >&2
+        "$TAGSLUT_TOOLS_DIR/tagslut" index register "$DOWNLOAD_PATH" --source deezer --execute || true
     fi
 fi

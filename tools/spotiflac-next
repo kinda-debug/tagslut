@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_wrapper_common.sh"
+ts_wrapper_bootstrap "${BASH_SOURCE[0]}"
+
+SPOTIFLAC_NEXT_APP="${SPOTIFLAC_NEXT_APP:-/Applications/SpotiFLAC-Next.app}"
+SPOTIFLAC_NEXT_BIN="${SPOTIFLAC_NEXT_BIN:-}"
+ARTIFACTS_ROOT="${TAGSLUT_ARTIFACTS:-$TAGSLUT_REPO_ROOT/artifacts}"
+SPOTIFLAC_NEXT_LOG_ROOT="${SPOTIFLAC_NEXT_LOG_ROOT:-$ARTIFACTS_ROOT/logs/spotiflacnext}"
+FOREGROUND=0
+
+if [[ "${1:-}" == "--foreground" ]]; then
+  FOREGROUND=1
+  shift
+fi
+
+resolve_spotiflac_next_bin() {
+  local app_path="${1:-}"
+  local bundle_executable=""
+  local candidate=""
+
+  [[ -d "$app_path" ]] || return 1
+
+  bundle_executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app_path/Contents/Info.plist" 2>/dev/null || true)"
+  if [[ -n "$bundle_executable" ]]; then
+    candidate="$app_path/Contents/MacOS/$bundle_executable"
+    if [[ -x "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  fi
+
+  candidate="$(find "$app_path/Contents/MacOS" -maxdepth 1 -type f -perm -111 | sort | head -n 1)"
+  [[ -n "$candidate" ]] || return 1
+  printf '%s\n' "$candidate"
+}
+
+if [[ -z "$SPOTIFLAC_NEXT_BIN" ]]; then
+  SPOTIFLAC_NEXT_BIN="$(resolve_spotiflac_next_bin "$SPOTIFLAC_NEXT_APP" || true)"
+fi
+
+if [[ -d "$SPOTIFLAC_NEXT_BIN" || ! -x "$SPOTIFLAC_NEXT_BIN" ]]; then
+  ts_die "SpotiFLAC-Next binary not found or not executable at: $SPOTIFLAC_NEXT_BIN"
+fi
+
+mkdir -p "$SPOTIFLAC_NEXT_LOG_ROOT"
+timestamp="$(date +%Y%m%d-%H%M%S)"
+log_file="${SPOTIFLAC_NEXT_LOG_ROOT}/spotiflacnext-${timestamp}.log"
+
+if [[ "$FOREGROUND" -eq 1 ]]; then
+  printf '%s\n' "Logging SpotiFLAC-Next to: $log_file" >&2
+  set +e
+  env -C "$(dirname "$SPOTIFLAC_NEXT_BIN")" "$SPOTIFLAC_NEXT_BIN" "$@" 2>&1 | tee "$log_file"
+  status=${PIPESTATUS[0]}
+  set -e
+  exit "$status"
+fi
+
+nohup env -C "$(dirname "$SPOTIFLAC_NEXT_BIN")" "$SPOTIFLAC_NEXT_BIN" "$@" >>"$log_file" 2>&1 < /dev/null &
+pid=$!
+disown "$pid" 2>/dev/null || true
+printf '%s\n' "Started SpotiFLAC-Next (pid $pid). Log: $log_file"

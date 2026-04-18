@@ -22,7 +22,7 @@ ts-auth
 
 If Qobuz session is expired (ts-auth will tell you):
 ```bash
-poetry run python -m tagslut auth login qobuz --email YOUR_EMAIL --force
+poetry run tagslut auth login qobuz --email YOUR_EMAIL --force
 ```
 
 If Beatport token is expired, launch beatportdl once to refresh:
@@ -40,8 +40,24 @@ ts-get <url> --dj      # download + add to DJ pool M3U
 ```
 
 Provider-specific prerequisites for `ts-get`:
-- Beatport: `BEATPORTDL_CMD` must point to the local `beatportdl` binary.
-- Qobuz: `STREAMRIP_CMD` and `STREAMRIP_CONFIG` must point to the local `streamrip` install and config.
+- Beatport: no manual path is required in the default repo layout; override with
+  `BEATPORTDL_CMD` or `BEATPORTDL_BIN` only when using a different binary.
+- Qobuz: `STREAMRIP_CONFIG` must point to the active Streamrip config; `STREAMRIP_CMD`
+  is optional and only needed to override the repo-local wrapper.
+
+## SpotiFLAC-Next
+
+```bash
+tools/spotiflac-next
+```
+
+This launches the macOS app detached and writes logs under:
+
+```text
+artifacts/logs/spotiflacnext/
+```
+
+Use `tools/spotiflac-next --foreground` only when you want terminal log streaming.
 
 ## Enrich metadata
 

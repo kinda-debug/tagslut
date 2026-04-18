@@ -3,8 +3,9 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-GET_INTAKE="$SCRIPT_DIR/get-intake"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_wrapper_common.sh"
+ts_wrapper_bootstrap "${BASH_SOURCE[0]}"
+GET_INTAKE="$TAGSLUT_TOOLS_DIR/get-intake"
 
 usage() {
   echo "Usage: tools/get-report <beatport-url> [extra get-intake args...]"

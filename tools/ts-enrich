@@ -2,5 +2,6 @@
 set -euo pipefail
 
 # Repo-local enrich wrapper. Available on PATH after `source START_HERE.sh`.
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-exec poetry -C "$REPO_ROOT" run python -m tagslut enrich "$@"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_wrapper_common.sh"
+ts_wrapper_bootstrap "${BASH_SOURCE[0]}"
+exec "$TAGSLUT_TOOLS_DIR/tagslut" enrich "$@"

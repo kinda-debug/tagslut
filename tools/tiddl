@@ -14,15 +14,13 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-ENV_LOADER="$SCRIPT_DIR/_load_env.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_wrapper_common.sh"
+ts_wrapper_bootstrap "${BASH_SOURCE[0]}"
+TIDDL_WRAPPER="${TAGSLUT_TOOLS_DIR}/tiddl"
 TIDDL_BIN="${TIDDL_BIN:-/opt/homebrew/bin/tiddl}"
 
-if [[ -f "$ENV_LOADER" ]]; then
-    # shellcheck disable=SC1090
-    source "$ENV_LOADER"
-    load_workspace_env "$REPO_ROOT"
+if [[ "$TIDDL_BIN" == "$TIDDL_WRAPPER" ]]; then
+    TIDDL_BIN="/opt/homebrew/bin/tiddl"
 fi
 
 default_download_root() {
@@ -79,13 +77,11 @@ config_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
 PY
 }
 
-if [[ ! -x "$TIDDL_BIN" ]]; then
+if [[ -d "$TIDDL_BIN" || ! -x "$TIDDL_BIN" ]]; then
     if command -v tiddl >/dev/null 2>&1; then
         TIDDL_BIN="$(command -v tiddl)"
     else
-        echo "Error: tiddl binary not found or not executable at: $TIDDL_BIN" >&2
-        echo "Set TIDDL_BIN or install tiddl in PATH." >&2
-        exit 1
+        ts_die "tiddl binary not found or not executable at: $TIDDL_BIN"
     fi
 fi
 

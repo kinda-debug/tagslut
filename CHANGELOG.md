@@ -13,10 +13,13 @@ Versioning: [Semantic Versioning](https://semver.org/)
 ### Added
 - Repo-local operator wrappers: `tools/ts-get`, `tools/ts-enrich`, and `tools/ts-auth`.
 - `env_exports.sh.template` for machine-local downloader configuration (`BEATPORTDL_CMD`, `STREAMRIP_CMD`, `STREAMRIP_CONFIG`) with optional staging-root overrides.
+- Shared shell-wrapper bootstrap via `tools/_wrapper_common.sh`, internal Beatport launcher boundary via `tools/_beatportdl.sh`, and repo-local wrappers for `tools/streamrip` and `tools/spotiflac-next`.
 - Regression coverage for Qobuz/ReccoBeats provider-state handling and ReccoBeats router access.
 
 ### Changed
-- `tools/get` now relies on environment-configured downloader paths instead of machine-specific absolute paths, derives Beatport/Qobuz staging roots from `STAGING_ROOT`, and uses a stable manifest lookup when returning promoted playlists.
+- `tools/get` now relies on wrapper-backed downloader resolution instead of machine-specific absolute paths, derives Beatport/Qobuz staging roots from `STAGING_ROOT`, and uses a stable manifest lookup when returning promoted playlists.
+- Active wrapper scripts now share a common path/env bootstrap and call the repo-local Python/runtime surface consistently.
+- SpotiFLAC-Next now launches through `tools/spotiflac-next`, resolves the current app-bundle executable automatically, detaches by default, and writes logs to `artifacts/logs/spotiflacnext/`.
 - Provider status reporting now reflects real credential presence for Qobuz (`app_id`, `app_secret`, `user_auth_token`) and ReccoBeats (`api_key`) instead of reporting both as always authenticated.
 - ReccoBeats remains routable for public ISRC / track-id metadata lookups even when status reports `enabled_unconfigured`.
 

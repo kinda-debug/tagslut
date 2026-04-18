@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BASE="$SCRIPT_DIR/metadata_scripts"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_wrapper_common.sh"
+ts_wrapper_bootstrap "${BASH_SOURCE[0]}"
+PYTHON_BIN="$(ts_repo_python)"
+BASE="$TAGSLUT_TOOLS_DIR/metadata_scripts"
 PY="$BASE/onetagger_workflow.py"
 AUDIT="$BASE/metadata_audit.py"
 NORM="$BASE/normalize_genres.py"
@@ -13,46 +15,52 @@ SYNC="$BASE/sync_tags_from_files.py"
 
 cmd="${1:-}"
 if [[ -z "$cmd" ]]; then
-  echo "Usage: tools/metadata <full|tag|audiofeatures|audit|metadata|normalize-genres|tag-genres|audit-tags|export-lexicon|compare-lexicon> [args...]"
+  echo "Usage: tools/metadata <full|build|run|tag|audiofeatures|audit|metadata|normalize-genres|tag-genres|audit-tags|export-lexicon|compare-lexicon|sync-tags> [args...]"
   exit 1
 fi
 shift
 
 case "$cmd" in
   full)
-    python "$PY" sync --metadata-after-isrc "$@"
+    "$PYTHON_BIN" "$PY" sync --metadata-after-isrc "$@"
     LIB_ROOT="${LIBRARY_ROOT:-/Volumes/MUSIC/LIBRARY}"
-    python "$PY" audiofeatures --path "$LIB_ROOT"
+    "$PYTHON_BIN" "$PY" audiofeatures --path "$LIB_ROOT"
+    ;;
+  build)
+    exec "$PYTHON_BIN" "$PY" build "$@"
+    ;;
+  run)
+    exec "$PYTHON_BIN" "$PY" run "$@"
     ;;
   tag)
-    exec python "$PY" sync --metadata-after-isrc "$@"
+    exec "$PYTHON_BIN" "$PY" sync --metadata-after-isrc "$@"
     ;;
   audiofeatures)
-    exec python "$PY" audiofeatures "$@"
+    exec "$PYTHON_BIN" "$PY" audiofeatures "$@"
     ;;
   metadata)
-    exec python "$PY" metadata "$@"
+    exec "$PYTHON_BIN" "$PY" metadata "$@"
     ;;
   audit)
-    exec python "$AUDIT" "$@"
+    exec "$PYTHON_BIN" "$AUDIT" "$@"
     ;;
   normalize-genres)
-    exec python "$NORM" "$@"
+    exec "$PYTHON_BIN" "$NORM" "$@"
     ;;
   tag-genres)
-    exec python "$TAGNORM" "$@"
+    exec "$PYTHON_BIN" "$TAGNORM" "$@"
     ;;
   audit-tags)
-    exec python "$TAGVALS" "$@"
+    exec "$PYTHON_BIN" "$TAGVALS" "$@"
     ;;
   export-lexicon)
-    exec python "$LEX" "$@"
+    exec "$PYTHON_BIN" "$LEX" "$@"
     ;;
   compare-lexicon)
-    exec python "$LEXCMP" "$@"
+    exec "$PYTHON_BIN" "$LEXCMP" "$@"
     ;;
   sync-tags)
-    exec python "$SYNC" "$@"
+    exec "$PYTHON_BIN" "$SYNC" "$@"
     ;;
   *)
     echo "Unknown command: $cmd"

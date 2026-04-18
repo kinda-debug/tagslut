@@ -2,10 +2,16 @@
 # Copy to env_exports.sh and fill machine-local downloader paths.
 # START_HERE.sh sources this file automatically when present.
 
-export BEATPORTDL_CMD=/path/to/beatportdl-binary
-export STREAMRIP_CMD=/path/to/streamrip/.venv/bin/rip
 export STREAMRIP_CONFIG=/path/to/streamrip/config.toml
-# Optional:
+# Optional downloader overrides:
+# export BEATPORTDL_CMD="$TAGSLUT_ROOT/tools/_beatportdl.sh"
+# export BEATPORTDL_BIN=/path/to/beatportdl-binary
+# export STREAMRIP_CMD="$TAGSLUT_ROOT/tools/streamrip"
+# export SPOTIFLAC_NEXT_APP=/Applications/SpotiFLAC-Next.app
+# export SPOTIFLAC_NEXT_BIN=/custom/path/to/SpotiFLAC-Next-binary
+# export SPOTIFLAC_NEXT_LOG_ROOT="$TAGSLUT_ROOT/artifacts/logs/spotiflacnext"
+# export TIDDL_BIN=/path/to/tiddl
+# Optional roots:
 # export STAGING_ROOT=/Volumes/MUSIC/staging
 # export BEATPORT_ROOT="$STAGING_ROOT/bpdl"
 # export STREAMRIP_ROOT="$STAGING_ROOT/StreamripDownloads"

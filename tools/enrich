@@ -12,14 +12,8 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-ENV_LOADER="$SCRIPT_DIR/_load_env.sh"
-
-if [[ -f "$ENV_LOADER" ]]; then
-    source "$ENV_LOADER" 2>/dev/null
-    load_workspace_env "$REPO_ROOT" 2>/dev/null
-fi
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_wrapper_common.sh"
+ts_wrapper_bootstrap "${BASH_SOURCE[0]}"
 
 if [[ -z "${TAGSLUT_DB:-}" ]]; then
     echo "Error: TAGSLUT_DB is not set. Run: source env_exports.sh" >&2
@@ -31,12 +25,10 @@ if [[ ! -f "$TAGSLUT_DB" ]]; then
     exit 1
 fi
 
-cd "$REPO_ROOT"
-
 # Auto-refresh all provider tokens before running
-"$SCRIPT_DIR/auth" all 2>/dev/null || true
+"$TAGSLUT_TOOLS_DIR/auth" all 2>/dev/null || true
 
-CMD=(poetry run python -m tagslut index enrich \
+CMD=("$TAGSLUT_TOOLS_DIR/tagslut" index enrich \
     --db "$TAGSLUT_DB" \
     --hoarding \
     --retry-no-match \

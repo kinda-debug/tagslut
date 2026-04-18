@@ -343,15 +343,21 @@ run_tiddl_download() {
   fi
 
   echo "WARNING: tiddl download failed (${reason:-unknown}), attempting SpotiFLAC fallback" >&2
+  local spotiflac_module_root="${SPOTIFLAC_MODULE_ROOT:-$REPO_ROOT/SpotiFLAC-Module-Version}"
   local spotiflac_rc=0
   set +e
-  python3 - "$spotify_url" "$BATCH_ROOT" <<'PY'
+  python3 - "$spotify_url" "$BATCH_ROOT" "$spotiflac_module_root" <<'PY'
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
 spotify_url = sys.argv[1]
 output_dir = sys.argv[2]
+module_root = Path(sys.argv[3]).expanduser()
+
+if module_root.is_dir():
+    sys.path.insert(0, str(module_root))
 
 try:
     from SpotiFLAC import SpotiFLAC  # type: ignore[import-not-found]

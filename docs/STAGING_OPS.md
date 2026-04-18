@@ -11,10 +11,22 @@ source START_HERE.sh
 ```
 
 If Beatport or Qobuz downloads are part of the session, `env_exports.sh` must
-define the local downloader paths used by `tools/get`:
-- `BEATPORTDL_CMD`
-- `STREAMRIP_CMD`
-- `STREAMRIP_CONFIG`
+provide the active downloader configuration used by `tools/get`:
+- Beatport: default repo helper works as-is; override only with
+  `BEATPORTDL_CMD` or `BEATPORTDL_BIN` when needed
+- Qobuz: `STREAMRIP_CONFIG` is required; `STREAMRIP_CMD` is optional
+
+If SpotiFLAC-Next is part of the session, launch it through the repo wrapper so
+logs stay under `artifacts/` instead of the home directory:
+
+```bash
+tools/spotiflac-next
+```
+
+Optional overrides:
+- `SPOTIFLAC_NEXT_APP`
+- `SPOTIFLAC_NEXT_BIN`
+- `SPOTIFLAC_NEXT_LOG_ROOT`
 
 ## Safety / scope
 

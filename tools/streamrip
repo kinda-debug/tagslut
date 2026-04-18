@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_wrapper_common.sh"
+ts_wrapper_bootstrap "${BASH_SOURCE[0]}"
+STREAMRIP_WRAPPER="${TAGSLUT_TOOLS_DIR}/streamrip"
+STREAMRIP_BIN="${STREAMRIP_BIN:-$HOME/Projects/streamrip/.venv/bin/rip}"
+
+if [[ -n "${STREAMRIP_CMD:-}" && "${STREAMRIP_CMD}" != "$STREAMRIP_WRAPPER" ]]; then
+    STREAMRIP_BIN="${STREAMRIP_CMD}"
+fi
+
+if [[ -d "$STREAMRIP_BIN" || ! -x "$STREAMRIP_BIN" ]]; then
+    if command -v rip >/dev/null 2>&1; then
+        STREAMRIP_BIN="$(command -v rip)"
+    else
+        ts_die "streamrip binary not found or not executable at: $STREAMRIP_BIN"
+    fi
+fi
+
+exec "$STREAMRIP_BIN" "$@"

@@ -133,10 +133,11 @@ use providers.toml.
 
 beatportdl is the download tool for Beatport-only tracks. It is not retired.
 Use `ts-get <beatport_url>` to route Beatport URLs through beatportdl automatically.
-Set `BEATPORTDL_CMD` in `env_exports.sh` so `tools/get` can find the local
-binary. beatportdl's credentials file is at
-`~/Projects/beatportdl/beatportdl-credentials.json` and is synced into
-tagslut's `tokens.json` by `ts-auth beatport`.
+In the default repo layout, `tools/get` resolves Beatport through the internal
+helper `tools/_beatportdl.sh`, which prefers the embedded payload under
+`tools/beatportdl/bpdl/beatportdl`. Override only when needed with
+`BEATPORTDL_CMD` or `BEATPORTDL_BIN`. beatportdl's credentials file is synced
+into tagslut's `tokens.json` by `ts-auth beatport`.
 
 The prior note about beatportdl being "permanently retired" applied only to the
 automatic TIDAL→Beatport fallback within tools/get-intake. beatportdl as an explicit
@@ -161,6 +162,17 @@ Active enrichment order is Beatport → TIDAL → Qobuz → ReccoBeats.
   `app_id`, `app_secret`, and `user_auth_token` are present.
 - ReccoBeats remains callable for public ISRC/id lookups and fills audio-feature
   fields such as energy, danceability, valence, and fallback BPM.
+
+## SpotiFLAC-Next launcher
+
+For manual SpotiFLAC-Next sessions, use:
+
+```bash
+tools/spotiflac-next
+```
+
+That wrapper launches the app detached, resolves the current app-bundle
+executable automatically, and writes logs to `artifacts/logs/spotiflacnext/`.
 
 Fields missing after both providers: flag in enrichment summary, do not block intake.
 

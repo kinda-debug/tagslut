@@ -2,9 +2,10 @@
 set -euo pipefail
 
 # Repo-local auth wrapper. Available on PATH after `source START_HERE.sh`.
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_wrapper_common.sh"
+ts_wrapper_bootstrap "${BASH_SOURCE[0]}"
 PROVIDER="${1:-all}"
 if [ "$#" -gt 0 ]; then
     shift
 fi
-exec poetry -C "$REPO_ROOT" run python -m tagslut auth login "$PROVIDER" "$@"
+exec "$TAGSLUT_TOOLS_DIR/tagslut" auth login "$PROVIDER" "$@"

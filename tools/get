@@ -48,6 +48,7 @@ if [[ -f "$ENV_LOADER" ]]; then
 fi
 
 usage() {
+    local exit_code="${1:-1}"
     echo "Unified download wrapper for provider URLs."
     echo "Supports Spotify, TIDAL, Beatport, Qobuz, and Deezer."
     echo "Operator note: \`ts-get\` may exist as a local shell wrapper for \`tools/get\`."
@@ -70,8 +71,8 @@ usage() {
     echo "  --verbose            show detailed stage output and internal paths"
     echo ""
     echo "Environment prerequisites:"
-    echo "  Beatport -> BEATPORTDL_CMD"
-    echo "  Qobuz    -> STREAMRIP_CMD and STREAMRIP_CONFIG"
+    echo "  Beatport -> repo-local helper by default; override with BEATPORTDL_CMD or BEATPORTDL_BIN"
+    echo "  Qobuz    -> STREAMRIP_CONFIG is required; STREAMRIP_CMD is an optional override"
     echo "  Roots    -> STAGING_ROOT (optional override for batch roots)"
     echo ""
     echo "Compatibility / advanced:"
@@ -81,7 +82,7 @@ usage() {
     echo "    TIDAL and Beatport use intake by default; --simple uses provider-native download."
     echo "    Qobuz uses streamrip + auto-register. Deezer uses deemix + auto-register."
     echo "  Use tools/get-help for the compact version of this help."
-    exit 1
+    exit "$exit_code"
 }
 
 if [[ $# -lt 1 ]]; then
@@ -91,7 +92,7 @@ fi
 MODE="auto"
 RETURN_PLAYLIST=0
 if [[ "$1" == "-h" || "$1" == "--help" ]]; then
-    usage
+    usage 0
 elif [[ "$1" == "--sync" || "$1" == "--synch" ]]; then
     MODE="sync"
     shift
@@ -119,7 +120,7 @@ if [[ $# -lt 1 ]]; then
 fi
 
 if [[ "$1" == "-h" || "$1" == "--help" ]]; then
-    usage
+    usage 0
 fi
 
 URL=""
@@ -559,12 +560,12 @@ print((r.json().get('data') or {}).get('attributes', {}).get('title', ''))
 
 elif [[ "$URL" == *"beatport.com"* ]]; then
     # Beatport download via beatportdl — fallback for tracks only available on Beatport
-    BEATPORTDL_CMD="${BEATPORTDL_CMD:-}"
+    BEATPORTDL_CMD="${BEATPORTDL_CMD:-$SCRIPT_DIR/_beatportdl.sh}"
     if [[ -z "$BEATPORTDL_CMD" ]]; then
         echo "Error: BEATPORTDL_CMD is not set" >&2
         exit 1
     fi
-    if [[ ! -x "$BEATPORTDL_CMD" ]]; then
+    if [[ -d "$BEATPORTDL_CMD" || ! -x "$BEATPORTDL_CMD" ]]; then
         echo "Error: beatportdl not found at $BEATPORTDL_CMD" >&2
         exit 1
     fi
@@ -575,7 +576,6 @@ elif [[ "$URL" == *"beatport.com"* ]]; then
     bash "$SCRIPT_DIR/auth" beatport 2>/dev/null
 
     # Run beatportdl with URL as argument (accepts positional args, no interactive prompt needed)
-    cd "$(dirname "$BEATPORTDL_CMD")"
     "$BEATPORTDL_CMD" "$URL"
     BEATPORT_EXIT=$?
     cd "$REPO_ROOT"
@@ -608,12 +608,12 @@ elif [[ "$URL" == *"beatport.com"* ]]; then
 
 elif [[ "$URL" == *"qobuz.com"* ]]; then
     # Route Qobuz URLs to streamrip
-    STREAMRIP_CMD="${STREAMRIP_CMD:-}"
+    STREAMRIP_CMD="${STREAMRIP_CMD:-$SCRIPT_DIR/streamrip}"
     if [[ -z "$STREAMRIP_CMD" ]]; then
         echo "Error: STREAMRIP_CMD is not set" >&2
         exit 1
     fi
-    if [[ ! -x "$STREAMRIP_CMD" ]]; then
+    if [[ -d "$STREAMRIP_CMD" || ! -x "$STREAMRIP_CMD" ]]; then
         echo "Error: streamrip not found at $STREAMRIP_CMD" >&2
         exit 1
     fi

@@ -2,4 +2,6 @@
 set -euo pipefail
 
 # Repo-local get wrapper. Available on PATH after `source START_HERE.sh`.
-exec "$(dirname "${BASH_SOURCE[0]}")/get" "$@"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_wrapper_common.sh"
+ts_wrapper_bootstrap "${BASH_SOURCE[0]}"
+exec "$TAGSLUT_TOOLS_DIR/get" "$@"

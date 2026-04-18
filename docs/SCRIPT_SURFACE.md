@@ -1,4 +1,4 @@
-<!-- Status: Active document. Synced 2026-04-15 after recent code/doc review. Historical or superseded material belongs in docs/archive/. -->
+<!-- Status: Active document. Synced 2026-04-18 after command-surface cleanup. Historical or superseded material belongs in docs/archive/. -->
 
 # Script Surface (Canonical vs Legacy)
 
@@ -118,15 +118,125 @@ Retired alias:
 - `dedupe` has been removed as a console entry point.
 - Migration: replace any remaining `dedupe [args]` usage with `tagslut [args]`.
 
-## Operational Wrappers (Active)
+## Repo-Local Tool Surface Standard
 
-These wrappers are active convenience entrypoints around canonical intake/report flows:
+`tools/<name>` now means one of two things only:
+
+1. A stable user-facing wrapper.
+2. An internal helper prefixed with `_`.
+
+Anything else under `tools/` is implementation code, payload data, or archive
+material and is not part of the operator-facing command surface.
+
+Wrapper contract for active shell entrypoints:
+
+- shebang: `#!/usr/bin/env bash`
+- strict mode: `set -euo pipefail`
+- path bootstrap: resolve the wrapper directory from `BASH_SOURCE[0]`
+- env bootstrap: source `tools/_load_env.sh` directly or via `tools/_wrapper_common.sh`
+- repo Python: prefer `tools/tagslut` or repo-local `.venv/bin/python`
+- failure style: exit immediately with a direct stderr error when a required
+  downstream executable or config path is missing
+
+## Repo-Local Tool Classification
+
+Stable user-facing wrappers:
+
+- `tools/auth`
+  Role: zero-config token refresh/sync wrapper for active providers.
+- `tools/deemix`
+  Role: Deezer download wrapper plus optional auto-register.
+- `tools/enrich`
+  Role: zero-config enrichment wrapper using `$TAGSLUT_DB`.
+- `tools/get`
+  Role: stable intake/download wrapper around the active intake pipeline.
+- `tools/get-intake`
+  Role: advanced/backend intake wrapper for existing batch roots and direct
+  pipeline control.
+- `tools/get-report`
+  Role: Beatport report-only wrapper around `tools/get-intake`.
+- `tools/metadata`
+  Role: stable metadata workflow wrapper for OneTagger-related operations.
+- `tools/spotiflac-next`
+  Role: stable repo-local wrapper around the macOS SpotiFLAC-Next app binary,
+  with runtime logs written under `artifacts/logs/spotiflacnext/` by default.
+- `tools/streamrip`
+  Role: stable repo-local wrapper around the active Streamrip CLI.
+- `tools/tagslut`
+  Role: repo-local wrapper for `python -m tagslut`.
+- `tools/tiddl`
+  Role: stable repo-local wrapper around the active TIDDL CLI.
+
+Compatibility aliases kept intentionally:
+
+- `tools/beatport`
+  Role: shell-history alias to `tools/get`.
+- `tools/get-help`
+  Role: shell-history alias to `tools/get --help`.
+- `tools/metadata-audit`
+  Role: alias to `tools/metadata audit`.
+- `tools/tag`
+  Role: alias to `tools/metadata tag`.
+- `tools/tag-audiofeatures`
+  Role: alias to `tools/metadata audiofeatures`.
+- `tools/tag-build`
+  Role: alias to `tools/metadata build`.
+- `tools/tag-metadata`
+  Role: alias to `tools/metadata metadata`.
+- `tools/tag-run`
+  Role: alias to `tools/metadata run`.
+- `tools/tidal`
+  Role: shell-history alias to `tools/get`.
+- `tools/ts-auth`
+  Role: PATH alias to `tools/tagslut auth login`.
+- `tools/ts-enrich`
+  Role: PATH alias to `tools/tagslut enrich`.
+- `tools/ts-get`
+  Role: PATH alias to `tools/get`.
+
+Internal helpers:
+
+- `tools/_beatportdl.sh`
+  Role: internal resolver/launcher for BeatportDL. Hidden behind `tools/get`
+  and `BEATPORTDL_CMD`.
+- `tools/_console_ui.sh`
+  Role: internal Rich/console formatting helper.
+- `tools/_load_env.sh`
+  Role: internal `.env` loader.
+- `tools/_wrapper_common.sh`
+  Role: shared shell-wrapper bootstrap for path/env/python resolution.
+
+Implementation scripts and directories, not first-class wrappers:
+
+- top-level `tools/*.py`
+- `tools/dj/`
+- `tools/metadata_scripts/`
+- `tools/review/`
+- `tools/launch_group.sh`
+- `tools/rules/`
+- `tools/baselines/`
+
+Embedded payloads, not commands:
+
+- `tools/beatportdl/`
+  Role: embedded BeatportDL payload directory. The active executable is
+  `tools/beatportdl/bpdl/beatportdl`, but operators should go through
+  `tools/get` or `BEATPORTDL_CMD`.
+- `tools/onetagger/`
+  Role: embedded OneTagger payload directory. Operators should go through
+  `tools/metadata` or the `tools/tag*` aliases.
+
+Archive / non-surface:
+
+- `tools/archive/`
+- generated caches such as `tools/__pycache__/`
+
+## Active Wrapper Notes
 
 1. `tools/get <url>`
-Role: Legacy-compatible download wrapper around the canonical intake
+Role: legacy-compatible download wrapper around the canonical intake
 pipeline. For new work, prefer `poetry run tagslut intake <url>`
-so you get structured artifacts and explicit precheck/download/MP3
-stages.
+when you want the product CLI directly.
 - default behavior: precheck + download + tagging/enrich/art + promote + merged M3U
 - Beatport URLs may download from TIDAL when a strict verified cross-match exists and TIDAL ranks higher by quality; Beatport remains the metadata origin for that URL.
 - default output is concise; `--verbose` enables internal paths, artifact files, and batch snapshots
@@ -134,9 +244,13 @@ stages.
 - `--dj` writes DJ pool M3U files (per-batch and global dj_pool.m3u at MP3_LIBRARY root).
 - work roots are split by intent: `FIX_ROOT`, `QUARANTINE_ROOT`, `DISCARD_ROOT`
 - `--simple` keeps downloader-only behavior
+- downloader boundaries:
+  - TIDAL goes through `tools/tiddl`
+  - Qobuz goes through `tools/streamrip` unless `STREAMRIP_CMD` overrides it
+  - Beatport goes through `tools/_beatportdl.sh` unless `BEATPORTDL_CMD` overrides it
 
 2. `tools/get-intake ...`
-Role: Advanced/backend intake engine.
+Role: advanced/backend intake engine.
 - use for existing batch roots (`--no-download --batch-root ...`)
 - use for `--m3u-only` or direct pipeline control
 - default output is concise; use `--verbose` for wrapper/debug details
@@ -146,38 +260,57 @@ Role: Advanced/backend intake engine.
 Role: Beatport report-only mode (no download).
 
 4. `tools/tagslut [args...]`
-Role: Local wrapper for `python -m tagslut`.
+Role: repo-local wrapper for the canonical `tagslut` product CLI.
 
-5. `tools/ts-get <url> [--dj]`
-Role: Repo-local wrapper for `tools/get`; intended to be on `PATH` after
-`source START_HERE.sh`.
+5. `tools/auth [tidal|beatport|qobuz|all]`
+Role: token refresh/sync wrapper.
+- TIDAL: delegates to `tools/tiddl auth refresh`
+- Beatport: syncs from BeatportDL credentials, preferring the embedded payload
+  under `tools/beatportdl/` unless overridden
+- Qobuz: refreshes app credentials and syncs them to the active Streamrip config
 
-6. `tools/ts-enrich [args...]`
-Role: Repo-local wrapper for `python -m tagslut enrich`.
+6. `tools/enrich`
+Role: zero-config enrichment wrapper. Reads `$TAGSLUT_DB` from environment.
 
-7. `tools/ts-auth [tidal|beatport|qobuz|all]`
-Role: Repo-local wrapper for `python -m tagslut auth login`.
+7. `tools/metadata <subcommand>`
+Role: stable repo-local metadata wrapper.
+- `build` / `run`: direct OneTagger workflow phases
+- `tag`: combined build + run workflow
+- `metadata`, `audiofeatures`, `audit`, `normalize-genres`, `tag-genres`,
+  `audit-tags`, `export-lexicon`, `compare-lexicon`, `sync-tags`: direct
+  pass-through subcommands to implementation scripts
 
-8. `tools/auth [tidal|beatport|qobuz|all]`
-Role: Token refresh implementation. Called by ts-auth. Handles:
-- TIDAL: delegates to `tiddl auth refresh`
-- Beatport: attempts API refresh of stored token; syncs from beatportdl credentials
-- Qobuz: refreshes app credentials from bundle.js; validates session; pushes to streamrip dev_config.toml
+8. `tools/spotiflac-next [args...]`
+Role: stable repo-local launcher for the macOS SpotiFLAC-Next app binary.
+- default app bundle: `/Applications/SpotiFLAC-Next.app`
+- resolves the executable from the app bundle `Info.plist`
+- override app bundle with `SPOTIFLAC_NEXT_APP`
+- override executable directly with `SPOTIFLAC_NEXT_BIN`
+- runtime logs go to `artifacts/logs/spotiflacnext/` by default
+- override log root with `SPOTIFLAC_NEXT_LOG_ROOT`
+- default mode detaches immediately; use `--foreground` to stream logs in the terminal
 
-9. `tools/enrich`
-Role: Zero-config enrichment wrapper. Reads $TAGSLUT_DB from environment. Called by ts-enrich.
+9. `tools/review/sync_phase1_prs.sh`
+Role: maintainer-only helper for pushing the active Phase 1 branch stack with preserved PR scope boundaries.
 
-10. `tools/tag-build [options]`
-Role: Build M3U from DB for library FLAC files missing ISRC.
+## Embedded Source-Tree Integrations
 
-11. `tools/tag-run --m3u <path> [options]`
-Role: Run `onetagger-cli` on a symlink batch from M3U and emit summary artifacts.
+- `SpotiFLAC-Module-Version/`
+  Role: embedded source-tree integration on the active TIDAL fallback path in
+  `tools/get-intake`.
+  Policy: not a user-facing command surface. `tools/get-intake` may import it
+  by prepending `SPOTIFLAC_MODULE_ROOT` (default:
+  `$TAGSLUT_ROOT/SpotiFLAC-Module-Version`) to `sys.path` when the fallback is
+  needed.
 
-12. `tools/tag [options]`
-Role: Combined build + run OneTagger workflow with defaults.
+## Beets Status
 
-13. `tools/review/sync_phase1_prs.sh`
-Role: Maintainer-only helper for pushing the active Phase 1 branch stack with preserved PR scope boundaries.
+Beets is configured as a sidecar via `config/beets/beets/config.yaml`, not as a
+repo-local operator wrapper surface.
+
+- `.venv/bin/beet` remains the raw venv entrypoint for manual sidecar use.
+- No `tools/beet` wrapper is provided.
+- That is intentional unless Beets becomes part of the active operator workflow.
 
 ## Transcode Helpers (Scripts)
 

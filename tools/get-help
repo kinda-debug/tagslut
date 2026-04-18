@@ -1,25 +1,7 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
-echo "tools/get quick help"
-echo "Supports Spotify, TIDAL, Beatport, Qobuz, and Deezer."
-echo "Note: \`ts-get\` may exist as a local shell wrapper for \`tools/get\`."
-echo ""
-echo "Common usage:"
-echo "  tools/get <url>"
-echo "  tools/get <url> --tag"
-echo "  tools/get <url> --dj"
-echo "  tools/get --enrich <url>"
-echo "  tools/get --backfill <url>"
-echo ""
-echo "Common flags:"
-echo "  --tag                fully enrich promoted FLACs in MASTER_LIBRARY"
-echo "  --dj                 build MP3_LIBRARY copies and DJ pool playlists"
-echo "  --mp3                build MP3_LIBRARY copies"
-echo "  --no-precheck        skip duplicate-quality precheck"
-echo "  --force-download     keep matched tracks anyway during precheck"
-echo "  --resume             reuse staged downloads when supported"
-echo "  --verbose            show detailed stage output and internal paths"
-echo ""
-echo "Compatibility / advanced:"
-echo "  --simple             downloader-only behavior"
-echo "  --re                 return playlist path from the intake flow"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_wrapper_common.sh"
+ts_wrapper_bootstrap "${BASH_SOURCE[0]}"
+
+exec "$TAGSLUT_TOOLS_DIR/get" --help

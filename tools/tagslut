@@ -2,8 +2,9 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_wrapper_common.sh"
+ts_wrapper_bootstrap "${BASH_SOURCE[0]}"
+PYTHON_BIN="$(ts_repo_python)"
 
-cd "$REPO_ROOT"
-exec python -m tagslut "$@"
+cd "$TAGSLUT_REPO_ROOT"
+exec "$PYTHON_BIN" -m tagslut "$@"

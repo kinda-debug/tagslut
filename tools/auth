@@ -9,29 +9,54 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-ENV_LOADER="$SCRIPT_DIR/_load_env.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_wrapper_common.sh"
+ts_wrapper_bootstrap "${BASH_SOURCE[0]}"
+PYTHON_BIN="$(ts_repo_python)"
 export PATH="$HOME/.local/bin:$PATH"
 
-if [[ -f "$ENV_LOADER" ]]; then
-    source "$ENV_LOADER" 2>/dev/null
-    load_workspace_env "$REPO_ROOT" 2>/dev/null
-fi
-
-cd "$REPO_ROOT"
+cd "$TAGSLUT_REPO_ROOT"
 
 PROVIDER="${1:-all}"
 
-STREAMRIP_CONFIG="/Users/georgeskhawam/Projects/streamrip/dev_config.toml"
+STREAMRIP_CONFIG="${STREAMRIP_CONFIG:-$HOME/Library/Application Support/streamrip/config.toml}"
 TOKENS_FILE="$HOME/.config/tagslut/tokens.json"
+
+resolve_beatportdl_creds() {
+    local candidate=""
+    local cmd_override="${BEATPORTDL_BIN:-${BEATPORTDL_CMD:-}}"
+    local helper_path="${TAGSLUT_TOOLS_DIR}/_beatportdl.sh"
+
+    if [[ -n "${BEATPORTDL_CREDS:-}" && -f "${BEATPORTDL_CREDS}" ]]; then
+        printf '%s\n' "${BEATPORTDL_CREDS}"
+        return 0
+    fi
+
+    if [[ -n "$cmd_override" && "$cmd_override" != "$helper_path" ]]; then
+        candidate="$(dirname "$cmd_override")/beatportdl-credentials.json"
+        if [[ -f "$candidate" ]]; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    fi
+
+    for candidate in \
+        "${TAGSLUT_TOOLS_DIR}/beatportdl/bpdl/beatportdl-credentials.json" \
+        "$HOME/Projects/beatportdl/beatportdl-credentials.json"; do
+        if [[ -f "$candidate" ]]; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+
+    return 1
+}
 
 sync_qobuz_tokens() {
     # One-way: push tagslut tokens.json → streamrip dev_config.toml
     # tagslut is the authoritative source; never pull from streamrip
     [[ -f "$STREAMRIP_CONFIG" ]] || return 0
     [[ -f "$TOKENS_FILE" ]] || return 0
-    python3 - "$STREAMRIP_CONFIG" "$TOKENS_FILE" << 'PYEOF'
+    "$PYTHON_BIN" - "$STREAMRIP_CONFIG" "$TOKENS_FILE" << 'PYEOF'
 import json, re, sys, tomllib
 from pathlib import Path
 
@@ -55,14 +80,14 @@ sync_qobuz_to_streamrip() { sync_qobuz_tokens; }
 
 refresh_tidal() {
     echo -n "TIDAL... "
-    tiddl auth refresh 2>/dev/null && echo "OK" || echo "FAILED"
+    "$TAGSLUT_TOOLS_DIR/tiddl" auth refresh 2>/dev/null && echo "OK" || echo "FAILED"
 }
 
-BEATPORTDL_CREDS="$HOME/Projects/beatportdl/beatportdl-credentials.json"
+BEATPORTDL_CREDS="$(resolve_beatportdl_creds || true)"
 
 sync_beatport_from_beatportdl() {
-    [[ -f "$BEATPORTDL_CREDS" ]] || return 1
-    python3 - "$BEATPORTDL_CREDS" << 'PYEOF'
+    [[ -n "$BEATPORTDL_CREDS" && -f "$BEATPORTDL_CREDS" ]] || return 1
+    "$PYTHON_BIN" - "$BEATPORTDL_CREDS" << 'PYEOF'
 import json, sys, time, urllib.request, urllib.parse
 from pathlib import Path
 
@@ -118,19 +143,19 @@ refresh_beatport() {
     if sync_beatport_from_beatportdl; then
         echo "OK (synced from beatportdl)"
     else
-        poetry run python -m tagslut auth refresh beatport 2>/dev/null && echo "OK" || echo "FAILED"
+        "$TAGSLUT_TOOLS_DIR/tagslut" auth refresh beatport 2>/dev/null && echo "OK" || echo "FAILED"
     fi
 }
 
 refresh_qobuz() {
     echo -n "Qobuz... "
     # Refresh app credentials (app_id/app_secret) — never overwrites user_auth_token
-    poetry run python -m tagslut auth refresh qobuz 2>/dev/null
+    "$TAGSLUT_TOOLS_DIR/tagslut" auth refresh qobuz 2>/dev/null
     # Push current tokens.json → streamrip (one-way; tagslut is authoritative)
     sync_qobuz_tokens
     # Verify session is actually valid
     local valid
-    valid=$(cd "$REPO_ROOT" && poetry run python3 -c "
+    valid=$("$PYTHON_BIN" -c "
 import sys, json, requests
 from pathlib import Path
 try:
@@ -155,7 +180,7 @@ except Exception:
         echo "OK"
     else
         echo "session expired — re-login required:"
-        echo "  poetry run python -m tagslut auth login qobuz --email YOUR_EMAIL --force"
+        echo "  poetry run tagslut auth login qobuz --email YOUR_EMAIL --force"
     fi
 }
 

@@ -121,12 +121,50 @@ def run_db_sync(target: Path, db_path: Optional[Path]) -> int:
     return subprocess.run(cmd, check=False).returncode
 
 
+def run_audiofeatures(
+    target: Path,
+    *,
+    mode: str,
+    db_path: Optional[Path],
+    spotify_client_id: str,
+    spotify_client_secret: str,
+    onetagger_bin: Optional[Path],
+) -> int:
+    cmd = [
+        sys.executable,
+        str(Path(__file__).with_name("onetagger_workflow.py")),
+        "audiofeatures",
+        "--path",
+        str(target),
+        "--mode",
+        mode,
+    ]
+    if db_path is not None:
+        cmd.extend(["--db", str(db_path)])
+    if spotify_client_id:
+        cmd.extend(["--spotify-client-id", spotify_client_id])
+    if spotify_client_secret:
+        cmd.extend(["--spotify-client-secret", spotify_client_secret])
+    if onetagger_bin is not None:
+        cmd.extend(["--onetagger-bin", str(onetagger_bin)])
+    return subprocess.run(cmd, check=False).returncode
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Normalize genre tags using tools/rules/genre_normalization.json")
     ap.add_argument("path", type=Path, nargs="?", help="Legacy FLAC mode: root path to scan (FLAC) or a single file")
     ap.add_argument("--root", type=Path, help="Apple Music MP3 mode: root path to scan (MP3)")
     ap.add_argument("--db", type=Path, help="SQLite DB path for unified file-tag -> canonical DB sync")
     ap.add_argument("--rules", type=Path, default=Path("tools/rules/genre_normalization.json"))
+    ap.add_argument(
+        "--audiofeatures",
+        choices=["none", "lexicon", "spotify"],
+        default="none",
+        help="Optional audiofeatures stage before DB sync",
+    )
+    ap.add_argument("--spotify-client-id", default="", help="Spotify Client ID for --audiofeatures spotify")
+    ap.add_argument("--spotify-client-secret", default="", help="Spotify Client Secret for --audiofeatures spotify")
+    ap.add_argument("--onetagger-bin", type=Path, help="Override OneTagger CLI path for --audiofeatures spotify")
     ap.add_argument("--dry-run", action="store_true", help="Report changes without writing tags or syncing the DB")
     ap.add_argument("--execute", dest="execute", action="store_true", default=None, help="Write tags in-place (default)")
     ap.add_argument("--no-execute", dest="execute", action="store_false", help="Do not write tags")
@@ -196,6 +234,18 @@ def main() -> int:
         print(f"Updated:  {updated}")
         print(f"Deleted:  {deleted}")
         print(f"Dry-run:  {not execute}")
+        if args.audiofeatures != "none":
+            print(f"Running audiofeatures stage ({args.audiofeatures})...")
+            rc = run_audiofeatures(
+                root,
+                mode=args.audiofeatures,
+                db_path=args.db,
+                spotify_client_id=args.spotify_client_id,
+                spotify_client_secret=args.spotify_client_secret,
+                onetagger_bin=args.onetagger_bin,
+            )
+            if rc != 0:
+                return rc
         if sync_db:
             print("Syncing canonical DB fields from file tags...")
             return run_db_sync(root, args.db)
@@ -236,6 +286,18 @@ def main() -> int:
 
     print(f"Scanned: {len(flacs)}")
     print(f"Tagged:  {changed}")
+    if args.audiofeatures != "none":
+        print(f"Running audiofeatures stage ({args.audiofeatures})...")
+        rc = run_audiofeatures(
+            root,
+            mode=args.audiofeatures,
+            db_path=args.db,
+            spotify_client_id=args.spotify_client_id,
+            spotify_client_secret=args.spotify_client_secret,
+            onetagger_bin=args.onetagger_bin,
+        )
+        if rc != 0:
+            return rc
     if sync_db:
         print("Syncing canonical DB fields from file tags...")
         return run_db_sync(root, args.db)

@@ -5,7 +5,6 @@ import os
 import re
 import subprocess
 import sys
-from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -159,6 +158,86 @@ def _echo_completed_process(result: subprocess.CompletedProcess[str]) -> None:
             sys.stderr.write("\n")
 
 
+def _stage_display_label(label: str) -> str:
+    return {
+        "register": "Register Staged Files",
+        "duration-check": "Duration Check",
+        "enrich + art + promote": "Enrich + Art + Promote",
+    }.get(label, label.replace("-", " ").title())
+
+
+def _stage_banner_rows(
+    *,
+    label: str,
+    root_path: Path,
+    source: str,
+    db_arg: str,
+    library_arg: str,
+    providers: str,
+    dry_run: bool,
+    force: bool,
+) -> list[tuple[str, str]]:
+    mode = "dry-run" if dry_run else "execute"
+    if label == "register":
+        return [
+            ("goal", "Register staged files into the inventory database"),
+            ("command", "tagslut index register"),
+            ("root", str(root_path)),
+            ("source", source),
+            ("db", db_arg),
+            ("mode", mode),
+        ]
+    if label == "duration-check":
+        return [
+            ("goal", "Measure staged files and reconcile duration metadata"),
+            ("command", "tagslut index duration-check"),
+            ("root", str(root_path)),
+            ("db", db_arg),
+            ("mode", mode),
+        ]
+    return [
+        ("goal", "Enrich metadata, pull artwork, and promote into the library"),
+        ("command", "tagslut intake process-root"),
+        ("phases", "enrich -> art -> promote"),
+        ("root", str(root_path)),
+        ("library", library_arg),
+        ("providers", providers),
+        ("db", db_arg),
+        ("mode", mode),
+        ("force", "yes" if force else "no"),
+    ]
+
+
+def _emit_stage_banner(
+    *,
+    ui: ConsoleUI,
+    idx: int,
+    total: int,
+    label: str,
+    root_path: Path,
+    source: str,
+    db_arg: str,
+    library_arg: str,
+    providers: str,
+    dry_run: bool,
+    force: bool,
+) -> None:
+    click.echo()
+    ui.summary(
+        f"Step {idx}/{total} - {_stage_display_label(label)}",
+        _stage_banner_rows(
+            label=label,
+            root_path=root_path,
+            source=source,
+            db_arg=db_arg,
+            library_arg=library_arg,
+            providers=providers,
+            dry_run=dry_run,
+            force=force,
+        ),
+    )
+
+
 def _extract_int(pattern: str, text: str) -> int | None:
     match = re.search(pattern, text, re.MULTILINE)
     if not match:
@@ -173,12 +252,13 @@ def _extract_move_log_path(text: str) -> Path | None:
     return Path(match.group(1).strip()).expanduser().resolve()
 
 
-def _load_promoted_paths_for_root(*, move_log_path: Path, root_path: Path) -> list[Path]:
+def _load_promoted_paths_for_root(*, move_log_path: Path, root_path: Path) -> tuple[list[Path], dict[str, str]]:
     if not move_log_path.exists():
-        return []
+        return [], {}
 
     promoted: list[Path] = []
     seen: set[str] = set()
+    batch_names_by_path: dict[str, str] = {}
     resolved_root = root_path.expanduser().resolve()
 
     for row in _load_jsonl_lines(move_log_path):
@@ -205,7 +285,18 @@ def _load_promoted_paths_for_root(*, move_log_path: Path, root_path: Path) -> li
         seen.add(dest_key)
         promoted.append(dest_path)
 
-    return sorted(promoted, key=lambda item: str(item))
+        try:
+            relative_src = src_path.relative_to(resolved_root)
+        except ValueError:
+            continue
+        if not relative_src.parts:
+            continue
+        top_level = relative_src.parts[0].strip()
+        if not top_level:
+            continue
+        batch_names_by_path[dest_key] = safe_playlist_name(top_level)
+
+    return sorted(promoted, key=lambda item: str(item)), batch_names_by_path
 
 
 def _audio_tag_value(file_path: Path, keys: tuple[str, ...]) -> str | None:
@@ -288,6 +379,12 @@ def _derive_playlist_batch_name(files: list[Path], root_path: Path) -> str | Non
     return None
 
 
+def _fallback_playlist_batch_name(root_path: Path) -> str:
+    root_name = safe_playlist_name(root_path.name.strip() or "staged")
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    return f"{root_name}-{stamp}"
+
+
 def _playlist_batches(files: list[Path], root_path: Path) -> list[tuple[str, list[Path]]]:
     if not files:
         return []
@@ -295,16 +392,36 @@ def _playlist_batches(files: list[Path], root_path: Path) -> list[tuple[str, lis
     merged_name = _derive_playlist_batch_name(files, root_path)
     if merged_name:
         return [(merged_name, sorted(files, key=lambda item: str(item)))]
+    return [(_fallback_playlist_batch_name(root_path), sorted(files, key=lambda item: str(item)))]
 
-    counts: Counter[str] = Counter()
-    batches: list[tuple[str, list[Path]]] = []
-    for file_path in sorted(files, key=lambda item: str(item)):
-        name = _track_display_name(file_path)
-        counts[name] += 1
-        if counts[name] > 1:
-            name = f"{name} ({counts[name]})"
-        batches.append((name, [file_path]))
-    return batches
+
+def _playlist_batches_with_source_groups(
+    files: list[Path],
+    root_path: Path,
+    *,
+    batch_names_by_path: dict[str, str] | None,
+) -> list[tuple[str, list[Path]]]:
+    if not files:
+        return []
+
+    if not batch_names_by_path:
+        return _playlist_batches(files, root_path)
+
+    grouped: dict[str, list[Path]] = {}
+    ungrouped: list[Path] = []
+    for file_path in files:
+        batch_name = batch_names_by_path.get(str(file_path))
+        if batch_name:
+            grouped.setdefault(batch_name, []).append(file_path)
+        else:
+            ungrouped.append(file_path)
+
+    out: list[tuple[str, list[Path]]] = []
+    for batch_name in sorted(grouped.keys()):
+        out.append((batch_name, sorted(grouped[batch_name], key=lambda item: str(item))))
+    if ungrouped:
+        out.extend(_playlist_batches(ungrouped, root_path))
+    return out
 
 
 def _partition_playlist_files(files: list[Path]) -> tuple[list[Path], list[Path]]:
@@ -320,6 +437,7 @@ def _write_stage_playlist_exports(
     *,
     root_path: Path,
     promoted_paths: list[Path],
+    batch_names_by_path: dict[str, str] | None,
     db_path: Path,
     library_path: Path,
 ) -> list[Path]:
@@ -345,7 +463,11 @@ def _write_stage_playlist_exports(
 
     outputs: list[Path] = []
     try:
-        for batch_name, batch_files in _playlist_batches(lossless_paths, root_path):
+        for batch_name, batch_files in _playlist_batches_with_source_groups(
+            lossless_paths,
+            root_path,
+            batch_names_by_path=batch_names_by_path,
+        ):
             output_path = write_m3u(
                 playlist_name=safe_playlist_name(batch_name),
                 files=batch_files,
@@ -365,7 +487,11 @@ def _write_stage_playlist_exports(
                         (now_iso, str(file_path)),
                     )
 
-        for batch_name, batch_files in _playlist_batches(lossy_paths, root_path):
+        for batch_name, batch_files in _playlist_batches_with_source_groups(
+            lossy_paths,
+            root_path,
+            batch_names_by_path=batch_names_by_path,
+        ):
             playlist_name = batch_name
             if dj_playlist_root == playlist_root:
                 playlist_name = f"{batch_name} [lossy]"
@@ -1102,6 +1228,12 @@ def register_intake_group(cli: click.Group) -> None:
         is_flag=True,
         help="Preview enrichment and transcode without writing files.",
     )
+    @click.option(
+        "--verbose",
+        "verbose",
+        is_flag=True,
+        help="Enable verbose process-root output.",
+    )
     def intake_process_root(  # type: ignore[no-untyped-def]  # TODO: mypy-strict
         db_path,
         root: str,
@@ -1119,6 +1251,7 @@ def register_intake_group(cli: click.Group) -> None:
         require_preferred_asset,
         allow_multiple_per_identity,
         dry_run,
+        verbose,
     ):
         """Run end-to-end root processing pipeline (canonical wrapper for tools/review/process_root.py)."""
         try:
@@ -1165,6 +1298,8 @@ def register_intake_group(cli: click.Group) -> None:
             args.append("--allow-multiple-per-identity")
         if dry_run:
             args.append("--dry-run")
+        if verbose:
+            args.append("--verbose")
 
         run_python_script("tools/review/process_root.py", tuple(args))
 
@@ -1216,6 +1351,7 @@ def register_intake_group(cli: click.Group) -> None:
         root_path = Path(root).expanduser().resolve()
         db_arg = str(resolution.path)
         library_arg = str(Path(resolved_library).expanduser().resolve())
+        ui = ConsoleUI(verbose=True)
 
         steps: list[tuple[str, list[str]]] = [
             (
@@ -1264,6 +1400,7 @@ def register_intake_group(cli: click.Group) -> None:
                     providers,
                     "--db",
                     db_arg,
+                    "--verbose",
                 ],
             ),
         ]
@@ -1279,7 +1416,19 @@ def register_intake_group(cli: click.Group) -> None:
         summaries: list[str] = []
         process_root_output = ""
         for idx, (label, command) in enumerate(steps, start=1):
-            click.echo(f"=== Step {idx}/3: {label} ===")
+            _emit_stage_banner(
+                ui=ui,
+                idx=idx,
+                total=len(steps),
+                label=label,
+                root_path=root_path,
+                source=source,
+                db_arg=db_arg,
+                library_arg=library_arg,
+                providers=providers,
+                dry_run=dry_run,
+                force=force,
+            )
             result = _run_stage_step(command)
             _echo_completed_process(result)
             if result.returncode != 0:
@@ -1310,12 +1459,14 @@ def register_intake_group(cli: click.Group) -> None:
         if not dry_run:
             move_log_path = _extract_move_log_path(process_root_output)
             if move_log_path:
+                promoted_paths, batch_names_by_path = _load_promoted_paths_for_root(
+                    move_log_path=move_log_path,
+                    root_path=root_path,
+                )
                 playlist_outputs = _write_stage_playlist_exports(
                     root_path=root_path,
-                    promoted_paths=_load_promoted_paths_for_root(
-                        move_log_path=move_log_path,
-                        root_path=root_path,
-                    ),
+                    promoted_paths=promoted_paths,
+                    batch_names_by_path=batch_names_by_path,
                     db_path=resolution.path,
                     library_path=Path(library_arg),
                 )

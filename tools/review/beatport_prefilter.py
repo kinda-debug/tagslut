@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import re
 import ssl
 import sqlite3
@@ -467,7 +468,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--library-root", default="/Volumes/MUSIC/LIBRARY", help="Library root to compare against")
     parser.add_argument(
         "--credentials",
-        default="tools/beatportdl/bpdl/beatportdl-credentials.json",
+        default=os.environ.get(
+            "BEATPORTDL_CREDENTIALS",
+            "/Users/georgeskhawam/Projects/beatportdl/bin/beatportdl-credentials.json",
+        ),
         help="BeatportDL credentials JSON path",
     )
     parser.add_argument("--duration-margin-ms", type=int, default=4000, help="Duration tolerance for title+artist matches")

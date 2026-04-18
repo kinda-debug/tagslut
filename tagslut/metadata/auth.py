@@ -368,6 +368,20 @@ class TokenManager:
 
         except httpx.HTTPError as e:
             logger.error("Failed to refresh Tidal token: %s", e)
+            try:
+                response = getattr(e, "response", None)
+                status_code = getattr(response, "status_code", None)
+            except Exception:
+                status_code = None
+
+            if status_code == 401:
+                logger.info("Tidal refresh returned 401; trying tiddl token fallback")
+            else:
+                logger.info("Tidal refresh failed; trying tiddl token fallback")
+
+            tiddl_token = self.sync_from_tiddl()
+            if tiddl_token is not None:
+                return tiddl_token
             return None
 
     def logout_tidal(self) -> None:

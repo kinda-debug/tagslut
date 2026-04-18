@@ -4,8 +4,9 @@
 
 export STREAMRIP_CONFIG=/path/to/streamrip/config.toml
 # Optional downloader overrides:
-# export BEATPORTDL_CMD="$TAGSLUT_ROOT/tools/_beatportdl.sh"
-# export BEATPORTDL_BIN=/path/to/beatportdl-binary
+# export BEATPORTDL_BIN=/Users/georgeskhawam/Projects/beatportdl/bin/beatportdl-darwin-arm64
+# export BEATPORTDL_CONFIG=/Users/georgeskhawam/Projects/beatportdl/bin/beatportdl-config.yml
+# export BEATPORTDL_CREDENTIALS=/Users/georgeskhawam/Projects/beatportdl/bin/beatportdl-credentials.json
 # export STREAMRIP_CMD="$TAGSLUT_ROOT/tools/streamrip"
 # export SPOTIFLAC_NEXT_APP=/Applications/SpotiFLAC-Next.app
 # export SPOTIFLAC_NEXT_BIN=/custom/path/to/SpotiFLAC-Next-binary

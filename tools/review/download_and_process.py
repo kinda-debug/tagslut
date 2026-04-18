@@ -58,7 +58,7 @@ def main() -> None:
             Path(
                 __import__("os").environ.get("BEATPORTDL_BIN")
                 or __import__("os").environ.get("BEATPORT_BIN")
-                or "tools/beatportdl/bpdl/bpdl"
+                or "/Users/georgeskhawam/Projects/beatportdl/bin/beatportdl-darwin-arm64"
             )
         ),
         help="Path to beatport downloader",

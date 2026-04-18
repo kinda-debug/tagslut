@@ -80,7 +80,8 @@ _UI = ConsoleUI()
 
 
 def run(cmd: list[str]) -> None:
-    _UI.stage("Run step", "running", detail=" ".join(cmd[:8]) + (" ..." if len(cmd) > 8 else ""))
+    detail = " ".join(cmd) if _UI.verbose else " ".join(cmd[:8]) + (" ..." if len(cmd) > 8 else "")
+    _UI.stage("Run step", "running", detail=detail)
     subprocess.check_call(cmd)
 
 
@@ -460,6 +461,11 @@ def main() -> None:
         action="store_true",
         help="Run DJ phase without writing FLAC tags, MP3s, or dj_pool_path updates",
     )
+    ap.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose process-root output",
+    )
     args = ap.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -479,6 +485,7 @@ def main() -> None:
 
     db_path = Path(db)
     root_path = Path(root)
+    _UI.verbose = bool(args.verbose)
     if root_path.exists() and not list(list_files(root_path, set(AUDIO_EXTENSIONS))):
         _UI.warn(f"no audio files found under {root_path}")
     library_path = Path(library)

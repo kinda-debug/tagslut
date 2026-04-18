@@ -97,6 +97,51 @@ def test_subscription_inactive_is_not_emitted_without_probe(tmp_path: Path) -> N
     assert status.state != ProviderState.enabled_subscription_inactive
 
 
+def test_qobuz_unconfigured_when_no_credentials(tmp_path: Path) -> None:
+    tm = _tm(tmp_path, {})
+    activation = ProviderActivationConfig(qobuz=ProviderPolicy(metadata_enabled=True, download_enabled=False))
+    status = resolve_provider_status("qobuz", activation=activation, token_manager=tm)
+
+    assert status.state == ProviderState.enabled_unconfigured
+    assert status.metadata_usable is False
+
+
+def test_qobuz_authenticated_when_credentials_present(tmp_path: Path) -> None:
+    tm = _tm(
+        tmp_path,
+        {
+            "qobuz": {
+                "app_id": "app123",
+                "app_secret": "secret123",
+                "user_auth_token": "user123",
+            }
+        },
+    )
+    activation = ProviderActivationConfig(qobuz=ProviderPolicy(metadata_enabled=True, download_enabled=False))
+    status = resolve_provider_status("qobuz", activation=activation, token_manager=tm)
+
+    assert status.state == ProviderState.enabled_authenticated
+    assert status.metadata_usable is True
+
+
+def test_reccobeats_unconfigured_when_no_credentials(tmp_path: Path) -> None:
+    tm = _tm(tmp_path, {})
+    activation = ProviderActivationConfig(reccobeats=ProviderPolicy(metadata_enabled=True, download_enabled=False))
+    status = resolve_provider_status("reccobeats", activation=activation, token_manager=tm)
+
+    assert status.state == ProviderState.enabled_unconfigured
+    assert status.metadata_usable is False
+
+
+def test_reccobeats_authenticated_when_credentials_present(tmp_path: Path) -> None:
+    tm = _tm(tmp_path, {"reccobeats": {"api_key": "rb_key_123"}})
+    activation = ProviderActivationConfig(reccobeats=ProviderPolicy(metadata_enabled=True, download_enabled=False))
+    status = resolve_provider_status("reccobeats", activation=activation, token_manager=tm)
+
+    assert status.state == ProviderState.enabled_authenticated
+    assert status.metadata_usable is True
+
+
 def test_beatport_download_disabled_by_default(tmp_path: Path) -> None:
     tm = _tm(tmp_path, {})
     activation = ProviderActivationConfig()

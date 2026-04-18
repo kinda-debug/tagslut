@@ -141,27 +141,29 @@ def resolve_provider_status(
         )
 
     if provider == "qobuz":
+        has_credentials = bool(raw.get("app_id") and raw.get("app_secret") and raw.get("user_auth_token"))
         return ProviderStatus(
             provider=provider,
             metadata_enabled=True,
             trust=policy.trust,
-            state=ProviderState.enabled_authenticated,
+            state=ProviderState.enabled_authenticated if has_credentials else ProviderState.enabled_unconfigured,
             has_access_token=False,
             has_refresh_token=False,
             is_expired=None,
-            metadata_usable=True,
+            metadata_usable=has_credentials,
         )
 
     if provider == "reccobeats":
+        has_credentials = bool(raw.get("api_key"))
         return ProviderStatus(
             provider=provider,
             metadata_enabled=True,
             trust=policy.trust,
-            state=ProviderState.enabled_authenticated,
+            state=ProviderState.enabled_authenticated if has_credentials else ProviderState.enabled_unconfigured,
             has_access_token=False,
             has_refresh_token=False,
             is_expired=None,
-            metadata_usable=True,
+            metadata_usable=has_credentials,
         )
 
     # tidal

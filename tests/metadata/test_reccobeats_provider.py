@@ -7,6 +7,9 @@ import pytest
 
 from tagslut.metadata.models.types import EnrichmentResult, LocalFileInfo, MatchConfidence, ProviderTrack
 from tagslut.metadata.pipeline.stages import apply_cascade
+from tagslut.metadata.capabilities import Capability
+from tagslut.metadata.metadata_router import MetadataRouter
+from tagslut.metadata.auth import TokenManager
 from tagslut.metadata.provider_registry import PROVIDER_REGISTRY, ProviderActivationConfig
 from tagslut.metadata.providers.reccobeats import ReccoBeatsProvider
 
@@ -165,4 +168,15 @@ def test_audio_features_cascade_fills_empty_fields() -> None:
     assert out.canonical_instrumentalness == 0.0
     assert out.canonical_loudness == -8.0
     assert out.canonical_bpm == 128.0
+
+
+def test_reccobeats_router_allows_isrc_without_credentials(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    tokens_path = tmp_path / "tokens.json"
+    tokens_path.write_text("{}", encoding="utf-8")
+    tm = TokenManager(tokens_path=tokens_path)
+    activation = ProviderActivationConfig()
+    router = MetadataRouter(provider_names=["reccobeats"], activation=activation, token_manager=tm)
+
+    assert router.provider_names_for(Capability.METADATA_SEARCH_BY_ISRC) == ["reccobeats"]
+    assert router.provider_names_for(Capability.METADATA_FETCH_TRACK_BY_ID) == ["reccobeats"]
 

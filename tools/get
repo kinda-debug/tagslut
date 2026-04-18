@@ -69,6 +69,11 @@ usage() {
     echo "  --resume             reuse staged downloads when supported"
     echo "  --verbose            show detailed stage output and internal paths"
     echo ""
+    echo "Environment prerequisites:"
+    echo "  Beatport -> BEATPORTDL_CMD"
+    echo "  Qobuz    -> STREAMRIP_CMD and STREAMRIP_CONFIG"
+    echo "  Roots    -> STAGING_ROOT (optional override for batch roots)"
+    echo ""
     echo "Compatibility / advanced:"
     echo "  --simple             downloader-only behavior"
     echo "  --re                 return playlist path from the intake flow"
@@ -306,7 +311,7 @@ if [[ -n "$INPUT_PATH" ]]; then
         "${PROC_CMD[@]}"
 
         if [[ "$RETURN_PLAYLIST" -eq 1 ]]; then
-            PROMOTED_LIST="$(ls -1t "$REPO_ROOT"/artifacts/compare/promoted_audio_*.txt 2>/dev/null | head -n1 || true)"
+            PROMOTED_LIST="$(find "$REPO_ROOT/artifacts/compare" -maxdepth 1 -type f -name 'promoted_audio_*.txt' 2>/dev/null | sort -r | head -n1 || true)"
             if [[ -n "$PROMOTED_LIST" && -f "$PROMOTED_LIST" ]]; then
                 poetry run python -m tagslut report m3u --merge --path-mode relative --paths-file "$PROMOTED_LIST"
             else
@@ -555,6 +560,10 @@ print((r.json().get('data') or {}).get('attributes', {}).get('title', ''))
 elif [[ "$URL" == *"beatport.com"* ]]; then
     # Beatport download via beatportdl — fallback for tracks only available on Beatport
     BEATPORTDL_CMD="${BEATPORTDL_CMD:-}"
+    if [[ -z "$BEATPORTDL_CMD" ]]; then
+        echo "Error: BEATPORTDL_CMD is not set" >&2
+        exit 1
+    fi
     if [[ ! -x "$BEATPORTDL_CMD" ]]; then
         echo "Error: beatportdl not found at $BEATPORTDL_CMD" >&2
         exit 1
@@ -577,7 +586,7 @@ elif [[ "$URL" == *"beatport.com"* ]]; then
     fi
 
     # Register downloads and run enrich if requested
-    BEATPORT_ROOT="${BEATPORT_ROOT:-${STAGING_ROOT:-/Volumes/MUSIC/staging}/bpdl}"
+    BEATPORT_ROOT="${BEATPORT_ROOT:-${STAGING_ROOT}/bpdl}"
     if [[ -d "$BEATPORT_ROOT" ]]; then
         poetry run python -m tagslut index register "$BEATPORT_ROOT" --source beatport --execute
     fi
@@ -600,13 +609,21 @@ elif [[ "$URL" == *"beatport.com"* ]]; then
 elif [[ "$URL" == *"qobuz.com"* ]]; then
     # Route Qobuz URLs to streamrip
     STREAMRIP_CMD="${STREAMRIP_CMD:-}"
+    if [[ -z "$STREAMRIP_CMD" ]]; then
+        echo "Error: STREAMRIP_CMD is not set" >&2
+        exit 1
+    fi
     if [[ ! -x "$STREAMRIP_CMD" ]]; then
         echo "Error: streamrip not found at $STREAMRIP_CMD" >&2
         exit 1
     fi
 
     STREAMRIP_CONFIG="${STREAMRIP_CONFIG:-}"
-    STREAMRIP_ROOT="${STREAMRIP_ROOT:-${STAGING_ROOT:-/Volumes/MUSIC/staging}/StreamripDownloads}"
+    if [[ -z "$STREAMRIP_CONFIG" ]]; then
+        echo "Error: STREAMRIP_CONFIG is not set" >&2
+        exit 1
+    fi
+    STREAMRIP_ROOT="${STREAMRIP_ROOT:-${STAGING_ROOT}/StreamripDownloads}"
     QOBUZ_BATCH_ROOT="${STREAMRIP_QOBUZ_ROOT:-$STREAMRIP_ROOT/Qobuz}"
 
     PLAYLIST_NAME=""

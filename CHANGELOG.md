@@ -8,6 +8,21 @@ Versioning: [Semantic Versioning](https://semver.org/)
 
 ## [Unreleased] - 2026-04-13
 
+## [Unreleased] - 2026-04-18
+
+### Added
+- Repo-local operator wrappers: `tools/ts-get`, `tools/ts-enrich`, and `tools/ts-auth`.
+- `env_exports.sh.template` for machine-local downloader configuration (`BEATPORTDL_CMD`, `STREAMRIP_CMD`, `STREAMRIP_CONFIG`) with optional staging-root overrides.
+- Regression coverage for Qobuz/ReccoBeats provider-state handling and ReccoBeats router access.
+
+### Changed
+- `tools/get` now relies on environment-configured downloader paths instead of machine-specific absolute paths, derives Beatport/Qobuz staging roots from `STAGING_ROOT`, and uses a stable manifest lookup when returning promoted playlists.
+- Provider status reporting now reflects real credential presence for Qobuz (`app_id`, `app_secret`, `user_auth_token`) and ReccoBeats (`api_key`) instead of reporting both as always authenticated.
+- ReccoBeats remains routable for public ISRC / track-id metadata lookups even when status reports `enabled_unconfigured`.
+
+### Fixed
+- `tagslut get <local-path>` local flow no longer drops output generation behind an unreachable block and no longer self-locks the SQLite DB when output artifacts are built after writeback.
+
 ### Added
 - Reconcile task checkpoints: commands read/write `data/checkpoints/reconcile_YYYYMMDD_HH.json` and prompt before re-running completed tasks.
 - `tagslut v3 migrate` — preview/apply pending v3 schema migrations (dry-run by default).

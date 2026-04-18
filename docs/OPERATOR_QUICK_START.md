@@ -7,6 +7,13 @@ cd /Users/georgeskhawam/Projects/tagslut
 source START_HERE.sh
 ```
 
+If this machine does not have `env_exports.sh` yet:
+
+```bash
+cp env_exports.sh.template env_exports.sh
+$EDITOR env_exports.sh
+```
+
 ## Token refresh (run before any download or enrichment session)
 
 ```bash
@@ -32,6 +39,10 @@ ts-get <url>           # TIDAL, Qobuz, or Beatport URL
 ts-get <url> --dj      # download + add to DJ pool M3U
 ```
 
+Provider-specific prerequisites for `ts-get`:
+- Beatport: `BEATPORTDL_CMD` must point to the local `beatportdl` binary.
+- Qobuz: `STREAMRIP_CMD` and `STREAMRIP_CONFIG` must point to the local `streamrip` install and config.
+
 ## Enrich metadata
 
 ```bash
@@ -41,6 +52,8 @@ ts-enrich              # BPM, key, genre, label for all unenriched tracks
 Enrichment fills linked `track_identity.canonical_*` fields when an active
 identity link exists, while keeping `files.canonical_*` as the compatibility
 fallback used by canonical FLAC writeback.
+Public ReccoBeats lookups remain available for audio-feature enrichment even if
+its provider state reports `enabled_unconfigured`.
 
 ## DJ pool — Rekordbox
 

@@ -51,6 +51,16 @@ def _capability_available_for_state(
     if state == ProviderState.disabled:
         return False, "disabled by policy"
 
+    # ReccoBeats is a public metadata endpoint for ISRC/id lookups.
+    # It should remain callable when status reports enabled_unconfigured.
+    if provider == "reccobeats":
+        if capability in (
+            Capability.METADATA_FETCH_TRACK_BY_ID,
+            Capability.METADATA_SEARCH_BY_ISRC,
+        ):
+            return True, f"state={state.value}"
+        return False, "not supported by provider"
+
     # Capabilities that imply we can make metadata calls at all.
     if capability in (
         Capability.METADATA_FETCH_TRACK_BY_ID,
@@ -99,14 +109,6 @@ def _capability_available_for_state(
             Capability.METADATA_SEARCH_BY_TEXT,
             Capability.METADATA_SEARCH_BY_ISRC,
             Capability.METADATA_FETCH_ARTWORK,
-        ):
-            return True, f"state={state.value}"
-        return False, "not supported by provider"
-
-    if provider == "reccobeats":
-        if capability in (
-            Capability.METADATA_FETCH_TRACK_BY_ID,
-            Capability.METADATA_SEARCH_BY_ISRC,
         ):
             return True, f"state={state.value}"
         return False, "not supported by provider"

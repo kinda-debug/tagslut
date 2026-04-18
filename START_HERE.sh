@@ -14,6 +14,7 @@ echo ""
 # Compute project root from this script's location (portable)
 TAGSLUT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export TAGSLUT_ROOT
+export PATH="${TAGSLUT_ROOT}/tools:${PATH}"
 
 # 1. Activate virtual environment
 echo "Activating Python environment..."
@@ -36,6 +37,8 @@ if [ -f "${TAGSLUT_ROOT}/env_exports.sh" ]; then
     echo "   Credentials loaded from env_exports.sh"
 else
     echo "   Warning: env_exports.sh not found at ${TAGSLUT_ROOT}/env_exports.sh"
+    echo "   Create it from env_exports.sh.template for Beatport/Qobuz downloader paths."
+    echo "   Example: cp \"${TAGSLUT_ROOT}/env_exports.sh.template\" \"${TAGSLUT_ROOT}/env_exports.sh\""
     echo "   Continuing without it (set STRICT=1 to enforce)."
     if [ "${STRICT:-0}" = "1" ]; then
         return 1
@@ -100,6 +103,10 @@ echo "ts-get <url>"
 echo ""
 echo "# Download + add to DJ pool M3U:"
 echo "ts-get <url> --dj"
+echo ""
+echo "# Downloader env required by ts-get:"
+echo "#   Beatport -> BEATPORTDL_CMD"
+echo "#   Qobuz    -> STREAMRIP_CMD + STREAMRIP_CONFIG"
 echo ""
 echo "# Enrich metadata (BPM, key, genre, label) for all unenriched tracks:"
 echo "ts-enrich"

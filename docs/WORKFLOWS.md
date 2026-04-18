@@ -188,7 +188,7 @@ python tools/review/quarantine_gc.py \
 | Beatport | `get`            | `bpdl`          | No            | config-defined / staging  |
 | Tidal    | `get`, `tiddl`   | `tidal`         | No            | `~/Music/mdl/tidal`       |
 | Deezer   | `get`, `deemix`  | `deezer`        | **Yes**       | `~/Music/mdl/deezer`      |
-| Qobuz    | —                | —               | —             | Not in active workflows   |
+| Qobuz    | `get`            | `qobuz`         | Via intake     | batch root / staging      |
 
 ### 3 · Register
 

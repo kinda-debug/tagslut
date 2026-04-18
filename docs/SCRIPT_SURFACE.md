@@ -148,14 +148,15 @@ Role: Beatport report-only mode (no download).
 4. `tools/tagslut [args...]`
 Role: Local wrapper for `python -m tagslut`.
 
-5. `ts-get <url> [--dj] [--enrich]` (shell function in ~/.zshrc)
-Role: Wraps `tagslut get`; exists for operator convenience.
+5. `tools/ts-get <url> [--dj]`
+Role: Repo-local wrapper for `tools/get`; intended to be on `PATH` after
+`source START_HERE.sh`.
 
-6. `ts-enrich` (shell function in ~/.zshrc)
-Role: Wraps `tagslut index enrich`; exists for operator convenience.
+6. `tools/ts-enrich [args...]`
+Role: Repo-local wrapper for `python -m tagslut enrich`.
 
-7. `ts-auth [tidal|beatport|qobuz|all]` (shell function in ~/.zshrc)
-Role: Wraps `tagslut auth`; exists for operator convenience.
+7. `tools/ts-auth [tidal|beatport|qobuz|all]`
+Role: Repo-local wrapper for `python -m tagslut auth login`.
 
 8. `tools/auth [tidal|beatport|qobuz|all]`
 Role: Token refresh implementation. Called by ts-auth. Handles:

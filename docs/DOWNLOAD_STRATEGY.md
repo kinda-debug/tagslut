@@ -133,8 +133,10 @@ use providers.toml.
 
 beatportdl is the download tool for Beatport-only tracks. It is not retired.
 Use `ts-get <beatport_url>` to route Beatport URLs through beatportdl automatically.
-beatportdl's credentials file is at `~/Projects/beatportdl/beatportdl-credentials.json`
-and is synced into tagslut's `tokens.json` by `ts-auth beatport`.
+Set `BEATPORTDL_CMD` in `env_exports.sh` so `tools/get` can find the local
+binary. beatportdl's credentials file is at
+`~/Projects/beatportdl/beatportdl-credentials.json` and is synced into
+tagslut's `tokens.json` by `ts-auth beatport`.
 
 The prior note about beatportdl being "permanently retired" applied only to the
 automatic TIDAL→Beatport fallback within tools/get-intake. beatportdl as an explicit
@@ -147,12 +149,18 @@ acquisition tool remains active.
 Regardless of acquisition path, every intake track goes through an enrichment pass:
 
 ```
-tagslut index enrich --providers tidal,beatport
+ts-enrich
 ```
 
-TIDAL enrichment writes: bpm (where non-null), key/keyScale/toneTags, isrc confirmation.
-Beatport enrichment writes: bpm (authoritative where TIDAL null), key (Camelot+traditional),
-genre, label, catalog number, release date.
+Active enrichment order is Beatport → TIDAL → Qobuz → ReccoBeats.
+
+- Beatport writes authoritative DJ metadata such as BPM, key, genre, label,
+  catalog number, and release date.
+- TIDAL writes identity/artwork-oriented fields and fills BPM/key where present.
+- Qobuz metadata remains credential-gated and only reports as usable when
+  `app_id`, `app_secret`, and `user_auth_token` are present.
+- ReccoBeats remains callable for public ISRC/id lookups and fills audio-feature
+  fields such as energy, danceability, valence, and fallback BPM.
 
 Fields missing after both providers: flag in enrichment summary, do not block intake.
 

@@ -2,6 +2,20 @@
 
 Standard procedure for clearing `/Volumes/MUSIC/staging` after a batch acquisition session.
 
+## Operator prerequisites
+
+Before running any wrapper-driven acquisition session on a fresh machine:
+
+```bash
+source START_HERE.sh
+```
+
+If Beatport or Qobuz downloads are part of the session, `env_exports.sh` must
+define the local downloader paths used by `tools/get`:
+- `BEATPORTDL_CMD`
+- `STREAMRIP_CMD`
+- `STREAMRIP_CONFIG`
+
 ## Safety / scope
 
 - Do not delete audio files from staging as part of routine cleanup.

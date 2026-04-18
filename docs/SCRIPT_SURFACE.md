@@ -314,7 +314,8 @@ Role: repo-local wrapper for one-shot staged-files intake.
   `tagslut intake spotiflac`, then runs `index register`, `index duration-check`,
   `index register-mp3`, and `intake process-root`
 - stage playlist export prunes orphan `.m3u` files in playlist output roots
-  after writing current DB-referenced playlists
+  after writing current DB-referenced playlists (including one-track cohort
+  playlists)
 
 10. `tools/review/sync_phase1_prs.sh`
 Role: maintainer-only helper for pushing the active Phase 1 branch stack with preserved PR scope boundaries.

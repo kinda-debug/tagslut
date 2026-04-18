@@ -97,13 +97,30 @@ def _latest_provider_payload_for_path(
     if not (_table_exists(conn, "files") and _table_exists(conn, "library_track_sources")):
         return None
 
+    # Support both schema variants:
+    # - files.library_track_key <-> library_track_sources.library_track_key + service
+    # - files.library_track_key <-> library_track_sources.identity_key + provider
+    if _column_exists(conn, "library_track_sources", "library_track_key"):
+        source_key_col = "library_track_key"
+    elif _column_exists(conn, "library_track_sources", "identity_key"):
+        source_key_col = "identity_key"
+    else:
+        return None
+
+    if _column_exists(conn, "library_track_sources", "service"):
+        source_provider_col = "service"
+    elif _column_exists(conn, "library_track_sources", "provider"):
+        source_provider_col = "provider"
+    else:
+        return None
+
     conn.row_factory = sqlite3.Row
     row = conn.execute(
-        """
+        f"""
         SELECT lts.metadata_json
         FROM files f
-        JOIN library_track_sources lts ON lts.library_track_key = f.library_track_key
-        WHERE f.path = ? AND lts.service = ?
+        JOIN library_track_sources lts ON lts.{source_key_col} = f.library_track_key
+        WHERE f.path = ? AND lts.{source_provider_col} = ?
         ORDER BY lts.fetched_at DESC, lts.id DESC
         LIMIT 1
         """,

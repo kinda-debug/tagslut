@@ -86,6 +86,7 @@ For `spotiflacnext` sources, stage now:
 - runs `tagslut intake spotiflac` before normal register/enrich/promote steps
 - runs `index register-mp3` for the same root so MP3 outputs are indexed and routed
 - prunes orphan `.m3u` files in playlist export roots after writing current stage playlists
+  (DB-referenced playlists are preserved, including one-track cohort playlists)
 
 To process a single staging root directly:
 
@@ -109,6 +110,9 @@ ts-enrich              # BPM, key, genre, label for all unenriched tracks
 Enrichment fills linked `track_identity.canonical_*` fields when an active
 identity link exists, while keeping `files.canonical_*` as the compatibility
 fallback used by canonical FLAC writeback.
+Canonical writeback provider snapshot lookup is schema-compatible across both
+`library_track_sources(library_track_key, service, ...)` and
+`library_track_sources(identity_key, provider, ...)` variants.
 Default metadata providers are now `beatport,tidal,qobuz` unless disabled in
 `~/.config/tagslut/providers.toml`.
 Public ReccoBeats lookups remain available for audio-feature enrichment even if

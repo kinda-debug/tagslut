@@ -16,7 +16,7 @@ Two supported modes:
 
 2) Legacy FLAC mode (Beatport-compatible tags)
    - Invoked via positional `path` argument
-   - Writes GENRE/SUBGENRE/GENRE_PREFERRED/GENRE_FULL when `--execute` is set
+   - Writes GENRE/SUBGENRE/GENRE_PREFERRED/GENRE_FULL by default
 
 Output Tags (Beatport-compatible format):
     - GENRE: Primary genre (e.g., "House")
@@ -25,20 +25,24 @@ Output Tags (Beatport-compatible format):
     - GENRE_FULL: Hierarchical format "genre | style"
 
 Usage:
-    # Apple Music MP3 library: dry-run (TCON only)
+    # Apple Music MP3 library: dry-run (no writes, no DB sync)
     python tools/metadata_scripts/tag_normalized_genres.py \\
       --root "/Volumes/MUSIC/Music/Media.localized/Music/" \\
       --dry-run
 
-    # Apple Music MP3 library: execute (TCON only)
+    # Apple Music MP3 library: write tags and sync DB (default)
     python tools/metadata_scripts/tag_normalized_genres.py \\
       --root "/Volumes/MUSIC/Music/Media.localized/Music/"
 
-For combined workflows (DB backfill + in-place tags), pair with normalize_genres.py.
+    # Skip DB sync but still write tags
+    python tools/metadata_scripts/tag_normalized_genres.py \\
+      --root "/Volumes/MUSIC/Music/Media.localized/Music/" \\
+      --no-sync-db
 """
 from __future__ import annotations
 
 import argparse
+import subprocess
 import sys
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -103,17 +107,40 @@ def normalize_id3_tcon(
     return normalized, True
 
 
+def run_db_sync(target: Path, db_path: Optional[Path]) -> int:
+    cmd = [
+        sys.executable,
+        str(Path(__file__).with_name("sync_tags_from_files.py")),
+        "--path",
+        str(target),
+        "--read-files",
+        "--execute",
+    ]
+    if db_path is not None:
+        cmd.extend(["--db", str(db_path)])
+    return subprocess.run(cmd, check=False).returncode
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Normalize genre tags using tools/rules/genre_normalization.json")
     ap.add_argument("path", type=Path, nargs="?", help="Legacy FLAC mode: root path to scan (FLAC) or a single file")
     ap.add_argument("--root", type=Path, help="Apple Music MP3 mode: root path to scan (MP3)")
+    ap.add_argument("--db", type=Path, help="SQLite DB path for unified file-tag -> canonical DB sync")
     ap.add_argument("--rules", type=Path, default=Path("tools/rules/genre_normalization.json"))
-    ap.add_argument("--dry-run", action="store_true", help="Report changes without writing (Apple Music MP3 mode)")
-    ap.add_argument("--execute", action="store_true", help="Write tags in-place")
+    ap.add_argument("--dry-run", action="store_true", help="Report changes without writing tags or syncing the DB")
+    ap.add_argument("--execute", dest="execute", action="store_true", default=None, help="Write tags in-place (default)")
+    ap.add_argument("--no-execute", dest="execute", action="store_false", help="Do not write tags")
+    ap.add_argument("--sync-db", dest="sync_db", action="store_true", default=None, help="Sync canonical DB fields from the files after tag normalization (default)")
+    ap.add_argument("--no-sync-db", dest="sync_db", action="store_false", help="Skip canonical DB sync")
     ap.add_argument("--limit", type=int, help="Limit number of files")
     args = ap.parse_args()
 
     normalizer = GenreNormalizer(args.rules)
+    execute = True if args.execute is None else args.execute
+    sync_db = True if args.sync_db is None else args.sync_db
+    if args.dry_run:
+        execute = False
+        sync_db = False
 
     if args.root is not None:
         root = args.root.expanduser().resolve()
@@ -147,15 +174,15 @@ def main() -> int:
             if normalized is None:
                 deleted += 1
                 print(f"CHANGE {p}: {raw} -> [none]")
-                if not args.dry_run:
+                if execute:
                     delete_id3_genre(id3)
             else:
                 updated += 1
                 print(f"CHANGE {p}: {raw} -> {normalized}")
-                if not args.dry_run:
+                if execute:
                     set_id3_genre(id3, normalized)
 
-            if not args.dry_run:
+            if execute:
                 try:
                     id3.save(str(p), v2_version=3)
                 except Exception:
@@ -168,7 +195,10 @@ def main() -> int:
         print(f"Changed:  {changed}")
         print(f"Updated:  {updated}")
         print(f"Deleted:  {deleted}")
-        print(f"Dry-run:  {bool(args.dry_run)}")
+        print(f"Dry-run:  {not execute}")
+        if sync_db:
+            print("Syncing canonical DB fields from file tags...")
+            return run_db_sync(root, args.db)
         return 0
 
     if args.path is None:
@@ -197,7 +227,7 @@ def main() -> int:
         if not norm_genre:
             continue
 
-        if args.execute:
+        if execute:
             normalizer.apply_tags_to_file(audio, norm_genre, norm_style)
             changed += 1
 
@@ -206,6 +236,9 @@ def main() -> int:
 
     print(f"Scanned: {len(flacs)}")
     print(f"Tagged:  {changed}")
+    if sync_db:
+        print("Syncing canonical DB fields from file tags...")
+        return run_db_sync(root, args.db)
     return 0
 
 

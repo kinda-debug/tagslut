@@ -134,9 +134,16 @@ def main() -> int:
     db_path = db_resolution.path
     print(f"Resolved DB path: {db_path}")
 
-    prefix = str(Path(args.path).expanduser().resolve())
-    if not prefix.endswith("/"):
-        prefix += "/"
+    path_filter = Path(args.path).expanduser().resolve()
+    if path_filter.is_file():
+        where_clause = "path = ?"
+        where_value = str(path_filter)
+    else:
+        prefix = str(path_filter)
+        if not prefix.endswith("/"):
+            prefix += "/"
+        where_clause = "path LIKE ?"
+        where_value = prefix + "%"
 
     fields = [f.strip().lower() for f in args.missing_fields.split(",") if f.strip()]
     if not fields:
@@ -165,14 +172,14 @@ def main() -> int:
             conn.execute("BEGIN")
 
         rows = conn.execute(
-            """
+            f"""
             SELECT path, metadata_json,
                    canonical_bpm, canonical_key, canonical_genre,
                    canonical_energy, canonical_danceability
             FROM files
-            WHERE path LIKE ?
+            WHERE {where_clause}
             """,
-            (prefix + "%",),
+            (where_value,),
         ).fetchall()
 
         for row in rows:

@@ -320,6 +320,20 @@ Role: repo-local wrapper for one-shot staged-files intake.
 10. `tools/review/sync_phase1_prs.sh`
 Role: maintainer-only helper for pushing the active Phase 1 branch stack with preserved PR scope boundaries.
 
+11. `tools/ts-get <url>`
+Role: Shorthand alias for `tools/get`. All arguments are forwarded unchanged.
+Equivalent to: `tools/get <url> [args...]`
+
+12. `tools/ts-enrich [args...]`
+Role: Shorthand for `tools/tagslut enrich`. Forwards all arguments.
+Equivalent to: `tools/tagslut enrich [args...]`
+
+13. `tools/ts-auth [provider] [args...]`
+Role: Shorthand for provider auth login.
+- `ts-auth` (no args) - runs `tagslut auth login all`
+- `ts-auth <provider> [args...]` - runs `tagslut auth login <provider> [args...]`
+Supported providers: `tidal`, `beatport`
+
 ## Embedded Source-Tree Integrations
 
 - `SpotiFLAC-Module-Version/`

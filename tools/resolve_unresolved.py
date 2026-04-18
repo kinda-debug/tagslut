@@ -33,6 +33,7 @@ LOGS_ROOT = Path("/Volumes/MUSIC/logs")
 DEFAULT_DB_PATH = Path("/Users/georgeskhawam/Projects/tagslut_db/FRESH_2026/music_v3.db")
 
 FUZZY_THRESHOLD = 0.92
+FUZZY_AUTO_MOVE_THRESHOLD = 1.0
 
 REPORT_HEADER = [
     "source_path",
@@ -396,6 +397,22 @@ def _master_path_prefix_where(conn: sqlite3.Connection, path_col: str) -> str:
     return f"af.{path_col} LIKE ?"
 
 
+def _append_note(existing: str, extra: str) -> str:
+    extra_s = extra.strip()
+    if not extra_s:
+        return existing
+    if not existing:
+        return extra_s
+    return f"{existing}; {extra_s}"
+
+
+def _identity_row_by_id(conn: sqlite3.Connection, identity_id: int) -> sqlite3.Row | None:
+    return conn.execute(
+        "SELECT * FROM track_identity WHERE id = ? LIMIT 1",
+        (identity_id,),
+    ).fetchone()
+
+
 def _hint_master_path_for_identity(conn: sqlite3.Connection, identity_id: int) -> str | None:
     path_col = _asset_file_path_col(conn)
     where_active = _active_link_where(conn)
@@ -539,6 +556,86 @@ def _move_file(src: Path, dest: Path) -> None:
         src.rename(dest)
     except OSError:
         shutil.move(str(src), str(dest))
+
+
+def _attempt_identity_resolution(
+    conn: sqlite3.Connection,
+    *,
+    src: Path,
+    tags: FileTags,
+    identity_id: int,
+    dry_run: bool,
+) -> tuple[str, str, str, bool]:
+    identity_row = _identity_row_by_id(conn, identity_id)
+    if identity_row is None:
+        return "error", "", f"identity_not_found:{identity_id}", False
+
+    src_s = str(src)
+    notes = ""
+    year_fallback = False
+
+    try:
+        dest_path, _year, year_fallback = _derive_master_destination(identity_row, tags)
+    except MissingRequiredFieldError as exc:
+        hint = _hint_master_path_for_identity(conn, identity_id)
+        if not hint:
+            return "unmatched", "", str(exc), False
+        dest_path = _derive_master_destination_from_master_hint(hint, tags)
+        notes = f"dest_from_master_hint ({exc})"
+    except Exception as exc:
+        hint = _hint_master_path_for_identity(conn, identity_id)
+        if not hint:
+            return (
+                "unmatched",
+                "",
+                f"matched_identity_but_no_destination: {type(exc).__name__}: {exc}",
+                False,
+            )
+        dest_path = _derive_master_destination_from_master_hint(hint, tags)
+        notes = f"dest_from_master_hint (identity_error: {type(exc).__name__})"
+
+    target_s = str(dest_path)
+    if dest_path.exists():
+        return "duplicate_on_disk", target_s, _append_note(notes, "target_exists"), year_fallback
+
+    path_col = _asset_file_path_col(conn)
+    db_has_target = conn.execute(
+        f"SELECT 1 FROM asset_file WHERE {path_col} = ? LIMIT 1",
+        (target_s,),
+    ).fetchone()
+    if db_has_target:
+        return "duplicate_on_disk", target_s, _append_note(notes, "asset_file_has_target"), year_fallback
+
+    if not dry_run:
+        _move_file(src, dest_path)
+        try:
+            conn.execute("BEGIN")
+            asset_id = _upsert_asset_file(
+                conn,
+                src_path=src_s,
+                dest_path=target_s,
+                zone="MASTER_LIBRARY",
+                library="master",
+            )
+            _upsert_asset_link(conn, asset_id=asset_id, identity_id=identity_id)
+            _insert_provenance_event(
+                conn,
+                asset_id=asset_id,
+                identity_id=identity_id,
+                source_path=src_s,
+                dest_path=target_s,
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            try:
+                if dest_path.exists() and not src.exists():
+                    _move_file(dest_path, src)
+            except Exception:
+                pass
+            raise
+
+    return "moved", target_s, _append_note(notes, "dry_run" if dry_run else ""), year_fallback
 
 
 def _ensure_db_prereqs(conn: sqlite3.Connection) -> None:
@@ -787,77 +884,14 @@ def main() -> int:
                         match_method = "isrc"
                         matches = _identity_row_for_isrc(conn, isrc)
                         if len(matches) == 1:
-                            identity_row = matches[0]
-                            identity_id = int(identity_row["id"])
-
-                            dest_path: Path | None = None
-                            try:
-                                dest_path, _year, year_fallback = _derive_master_destination(identity_row, tags)
-                            except MissingRequiredFieldError as exc:
-                                hint = _hint_master_path_for_identity(conn, identity_id)
-                                if hint:
-                                    dest_path = _derive_master_destination_from_master_hint(hint, tags)
-                                    notes = f"dest_from_master_hint ({exc})"
-                                else:
-                                    result = "unmatched"
-                                    notes = str(exc)
-                                    dest_path = None
-                            except Exception as exc:
-                                hint = _hint_master_path_for_identity(conn, identity_id)
-                                if hint:
-                                    dest_path = _derive_master_destination_from_master_hint(hint, tags)
-                                    notes = f"dest_from_master_hint (identity_error: {type(exc).__name__})"
-                                else:
-                                    result = "unmatched"
-                                    notes = f"matched_isrc_but_no_destination: {type(exc).__name__}: {exc}"
-                                    dest_path = None
-                            if dest_path is not None and result != "unmatched":
-                                target_s = str(dest_path)
-
-                                if dest_path.exists():
-                                    result = "duplicate_on_disk"
-                                    notes = notes or "target_exists"
-                                else:
-                                    path_col = _asset_file_path_col(conn)
-                                    db_has_target = conn.execute(
-                                        f"SELECT 1 FROM asset_file WHERE {path_col} = ? LIMIT 1",
-                                        (target_s,),
-                                    ).fetchone()
-                                    if db_has_target:
-                                        result = "duplicate_on_disk"
-                                        notes = notes or "asset_file_has_target"
-                                    else:
-                                        if not args.dry_run:
-                                            _move_file(src, dest_path)
-                                            try:
-                                                conn.execute("BEGIN")
-                                                asset_id = _upsert_asset_file(
-                                                    conn,
-                                                    src_path=src_s,
-                                                    dest_path=target_s,
-                                                    zone="MASTER_LIBRARY",
-                                                    library="master",
-                                                )
-                                                _upsert_asset_link(conn, asset_id=asset_id, identity_id=identity_id)
-                                                _insert_provenance_event(
-                                                    conn,
-                                                    asset_id=asset_id,
-                                                    identity_id=identity_id,
-                                                    source_path=src_s,
-                                                    dest_path=target_s,
-                                                )
-                                                conn.commit()
-                                            except Exception:
-                                                conn.rollback()
-                                                try:
-                                                    if dest_path.exists() and not src.exists():
-                                                        _move_file(dest_path, src)
-                                                except Exception:
-                                                    pass
-                                                raise
-                                        result = "moved"
-                                        if args.dry_run:
-                                            notes = "dry_run; " + notes if notes else "dry_run"
+                            identity_id = int(matches[0]["id"])
+                            result, target_s, notes, year_fallback = _attempt_identity_resolution(
+                                conn,
+                                src=src,
+                                tags=tags,
+                                identity_id=identity_id,
+                                dry_run=args.dry_run,
+                            )
                         elif len(matches) > 1:
                             result = "ambiguous"
                             identity_id = None
@@ -872,9 +906,22 @@ def main() -> int:
                             fuzzy_pool, artist_norm=a_norm, title_norm=t_norm
                         )
                         if best_id is not None and best_score >= FUZZY_THRESHOLD and not best_tied:
-                            result = "fuzzy_match_pending_review"
                             identity_id = int(best_id)
-                            notes = f"score={best_score:.3f}"
+                            if best_score >= FUZZY_AUTO_MOVE_THRESHOLD:
+                                result, target_s, resolution_notes, year_fallback = _attempt_identity_resolution(
+                                    conn,
+                                    src=src,
+                                    tags=tags,
+                                    identity_id=identity_id,
+                                    dry_run=args.dry_run,
+                                )
+                                if result == "unmatched":
+                                    result = "fuzzy_match_pending_review"
+                                notes = _append_note(f"score={best_score:.3f}", "auto_fuzzy_exact")
+                                notes = _append_note(notes, resolution_notes)
+                            else:
+                                result = "fuzzy_match_pending_review"
+                                notes = f"score={best_score:.3f}"
                         elif best_tied and best_score >= FUZZY_THRESHOLD:
                             result = "ambiguous"
                             notes = f"fuzzy_tied_best score={best_score:.3f}"

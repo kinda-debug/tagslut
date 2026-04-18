@@ -166,7 +166,9 @@ def _stage_display_label(label: str) -> str:
     return {
         "register": "Register Staged Files",
         "duration-check": "Duration Check",
-        "enrich + art + promote": "Enrich + Art + Promote",
+        "integrity-check": "Integrity Refresh",
+        "enrich": "Enrich FLAC Metadata",
+        "art + promote": "Art + Promote",
     }.get(label, label.replace("-", " ").title())
 
 
@@ -199,10 +201,28 @@ def _stage_banner_rows(
             ("db", db_arg),
             ("mode", mode),
         ]
+    if label == "integrity-check":
+        return [
+            ("goal", "Refresh FLAC integrity flags before enrichment"),
+            ("command", "tools/review/check_integrity_update_db.py"),
+            ("root", str(root_path)),
+            ("db", db_arg),
+            ("mode", mode),
+        ]
+    if label == "enrich":
+        return [
+            ("goal", "Enrich FLAC metadata only under the staged root"),
+            ("command", "tagslut index enrich"),
+            ("path", f"{root_path}/%.flac"),
+            ("providers", providers),
+            ("db", db_arg),
+            ("mode", mode),
+            ("force", "yes" if force else "no"),
+        ]
     return [
-        ("goal", "Enrich metadata, pull artwork, and promote into the library"),
+        ("goal", "Pull artwork and promote FLACs into the library"),
         ("command", "tagslut intake process-root"),
-        ("phases", "enrich -> art -> promote"),
+        ("phases", "art -> promote"),
         ("root", str(root_path)),
         ("library", library_arg),
         ("providers", providers),
@@ -1391,7 +1411,8 @@ def register_intake_group(cli: click.Group) -> None:
 
         For source=spotiflacnext, stage prepends log-driven intake using the
         newest file under artifacts/logs/spotiflacnext (or SPOTIFLAC_NEXT_LOG_ROOT),
-        then runs register, duration-check, register-mp3, and process-root.
+        then runs register, duration-check, integrity refresh, register-mp3,
+        FLAC-only enrich, and process-root art/promote.
         """
         try:
             resolution = resolve_cli_env_db_path(db_path, purpose="write", source_label="--db")
@@ -1458,44 +1479,81 @@ def register_intake_group(cli: click.Group) -> None:
                     db_arg,
                 ],
             ),
-            (
-                "register-mp3",
-                [
-                    sys.executable,
-                    "-m",
-                    "tagslut",
-                    "index",
-                    "register-mp3",
-                    "--root",
-                    str(root_path),
-                    "--db",
-                    db_arg,
-                    "--source",
-                    source,
-                ],
-            ),
-            (
-                "enrich + art + promote",
-                [
-                    sys.executable,
-                    "-m",
-                    "tagslut",
-                    "intake",
-                    "process-root",
-                    "--root",
-                    str(root_path),
-                    "--phases",
-                    "enrich,art,promote",
-                    "--library",
-                    library_arg,
-                    "--providers",
-                    providers,
-                    "--db",
-                    db_arg,
-                    "--verbose",
-                ],
-            ),
         ]
+
+        if not dry_run:
+            steps.append(
+                (
+                    "integrity-check",
+                    [
+                        sys.executable,
+                        str((repo_root / "tools/review/check_integrity_update_db.py").resolve()),
+                        "--db",
+                        db_arg,
+                        "--execute",
+                        str(root_path),
+                    ],
+                )
+            )
+
+        steps.extend(
+            [
+                (
+                    "register-mp3",
+                    [
+                        sys.executable,
+                        "-m",
+                        "tagslut",
+                        "index",
+                        "register-mp3",
+                        "--root",
+                        str(root_path),
+                        "--db",
+                        db_arg,
+                        "--source",
+                        source,
+                    ],
+                ),
+                (
+                    "enrich",
+                    [
+                        sys.executable,
+                        "-m",
+                        "tagslut",
+                        "index",
+                        "enrich",
+                        "--db",
+                        db_arg,
+                        "--hoarding",
+                        "--providers",
+                        providers,
+                        "--path",
+                        f"{root_path}/%.flac",
+                    ],
+                ),
+                (
+                    "art + promote",
+                    [
+                        sys.executable,
+                        "-m",
+                        "tagslut",
+                        "intake",
+                        "process-root",
+                        "--root",
+                        str(root_path),
+                        "--phases",
+                        "art,promote",
+                        "--library",
+                        library_arg,
+                        "--providers",
+                        providers,
+                        "--db",
+                        db_arg,
+                        "--verbose",
+                    ],
+                ),
+            ]
+        )
 
         if source == "spotiflacnext":
             spotiflac_step = (
@@ -1516,14 +1574,16 @@ def register_intake_group(cli: click.Group) -> None:
             steps.insert(0, spotiflac_step)
 
         if force:
-            steps[-1][1].append("--force")
+            for label, command in steps:
+                if label == "enrich":
+                    command.append("--force")
         if dry_run:
             for label, command in steps:
-                if label == "enrich + art + promote":
+                if label == "art + promote":
                     command.append("--dry-run")
         else:
             for label, command in steps:
-                if label in {"register", "duration-check", "register-mp3"}:
+                if label in {"register", "duration-check", "register-mp3", "enrich"}:
                     command.append("--execute")
 
         summaries: list[str] = []
@@ -1544,7 +1604,7 @@ def register_intake_group(cli: click.Group) -> None:
             )
             result = _run_stage_step(
                 command,
-                capture_output=(label != "enrich + art + promote"),
+                capture_output=(label != "art + promote"),
             )
             _echo_completed_process(result)
             if result.returncode != 0:
@@ -1570,6 +1630,28 @@ def register_intake_group(cli: click.Group) -> None:
                     f"missing_db={missing if missing is not None else '?'} "
                     f"errors={errors if errors is not None else '?'}"
                 )
+            elif label == "integrity-check":
+                checked = _extract_int(r"\bchecked=(\d+)", result.stdout or "")
+                valid = _extract_int(r"\bvalid=(\d+)", result.stdout or "")
+                recoverable = _extract_int(r"\brecoverable=(\d+)", result.stdout or "")
+                corrupt = _extract_int(r"\bcorrupt=(\d+)", result.stdout or "")
+                summaries.append(
+                    f"integrity-check: checked={checked if checked is not None else '?'} "
+                    f"valid={valid if valid is not None else '?'} "
+                    f"recoverable={recoverable if recoverable is not None else '?'} "
+                    f"corrupt={corrupt if corrupt is not None else '?'}"
+                )
+            elif label == "enrich":
+                total = _extract_int(r"^\s*Total:\s+(\d+)", result.stdout or "")
+                enriched = _extract_int(r"^\s*Enriched:\s+(\d+)", result.stdout or "")
+                no_match = _extract_int(r"^\s*No match:\s+(\d+)", result.stdout or "")
+                failed = _extract_int(r"^\s*Failed:\s+(\d+)", result.stdout or "")
+                summaries.append(
+                    f"enrich: total={total if total is not None else '?'} "
+                    f"enriched={enriched if enriched is not None else '?'} "
+                    f"no_match={no_match if no_match is not None else '?'} "
+                    f"failed={failed if failed is not None else '?'}"
+                )
             elif label == "register-mp3":
                 scanned = _extract_int(r"Scanned:\s*(\d+)", result.stdout or "")
                 inserted = _extract_int(r"inserted:\s*(\d+)", result.stdout or "")
@@ -1583,7 +1665,7 @@ def register_intake_group(cli: click.Group) -> None:
                 )
             else:
                 process_root_output = f"{result.stdout or ''}\n{result.stderr or ''}"
-                summaries.append("process-root: phases=enrich,art,promote")
+                summaries.append("process-root: phases=art,promote")
 
         if not dry_run:
             move_log_path = _extract_move_log_path(process_root_output)

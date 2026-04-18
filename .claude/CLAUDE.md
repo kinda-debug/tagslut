@@ -12,6 +12,7 @@ Claude-specific guardrails (canonical rules still in `AGENT.md`).
 - DJ pool is M3U-based (`dj_pool.m3u`); 4-stage DJ pipeline and XML emit are legacy (see `docs/archive/`).
 - Lexicon DB imports use `tagslut lexicon import --lexicon <main.db|backup.zip>`; prefer backup ZIP snapshots from `$HOME/Documents/Lexicon/Backups`.
 - Treat `docs/README.md` as the current active-doc index. Read only the active docs relevant to the task, and treat everything under `docs/archive/` as historical reference only.
+- Tools PATH: `tools/_load_env.sh` exports `$repo_root/tools` onto PATH when `load_workspace_env` is called. No `START_HERE.sh` exists in this clone; `_load_env.sh` is the approved substitute.
 
 ## How to audit/edit
 1) Read: `AGENT.md`, this file, `docs/README.md`, `.github/prompts/`, and only the active docs/workflows/configs relevant to the task.

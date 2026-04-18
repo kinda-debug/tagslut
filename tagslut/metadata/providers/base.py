@@ -3,6 +3,7 @@ Base provider class and rate limiting utilities.
 """
 
 import logging
+import os
 import time
 from abc import ABC, abstractmethod
 from typing import Optional, List, Dict, Any
@@ -35,6 +36,24 @@ class RateLimiter:
         self.config = config or RateLimitConfig()
         self._last_request_time: float = 0
         self._consecutive_errors: int = 0
+        self._delay_scale = self._read_delay_scale()
+        self._min_sleep = self._read_min_sleep()
+
+    def _read_delay_scale(self) -> float:
+        raw = (os.getenv("TAGSLUT_RATE_LIMIT_SCALE") or "1.0").strip()
+        try:
+            value = float(raw)
+        except ValueError:
+            return 1.0
+        return min(2.0, max(0.5, value))
+
+    def _read_min_sleep(self) -> float:
+        raw = (os.getenv("TAGSLUT_RATE_LIMIT_MIN_SLEEP") or "0.10").strip()
+        try:
+            value = float(raw)
+        except ValueError:
+            return 0.10
+        return min(0.5, max(0.0, value))
 
     def wait(self) -> None:
         """Wait the appropriate time before next request."""
@@ -42,15 +61,16 @@ class RateLimiter:
         elapsed = now - self._last_request_time
 
         # Calculate delay with backoff for errors
-        delay = self.config.min_delay
+        delay = self.config.min_delay * self._delay_scale
         if self._consecutive_errors > 0:
             backoff = self.config.base_backoff ** self._consecutive_errors
             delay = min(delay * backoff, self.config.max_backoff)
 
         if elapsed < delay:
             sleep_time = delay - elapsed
-            logger.debug("Rate limiting: sleeping %.2fs", sleep_time)
-            time.sleep(sleep_time)
+            if sleep_time >= self._min_sleep:
+                logger.debug("Rate limiting: sleeping %.2fs", sleep_time)
+                time.sleep(sleep_time)
 
         self._last_request_time = time.time()
 

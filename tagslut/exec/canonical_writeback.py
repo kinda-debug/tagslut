@@ -7,6 +7,7 @@ are preserved unless `force=True`.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
@@ -77,6 +78,200 @@ def _canonical_row_for_path(conn: sqlite3.Connection, path: Path) -> sqlite3.Row
         """,
         (str(path),),
     ).fetchone()
+
+
+def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name = ? LIMIT 1",
+        (table_name,),
+    ).fetchone()
+    return row is not None
+
+
+def _latest_provider_payload_for_path(
+    conn: sqlite3.Connection,
+    path: Path,
+    *,
+    service: str,
+) -> dict | None:
+    if not (_table_exists(conn, "files") and _table_exists(conn, "library_track_sources")):
+        return None
+
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        """
+        SELECT lts.metadata_json
+        FROM files f
+        JOIN library_track_sources lts ON lts.library_track_key = f.library_track_key
+        WHERE f.path = ? AND lts.service = ?
+        ORDER BY lts.fetched_at DESC, lts.id DESC
+        LIMIT 1
+        """,
+        (str(path), service),
+    ).fetchone()
+    if row is None:
+        return None
+
+    raw_json = row["metadata_json"]
+    if not raw_json:
+        return None
+    try:
+        payload = json.loads(raw_json)
+    except json.JSONDecodeError:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _nested(payload: dict | None, *keys: str) -> object:
+    current: object = payload
+    for key in keys:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(key)
+    return current
+
+
+def _as_text(value: object) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        text = value.strip()
+        return text or None
+    if isinstance(value, (int, float, bool)):
+        return str(value)
+    return None
+
+
+def _beatport_payload_tags(payload: dict | None) -> dict[str, str]:
+    if not payload:
+        return {}
+
+    release = _nested(payload, "_release")
+    if not isinstance(release, dict):
+        release = _nested(payload, "release")
+    release = release if isinstance(release, dict) else {}
+
+    label = _nested(payload, "label")
+    if not isinstance(label, dict):
+        label = _nested(release, "label")
+    label = label if isinstance(label, dict) else {}
+
+    track_id = _as_text(payload.get("id") or payload.get("track_id"))
+    track_url = _as_text(payload.get("url") or payload.get("track_url"))
+    release_id = _as_text(release.get("id") or release.get("release_id") or payload.get("release_id"))
+    release_url = _as_text(release.get("url") or release.get("release_url") or payload.get("release_url"))
+    label_url = _as_text(label.get("url") or payload.get("label_url"))
+    upc = _as_text(release.get("upc") or payload.get("upc") or release.get("barcode") or payload.get("barcode"))
+    catalog_number = _as_text(release.get("catalog_number") or payload.get("catalog_number"))
+    preview_url = _as_text(payload.get("preview_url") or payload.get("sample_url"))
+    waveform_url = _as_text(payload.get("waveform_url"))
+    mix_name = _as_text(payload.get("mix_name") or payload.get("mixName"))
+    genre = _as_text(_nested(payload, "genre", "name") or payload.get("genre_name") or payload.get("genre"))
+    subgenre = _as_text(
+        _nested(payload, "sub_genre", "name")
+        or payload.get("sub_genre_name")
+        or payload.get("subgenre")
+    )
+
+    tags: dict[str, str] = {}
+    if track_id:
+        tags["TRACK_ID"] = track_id
+        tags["BEATPORT_TRACK_ID"] = track_id
+    if track_url:
+        tags["TRACK_URL"] = track_url
+        tags["BEATPORT_TRACK_URL"] = track_url
+    if release_id:
+        tags["RELEASE_ID"] = release_id
+        tags["BEATPORT_RELEASE_ID"] = release_id
+    if release_url:
+        tags["RELEASE_URL"] = release_url
+        tags["BEATPORT_RELEASE_URL"] = release_url
+    if label_url:
+        tags["LABEL_URL"] = label_url
+        tags["BEATPORT_LABEL_URL"] = label_url
+    if upc:
+        tags["UPC"] = upc
+        tags["BEATPORT_UPC"] = upc
+    if catalog_number:
+        tags["CATALOGNUMBER"] = catalog_number
+    if preview_url:
+        tags["PREVIEW_URL"] = preview_url
+    if waveform_url:
+        tags["WAVEFORM_URL"] = waveform_url
+    if mix_name:
+        tags["MIXNAME"] = mix_name
+    if genre:
+        tags["BEATPORT_GENRE"] = genre
+    if subgenre:
+        tags["BEATPORT_SUBGENRE"] = subgenre
+
+    return tags
+
+
+def _tidal_payload_tags(payload: dict | None) -> dict[str, str]:
+    if not payload:
+        return {}
+
+    attributes = _nested(payload, "attributes")
+    attributes = attributes if isinstance(attributes, dict) else payload
+
+    track_id = _as_text(payload.get("id"))
+    isrc = _as_text(attributes.get("isrc") if isinstance(attributes, dict) else None)
+    bpm = _as_text(attributes.get("bpm") if isinstance(attributes, dict) else None)
+    key = _as_text(attributes.get("key") if isinstance(attributes, dict) else None)
+    key_scale = _as_text(attributes.get("keyScale") if isinstance(attributes, dict) else None)
+    replay_gain_track = _as_text(attributes.get("replayGainTrack") if isinstance(attributes, dict) else None)
+    replay_gain_album = _as_text(attributes.get("replayGainAlbum") if isinstance(attributes, dict) else None)
+    explicit = _as_text(attributes.get("explicit") if isinstance(attributes, dict) else None)
+    popularity = _as_text(attributes.get("popularity") if isinstance(attributes, dict) else None)
+    copyright_text = _as_text(attributes.get("copyright") if isinstance(attributes, dict) else None)
+    tone_tags = None
+    if isinstance(attributes, dict):
+        raw_tones = attributes.get("toneTags")
+        if isinstance(raw_tones, list):
+            compact = [str(item).strip() for item in raw_tones if str(item).strip()]
+            if compact:
+                tone_tags = ",".join(compact)
+    audio_quality = None
+    if isinstance(attributes, dict):
+        media_tags = attributes.get("mediaTags")
+        if isinstance(media_tags, list):
+            compact = [str(item).strip() for item in media_tags if str(item).strip()]
+            if compact:
+                audio_quality = ",".join(compact)
+
+    lyrics_text = _as_text(payload.get("_lyrics") or payload.get("lyrics") or payload.get("subtitles"))
+
+    tags: dict[str, str] = {}
+    if track_id:
+        tags["TIDAL_TRACK_ID"] = track_id
+        tags["TIDAL_URL"] = f"https://tidal.com/browse/track/{track_id}"
+    if isrc:
+        tags["TIDAL_ISRC"] = isrc
+    if bpm:
+        tags["TIDAL_BPM"] = bpm
+    if key:
+        tags["TIDAL_KEY"] = key
+    if key_scale:
+        tags["TIDAL_KEYSCALE"] = key_scale
+    if replay_gain_track:
+        tags["REPLAYGAIN_TRACK_GAIN"] = replay_gain_track
+    if replay_gain_album:
+        tags["REPLAYGAIN_ALBUM_GAIN"] = replay_gain_album
+    if audio_quality:
+        tags["TIDAL_MEDIA_TAGS"] = audio_quality
+    if explicit:
+        tags["TIDAL_EXPLICIT"] = explicit
+    if popularity:
+        tags["TIDAL_POPULARITY"] = popularity
+    if tone_tags:
+        tags["TIDAL_TONE_TAGS"] = tone_tags
+    if copyright_text:
+        tags["COPYRIGHT"] = copyright_text
+    if lyrics_text:
+        tags["LYRICS"] = lyrics_text
+
+    return tags
 
 
 def _tag_exists(tags: object, key: str) -> bool:
@@ -152,6 +347,14 @@ def write_canonical_tags(
         if genre and sub_genre:
             maybe_set("GENRE_FULL", f"{genre} | {sub_genre}")
             maybe_set("GENRE_PREFERRED", sub_genre)
+
+        beatport_payload = _latest_provider_payload_for_path(conn, resolved, service="beatport")
+        for tag_key, tag_value in _beatport_payload_tags(beatport_payload).items():
+            maybe_set(tag_key, tag_value)
+
+        tidal_payload = _latest_provider_payload_for_path(conn, resolved, service="tidal")
+        for tag_key, tag_value in _tidal_payload_tags(tidal_payload).items():
+            maybe_set(tag_key, tag_value)
 
         if updates:
             if execute:

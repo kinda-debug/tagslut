@@ -73,7 +73,19 @@ def _format_track_line(
         detail = "no match"
     else:
         status = "✓"
-        provider = result.matches[0].service if result.matches else "?"
+        seen_services: set[str] = set()
+        provider_order: list[str] = []
+        for match in (result.matches or []):
+            service = (match.service or "").strip()
+            if not service or service in seen_services:
+                continue
+            seen_services.add(service)
+            provider_order.append(service)
+
+        winner = result.matches[0].service if result.matches else "?"
+        provider = winner
+        if len(provider_order) > 1:
+            provider = f"{winner} [{' -> '.join(provider_order)}]"
         confidence = result.enrichment_confidence.value if result.enrichment_confidence else ""
         detail = f"{provider} ({confidence})"
 

@@ -188,6 +188,7 @@ def resolve_file(  # type: ignore  # TODO: mypy-strict
                 continue
 
             search_results = provider.search(query, limit=5)
+            provider_matched = False
             for track in search_results:
                 # Score the match
                 confidence = classify_match_confidence(
@@ -200,7 +201,10 @@ def resolve_file(  # type: ignore  # TODO: mypy-strict
 
                 if confidence != MatchConfidence.NONE:
                     matches.append(track)
+                    provider_matched = True
                     log(f"  {provider_name}: {confidence.value} match -> {track.title} by {track.artist}")
+            if not provider_matched:
+                log(f"  {provider_name}: no match")
 
     # Stage 3: Title-only search as fallback
     if not matches and file_info.tag_title:
@@ -212,6 +216,7 @@ def resolve_file(  # type: ignore  # TODO: mypy-strict
                 continue
 
             search_results = provider.search(file_info.tag_title, limit=5)
+            provider_matched = False
             for track in search_results:
                 # More lenient scoring for title-only
                 confidence = classify_match_confidence(
@@ -226,7 +231,10 @@ def resolve_file(  # type: ignore  # TODO: mypy-strict
 
                 if confidence in (MatchConfidence.STRONG, MatchConfidence.MEDIUM):
                     matches.append(track)
+                    provider_matched = True
                     log(f"  {provider_name}: {confidence.value} match -> {track.title} by {track.artist}")
+            if not provider_matched:
+                log(f"  {provider_name}: no match")
 
     # Stage 4 (hoarding only): Fill gaps by searching providers that didn't
     # match in earlier stages.  If ISRC or Beatport-ID matched one provider but
@@ -246,6 +254,7 @@ def resolve_file(  # type: ignore  # TODO: mypy-strict
                     continue
 
                 search_results = provider.search(query, limit=5)
+                provider_matched = False
                 for track in search_results:
                     confidence = classify_match_confidence(
                         file_info.tag_title,
@@ -257,7 +266,10 @@ def resolve_file(  # type: ignore  # TODO: mypy-strict
 
                     if confidence != MatchConfidence.NONE:
                         matches.append(track)
+                        provider_matched = True
                         log(f"  {provider_name}: {confidence.value} match -> {track.title} by {track.artist}")
+                if not provider_matched:
+                    log(f"  {provider_name}: no match")
 
     # Store all matches
     result.matches = matches

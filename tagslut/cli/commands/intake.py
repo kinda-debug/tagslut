@@ -143,8 +143,12 @@ def _intent_reference(intent_dict: dict[str, Any]) -> str:
     return "unresolved-intent"
 
 
-def _run_stage_step(command: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(command, capture_output=True, text=True)
+def _run_stage_step(
+    command: list[str],
+    *,
+    capture_output: bool = True,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(command, capture_output=capture_output, text=True)
 
 
 def _echo_completed_process(result: subprocess.CompletedProcess[str]) -> None:
@@ -462,6 +466,37 @@ def _write_stage_playlist_exports(
     now_iso = datetime.now(timezone.utc).isoformat()
 
     outputs: list[Path] = []
+    playlist_dirs = {playlist_root, dj_playlist_root}
+
+    def _prune_orphan_stage_m3u_files() -> int:
+        if not has_m3u_path:
+            return 0
+
+        referenced: set[str] = set()
+        for row in conn.execute(
+            "SELECT DISTINCT m3u_path FROM files "
+            "WHERE m3u_path IS NOT NULL AND TRIM(m3u_path) != ''"
+        ):
+            raw = row[0]
+            if raw is None:
+                continue
+            try:
+                referenced.add(str(Path(str(raw)).expanduser().resolve()))
+            except Exception:
+                continue
+
+        removed = 0
+        for playlist_dir in playlist_dirs:
+            for candidate in playlist_dir.glob("*.m3u"):
+                resolved_candidate = str(candidate.expanduser().resolve())
+                if resolved_candidate in referenced:
+                    continue
+                try:
+                    candidate.unlink()
+                    removed += 1
+                except OSError:
+                    continue
+        return removed
     try:
         for batch_name, batch_files in _playlist_batches_with_source_groups(
             lossless_paths,
@@ -513,6 +548,10 @@ def _write_stage_playlist_exports(
                         "UPDATE files SET m3u_exported = ? WHERE path = ?",
                         (now_iso, str(file_path)),
                     )
+
+        pruned_count = _prune_orphan_stage_m3u_files()
+        if pruned_count > 0:
+            click.echo(f"M3U cleanup: removed {pruned_count} orphan playlist file(s)")
 
         conn.commit()
     finally:
@@ -1188,7 +1227,7 @@ def register_intake_group(cli: click.Group) -> None:
         help="Root folder to process",
     )
     @click.option("--library", type=click.Path(), help="Library destination")
-    @click.option("--providers", default="beatport,tidal")
+    @click.option("--providers", default="beatport,tidal,qobuz")
     @click.option("--force", is_flag=True, help="Force re-enrichment")
     @click.option("--no-art", is_flag=True, help="Skip cover art embedding")
     @click.option("--art-force", is_flag=True, help="Force replace embedded art")
@@ -1318,7 +1357,7 @@ def register_intake_group(cli: click.Group) -> None:
     )
     @click.option(
         "--providers",
-        default="beatport,tidal",
+        default="beatport,tidal,qobuz",
         show_default=True,
         help="Comma-separated providers passed to enrich",
     )
@@ -1352,6 +1391,28 @@ def register_intake_group(cli: click.Group) -> None:
         db_arg = str(resolution.path)
         library_arg = str(Path(resolved_library).expanduser().resolve())
         ui = ConsoleUI(verbose=True)
+        repo_root = Path(__file__).resolve().parents[3]
+
+        if source == "spotiflacnext":
+            configured_log_root = os.environ.get("SPOTIFLAC_NEXT_LOG_ROOT")
+            if configured_log_root:
+                spotiflac_log_root = Path(configured_log_root).expanduser().resolve()
+            else:
+                spotiflac_log_root = (repo_root / "artifacts/logs/spotiflacnext").resolve()
+
+            latest_spotiflac_log: Path | None = None
+            if spotiflac_log_root.exists():
+                spotiflac_logs = sorted(
+                    (p for p in spotiflac_log_root.glob("*.log") if p.is_file()),
+                    key=lambda p: p.stat().st_mtime,
+                    reverse=True,
+                )
+                latest_spotiflac_log = spotiflac_logs[0] if spotiflac_logs else None
+
+            if latest_spotiflac_log is None:
+                raise click.ClickException(
+                    f"source=spotiflacnext requires at least one .log file under {spotiflac_log_root}"
+                )
 
         steps: list[tuple[str, list[str]]] = [
             (
@@ -1405,6 +1466,24 @@ def register_intake_group(cli: click.Group) -> None:
             ),
         ]
 
+        if source == "spotiflacnext":
+            spotiflac_step = (
+                "spotiflac log ingest",
+                [
+                    sys.executable,
+                    "-m",
+                    "tagslut",
+                    "intake",
+                    "spotiflac",
+                    str(latest_spotiflac_log),
+                    "--base-dir",
+                    str(root_path),
+                ],
+            )
+            if dry_run:
+                spotiflac_step[1].append("--dry-run")
+            steps.insert(0, spotiflac_step)
+
         if force:
             steps[-1][1].append("--force")
         if dry_run:
@@ -1429,12 +1508,17 @@ def register_intake_group(cli: click.Group) -> None:
                 dry_run=dry_run,
                 force=force,
             )
-            result = _run_stage_step(command)
+            result = _run_stage_step(
+                command,
+                capture_output=(label != "enrich + art + promote"),
+            )
             _echo_completed_process(result)
             if result.returncode != 0:
-                raise click.ClickException(f"Step {idx}/3 failed: {label}")
+                raise click.ClickException(f"Step {idx}/{len(steps)} failed: {label}")
 
-            if label == "register":
+            if label == "spotiflac log ingest":
+                summaries.append(f"spotiflac-log: {latest_spotiflac_log}")
+            elif label == "register":
                 registered = _extract_int(r"^\s*Registered:\s+(\d+)", result.stdout or "")
                 skipped = _extract_int(r"^\s*Skipped:\s+(\d+)", result.stdout or "")
                 errors = _extract_int(r"^\s*Errors:\s+(\d+)", result.stdout or "")

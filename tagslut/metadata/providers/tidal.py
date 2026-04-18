@@ -79,6 +79,7 @@ class TidalProvider(AbstractProvider):
     BASE_URL = "https://openapi.tidal.com/v2"
     V1_BASE_URL = "https://api.tidal.com/v1"
     COUNTRY_CODE = os.environ.get("TIDAL_COUNTRY_CODE", "US")
+    FETCH_LYRICS = (os.environ.get("TAGSLUT_TIDAL_FETCH_LYRICS", "1") or "1").strip() not in {"0", "false", "False"}
 
     @staticmethod
     def _parse_playlist_id(playlist_url_or_id: str) -> Optional[str]:
@@ -298,6 +299,27 @@ class TidalProvider(AbstractProvider):
             return f"{self.BASE_URL}{next_url}"
         return f"{self.BASE_URL}/{next_url}"
 
+    def _fetch_track_lyrics(self, track_id: str) -> tuple[int | None, str | None]:
+        response = self._make_request(
+            "GET",
+            f"{self.V1_BASE_URL}/tracks/{quote(str(track_id), safe='')}/lyrics",
+        )
+        if response is None or response.status_code != 200:
+            return None, None
+        try:
+            payload = response.json()
+        except Exception:
+            return None, None
+        if not isinstance(payload, dict):
+            return None, None
+
+        lyrics = payload.get("lyrics") or payload.get("subtitles")
+        if isinstance(lyrics, str):
+            text = lyrics.strip()
+            if text:
+                return 1, text
+        return 0, None
+
     def _normalize_track(  # type: ignore[override]  # noqa: override — signature extends parent with optional included_index and narrows return to Optional[ProviderTrack]; Liskov-safe at call sites
         self,
         resource: Dict[str, Any],
@@ -416,6 +438,17 @@ class TidalProvider(AbstractProvider):
 
         tidal_camelot = to_camelot(tidal_key, tidal_key_scale) if tidal_key and tidal_key_scale else None
 
+        lyrics_available = None
+        lyrics_text = None
+        if self.FETCH_LYRICS:
+            lyrics_available, lyrics_text = self._fetch_track_lyrics(track_id)
+
+        raw_payload = dict(resource)
+        if lyrics_available is not None:
+            raw_payload["lyrics_available"] = bool(lyrics_available)
+        if lyrics_text:
+            raw_payload["_lyrics"] = lyrics_text
+
         return ProviderTrack(
             service="tidal",
             service_track_id=track_id,
@@ -442,9 +475,10 @@ class TidalProvider(AbstractProvider):
             explicit=attributes.get("explicit"),
             audio_quality=self._media_tags_to_audio_quality(attributes.get("mediaTags")),
             copyright=attributes.get("copyright"),
+            lyrics_available=bool(lyrics_available) if lyrics_available is not None else None,
             url=track_url,
             match_confidence=MatchConfidence.NONE,
-            raw=resource,
+            raw=raw_payload,
         )
 
     def _fetch_track_provider_track(

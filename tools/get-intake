@@ -912,7 +912,7 @@ MISSING_POLICY="report"
 DJ_ROOT="${DJ_MP3_ROOT:-}"
 # Metadata enrichment providers (order = priority).
 # Active defaults are Beatport + TIDAL. Qobuz exists as a scaffold provider but is off by default.
-ENRICH_PROVIDERS="beatport,tidal"
+ENRICH_PROVIDERS="beatport,tidal,qobuz"
 ROON_PLAYLIST_PREFIX="${ROON_PLAYLIST_PREFIX:-}"
 ROON_PLAYLIST_SUFFIX="${ROON_PLAYLIST_SUFFIX:-}"
 DJ_PLAYLIST_PREFIX="${DJ_PLAYLIST_PREFIX:-dj-}"

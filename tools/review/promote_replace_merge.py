@@ -596,6 +596,12 @@ def main() -> int:
                         src_q = _file_quality(src)
                         dest_q = _file_quality(dest)
                         if src_q <= dest_q:
+                            if args.execute:
+                                # Preserve source-only metadata when destination audio is kept.
+                                tags_added, pics_added = merge_old_metadata_into_new(src, dest)
+                                if tags_added or pics_added:
+                                    merged_tags += tags_added
+                                    merged_pictures += pics_added
                             kept_existing += 1
                             if i % 25 == 0 or i == len(files):
                                 print(f"[{i}/{len(files)}] kept_existing={kept_existing}")

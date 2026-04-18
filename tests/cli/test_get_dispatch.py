@@ -121,6 +121,37 @@ def test_get_local_path_dispatches_to_register_and_retag(tmp_path: Path, monkeyp
     ]
 
 
+def test_get_local_path_with_tag_dispatches_to_stage_intake(tmp_path: Path, monkeypatch) -> None:
+    db_path = _prepare_db(tmp_path / "stage.db")
+    flac_path = tmp_path / "loose" / "track.flac"
+    flac_path.parent.mkdir(parents=True, exist_ok=True)
+    flac_path.write_bytes(b"fake")
+
+    calls: list[list[str]] = []
+
+    monkeypatch.setattr(
+        "tagslut.cli.commands.get.run_tagslut_wrapper",
+        lambda args: calls.append(list(args)),
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["get", str(flac_path.parent), "--tag", "--db", str(db_path)])
+
+    assert result.exit_code == 0, result.output
+    assert calls == [
+        [
+            "admin",
+            "intake",
+            "stage",
+            str(flac_path.parent.resolve()),
+            "--source",
+            "legacy",
+            "--db",
+            str(db_path),
+        ]
+    ]
+
+
 def test_get_fix_rejects_local_path_with_exact_message(tmp_path: Path) -> None:
     db_path = _prepare_db(tmp_path / "fix.db")
     flac_path = tmp_path / "track.flac"

@@ -12,6 +12,7 @@ Versioning: [Semantic Versioning](https://semver.org/)
 
 ### Added
 - Repo-local operator wrappers: `tools/ts-get`, `tools/ts-enrich`, and `tools/ts-auth`.
+- `tools/ts-stage` for one-shot staged intake across any non-empty staging subdirectory whose source can be inferred.
 - `env_exports.sh.template` for machine-local downloader configuration (`BEATPORTDL_CMD`, `STREAMRIP_CMD`, `STREAMRIP_CONFIG`) with optional staging-root overrides.
 - Shared shell-wrapper bootstrap via `tools/_wrapper_common.sh`, internal Beatport launcher boundary via `tools/_beatportdl.sh`, and repo-local wrappers for `tools/streamrip` and `tools/spotiflac-next`.
 - Regression coverage for Qobuz/ReccoBeats provider-state handling and ReccoBeats router access.
@@ -20,8 +21,10 @@ Versioning: [Semantic Versioning](https://semver.org/)
 - `tools/get` now relies on wrapper-backed downloader resolution instead of machine-specific absolute paths, derives Beatport/Qobuz staging roots from `STAGING_ROOT`, and uses a stable manifest lookup when returning promoted playlists.
 - Active wrapper scripts now share a common path/env bootstrap and call the repo-local Python/runtime surface consistently.
 - SpotiFLAC-Next now launches through `tools/spotiflac-next`, resolves the current app-bundle executable automatically, detaches by default, and writes logs to `artifacts/logs/spotiflacnext/`.
+- `tagslut get <dir> --tag` now treats a local directory as staged intake, auto-detects the source, and delegates to `admin intake stage`.
 - Provider status reporting now reflects real credential presence for Qobuz (`app_id`, `app_secret`, `user_auth_token`) and ReccoBeats (`api_key`) instead of reporting both as always authenticated.
 - ReccoBeats remains routable for public ISRC / track-id metadata lookups even when status reports `enabled_unconfigured`.
+- `admin intake stage` now writes named M3U exports after promote, using playlist/log name, album name, or track title instead of generic batch ids.
 
 ### Fixed
 - `tagslut get <local-path>` local flow no longer drops output generation behind an unreachable block and no longer self-locks the SQLite DB when output artifacts are built after writeback.

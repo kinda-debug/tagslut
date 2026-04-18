@@ -1,0 +1,177 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_wrapper_common.sh"
+ts_wrapper_bootstrap "${BASH_SOURCE[0]}"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  tools/ts-stage [options]
+  tools/ts-stage <root> [options]
+  tools/ts-stage --source <source> <root> [options]
+
+Behavior:
+  - with no root: auto-process all non-empty staging subdirectories
+  - with a root: infer the source from the root and run one-shot stage intake
+  - with --source: force the source instead of inferring it
+
+Known source mappings:
+  /Volumes/MUSIC/staging/bpdl               -> bpdl
+  /Volumes/MUSIC/staging/tidal              -> tidal
+  /Volumes/MUSIC/staging/StreamripDownloads -> qobuz
+  /Volumes/MUSIC/staging/SpotiFLACnext      -> spotiflacnext
+  /Volumes/MUSIC/staging/SpotiFLAC          -> legacy
+  anything else with audio files            -> legacy
+
+All extra flags are forwarded to:
+  tools/tagslut admin intake stage ...
+
+Examples:
+  tools/ts-stage --dry-run
+  tools/ts-stage /Volumes/MUSIC/staging/SpotiFLACnext
+  tools/ts-stage /Volumes/MUSIC/staging/bpdl --force
+  tools/ts-stage /Volumes/MUSIC/staging/My Loose Folder
+  tools/ts-stage --source qobuz /some/other/root
+EOF
+}
+
+is_audio_root() {
+  local root="${1:?root required}"
+  [[ -d "$root" ]] || return 1
+  [[ -n "$(find "$root" -type f \( -iname '*.flac' -o -iname '*.wav' -o -iname '*.aiff' -o -iname '*.aif' -o -iname '*.mp3' -o -iname '*.m4a' -o -iname '*.aac' \) -print -quit 2>/dev/null)" ]]
+}
+
+looks_like_spotiflacnext() {
+  local root="${1:?root required}"
+  local report_file=""
+  report_file="$(find "$root" -maxdepth 1 -type f -name '*.txt' -print -quit 2>/dev/null || true)"
+  [[ -n "$report_file" ]] || return 1
+  IFS= read -r first_line < "$report_file" || true
+  [[ "${first_line:-}" == Download\ Report* ]]
+}
+
+detect_source() {
+  local root="${1:?root required}"
+  local resolved_root=""
+  local base=""
+  local parent=""
+
+  resolved_root="$(cd "$root" && pwd)"
+  base="$(basename "$root")"
+  parent="$(basename "$(dirname "$resolved_root")")"
+
+  case "$base" in
+    bpdl) printf '%s\n' "bpdl" ;;
+    tidal) printf '%s\n' "tidal" ;;
+    StreamripDownloads|Qobuz) printf '%s\n' "qobuz" ;;
+    SpotiFLACnext) printf '%s\n' "spotiflacnext" ;;
+    SpotiFLAC) printf '%s\n' "legacy" ;;
+    *)
+      case "$parent" in
+        bpdl) printf '%s\n' "bpdl" ;;
+        tidal) printf '%s\n' "tidal" ;;
+        StreamripDownloads|Qobuz) printf '%s\n' "qobuz" ;;
+        SpotiFLACnext)
+          if looks_like_spotiflacnext "$resolved_root"; then
+            printf '%s\n' "spotiflacnext"
+          else
+            printf '%s\n' "legacy"
+          fi
+          ;;
+        SpotiFLAC) printf '%s\n' "legacy" ;;
+        *)
+          if looks_like_spotiflacnext "$resolved_root"; then
+            printf '%s\n' "spotiflacnext"
+          elif is_audio_root "$resolved_root"; then
+            printf '%s\n' "legacy"
+          else
+            return 1
+          fi
+          ;;
+      esac
+      ;;
+  esac
+}
+
+root_has_content() {
+  local root="${1:?root required}"
+  [[ -d "$root" ]] || return 1
+  [[ -n "$(find "$root" -mindepth 1 ! -name '.*' -print -quit 2>/dev/null)" ]]
+}
+
+run_stage() {
+  local root="${1:?root required}"
+  local source="${2:?source required}"
+  shift 2
+  printf '==> %s [%s]\n' "$root" "$source"
+  "$TAGSLUT_TOOLS_DIR/tagslut" admin intake stage "$root" --source "$source" "$@"
+}
+
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  usage
+  exit 0
+fi
+
+SOURCE_OVERRIDE=""
+FORWARD_ARGS=()
+ROOT=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --source)
+      [[ $# -ge 2 ]] || ts_die "--source requires a value"
+      SOURCE_OVERRIDE="$2"
+      shift 2
+      ;;
+    --source=*)
+      SOURCE_OVERRIDE="${1#*=}"
+      shift
+      ;;
+    --)
+      shift
+      while [[ $# -gt 0 ]]; do
+        FORWARD_ARGS+=("$1")
+        shift
+      done
+      ;;
+    -*)
+      FORWARD_ARGS+=("$1")
+      shift
+      ;;
+    *)
+      if [[ -z "$ROOT" ]]; then
+        ROOT="$1"
+      else
+        FORWARD_ARGS+=("$1")
+      fi
+      shift
+      ;;
+  esac
+done
+
+if [[ -n "$ROOT" ]]; then
+  SOURCE="${SOURCE_OVERRIDE:-$(detect_source "$ROOT" || true)}"
+  [[ -n "$SOURCE" ]] || ts_die "Cannot infer source from root: $ROOT"
+  run_stage "$ROOT" "$SOURCE" "${FORWARD_ARGS[@]}"
+  exit 0
+fi
+
+SCAN_ROOT="${STAGING_ROOT:-/Volumes/MUSIC/staging}"
+[[ -d "$SCAN_ROOT" ]] || ts_die "Staging root not found: $SCAN_ROOT"
+
+ran_any=0
+while IFS= read -r root; do
+  if ! root_has_content "$root"; then
+    continue
+  fi
+  source_name="${SOURCE_OVERRIDE:-$(detect_source "$root" || true)}"
+  if [[ -z "$source_name" ]]; then
+    continue
+  fi
+  run_stage "$root" "$source_name" "${FORWARD_ARGS[@]}"
+  ran_any=1
+  printf '\n'
+done < <(find "$SCAN_ROOT" -mindepth 1 -maxdepth 1 -type d ! -name '.*' ! -name 'logs' | sort)
+
+[[ "$ran_any" -eq 1 ]] || ts_die "No known non-empty staging roots found"

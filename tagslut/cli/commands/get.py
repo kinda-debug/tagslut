@@ -26,6 +26,8 @@ from tagslut.exec.intake_orchestrator import IntakeResult, run_intake
 from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
 from tagslut.utils.env_paths import get_artifacts_dir
 
+_AUDIO_EXTENSIONS = {".flac", ".wav", ".aiff", ".aif", ".mp3", ".m4a", ".aac"}
+
 
 def _looks_like_url(value: str) -> bool:
     lowered = (value or "").strip().lower()
@@ -94,6 +96,81 @@ def _cohort_flags(
         "dj": bool(dj),
         "playlist": bool(playlist),
     }
+
+
+def _is_audio_root(root: Path) -> bool:
+    if not root.is_dir():
+        return False
+    return any(
+        path.is_file() and path.suffix.lower() in _AUDIO_EXTENSIONS
+        for path in root.rglob("*")
+    )
+
+
+def _looks_like_spotiflacnext(root: Path) -> bool:
+    if not root.is_dir():
+        return False
+    report_files = sorted(root.glob("*.txt"))
+    if not report_files:
+        return False
+    try:
+        first_line = report_files[0].read_text(encoding="utf-8").splitlines()[0].strip()
+    except Exception:
+        return False
+    return first_line.startswith("Download Report")
+
+
+def _detect_stage_source(root: Path) -> str | None:
+    resolved_root = root.expanduser().resolve()
+    base = resolved_root.name
+    parent = resolved_root.parent.name
+
+    for candidate in (base, parent):
+        if candidate == "bpdl":
+            return "bpdl"
+        if candidate == "tidal":
+            return "tidal"
+        if candidate in {"StreamripDownloads", "Qobuz"}:
+            return "qobuz"
+        if candidate == "SpotiFLAC":
+            return "legacy"
+
+    if base == "SpotiFLACnext":
+        return "spotiflacnext" if _looks_like_spotiflacnext(resolved_root) else "legacy"
+    if parent == "SpotiFLACnext":
+        return "spotiflacnext" if _looks_like_spotiflacnext(resolved_root) else "legacy"
+    if _looks_like_spotiflacnext(resolved_root):
+        return "spotiflacnext"
+    if _is_audio_root(resolved_root):
+        return "legacy"
+    return None
+
+
+def _run_local_stage_flow(*, input_path: Path, db_path: Path) -> tuple[bool, str | None]:
+    if not input_path.is_dir():
+        return False, "--tag requires a directory root"
+
+    source = _detect_stage_source(input_path)
+    if source is None:
+        return False, f"cannot infer staged source from root: {input_path}"
+
+    try:
+        run_tagslut_wrapper(
+            [
+                "admin",
+                "intake",
+                "stage",
+                str(input_path),
+                "--source",
+                source,
+                "--db",
+                str(db_path),
+            ]
+        )
+    except SystemExit as exc:
+        return False, f"stage failed with exit {exc.code}"
+
+    return True, None
 
 
 def _run_local_flow(
@@ -270,12 +347,19 @@ def register_get_command(cli: click.Group) -> None:
     @click.option("--db", "db_path_arg", type=click.Path(), help="Database path (or TAGSLUT_DB)")
     @click.option("--dj", is_flag=True, help="Build MP3 output with DJ playlists.")
     @click.option("--playlist", is_flag=True, help="Emit M3U only; does not imply --dj.")
+    @click.option(
+        "--tag",
+        "tag_local",
+        is_flag=True,
+        help="For a local directory, run staged intake (register -> enrich -> promote -> M3U) with source auto-detection.",
+    )
     @click.option("--fix", "fix_mode", is_flag=True, help="Resume the most recent blocked cohort for this source.")
     def get_command(  # type: ignore[misc]
         input_value: str,
         db_path_arg: str | None,
         dj: bool,
         playlist: bool,
+        tag_local: bool,
         fix_mode: bool,
     ) -> None:
         from tagslut.cli.commands.fix import resume_source
@@ -335,6 +419,13 @@ def register_get_command(cli: click.Group) -> None:
             )
         if not input_path.exists():
             raise click.ClickException(f"Path not found: {input_path}")
+        if tag_local and dj:
+            raise click.ClickException("--dj is not supported with local staged get. Use `tagslut tag <path> --dj` after intake.")
+        if tag_local:
+            ok, reason = _run_local_stage_flow(input_path=input_path, db_path=db_path)
+            if not ok:
+                click.echo(reason or "local staged get failed", err=True)
+            raise SystemExit(0 if ok else 2)
 
         with sqlite3.connect(str(db_path)) as conn:
             ensure_cohort_support(conn)

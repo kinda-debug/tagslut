@@ -11,6 +11,9 @@ policy material lives under `docs/archive/`.
 
 1. `poetry run tagslut get ...`
 Role: Download and ingest a provider URL or local path.
+- `tagslut get <dir> --tag` is the local staged-intake shortcut for
+  already-downloaded directory roots. It runs staged register ->
+  enrich/art/promote -> named M3U export with source auto-detection.
 
 2. `poetry run tagslut tag ...`
 Role: Curate, fetch, apply, and sync metadata tags for library files.
@@ -37,7 +40,8 @@ Use `tagslut intake <URL>` as the primary entry point for Beatport/Tidal URLs;
 
 2. `poetry run tagslut admin intake stage`
 Role: One-shot staged-files intake for already-downloaded roots. Runs register,
-duration-check, and enrich/art/promote in sequence.
+duration-check, and enrich/art/promote in sequence, then writes named M3U
+exports for promoted files.
 
 3. `poetry run tagslut index ...`
 Role: Inventory registration, duplicate checks, duration checks, and metadata enrichment for indexed files.
@@ -166,6 +170,9 @@ Stable user-facing wrappers:
   Role: repo-local wrapper for `python -m tagslut`.
 - `tools/tiddl`
   Role: stable repo-local wrapper around the active TIDDL CLI.
+- `tools/ts-stage`
+  Role: repo-local staging-intake wrapper around `tagslut admin intake stage`
+  with source auto-detection for standard staging roots.
 
 Compatibility aliases kept intentionally:
 
@@ -290,7 +297,20 @@ Role: stable repo-local launcher for the macOS SpotiFLAC-Next app binary.
 - override log root with `SPOTIFLAC_NEXT_LOG_ROOT`
 - default mode detaches immediately; use `--foreground` to stream logs in the terminal
 
-9. `tools/review/sync_phase1_prs.sh`
+9. `tools/ts-stage [root] [options...]`
+Role: repo-local wrapper for one-shot staged-files intake.
+- with no root, auto-processes non-empty immediate subdirectories of
+  `$STAGING_ROOT` when the source can be inferred:
+  - `bpdl` -> `bpdl`
+  - `tidal` -> `tidal`
+  - `StreamripDownloads` -> `qobuz`
+  - `SpotiFLACnext` -> `spotiflacnext`
+  - `SpotiFLAC` -> `legacy`
+- with any other audio root, falls back to `legacy`
+- with a root argument, infers the source from the root name/content
+- forwards extra flags to `tools/tagslut admin intake stage ...`
+
+10. `tools/review/sync_phase1_prs.sh`
 Role: maintainer-only helper for pushing the active Phase 1 branch stack with preserved PR scope boundaries.
 
 ## Embedded Source-Tree Integrations

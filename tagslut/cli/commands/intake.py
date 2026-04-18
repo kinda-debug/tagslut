@@ -5,19 +5,21 @@ import os
 import re
 import subprocess
 import sys
-from datetime import datetime
+from collections import Counter
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import click
 import httpx
 
+from tagslut.cli.commands._index_helpers import safe_playlist_name, write_m3u
 from tagslut.cli.runtime import run_python_script, WRAPPER_CONTEXT
 from tagslut.core.download_manifest import DownloadManifest, build_manifest
 from tagslut.exec.intake_orchestrator import run_intake
 from tagslut.exec.dj_pool_m3u import write_dj_pool_m3u
 from tagslut.filters.identity_resolver import TrackIntent
-from tagslut.storage.schema import get_connection
+from tagslut.storage.schema import get_connection, init_db
 from tagslut.utils.console_ui import ConsoleUI
 from tagslut.utils.db import DbResolutionError, resolve_cli_env_db_path
 from tagslut.utils.env_paths import get_artifacts_dir
@@ -162,6 +164,235 @@ def _extract_int(pattern: str, text: str) -> int | None:
     if not match:
         return None
     return int(match.group(1))
+
+
+def _extract_move_log_path(text: str) -> Path | None:
+    match = re.search(r"^move_log=(.+)$", text, re.MULTILINE)
+    if not match:
+        return None
+    return Path(match.group(1).strip()).expanduser().resolve()
+
+
+def _load_promoted_paths_for_root(*, move_log_path: Path, root_path: Path) -> list[Path]:
+    if not move_log_path.exists():
+        return []
+
+    promoted: list[Path] = []
+    seen: set[str] = set()
+    resolved_root = root_path.expanduser().resolve()
+
+    for row in _load_jsonl_lines(move_log_path):
+        if row.get("event") != "file_move":
+            continue
+        if row.get("result") not in {"moved", "replaced"}:
+            continue
+        src_text = str(row.get("src") or "").strip()
+        dest_text = str(row.get("dest") or "").strip()
+        if not src_text or not dest_text:
+            continue
+
+        src_path = Path(src_text).expanduser().resolve()
+        if src_path != resolved_root and resolved_root not in src_path.parents:
+            continue
+
+        dest_path = Path(dest_text).expanduser().resolve()
+        if not dest_path.exists() or not dest_path.is_file():
+            continue
+
+        dest_key = str(dest_path)
+        if dest_key in seen:
+            continue
+        seen.add(dest_key)
+        promoted.append(dest_path)
+
+    return sorted(promoted, key=lambda item: str(item))
+
+
+def _audio_tag_value(file_path: Path, keys: tuple[str, ...]) -> str | None:
+    try:
+        from mutagen import File as MutagenFile  # type: ignore
+
+        audio = MutagenFile(str(file_path), easy=True)
+    except Exception:
+        return None
+
+    if audio is None or getattr(audio, "tags", None) is None:
+        return None
+
+    tags = audio.tags or {}
+    lowered: dict[str, Any] = {str(key).lower(): value for key, value in tags.items()}
+    for key in keys:
+        raw = lowered.get(key.lower())
+        if raw is None:
+            continue
+        if isinstance(raw, (list, tuple)):
+            if not raw:
+                continue
+            text = str(raw[0]).strip()
+        else:
+            text = str(raw).strip()
+        if text:
+            return text
+    return None
+
+
+def _common_tag_value(files: list[Path], keys: tuple[str, ...]) -> str | None:
+    values: set[str] = set()
+    for file_path in files:
+        value = _audio_tag_value(file_path, keys)
+        if not value:
+            return None
+        values.add(value)
+        if len(values) > 1:
+            return None
+    return next(iter(values)) if values else None
+
+
+def _root_playlist_hint(root_path: Path) -> str | None:
+    for pattern in ("*.txt", "*.m3u8", "*.m3u"):
+        matches = sorted(root_path.glob(pattern))
+        if len(matches) == 1:
+            return safe_playlist_name(matches[0].stem)
+    return None
+
+
+def _track_display_name(file_path: Path) -> str:
+    title = _audio_tag_value(file_path, ("title",))
+    if title:
+        return safe_playlist_name(title)
+    return safe_playlist_name(file_path.stem)
+
+
+def _derive_playlist_batch_name(files: list[Path], root_path: Path) -> str | None:
+    hint = _root_playlist_hint(root_path)
+    if hint:
+        return hint
+
+    if len(files) == 1:
+        return _track_display_name(files[0])
+
+    album = _common_tag_value(files, ("album",))
+    if album:
+        return safe_playlist_name(album)
+
+    parent_names = {file_path.parent.name for file_path in files}
+    if len(parent_names) == 1:
+        parent_name = next(iter(parent_names))
+        if parent_name and parent_name != "_UNRESOLVED":
+            return safe_playlist_name(parent_name)
+
+    generic_roots = {"bpdl", "tidal", "streamripdownloads", "spotiflacnext", "spotiflac", "qobuz"}
+    root_name = root_path.name.strip()
+    if root_name and root_name.lower() not in generic_roots and not root_name.startswith("loose_flacs_"):
+        return safe_playlist_name(root_name)
+    return None
+
+
+def _playlist_batches(files: list[Path], root_path: Path) -> list[tuple[str, list[Path]]]:
+    if not files:
+        return []
+
+    merged_name = _derive_playlist_batch_name(files, root_path)
+    if merged_name:
+        return [(merged_name, sorted(files, key=lambda item: str(item)))]
+
+    counts: Counter[str] = Counter()
+    batches: list[tuple[str, list[Path]]] = []
+    for file_path in sorted(files, key=lambda item: str(item)):
+        name = _track_display_name(file_path)
+        counts[name] += 1
+        if counts[name] > 1:
+            name = f"{name} ({counts[name]})"
+        batches.append((name, [file_path]))
+    return batches
+
+
+def _partition_playlist_files(files: list[Path]) -> tuple[list[Path], list[Path]]:
+    lossless_exts = {".flac", ".wav", ".aif", ".aiff"}
+    lossy_exts = {".mp3", ".m4a", ".aac"}
+
+    lossless = [file_path for file_path in files if file_path.suffix.lower() in lossless_exts]
+    lossy = [file_path for file_path in files if file_path.suffix.lower() in lossy_exts]
+    return lossless, lossy
+
+
+def _write_stage_playlist_exports(
+    *,
+    root_path: Path,
+    promoted_paths: list[Path],
+    db_path: Path,
+    library_path: Path,
+) -> list[Path]:
+    if not promoted_paths:
+        return []
+
+    lossless_paths, lossy_paths = _partition_playlist_files(promoted_paths)
+    if not lossless_paths and not lossy_paths:
+        return []
+
+    playlist_root = Path(os.environ.get("PLAYLIST_ROOT") or (library_path / "playlists")).expanduser().resolve()
+    dj_playlist_root = Path(
+        os.environ.get("DJ_PLAYLIST_ROOT") or os.environ.get("PLAYLIST_ROOT") or str(playlist_root)
+    ).expanduser().resolve()
+    playlist_root.mkdir(parents=True, exist_ok=True)
+    dj_playlist_root.mkdir(parents=True, exist_ok=True)
+
+    conn = get_connection(str(db_path), purpose="write", allow_create=True)
+    init_db(conn)
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(files)")}
+    has_m3u_path = "m3u_path" in columns
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    outputs: list[Path] = []
+    try:
+        for batch_name, batch_files in _playlist_batches(lossless_paths, root_path):
+            output_path = write_m3u(
+                playlist_name=safe_playlist_name(batch_name),
+                files=batch_files,
+                output_dir=playlist_root,
+                path_mode="relative",
+            )
+            outputs.append(output_path)
+            for file_path in batch_files:
+                if has_m3u_path:
+                    conn.execute(
+                        "UPDATE files SET m3u_exported = ?, m3u_path = ? WHERE path = ?",
+                        (now_iso, str(output_path), str(file_path)),
+                    )
+                else:
+                    conn.execute(
+                        "UPDATE files SET m3u_exported = ? WHERE path = ?",
+                        (now_iso, str(file_path)),
+                    )
+
+        for batch_name, batch_files in _playlist_batches(lossy_paths, root_path):
+            playlist_name = batch_name
+            if dj_playlist_root == playlist_root:
+                playlist_name = f"{batch_name} [lossy]"
+            output_path = write_m3u(
+                playlist_name=safe_playlist_name(playlist_name),
+                files=batch_files,
+                output_dir=dj_playlist_root,
+                path_mode="relative",
+            )
+            outputs.append(output_path)
+            for file_path in batch_files:
+                if has_m3u_path:
+                    conn.execute(
+                        "UPDATE files SET m3u_exported = ?, m3u_path = ? WHERE path = ?",
+                        (now_iso, str(output_path), str(file_path)),
+                    )
+                else:
+                    conn.execute(
+                        "UPDATE files SET m3u_exported = ? WHERE path = ?",
+                        (now_iso, str(file_path)),
+                    )
+
+        conn.commit()
+    finally:
+        conn.close()
+
+    return outputs
 
 
 def register_intake_group(cli: click.Group) -> None:
@@ -1046,6 +1277,7 @@ def register_intake_group(cli: click.Group) -> None:
             steps[1][1].append("--execute")
 
         summaries: list[str] = []
+        process_root_output = ""
         for idx, (label, command) in enumerate(steps, start=1):
             click.echo(f"=== Step {idx}/3: {label} ===")
             result = _run_stage_step(command)
@@ -1072,7 +1304,26 @@ def register_intake_group(cli: click.Group) -> None:
                     f"errors={errors if errors is not None else '?'}"
                 )
             else:
+                process_root_output = f"{result.stdout or ''}\n{result.stderr or ''}"
                 summaries.append("process-root: phases=enrich,art,promote")
+
+        if not dry_run:
+            move_log_path = _extract_move_log_path(process_root_output)
+            if move_log_path:
+                playlist_outputs = _write_stage_playlist_exports(
+                    root_path=root_path,
+                    promoted_paths=_load_promoted_paths_for_root(
+                        move_log_path=move_log_path,
+                        root_path=root_path,
+                    ),
+                    db_path=resolution.path,
+                    library_path=Path(library_arg),
+                )
+                if playlist_outputs:
+                    click.echo("=== M3U ===")
+                    for output in playlist_outputs:
+                        click.echo(str(output))
+                    summaries.append(f"m3u: generated={len(playlist_outputs)}")
 
         click.echo("Summary:")
         for line in summaries:

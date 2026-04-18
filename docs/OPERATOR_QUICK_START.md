@@ -37,6 +37,8 @@ cd ~/Projects/tagslut && ts-auth beatport
 ```bash
 ts-get <url>           # TIDAL, Qobuz, or Beatport URL
 ts-get <url> --dj      # download + add to DJ pool M3U
+poetry run tagslut get /path/to/dir --tag   # local staged intake -> enrich -> promote -> M3U
+tools/ts-stage         # auto-process non-empty staging subdirectories with source auto-detection
 ```
 
 Provider-specific prerequisites for `ts-get`:
@@ -58,6 +60,39 @@ artifacts/logs/spotiflacnext/
 ```
 
 Use `tools/spotiflac-next --foreground` only when you want terminal log streaming.
+
+## Staging intake
+
+To process a single already-downloaded directory through staged intake:
+
+```bash
+poetry run tagslut get /Volumes/MUSIC/staging/SpotiFLACnext/My Batch --tag
+poetry run tagslut get /Volumes/MUSIC/staging/bpdl/Some Release --tag
+```
+
+To process whatever is left under the staging root without picking the source
+manually:
+
+```bash
+tools/ts-stage
+```
+
+`tools/ts-stage` walks the immediate subdirectories under `$STAGING_ROOT`,
+skips empty ones, infers `bpdl` / `tidal` / `qobuz` / `spotiflacnext` /
+`legacy`, then runs one-shot staged intake.
+
+To process a single staging root directly:
+
+```bash
+tools/ts-stage /Volumes/MUSIC/staging/SpotiFLACnext
+tools/ts-stage /Volumes/MUSIC/staging/bpdl --dry-run
+```
+
+Staged intake now writes named M3U files automatically after promote:
+- playlist/log name when a single batch log or playlist file exists
+- album name when the promoted files share one album
+- track title when it is a single-track batch
+- one playlist per track when there is no safe merged batch name
 
 ## Enrich metadata
 

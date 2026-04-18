@@ -309,6 +309,12 @@ Role: repo-local wrapper for one-shot staged-files intake.
 - with any other audio root, falls back to `legacy`
 - with a root argument, infers the source from the root name/content
 - forwards extra flags to `tools/tagslut admin intake stage ...`
+- for `spotiflacnext`, `intake stage` auto-loads the newest log from
+  `artifacts/logs/spotiflacnext/` (or `SPOTIFLAC_NEXT_LOG_ROOT`), runs
+  `tagslut intake spotiflac`, then runs `index register`, `index duration-check`,
+  `index register-mp3`, and `intake process-root`
+- stage playlist export prunes orphan `.m3u` files in playlist output roots
+  after writing current DB-referenced playlists
 
 10. `tools/review/sync_phase1_prs.sh`
 Role: maintainer-only helper for pushing the active Phase 1 branch stack with preserved PR scope boundaries.

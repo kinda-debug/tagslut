@@ -50,7 +50,7 @@ class ProviderActivationConfig:
     beatport: ProviderPolicy = ProviderPolicy(download_enabled=False)
     tidal: ProviderPolicy = ProviderPolicy(download_enabled=True)
     qobuz: ProviderPolicy = ProviderPolicy(
-        metadata_enabled=False,
+        metadata_enabled=True,
         download_enabled=False,
         trust="do_not_use_for_canonical",
     )
@@ -82,7 +82,7 @@ def load_provider_activation_config(path: Path | None = None) -> ProviderActivat
     """
     Load provider activation policy from a TOML config file.
 
-    File is optional: if missing, defaults preserve current behavior (Beatport + TIDAL enabled).
+    File is optional: if missing, defaults enable Beatport, TIDAL, and Qobuz metadata.
     """
     config_path = path or DEFAULT_PROVIDERS_CONFIG_PATH
     config_path = Path(os.path.expanduser(str(config_path)))
@@ -113,7 +113,7 @@ def load_provider_activation_config(path: Path | None = None) -> ProviderActivat
         trust=_parse_trust(tidal_section.get("trust"), provider="tidal", default="dj_primary"),
     )
     qobuz_policy = ProviderPolicy(
-        metadata_enabled=bool(qobuz_section.get("metadata_enabled", False)),
+        metadata_enabled=bool(qobuz_section.get("metadata_enabled", True)),
         download_enabled=bool(qobuz_section.get("download_enabled", False)),
         trust=_parse_trust(qobuz_section.get("trust"), provider="qobuz", default="do_not_use_for_canonical"),
     )
@@ -209,7 +209,7 @@ def resolve_active_metadata_providers(
     Resolve the ordered list of metadata providers to use.
 
     - Unknown providers raise ValueError deterministically.
-    - If config is absent, defaults preserve current behavior (Beatport + TIDAL enabled).
+    - If config is absent, defaults enable Beatport + TIDAL + Qobuz metadata.
     - If config is present, providers disabled via metadata_enabled are filtered out.
     - Order is preserved across enabled providers.
     """

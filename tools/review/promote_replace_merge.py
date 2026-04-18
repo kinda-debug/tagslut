@@ -384,6 +384,68 @@ def find_duplicate_by_hash(conn: sqlite3.Connection, src: Path, dest_root: Path)
     return None
 
 
+def _find_duplicate_by_identity(conn: sqlite3.Connection, src: Path, dest_root: Path) -> str | None:
+    row = conn.execute(
+        """
+        SELECT
+            NULLIF(TRIM(CAST(canonical_isrc AS TEXT)), '') AS canonical_isrc,
+            NULLIF(TRIM(CAST(beatport_id AS TEXT)), '') AS beatport_id,
+            NULLIF(TRIM(CAST(canonical_title AS TEXT)), '') AS canonical_title
+        FROM files
+        WHERE path = ?
+        LIMIT 1
+        """,
+        (str(src),),
+    ).fetchone()
+    if not row:
+        return None
+
+    src_isrc, src_beatport_id, src_title = row
+    if src_beatport_id:
+        hit = conn.execute(
+            """
+            SELECT path
+            FROM files
+            WHERE path LIKE ?
+              AND path != ?
+              AND NULLIF(TRIM(CAST(beatport_id AS TEXT)), '') = ?
+            ORDER BY path ASC
+            LIMIT 1
+            """,
+            (str(dest_root) + "/%", str(src), str(src_beatport_id)),
+        ).fetchone()
+        if hit and hit[0]:
+            return str(hit[0])
+
+    if src_isrc:
+        rows = conn.execute(
+            """
+            SELECT
+                path,
+                NULLIF(TRIM(CAST(canonical_title AS TEXT)), '') AS canonical_title
+            FROM files
+            WHERE path LIKE ?
+              AND path != ?
+              AND NULLIF(TRIM(CAST(canonical_isrc AS TEXT)), '') = ?
+            ORDER BY path ASC
+            """,
+            (str(dest_root) + "/%", str(src), str(src_isrc)),
+        ).fetchall()
+        if rows:
+            if src_title:
+                src_title_key = src_title.casefold()
+                for hit in rows:
+                    hit_path = str(hit[0]) if hit[0] else ""
+                    hit_title = (hit[1] or "").casefold() if len(hit) > 1 else ""
+                    if hit_path and (not hit_title or hit_title == src_title_key):
+                        return hit_path
+            first = rows[0]
+            if first and first[0]:
+                return str(first[0])
+
+    return None
+
+
 def record_promotion_provenance(
     conn: sqlite3.Connection,
     *,
@@ -585,6 +647,16 @@ def main() -> int:
                 if not args.allow_duplicate_hash:
                     dup = find_duplicate_by_hash(conn, src, dest_root)
                     if dup:
+                        dup_skipped += 1
+                        continue
+
+                    dup_identity = _find_duplicate_by_identity(conn, src, dest_root)
+                    if dup_identity:
+                        if args.execute:
+                            tags_added, pics_added = merge_old_metadata_into_new(src, Path(dup_identity))
+                            if tags_added or pics_added:
+                                merged_tags += tags_added
+                                merged_pictures += pics_added
                         dup_skipped += 1
                         continue
 

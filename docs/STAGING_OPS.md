@@ -99,7 +99,18 @@ Typical candidates: beatportdl (`bpdl/`), streamrip (`StreamripDownloads/`), and
 ### SpotiFLACnext (new format)
 
 1) Transcode `.m4a` in-place first (see Pre-intake).
-2) Intake from the `.txt` log:
+2) Preferred: run staged intake on the batch root (log is auto-discovered):
+
+```bash
+tools/ts-stage "/Volumes/MUSIC/staging/SpotiFLACnext/<batch-root>" --source spotiflacnext --dry-run
+tools/ts-stage "/Volumes/MUSIC/staging/SpotiFLACnext/<batch-root>" --source spotiflacnext
+```
+
+`ts-stage` resolves the newest log from `artifacts/logs/spotiflacnext/` (or
+`SPOTIFLAC_NEXT_LOG_ROOT`), runs `tagslut intake spotiflac`, then performs
+register/duration/enrich/promote plus `register-mp3` for MP3 outputs.
+
+3) Direct log intake remains available when needed:
 
 ```bash
 poetry run tagslut intake spotiflac "/Volumes/MUSIC/staging/SpotiFLACnext/<playlist>.txt" --dry-run

@@ -423,7 +423,9 @@ Full design: `docs/codex/CODEX_PROVIDER_ARCHITECTURE_IMPLEMENTATION_PROMPTS.md`
 Assessment: `tagslut_Provider_Architecture_Assessment_for_Qobuz__TIDAL__Beatport.md`
 
 **Architecture decision**: Option C (capability-registry). Verdict: incremental, staged.
-**Active providers at start**: Beatport + TIDAL only. Qobuz is off-by-default until Prompt 6.
+**Active providers at start**: Beatport + TIDAL only. This historical baseline
+is superseded in current runtime defaults where Qobuz metadata is enabled by default
+and remains non-authoritative for canonical identity promotion.
 **Identity constraint**: Qobuz must not contribute to identity key derivation until corroboration
 rules (ISRC match + authoritative provider agreement) are satisfied. This is enforced at both
 application and schema levels.
@@ -437,7 +439,7 @@ application and schema levels.
 | Prompt 3 | 2a | Provider state model + `tagslut provider status` CLI | Codex | COMPLETE (2026-04-01) |
 | Prompt 4 | 2b | Capability-aware metadata router | Codex | COMPLETE (2026-04-01) |
 | Prompt 5 | 3 | Per-role activation model (metadata vs download) | Codex | COMPLETE (2026-04-01) |
-| Prompt 6 | 4 | Qobuz scaffold, off by default, identity-safe | Codex | COMPLETE (2026-04-01) |
+| Prompt 6 | 4 | Qobuz scaffold, now metadata-on by default, identity-safe | Codex | COMPLETE (2026-04-01) |
 | Prompt 7 | 5 | Qobuz + Beatport download provider adapters | Codex | COMPLETE (2026-04-01) |
 | Prompt 8 | 6 | Stale surface archival + provider scope cleanup | Codex | COMPLETE (8677a4d) |
 

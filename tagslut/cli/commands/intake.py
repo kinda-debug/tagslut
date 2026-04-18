@@ -1085,6 +1085,16 @@ def register_intake_group(cli: click.Group) -> None:
                     )
 
             if mp3_sources:
+                if base_root is not None and base_root.exists():
+                    seen_mp3 = {str(path.resolve()) for path in mp3_sources}
+                    for discovered_mp3 in base_root.rglob("*.mp3"):
+                        resolved_mp3 = discovered_mp3.resolve()
+                        key = str(resolved_mp3)
+                        if key in seen_mp3:
+                            continue
+                        seen_mp3.add(key)
+                        mp3_sources.append(resolved_mp3)
+
                 mp3_library = Path(os.environ.get("MP3_LIBRARY", "/Volumes/MUSIC/MP3_LIBRARY"))
                 if not mp3_library.exists():
                     click.secho(
@@ -1377,7 +1387,12 @@ def register_intake_group(cli: click.Group) -> None:
         db_path: str | None,
         force: bool,
     ) -> None:
-        """One-shot staged-files intake wrapper."""
+        """One-shot staged-files intake wrapper.
+
+        For source=spotiflacnext, stage prepends log-driven intake using the
+        newest file under artifacts/logs/spotiflacnext (or SPOTIFLAC_NEXT_LOG_ROOT),
+        then runs register, duration-check, register-mp3, and process-root.
+        """
         try:
             resolution = resolve_cli_env_db_path(db_path, purpose="write", source_label="--db")
         except DbResolutionError as exc:
@@ -1444,6 +1459,22 @@ def register_intake_group(cli: click.Group) -> None:
                 ],
             ),
             (
+                "register-mp3",
+                [
+                    sys.executable,
+                    "-m",
+                    "tagslut",
+                    "index",
+                    "register-mp3",
+                    "--root",
+                    str(root_path),
+                    "--db",
+                    db_arg,
+                    "--source",
+                    source,
+                ],
+            ),
+            (
                 "enrich + art + promote",
                 [
                     sys.executable,
@@ -1487,10 +1518,13 @@ def register_intake_group(cli: click.Group) -> None:
         if force:
             steps[-1][1].append("--force")
         if dry_run:
-            steps[2][1].append("--dry-run")
+            for label, command in steps:
+                if label == "enrich + art + promote":
+                    command.append("--dry-run")
         else:
-            steps[0][1].append("--execute")
-            steps[1][1].append("--execute")
+            for label, command in steps:
+                if label in {"register", "duration-check", "register-mp3"}:
+                    command.append("--execute")
 
         summaries: list[str] = []
         process_root_output = ""
@@ -1535,6 +1569,17 @@ def register_intake_group(cli: click.Group) -> None:
                     f"duration-check: updated={updated if updated is not None else '?'} "
                     f"missing_db={missing if missing is not None else '?'} "
                     f"errors={errors if errors is not None else '?'}"
+                )
+            elif label == "register-mp3":
+                scanned = _extract_int(r"Scanned:\s*(\d+)", result.stdout or "")
+                inserted = _extract_int(r"inserted:\s*(\d+)", result.stdout or "")
+                skipped = _extract_int(r"already in DB:\s*(\d+)", result.stdout or "")
+                failed = _extract_int(r"failed:\s*(\d+)", result.stdout or "")
+                summaries.append(
+                    f"register-mp3: scanned={scanned if scanned is not None else '?'} "
+                    f"inserted={inserted if inserted is not None else '?'} "
+                    f"skipped={skipped if skipped is not None else '?'} "
+                    f"failed={failed if failed is not None else '?'}"
                 )
             else:
                 process_root_output = f"{result.stdout or ''}\n{result.stderr or ''}"

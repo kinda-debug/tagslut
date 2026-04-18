@@ -81,6 +81,12 @@ tools/ts-stage
 skips empty ones, infers `bpdl` / `tidal` / `qobuz` / `spotiflacnext` /
 `legacy`, then runs one-shot staged intake.
 
+For `spotiflacnext` sources, stage now:
+- reads the latest log from `artifacts/logs/spotiflacnext/` (or `SPOTIFLAC_NEXT_LOG_ROOT`)
+- runs `tagslut intake spotiflac` before normal register/enrich/promote steps
+- runs `index register-mp3` for the same root so MP3 outputs are indexed and routed
+- prunes orphan `.m3u` files in playlist export roots after writing current stage playlists
+
 To process a single staging root directly:
 
 ```bash
@@ -103,6 +109,8 @@ ts-enrich              # BPM, key, genre, label for all unenriched tracks
 Enrichment fills linked `track_identity.canonical_*` fields when an active
 identity link exists, while keeping `files.canonical_*` as the compatibility
 fallback used by canonical FLAC writeback.
+Default metadata providers are now `beatport,tidal,qobuz` unless disabled in
+`~/.config/tagslut/providers.toml`.
 Public ReccoBeats lookups remain available for audio-feature enrichment even if
 its provider state reports `enabled_unconfigured`.
 

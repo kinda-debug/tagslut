@@ -2,10 +2,10 @@
 Track identity resolution chain.
 
 Resolution priority:
-  1. ISRC              (isrc column; canonical_isrc fallback for legacy rows)
-  2. Beatport ID       (beatport_id column)
-  3. Tidal ID          (tidal_id column)
-  4. Fuzzy match       (artist + title + duration ±2s via rapidfuzz)
+  1. Shared v3 resolver (strong evidence only; text creates review artifacts)
+  2. ISRC              (isrc column; canonical_isrc fallback for legacy rows)
+  3. Beatport ID       (beatport_id column)
+  4. Tidal ID          (tidal_id column)
 """
 import sqlite3
 from dataclasses import dataclass
@@ -14,6 +14,7 @@ from typing import Optional
 from rapidfuzz import fuzz
 
 from tagslut.storage.queries import get_file_by_isrc
+from tagslut.storage.v3.resolver import ResolverInput, resolve_identity
 
 
 @dataclass
@@ -105,6 +106,10 @@ class IdentityResolver:
         """
         Returns (path, quality_rank, match_method, score) or None.
         """
+        v3_existing = self._find_existing_v3(intent)
+        if v3_existing is not None:
+            return v3_existing
+
         # 1. ISRC
         if intent.isrc:
             row = get_file_by_isrc(self._conn, intent.isrc)
@@ -136,11 +141,102 @@ class IdentityResolver:
             if row and row[1] is not None:
                 return (row[0], row[1], "tidal_id", 100.0)
 
-        # 4. Fuzzy: artist + title + duration
+        # 4. Text-only evidence is review-only in v3. Keep legacy files as a
+        # fallback for exact identifiers, but do not skip/upgrade on fuzzy text.
         if intent.artist and intent.title:
-            return self._fuzzy_match(intent)
+            resolve_identity(
+                self._conn,
+                ResolverInput(
+                    isrc=intent.isrc,
+                    provider_ids={
+                        key: value
+                        for key, value in {
+                            "beatport_id": intent.beatport_id,
+                            "tidal_id": intent.tidal_id,
+                        }.items()
+                        if value
+                    },
+                    artist=intent.artist,
+                    title=intent.title,
+                    duration_s=intent.duration_s,
+                    source_system="legacy_identity_resolver",
+                    source_ref=f"{intent.artist}|{intent.title}",
+                ),
+                persist=True,
+                allow_text_auto_match=False,
+            )
 
         return None
+
+    def _find_existing_v3(
+        self,
+        intent: TrackIntent,
+    ) -> Optional[tuple[str, int, str, Optional[float]]]:
+        """
+        Query v3 identity/preferred_asset first and return a file path when the
+        shared resolver accepts strong evidence.
+        """
+        result = resolve_identity(
+            self._conn,
+            ResolverInput(
+                isrc=intent.isrc,
+                provider_ids={
+                    key: value
+                    for key, value in {
+                        "beatport_id": intent.beatport_id,
+                        "tidal_id": intent.tidal_id,
+                    }.items()
+                    if value
+                },
+                artist=intent.artist,
+                title=intent.title,
+                duration_s=intent.duration_s,
+                source_system="legacy_identity_resolver",
+                source_ref=intent.isrc or intent.beatport_id or intent.tidal_id,
+            ),
+            persist=True,
+            allow_text_auto_match=False,
+        )
+        if result.decision != "accepted" or result.identity_id is None:
+            return None
+        try:
+            row = self._conn.execute(
+                """
+                SELECT af.path
+                FROM preferred_asset pa
+                JOIN asset_file af ON af.id = pa.asset_id
+                WHERE pa.identity_id = ?
+                LIMIT 1
+                """,
+                (result.identity_id,),
+            ).fetchone()
+            if row is None:
+                row = self._conn.execute(
+                    """
+                    SELECT af.path
+                    FROM asset_link al
+                    JOIN asset_file af ON af.id = al.asset_id
+                    WHERE al.identity_id = ?
+                    ORDER BY al.id ASC
+                    LIMIT 1
+                    """,
+                    (result.identity_id,),
+                ).fetchone()
+        except sqlite3.OperationalError:
+            return None
+        if row is None:
+            return None
+        path = str(row[0])
+        try:
+            quality_row = self._conn.execute(
+                "SELECT quality_rank FROM files WHERE path = ? LIMIT 1",
+                (path,),
+            ).fetchone()
+        except sqlite3.OperationalError:
+            quality_row = None
+        quality_rank = int(quality_row[0]) if quality_row and quality_row[0] is not None else 0
+        match_method = str(result.reasons.get("accepted_by") or "v3")
+        return (path, quality_rank, match_method, result.confidence * 100.0)
 
     def _fuzzy_match(
         self, intent: TrackIntent

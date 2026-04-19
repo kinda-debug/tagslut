@@ -79,7 +79,7 @@ def test_exact_reuse_by_spotify_id() -> None:
         conn.close()
 
 
-def test_fuzzy_reuse_then_create_when_no_match() -> None:
+def test_text_match_records_candidate_then_creates_when_no_strong_match() -> None:
     conn = _setup_db()
     try:
         conn.execute(
@@ -91,7 +91,7 @@ def test_fuzzy_reuse_then_create_when_no_match() -> None:
                 '2026-01-01T00:00:00+00:00', 'migration', 'test_fixture', 'legacy')
             """
         )
-        reused = resolve_or_create_identity(
+        created_from_text = resolve_or_create_identity(
             conn,
             asset_row={"path": "/music/fuzzy.flac", "duration_s": 299.5},
             metadata={"artist": "Artist", "title": "Track"},
@@ -104,11 +104,23 @@ def test_fuzzy_reuse_then_create_when_no_match() -> None:
             provenance={"source": "manual"},
         )
 
-        assert reused == 3
+        assert created_from_text != 3
         assert created != 3
+        candidate = conn.execute(
+            """
+            SELECT irc.identity_id, irc.match_method, irc.decision
+            FROM identity_resolution_candidate irc
+            JOIN identity_resolution_run irr ON irr.id = irc.run_id
+            WHERE irr.source_ref = '/music/fuzzy.flac'
+            """
+        ).fetchone()
+        assert candidate is not None
+        assert int(candidate["identity_id"]) == 3
+        assert candidate["match_method"] in {"exact_text", "fuzzy_text"}
+        assert candidate["decision"] == "candidate"
         row = conn.execute("SELECT identity_key FROM track_identity WHERE id = ?", (created,)).fetchone()
         assert row is not None
-        assert str(row["identity_key"]).startswith("text:other artist|other track")
+        assert str(row["identity_key"]).startswith("unresolved_text:path:/music/new-create.flac")
     finally:
         conn.close()
 

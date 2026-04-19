@@ -140,7 +140,7 @@ def test_identity_resolver_priority_beatport_tidal(mem_db):
     assert ti.match_method == "tidal_id"
 
 
-def test_identity_resolver_fuzzy_match_with_duration_gate(mem_db):
+def test_identity_resolver_text_only_match_is_review_only(mem_db):
     _insert_file(
         mem_db,
         path="/music/fuzzy.flac",
@@ -152,14 +152,13 @@ def test_identity_resolver_fuzzy_match_with_duration_gate(mem_db):
     )
     resolver = IdentityResolver(mem_db)
 
-    # Within tolerance -> fuzzy hit
     ok = resolver.resolve(
         TrackIntent(artist="Test Artist", title="Great Track", duration_s=241.0),
         candidate_rank=4,
     )
-    assert ok.match_method == "fuzzy"
+    assert ok.action == "new"
+    assert ok.match_method is None
 
-    # Outside tolerance -> no fuzzy hit
     miss = resolver.resolve(
         TrackIntent(artist="Test Artist", title="Great Track", duration_s=260.5),
         candidate_rank=4,

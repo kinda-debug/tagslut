@@ -6,10 +6,13 @@ import json
 import logging
 import sqlite3
 import re
+import uuid
 from collections.abc import Mapping
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from typing import Any, cast
+
+from tagslut.storage.v3.resolver import ResolverInput, resolve_identity
 
 __all__ = [
     "derive_identity_key",
@@ -422,6 +425,15 @@ def _create_identity(
 ) -> int:
     insert_fields = dict(fields)
     insert_fields["identity_key"] = derive_identity_key(insert_fields, asset_row)
+    if str(insert_fields["identity_key"]).startswith("text:"):
+        asset_id = _row_value(asset_row, "id")
+        asset_path = _norm_text(_row_value(asset_row, "path"))
+        if asset_id is not None:
+            insert_fields["identity_key"] = f"unresolved_text:asset:{int(asset_id)}"
+        elif asset_path:
+            insert_fields["identity_key"] = f"unresolved_text:path:{asset_path}"
+        else:
+            insert_fields["identity_key"] = f"unresolved_text:{uuid.uuid4().hex}"
     columns = [
         column
         for column, value in insert_fields.items()
@@ -745,13 +757,41 @@ def resolve_or_create_identity(
                     conn.commit()
                 return matched_id
 
-        matched_id = _fuzzy_match_identity_id(
+        resolver_result = resolve_identity(
             conn,
-            artist_norm=_norm_text(fields.get("artist_norm")),
-            title_norm=_norm_text(fields.get("title_norm")),
-            duration_s=_to_float(fields.get("canonical_duration")),
+            ResolverInput(
+                asset_id=asset_id,
+                path=_norm_text(_row_value(asset_row, "path")),
+                content_sha256=_norm_text(_row_value(asset_row, "content_sha256")),
+                streaminfo_md5=_norm_text(_row_value(asset_row, "streaminfo_md5")),
+                chromaprint_fingerprint=_norm_text(
+                    _row_value(asset_row, "chromaprint_fingerprint")
+                ),
+                duration_s=_to_float(fields.get("canonical_duration")),
+                isrc=isrc,
+                provider_ids={
+                    column: value
+                    for column in PROVIDER_COLUMNS
+                    if (value := _norm_text(fields.get(column)))
+                },
+                artist=_norm_text(fields.get("canonical_artist"))
+                or _norm_text(fields.get("artist_norm")),
+                title=_norm_text(fields.get("canonical_title"))
+                or _norm_text(fields.get("title_norm")),
+                source_system="identity_service",
+                source_ref=_norm_text(_row_value(asset_row, "path")),
+                payload={
+                    "provenance": {
+                        str(key): _norm_text(value)
+                        for key, value in provenance.items()
+                    }
+                },
+            ),
+            persist=True,
+            allow_text_auto_match=False,
         )
-        if matched_id is not None:
+        if resolver_result.decision == "accepted" and resolver_result.identity_id is not None:
+            matched_id = resolver_result.identity_id
             _merge_identity_fields_if_empty(conn, matched_id, fields)
             mirror_identity_to_legacy(conn, matched_id, asset_id=asset_id)
             if owns_transaction:

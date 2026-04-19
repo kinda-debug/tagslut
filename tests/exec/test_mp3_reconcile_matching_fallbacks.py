@@ -97,7 +97,7 @@ def test_isrc_match_produces_high_confidence(tmp_path: Path) -> None:
     assert row[0] == isrc_identity
 
 
-def test_missing_isrc_title_artist_fallback(tmp_path: Path) -> None:
+def test_missing_isrc_title_artist_requires_review_candidate(tmp_path: Path) -> None:
     conn = _make_db(tmp_path)
 
     fallback_identity = _insert_identity(
@@ -122,10 +122,19 @@ def test_missing_isrc_title_artist_fallback(tmp_path: Path) -> None:
         "SELECT identity_id FROM mp3_asset WHERE path = ?",
         (str(mp3_file),),
     ).fetchone()
-    assert result.linked == 1
-    assert result.unmatched == 0
-    assert row is not None
-    assert row[0] == fallback_identity
+    candidate = conn.execute(
+        """
+        SELECT irc.identity_id, irc.match_method, irc.decision
+        FROM identity_resolution_candidate irc
+        JOIN identity_resolution_run irr ON irr.id = irc.run_id
+        WHERE irr.source_ref = ?
+        """,
+        (str(mp3_file),),
+    ).fetchone()
+    assert result.linked == 0
+    assert result.unmatched == 1
+    assert row is None
+    assert candidate == (fallback_identity, "exact_text", "candidate")
 
 
 def test_no_match_produces_suspect_status(tmp_path: Path) -> None:

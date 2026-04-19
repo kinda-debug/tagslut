@@ -26,6 +26,7 @@ from tagslut.exec.mp3_reconcile import (
     normalize_title_for_match,
 )
 from tagslut.cli._progress import ProgressCallback
+from tagslut.storage.v3.resolver import ResolverInput, resolve_identity
 from tagslut.utils.fs import normalize_path
 
 
@@ -645,56 +646,6 @@ def reconcile_mp3_library(
     ingest_session = run_id
     source_root = str(mp3_root_fs)
 
-    # Preload identity maps for case-insensitive / whitespace-insensitive matching.
-    def _column_exists(table: str, column: str) -> bool:
-        try:
-            return any(
-                str(r[1]) == column
-                for r in conn.execute(f"PRAGMA table_info({table})").fetchall()
-            )
-        except sqlite3.OperationalError:
-            return False
-
-    has_canonical_artist = _column_exists("track_identity", "canonical_artist")
-    has_canonical_title = _column_exists("track_identity", "canonical_title")
-    has_merged_into_id = _column_exists("track_identity", "merged_into_id")
-    where_clause = "WHERE merged_into_id IS NULL" if has_merged_into_id else ""
-
-    isrc_map: dict[str, list[int]] = {}
-    norm_map: dict[tuple[str, str], list[int]] = {}
-    if has_canonical_artist and has_canonical_title:
-        identity_rows = conn.execute(
-            f"""
-            SELECT id, isrc, artist_norm, title_norm, canonical_artist, canonical_title
-            FROM track_identity
-            {where_clause}
-            """
-        ).fetchall()
-    else:
-        identity_rows = conn.execute(
-            f"""
-            SELECT id, isrc, artist_norm, title_norm
-            FROM track_identity
-            {where_clause}
-            """
-        ).fetchall()
-
-    for row in identity_rows:
-        if has_canonical_artist and has_canonical_title:
-            iid, isrc_val, artist_norm, title_norm, canonical_artist, canonical_title = row
-        else:
-            iid, isrc_val, artist_norm, title_norm = row
-            canonical_artist = None
-            canonical_title = None
-        if isrc_val:
-            key = normalize_isrc(str(isrc_val))
-            if key:
-                isrc_map.setdefault(key, []).append(int(iid))
-        a_key = normalize_artist_for_match(artist_norm or canonical_artist)
-        t_key = normalize_title_for_match(title_norm or canonical_title)
-        if a_key and t_key:
-            norm_map.setdefault((a_key, t_key), []).append(int(iid))
-
     mp3_files = sorted(mp3_root_fs.rglob("*.mp3"))
     total = len(mp3_files)
     for idx, mp3_file in enumerate(mp3_files, 1):
@@ -722,34 +673,61 @@ def reconcile_mp3_library(
         identity_id: int | None = None
         tier: int | None = None
         isrc_key = normalize_isrc(isrc_raw)
-        if isrc_key:
-            candidates = isrc_map.get(isrc_key, [])
-            if len(candidates) == 1:
-                identity_id = candidates[0]
-                tier = 2
-            elif len(candidates) > 1:
-                result.unmatched += 1
-                result.errors.append(
-                    f"ISRC conflict for {mp3_file.name} (isrc={isrc_raw!r}, candidates={candidates})"
-                )
-                if progress_cb is not None:
-                    progress_cb(mp3_file.name, idx, total)
-                continue
-
-        if identity_id is None and title_raw and artist_raw:
-            key = (normalize_artist_for_match(artist_raw), normalize_title_for_match(title_raw))
-            candidates = norm_map.get(key, [])
-            if len(candidates) == 1:
-                identity_id = candidates[0]
-                tier = 3
-            elif len(candidates) > 1:
-                result.unmatched += 1
-                result.errors.append(
-                    f"Title/artist conflict for {mp3_file.name} (title={title_raw!r}, artist={artist_raw!r}, candidates={candidates})"
-                )
-                if progress_cb is not None:
-                    progress_cb(mp3_file.name, idx, total)
-                continue
+        resolver_result = resolve_identity(
+            conn,
+            ResolverInput(
+                path=str(mp3_file_fs),
+                isrc=isrc_key or isrc_raw,
+                artist=artist_raw,
+                title=title_raw,
+                source_system="mp3_reconcile",
+                source_ref=str(mp3_file_fs),
+                payload={"zone": mp3_root.name, "run_id": run_id},
+            ),
+            persist=not dry_run,
+            allow_text_auto_match=False,
+        )
+        accepted_by = str(resolver_result.reasons.get("accepted_by", ""))
+        if resolver_result.decision == "accepted" and resolver_result.identity_id is not None:
+            identity_id = resolver_result.identity_id
+            tier = {
+                "asset_link": 1,
+                "lexicon_path": 1,
+                "content_sha256": 1,
+                "streaminfo_md5": 1,
+                "isrc": 2,
+                "provider_id": 2,
+                "chromaprint": 2,
+            }.get(accepted_by)
+        elif resolver_result.decision in {"ambiguous", "candidate_only"}:
+            result.unmatched += 1
+            candidate_ids = [
+                candidate.identity_id for candidate in resolver_result.candidates
+            ]
+            result.errors.append(
+                f"Identity review required for {mp3_file.name} "
+                f"(decision={resolver_result.decision}, candidates={candidate_ids})"
+            )
+            _insert_reconcile_log_row(
+                conn,
+                run_id=run_id,
+                source="mp3_reconcile",
+                action="identity_review_required",
+                confidence="LOW",
+                mp3_path=str(mp3_file),
+                identity_id=None,
+                details={
+                    "decision": resolver_result.decision,
+                    "candidate_identity_ids": candidate_ids,
+                    "isrc": isrc_raw,
+                    "title": title_raw,
+                    "artist": artist_raw,
+                },
+                dry_run=dry_run,
+            )
+            if progress_cb is not None:
+                progress_cb(mp3_file.name, idx, total)
+            continue
 
         if identity_id is None:
             result.unmatched += 1
@@ -846,6 +824,7 @@ def reconcile_mp3_library(
             (identity_id,),
         ).fetchone()
 
+        confidence = "HIGH" if tier in (1, 2) else "MEDIUM" if tier == 3 else ""
         if dry_run:
             if master_row is None:
                 result.provisional += 1
@@ -1255,12 +1234,10 @@ def reconcile_mp3_scan(
     dry_run: bool = True,
     progress_cb: ProgressCallback | None = None,
 ) -> dict:
-    """Reconcile a scan CSV against the DB using multi-tier identity matching.
+    """Reconcile a scan CSV against the DB using the shared v3 resolver.
 
-    Tier 1 — filename pattern (HIGH confidence)
-    Tier 2 — ISRC tag (HIGH confidence)
-    Tier 3 — ID3 title+artist normalised (MEDIUM confidence)
-    Tier 4 — fuzzy (LOW confidence, flagged for review only)
+    Strong evidence such as ISRC may bind automatically. Filename and ID3
+    title/artist evidence creates review candidates instead of durable links.
     No match — insert track_identity stub + mp3_asset (orphan_stubbed)
 
     Duplicate MP3s for the same identity: keep highest bitrate, mark others
@@ -1282,78 +1259,12 @@ def reconcile_mp3_scan(
         "errors": 0,
     }
 
-    # Try to import thefuzz / rapidfuzz for Tier 4
-    _fuzzy_ratio = None
-    try:
-        from rapidfuzz import fuzz as _rf  # type: ignore[import-untyped]
-        _fuzzy_ratio = lambda a, b: _rf.token_sort_ratio(a, b) / 100.0
-    except ImportError:
-        try:
-            from thefuzz import fuzz as _tf  # type: ignore[import-untyped]
-            _fuzzy_ratio = lambda a, b: _tf.token_sort_ratio(a, b) / 100.0
-        except ImportError:
-            pass  # Tier 4 skipped
-
     with (
         open(scan_csv, newline="", encoding="utf-8") as csv_fh,
         open(jsonl_path, "a", encoding="utf-8") as jsonl_fh,
     ):
         reader = csv.DictReader(csv_fh)
         rows = list(reader)
-
-    # Build identity lookup maps for batch efficiency
-    # norm_key → list of identity_ids
-    _norm_map: dict[tuple[str, str], list[int]] = {}
-    _isrc_map: dict[str, list[int]] = {}
-
-    def _column_exists(table: str, column: str) -> bool:
-        try:
-            return any(
-                str(r[1]) == column
-                for r in conn.execute(f"PRAGMA table_info({table})").fetchall()
-            )
-        except sqlite3.OperationalError:
-            return False
-
-    has_canonical_artist = _column_exists("track_identity", "canonical_artist")
-    has_canonical_title = _column_exists("track_identity", "canonical_title")
-    has_merged_into_id = _column_exists("track_identity", "merged_into_id")
-    where_clause = "WHERE merged_into_id IS NULL" if has_merged_into_id else ""
-
-    if has_canonical_artist and has_canonical_title:
-        identity_rows = conn.execute(
-            f"""
-            SELECT id, isrc, artist_norm, title_norm, canonical_artist, canonical_title
-            FROM track_identity
-            {where_clause}
-            """
-        ).fetchall()
-    else:
-        identity_rows = conn.execute(
-            f"""
-            SELECT id, isrc, artist_norm, title_norm
-            FROM track_identity
-            {where_clause}
-            """
-        ).fetchall()
-
-    for row in identity_rows:
-        if has_canonical_artist and has_canonical_title:
-            iid, isrc_val, artist_norm, title_norm, canonical_artist, canonical_title = row
-        else:
-            iid, isrc_val, artist_norm, title_norm = row
-            canonical_artist = None
-            canonical_title = None
-
-        a_norm = normalize_artist_for_match(artist_norm or canonical_artist)
-        t_norm = normalize_title_for_match(title_norm or canonical_title)
-        if isrc_val:
-            isrc_key = normalize_isrc(str(isrc_val))
-            if isrc_key:
-                _isrc_map.setdefault(isrc_key, []).append(iid)
-        if a_norm and t_norm:
-            _norm_map.setdefault((a_norm, t_norm), []).append(iid)
-
 
     total = len(rows)
     try:
@@ -1367,9 +1278,6 @@ def reconcile_mp3_scan(
                         path_str=path_str,
                         run_id=run_id,
                         counters=counters,
-                        norm_map=_norm_map,
-                        isrc_map=_isrc_map,
-                        fuzzy_ratio=_fuzzy_ratio,
                         jsonl_fh=jsonl_fh,
                         dry_run=dry_run,
                     )
@@ -1403,9 +1311,6 @@ def _process_reconcile_row(
     path_str: str,
     run_id: str,
     counters: dict,
-    norm_map: dict,
-    isrc_map: dict,
-    fuzzy_ratio,
     jsonl_fh,
     dry_run: bool,
 ) -> None:
@@ -1443,75 +1348,67 @@ def _process_reconcile_row(
     tier: int | None = None
     confidence: str = ""
 
-    # Tier 1 — filename pattern
     parsed = _parse_filename(filename)
+    filename_artist = filename_title = None
     if parsed:
-        fn_artist, fn_title = parsed
-        candidates = norm_map.get((fn_artist, fn_title), [])
-        if len(candidates) == 1:
-            identity_id = candidates[0]
-            tier = 1
-            confidence = "HIGH"
-
-    # Tier 2 — ISRC
-    isrc_key = normalize_isrc(isrc_raw)
-    if identity_id is None and isrc_key:
-        candidates = isrc_map.get(isrc_key, [])
-        if len(candidates) == 1:
-            identity_id = candidates[0]
-            tier = 2
-            confidence = "HIGH"
-        elif len(candidates) > 1:
+        filename_artist, filename_title = parsed
+    resolver_result = resolve_identity(
+        conn,
+        ResolverInput(
+            path=path_str,
+            content_sha256=sha256,
+            isrc=normalize_isrc(isrc_raw),
+            artist=id3_artist or filename_artist,
+            title=id3_title or filename_title,
+            duration_s=duration_s,
+            source_system="mp3_reconcile_scan",
+            source_ref=path_str,
+            payload={"run_id": run_id, "zone": zone},
+        ),
+        persist=not dry_run,
+        allow_text_auto_match=False,
+    )
+    accepted_by = str(resolver_result.reasons.get("accepted_by", ""))
+    if resolver_result.decision == "accepted" and resolver_result.identity_id is not None:
+        identity_id = resolver_result.identity_id
+        tier = {
+            "asset_link": 1,
+            "lexicon_path": 1,
+            "content_sha256": 1,
+            "streaminfo_md5": 1,
+            "isrc": 2,
+            "provider_id": 2,
+            "chromaprint": 2,
+        }.get(accepted_by)
+        confidence = "HIGH"
+    elif resolver_result.decision in {"ambiguous", "candidate_only"}:
+        if resolver_result.decision == "ambiguous":
             counters["conflicts"] += 1
-            _log_reconcile(
-                conn, run_id=run_id, source="mp3_reconcile",
-                action="CONFLICT", confidence="HIGH", mp3_path=path_str,
-                identity_id=None, lexicon_track_id=None,
-                details={"tier": 2, "candidates": candidates, "isrc": isrc_raw},
-                jsonl_fh=jsonl_fh, dry_run=dry_run,
-            )
-            return
-
-    # Tier 3 — ID3 title+artist normalised
-    if identity_id is None and id3_title and id3_artist:
-        key = (normalize_artist_for_match(id3_artist), normalize_title_for_match(id3_title))
-        candidates = norm_map.get(key, [])
-        if len(candidates) == 1:
-            identity_id = candidates[0]
-            tier = 3
-            confidence = "MEDIUM"
-        elif len(candidates) > 1:
-            counters["conflicts"] += 1
-            _log_reconcile(
-                conn, run_id=run_id, source="mp3_reconcile",
-                action="CONFLICT", confidence="MEDIUM", mp3_path=path_str,
-                identity_id=None, lexicon_track_id=None,
-                details={"tier": 3, "candidates": candidates},
-                jsonl_fh=jsonl_fh, dry_run=dry_run,
-            )
-            return
-
-    # Tier 4 — fuzzy
-    if identity_id is None and fuzzy_ratio and id3_title and id3_artist:
-        query_str = f"{normalize_artist_for_match(id3_artist)} {normalize_title_for_match(id3_title)}"
-        best_score = 0.0
-        best_id: int | None = None
-        for (a_n, t_n), iids in norm_map.items():
-            candidate_str = f"{a_n} {t_n}"
-            score = fuzzy_ratio(query_str, candidate_str)
-            if score > best_score:
-                best_score = score
-                best_id = iids[0] if len(iids) == 1 else None
-        if best_score >= 0.92 and best_id is not None:
+            action = "CONFLICT"
+        else:
             counters["fuzzy"] += 1
-            _log_reconcile(
-                conn, run_id=run_id, source="mp3_reconcile",
-                action="fuzzy_match", confidence="LOW", mp3_path=path_str,
-                identity_id=best_id, lexicon_track_id=None,
-                details={"score": round(best_score, 4), "candidate_id": best_id},
-                jsonl_fh=jsonl_fh, dry_run=dry_run,
-            )
-            return  # Do NOT insert mp3_asset for fuzzy
+            action = "candidate_review_required"
+        candidate_ids = [candidate.identity_id for candidate in resolver_result.candidates]
+        _log_reconcile(
+            conn,
+            run_id=run_id,
+            source="mp3_reconcile",
+            action=action,
+            confidence="LOW",
+            mp3_path=path_str,
+            identity_id=None,
+            lexicon_track_id=None,
+            details={
+                "decision": resolver_result.decision,
+                "candidate_identity_ids": candidate_ids,
+                "isrc": isrc_raw,
+                "id3_title": id3_title,
+                "id3_artist": id3_artist,
+            },
+            jsonl_fh=jsonl_fh,
+            dry_run=dry_run,
+        )
+        return
 
     # No match → stub
     if identity_id is None:

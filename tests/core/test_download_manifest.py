@@ -134,7 +134,7 @@ def test_build_manifest_preserves_input_order_within_buckets(mem_db: sqlite3.Con
     assert titles == ["new-a", "new-b"]
 
 
-def test_build_manifest_fuzzy_skip_with_duration_gate(mem_db: sqlite3.Connection) -> None:
+def test_build_manifest_text_only_match_stays_new(mem_db: sqlite3.Connection) -> None:
     _insert_file(
         mem_db,
         path="/music/fuzzy.flac",
@@ -157,5 +157,5 @@ def test_build_manifest_fuzzy_skip_with_duration_gate(mem_db: sqlite3.Connection
         ],
         mem_db,
     )
-    assert len(manifest.skipped) == 1
-    assert manifest.skipped[0].match_method == "fuzzy"
+    assert len(manifest.new) == 1
+    assert manifest.new[0].track_intent.title == "Great Track"

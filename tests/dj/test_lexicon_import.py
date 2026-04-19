@@ -478,3 +478,55 @@ def test_backup_zip_supported(tmp_path: Path) -> None:
     ).fetchone()[0]
     assert result["matched"] == 1
     assert genre == "Electro"
+
+
+def test_streaming_id_match_beats_text_candidate(tmp_path: Path) -> None:
+    conn = _make_tagslut_db()
+    text_id = _seed_tagslut_identity(
+        conn,
+        key="text-decoy",
+        artist_norm="test artist",
+        title_norm="test title",
+    )
+    provider_id = _seed_tagslut_identity(
+        conn,
+        key="spotify:sp1",
+        artist_norm="other artist",
+        title_norm="other title",
+        spotify_id="SP1",
+    )
+
+    lex_path = _make_lex_db(tmp_path)
+    _insert_lex_track(
+        lex_path,
+        location="/Volumes/MUSIC/DJ_LIBRARY/provider.mp3",
+        title="Test Title",
+        artist="Test Artist",
+        streamingService="spotify",
+        streamingId="SP1",
+        genre="Breaks",
+    )
+
+    result = import_lexicon_metadata(
+        conn,
+        lexicon_db_path=lex_path,
+        run_id=RUN_ID,
+        log_dir=tmp_path / "logs",
+        dry_run=False,
+    )
+
+    assert result["matched"] == 1
+    rows = conn.execute(
+        "SELECT id, canonical_genre FROM track_identity WHERE id IN (?, ?) ORDER BY id",
+        (text_id, provider_id),
+    ).fetchall()
+    assert rows == [(text_id, None), (provider_id, "Breaks")]
+    candidate = conn.execute(
+        """
+        SELECT identity_id, match_method, decision
+        FROM identity_resolution_candidate
+        WHERE identity_id = ? AND match_method = 'exact_text'
+        """,
+        (text_id,),
+    ).fetchone()
+    assert candidate == (text_id, "exact_text", "candidate")

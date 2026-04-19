@@ -1378,6 +1378,9 @@ def _ensure_v3_schema(conn: sqlite3.Connection) -> None:
         f"CREATE INDEX IF NOT EXISTS idx_{V3_PROVENANCE_EVENT_TABLE}_move_exec "
         f"ON {V3_PROVENANCE_EVENT_TABLE}(move_execution_id)"
     )
+    from tagslut.storage.v3.schema import ensure_identity_resolution_artifacts
+
+    ensure_identity_resolution_artifacts(conn)
 
 
 def _record_schema_version(

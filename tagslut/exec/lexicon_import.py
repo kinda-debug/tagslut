@@ -11,6 +11,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 import zipfile
 
+from tagslut.storage.v3.resolver import (
+    ResolverInput,
+    resolve_identity,
+    write_identity_evidence,
+)
 from tagslut.utils.fs import normalize_path
 
 
@@ -19,6 +24,30 @@ _LEXICON_MP3_ROOTS = (
     "/Volumes/MUSIC/DJ_LIBRARY/",
     "/Volumes/MUSIC/DJ_POOL_MANUAL_MP3/",
 )
+
+_STREAMING_PROVIDER_COLUMNS = (
+    "spotify_id",
+    "beatport_id",
+    "tidal_id",
+    "qobuz_id",
+    "apple_music_id",
+    "deezer_id",
+    "traxsource_id",
+    "itunes_id",
+)
+
+_STREAMING_SERVICE_MAP = {
+    "spotify": "spotify_id",
+    "beatport": "beatport_id",
+    "tidal": "tidal_id",
+    "qobuz": "qobuz_id",
+    "apple": "apple_music_id",
+    "apple music": "apple_music_id",
+    "apple_music": "apple_music_id",
+    "deezer": "deezer_id",
+    "traxsource": "traxsource_id",
+    "itunes": "itunes_id",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -85,6 +114,21 @@ def _merge_payload(existing_json: str | None, updates: dict[str, object]) -> str
         payload = {}
     payload.update(updates)
     return json.dumps(payload, ensure_ascii=False, sort_keys=True)
+
+
+def _provider_ids_for_streaming(
+    streaming_service: str | None,
+    streaming_id: str | None,
+) -> dict[str, str]:
+    sid = str(streaming_id).strip() if streaming_id is not None else ""
+    if not sid:
+        return {}
+    service = _norm(streaming_service)
+    if service:
+        provider_column = _STREAMING_SERVICE_MAP.get(service)
+        if provider_column:
+            return {provider_column: sid}
+    return {provider_column: sid for provider_column in _STREAMING_PROVIDER_COLUMNS}
 
 
 @contextlib.contextmanager
@@ -249,7 +293,7 @@ def import_lexicon_metadata(
 
     For each active Lexicon track under the trusted DJ MP3 roots:
     - Match to a track_identity (via normalized locationUnique/location path,
-      title+artist, or streamingId).
+      streamingId provider evidence, or text review candidates).
     - Write NULL fields in track_identity and dj_track_profile (or overwrite if
       prefer_lexicon=True).
 
@@ -324,58 +368,126 @@ def _process_lex_track(
     (
         lex_id, title, artist, location, location_unique, bpm, key, energy, rating,
         last_played, color, genre, label, remixer, extra1, extra2,
-        streaming_id, _streaming_service, _archived, _incoming, data_blob,
+        streaming_id, streaming_service, _archived, _incoming, data_blob,
         fingerprint, import_source,
     ) = lex_row
 
     # --- Find identity_id ---
     identity_id: int | None = None
     matched_mp3_path: str | None = None
+    source_ref = f"lexicon:{lex_id}"
+    provider_ids = _provider_ids_for_streaming(streaming_service, streaming_id)
 
     # 1. path match
     for candidate in _path_candidates(location_unique, location):
-        row = conn.execute(
-            "SELECT identity_id, path FROM mp3_asset WHERE path = ? LIMIT 1",
-            (candidate,),
-        ).fetchone()
-        if row:
-            identity_id = row[0]
-            matched_mp3_path = row[1]
+        resolver_result = resolve_identity(
+            conn,
+            ResolverInput(
+                path=candidate,
+                artist=artist,
+                title=title,
+                source_system="lexicon_import",
+                source_ref=source_ref,
+                payload={"lexicon_track_id": int(lex_id)},
+            ),
+            persist=not dry_run,
+            allow_text_auto_match=False,
+        )
+        if resolver_result.decision == "accepted" and resolver_result.identity_id is not None:
+            identity_id = resolver_result.identity_id
+            matched_mp3_path = candidate
             break
 
-    # 2. title+artist normalised
-    if identity_id is None and title and artist:
-        key_norm = (_norm(artist), _norm(title))
-        row = conn.execute(
-            """
-            SELECT id FROM track_identity
-            WHERE lower(artist_norm) = ? AND lower(title_norm) = ?
-            LIMIT 1
-            """,
-            key_norm,
-        ).fetchone()
-        if row:
-            identity_id = row[0]
+    # 2. streamingId provider evidence
+    if identity_id is None and provider_ids:
+        resolver_result = resolve_identity(
+            conn,
+            ResolverInput(
+                provider_ids=provider_ids,
+                artist=artist,
+                title=title,
+                source_system="lexicon_import",
+                source_ref=source_ref,
+                payload={
+                    "lexicon_track_id": int(lex_id),
+                    "streamingService": streaming_service,
+                    "streamingId": streaming_id,
+                },
+            ),
+            persist=not dry_run,
+            allow_text_auto_match=False,
+        )
+        if resolver_result.decision == "accepted" and resolver_result.identity_id is not None:
+            identity_id = resolver_result.identity_id
 
-    # 3. streamingId
-    if identity_id is None and streaming_id:
-        sid = str(streaming_id).strip()
-        for col in (
-            "spotify_id", "beatport_id", "tidal_id", "qobuz_id",
-            "apple_music_id", "deezer_id", "traxsource_id", "itunes_id",
-        ):
-            row = conn.execute(
-                f"SELECT id FROM track_identity WHERE {col} = ? LIMIT 1", (sid,)
-            ).fetchone()
-            if row:
-                identity_id = row[0]
-                break
+    # 3. title+artist text candidates are review-only.
+    if identity_id is None and title and artist:
+        resolve_identity(
+            conn,
+            ResolverInput(
+                artist=artist,
+                title=title,
+                source_system="lexicon_import",
+                source_ref=source_ref,
+                payload={"lexicon_track_id": int(lex_id)},
+            ),
+            persist=not dry_run,
+            allow_text_auto_match=False,
+        )
 
     if identity_id is None:
         counters["unmatched"] += 1
         return
 
     counters["matched"] += 1
+
+    if not dry_run:
+        for candidate_path in _path_candidates(location_unique, location):
+            write_identity_evidence(
+                conn,
+                identity_id=identity_id,
+                evidence_type="lexicon_path",
+                evidence_key="path",
+                evidence_value=candidate_path,
+                source_system="lexicon_import",
+                source_ref=source_ref,
+                confidence=0.86,
+                conflict_state="accepted",
+                payload={"lexicon_track_id": int(lex_id)},
+            )
+        if fingerprint:
+            write_identity_evidence(
+                conn,
+                identity_id=identity_id,
+                evidence_type="lexicon_fingerprint",
+                evidence_key="fingerprint",
+                evidence_value=fingerprint,
+                source_system="lexicon_import",
+                source_ref=source_ref,
+                confidence=0.7,
+                conflict_state="accepted",
+                payload={"lexicon_track_id": int(lex_id), "importSource": import_source},
+            )
+        known_provider_column = _STREAMING_SERVICE_MAP.get(_norm(streaming_service))
+        for provider_column, provider_value in provider_ids.items():
+            if provider_column != known_provider_column:
+                continue
+            write_identity_evidence(
+                conn,
+                identity_id=identity_id,
+                evidence_type="provider_id",
+                evidence_key=provider_column,
+                evidence_value=provider_value,
+                provider=provider_column.removesuffix("_id"),
+                source_system="lexicon_import",
+                source_ref=source_ref,
+                confidence=0.94,
+                conflict_state="accepted",
+                payload={
+                    "lexicon_track_id": int(lex_id),
+                    "streamingService": streaming_service,
+                },
+            )
 
     # Always set mp3_asset.lexicon_track_id when matched by path.
     if matched_mp3_path and "lexicon_track_id" in mp3_asset_cols:

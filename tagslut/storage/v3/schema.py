@@ -25,6 +25,7 @@ V3_SCHEMA_VERSION_INGESTION_PROVENANCE = 12
 V3_SCHEMA_VERSION_CONFIDENCE_TIER_CHECK = 13
 V3_SCHEMA_VERSION_DJ_VALIDATION_STATE = 14
 V3_SCHEMA_VERSION_DJ_VALIDATION_STATE_AUDIT = 15
+V3_SCHEMA_VERSION_IDENTITY_RESOLUTION_ARTIFACTS = 20
 
 
 def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
@@ -33,6 +34,176 @@ def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
     except sqlite3.OperationalError:
         return False
     return any(str(row[1]) == column for row in rows)
+
+
+def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (table,),
+    ).fetchone()
+    return row is not None
+
+
+def ensure_identity_resolution_artifacts(conn: sqlite3.Connection) -> None:
+    """Create structured resolver/evidence artifacts for the existing v3 model."""
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS recording_cluster (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cluster_key TEXT NOT NULL UNIQUE,
+            basis TEXT NOT NULL CHECK (basis IN ('isrc','chromaprint','manual')),
+            isrc TEXT,
+            chromaprint_fingerprint TEXT,
+            confidence REAL,
+            reason_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS identity_evidence (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            identity_id INTEGER REFERENCES track_identity(id),
+            asset_id INTEGER REFERENCES asset_file(id),
+            evidence_type TEXT NOT NULL CHECK (
+                evidence_type IN (
+                    'asset_link',
+                    'content_sha256',
+                    'streaminfo_md5',
+                    'provider_id',
+                    'isrc',
+                    'chromaprint',
+                    'lexicon_path',
+                    'lexicon_fingerprint',
+                    'file_tag',
+                    'text'
+                )
+            ),
+            evidence_key TEXT NOT NULL,
+            evidence_value TEXT NOT NULL,
+            provider TEXT,
+            source_system TEXT NOT NULL,
+            source_ref TEXT,
+            confidence REAL,
+            conflict_state TEXT NOT NULL DEFAULT 'unreviewed' CHECK (
+                conflict_state IN ('accepted','corroborates','conflict','rejected','unreviewed')
+            ),
+            payload_json TEXT NOT NULL DEFAULT '{}',
+            observed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS identity_resolution_run (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_key TEXT NOT NULL UNIQUE,
+            source_system TEXT NOT NULL,
+            source_ref TEXT,
+            input_json TEXT NOT NULL DEFAULT '{}',
+            decision TEXT NOT NULL CHECK (
+                decision IN ('accepted','ambiguous','unresolved','candidate_only','rejected')
+            ),
+            accepted_identity_id INTEGER REFERENCES track_identity(id),
+            confidence REAL,
+            reason_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS identity_resolution_candidate (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id INTEGER NOT NULL REFERENCES identity_resolution_run(id) ON DELETE CASCADE,
+            identity_id INTEGER NOT NULL REFERENCES track_identity(id),
+            rank INTEGER NOT NULL,
+            score REAL NOT NULL,
+            match_method TEXT NOT NULL,
+            confidence TEXT NOT NULL,
+            decision TEXT NOT NULL CHECK (
+                decision IN ('accepted','candidate','ambiguous','rejected')
+            ),
+            evidence_ids_json TEXT NOT NULL DEFAULT '[]',
+            reason_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(run_id, identity_id, match_method)
+        );
+
+        CREATE TABLE IF NOT EXISTS identity_duplicate_cohort (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cohort_key TEXT NOT NULL UNIQUE,
+            cohort_type TEXT NOT NULL CHECK (
+                cohort_type IN (
+                    'provider_conflict',
+                    'isrc_collision',
+                    'fingerprint_collision',
+                    'mp3_lineage',
+                    'text_ambiguity',
+                    'manual'
+                )
+            ),
+            state TEXT NOT NULL DEFAULT 'open' CHECK (
+                state IN ('open','resolved','ignored')
+            ),
+            reason_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS identity_duplicate_cohort_member (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cohort_id INTEGER NOT NULL REFERENCES identity_duplicate_cohort(id) ON DELETE CASCADE,
+            identity_id INTEGER NOT NULL REFERENCES track_identity(id),
+            role TEXT NOT NULL DEFAULT 'candidate' CHECK (
+                role IN ('winner','loser','candidate','conflict','lineage')
+            ),
+            reason_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(cohort_id, identity_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_recording_cluster_basis
+            ON recording_cluster(basis);
+        CREATE INDEX IF NOT EXISTS idx_recording_cluster_isrc
+            ON recording_cluster(isrc);
+        CREATE INDEX IF NOT EXISTS idx_recording_cluster_chromaprint
+            ON recording_cluster(chromaprint_fingerprint);
+
+        CREATE INDEX IF NOT EXISTS idx_identity_evidence_identity
+            ON identity_evidence(identity_id);
+        CREATE INDEX IF NOT EXISTS idx_identity_evidence_asset
+            ON identity_evidence(asset_id);
+        CREATE INDEX IF NOT EXISTS idx_identity_evidence_lookup
+            ON identity_evidence(evidence_type, evidence_key, evidence_value);
+        CREATE INDEX IF NOT EXISTS idx_identity_evidence_provider
+            ON identity_evidence(provider, evidence_value);
+        CREATE INDEX IF NOT EXISTS idx_identity_evidence_conflict
+            ON identity_evidence(conflict_state);
+
+        CREATE INDEX IF NOT EXISTS idx_identity_resolution_run_decision
+            ON identity_resolution_run(decision);
+        CREATE INDEX IF NOT EXISTS idx_identity_resolution_run_identity
+            ON identity_resolution_run(accepted_identity_id);
+        CREATE INDEX IF NOT EXISTS idx_identity_resolution_candidate_run
+            ON identity_resolution_candidate(run_id);
+        CREATE INDEX IF NOT EXISTS idx_identity_resolution_candidate_identity
+            ON identity_resolution_candidate(identity_id);
+        CREATE INDEX IF NOT EXISTS idx_identity_resolution_candidate_method
+            ON identity_resolution_candidate(match_method);
+
+        CREATE INDEX IF NOT EXISTS idx_identity_duplicate_cohort_type
+            ON identity_duplicate_cohort(cohort_type);
+        CREATE INDEX IF NOT EXISTS idx_identity_duplicate_member_identity
+            ON identity_duplicate_cohort_member(identity_id);
+        """
+    )
+    if _table_exists(conn, "track_identity") and not _column_exists(
+        conn,
+        "track_identity",
+        "recording_cluster_id",
+    ):
+        conn.execute(
+            "ALTER TABLE track_identity ADD COLUMN recording_cluster_id INTEGER REFERENCES recording_cluster(id)"
+        )
+    if _table_exists(conn, "track_identity"):
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_track_identity_recording_cluster "
+            "ON track_identity(recording_cluster_id)"
+        )
 
 
 def create_schema_v3(conn: sqlite3.Connection) -> None:
@@ -546,6 +717,7 @@ def create_schema_v3(conn: sqlite3.Connection) -> None:
         WHERE ti.merged_into_id IS NULL;
         """
     )
+    ensure_identity_resolution_artifacts(conn)
     if not _column_exists(conn, "track_identity", "merged_into_id"):
         conn.execute(
             "ALTER TABLE track_identity ADD COLUMN merged_into_id INTEGER REFERENCES track_identity(id)"

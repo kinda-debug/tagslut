@@ -42,6 +42,12 @@ def test_create_schema_v3_creates_required_tables_without_v2_files() -> None:
         "scan_runs",
         "scan_queue",
         "scan_issues",
+        "identity_evidence",
+        "identity_resolution_run",
+        "identity_resolution_candidate",
+        "identity_duplicate_cohort",
+        "identity_duplicate_cohort_member",
+        "recording_cluster",
         "schema_migrations",
     }
     assert required.issubset(names)

@@ -255,7 +255,7 @@ when you want the product CLI directly.
 - `--simple` keeps downloader-only behavior
 - downloader boundaries:
   - TIDAL goes through `tools/tiddl`
-  - Qobuz goes through `tools/streamrip` unless `STREAMRIP_CMD` overrides it
+  - Qobuz goes through `tools/streamrip` with `~/Library/Application Support/streamrip/config.toml` unless `STREAMRIP_CMD` or `STREAMRIP_CONFIG` overrides it
   - Beatport goes through `tools/_beatportdl.sh` unless `BEATPORTDL_CMD` overrides it
 
 2. `tools/get-intake ...`

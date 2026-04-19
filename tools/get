@@ -72,7 +72,7 @@ usage() {
     echo ""
     echo "Environment prerequisites:"
     echo "  Beatport -> repo-local helper by default; override with BEATPORTDL_CMD or BEATPORTDL_BIN"
-    echo "  Qobuz    -> STREAMRIP_CONFIG is required; STREAMRIP_CMD is an optional override"
+    echo "  Qobuz    -> uses Streamrip config from STREAMRIP_CONFIG or ~/Library/Application Support/streamrip/config.toml"
     echo "  Roots    -> STAGING_ROOT (optional override for batch roots)"
     echo ""
     echo "Compatibility / advanced:"
@@ -618,9 +618,13 @@ elif [[ "$URL" == *"qobuz.com"* ]]; then
         exit 1
     fi
 
-    STREAMRIP_CONFIG="${STREAMRIP_CONFIG:-}"
+    STREAMRIP_CONFIG="${STREAMRIP_CONFIG:-$HOME/Library/Application Support/streamrip/config.toml}"
     if [[ -z "$STREAMRIP_CONFIG" ]]; then
         echo "Error: STREAMRIP_CONFIG is not set" >&2
+        exit 1
+    fi
+    if [[ ! -f "$STREAMRIP_CONFIG" ]]; then
+        echo "Error: Streamrip config not found at $STREAMRIP_CONFIG" >&2
         exit 1
     fi
     STREAMRIP_ROOT="${STREAMRIP_ROOT:-${STAGING_ROOT}/StreamripDownloads}"
@@ -659,12 +663,12 @@ print(r.json().get('title', ''))
     fi
 
     cd "$REPO_ROOT"
-    "$STREAMRIP_CMD" --config-path "$STREAMRIP_CONFIG" --no-db url "$URL"
-
-    STREAMRIP_EXIT=$?
-    if [[ $STREAMRIP_EXIT -ne 0 ]]; then
+    if "$STREAMRIP_CMD" --config-path "$STREAMRIP_CONFIG" --no-db url "$URL"; then
+        :
+    else
+        STREAMRIP_EXIT=$?
         echo "Error: streamrip exited with code $STREAMRIP_EXIT" >&2
-        exit $STREAMRIP_EXIT
+        exit "$STREAMRIP_EXIT"
     fi
 
     QOBUZ_INTAKE_ARGS=()

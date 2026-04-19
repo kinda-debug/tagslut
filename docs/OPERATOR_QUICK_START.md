@@ -46,8 +46,8 @@ tools/ts-stage         # auto-process non-empty staging subdirectories with sour
 Provider-specific prerequisites for `ts-get`:
 - Beatport: no manual path is required in the default repo layout; override with
   `BEATPORTDL_CMD` or `BEATPORTDL_BIN` only when using a different binary.
-- Qobuz: `STREAMRIP_CONFIG` must point to the active Streamrip config; `STREAMRIP_CMD`
-  is optional and only needed to override the repo-local wrapper.
+- Qobuz: uses `~/Library/Application Support/streamrip/config.toml` by default;
+  set `STREAMRIP_CONFIG` or `STREAMRIP_CMD` only to override the repo-local defaults.
 
 ## SpotiFLAC-Next
 

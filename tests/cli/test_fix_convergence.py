@@ -420,3 +420,82 @@ def test_fix_qobuz_download_stage_reuses_existing_batch_root(tmp_path: Path, mon
     assert captured["existing_batch_root"] == batch_root
     assert "mode: staged qobuz batch reuse" in result.output
     assert f"--batch-root {batch_root}" in result.output
+
+
+def test_url_flow_success_with_no_paths_clears_source_placeholder(tmp_path: Path, monkeypatch) -> None:
+    source_url = "https://open.qobuz.com/album/duplicate-album"
+    db_path = tmp_path / "qobuz-duplicates.db"
+    artifact_path = tmp_path / "promoted_flacs.txt"
+    artifact_path.write_text("", encoding="utf-8")
+
+    conn = sqlite3.connect(str(db_path))
+    try:
+        create_schema_v3(conn)
+        init_db(conn)
+        run_pending_v3(conn)
+        conn.execute(
+            """
+            INSERT INTO cohort (
+                id, source_url, source_kind, status, blocked_reason, created_at, flags
+            ) VALUES (1, ?, 'url', 'blocked', 'download:failed', '2026-04-05T00:00:00+00:00', ?)
+            """,
+            (source_url, '{"command":"get","dj":false,"mp3":false,"playlist":false}'),
+        )
+        conn.execute(
+            """
+            INSERT INTO cohort_file (
+                id, cohort_id, asset_file_id, source_path,
+                status, blocked_reason, blocked_stage, created_at
+            ) VALUES (
+                1, 1, NULL, ?,
+                'blocked', 'failed', 'download', '2026-04-05T00:00:00+00:00'
+            )
+            """,
+            (source_url,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    from tagslut.cli.commands.get import _run_url_flow
+    from tagslut.exec.intake_orchestrator import IntakeResult, IntakeStageResult
+
+    def _fake_run_intake(**_kwargs):  # type: ignore[no-untyped-def]
+        return IntakeResult(
+            url=source_url,
+            disposition="completed",
+            precheck_summary={},
+            precheck_csv=None,
+            artifact_path=None,
+            stages=[
+                IntakeStageResult(stage="download", status="ok"),
+                IntakeStageResult(stage="promote", status="ok", artifact_path=artifact_path),
+            ],
+        )
+
+    monkeypatch.setattr("tagslut.cli.commands.get.run_intake", _fake_run_intake)
+
+    ok, reason = _run_url_flow(
+        url=source_url,
+        db_path=db_path,
+        cohort_id=1,
+        dj=False,
+        mp3=False,
+        playlist=False,
+    )
+
+    conn = sqlite3.connect(str(db_path))
+    try:
+        cohort_row = conn.execute(
+            "SELECT status, blocked_reason FROM cohort WHERE id = 1"
+        ).fetchone()
+        cohort_file_row = conn.execute(
+            "SELECT status, blocked_reason, blocked_stage FROM cohort_file WHERE id = 1"
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert ok is True
+    assert reason is None
+    assert tuple(cohort_row) == ("complete", None)
+    assert tuple(cohort_file_row) == ("ok", None, None)

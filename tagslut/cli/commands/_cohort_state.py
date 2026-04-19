@@ -335,6 +335,27 @@ def mark_paths_ok(
             )
 
 
+def mark_source_placeholder_ok(
+    conn: sqlite3.Connection,
+    *,
+    cohort_id: int,
+    source_path: str,
+) -> None:
+    conn.execute(
+        """
+        UPDATE cohort_file
+        SET status = 'ok',
+            blocked_stage = NULL,
+            blocked_reason = NULL
+        WHERE cohort_id = ?
+          AND asset_file_id IS NULL
+          AND source_path = ?
+          AND status = 'blocked'
+        """,
+        (int(cohort_id), source_path),
+    )
+
+
 def record_blocked_paths(
     conn: sqlite3.Connection,
     *,

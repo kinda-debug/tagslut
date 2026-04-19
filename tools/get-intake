@@ -159,6 +159,45 @@ run_cmd() {
   "$@"
 }
 
+run_move_plan() {
+  local prefix="$1"
+  shift
+  local tmp="${TMPDIR:-/tmp}/tagslut_move_${prefix}_$$.log"
+  run_cmd "$@" | tee "$tmp"
+  local status="${PIPESTATUS[0]}"
+  local line
+  line="$(grep -E '^EXECUTE: planned=' "$tmp" | tail -n 1 || true)"
+  if [[ "$line" =~ planned=([0-9]+)[[:space:]]+moved=([0-9]+)[[:space:]]+skipped_missing=([0-9]+)[[:space:]]+skipped_exists=([0-9]+)[[:space:]]+failed=([0-9]+) ]]; then
+    printf -v "${prefix}_APPLIED" '%s' "${BASH_REMATCH[2]}"
+    printf -v "${prefix}_SKIPPED_MISSING" '%s' "${BASH_REMATCH[3]}"
+    printf -v "${prefix}_SKIPPED_EXISTS" '%s' "${BASH_REMATCH[4]}"
+  fi
+  rm -f "$tmp"
+  return "$status"
+}
+
+move_count_summary() {
+  local moved="$1"
+  local planned="$2"
+  local skipped_exists="$3"
+  local skipped_missing="$4"
+  local detail=""
+  if [[ "$moved" != "$planned" ]]; then
+    detail="planned=$planned"
+  fi
+  if [[ "$skipped_exists" -gt 0 ]]; then
+    detail="${detail:+$detail }skipped_exists=$skipped_exists"
+  fi
+  if [[ "$skipped_missing" -gt 0 ]]; then
+    detail="${detail:+$detail }skipped_missing=$skipped_missing"
+  fi
+  if [[ -n "$detail" ]]; then
+    printf '%s (%s)' "$moved" "$detail"
+  else
+    printf '%s' "$moved"
+  fi
+}
+
 run_cmd_in_dir() {
   local workdir="$1"
   shift
@@ -955,11 +994,26 @@ PREFILTER_KEEP=0
 PREFILTER_SKIP=0
 PREFILTER_TOTAL=0
 PROMOTE_MOVE=0
+PROMOTE_APPLIED=0
+PROMOTE_SKIPPED_EXISTS=0
+PROMOTE_SKIPPED_MISSING=0
 STASH_MOVE=0
+STASH_APPLIED=0
+STASH_SKIPPED_EXISTS=0
+STASH_SKIPPED_MISSING=0
 QUARANTINE_MOVE=0
+QUARANTINE_APPLIED=0
+QUARANTINE_SKIPPED_EXISTS=0
+QUARANTINE_SKIPPED_MISSING=0
 PROMOTED_FLACS_COUNT=0
 FIX_SKIP_MOVE=0
+FIX_SKIP_APPLIED=0
+FIX_SKIP_SKIPPED_EXISTS=0
+FIX_SKIP_SKIPPED_MISSING=0
 DISCARD_MOVE=0
+DISCARD_APPLIED=0
+DISCARD_SKIPPED_EXISTS=0
+DISCARD_SKIPPED_MISSING=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -2343,7 +2397,7 @@ echo "  discard csv:    $DISCARD_PLAN"
 
 step "$STEP" "$TOTAL_STEPS" "Apply plans"
 if [[ "$EXECUTE" -eq 1 ]]; then
-  run_cmd python "$MOVE_SCRIPT" \
+  run_move_plan PROMOTE python "$MOVE_SCRIPT" \
     "$PROMOTE_PLAN" \
     --source-root "$BATCH_ROOT" \
     --dest-root "$LIBRARY_ROOT" \
@@ -2353,7 +2407,7 @@ if [[ "$EXECUTE" -eq 1 ]]; then
     --execute
 
   if [[ "$STASH_MOVE" -gt 0 ]]; then
-    run_cmd python "$MOVE_SCRIPT" \
+    run_move_plan STASH python "$MOVE_SCRIPT" \
       "$STASH_PLAN_NORMALIZED" \
       --source-root "$BATCH_ROOT" \
       --dest-root "$FIX_ROOT" \
@@ -2364,7 +2418,7 @@ if [[ "$EXECUTE" -eq 1 ]]; then
   fi
 
   if [[ "$QUARANTINE_MOVE" -gt 0 ]]; then
-    run_cmd python "$MOVE_SCRIPT" \
+    run_move_plan QUARANTINE python "$MOVE_SCRIPT" \
       "$QUARANTINE_PLAN" \
       --source-root "$BATCH_ROOT" \
       --dest-root "$QUARANTINE_ROOT" \
@@ -2375,7 +2429,7 @@ if [[ "$EXECUTE" -eq 1 ]]; then
   fi
 
   if [[ "$FIX_SKIP_MOVE" -gt 0 ]]; then
-    run_cmd python "$MOVE_SCRIPT" \
+    run_move_plan FIX_SKIP python "$MOVE_SCRIPT" \
       "$FIX_SKIP_PLAN" \
       --source-root "$BATCH_ROOT" \
       --dest-root "$FIX_ROOT" \
@@ -2386,7 +2440,7 @@ if [[ "$EXECUTE" -eq 1 ]]; then
   fi
 
   if [[ "$DISCARD_MOVE" -gt 0 ]]; then
-    run_cmd python "$MOVE_SCRIPT" \
+    run_move_plan DISCARD python "$MOVE_SCRIPT" \
       "$DISCARD_PLAN" \
       --source-root "$BATCH_ROOT" \
       --dest-root "$DISCARD_ROOT" \
@@ -2830,11 +2884,11 @@ if [[ "$EXECUTE" -eq 1 ]]; then
   if [[ "$USE_DOWNLOAD_PRECHECK" -eq 1 ]]; then
     kv "Precheck" "keep=$PREFILTER_KEEP skip=$PREFILTER_SKIP total=$PREFILTER_TOTAL"
   fi
-  kv "Promoted" "$(clr "${UI_CLR_GREEN:-}" "$PROMOTE_MOVE")"
-  kv "Stashed" "$STASH_MOVE"
-  kv "Quarantine" "$QUARANTINE_MOVE"
-  kv "Fix skips" "$FIX_SKIP_MOVE"
-  kv "Discard" "$DISCARD_MOVE"
+  kv "Promoted" "$(clr "${UI_CLR_GREEN:-}" "$(move_count_summary "$PROMOTE_APPLIED" "$PROMOTE_MOVE" "$PROMOTE_SKIPPED_EXISTS" "$PROMOTE_SKIPPED_MISSING")")"
+  kv "Stashed" "$(move_count_summary "$STASH_APPLIED" "$STASH_MOVE" "$STASH_SKIPPED_EXISTS" "$STASH_SKIPPED_MISSING")"
+  kv "Quarantine" "$(move_count_summary "$QUARANTINE_APPLIED" "$QUARANTINE_MOVE" "$QUARANTINE_SKIPPED_EXISTS" "$QUARANTINE_SKIPPED_MISSING")"
+  kv "Fix skips" "$(move_count_summary "$FIX_SKIP_APPLIED" "$FIX_SKIP_MOVE" "$FIX_SKIP_SKIPPED_EXISTS" "$FIX_SKIP_SKIPPED_MISSING")"
+  kv "Discard" "$(move_count_summary "$DISCARD_APPLIED" "$DISCARD_MOVE" "$DISCARD_SKIPPED_EXISTS" "$DISCARD_SKIPPED_MISSING")"
   kv "Promoted txt" "$PROMOTED_FLACS_FILE ($PROMOTED_FLACS_COUNT files)"
   if [[ -n "$ROON_M3U_OUTPUT" ]]; then
     kv "Roon M3U" "$ROON_M3U_OUTPUT"

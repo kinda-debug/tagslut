@@ -18,6 +18,7 @@ from tagslut.cli.commands._cohort_state import (
     find_latest_blocked_cohort_for_source,
     mark_paths_ok,
     mark_cohort_file_blocked,
+    mark_source_placeholder_ok,
     record_blocked_paths,
     refresh_cohort_status,
     resolve_flac_paths,
@@ -619,7 +620,10 @@ def _run_url_flow(
             _echo_failure_summary(result)
             return False, reason
 
-        mark_paths_ok(conn, cohort_id=cohort_id, paths=flac_paths)
+        if flac_paths:
+            mark_paths_ok(conn, cohort_id=cohort_id, paths=flac_paths)
+        else:
+            mark_source_placeholder_ok(conn, cohort_id=cohort_id, source_path=url)
         if mp3_requested and mp3_root is not None:
             try:
                 playlist_paths = _write_url_mp3_playlists(

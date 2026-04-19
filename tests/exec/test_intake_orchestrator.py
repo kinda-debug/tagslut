@@ -840,6 +840,54 @@ def test_tag_runs_enrich_without_mp3(
     assert "--providers" in enrich_cmd
 
 
+def test_empty_promoted_cohort_explains_skipped_derivatives(
+    temp_db: Path, tmp_path: Path
+) -> None:
+    compare_dir = tmp_path / "artifacts" / "compare"
+    compare_dir.mkdir(parents=True, exist_ok=True)
+    precheck_csv = compare_dir / "precheck_decisions_20260419_160000.csv"
+    precheck_csv.write_text(
+        "domain,source_link,track_id,isrc,title,artist,album,decision,confidence,match_method,"
+        "reason,db_path,db_download_source,existing_quality_rank,candidate_quality_rank\n",
+        encoding="utf-8",
+    )
+    promoted_txt = compare_dir / "promoted_flacs_20260419_160000.txt"
+    promoted_txt.write_text("", encoding="utf-8")
+    fresh_mtime = time.time() + 5
+    os.utime(precheck_csv, (fresh_mtime, fresh_mtime))
+    os.utime(promoted_txt, (fresh_mtime, fresh_mtime))
+
+    with patch("tagslut.exec.intake_orchestrator._run_tools_get") as mock_get:
+        mock_get.return_value = None
+        with patch("tagslut.exec.intake_orchestrator._maybe_emit_qobuz_promoted_flacs"):
+            with patch("tagslut.exec.intake_orchestrator._find_latest_precheck_csv") as mock_find:
+                mock_find.return_value = precheck_csv
+                with patch(
+                    "tagslut.exec.intake_orchestrator._find_latest_promoted_flacs_txt"
+                ) as mock_find_promoted:
+                    mock_find_promoted.return_value = promoted_txt
+                    result = run_intake(
+                        url="https://open.qobuz.com/album/duplicate",
+                        db_path=temp_db,
+                        tag=True,
+                        mp3=True,
+                        dry_run=False,
+                        mp3_root=tmp_path / "mp3",
+                        artifact_dir=tmp_path / "artifacts",
+                    )
+
+    promote_stage = next((s for s in result.stages if s.stage == "promote"), None)
+    enrich_stage = next((s for s in result.stages if s.stage == "enrich"), None)
+    mp3_stage = next((s for s in result.stages if s.stage == "mp3"), None)
+
+    assert promote_stage is not None
+    assert promote_stage.detail == "no promoted FLACs; nothing new/upgraded was moved"
+    assert enrich_stage is not None
+    assert enrich_stage.detail == "no FLAC inputs selected; promoted cohort was empty"
+    assert mp3_stage is not None
+    assert mp3_stage.detail == "no FLAC inputs selected; promoted cohort was empty"
+
+
 def test_dj_build_registers_separate_profile_and_path(
     temp_db: Path, tmp_path: Path, mock_precheck_csv_new: Path
 ) -> None:

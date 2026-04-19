@@ -1618,7 +1618,7 @@ def run_intake(
                 IntakeStageResult(
                     stage="promote",
                     status="skipped",
-                    detail="Promoted cohort file was empty.",
+                    detail="no promoted FLACs; nothing new/upgraded was moved",
                     artifact_path=promoted_txt,
                 )
             )
@@ -1666,6 +1666,13 @@ def run_intake(
         mp3_inputs = _normalize_flac_cohort(_load_precheck_skip_db_paths(precheck_csv_path))
         mp3_inputs_source = "precheck_skip_db_paths"
 
+    def _no_flac_inputs_detail() -> str:
+        if promoted_txt is not None and promoted_txt.exists() and not promoted_paths:
+            return "no FLAC inputs selected; promoted cohort was empty"
+        if mp3_inputs_source == "precheck_skip_db_paths":
+            return "no FLAC inputs selected; precheck had no reusable FLAC paths"
+        return "no FLAC inputs selected"
+
     if dry_run:
         stages.append(
             IntakeStageResult(
@@ -1695,7 +1702,7 @@ def run_intake(
             IntakeStageResult(
                 stage="enrich",
                 status="skipped",
-                detail="no FLAC inputs selected",
+                detail=_no_flac_inputs_detail(),
             )
         )
     else:
@@ -1829,7 +1836,7 @@ def run_intake(
                     IntakeStageResult(
                         stage="mp3",
                         status="skipped",
-                        detail="no FLAC inputs selected",
+                        detail=_no_flac_inputs_detail(),
                     )
                 )
 
@@ -1908,7 +1915,7 @@ def run_intake(
                 IntakeStageResult(
                     stage="dj",
                     status="skipped",
-                    detail="no FLAC inputs selected",
+                    detail=_no_flac_inputs_detail(),
                 )
             )
 

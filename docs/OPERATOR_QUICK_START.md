@@ -43,6 +43,11 @@ poetry run tagslut fix <cohort_id>          # resume blocked cohort with raw bac
 tools/ts-stage         # auto-process non-empty staging subdirectories with source auto-detection
 ```
 
+If a URL run finds no new or upgraded tracks, the promoted FLAC cohort is empty;
+`--tag` and `--mp3` then skip because there is no source FLAC cohort to process.
+For existing batch-root resumes, `skipped_exists` means the target copy already
+existed, so the source file remains in staging.
+
 Provider-specific prerequisites for `ts-get`:
 - Beatport: no manual path is required in the default repo layout; override with
   `BEATPORTDL_CMD` or `BEATPORTDL_BIN` only when using a different binary.

@@ -27,6 +27,26 @@ This is a CLI-first Python repo. Use these rules for all agents.
 - Prefer targeted pytest (`poetry run pytest tests/<module> -v`).
 - Do not run the full suite unless necessary.
 
+## Metadata test map
+
+Use these focused pytest targets when making provider or metadata changes. Do not run
+the full suite.
+
+Token/auth changes:
+  pytest -q tests/metadata/test_token_manager.py
+
+Beatport provider/API changes:
+  pytest -q tests/metadata/test_beatport_provider_api.py tests/metadata/test_beatport_normalize.py
+
+Pipeline/resolution changes:
+  pytest -q tests/metadata/test_pipeline_stages.py tests/metadata/test_pipeline_runner.py tests/metadata/test_enricher_policy.py tests/metadata/test_source_selection.py
+
+Shared metadata/models/DB-sync changes:
+  pytest -q tests/metadata/test_metadata_models.py tests/metadata/test_genre_normalization.py tests/metadata/test_track_db_sync.py
+
+Note: test_provider_state.py and test_reccobeats_provider.py do not exist in this
+clone. The map above reflects the actual current layout of tests/metadata/.
+
 ## Constraints
 - Do not scan the entire repo; stay scoped.
 - Do not modify artifacts, databases, or external volumes; use migrations for DB changes.

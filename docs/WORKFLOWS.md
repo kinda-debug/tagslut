@@ -143,13 +143,13 @@ This is the explicit phase-by-phase loop. Use it when you intentionally want man
 
 ```bash
 # Single URL
-python tools/review/pre_download_check.py \
+poetry run python tools/review/pre_download_check.py \
   --input <(printf '%s\n' "https://tidal.com/album/447061568/u") \
   --db "$TAGSLUT_DB" \
   --out-dir output/precheck
 
 # Links file
-python tools/review/pre_download_check.py \
+poetry run python tools/review/pre_download_check.py \
   --input ~/links.txt \
   --db "$TAGSLUT_DB" \
   --out-dir output/precheck
@@ -160,7 +160,7 @@ tools/get-auto --links-file ~/links.txt
 
 Outputs: `output/precheck/precheck_decisions_*.csv`, `precheck_keep_track_urls_*.txt`
 
-Use `--quiet` for script-level automation, or run through `tagslut intake <URL>` (alias: `tagslut intake url <URL>`) or `tools/get` for the normal concise operator flow.
+Use `--quiet` for script-level automation, and invoke the script with the repo interpreter (`poetry run python` or `.venv/bin/python`) so provider dependencies come from the project environment. For the normal concise operator flow, run through `tagslut intake <URL>` (alias: `tagslut intake url <URL>`) or `tools/get`.
 
 ### 2 · Download
 

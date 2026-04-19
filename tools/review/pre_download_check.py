@@ -556,7 +556,7 @@ Match Methods (in priority order):
     report_md = out_dir / f"precheck_extracted_report_{ts}.md"
 
     cmd = [
-        "python3",
+        sys.executable or "python3",
         str(extract_script),
         "--input",
         str(input_path),

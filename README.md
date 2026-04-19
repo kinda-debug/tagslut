@@ -101,6 +101,7 @@ Notes:
 - `tools/get --m3u` writes Roon-style playlists inside `PLAYLIST_ROOT` using relative paths.
 - Spotify URLs are expanded before precheck, then acquired through the internal Spotify intake adapter with per-track service fallback (`qobuz -> tidal -> amazon`) and SpotiFLAC-style batch artifacts (log, failed report, manifest, and `.m3u8` for collections).
 - if a run reports precheck/download zeros (`keep=0 skip=0 total=0`, `selected=0`), verify link extraction status before assuming duplicate suppression: check `artifacts/compare/precheck_links_extracted_*.csv` and `artifacts/compare/precheck_extracted_report_*.md` for notes such as `tidal_token_missing`
+- if you run the precheck script directly, use the repo interpreter (`poetry run python` or `.venv/bin/python`) rather than an unrelated system `python3`
 - work output is split by intent:
   - `FIX_ROOT` for salvageable metadata/tag issues (default: `/Volumes/MUSIC/_work/fix`)
   - `QUARANTINE_ROOT` / `$VOLUME_QUARANTINE` for risky files only (default: `/Volumes/MUSIC/_work/quarantine`)
@@ -110,6 +111,7 @@ Notes:
 - `tools/get-intake` is the advanced/backend command for existing batch roots, Spotify/Tidal direct intake, `--m3u-only`, and direct pipeline control.
 - `tools/get-sync` is a deprecated Beatport compatibility alias.
 - `tools/get --mp3` / `tools/get --dj` route to the canonical `tagslut intake url` orchestration to ensure the canonical source audio is tagged once before writing MP3 derivatives.
+- `tagslut fix <cohort_id>` resumes blocked cohorts and now streams the real backend commands/stages for URL resumes instead of only a summarized wrapper view.
 
 ## 4-Stage DJ Pipeline
 

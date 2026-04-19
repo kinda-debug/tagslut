@@ -20,6 +20,7 @@ Role: Curate, fetch, apply, and sync metadata tags for library files.
 
 3. `poetry run tagslut fix ...`
 Role: Resume a blocked cohort or repair a specific file or identity.
+- URL resumes print the actual delegated backend command path before execution and stream raw backend stages/commands during replay.
 
 4. `poetry run tagslut auth ...`
 Role: Provider authentication and token lifecycle flows.
@@ -138,7 +139,7 @@ Wrapper contract for active shell entrypoints:
 - strict mode: `set -euo pipefail`
 - path bootstrap: resolve the wrapper directory from `BASH_SOURCE[0]`
 - env bootstrap: source `tools/_load_env.sh` directly or via `tools/_wrapper_common.sh`
-- repo Python: prefer `tools/tagslut` or repo-local `.venv/bin/python`
+- repo Python: prefer `tools/tagslut` or repo-local `.venv/bin/python`; wrappers that shell out to Python helpers should reuse that interpreter instead of bare system `python3`
 - failure style: exit immediately with a direct stderr error when a required
   downstream executable or config path is missing
 
@@ -245,6 +246,7 @@ Role: legacy-compatible download wrapper around the canonical intake
 pipeline. For new work, prefer `poetry run tagslut intake <url>`
 when you want the product CLI directly.
 - default behavior: precheck + download + tagging/enrich/art + promote + merged M3U
+- Qobuz album intake also fetches Qobuz digital booklet PDFs when the release exposes booklet goodies.
 - Beatport URLs may download from TIDAL when a strict verified cross-match exists and TIDAL ranks higher by quality; Beatport remains the metadata origin for that URL.
 - default output is concise; `--verbose` enables internal paths, artifact files, and batch snapshots
 - high-level workflow flags: `--dj`, `--hoard`, `--no-hoard`, `--no-precheck`, `--force-download`, `--providers`, `--verbose`
@@ -274,7 +276,7 @@ Role: token refresh/sync wrapper.
 - TIDAL: delegates to `tools/tiddl auth refresh`
 - Beatport: syncs from BeatportDL credentials, preferring the embedded payload
   under `tools/beatportdl/` unless overridden
-- Qobuz: refreshes app credentials and syncs them to the active Streamrip config
+- Qobuz: refreshes app credentials and syncs them plus preferred Qobuz quality/booklet/artwork/filepath settings to the active Streamrip config
 
 6. `tools/enrich`
 Role: zero-config enrichment wrapper. Reads `$TAGSLUT_DB` from environment.

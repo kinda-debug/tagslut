@@ -671,6 +671,9 @@ print(r.json().get('title', ''))
     if [[ "$MODE" == "enrich" ]]; then
         QOBUZ_INTAKE_ARGS+=(--enrich)
     fi
+    if [[ -n "$PLAYLIST_NAME" ]]; then
+        QOBUZ_INTAKE_ARGS+=(--playlist-name "$PLAYLIST_NAME")
+    fi
     QOBUZ_INTAKE_ARGS+=(--no-download --batch-root "$QOBUZ_BATCH_ROOT")
 
     build_intake_cmd "qobuz" "$URL" "$@" "${QOBUZ_INTAKE_ARGS[@]}"

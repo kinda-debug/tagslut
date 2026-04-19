@@ -155,7 +155,7 @@ Public commands the operator uses daily:
 Planned CLI redesign (not yet implemented — do not implement ahead of spec):
   tagslut get <input>   replaces ts-get; URL or local path
   tagslut tag [target]  retroactive retag/rehoard
-  tagslut fix [id]      drain the waiting room (blocked cohorts)
+  tagslut fix [id]      drain the waiting room (blocked cohorts; raw backend resume output)
   tagslut auth          stays public
   tagslut admin ...     all internal/advanced flows
 

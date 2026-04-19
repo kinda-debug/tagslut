@@ -63,7 +63,7 @@ def test_tags_written_when_provider_returns_exact_match(monkeypatch, tmp_path: P
         isrc="USRC17607839",
         match_confidence=MatchConfidence.EXACT,
     )
-    monkeypatch.setattr(prescan, "TidalProvider", lambda: FakeTidalProvider(track))
+    monkeypatch.setattr(prescan, "TidalProvider", lambda token_manager=None: FakeTidalProvider(track))
 
     stats = prescan.prescan_batch_root(batch_root=tmp_path, db_path=tmp_path / "db.sqlite", execute=True)
 
@@ -91,7 +91,7 @@ def test_dry_run_does_not_write_tags(monkeypatch, tmp_path: Path) -> None:
         isrc="USRC17607839",
         match_confidence=MatchConfidence.EXACT,
     )
-    monkeypatch.setattr(prescan, "TidalProvider", lambda: FakeTidalProvider(track))
+    monkeypatch.setattr(prescan, "TidalProvider", lambda token_manager=None: FakeTidalProvider(track))
 
     stats = prescan.prescan_batch_root(batch_root=tmp_path, db_path=tmp_path / "db.sqlite", execute=False)
 
@@ -105,4 +105,3 @@ def test_dry_run_does_not_write_tags(monkeypatch, tmp_path: Path) -> None:
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))
-

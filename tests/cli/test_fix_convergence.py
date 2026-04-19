@@ -206,6 +206,9 @@ def test_fix_enrich_stage_skips_intake_calls_retag(tmp_path: Path, monkeypatch) 
 
     assert result.exit_code == 0, result.output
     assert retag_called, "retag_flac_paths must be called for enrich-stage resume"
+    assert "Resume cohort 1" in result.output
+    assert "blocked stage: enrich" in result.output
+    assert "action: internal retag via Enricher" in result.output
 
 
 def test_fix_mp3_stage_skips_retag_and_intake(tmp_path: Path, monkeypatch) -> None:
@@ -269,9 +272,11 @@ def test_fix_download_stage_uses_full_flow(tmp_path: Path, monkeypatch) -> None:
 
     full_flow_called: list[bool] = []
 
-    def _fake_run_url_flow(*, url, db_path, cohort_id, dj, playlist):  # type: ignore[no-untyped-def]
+    def _fake_run_url_flow(*, url, db_path, cohort_id, dj, mp3, playlist, raw_backend=False):  # type: ignore[no-untyped-def]
         full_flow_called.append(True)
         assert url == source_url
+        assert mp3 is False
+        assert raw_backend is True
         _mark_complete(db_path, cohort_id)
         return True, None
 
@@ -289,3 +294,129 @@ def test_fix_download_stage_uses_full_flow(tmp_path: Path, monkeypatch) -> None:
 
     assert result.exit_code == 0, result.output
     assert full_flow_called, "_run_url_flow must be called for early-stage (download) resume"
+    assert "Resume cohort 1" in result.output
+    assert "blocked stage: download" in result.output
+    assert "mode: raw verbose url resume" in result.output
+    assert f"resume command: tagslut get {source_url} --tag --db {db_path}" in result.output
+
+
+def test_fix_download_stage_preserves_mp3_flag(tmp_path: Path, monkeypatch) -> None:
+    source_url = "https://example.com/download-mp3-blocked"
+    db_path = tmp_path / "download-mp3.db"
+    _seed_blocked_cohort_at_stage(
+        db_path,
+        source_url=source_url,
+        blocked_stage="download",
+        flags='{"command":"get","dj":false,"mp3":true,"playlist":false}',
+    )
+
+    captured: dict[str, object] = {}
+
+    def _fake_run_url_flow(*, url, db_path, cohort_id, dj, mp3, playlist, raw_backend=False):  # type: ignore[no-untyped-def]
+        captured.update(
+            {
+                "url": url,
+                "db_path": db_path,
+                "cohort_id": cohort_id,
+                "dj": dj,
+                "mp3": mp3,
+                "playlist": playlist,
+                "raw_backend": raw_backend,
+            }
+        )
+        _mark_complete(db_path, cohort_id)
+        return True, None
+
+    monkeypatch.setattr("tagslut.cli.commands.get._run_url_flow", _fake_run_url_flow)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["fix", "1", "--db", str(db_path)])
+
+    assert result.exit_code == 0, result.output
+    assert captured["url"] == source_url
+    assert captured["dj"] is False
+    assert captured["mp3"] is True
+    assert captured["playlist"] is False
+    assert captured["raw_backend"] is True
+
+
+def test_fix_allows_stale_running_cohort_with_blocked_rows(tmp_path: Path, monkeypatch) -> None:
+    source_url = "https://example.com/stale-running"
+    db_path = tmp_path / "stale-running.db"
+    _seed_blocked_cohort_at_stage(
+        db_path,
+        source_url=source_url,
+        blocked_stage="download",
+    )
+
+    conn = sqlite3.connect(str(db_path))
+    try:
+        conn.execute("UPDATE cohort SET status = 'running', blocked_reason = NULL WHERE id = 1")
+        conn.commit()
+    finally:
+        conn.close()
+
+    full_flow_called: list[bool] = []
+
+    def _fake_run_url_flow(*, url, db_path, cohort_id, dj, mp3, playlist, raw_backend=False):  # type: ignore[no-untyped-def]
+        full_flow_called.append(True)
+        assert url == source_url
+        assert raw_backend is True
+        _mark_complete(db_path, cohort_id)
+        return True, None
+
+    monkeypatch.setattr("tagslut.cli.commands.get._run_url_flow", _fake_run_url_flow)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["fix", "1", "--db", str(db_path)])
+
+    assert result.exit_code == 0, result.output
+    assert full_flow_called, "stale running cohort with blocked files must still resume"
+
+
+def test_fix_qobuz_download_stage_reuses_existing_batch_root(tmp_path: Path, monkeypatch) -> None:
+    source_url = "https://open.qobuz.com/album/test-album"
+    db_path = tmp_path / "qobuz-download.db"
+    batch_root = tmp_path / "StreamripDownloads" / "Qobuz"
+    batch_root.mkdir(parents=True)
+    (batch_root / "track.flac").write_bytes(b"flac")
+    _seed_blocked_cohort_at_stage(
+        db_path,
+        source_url=source_url,
+        blocked_stage="download",
+    )
+
+    captured: dict[str, object] = {}
+
+    def _fake_run_url_flow(
+        *,
+        url,
+        db_path,
+        cohort_id,
+        dj,
+        mp3,
+        playlist,
+        existing_batch_root=None,
+    ):  # type: ignore[no-untyped-def]
+        captured.update(
+            {
+                "url": url,
+                "db_path": db_path,
+                "cohort_id": cohort_id,
+                "existing_batch_root": existing_batch_root,
+            }
+        )
+        _mark_complete(db_path, cohort_id)
+        return True, None
+
+    monkeypatch.setattr("tagslut.cli.commands.fix._existing_qobuz_batch_root", lambda _url: batch_root)
+    monkeypatch.setattr("tagslut.cli.commands.get._run_url_flow", _fake_run_url_flow)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["fix", "1", "--db", str(db_path)])
+
+    assert result.exit_code == 0, result.output
+    assert captured["url"] == source_url
+    assert captured["existing_batch_root"] == batch_root
+    assert "mode: staged qobuz batch reuse" in result.output
+    assert f"--batch-root {batch_root}" in result.output

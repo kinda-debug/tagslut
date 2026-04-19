@@ -37,7 +37,9 @@ cd ~/Projects/tagslut && ts-auth beatport
 ```bash
 ts-get <url>           # TIDAL, Qobuz, or Beatport URL
 ts-get <url> --dj      # download + add to DJ pool M3U
+poetry run tagslut get <url> --tag --mp3   # cohort-aware URL intake + tagged MP3 batch playlist
 poetry run tagslut get /path/to/dir --tag   # local staged intake -> enrich -> promote -> M3U
+poetry run tagslut fix <cohort_id>          # resume blocked cohort with raw backend command streaming
 tools/ts-stage         # auto-process non-empty staging subdirectories with source auto-detection
 ```
 

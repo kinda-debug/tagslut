@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import shlex
 import sqlite3
 from pathlib import Path
 
@@ -36,6 +38,149 @@ _STAGE_ORDER: tuple[str, ...] = (
     "playlist",
     "m3u",
 )
+
+
+def _shell_join(parts: list[object]) -> str:
+    return shlex.join([str(part) for part in parts])
+
+
+def _resume_outputs(*, dj: bool, mp3: bool, playlist: bool) -> str:
+    outputs: list[str] = []
+    if dj:
+        outputs.append("dj")
+    elif mp3:
+        outputs.append("mp3")
+    if playlist:
+        outputs.append("playlist")
+    if not outputs:
+        outputs.append("flac")
+    return ", ".join(outputs)
+
+
+def _echo_resume_banner(
+    *,
+    cohort_id: int,
+    source_kind: str,
+    source_url: str,
+    min_stage: str | None,
+    dj: bool,
+    mp3: bool,
+    playlist: bool,
+) -> None:
+    click.echo(f"Resume cohort {cohort_id}")
+    click.echo(f"  source: {source_url or '(unknown source)'}")
+    click.echo(f"  kind: {source_kind}")
+    click.echo(f"  blocked stage: {min_stage or 'unknown'}")
+    click.echo(f"  outputs: {_resume_outputs(dj=dj, mp3=mp3, playlist=playlist)}")
+
+
+def _echo_early_resume_plan(
+    *,
+    source_kind: str,
+    source_url: str,
+    db_path: Path,
+    dj: bool,
+    mp3: bool,
+    playlist: bool,
+    existing_batch_root: Path | None,
+) -> None:
+    if source_kind == "url":
+        if existing_batch_root is not None:
+            click.echo("  mode: staged qobuz batch reuse")
+            click.echo(
+                "  backend: "
+                + _shell_join(
+                    [
+                        "tools/get-intake",
+                        "--verbose",
+                        "--source",
+                        "qobuz",
+                        "--missing-policy",
+                        "download",
+                        "--execute",
+                        "--m3u",
+                        "--url",
+                        source_url,
+                        "--no-download",
+                        "--batch-root",
+                        existing_batch_root,
+                        "--db",
+                        db_path,
+                    ]
+                )
+            )
+            return
+        click.echo("  mode: raw verbose url resume")
+        cmd: list[object] = ["tagslut", "get", source_url, "--tag"]
+        if mp3:
+            cmd.append("--mp3")
+        if dj:
+            cmd.append("--dj")
+        if playlist:
+            cmd.append("--playlist")
+        cmd.extend(["--db", db_path])
+        click.echo(f"  resume command: {_shell_join(cmd)}")
+        return
+
+    input_path = Path(source_url).expanduser().resolve()
+    click.echo(
+        "  register command: "
+        + _shell_join(
+            [
+                "tagslut",
+                "index",
+                "register",
+                input_path,
+                "--source",
+                "local_path",
+                "--db",
+                db_path,
+                "--execute",
+            ]
+        )
+    )
+    click.echo("  next: internal retag + output rebuild")
+
+
+def _echo_late_resume_plan(
+    *,
+    min_stage: str,
+    flac_paths: list[Path],
+    dj: bool,
+    mp3: bool,
+    playlist: bool,
+) -> None:
+    click.echo(f"  re-enter: {min_stage}")
+    click.echo(f"  paths: {len(flac_paths)} flac")
+    if min_stage == "enrich":
+        click.echo("  action: internal retag via Enricher providers=beatport,tidal,qobuz")
+    if dj:
+        click.echo("  action: build tagged mp3 assets + dj playlists")
+    elif mp3:
+        click.echo("  action: rebuild tagged mp3 assets")
+    elif playlist:
+        click.echo("  action: rebuild merged m3u from cohort flacs")
+    else:
+        click.echo("  action: mark cohort paths ok")
+
+
+def _existing_qobuz_batch_root(source_url: str) -> Path | None:
+    if "qobuz.com" not in (source_url or "").strip().lower():
+        return None
+    streamrip_root = os.environ.get("STREAMRIP_ROOT")
+    if streamrip_root:
+        root = Path(streamrip_root).expanduser().resolve() / "Qobuz"
+    else:
+        staging_root = os.environ.get("STAGING_ROOT") or os.environ.get("VOLUME_STAGING")
+        if staging_root:
+            root = Path(staging_root).expanduser().resolve() / "StreamripDownloads" / "Qobuz"
+        else:
+            root = Path("/Volumes/MUSIC/staging/StreamripDownloads/Qobuz")
+    if not root.exists():
+        return None
+    if next(root.rglob("*.flac"), None) is None:
+        return None
+    return root
 
 
 def _min_blocked_stage(blocked_rows: list) -> str | None:
@@ -77,6 +222,7 @@ def _resume_late_stage(
     cohort_id: int,
     min_stage: str,
     dj: bool,
+    mp3: bool,
     playlist: bool,
 ) -> int:
     """
@@ -110,6 +256,14 @@ def _resume_late_stage(
         )
         conn.commit()
         return 2
+
+    _echo_late_resume_plan(
+        min_stage=min_stage,
+        flac_paths=flac_paths,
+        dj=dj,
+        mp3=mp3,
+        playlist=playlist,
+    )
 
     if min_stage in _ENRICH_STAGES:
         retag_result = retag_flac_paths(
@@ -222,7 +376,10 @@ def resume_cohort(
     if row is None:
         click.echo(f"Blocked cohort not found: {cohort_id}", err=True)
         return 1
-    if str(row[3]) != "blocked":
+    blocked = blocked_rows_for_cohort(conn, cohort_id=cohort_id)
+    status = str(row[3])
+    stale_running = status == "running" and bool(blocked)
+    if status != "blocked" and not stale_running:
         click.echo(f"Cohort {cohort_id} is not blocked.", err=True)
         return 1
 
@@ -230,10 +387,19 @@ def resume_cohort(
     source_kind = str(row[2])
     flags = decode_flags(str(row[7]) if row[7] is not None else None)
     dj = bool(flags.get("dj"))
+    mp3 = bool(flags.get("mp3"))
     playlist = bool(flags.get("playlist"))
 
-    blocked = blocked_rows_for_cohort(conn, cohort_id=cohort_id)
     min_stage = _min_blocked_stage(blocked)
+    _echo_resume_banner(
+        cohort_id=cohort_id,
+        source_kind=source_kind,
+        source_url=source_url,
+        min_stage=min_stage,
+        dj=dj,
+        mp3=mp3,
+        playlist=playlist,
+    )
 
     set_cohort_running(conn, cohort_id=cohort_id)
     conn.commit()
@@ -241,15 +407,40 @@ def resume_cohort(
     # Early-stage failure: FLACs not yet on disk. Re-run the full flow.
     if min_stage is None or min_stage in EARLY_BLOCKED_STAGES:
         if source_kind == "url":
-            ok, _reason = _run_url_flow(
-                url=source_url,
+            existing_batch_root = _existing_qobuz_batch_root(source_url)
+            _echo_early_resume_plan(
+                source_kind=source_kind,
+                source_url=source_url,
                 db_path=db_path,
-                cohort_id=cohort_id,
                 dj=dj,
+                mp3=mp3,
                 playlist=playlist,
+                existing_batch_root=existing_batch_root,
             )
+            flow_kwargs = {
+                "url": source_url,
+                "db_path": db_path,
+                "cohort_id": cohort_id,
+                "dj": dj,
+                "mp3": mp3,
+                "playlist": playlist,
+            }
+            if existing_batch_root is not None:
+                flow_kwargs["existing_batch_root"] = existing_batch_root
+            else:
+                flow_kwargs["raw_backend"] = True
+            ok, _reason = _run_url_flow(**flow_kwargs)
             return 0 if ok else 2
         input_path = Path(source_url).expanduser().resolve()
+        _echo_early_resume_plan(
+            source_kind=source_kind,
+            source_url=source_url,
+            db_path=db_path,
+            dj=dj,
+            mp3=mp3,
+            playlist=playlist,
+            existing_batch_root=None,
+        )
         ok, _reason = _run_local_flow(
             input_path=input_path,
             db_path=db_path,
@@ -266,6 +457,7 @@ def resume_cohort(
         cohort_id=cohort_id,
         min_stage=min_stage,
         dj=dj,
+        mp3=mp3,
         playlist=playlist,
     )
 

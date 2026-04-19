@@ -16,6 +16,7 @@ from typing import Optional
 
 from mutagen.flac import FLAC
 
+from tagslut.metadata.auth import TokenManager
 from tagslut.metadata.models.types import MatchConfidence, ProviderTrack
 from tagslut.metadata.providers.tidal import TidalProvider
 
@@ -71,7 +72,7 @@ def prescan_batch_root(*, batch_root: Path, db_path: Path, execute: bool) -> Pre
     del db_path  # CLI contract; unused for targeted tag writebacks.
 
     root = batch_root.expanduser().resolve()
-    provider = TidalProvider()
+    provider = TidalProvider(token_manager=TokenManager())
     cached: dict[str, Optional[ProviderTrack]] = {}
 
     scanned = 0
@@ -176,4 +177,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -387,6 +387,84 @@ def test_qobuz_download_emits_promoted_flacs_file(temp_db: Path, tmp_path: Path,
     assert str(f2.resolve()) in promoted
 
 
+def test_qobuz_album_enrich_includes_qobuz_and_downloads_booklet(
+    temp_db: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    promoted_txt = tmp_path / "artifacts" / "compare" / "promoted_flacs_20260315_140002.txt"
+    promoted_txt.parent.mkdir(parents=True, exist_ok=True)
+    album_dir = tmp_path / "Artist" / "Album"
+    album_dir.mkdir(parents=True, exist_ok=True)
+    flac_path = album_dir / "track.flac"
+    flac_path.write_bytes(b"fLaC")
+    promoted_txt.write_text(f"{flac_path.resolve()}\n", encoding="utf-8")
+    future = time.time() + 5
+    os.utime(promoted_txt, (future, future))
+
+    class _StubTokenManager:
+        def get_qobuz_app_credentials(self) -> tuple[str | None, str | None]:
+            return ("app", "secret")
+
+        def ensure_qobuz_token(self) -> str | None:
+            return "tok"
+
+    def _response(*, payload: dict[str, object] | None = None, content: bytes | None = None) -> Mock:
+        response = Mock()
+        response.raise_for_status.return_value = None
+        if payload is not None:
+            response.json.return_value = payload
+        if content is not None:
+            response.content = content
+        return response
+
+    def _fake_get(url: str, **_kwargs: object) -> Mock:
+        if url == "https://www.qobuz.com/api.json/0.2/album/get":
+            return _response(
+                payload={
+                    "goodies": [
+                        {
+                            "id": 218237,
+                            "url": "https://static.qobuz.com/goodies/73/000218237.pdf",
+                            "original_url": "https://static.qobuz.com/goodies/73/000218237.pdf",
+                        }
+                    ]
+                }
+            )
+        if url == "https://static.qobuz.com/goodies/73/000218237.pdf":
+            return _response(content=b"%PDF-1.4")
+        raise AssertionError(f"unexpected GET {url}")
+
+    monkeypatch.setattr("tagslut.exec.intake_orchestrator.TokenManager", _StubTokenManager)
+    monkeypatch.setattr("tagslut.exec.intake_orchestrator.requests.get", _fake_get)
+
+    with patch("tagslut.exec.intake_orchestrator._run_tools_get") as mock_get:
+        mock_get.return_value = None
+        with patch("tagslut.exec.intake_orchestrator._find_latest_promoted_flacs_txt") as mock_find_promoted:
+            mock_find_promoted.return_value = promoted_txt
+            with patch("tagslut.exec.intake_orchestrator.subprocess.run") as mock_run:
+                mock_run.return_value = Mock(returncode=0, stdout="", stderr="")
+
+                result = run_intake(
+                    url="https://open.qobuz.com/album/btzgd9hiejgtc",
+                    db_path=temp_db,
+                    tag=True,
+                    mp3=False,
+                    dry_run=False,
+                    artifact_dir=tmp_path / "artifacts",
+                )
+
+    enrich_stage = next((s for s in result.stages if s.stage == "enrich"), None)
+    assert enrich_stage is not None
+    assert enrich_stage.status == "ok"
+
+    enrich_cmd = mock_run.call_args.args[0]
+    providers_idx = enrich_cmd.index("--providers")
+    assert enrich_cmd[providers_idx + 1] == "beatport,tidal,qobuz"
+
+    booklet_path = album_dir / "000218237.pdf"
+    assert booklet_path.exists()
+    assert booklet_path.read_bytes() == b"%PDF-1.4"
+
+
 def test_artifact_written_on_block(
     temp_db: Path, tmp_path: Path, mock_precheck_csv: Path
 ) -> None:

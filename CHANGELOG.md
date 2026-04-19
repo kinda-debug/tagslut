@@ -25,9 +25,12 @@ Versioning: [Semantic Versioning](https://semver.org/)
 - Provider status reporting now reflects real credential presence for Qobuz (`app_id`, `app_secret`, `user_auth_token`) and ReccoBeats (`api_key`) instead of reporting both as always authenticated.
 - ReccoBeats remains routable for public ISRC / track-id metadata lookups even when status reports `enabled_unconfigured`.
 - `admin intake stage` now writes named M3U exports after promote, using playlist/log name, album name, or track title instead of generic batch ids.
+- `tools/auth qobuz` now syncs preferred streamrip Qobuz settings alongside auth state, including max quality, booklet downloads, original-size artwork, empty metadata exclusions, and tagslut’s folder/track naming formats.
+- `tagslut admin curate fetch` now runs all built-in tag providers by default (`beatport`, `tidal`, `qobuz`) and only narrows scope when `--provider` is passed.
 
 ### Fixed
 - `tagslut get <local-path>` local flow no longer drops output generation behind an unreachable block and no longer self-locks the SQLite DB when output artifacts are built after writeback.
+- Qobuz album intake now explicitly includes Qobuz in post-move enrichment and downloads Qobuz PDF booklets when album metadata exposes booklet goodies.
 
 ### Added
 - Reconcile task checkpoints: commands read/write `data/checkpoints/reconcile_YYYYMMDD_HH.json` and prompt before re-running completed tasks.

@@ -2,18 +2,15 @@
 """
 Metadata enrichment package for tagslut.
 
-**Active providers:** Beatport, TIDAL
-**Scaffold providers (off by default):** Qobuz
+**Active providers:** Beatport, TIDAL, Qobuz
 
-Only Beatport and TIDAL are currently active and supported in the enrichment pipeline. Qobuz is scaffold-only and off by default. Do not treat it as active without explicit contract change.
+Qobuz is active in enrichment/tagging flows, but remains non-authoritative for identity promotion without corroboration. Do not treat it as a canonical identity source without the explicit evidence gate.
 
 This package provides functionality to:
-- Fetch metadata from external providers (Beatport, TIDAL)
+- Fetch metadata from external providers (Beatport, TIDAL, Qobuz)
 - Resolve track identity using ISRC, provider IDs, or text search
 - Apply cascading rules to select canonical metadata values
 - Evaluate file health by comparing durations
-
-<!-- Future agents: Do not treat legacy/future providers as active without explicit contract change. -->
 """
 
 from tagslut.metadata.models.types import ProviderTrack, EnrichmentResult

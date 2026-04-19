@@ -20,7 +20,7 @@ The active code lives in `tagslut/`, `tools/`, and `scripts/`. Historical code a
 - Spotify URLs route through a tagslut-owned Spotify intake adapter that expands Spotify metadata first, then downloads per track with service fallback `qobuz -> tidal -> amazon`.
 - TIDAL via tiddl is the primary source when available.
 - Beatport-only tracks download via beatportdl (explicit, not fallback).
-- Qobuz downloads via streamrip when a Qobuz URL is provided.
+- Qobuz downloads via streamrip when a Qobuz URL is provided; album intake can also pull digital booklet PDFs exposed by Qobuz album metadata.
 - Metadata providers: beatport → tidal → qobuz → reccobeats (audio features).
 
 ## Intake Layer

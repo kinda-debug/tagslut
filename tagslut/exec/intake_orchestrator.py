@@ -11,22 +11,28 @@ Emits structured JSON artifact on every invocation.
 """
 from __future__ import annotations
 
-import os
 import json
+import logging
+import os
 import re
 import subprocess
 import sys
 import time
+from urllib.parse import urlparse
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
 import csv
+import requests
 import sqlite3
 
+from tagslut.metadata.auth import TokenManager
 from tagslut.utils.env_paths import get_artifacts_dir
 from tagslut.intake.dispatch import IntakeError, dispatch_intake_url
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -159,6 +165,92 @@ def _maybe_emit_qobuz_promoted_flacs(
     compare_dir.mkdir(parents=True, exist_ok=True)
     promoted_path = compare_dir / f"promoted_flacs_{stamp}.txt"
     promoted_path.write_text("\n".join(str(p) for p in flacs) + "\n", encoding="utf-8")
+
+
+def _qobuz_album_id_from_url(url: str) -> str | None:
+    raw = (url or "").strip()
+    if "qobuz.com" not in raw or "/album/" not in raw:
+        return None
+    album_id = raw.rsplit("/album/", 1)[-1].split("?", 1)[0].strip("/")
+    return album_id or None
+
+
+def _common_release_dir(paths: list[str]) -> Path | None:
+    parents: list[str] = []
+    for raw in paths:
+        try:
+            path = Path(raw).expanduser().resolve()
+        except Exception:
+            continue
+        if path.suffix.lower() != ".flac":
+            continue
+        parents.append(str(path.parent))
+    if not parents:
+        return None
+    return Path(os.path.commonpath(parents)).resolve()
+
+
+def _download_qobuz_album_booklets(*, url: str, promoted_paths: list[str]) -> list[Path]:
+    album_id = _qobuz_album_id_from_url(url)
+    release_dir = _common_release_dir(promoted_paths)
+    if not album_id or release_dir is None:
+        return []
+
+    token_manager = TokenManager()
+    app_id, _app_secret = token_manager.get_qobuz_app_credentials()
+    user_auth_token = token_manager.ensure_qobuz_token()
+    if not app_id or not user_auth_token:
+        return []
+
+    headers = {
+        "Accept": "application/json",
+        "X-App-Id": app_id,
+        "X-User-Auth-Token": user_auth_token,
+    }
+    try:
+        response = requests.get(
+            "https://www.qobuz.com/api.json/0.2/album/get",
+            params={"album_id": album_id, "app_id": app_id},
+            headers=headers,
+            timeout=15,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except Exception as exc:
+        logger.warning("qobuz booklet fetch skipped for album %s: %s", album_id, exc)
+        return []
+
+    goodies = payload.get("goodies") if isinstance(payload, dict) else None
+    if not isinstance(goodies, list):
+        return []
+
+    downloaded: list[Path] = []
+    release_dir.mkdir(parents=True, exist_ok=True)
+    for item in goodies:
+        if not isinstance(item, dict):
+            continue
+        booklet_url = item.get("original_url") or item.get("url")
+        if not isinstance(booklet_url, str) or not booklet_url.lower().endswith(".pdf"):
+            continue
+
+        filename = Path(urlparse(booklet_url).path).name.strip() or f"qobuz-booklet-{item.get('id')}.pdf"
+        destination = release_dir / filename
+        if destination.exists():
+            downloaded.append(destination)
+            continue
+
+        try:
+            booklet_response = requests.get(
+                booklet_url,
+                headers={"X-App-Id": app_id, "X-User-Auth-Token": user_auth_token},
+                timeout=30,
+            )
+            booklet_response.raise_for_status()
+            destination.write_bytes(booklet_response.content)
+            downloaded.append(destination)
+        except Exception as exc:
+            logger.warning("qobuz booklet download failed for %s: %s", booklet_url, exc)
+    return downloaded
 
 
 def _short_list(items: list[str], *, limit: int) -> str:
@@ -1531,6 +1623,8 @@ def run_intake(
                 )
             )
         else:
+            if _qobuz_album_id_from_url(download_url):
+                _download_qobuz_album_booklets(url=download_url, promoted_paths=promoted_paths)
             stages.append(
                 IntakeStageResult(
                     stage="promote",
@@ -1615,8 +1709,10 @@ def run_intake(
             providers_arg = "beatport,tidal" if dj else "tidal"
         elif "beatport.com" in lowered_url:
             providers_arg = "beatport,tidal"
-        elif "qobuz.com" in lowered_url and "/playlist/" in lowered_url:
-            writeback_force = True
+        elif "qobuz.com" in lowered_url:
+            providers_arg = "beatport,tidal,qobuz"
+            if "/playlist/" in lowered_url:
+                writeback_force = True
 
         enrich_script = repo_root / "tools" / "review" / "post_move_enrich_art.py"
         enrich_cmd = [

@@ -24,9 +24,9 @@ Writeback contract:
 |------------|----------|----------------------|---------------------------------------------------|
 | Beatport   | Active   | Bearer token/scraping| BPM, key, genre, sub-genre, label, ISRC           |
 | TIDAL      | Active   | Device authorization | ISRC, hi-res indicators, lyrics availability, native BPM/key/replayGain/readiness |
-| Qobuz      | Scaffold | TBD (future)         | Metadata/evidence only (off by default)           |
+| Qobuz      | Active   | App credentials + user token | ISRC/text lookup, album metadata, artwork, booklet goodies |
 
-**Note:** Only Beatport and TIDAL are currently active and supported in the enrichment pipeline. Qobuz exists as a scaffold provider and is off by default. See `tagslut/metadata/providers/__init__.py` for the active export surface.
+**Note:** Active enrichment routing now includes Beatport, TIDAL, and Qobuz. Qobuz remains non-authoritative for identity promotion unless corroborated; see `tagslut/storage/v3/provider_evidence.py` for the evidence gate.
 
 <!-- Future agents: Do not treat legacy/future providers as active without explicit contract change. -->
 
@@ -75,4 +75,4 @@ See `docs/archive/ (historical — see docs/archive/)Beatport Genres and Sub-Gen
 - `providers/` — provider implementations:
   - `beatport.py` — Beatport V4 API + web scraping (returns genre/sub_genre)
   - `tidal.py` — Tidal API
-  - `qobuz.py` — Qobuz scaffold (off by default)
+  - `qobuz.py` — Qobuz API metadata/artwork/booklet-goodies support

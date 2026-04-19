@@ -52,12 +52,12 @@ resolve_beatportdl_creds() {
 }
 
 sync_qobuz_tokens() {
-    # One-way: push tagslut tokens.json → streamrip dev_config.toml
+    # One-way: push tagslut tokens.json + preferred Qobuz settings → streamrip config.toml
     # tagslut is the authoritative source; never pull from streamrip
     [[ -f "$STREAMRIP_CONFIG" ]] || return 0
     [[ -f "$TOKENS_FILE" ]] || return 0
     "$PYTHON_BIN" - "$STREAMRIP_CONFIG" "$TOKENS_FILE" << 'PYEOF'
-import json, re, sys, tomllib
+import json, re, sys
 from pathlib import Path
 
 cfg_path, tok_path = sys.argv[1], sys.argv[2]
@@ -67,10 +67,60 @@ user_token = q.get("user_auth_token", "")
 user_id = q.get("user_id", "")
 if not (user_token and user_id):
     sys.exit(0)
-cfg_text = Path(cfg_path).read_text()
-cfg_text = re.sub(r'use_auth_token = \w+', 'use_auth_token = true', cfg_text)
-cfg_text = re.sub(r'email_or_userid = ".*?"', f'email_or_userid = "{user_id}"', cfg_text)
-cfg_text = re.sub(r'password_or_token = ".*?"', f'password_or_token = "{user_token}"', cfg_text)
+cfg_text = Path(cfg_path).read_text(encoding="utf-8")
+
+def upsert_key(text: str, section: str, key: str, raw_value: str) -> str:
+    section_re = re.compile(rf"(?ms)^\[{re.escape(section)}\]\s*\n.*?(?=^\[|\Z)")
+    key_re = re.compile(rf"(?m)^\s*{re.escape(key)}\s*=.*$")
+    line = f"{key} = {raw_value}"
+    match = section_re.search(text)
+    if match:
+        block = match.group(0)
+        if key_re.search(block):
+            updated = key_re.sub(line, block, count=1)
+        else:
+            suffix = "" if block.endswith("\n") else "\n"
+            updated = f"{block}{suffix}{line}\n"
+        return text[:match.start()] + updated + text[match.end():]
+
+    prefix = "" if not text.strip() else text.rstrip("\n") + "\n\n"
+    return f"{prefix}[{section}]\n{line}\n"
+
+def toml_string(value: str) -> str:
+    return json.dumps(value)
+
+updates = [
+    ("qobuz", "use_auth_token", "true"),
+    ("qobuz", "email_or_userid", toml_string(str(user_id))),
+    ("qobuz", "password_or_token", toml_string(str(user_token))),
+    ("qobuz", "quality", "4"),
+    ("qobuz", "download_booklets", "true"),
+    ("artwork", "embed", "true"),
+    ("artwork", "size", toml_string("original")),
+    ("artwork", "embed_size", toml_string("original")),
+    ("artwork", "keep_hires_cover", "true"),
+    ("artwork", "save_artwork", "true"),
+    ("artwork", "max_width", "-1"),
+    ("artwork", "max_height", "-1"),
+    ("artwork", "embed_max_width", "-1"),
+    ("artwork", "saved_max_width", "-1"),
+    ("metadata", "exclude", "[]"),
+    ("metadata", "set_playlist_to_album", "true"),
+    (
+        "filepaths",
+        "folder_format",
+        toml_string("{albumartist} - {title} ({year}) [{container}] [{bit_depth}B-{sampling_rate}kHz]"),
+    ),
+    (
+        "filepaths",
+        "track_format",
+        toml_string("{tracknumber:02}. {artist} - {title}{explicit}"),
+    ),
+]
+
+for section, key, raw_value in updates:
+    cfg_text = upsert_key(cfg_text, section, key, raw_value)
+
 Path(cfg_path).write_text(cfg_text)
 PYEOF
 }

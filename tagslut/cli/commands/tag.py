@@ -60,7 +60,7 @@ from tagslut.library.models import (
 from tagslut.library.repositories import get_track_by_alias, record_audit_event, upsert_track_alias
 from tagslut.storage.queries import get_files_for_library_track
 from tagslut.storage.schema import init_db
-from tagslut.tag.providers import get_provider
+from tagslut.tag.providers import get_provider, list_providers
 from tagslut.tag.providers.base import FieldCandidate, ProviderConfigError, RawResult
 from tagslut.tag.rekordbox_compat import REKORDBOX_TESTED_FIELDS, REKORDBOX_XML_FIELD_MAP
 from tagslut.utils.config import get_config
@@ -518,6 +518,24 @@ def run_tag_fetch(
         )
         session.commit()
         return job_run
+
+
+def run_tag_fetch_many(
+    provider_names: list[str],
+    batch_id: str,
+    *,
+    dry_run: bool = False,
+    db_url: str | None = None,
+) -> list[tuple[str, JobRun]]:
+    results: list[tuple[str, JobRun]] = []
+    for provider_name in provider_names:
+        results.append(
+            (
+                provider_name,
+                run_tag_fetch(provider_name, batch_id, dry_run=dry_run, db_url=db_url),
+            )
+        )
+    return results
 
 
 def _upsert_batch_source_provenance(
@@ -1523,13 +1541,18 @@ def register_curate_group(parent: click.Group) -> None:
         """Staged metadata fetch, review, apply, and export workflows."""
 
     @curate.command("fetch")
-    @click.option("--provider", "provider_name", required=True, help="Registered metadata provider name")
+    @click.option("--provider", "provider_name", help="Metadata provider name; defaults to all built-in providers")
     @click.option("--batch", "batch_id", required=True, help="Batch identifier")
     @click.option("--dry-run", is_flag=True, help="Preview provider work without storing candidates")
     def tag_fetch_command(provider_name: str, batch_id: str, dry_run: bool) -> None:  # type: ignore[misc]
-        job_run = run_tag_fetch(provider_name, batch_id, dry_run=dry_run)
-        click.echo(f"Job: {job_run.id}")
-        click.echo(f"Status: {job_run.status}")
+        provider_names = [provider_name] if provider_name else list_providers()
+        if not provider_names:
+            raise click.ClickException("No metadata providers are registered")
+        results = run_tag_fetch_many(provider_names, batch_id, dry_run=dry_run)
+        for current_provider, job_run in results:
+            click.echo(f"Provider: {current_provider}")
+            click.echo(f"Job: {job_run.id}")
+            click.echo(f"Status: {job_run.status}")
 
     @curate.command("batch-create")
     @click.option("--source", required=True, help="Batch source type")

@@ -208,13 +208,14 @@ poetry run tagslut index register "$STAGING_ROOT/deezer"  --db "$TAGSLUT_DB" --s
 ```bash
 poetry run tagslut index enrich \
   --db "$TAGSLUT_DB" \
-  --providers beatport,tidal \
+  --providers beatport,tidal,qobuz \
   --path "$STAGING_ROOT/%" \
   --retry-no-match \
   --execute
 ```
 
-- **Never** include Qobuz in `--providers`.
+- Default provider passes should use `beatport,tidal,qobuz`.
+- Narrow the list only when you intentionally want a provider-specific pass.
 - Use `--force` only for intentional full re-enrichment.
 
 ### 5 · Integrity check
@@ -707,7 +708,7 @@ See `docs/TROUBLESHOOTING.md` for failure modes and fixes.
 
 - **Always precheck** before download — never download blind.
 - **Never promote** without a passing integrity check and `duration_status=ok`.
-- **Providers**: `beatport,tidal` only for enrichment. Spotify intake uses its own acquisition adapter and must not be added to `--providers`.
+- **Providers**: default to `beatport,tidal,qobuz` for enrichment. Spotify intake uses its own acquisition adapter and must not be added to `--providers`.
 - **`warn`/`fail` buckets** are review queues — not auto-delete signals.
 - **Rekordbox** is a terminal consumer. It does not write back to the master library.
 - **Canonical source audio** is immutable. The DJ MP3 pool is always derived from it, never the source of truth.
